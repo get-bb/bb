@@ -68,6 +68,7 @@ import {
   workerHeldResponsesEnabled,
 } from "./relay.js";
 import { responseHeadTimeoutMs } from "./response-head-timeout.js";
+import { readTunnelLiveness, type TunnelLiveness } from "./tunnel-liveness.js";
 
 export { TunnelDO };
 
@@ -461,6 +462,7 @@ const gate = {
 
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
+    progress.routingKey = routingKey;
     const tunnelOwner =
       resolved.kind === "machine"
         ? tunnelOwnerKey("machine", resolved.machine.id)
@@ -666,13 +668,53 @@ const gate = {
 
 const SLOW_TUNNEL_DIAL_MS = 3_000;
 
-function recordGateDelay(env: Env, delay: GateDelay): void {
-  console.error(`bb connect: request ${delay.kind}`, delay);
+const TUNNEL_STATUS_TIMEOUT_MS = 2_000;
+
+function writeGateDelay(
+  env: Env,
+  delay: GateDelay,
+  tunnel: TunnelLiveness | null,
+): void {
+  console.error(`bb connect: request ${delay.kind}`, { ...delay, tunnel });
   env.GATE_EVENTS.writeDataPoint({
     indexes: [delay.host],
-    blobs: [delay.kind, delay.stage, delay.method, delay.host, delay.path],
-    doubles: [delay.elapsedMs, delay.tunnelObjectAttempts],
+    blobs: [
+      delay.kind,
+      delay.stage,
+      delay.method,
+      delay.host,
+      delay.path,
+      tunnel?.state ?? "",
+    ],
+    doubles: [
+      delay.elapsedMs,
+      delay.tunnelObjectAttempts,
+      tunnel?.state === "connected" ? (tunnel.lastHeartbeatAgeMs ?? -1) : -1,
+    ],
   });
+}
+
+function recordGateDelay(
+  env: Env,
+  ctx: ExecutionContext,
+  delay: GateDelay,
+  routingKey: string | null,
+): void {
+  if (
+    delay.kind === "slow" ||
+    delay.tunnelObjectAttempts === 0 ||
+    routingKey === null
+  ) {
+    writeGateDelay(env, delay, null);
+    return;
+  }
+  ctx.waitUntil(
+    readTunnelLiveness(
+      env.TUNNEL_DO,
+      routingKey,
+      TUNNEL_STATUS_TIMEOUT_MS,
+    ).then((tunnel) => writeGateDelay(env, delay, tunnel)),
+  );
 }
 
 export default {
@@ -684,6 +726,7 @@ export default {
     const progress: GateProgress = {
       stage: "routing",
       tunnelObjectAttempts: 0,
+      routingKey: null,
     };
     const requestUrl = new URL(request.url);
     try {
@@ -698,7 +741,8 @@ export default {
           requestUrl.pathname === "/__tunnel" ? SLOW_TUNNEL_DIAL_MS : null,
         progress,
         run: () => gate.fetch(request, env, ctx, progress),
-        onDelay: (delay) => recordGateDelay(env, delay),
+        onDelay: (delay) =>
+          recordGateDelay(env, ctx, delay, progress.routingKey),
       });
     } catch (error) {
       console.error("bb connect: request failed", {

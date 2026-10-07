@@ -985,6 +985,18 @@ describe("gate request deadline", () => {
     return pending;
   }
 
+  async function recordedEvents(ctx: ExecutionContext) {
+    await vi.advanceTimersByTimeAsync(2_000);
+    await Promise.all(
+      vi.mocked(ctx.waitUntil).mock.calls.map(([pending]) => pending),
+    );
+  }
+
+  function isStatusCheck(request: Request | string): boolean {
+    const url = typeof request === "string" ? request : request.url;
+    return new URL(url).pathname === "/__control/status";
+  }
+
   it("answers 504 naming the stage when the tunnel object never answers", async () => {
     const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
     const response = await settle(
@@ -1000,6 +1012,7 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: tunnel-object)");
+    await recordedEvents(ctx);
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
       indexes: ["sawyer.getbb.app"],
       blobs: [
@@ -1008,10 +1021,63 @@ describe("gate request deadline", () => {
         "GET",
         "sawyer.getbb.app",
         "/api/v1/threads",
+        "unknown",
       ],
-      doubles: [RESP_HEAD_TIMEOUT_MS, 1],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 1, -1],
     });
   });
+
+  it.each([
+    {
+      status: { connected: true, lastHeartbeatAgeMs: 95_000 },
+      tunnel: "connected",
+      heartbeatAgeMs: 95_000,
+    },
+    {
+      status: { connected: true, lastHeartbeatAgeMs: null },
+      tunnel: "connected",
+      heartbeatAgeMs: -1,
+    },
+    {
+      status: { connected: false, lastHeartbeatAgeMs: null },
+      tunnel: "disconnected",
+      heartbeatAgeMs: -1,
+    },
+  ])(
+    "records the tunnel's heartbeat age with a stall ($tunnel, $heartbeatAgeMs)",
+    async ({ status, tunnel, heartbeatAgeMs }) => {
+      const { env, ctx, routingKeys } = makeEnv((request) =>
+        isStatusCheck(request)
+          ? Response.json(status, { headers: { "x-bb-tunnel-status": "1" } })
+          : new Promise<Response>(() => {}),
+      );
+      await settle(
+        worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        ),
+        RESP_HEAD_TIMEOUT_MS,
+      );
+      await recordedEvents(ctx);
+
+      expect(routingKeys.at(-1)).toBe("sawyer");
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+        indexes: ["sawyer.getbb.app"],
+        blobs: [
+          "stall",
+          "tunnel-object",
+          "GET",
+          "sawyer.getbb.app",
+          "/api/v1/threads",
+          tunnel,
+        ],
+        doubles: [RESP_HEAD_TIMEOUT_MS, 1, heartbeatAgeMs],
+      });
+    },
+  );
 
   it("answers 504 when routing never finishes", async () => {
     mockResolveLabel.mockReturnValue(new Promise(() => {}));
@@ -1030,6 +1096,18 @@ describe("gate request deadline", () => {
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: routing)");
     expect(captured).toHaveLength(0);
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: [
+        "stall",
+        "routing",
+        "GET",
+        "sawyer.getbb.app",
+        "/api/v1/threads",
+        "",
+      ],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 0, -1],
+    });
   });
 
   it("answers 504 naming the body stage when a relayed upload never ends", async () => {
@@ -1056,6 +1134,7 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: request-body)");
+    await recordedEvents(ctx);
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
         blobs: [
@@ -1064,6 +1143,7 @@ describe("gate request deadline", () => {
           "POST",
           "sawyer.getbb.app",
           "/api/v1/threads",
+          "unknown",
         ],
       }),
     );
@@ -1095,11 +1175,12 @@ describe("gate request deadline", () => {
       const cancel = vi.fn(async () => {});
       const socketEvents: string[] = [];
       let answer: (response: Response) => void = () => {};
-      const { env, ctx } = makeEnv(
-        () =>
-          new Promise<Response>((resolve) => {
-            answer = resolve;
-          }),
+      const { env, ctx } = makeEnv((request) =>
+        isStatusCheck(request)
+          ? new Promise<Response>(() => {})
+          : new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
       );
       const response = await settle(
         worker.fetch(
@@ -1183,8 +1264,15 @@ describe("gate request deadline", () => {
 
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
       indexes: ["sawyer.getbb.app"],
-      blobs: ["slow", "tunnel-object", "GET", "sawyer.getbb.app", "/__tunnel"],
-      doubles: [3_000, 1],
+      blobs: [
+        "slow",
+        "tunnel-object",
+        "GET",
+        "sawyer.getbb.app",
+        "/__tunnel",
+        "",
+      ],
+      doubles: [3_000, 1, -1],
     });
     answer(new Response("connected"));
     expect((await pending).status).toBe(200);
@@ -2148,6 +2236,7 @@ vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
+  autoResponded: (ws: WebSocket, at: Date) => void;
   storage: Map<string, unknown>;
   durable: Map<string, unknown>;
   restore: Promise<void>;
@@ -2158,6 +2247,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
   const durable = new Map<string, unknown>(storage);
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
+  const autoResponses = new Map<WebSocket, Date>();
   let restore = Promise.resolve();
   const api = {
     getWebSockets: (tag?: string) =>
@@ -2170,6 +2260,8 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       entries.push({ ws, tags });
     },
     setWebSocketAutoResponse: vi.fn(),
+    getWebSocketAutoResponseTimestamp: (ws: WebSocket) =>
+      autoResponses.get(ws) ?? null,
     abort: vi.fn((reason?: string) => {
       throw new Error(reason);
     }),
@@ -2201,6 +2293,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   return {
     addSocket: (ws: WebSocket, tags: string[]) => {
       entries.push({ ws, tags });
+    },
+    autoResponded: (ws: WebSocket, at: Date) => {
+      autoResponses.set(ws, at);
     },
     storage,
     durable,
@@ -3389,14 +3484,45 @@ describe("TunnelDO status and on-change presence", () => {
       new Request("https://tunnel/__control/status"),
     );
     expect(offline.headers.get("x-bb-tunnel-status")).toBe("1");
-    await expect(offline.json()).resolves.toEqual({ connected: false });
+    await expect(offline.json()).resolves.toEqual({
+      connected: false,
+      lastHeartbeatAgeMs: null,
+    });
 
-    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
     const online = await dob.fetch(
       new Request("https://tunnel/__control/status"),
     );
-    await expect(online.json()).resolves.toEqual({ connected: true });
+    await expect(online.json()).resolves.toEqual({
+      connected: true,
+      lastHeartbeatAgeMs: null,
+    });
     expect(sent).toEqual([]);
+  });
+
+  it("reports how long ago the tunnel's last heartbeat was answered", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket();
+    state.addSocket(tunnel, ["tunnel"]);
+    state.autoResponded(tunnel, new Date(1_000_000 - 95_000));
+
+    try {
+      const response = await dob.fetch(
+        new Request("https://tunnel/__control/status"),
+      );
+
+      await expect(response.json()).resolves.toEqual({
+        connected: true,
+        lastHeartbeatAgeMs: 95_000,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("writes last-seen when the tunnel closes and spaces the alarm to half an hour in on-change mode", async () => {

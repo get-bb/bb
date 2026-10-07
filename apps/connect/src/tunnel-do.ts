@@ -166,8 +166,19 @@ export class TunnelDO {
       );
     }
     if (url.pathname === "/__control/status") {
+      const tunnel = this.tunnelSocket();
+      const heartbeatAt =
+        tunnel === null
+          ? null
+          : this.state.getWebSocketAutoResponseTimestamp(tunnel);
       return Response.json(
-        { connected: this.tunnelSocket() !== null },
+        {
+          connected: tunnel !== null,
+          lastHeartbeatAgeMs:
+            heartbeatAt === null
+              ? null
+              : Math.max(0, Date.now() - heartbeatAt.getTime()),
+        },
         { headers: { [TUNNEL_STATUS_HEADER]: "1" } },
       );
     }
