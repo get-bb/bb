@@ -167,12 +167,12 @@ function ChangedFileRow({
           >
             <DiffSizeBar
               {...lineStats}
-              className="group-hover/diff:hidden group-has-[:focus-visible]:hidden"
+              className="group-hover/diff:hidden group-focus-within:hidden"
             />
             <DiffStatsTally
               {...lineStats}
               hideZero
-              className="sr-only text-2xs tabular-nums group-hover/diff:not-sr-only group-has-[:focus-visible]:not-sr-only"
+              className="sr-only text-2xs tabular-nums group-hover/diff:not-sr-only group-focus-within:not-sr-only"
             />
           </span>
         ) : null
