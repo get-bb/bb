@@ -3378,9 +3378,11 @@ export interface BbNavigate {
    */
   toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
   /**
-   * Open one of this plugin's registered thread-panel actions in the current
-   * thread surface. Returns false when the surface has no thread side panel or
-   * the action is unavailable.
+   * Open one of this plugin's registered panel actions in the current
+   * surface's side panel: a `threadPanelAction` in a thread, or an
+   * `experimental_newThreadPanelAction` on the New thread screen. Plugin
+   * commands use the same opener. Returns false when the surface has no side
+   * panel actions (plugin pages) or the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
   /**

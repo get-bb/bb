@@ -56,7 +56,7 @@ interface RootComposePanelTabContentProps {
   onActivateTab: (tabId: string) => void;
   onAutoFocusNewTabHandled: () => void;
   onAutoFocusTerminalHandled: () => void;
-  onOpenBrowser: () => void;
+  onOpenBrowser: (() => void) | null;
   onOpenPanelLink: MarkdownPreviewLinkHandler;
   onSelectFileSearchResult: (selection: FileSearchSelection) => void;
   onSelectionAddToChat: (text: string) => void;
@@ -196,12 +196,12 @@ export function RootComposePanelTabContent({
           }}
           recentItemsThreadId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
           onOpenBrowser={
-            rootPanelThreadId
-              ? () => {
+            onOpenBrowser === null
+              ? undefined
+              : () => {
                   onActivateTab(tab.id);
                   onOpenBrowser();
                 }
-              : undefined
           }
           onStartTerminal={
             canCreateTerminal

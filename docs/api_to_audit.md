@@ -1345,6 +1345,14 @@ unterminated line is emitted before it.
 
 **Kept experimental (2026-08-22).** `experimental_hostId` is persisted inside opener-tab `paramsJson` (a rename needs a read-compat shim), Windows/UNC paths were never verified, and `experimental_openFilePreview` has no consumer.
 
+**Core callers.** `usePanelFiles` owns file opening on the thread view, New
+thread screen, and plugin page: core's workspace, host, and storage opens and
+this API's `openFilePreview` build the same tab requests, and one scope rule
+(workspace by environment, host files only with a thread and environment,
+storage by thread; plugin pages accept any explicit target) is checked in
+`usePanelFiles.test.tsx` against every surface. Links use `usePanelBrowser`
+for in-app browser tabs and link-preference routing on every surface.
+
 **What it does.** Gives plugin UI explicit, source-safe references to live
 workspace, host, and thread-storage files. Ordinary `experimental_FileLink`
 activation and the preview method use the current surface's shared file-tab

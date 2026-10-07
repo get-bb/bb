@@ -22,8 +22,9 @@ write into a composer the user picks use `useComposers()`, one handle per
 composer on screen.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
-same plugin's registered thread-panel actions; it returns false when the
-current surface has no thread side panel.
+same plugin's registered panel actions: `threadPanelAction` in a thread,
+`experimental_newThreadPanelAction` on the New thread screen. It returns false
+on plugin pages, which have no panel actions.
 
 Use `UrlLink` for a real anchor that applies BB's current
 in-app/external-browser preference on ordinary HTTP(S) activation, or

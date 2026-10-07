@@ -48,8 +48,9 @@ experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
-  in the current thread surface and returns whether the host accepted it; it
-  returns false on surfaces without a thread side panel.
+  in a thread, or its `experimental_newThreadPanelAction` tabs on the New
+  thread screen, and returns whether the host accepted it; it returns false on
+  plugin pages, which have no panel actions.
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.

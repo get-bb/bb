@@ -44,7 +44,6 @@ import type {
   SecondaryPanelRenderableTab,
 } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useThreadFileTabs } from "@/components/secondary-panel/useThreadFileTabs";
-import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
 import {
   useCloseFixedSecondaryPanel,
   useReconciledFixedPanelTabsState,
@@ -62,21 +61,16 @@ import {
   terminalQueryScopeForTarget,
   useTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
+import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
+import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import {
-  getDesktopBrowserApi,
-  isDesktopBrowserAvailable,
-} from "@/lib/bb-desktop";
+import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { getBrowserUrlHost } from "@/lib/browser-url";
-import { isRoutePath } from "@/lib/route-paths";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import {
-  AppNavigationHostProvider,
-  type AppFilePreviewIntent,
-} from "@/lib/app-navigation-host";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import {
   AppFixedTabTargetProvider,
   getPluginFixedTabOwnerId,
@@ -84,10 +78,6 @@ import {
   type AppFixedTabDestination,
   type AppFixedTabTargetState,
 } from "@/lib/app-fixed-tab-navigation";
-import {
-  normalizeExperimentalFileOpenOptions,
-  toFilePreviewLineRange,
-} from "@/lib/live-file-navigation";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   resolveTerminalHost,
@@ -511,55 +501,17 @@ export function PluginPanelRightPanelHost({
       openAppFixedTabFromDestinations(fixedTabDestinations, intent),
     [fixedTabDestinations],
   );
-  const openFilePreview = useCallback(
-    (intent: AppFilePreviewIntent) => {
-      const normalized = normalizeExperimentalFileOpenOptions(intent);
-      if (normalized === null || panel === null) return false;
-      selectPersistedPanelTab();
-      const lineRange = toFilePreviewLineRange(normalized.location);
-      const { target } = normalized;
-      const tab =
-        target.kind === "workspace"
-          ? openTab(
-              {
-                kind: "workspace-file-preview",
-                environmentId: target.environmentId,
-                tab: {
-                  lineRange,
-                  path: target.path,
-                  source: { kind: "working-tree" },
-                  statusLabel: null,
-                },
-              },
-              { viewer: intent.viewer },
-            )
-          : target.kind === "host"
-            ? openTab(
-                {
-                  kind: "host-file-preview",
-                  hostId: target.hostId,
-                  tab: { lineRange, path: target.path },
-                },
-                { viewer: intent.viewer },
-              )
-            : openTab(
-                {
-                  kind: "thread-storage-file-preview",
-                  threadId: target.threadId,
-                  tab: { lineRange, path: target.path },
-                },
-                { viewer: intent.viewer },
-              );
-      if (tab === null) return false;
-      revealPanel();
-      return true;
-    },
-    [openTab, panel, revealPanel, selectPersistedPanelTab],
-  );
   const revealPersistedPanel = useCallback(() => {
     selectPersistedPanelTab();
     revealPanel();
   }, [revealPanel, selectPersistedPanelTab]);
+  const panelFiles = usePanelFiles({
+    available: panel !== null,
+    openTab,
+    reveal: revealPersistedPanel,
+    scope: null,
+  });
+  const openLiveFilePreview = panelFiles.openFilePreview;
   const terminals = usePanelTerminals({
     panelStateId,
     syncThreadId: null,
@@ -574,8 +526,12 @@ export function PluginPanelRightPanelHost({
     onCloseLastTab: closeCompactDrawer,
   });
   const navigationCapabilities = useMemo(
-    () => ({ openFilePreview, openFixedTab, openTerminal: terminals.open }),
-    [openFilePreview, openFixedTab, terminals.open],
+    () => ({
+      openFilePreview: openLiveFilePreview,
+      openFixedTab,
+      openTerminal: terminals.open,
+    }),
+    [openFixedTab, openLiveFilePreview, terminals.open],
   );
   const hidePanel = useCallback(() => {
     setIsPluginDetailPanelOpen(false);
@@ -649,51 +605,14 @@ export function PluginPanelRightPanelHost({
     setTogglePortalTarget(findPluginRightPanelTogglePortal(panelStateId));
   }, [panel, panelStateId]);
 
-  const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
-    useState<BrowserAddressFocusRequest | null>(null);
-  const handleBrowserAddressFocusRequestConsumed = useCallback(
-    (request: BrowserAddressFocusRequest) => {
-      setBrowserAddressFocusRequest((current) =>
-        current?.requestId === request.requestId &&
-        current.tabId === request.tabId
-          ? null
-          : current,
-      );
-    },
-    [],
-  );
-  const openBrowser = useCallback(
-    (url = "") => {
-      if (!isDesktopBrowserAvailable()) return;
-      selectPersistedPanelTab();
-      const tab = openTab({ kind: "browser", url });
-      if (url.length === 0 && tab?.kind === "browser") {
-        setBrowserAddressFocusRequest((current) => ({
-          requestId: (current?.requestId ?? 0) + 1,
-          tabId: tab.id,
-        }));
-      }
-      revealPanel();
-    },
-    [openTab, revealPanel, selectPersistedPanelTab],
-  );
-  const browserTabIds = useMemo(
-    () => new Set(browserTabs.map((tab) => tab.id)),
-    [browserTabs],
-  );
-  useEffect(() => {
-    const browserApi = getDesktopBrowserApi();
-    if (browserApi === null) return;
-    if (browserApi.onScopedOpenTab) {
-      return browserApi.onScopedOpenTab(({ tabId, url }) => {
-        if (browserTabIds.has(tabId)) openBrowser(url);
-      });
-    }
-    if (activeBrowserTab === null || !isFocused) return;
-    return browserApi.onOpenTab(({ url }) => {
-      if (!isRoutePath({ path: url })) openBrowser(url);
-    });
-  }, [activeBrowserTab, browserTabIds, isFocused, openBrowser]);
+  const panelBrowser = usePanelBrowser({
+    available: isDesktopBrowserAvailable(),
+    browserTabs,
+    isFocused,
+    openTab,
+    reveal: revealPersistedPanel,
+  });
+  const openBrowser = panelBrowser.open;
 
   const closePluginDetailTab = useCallback(
     (closingPluginId: string) => {
@@ -871,12 +790,12 @@ export function PluginPanelRightPanelHost({
               onAutoFocusHandled={() => undefined}
               onSelect={() => undefined}
               onOpenBrowser={
-                isDesktopBrowserAvailable()
-                  ? () => {
+                openBrowser === null
+                  ? undefined
+                  : () => {
                       activateTab(tab.id);
-                      openBrowser();
+                      openBrowser?.();
                     }
-                  : undefined
               }
               onStartTerminal={() => {
                 activateTab(tab.id);
@@ -1080,9 +999,9 @@ export function PluginPanelRightPanelHost({
           <LazyBrowserTabDeck
             browserTabs={browserTabs}
             activeBrowserTabId={activeBrowserTabId}
-            addressFocusRequest={browserAddressFocusRequest}
+            addressFocusRequest={panelBrowser.addressFocusRequest}
             onAddressFocusRequestConsumed={
-              handleBrowserAddressFocusRequestConsumed
+              panelBrowser.handleAddressFocusRequestConsumed
             }
             environmentId={null}
             canShowNativeBrowserView={canShowNativeBrowserView}
@@ -1133,10 +1052,10 @@ export function PluginPanelRightPanelHost({
       activeBrowserTab,
       activePluginDetailId,
       activeTab,
-      browserAddressFocusRequest,
+      panelBrowser.addressFocusRequest,
       browserTabs,
       fixedTabs,
-      handleBrowserAddressFocusRequestConsumed,
+      panelBrowser.handleAddressFocusRequestConsumed,
       hidePanel,
       isOpen,
       openNewTab,
@@ -1217,9 +1136,7 @@ export function PluginPanelRightPanelHost({
   );
 
   return (
-    <UrlOpenRoutingProvider
-      openInAppBrowser={isDesktopBrowserAvailable() ? openBrowser : null}
-    >
+    <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
       <AppNavigationHostProvider capabilities={navigationCapabilities}>
         <PluginDetailRouteNavigationProvider
           onOpenPluginDetail={openPluginDetail}
