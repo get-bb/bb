@@ -188,6 +188,8 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
+import { RELAY_HEADER } from "./protocol-headers.js";
 import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
   TUNNEL_OFFLINE_HEADER,
@@ -278,6 +280,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
+    GATE_STALLS: { writeDataPoint: vi.fn() },
   };
   const ctx = {
     waitUntil: vi.fn(),
@@ -939,6 +942,183 @@ describe("gate replays through a tunnel object restart", () => {
       ).status,
     ).toBe(502);
     expect(captured).toHaveLength(3);
+  });
+});
+
+describe("gate request deadline", () => {
+  const machineHeaders = { "x-bb-connect-machine": "bbcm_owner" };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockMarkMachineSeen.mockResolvedValue(true);
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  class SilentRelaySocket extends EventTarget {
+    binaryType = "blob";
+    readonly closes: number[] = [];
+    accept(): void {}
+    send(): void {}
+    close(code: number): void {
+      this.closes.push(code);
+    }
+  }
+
+  function relayUpgrade(socket: SilentRelaySocket): Response {
+    return {
+      status: 101,
+      headers: new Headers({ [RELAY_HEADER]: "1" }),
+      webSocket: socket,
+    } as unknown as Response;
+  }
+
+  async function settle(pending: Promise<Response>, afterMs: number) {
+    await vi.advanceTimersByTimeAsync(afterMs);
+    return pending;
+  }
+
+  it("answers 504 naming the stage when the tunnel object never answers", async () => {
+    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          headers: machineHeaders,
+        }),
+        env as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: tunnel-object)");
+    expect(env.GATE_STALLS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: ["tunnel-object", "GET", "sawyer.getbb.app", "/api/v1/threads"],
+      doubles: [RESP_HEAD_TIMEOUT_MS],
+    });
+  });
+
+  it("answers 504 when routing never finishes", async () => {
+    mockResolveLabel.mockReturnValue(new Promise(() => {}));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          headers: machineHeaders,
+        }),
+        env as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: routing)");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("answers 504 naming the body stage when a relayed upload never ends", async () => {
+    const socket = new SilentRelaySocket();
+    const { env, ctx } = makeEnv(() => relayUpgrade(socket));
+    const neverEndingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+    });
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          method: "POST",
+          headers: machineHeaders,
+          body: neverEndingBody,
+          duplex: "half",
+        } as RequestInit),
+        { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: request-body)");
+    expect(env.GATE_STALLS.writeDataPoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blobs: ["request-body", "POST", "sawyer.getbb.app", "/api/v1/threads"],
+      }),
+    );
+  });
+
+  it("answers 504 naming the head stage when a relayed request gets no response", async () => {
+    const socket = new SilentRelaySocket();
+    const { env, ctx } = makeEnv(() => relayUpgrade(socket));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          method: "POST",
+          headers: machineHeaders,
+          body: "{}",
+        }),
+        { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: response-head)");
+  });
+
+  it("cancels a response that arrives after the deadline answered", async () => {
+    const cancel = vi.fn(async () => {});
+    let answer: (response: Response) => void = () => {};
+    const { env, ctx } = makeEnv(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          headers: machineHeaders,
+        }),
+        env as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+    expect(response.status).toBe(504);
+
+    const late = new Response("late");
+    Object.defineProperty(late, "body", { value: { cancel } });
+    answer(late);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it("records nothing for a request that answers in time", async () => {
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: machineHeaders,
+      }),
+      env as never,
+      ctx,
+    );
+    await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+
+    expect(response.status).toBe(200);
+    expect(env.GATE_STALLS.writeDataPoint).not.toHaveBeenCalled();
   });
 });
 
@@ -1953,6 +2133,7 @@ function makeDoEnv() {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
+    GATE_STALLS: { writeDataPoint: vi.fn() },
   };
 }
 

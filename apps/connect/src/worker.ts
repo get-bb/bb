@@ -37,6 +37,11 @@ import {
   verifyDesktopSessionCookie,
 } from "./desktop-session.js";
 import { serveWithCache } from "./cache.js";
+import {
+  withGateDeadline,
+  type GateProgress,
+  type GateStall,
+} from "./gate-deadline.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import {
@@ -62,6 +67,7 @@ import {
   isWorkerHeldResponse,
   workerHeldResponsesEnabled,
 } from "./relay.js";
+import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 
 export { TunnelDO };
 
@@ -297,6 +303,7 @@ async function fetchTunnelDo(
   routingKey: string,
   request: Request,
   transport: "direct" | "relay-when-enabled",
+  progress: GateProgress,
 ): Promise<Response> {
   const replayable = REPLAYABLE_TUNNEL_METHODS.has(request.method);
   const relay =
@@ -305,12 +312,13 @@ async function fetchTunnelDo(
     request.headers.get("upgrade")?.toLowerCase() !== "websocket";
   for (let attempt = 0; ; attempt += 1) {
     const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
+    progress.stage = "tunnel-object";
     try {
-      if (relay) {
-        const relayed = await fetchThroughRelay(stub, request);
-        if (relayed !== null) return relayed;
-      }
-      return await stub.fetch(replayable ? new Request(request) : request);
+      const response =
+        (relay ? await fetchThroughRelay(stub, request, progress) : null) ??
+        (await stub.fetch(replayable ? new Request(request) : request));
+      progress.stage = "finishing";
+      return response;
     } catch (error) {
       const delayMs = TUNNEL_DO_RETRY_DELAYS_MS[attempt];
       if (
@@ -405,6 +413,7 @@ const gate = {
     request: Request,
     env: Env,
     ctx: ExecutionContext,
+    progress: GateProgress,
   ): Promise<Response> {
     const runtime = resolveConnectRuntime(env);
     const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
@@ -463,6 +472,7 @@ const gate = {
         routingKey,
         new Request(doRequest, { headers }),
         "relay-when-enabled",
+        progress,
       );
     };
 
@@ -499,6 +509,7 @@ const gate = {
         routingKey,
         new Request(new Request(forward, request), { headers }),
         "direct",
+        progress,
       );
     }
 
@@ -652,14 +663,34 @@ const gate = {
   },
 };
 
+function recordGateStall(env: Env, stall: GateStall): void {
+  console.error("bb connect: request stalled", stall);
+  env.GATE_STALLS.writeDataPoint({
+    indexes: [stall.host],
+    blobs: [stall.stage, stall.method, stall.host, stall.path],
+    doubles: [stall.deadlineMs],
+  });
+}
+
 export default {
   async fetch(
     request: Request,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const progress: GateProgress = { stage: "routing" };
     try {
-      return await gate.fetch(request, env, ctx);
+      return await withGateDeadline({
+        request,
+        deadlineMs: responseHeadTimeoutMs(
+          request.method,
+          new URL(request.url),
+          request.headers,
+        ),
+        progress,
+        run: () => gate.fetch(request, env, ctx, progress),
+        onStall: (stall) => recordGateStall(env, stall),
+      });
     } catch (error) {
       console.error("bb connect: request failed", {
         method: request.method,
