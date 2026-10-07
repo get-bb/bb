@@ -30,6 +30,12 @@ with `bb plugin config provider-claude-code set <key> <value>`.
 - bb passes only `BB_CLAUDE_CODE_EXECUTABLE` and `CLAUDE_CODE_OAUTH_TOKEN` to
   the CLI. Mint the token with `claude setup-token` for machines with no
   interactive login.
+- Installation and health checks prefer `BB_CLAUDE_CODE_EXECUTABLE`, then
+  `claude` on `PATH`, then `~/.local/bin/claude` (`claude.exe` on Windows).
+  A native install does not need to be on `PATH` to be detected. If Claude
+  reports that required remote managed settings could not load, run
+  `<executablePath> auth login` on the affected machine, using the path from
+  `bb machine provider-cli status`. Reinstalling does not refresh its login.
 - Structured plan, message editing, and compaction are supported through the
   corresponding `bb thread` commands. Unlisted model IDs are accepted by the
   provider; verify actual availability on the target host.

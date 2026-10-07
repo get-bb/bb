@@ -57,19 +57,32 @@ const claudeAccountSchema = z.object({
 async function claudeExecutable(): Promise<string> {
   const explicit = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim();
   if (explicit) return explicit;
-  if (
-    process.platform !== "win32" ||
-    (await resolveExecutablePath("claude")) !== null
-  ) {
+  if ((await resolveExecutablePath("claude")) !== null) {
     return "claude";
   }
-  const nativePath = path.join(os.homedir(), ".local", "bin", "claude.exe");
-  try {
-    await fs.access(nativePath);
-    return nativePath;
-  } catch {
-    return "claude";
+  const nativePath = path.join(
+    os.homedir(),
+    ".local",
+    "bin",
+    process.platform === "win32" ? "claude.exe" : "claude",
+  );
+  const candidates =
+    process.platform === "win32"
+      ? [nativePath]
+      : [
+          ...(process.env.PATH ?? "")
+            .split(path.delimiter)
+            .filter(Boolean)
+            .map((directory) => path.resolve(directory, "claude")),
+          nativePath,
+        ];
+  for (const candidate of candidates) {
+    if ((await resolveExecutablePath(candidate)) === null) continue;
+    try {
+      if ((await fs.stat(candidate)).isFile()) return candidate;
+    } catch {}
   }
+  return "claude";
 }
 
 function claudeInstallerCommand() {
