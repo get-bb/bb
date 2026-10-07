@@ -1190,8 +1190,7 @@ export function SettingsView() {
     content = (
       <ProvidersSettingsSection
         disabled={
-          systemConfigQuery.data === undefined ||
-          updateGeneralSettingsMutation.isPending
+          systemConfigQuery.data === undefined
         }
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
@@ -1285,8 +1284,7 @@ export function SettingsView() {
     content = (
       <ExperimentsSettingsSection
         disabled={
-          systemConfigQuery.data === undefined ||
-          updateExperimentsMutation.isPending
+          systemConfigQuery.data === undefined
         }
         experiments={experiments}
         performanceDiagnosticsAvailable={
@@ -1310,26 +1308,22 @@ export function SettingsView() {
           showGitChanges={generalSettings.showGitChanges}
           onShowGitChangesChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               showGitChanges: enabled,
             })
           }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               confirmThreadArchive: enabled,
             })
           }
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
+            systemConfigQuery.data === undefined
           }
           managedBranchPrefix={generalSettings.managedBranchPrefix}
           onManagedBranchPrefixChange={async (prefix) => {
             await updateGeneralSettingsMutation.mutateAsync({
-              ...generalSettings,
               managedBranchPrefix: prefix,
             });
           }}
@@ -1342,7 +1336,6 @@ export function SettingsView() {
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               steerActiveThreadOnEnter: enabled,
             })
           }
@@ -1353,25 +1346,21 @@ export function SettingsView() {
           telemetryEnabled={generalSettings.telemetryEnabled}
           onTelemetryEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               telemetryEnabled: enabled,
             })
           }
           streamerMode={generalSettings.streamerMode}
           onStreamerModeChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               streamerMode: enabled,
             })
           }
           enabled={generalSettings.showDiagnosticEvents}
           disabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
+            systemConfigQuery.data === undefined
           }
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               showDiagnosticEvents: enabled,
             })
           }

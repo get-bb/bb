@@ -745,14 +745,9 @@ export function KeyboardSettingsSection() {
           <Switch
             aria-label="Show keyboard hints when holding CMD / Control"
             checked={generalSettings.showKeyboardHints}
-            disabled={
-              systemConfig.data === undefined || updateGeneralSettings.isPending
-            }
+            disabled={systemConfig.data === undefined}
             onCheckedChange={(showKeyboardHints) =>
-              updateGeneralSettings.mutate({
-                ...generalSettings,
-                showKeyboardHints,
-              })
+              updateGeneralSettings.mutate({ showKeyboardHints })
             }
           />
         </SettingsWithControl>
