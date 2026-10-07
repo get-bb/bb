@@ -476,6 +476,7 @@ async function smokeLinuxAppImageLifecycle() {
       BB_DESKTOP_VERSION_CHECK: "0",
       BB_HOST_DAEMON_PORT: String(daemonPort),
       BB_SERVER_PORT: String(serverPort),
+      BB_TELEMETRY: "false",
     };
     delete childEnv.APPIMAGE_EXTRACT_AND_RUN;
     delete childEnv.BB_DESKTOP_APP_URL;
