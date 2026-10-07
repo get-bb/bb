@@ -82,7 +82,7 @@ describe("prompt library server", () => {
     ]);
 
     await expect(call("search", { ...GLOBAL, query })).resolves.toMatchObject({
-      recent: [{ id: "match" }],
+      prompts: [{ id: "match" }],
     });
   });
 
@@ -99,10 +99,11 @@ describe("prompt library server", () => {
     const result = await call("search", { ...GLOBAL, query: "" });
 
     expect(result).toMatchObject({
-      starred: [{ id: (starred as { id: string }).id }],
-      recent: [
-        { id: "h3", projectName: "Alpha", starredId: null },
+      prompts: [
+        { kind: "starred", id: (starred as { id: string }).id },
+        { kind: "recent", id: "h3", projectName: "Alpha", starredId: null },
         {
+          kind: "recent",
           id: "h2",
           projectName: "Beta",
           starredId: (starred as { id: string }).id,
@@ -162,10 +163,10 @@ describe("prompt library server", () => {
       projectId: "proj_a",
       query: "",
     })) as {
-      recent: { prompt: unknown }[];
+      prompts: { prompt: unknown }[];
     };
 
-    expect(result.recent[0]?.prompt).toEqual({
+    expect(result.prompts[0]?.prompt).toEqual({
       text: "see @a.ts\n\nthen #42",
       mentions: [
         {
@@ -238,7 +239,7 @@ describe("prompt library server", () => {
         query: "",
       });
       expect(result).toMatchObject({
-        recent: [
+        prompts: [
           {
             projectId: "proj_b",
             prompt: {
@@ -276,9 +277,9 @@ describe("prompt library server", () => {
         call("star", { prompt: { text: "test", mentions: [mention] } }),
       ).rejects.toThrow();
     }
-    await expect(
-      call("search", { ...GLOBAL, query: "" }),
-    ).resolves.toMatchObject({ starred: [] });
+    await expect(call("search", { ...GLOBAL, query: "" })).resolves.toEqual({
+      prompts: [],
+    });
   });
 
   it("fuzzy-matches every word and highlights the matched characters", async () => {
@@ -292,14 +293,39 @@ describe("prompt library server", () => {
       ...GLOBAL,
       query: "tmln cach",
     })) as {
-      recent: {
+      prompts: {
         id: string;
         snippet: { text: string; highlights: number[][] };
       }[];
     };
 
-    expect(result.recent.map((row) => row.id)).toEqual(["h1"]);
-    expect(result.recent[0]?.snippet.highlights.length).toBeGreaterThan(0);
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
+    expect(result.prompts[0]?.snippet.highlights.length).toBeGreaterThan(0);
+  });
+
+  it("ranks a search as one list by prefix, fuzzy score, starred, then recency", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "deploy the preview"),
+      entry("h2", 2, "delete old preview logs yearly"),
+      entry("h3", 3, "Deploy later"),
+      entry("h4", 4, "please deploy the docs"),
+      entry("h5", 5, "now deploy staging"),
+    ]);
+    await call("star", { prompt: draft("please deploy the docs") });
+    await call("star", { prompt: draft("deploy staging") });
+
+    const result = (await call("search", { ...GLOBAL, query: "deploy" })) as {
+      prompts: { kind: string; prompt: { text: string } }[];
+    };
+
+    expect(result.prompts.map((row) => [row.kind, row.prompt.text])).toEqual([
+      ["starred", "deploy staging"],
+      ["recent", "Deploy later"],
+      ["recent", "deploy the preview"],
+      ["starred", "please deploy the docs"],
+      ["recent", "now deploy staging"],
+      ["recent", "delete old preview logs yearly"],
+    ]);
   });
 
   it("loads older pages only when the loaded ones have too few matches", async () => {
@@ -314,10 +340,10 @@ describe("prompt library server", () => {
       ...GLOBAL,
       query: "mgrt blng",
     })) as {
-      recent: { id: string }[];
+      prompts: { id: string }[];
     };
 
-    expect(result.recent.map((row) => row.id)).toEqual(["old"]);
+    expect(result.prompts.map((row) => row.id)).toEqual(["old"]);
     expect(list).toHaveBeenCalledTimes(2);
   });
 
@@ -329,11 +355,11 @@ describe("prompt library server", () => {
     );
 
     const result = (await call("search", { ...GLOBAL, query: "" })) as {
-      recent: { id: string }[];
+      prompts: { id: string }[];
     };
 
-    expect(result.recent).toHaveLength(30);
-    expect(result.recent[0]?.id).toBe("h1199");
+    expect(result.prompts).toHaveLength(30);
+    expect(result.prompts[0]?.id).toBe("h1199");
     expect(list).toHaveBeenCalledOnce();
   });
 
@@ -347,10 +373,10 @@ describe("prompt library server", () => {
     list.mockClear();
 
     const result = (await call("search", { ...GLOBAL, query: "" })) as {
-      recent: { id: string }[];
+      prompts: { id: string }[];
     };
 
-    expect(result.recent.map((row) => row.id)).toEqual(["h2", "h1"]);
+    expect(result.prompts.map((row) => row.id)).toEqual(["h2", "h1"]);
     expect(list).toHaveBeenCalledOnce();
   });
 
@@ -365,8 +391,8 @@ describe("prompt library server", () => {
       scope: "thread",
       projectId: "proj_a",
       threadId: "thr_b",
-    })) as { recent: { id: string }[] };
-    expect(thread.recent.map((row) => row.id)).toEqual(["h2"]);
+    })) as { prompts: { id: string }[] };
+    expect(thread.prompts.map((row) => row.id)).toEqual(["h2"]);
 
     list.mockClear();
     const missing = (await call("search", {
@@ -374,8 +400,8 @@ describe("prompt library server", () => {
       scope: "project",
       projectId: null,
       threadId: null,
-    })) as { recent: unknown[] };
-    expect(missing.recent).toEqual([]);
+    })) as { prompts: unknown[] };
+    expect(missing.prompts).toEqual([]);
     expect(list).not.toHaveBeenCalled();
   });
 
@@ -398,10 +424,10 @@ describe("prompt library server", () => {
     vi.setSystemTime(3_000);
     await call("markUsed", { id: first.id });
     const listed = (await call("search", { ...GLOBAL, query: "" })) as {
-      starred: { id: string; prompt: unknown }[];
+      prompts: { id: string; prompt: unknown }[];
     };
-    expect(listed.starred.map((row) => row.id)).toEqual([first.id, second.id]);
-    expect(listed.starred[0]?.prompt).toEqual(draft("first prompt"));
+    expect(listed.prompts.map((row) => row.id)).toEqual([first.id, second.id]);
+    expect(listed.prompts[0]?.prompt).toEqual(draft("first prompt"));
 
     await expect(call("unstar", { id: second.id })).resolves.toEqual({
       unstarred: true,
@@ -439,9 +465,8 @@ describe("prompt library server", () => {
       "deploy",
       "--json",
     ]);
-    expect(JSON.parse(search.stdout ?? "")).toMatchObject({
-      starred: [],
-      recent: [{ id: "h1" }],
+    expect(JSON.parse(search.stdout ?? "")).toEqual({
+      prompts: [expect.objectContaining({ kind: "recent", id: "h1" })],
     });
 
     await expect(

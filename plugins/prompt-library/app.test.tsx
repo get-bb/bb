@@ -62,6 +62,7 @@ function draft(value: string) {
 
 function starredRow(id: string, value: string): StarredPromptRow {
   return {
+    kind: "starred",
     id,
     prompt: draft(value),
     snippet: { text: value, highlights: [] },
@@ -76,6 +77,7 @@ function recentRow(
   starredId: string | null = null,
 ): RecentPromptRow {
   return {
+    kind: "recent",
     id,
     prompt: draft(value),
     snippet: { text: value, highlights: [] },
@@ -96,8 +98,10 @@ function render(
   } = {},
 ) {
   const search = vi.fn(async (_input: SearchPromptsInput) => ({
-    starred: options.starred ?? [starredRow("prompt_1", "starred prompt")],
-    recent: options.recent ?? [recentRow("h1", "recent prompt")],
+    prompts: [
+      ...(options.starred ?? [starredRow("prompt_1", "starred prompt")]),
+      ...(options.recent ?? [recentRow("h1", "recent prompt")]),
+    ],
   }));
   const star = vi.fn(() => ({ id: "prompt_new" }));
   const unstar = vi.fn(() => ({ unstarred: true }));
@@ -273,12 +277,39 @@ describe("prompt library popup", () => {
 
     await act(async () =>
       resolveStale({
-        starred: [],
-        recent: [recentRow("stale", "obsolete response")],
+        prompts: [recentRow("stale", "obsolete response")],
       }),
     );
     expect(slot.queryByText("obsolete response")).toBeNull();
     expect(slot.getByRole("option", { name: /recent prompt/ })).toBeTruthy();
+  });
+
+  it("keeps results in place while a search is pending and marks only a slow one", async () => {
+    vi.useFakeTimers();
+    const { slot, search } = render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const before = slot.getAllByRole("option").map((row) => row.textContent);
+    search.mockImplementationOnce(() => new Promise(() => {}));
+
+    fireEvent.change(searchBox(slot), { target: { value: "recent" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(slot.queryByRole("status")).toBeNull();
+    expect(slot.queryByLabelText("Searching prompts")).toBeNull();
+    expect(slot.getAllByRole("option").map((row) => row.textContent)).toEqual(
+      before,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(slot.getByLabelText("Searching prompts")).toBeTruthy();
+    expect(slot.getAllByRole("option").map((row) => row.textContent)).toEqual(
+      before,
+    );
   });
 
   it("retries a failed search without changing the query or losing loaded prompts", async () => {
@@ -392,11 +423,11 @@ describe("prompt library popup", () => {
     await slot.findByText("recent prompt");
     fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
     search.mockResolvedValue({
-      starred: [
+      prompts: [
         starredRow("prompt_new", "recent prompt"),
         starredRow("prompt_1", "starred prompt"),
+        recentRow("h1", "recent prompt", "prompt_new"),
       ],
-      recent: [recentRow("h1", "recent prompt", "prompt_new")],
     });
     fireEvent.click(
       within(slot.getByRole("region", { name: "Prompt preview" })).getByRole(
@@ -415,6 +446,44 @@ describe("prompt library popup", () => {
         .getByRole("button", { name: "Starred" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
+  });
+
+  it("shows a search as one ranked list and keeps a prompt selected when it is unstarred", async () => {
+    const { slot, search, unstar } = render();
+    const listbox = await slot.findByRole("listbox", { name: "Prompts" });
+    expect(await within(listbox).findByText("Recent")).toBeTruthy();
+    search.mockResolvedValue({
+      prompts: [
+        recentRow("h2", "deploy later"),
+        starredRow("prompt_1", "please deploy the docs"),
+      ],
+    });
+    fireEvent.change(searchBox(slot), { target: { value: "deploy" } });
+    await within(listbox).findByText("deploy later");
+    expect(within(listbox).queryByText("Starred")).toBeNull();
+    expect(within(listbox).queryByText("Recent")).toBeNull();
+
+    fireEvent.keyDown(searchBox(slot), { key: "ArrowDown" });
+    search.mockResolvedValue({
+      prompts: [
+        recentRow("h2", "deploy later"),
+        recentRow("h4", "please deploy the docs"),
+      ],
+    });
+    fireEvent.keyDown(searchBox(slot), { key: "s", metaKey: true });
+    await waitFor(() =>
+      expect(unstar).toHaveBeenCalledWith({ id: "prompt_1" }),
+    );
+    await waitFor(() =>
+      expect(
+        within(slot.getByRole("region", { name: "Prompt preview" }))
+          .getByRole("button", { name: "Star" })
+          .getAttribute("aria-pressed"),
+      ).toBe("false"),
+    );
+    expect(slot.getByRole("option", { selected: true }).textContent).toContain(
+      "please deploy the docs",
+    );
   });
 
   it("opens a preview on tap when there is no room for two panes", async () => {
