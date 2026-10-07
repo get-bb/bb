@@ -1076,7 +1076,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   navigationRail: {
     label: "Navigation rail",
     description:
-      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. The rail stays when the sidebar is collapsed. Wide windows only.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",

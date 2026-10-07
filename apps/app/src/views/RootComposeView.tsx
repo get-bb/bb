@@ -1634,7 +1634,7 @@ function RootComposeSurface({
     (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
     <div
-      className={`fixed z-40 ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
+      className={`fixed z-40 mt-(--bb-window-frame-top) ${ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS} ${
         isSecondaryPanelOpen ? "pointer-events-none invisible" : ""
       }`}
     >

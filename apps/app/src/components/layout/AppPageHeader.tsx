@@ -1,6 +1,9 @@
 import { useRef, useState, type ReactNode, type Ref } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
-import { useIsSidebarShowing } from "@/components/ui/sidebar.js";
+import {
+  useIsSidebarShowing,
+  useSidebarKeepsCollapsedRail,
+} from "@/components/ui/sidebar.js";
 import {
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
   COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS,
@@ -49,6 +52,7 @@ export function AppPageHeader({
   ownsWindowTopLeft = true,
 }: AppPageHeaderProps) {
   const isSidebarShowing = useIsSidebarShowing();
+  const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
   const isCompactViewport = useIsCompactViewport();
   const localHeaderRef = useRef<HTMLElement>(null);
   const composedHeaderRef = useComposedRefs(headerRef, localHeaderRef);
@@ -62,8 +66,13 @@ export function AppPageHeader({
     desktopInfo,
     windowState: desktopWindowState,
   });
-  const shouldReserveSidebarTrigger =
-    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing);
+  const windowTopLeftReserveClassName =
+    ownsWindowTopLeft && (isCompactViewport || !isSidebarShowing)
+      ? !sidebarKeepsCollapsedRail &&
+        (reserveMacosTrafficLights
+          ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
+          : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS)
+      : false;
   return (
     <header
       ref={composedHeaderRef}
@@ -108,10 +117,7 @@ export function AppPageHeader({
           isCompactViewport && "pointer-events-none",
           usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           "transition-[padding] duration-200 ease-linear",
-          shouldReserveSidebarTrigger &&
-            (reserveMacosTrafficLights
-              ? MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS
-              : BROWSER_COLLAPSED_HEADER_RESERVE_CLASS),
+          windowTopLeftReserveClassName,
         )}
       >
         {center ? (

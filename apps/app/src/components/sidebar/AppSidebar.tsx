@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
 import {
   Sidebar,
+  SidebarCollapsibleBody,
   SidebarContent,
   SidebarFooter,
   SidebarMenu,
@@ -29,11 +30,7 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import {
-  NavRailMacosTrafficLightRow,
-  SidebarResizeHandle,
-  SidebarTopReserveRow,
-} from "./SidebarChrome";
+import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -373,20 +370,21 @@ export function AppSidebar({
           </div>
         ) : navRail ? (
           <Sidebar ref={sidebarRef}>
-            <NavRailMacosTrafficLightRow />
             <div className="flex min-h-0 flex-1">
               {navRail.renderRail({
                 isOpen: isNavigationCustomizing,
                 onOpenChange: setNavigationCustomizing,
               })}
-              <div
-                data-testid="app-sidebar-body"
-                hidden={navRail.hidden}
-                className="flex min-h-0 min-w-0 flex-1 flex-col"
-              >
-                {body}
-              </div>
-              {navRail.alternateBody}
+              <SidebarCollapsibleBody data-testid="nav-rail-sidebar-body">
+                <div
+                  data-testid="app-sidebar-body"
+                  hidden={navRail.hidden}
+                  className="flex min-h-0 min-w-0 flex-1 flex-col"
+                >
+                  {body}
+                </div>
+                {navRail.alternateBody}
+              </SidebarCollapsibleBody>
             </div>
           </Sidebar>
         ) : (
