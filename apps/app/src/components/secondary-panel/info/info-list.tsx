@@ -10,6 +10,7 @@ import {
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { TruncateStart } from "@/components/ui/truncate-start";
 import { formatCompactRelativeTime } from "@/lib/relative-time";
 
 const INFO_LIST_LEADING_CLASS =
@@ -30,7 +31,7 @@ const INFO_LIST_ROW_CLASS =
   "group relative -mx-1 flex h-6 min-w-0 items-center gap-1.5 rounded px-1 transition-colors has-[:focus-visible]:bg-state-hover";
 
 const INFO_LIST_PRIMARY_CLASS =
-  "min-w-0 cursor-pointer truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none";
+  "min-w-0 max-w-[calc(100%-1.5rem)] shrink-0 cursor-pointer truncate text-left text-xs leading-5 text-foreground no-underline after:absolute after:inset-0 after:rounded after:content-[''] focus-visible:outline-none";
 
 const INFO_LIST_QUIET_CONTROL_CLASS =
   "rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none";
@@ -172,7 +173,7 @@ export function InfoListRow({
     target === null ? (
       <span
         title={title}
-        className="min-w-0 truncate text-xs leading-5 text-foreground"
+        className="min-w-0 max-w-[calc(100%-1.5rem)] shrink-0 truncate text-xs leading-5 text-foreground"
       >
         {name}
       </span>
@@ -232,9 +233,9 @@ export function InfoListRow({
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-2">
         {primary}
         {context ? (
-          <span className="shrink-0 text-2xs text-subtle-foreground">
+          <TruncateStart className="min-w-0 shrink-[100] text-2xs text-subtle-foreground">
             {context}
-          </span>
+          </TruncateStart>
         ) : null}
         <InfoRowInlineActions actions={actions} />
       </span>

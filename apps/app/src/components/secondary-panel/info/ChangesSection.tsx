@@ -13,7 +13,7 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import {
   getFileNameFromPath,
-  getParentFolderNameFromPath,
+  getParentFolderPathFromPath,
 } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
@@ -127,7 +127,7 @@ function ChangedFileRow({
       }
       leadingLabel={glyph.label}
       name={fileName}
-      context={getParentFolderNameFromPath({ path: file.path })}
+      context={getParentFolderPathFromPath({ path: file.path })}
       title={`${glyph.label} · ${file.path}`}
       target={
         onChangedFileClick

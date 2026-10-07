@@ -17,11 +17,11 @@ export function getFileNameFromPath({ path }: GetFileNameFromPathArgs): string {
   return path.slice(path.lastIndexOf("/") + 1) || path;
 }
 
-export function getParentFolderNameFromPath({
+export function getParentFolderPathFromPath({
   path,
 }: GetFileNameFromPathArgs): string | null {
-  const segments = path.split("/");
-  return segments.length > 1 ? (segments.at(-2) ?? null) : null;
+  const slashIndex = path.lastIndexOf("/");
+  return slashIndex > 0 ? path.slice(0, slashIndex) : null;
 }
 
 function getFileExtension({ path }: GetFileExtensionArgs): string {
