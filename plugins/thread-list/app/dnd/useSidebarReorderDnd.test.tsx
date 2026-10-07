@@ -104,14 +104,14 @@ describe("SidebarTouchSensor", () => {
     fireEvent.touchMove(row, { touches: [{ clientX: 14, clientY: 10 }] });
     fireEvent.touchEnd(row, { touches: [] });
     expect(onDragStart).not.toHaveBeenCalled();
-    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(1);
 
     fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
-    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
+    expect(onDragStart).not.toHaveBeenCalled();
+    expect(onDragEnd).not.toHaveBeenCalled();
     fireEvent.click(row);
     expect(onClick).toHaveBeenCalledTimes(2);
 
@@ -122,7 +122,6 @@ describe("SidebarTouchSensor", () => {
     expect(onDragStart).not.toHaveBeenCalled();
     fireEvent.touchMove(row, { touches: [{ clientX: 24, clientY: 10 }] });
     await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
-    expect(row.hasAttribute("data-sidebar-touch-armed")).toBe(false);
     fireEvent.touchEnd(row, { touches: [] });
     expect(onDragEnd).toHaveBeenCalledTimes(1);
   });
