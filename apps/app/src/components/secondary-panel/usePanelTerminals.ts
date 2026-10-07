@@ -74,7 +74,7 @@ export function usePanelTerminals({
   );
   const queryClient = useQueryClient();
   const createTerminal = useCreateTerminal();
-  const { mutate: closeTerminal } = useCloseTerminal();
+  const { mutateAsync: closeTerminal } = useCloseTerminal();
   const updatePanelState = useUpdateFixedPanelTabsState(
     panelStateId,
     syncThreadId,
@@ -140,10 +140,9 @@ export function usePanelTerminals({
 
   const close = useCallback(
     (terminalId: string) => {
-      closeTerminal(
-        { mode: "force", terminalId },
-        { onSuccess: () => removeTerminalTab(terminalId) },
-      );
+      void closeTerminal({ mode: "force", terminalId })
+        .then(() => removeTerminalTab(terminalId))
+        .catch(() => undefined);
     },
     [closeTerminal, removeTerminalTab],
   );

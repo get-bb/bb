@@ -240,17 +240,47 @@ describe.each(SURFACES)("panel terminals on the $name", (surface) => {
     });
   });
 
-  it("closes the terminal before removing its tab", async () => {
-    vi.mocked(sdk.terminals.close).mockResolvedValue({
-      ...surface.own,
-      status: "exited",
+  it("removes each tab only after its overlapping close succeeds", async () => {
+    let finishFirstClose!: (session: TerminalSession) => void;
+    let finishSecondClose!: (session: TerminalSession) => void;
+    const firstClose = new Promise<TerminalSession>((resolve) => {
+      finishFirstClose = resolve;
     });
+    const secondClose = new Promise<TerminalSession>((resolve) => {
+      finishSecondClose = resolve;
+    });
+    vi.mocked(sdk.terminals.close)
+      .mockReturnValueOnce(firstClose)
+      .mockReturnValueOnce(secondClose);
     const { result } = renderSurface(surface);
     act(() => {
       result.current.terminals.open(surface.own);
+      result.current.terminals.open(surface.sibling);
     });
 
-    act(() => result.current.terminals.close(surface.own.id));
+    act(() => {
+      result.current.terminals.close(surface.own.id);
+      result.current.terminals.close(surface.sibling.id);
+    });
+
+    await waitFor(() => expect(sdk.terminals.close).toHaveBeenCalledTimes(2));
+    expect(terminalTabIds(result.current.state)).toEqual([
+      surface.own.id,
+      surface.sibling.id,
+    ]);
+
+    await act(async () => {
+      finishFirstClose({ ...surface.own, status: "exited" });
+      await firstClose;
+    });
+    await waitFor(() => {
+      expect(terminalTabIds(result.current.state)).toEqual([surface.sibling.id]);
+    });
+
+    await act(async () => {
+      finishSecondClose({ ...surface.sibling, status: "exited" });
+      await secondClose;
+    });
 
     await waitFor(() => {
       expect(terminalTabIds(result.current.state)).toEqual([]);
