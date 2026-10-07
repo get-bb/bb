@@ -13,11 +13,6 @@ import {
 import { useAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -25,10 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon, type IconName } from "@/components/ui/icon";
-import {
-  COARSE_POINTER_ICON_SIZE_CLASS,
-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-} from "@/components/ui/coarse-pointer-sizing";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { cn } from "@/lib/utils";
 import {
   THREAD_ROW_ACTION_IDS,
@@ -180,23 +172,20 @@ export function ThreadRowActionsEditor({
           ))}
         </SortableContext>
       </DndContext>
-      <Tooltip delayDuration={350} disableHoverableContent>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            size="icon"
-            aria-label="Done"
-            className={cn(
-              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-background/60",
-            )}
-            onClick={() => onDone(true)}
-          >
-            <Icon name="Check" className={COARSE_POINTER_ICON_SIZE_CLASS} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Done</TooltipContent>
-      </Tooltip>
+      <Button
+        type="button"
+        size="sm"
+        aria-label="Done"
+        className="h-7 shrink-0 gap-1 rounded-md px-2 text-xs focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-background/60 max-md:pointer-coarse:size-9 max-md:pointer-coarse:px-0"
+        onClick={() => onDone(true)}
+      >
+        <Icon
+          name="Check"
+          className="size-3.5 max-md:pointer-coarse:size-5"
+          aria-hidden
+        />
+        <span className="max-md:pointer-coarse:hidden">Done</span>
+      </Button>
     </div>
   );
 }

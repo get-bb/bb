@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createStore, Provider } from "jotai";
 import { afterEach, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
 
 installTestPluginRuntime();
@@ -21,11 +20,7 @@ function OutsideClickHarness({
   showEditor: boolean;
 }) {
   useFinishRowActionsOnOutsideClick(onDone);
-  return showEditor ? (
-    <TooltipProvider>
-      <ThreadRowActionsEditor onDone={onDone} />
-    </TooltipProvider>
-  ) : null;
+  return showEditor ? <ThreadRowActionsEditor onDone={onDone} /> : null;
 }
 
 afterEach(() => {
@@ -37,9 +32,7 @@ it("previews empty slots before shown actions, next to the menu", () => {
   store.set(threadRowActionsAtom, ["pin", "archive"]);
   render(
     <Provider store={store}>
-      <TooltipProvider>
-        <ThreadRowActionsEditor onDone={() => {}} />
-      </TooltipProvider>
+      <ThreadRowActionsEditor onDone={() => {}} />
     </Provider>,
   );
   expect(
@@ -80,9 +73,7 @@ it.each([
     store.set(threadRowActionsAtom, [...initial]);
     render(
       <Provider store={store}>
-        <TooltipProvider>
-          <ThreadRowActionsEditor onDone={() => {}} />
-        </TooltipProvider>
+        <ThreadRowActionsEditor onDone={() => {}} />
       </Provider>,
     );
     const slotButton = (index: number) =>
@@ -104,9 +95,7 @@ it("offers Hide only for a filled slot and finishes on Escape", async () => {
   const finish = vi.fn();
   render(
     <Provider store={store}>
-      <TooltipProvider>
-        <ThreadRowActionsEditor onDone={finish} />
-      </TooltipProvider>
+      <ThreadRowActionsEditor onDone={finish} />
     </Provider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Row action 1: Empty" }));
