@@ -186,7 +186,7 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     description:
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and reply from any phone browser. Free and open source.",
     headline: "See which agent needs you from your phone",
-    sub: "Check on Claude Code, Codex, and your other agents and reply from any phone browser. Free and open source.",
+    sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
     sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
