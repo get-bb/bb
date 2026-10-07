@@ -91,7 +91,7 @@ so they carry over between navigation plugins.
 
 ## Cleared context history
 
-- Settings → General → Keep history after clearing context defaults to off.
+- Settings → General → Show messages from before a context clear defaults to off.
 - `bb settings general keepHistoryAfterContextClear true` keeps messages from
   before the latest `Context cleared` boundary in the timeline, conversation
   outline, and `bb thread log --message` lookups. The next prompt still starts a

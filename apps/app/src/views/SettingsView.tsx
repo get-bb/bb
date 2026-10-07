@@ -968,14 +968,14 @@ export function GeneralSettingsSection({
           </SettingsWithControl>
 
           <SettingsWithControl
-            label="Keep history after clearing context"
-            description="Keep earlier messages above the Context cleared divider. The agent still starts fresh."
+            label="Show messages from before a context clear"
+            description="Earlier messages stay in the thread for you to read. The agent doesn't see them."
           >
             <Switch
               checked={keepHistoryAfterContextClear}
               disabled={generalSettingsDisabled}
               onCheckedChange={onKeepHistoryAfterContextClearChange}
-              aria-label="Keep history after clearing context"
+              aria-label="Show messages from before a context clear"
             />
           </SettingsWithControl>
         </div>

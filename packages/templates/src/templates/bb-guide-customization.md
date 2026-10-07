@@ -136,7 +136,7 @@ The server saves this preference across reloads and shares it across connected
 clients. Thread relationships and workspace warnings remain visible. SDK callers can update
 `showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
 
-Settings → General → Keep history after clearing context controls whether a
+Settings → General → Show messages from before a context clear controls whether a
 cleared thread still shows its earlier messages above the `Context cleared`
 boundary. `keepHistoryAfterContextClear` defaults to false; use
 `bb settings general keepHistoryAfterContextClear true` to keep them in the

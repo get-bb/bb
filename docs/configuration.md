@@ -381,7 +381,7 @@ across reloads and applies to every connected app client. Set it with
 `sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
 Older clients that omit the field preserve the saved value.
 
-The "Keep history after clearing context" switch in Settings → General defaults
+The "Show messages from before a context clear" switch in Settings → General defaults
 to off. When off, a thread's timeline, conversation outline, and message lookup
 start at its latest `Context cleared` boundary. Turn it on to keep earlier
 messages above the boundary; they load on scroll like other older activity and
