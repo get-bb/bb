@@ -178,6 +178,24 @@ it("falls back to full coverage for unknown paths", () => {
   ).toBe(true);
 });
 
+it("skips the matrix for CI documentation but keeps executable documentation contracts", () => {
+  const plan = fixture().plan("docs/ci-performance.md");
+  expect(plan.tests.include).toEqual([]);
+  expect(plan["windows-tests"].include).toEqual([]);
+  expect(plan.buildNeeded).toBe(false);
+  expect(plan.staticNeeded).toBe(false);
+  expect(plan.packaging).toBe(false);
+  for (const path of [
+    "docs/provider-plugin-api.md",
+    "docs/api_to_audit.md",
+    "docs/lifecycle-diagrams.md",
+  ]) {
+    const protectedPlan = fixture().plan(path);
+    expect(protectedPlan.tests.include.length).toBeGreaterThan(0);
+    expect(protectedPlan.buildNeeded).toBe(true);
+  }
+});
+
 it.each(["missing base", "malformed query"])(
   "fails open to full coverage for %s",
   (failure) => {

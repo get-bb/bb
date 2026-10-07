@@ -120,12 +120,20 @@ async function stopProcessTree(child) {
       child.kill("SIGTERM");
     }
   }
-  await Promise.race([
-    exited,
-    delay(STOP_TIMEOUT_MS).then(() => {
-      throw new Error("bb-app did not exit after it was stopped");
-    }),
-  ]);
+  let timer;
+  try {
+    await Promise.race([
+      exited,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("bb-app did not exit after it was stopped")),
+          STOP_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function removeDirectory(directory) {
@@ -199,11 +207,22 @@ try {
     `bb-app boot smoke: ${pluginCount} plugins listed, expected builtins running\n`,
   );
 
-  const hosts = JSON.parse(await runCli(["machine", "list", "--json"], cliEnv));
-  if (hosts.length !== 1 || hosts[0].status !== "connected") {
-    throw new Error(
-      `Expected one connected machine, got ${JSON.stringify(hosts)}`,
+  const hostDeadline = Date.now() + HEALTH_TIMEOUT_MS;
+  while (true) {
+    const hosts = JSON.parse(
+      await runCli(["machine", "list", "--json"], cliEnv),
     );
+    if (hosts.length === 1 && hosts[0].status === "connected") break;
+    if (
+      hosts.length > 1 ||
+      Date.now() > hostDeadline ||
+      launcher.exitCode !== null
+    ) {
+      throw new Error(
+        `Expected one connected machine, got ${JSON.stringify(hosts)}`,
+      );
+    }
+    await delay(POLL_INTERVAL_MS);
   }
   process.stdout.write("bb-app boot smoke: host daemon connected\n");
 } catch (error) {

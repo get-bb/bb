@@ -371,3 +371,51 @@ lint/typecheck tasks to run.
 
 Demo-server-only test jobs use a scoped install and omit Electron runtime setup.
 Electron libraries and Xvfb run only when the selected tests include desktop.
+
+## Daily health report
+
+The `CI Health` workflow reports the previous 24 hours each day at 07:19 UTC,
+with a manual dispatch option. It needs only checkout, Node, and read access to
+Actions. `scripts/report-ci-health.mjs` also runs locally with `GITHUB_TOKEN` and
+`GITHUB_REPOSITORY` set. It writes `.ci-health/report.md`, `report.json`, and the
+normalized run/job evidence in `runs.json`; Actions retains these for 30 days.
+
+The summary separates workflow outcomes from successful first-attempt latency,
+job durations, runner-minutes, cache-restore duration, and the jobs that finish
+last. Latency ends at the last job's completion, not the run's mutable update
+timestamp. Failed steps count distinct affected runs so one bad lockfile does
+not become dozens of incidents. Same-commit failed-job recoveries are reported
+separately from reruns that remain red. Neither a recovery nor a failed workflow
+alone establishes a test flake. Cache transfer time is not a cache hit rate.
+
+The API collector includes every job attempt, paginates jobs, and rejects a
+truncated run inventory instead of publishing misleading statistics. Compare
+several daily artifacts, separating changes in selected work from runtime gains.
+
+## Avoiding repeated setup
+
+Windows app and desktop packaging installs omit `@bb/mobile`; their Turbo build
+and smoke dependencies still run. In clean local macOS verification, the server
+shard install used 1,445 packages versus 2,325 for a full install. Windows timings
+must be measured separately after rollout.
+
+Linux Electron setup queries dpkg before invoking apt. An installed library
+satisfies the requirement without refreshing package indexes or upgrading Mesa
+and Xvfb on every run. Missing packages still get an apt update and install, and
+the job still starts Electron to verify the runtime.
+
+The build job builds and checks the plugin SDK's published version before the
+remaining build tasks. Those later tasks reuse its Turbo outputs. A version
+mismatch therefore fails earlier without relaxing the published-content guard.
+
+PRs changing only `docs/ci-performance.md`, `docs/windows-ci.md`,
+`docs/debugging-and-qa.md`, `docs/filing-issues.md`, or
+`docs/cli-guide-and-skill.md` skip the build/test matrix. This is an explicit
+allowlist: API documentation and lifecycle diagrams are consumed by tests, and
+other documentation, mixed changes, main pushes, and manual runs retain normal
+selection or full coverage. Planning guards still run.
+
+The boot smoke waits for the host daemon to connect after the server and plugins
+are ready; these are independent startup milestones. It also clears its shutdown
+timeout when the process exits, avoiding a 15-second timer that previously kept
+the smoke process alive after cleanup.

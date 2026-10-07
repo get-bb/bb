@@ -284,3 +284,7 @@ process-heavy suite is unexplained; running it alone avoids it.
 Keep the Linux suite running to protect existing behavior. Windows Server CI must
 eventually be supplemented with Windows 11 verification for installation,
 interactive terminals, updates, and actual provider sessions.
+
+Both Windows packaging smoke jobs install the workspace excluding `@bb/mobile`.
+The React Native toolchain is not part of the desktop or launcher dependency
+chain; all Turbo build dependencies and both runtime smoke checks remain enabled.
