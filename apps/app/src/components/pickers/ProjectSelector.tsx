@@ -218,7 +218,7 @@ export function ProjectSelector({
               >
                 <div
                   ref={listRef}
-                  className="min-h-0 overflow-y-auto overscroll-contain"
+                  className="min-h-0 overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]"
                 >
                   {filteredProjects.map((project) => (
                     <CommandItem
