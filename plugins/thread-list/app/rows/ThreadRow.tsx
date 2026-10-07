@@ -523,7 +523,7 @@ function ThreadRowComponent({
           !shortcut &&
             !isEditing &&
             (reserveActionSpace
-              ? "pr-(--bb-sidebar-hover-actions-inset) max-md:pointer-coarse:pr-0"
+              ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
         style={getHoverActionsInsetStyle(
@@ -661,14 +661,14 @@ function ThreadRowComponent({
         )}
       >
         {thread.archivedAt !== null ? (
-          <span className="relative flex items-center max-md:pointer-coarse:hidden">
+          <span className="relative flex items-center [@media(hover:none)]:hidden">
             <div
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
               }
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_CLASS,
-                "absolute right-full z-10 max-md:pointer-coarse:hidden",
+                "absolute right-full z-10 [@media(hover:none)]:hidden",
               )}
             >
               <ThreadActionsMenu
@@ -687,7 +687,7 @@ function ThreadRowComponent({
         ) : (
           <span
             className={cn(
-              "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
+              "flex shrink-0 items-center justify-end [@media(hover:none)]:pointer-events-none",
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
             )}
           >
@@ -736,7 +736,7 @@ function ThreadRowComponent({
                 }
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end [@media(hover:none)]:hidden",
                   isEditing && "invisible pointer-events-none",
                 )}
               >

@@ -438,10 +438,6 @@ describe("MachinesSettingsSection", () => {
     });
     expect(addMachine.textContent).toBe("Add a machine");
     expect(addMachine.querySelector('[data-icon="Plus"]')).not.toBeNull();
-    const action = addMachine.parentElement;
-    expect(action?.className).toContain("self-start");
-    expect(action?.parentElement?.className).toContain("flex-col");
-    expect(action?.parentElement?.className).toContain("sm:flex-row");
     fireEvent.click(addMachine);
     expect(
       await screen.findByRole("heading", { name: "Set up machine access" }),

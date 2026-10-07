@@ -70,7 +70,11 @@ export function registerUsageSource(bb: BbPluginApi) {
       return previous;
     const promise = (async () => {
       try {
-        const result = await bb.sdk.system.usageLimits({ hostId, providerId });
+        const result = await bb.sdk.system.usageLimits({
+          hostId,
+          providerId,
+          refresh,
+        });
         const usage = result[providerId];
         if (!usage) throw new Error("Provider returned no usage information.");
         const metadata = metadataSchema.parse(usage);

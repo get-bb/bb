@@ -29,7 +29,7 @@ interface RouteAnchorProps extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
   href: string | undefined;
 }
 
-interface ShouldHandleRouteAnchorClickArgs {
+interface RouteAnchorClickActionArgs {
   event: ReactMouseEvent<HTMLAnchorElement>;
 }
 
@@ -80,22 +80,25 @@ function currentOrigin(): string | null {
   return typeof window === "undefined" ? null : window.location.origin;
 }
 
-function shouldHandleRouteAnchorClick({
+type RouteAnchorClickAction = "navigate" | "split" | null;
+
+function routeAnchorClickAction({
   event,
-}: ShouldHandleRouteAnchorClickArgs): boolean {
+}: RouteAnchorClickActionArgs): RouteAnchorClickAction {
   if (
     event.defaultPrevented ||
     event.button !== 0 ||
     event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
     event.shiftKey
   ) {
-    return false;
+    return null;
   }
 
   const target = event.currentTarget.getAttribute("target");
-  return target === null || target === "" || target === "_self";
+  if (target !== null && target !== "" && target !== "_self") {
+    return null;
+  }
+  return event.metaKey || event.ctrlKey ? "split" : "navigate";
 }
 
 export function RouteNavigationProvider({
@@ -258,16 +261,18 @@ export function RouteAnchor({
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>): void => {
       onClick?.(event);
-      if (
-        route === null ||
-        navigation === null ||
-        !shouldHandleRouteAnchorClick({ event })
-      ) {
+      if (route === null || navigation === null) {
         return;
       }
-
-      event.preventDefault();
-      navigation.navigate(route.path);
+      const action = routeAnchorClickAction({ event });
+      if (action === "split") {
+        if (navigation.openInSplit(route.path)) event.preventDefault();
+        return;
+      }
+      if (action === "navigate") {
+        event.preventDefault();
+        navigation.navigate(route.path);
+      }
     },
     [navigation, onClick, route],
   );

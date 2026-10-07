@@ -206,3 +206,88 @@ for (let line = readLine(); line !== null; line = readLine()) {
     expect(result.stdout).not.toContain("test-private-token");
   });
 });
+
+describe("server Git credential refresh", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("shares concurrent and repeated lookups, isolates returned entries, and refreshes rotated credentials after a minute", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const run = gh();
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => resolveGitCredentials(run)),
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+    results[0]!.find((entry) => entry.name === "GH_TOKEN")!.value = "mutated";
+    results[0]!.push({
+      name: "EXTRA",
+      value: "mutated",
+      source: { core: "machine-git" },
+      reason: "mutation",
+    });
+    run.mockImplementation(async (args) =>
+      args[0] === "auth"
+        ? "rotated-token"
+        : JSON.stringify({ login: "new-user", id: 456, email: null }),
+    );
+    vi.advanceTimersByTime(59_999);
+    const cached = await resolveGitCredentials(run);
+    expect(cached.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "test-private-token",
+    );
+    expect(cached.some((entry) => entry.name === "EXTRA")).toBe(false);
+    expect(run).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1);
+    const refreshed = await resolveGitCredentials(run);
+    expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "rotated-token",
+    );
+    expect(
+      refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
+    ).toBe("new-user");
+    expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it("retries unavailable credentials after five seconds and lets health checks observe logout and login immediately", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const run = gh();
+    run.mockRejectedValue(new Error("unavailable"));
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    expect(run).toHaveBeenCalledTimes(1);
+    run.mockImplementation(gh());
+    vi.advanceTimersByTime(5_000);
+    expect(await resolveGitCredentials(run)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+    );
+    run.mockRejectedValue(new Error("logged out"));
+    expect((await machineGitHealth(run)).status).toBe("not configured");
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    run.mockImplementation(gh());
+    expect((await machineGitHealth(run)).status).toBe("ready");
+    expect(await resolveGitCredentials(run)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+    );
+  });
+
+  it("keeps a slow lookup shared and starts its cache lifetime when it completes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let complete!: (token: string) => void;
+    const token = new Promise<string>((resolve) => {
+      complete = resolve;
+    });
+    const run = vi.fn(async (args: string[]) =>
+      args[0] === "auth"
+        ? token
+        : JSON.stringify({ login: "octocat", id: 123, email: null }),
+    );
+    const first = resolveGitCredentials(run);
+    vi.advanceTimersByTime(60_000);
+    const second = resolveGitCredentials(run);
+    complete("delayed-token");
+    const entries = await first;
+    expect(await second).toEqual(entries);
+    vi.advanceTimersByTime(59_999);
+    expect(await resolveGitCredentials(run)).toEqual(entries);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+});

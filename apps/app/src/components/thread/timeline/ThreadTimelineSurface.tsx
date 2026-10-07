@@ -202,9 +202,6 @@ export function ThreadTimelineSurface({
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
       <ConversationTimeline className="flex-1">
-        <div className="pointer-events-none sticky top-2 z-10 h-0 self-end">
-          {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
-        </div>
         {leadingContent}
         {showLoadOlderRows ? (
           <LoadOlderMessages
@@ -256,6 +253,9 @@ export function ThreadTimelineSurface({
             className="mt-4 text-destructive"
           />
         ) : null}
+        <HeightTransition visible={showCatchUpIndicator}>
+          {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
+        </HeightTransition>
         <HeightTransition visible={showOngoingIndicator}>
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}
@@ -332,12 +332,14 @@ function DelayedCatchUpIndicator() {
   if (!visible) return null;
 
   return (
-    <div
-      role="status"
-      className="absolute right-2 top-0 whitespace-nowrap rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground shadow-sm"
-    >
-      {CATCH_UP_INDICATOR_LABEL}
-    </div>
+    <TimelineStatusIndicator
+      label={
+        <span role="status" className="animate-shine">
+          {CATCH_UP_INDICATOR_LABEL}
+        </span>
+      }
+      className="mt-4 flex min-h-7 items-center"
+    />
   );
 }
 

@@ -12,6 +12,7 @@ import {
 import {
   GATE_AUTH_HEADER,
   GATE_MACHINE_ID_HEADER,
+  GATE_OWNER_HEADER,
   TUNNEL_TARGET_HEADER,
 } from "./protocol-headers";
 
@@ -187,6 +188,8 @@ import { verifyDesktopSessionCookie } from "./desktop-session.js";
 import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
+import { RESP_HEAD_TIMEOUT_MS } from "./response-head-timeout.js";
+import { RELAY_HEADER } from "./protocol-headers.js";
 import worker, { relativeTime, wantsHtml } from "./worker.js";
 import {
   TUNNEL_OFFLINE_HEADER,
@@ -277,6 +280,7 @@ function makeEnv(doFetch: (req: Request) => Promise<Response> | Response) {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "test-secret",
+    GATE_EVENTS: { writeDataPoint: vi.fn() },
   };
   const ctx = {
     waitUntil: vi.fn(),
@@ -941,6 +945,253 @@ describe("gate replays through a tunnel object restart", () => {
   });
 });
 
+describe("gate request deadline", () => {
+  const machineHeaders = { "x-bb-connect-machine": "bbcm_owner" };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockMarkMachineSeen.mockResolvedValue(true);
+    mockVerifyMachine.mockResolvedValue({
+      machineId: "machine-owner",
+      userId: OWNER,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  class SilentRelaySocket extends EventTarget {
+    binaryType = "blob";
+    readonly closes: number[] = [];
+    accept(): void {}
+    send(): void {}
+    close(code: number): void {
+      this.closes.push(code);
+    }
+  }
+
+  function relayUpgrade(socket: SilentRelaySocket): Response {
+    return {
+      status: 101,
+      headers: new Headers({ [RELAY_HEADER]: "1" }),
+      webSocket: socket,
+    } as unknown as Response;
+  }
+
+  async function settle(pending: Promise<Response>, afterMs: number) {
+    await vi.advanceTimersByTimeAsync(afterMs);
+    return pending;
+  }
+
+  it("answers 504 naming the stage when the tunnel object never answers", async () => {
+    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          headers: machineHeaders,
+        }),
+        env as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: tunnel-object)");
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: [
+        "stall",
+        "tunnel-object",
+        "GET",
+        "sawyer.getbb.app",
+        "/api/v1/threads",
+      ],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 1],
+    });
+  });
+
+  it("answers 504 when routing never finishes", async () => {
+    mockResolveLabel.mockReturnValue(new Promise(() => {}));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          headers: machineHeaders,
+        }),
+        env as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: routing)");
+    expect(captured).toHaveLength(0);
+  });
+
+  it("answers 504 naming the body stage when a relayed upload never ends", async () => {
+    const socket = new SilentRelaySocket();
+    const { env, ctx } = makeEnv(() => relayUpgrade(socket));
+    const neverEndingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+    });
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          method: "POST",
+          headers: machineHeaders,
+          body: neverEndingBody,
+          duplex: "half",
+        } as RequestInit),
+        { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: request-body)");
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blobs: [
+          "stall",
+          "request-body",
+          "POST",
+          "sawyer.getbb.app",
+          "/api/v1/threads",
+        ],
+      }),
+    );
+  });
+
+  it("answers 504 naming the head stage when a relayed request gets no response", async () => {
+    const socket = new SilentRelaySocket();
+    const { env, ctx } = makeEnv(() => relayUpgrade(socket));
+    const response = await settle(
+      worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+          method: "POST",
+          headers: machineHeaders,
+          body: "{}",
+        }),
+        { ...env, WORKER_HELD_RESPONSES: "on" } as never,
+        ctx,
+      ),
+      RESP_HEAD_TIMEOUT_MS,
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.text()).toContain("(stage: response-head)");
+  });
+
+  it.each(["HTTP", "WebSocket"])(
+    "disposes a late %s response after the deadline answered",
+    async (kind) => {
+      const cancel = vi.fn(async () => {});
+      const socketEvents: string[] = [];
+      let answer: (response: Response) => void = () => {};
+      const { env, ctx } = makeEnv(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const response = await settle(
+        worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers:
+              kind === "WebSocket"
+                ? { ...machineHeaders, upgrade: "websocket" }
+                : machineHeaders,
+          }),
+          env as never,
+          ctx,
+        ),
+        RESP_HEAD_TIMEOUT_MS,
+      );
+      expect(response.status).toBe(504);
+
+      const late = new Response(kind === "HTTP" ? "late" : null);
+      if (kind === "HTTP") {
+        Object.defineProperty(late, "body", { value: { cancel } });
+      } else {
+        Object.defineProperties(late, {
+          status: { value: 101 },
+          webSocket: {
+            value: {
+              accept() {
+                socketEvents.push("accepted");
+              },
+              close() {
+                socketEvents.push("closed");
+              },
+            },
+          },
+        });
+      }
+      answer(late);
+      await vi.advanceTimersByTimeAsync(0);
+
+      if (kind === "HTTP") {
+        expect(cancel).toHaveBeenCalled();
+      } else {
+        expect(socketEvents).toEqual(["accepted", "closed"]);
+      }
+    },
+  );
+
+  it("marks a tunnel dial still waiting on the tunnel object after three seconds", async () => {
+    const credential = "bbcred_server_secret";
+    mockResolveLabel.mockResolvedValue({
+      ...resolvedServer(),
+      server: {
+        ...resolvedServer().server,
+        credentialHash: await sha256Hex(credential),
+      },
+    });
+    const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
+    void worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
+        headers: {
+          authorization: `Bearer ${credential}`,
+          upgrade: "websocket",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: ["slow", "tunnel-object", "GET", "sawyer.getbb.app", "/__tunnel"],
+      doubles: [3_000, 1],
+    });
+  });
+
+  it("records nothing for a request that answers in time", async () => {
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: machineHeaders,
+      }),
+      env as never,
+      ctx,
+    );
+    await vi.advanceTimersByTimeAsync(RESP_HEAD_TIMEOUT_MS);
+
+    expect(response.status).toBe(200);
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+  });
+});
+
 describe("bb mobile app-link association files", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1136,6 +1387,65 @@ describe("gate worker share hosts", () => {
       );
     },
   );
+
+  it.each([
+    ["/api/connect/desktop-session", "POST"],
+    ["/api/connect/servers", "GET"],
+    ["/api/connect/disconnect", "POST"],
+    ["/api/connect/machine-label", "POST"],
+  ])(
+    "forwards %s on a share host to the shared app instead of answering it",
+    async (path, method) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("tenant"));
+      const res = await worker.fetch(
+        visitorRequest("sawyer--8000.getbb.app", path, {
+          method,
+          headers: { cookie: "tenant=kept" },
+        }),
+        env as never,
+        ctx,
+      );
+      await expect(res.text()).resolves.toBe("tenant");
+      expect(mockHandleCreateDesktopSession).not.toHaveBeenCalled();
+      expect(mockHandleListAccountServers).not.toHaveBeenCalled();
+      expect(mockHandleDisconnectServer).not.toHaveBeenCalled();
+      expect(mockHandleAssignMachineLabel).not.toHaveBeenCalled();
+      expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+    },
+  );
+
+  it("tells the tunnel object which server the visitor resolved to", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: {
+          cookie: "tenant=kept",
+          [GATE_OWNER_HEADER]: "server:forged",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_OWNER_HEADER)).toBe("server:srv1");
+  });
+
+  it("tells the tunnel object which machine a share visitor resolved to", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    await worker.fetch(
+      visitorRequest("sawyer-air--8000.getbb.app", "/", {
+        headers: { cookie: "tenant=kept" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_OWNER_HEADER)).toBe(
+      "machine:machine-air",
+    );
+  });
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
@@ -1893,6 +2203,7 @@ function makeDoEnv() {
     DB: {} as D1Database,
     BASE_DOMAIN: BASE,
     BETTER_AUTH_SECRET: "s",
+    GATE_EVENTS: { writeDataPoint: vi.fn() },
   };
 }
 
@@ -2433,6 +2744,80 @@ describe("TunnelDO dead tunnel sockets", () => {
     const res = await dob.fetch(new Request("https://do.internal/"));
     expect(res.status).toBe(503);
     expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+  });
+});
+
+describe("TunnelDO tunnel ownership", () => {
+  it("answers offline when the visitor resolved to a different server than the connected tunnel", async () => {
+    const send = vi.fn();
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(send), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/api/v1/threads", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-new" },
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("refuses a relay or WebSocket upgrade for a different owner", async () => {
+    const send = vi.fn();
+    const state = mockDoState({ protocolVersion: 1, machineId: "m-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(send), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/ws", {
+        headers: {
+          upgrade: "websocket",
+          [GATE_OWNER_HEADER]: "machine:m-new",
+        },
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("forwards when the visitor resolved to the connected server", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+
+    void dob.fetch(
+      new Request("https://do.internal/app.js", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-old" },
+      }),
+    );
+    expect(sent.length).toBe(1);
+    const frame = decodeFrame(sent[0]);
+    if (frame.type !== "open-http") throw new Error("unreachable");
+    expect(
+      frame.headers.every(([name]) => name.toLowerCase() !== GATE_OWNER_HEADER),
+    ).toBe(true);
+  });
+
+  it("forgets the owner once the tunnel is closed by its owner", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    await dob.fetch(new Request("https://do.internal/__control/close"));
+    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+
+    void dob.fetch(
+      new Request("https://do.internal/app.js", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-new" },
+      }),
+    );
+    expect(sent.length).toBe(1);
   });
 });
 

@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
 import { cn } from "@/lib/utils";
 import {
   definePluginApp,
@@ -426,7 +427,10 @@ function PromptLibraryPopup() {
             title={starred ? "Unstar" : "Star prompt"}
             className={cn(
               "flex size-6 shrink-0 items-center justify-center rounded text-subtle-foreground hover:text-foreground",
-              !selected && "opacity-0 group-hover:opacity-100",
+              !selected && [
+                "opacity-0 group-hover:opacity-100",
+                HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+              ],
             )}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => toggleStar(row)}

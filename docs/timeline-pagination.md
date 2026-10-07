@@ -193,6 +193,6 @@ a sequence still invalidate the cache but do not claim that messages are missing
 A successful response acknowledges only sequences through its `maxSeq`, so a
 response that predates another known event cannot clear that event. The catch-up
 indicator appears only after the timeline has remained behind for one second,
-disappears immediately when the cache catches up, and floats over the
-timeline without adding or removing scroll height. Initial loads without cached
-rows continue to use the loading skeleton.
+and disappears immediately when the cache catches up. It renders as a row at the
+end of the timeline. Initial loads without cached rows continue to use the
+loading skeleton.

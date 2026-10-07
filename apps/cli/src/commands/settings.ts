@@ -164,6 +164,7 @@ interface ProviderCompletedTurnDisplayEntry {
 }
 
 interface UsageOptions extends JsonOptions {
+  refresh?: boolean;
   host?: string;
   machine?: string;
 }
@@ -764,6 +765,7 @@ export function registerSettingsCommands(
   settings
     .command("usage")
     .description("Show provider usage limits")
+    .option("--refresh", "Fetch fresh usage instead of a cached result")
     .option(
       "--machine <id-or-name>",
       "Machine whose provider usage should be shown",
@@ -780,9 +782,10 @@ export function registerSettingsCommands(
                 serverUrl: getUrl(),
                 target,
               });
-        const result = await createCliBbSdk(getUrl()).system.usageLimits(
-          hostId === undefined ? {} : { hostId },
-        );
+        const result = await createCliBbSdk(getUrl()).system.usageLimits({
+          hostId,
+          refresh: opts.refresh,
+        });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),

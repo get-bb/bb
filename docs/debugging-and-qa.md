@@ -8,7 +8,8 @@
 - `pnpm desktop:worktree` packages and launches it against this checkout's data directory and deterministic ports, the same instance `pnpm start:worktree` uses, so a packaged build never touches `~/.bb` or port 38886. It also points Electron's own user-data directory at `$BB_DATA_DIR/desktop` — window state, storage and the single-instance lock all live there. Without that the build would share `~/Library/Application Support/bb` with an installed bb, fail to take the lock, and quit while the installed app focuses itself, which reads as a successful launch of code that never ran. Override it with `BB_DESKTOP_USER_DATA_DIR`. It refuses to start when the server or host-daemon port is busy, because a stale server there would answer for the build you meant to test. DevTools stay closed unless you set `BB_DESKTOP_OPEN_DEVTOOLS=1`, matching a released build. Both commands always repackage first; Turbo caches everything except electron-builder itself. Signing is left to electron-builder's keychain auto-discovery, so machines without a Developer ID identity produce unsigned artifacts and macOS shows the usual first-launch warning.
 - The packaged app defaults to server/frontend `:38886`, host daemon `:38887`, data dir `~/.bb/`, and logs under `~/.bb/logs/`.
 - `bb-app` (including `pnpm start`), `bb-server`, and `bb-host-daemon` capture service stdout and stderr directly in `logs/server-stdio.log` and `logs/host-daemon-stdio.log` under the selected data directory. These append across restarts and are separate from rotating application logs. Use `tail -F` on these files for console output and early startup errors; service output is no longer forwarded to the launcher's terminal.
-- Connect's `tunnel closed` warnings include the last transport error's original message and code, `connectedDurationMs`, and `lastHeartbeatAckAgeMs`. A null duration means the opening handshake never completed; a null acknowledgement age means no heartbeat acknowledgement arrived on that connection. These warnings appear in the server logs and `<dataDir>/plugins/connect/logs/plugin.log`.
+- Connect's `tunnel closed` warnings include the last transport error's original message and code, `connectedDurationMs`, and `lastHeartbeatAckAgeMs`. A null duration means the opening handshake never completed; a null acknowledgement age means no heartbeat acknowledgement arrived on that connection. They also carry the Cloudflare `colo` and `ray` the tunnel connected through, and `traffic`: open HTTP and WebSocket streams, bytes each way, how long each direction had been quiet, and bytes still buffered for sending. `tunnel connected` and `handshake timed out` lines carry the dial's timings in milliseconds since dialing: `lookupMs`, `connectMs`, `tlsMs`, and `upgradeMs` (the gate's 101 response). A timed-out dial with `tlsMs` set but no `upgradeMs` reached Cloudflare and was waiting on the gate. These warnings appear in the server logs and `<dataDir>/plugins/connect/logs/plugin.log`.
+- The bb connect gate answers every proxied request within the response-head timeout (30 s, 90 s for voice transcription), counted from when the Worker receives it. A request that misses it gets a 504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`. Workers Logs keeps only about 1% of gate requests, so the gate also writes these delays to the Analytics Engine dataset `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging): `blob1` is `stall` for a 504 or `slow` for a tunnel dial still unanswered after 3 s, then `blob2` stage, `blob3` method, `blob4` host, `blob5` path, `double1` elapsed milliseconds, and `double2` tunnel-object attempts (more than 1 means the object restarted and the gate replayed the dial). Query it with the Analytics Engine SQL API using a token with Account Analytics Read, for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp DESC`.
 - Entity IDs in URLs (`proj_*`, `thr_*`) are primary keys. Query them directly against the active data dir: `sqlite3 <data>/bb.db "SELECT * FROM threads WHERE id = 'thr_xxx';"`.
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
 - Use `curl` against the server API to isolate frontend issues from server behavior.
@@ -113,6 +114,23 @@ transaction duration. Commit timing matters because SQLite's automatic WAL
 checkpoint can perform filesystem writes and synchronization on the server
 thread. `operation: "exec"` also covers maintenance batches. SQL string
 literals are redacted and parameter values are never logged.
+
+Only while performance diagnostics are enabled, slow-DB records also include
+`diagnostics.resourceUsage`: process-wide deltas for `minorPageFault`,
+`majorPageFault`, `fsRead`, `fsWrite`, `voluntaryContextSwitches`, and
+`involuntaryContextSwitches`. These are counts, not bytes or durations, from
+[Node's resourceUsage](https://nodejs.org/api/process.html#processresourceusage).
+They can include activity on other process threads. Unsupported OS counters
+remain zero; in particular, zero filesystem counters do not rule out I/O or
+fsync waits. Page faults do not identify whether the fault was on the SQLite
+mmap, the server heap, or another mapping, and these counters do not measure
+swap-in bytes.
+
+`diagnostics.wal.sizeBytes` is the WAL's physical file size, sampled only when
+emitting a slow log with diagnostics enabled. Missing or inaccessible WAL files
+and in-memory databases report null. WAL size can include space reused by
+earlier generations; it does not measure uncheckpointed backlog or identify
+checkpoint progress. Resource sampling is also disabled with the live gate.
 
 ## Pending Question Drafts
 
@@ -747,7 +765,12 @@ reached. Each file is limited to 12 MiB (oversized captures are discarded).
 Cleanup runs when collection starts and before each save, including captures
 from previous sessions. Space for the pending file is reserved inside the
 total cap. Turning collection off leaves saved captures until collection
-starts again; their age does not reset. Graceful
+starts again; their age does not reset. Rotation starts the next named capture
+before ending the current one, keeping the V8 profiler active instead of
+rebuilding its code map every 30 seconds. At most two diagnostic captures
+overlap during the handoff; no process-lifetime profile accumulates. Initial
+profiler setup and the final shutdown capture still run on the server thread.
+Graceful
 shutdown saves the partial window; a crash can lose the current window.
 `Server CPU profile saved` logs its path, PID, and UTC start/end times. Copy
 relevant files before age or size retention removes them. Load a profile in Chrome
@@ -781,7 +804,15 @@ The launch flag only grants permission and still requires a restart to change.
    inspect the stage timings. `inFlightWorkAtObservation` can name an unrelated asynchronous
    long poll; it is not proof of what blocked the loop. Compare `longestSynchronousWork`
    and its `longestSynchronousWorkWallMs` / `longestSynchronousWorkCpuMs`
-   measurements with the profile stacks instead.
+   measurements with the profile stacks instead. `stallAttribution` is
+   `unattributed` when no measured synchronous operation is long enough to
+   explain the maximum delay, allowing one 20 ms sampling interval of tolerance.
+   Otherwise it is `candidate`, and `stallCauseCandidate` names that operation.
+   A candidate is not a confirmed cause: the operation and delay may occur at
+   different times in the five-second window. The longest measured operation
+   remains in the log even when attribution is unavailable. CPU profiler start,
+   completion and serialization are measured as `cpu-profile:start`,
+   `cpu-profile:finish` and `cpu-profile:serialize`.
 2. Find the `Server CPU profile saved` interval covering that time and PID.
    Copy the file before rotation overwrites it. In the JavaScript profiler,
    select the affected time window and inspect the bottom-up view and caller

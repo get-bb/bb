@@ -1,3 +1,5 @@
+import { prepareCachedQuery } from "../connection.js";
+import { markThreadPruningPolicyWork } from "./thread-pruning-work.js";
 import { copyProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -5,7 +7,6 @@ import {
   count,
   desc,
   eq,
-  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -13,6 +14,7 @@ import {
   lt,
   ne,
   or,
+  placeholder,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -386,8 +388,15 @@ export function createThread(
   return thread;
 }
 
+const prepareGetThread = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(threads)
+    .where(eq(threads.id, placeholder("id")))
+    .prepare();
+
 export function getThread(db: ThreadWriteConnection, id: string) {
-  return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+  return prepareCachedQuery(db, prepareGetThread).get({ id }) ?? null;
 }
 
 export interface ThreadMentionRow {
@@ -1391,36 +1400,22 @@ export interface ArchivedTeardownThreadRow {
 export function listArchivedThreadsPendingTeardown(
   db: DbQueryConnection,
 ): ArchivedTeardownThreadRow[] {
+  const selection = {
+    archivedAt: threads.archivedAt,
+    environmentId: threads.environmentId,
+    id: threads.id,
+    status: threads.status,
+  };
+  const archived = and(isNotNull(threads.archivedAt), isNull(threads.deletedAt));
   return db
-    .select({
-      archivedAt: threads.archivedAt,
-      environmentId: threads.environmentId,
-      id: threads.id,
-      status: threads.status,
-    })
+    .select(selection)
     .from(threads)
-    .where(
-      and(
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        or(
-          inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
-          exists(
-            db
-              .select({ id: terminalSessions.id })
-              .from(terminalSessions)
-              .where(
-                and(
-                  eq(terminalSessions.threadId, threads.id),
-                  inArray(
-                    terminalSessions.status,
-                    NON_TERMINAL_SESSION_STATUSES,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      ),
+    .where(and(archived, inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES])))
+    .union(
+      db
+        .select(selection)
+        .from(threads)
+        .where(and(archived, inArray(threads.id, db.select({ threadId: terminalSessions.threadId }).from(terminalSessions).where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))))),
     )
     .all();
 }
@@ -2075,18 +2070,22 @@ export function archiveThread(
   id: string,
 ) {
   const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({ archivedAt: now, updatedAt: now })
-    .where(
-      and(
-        inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .returning()
-    .all();
+  const updated = db.transaction((tx) => {
+    const archived = tx
+      .update(threads)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(
+        and(
+          inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
+          isNull(threads.archivedAt),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .returning()
+      .all();
+    markThreadPruningPolicyWork(tx, archived.map((thread) => thread.id), "rate-limits");
+    return archived;
+  });
   for (const thread of updated) {
     notifier.notifyThread(thread.id, ["archived-changed"], {
       projectId: thread.projectId,
@@ -2111,12 +2110,15 @@ export function unarchiveThread(
           return null;
       }
       const now = Date.now();
-      return tx
+      const unarchived = tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
         .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
+      if (unarchived)
+        markThreadPruningPolicyWork(tx, [unarchived.id], "rate-limits");
+      return unarchived;
     },
     { behavior: "immediate" },
   );

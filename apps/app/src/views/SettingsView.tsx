@@ -252,7 +252,7 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
 };
 
 const SETTINGS_DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";
+  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs @min-[36rem]/settings:w-36";
 const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
@@ -521,7 +521,7 @@ export function LocalOpenTargetSettingsSection({
           : "Enable";
 
     return (
-      <SettingsSection title="File Preferences">
+      <SettingsSection title="File preferences">
         <SettingsWithControl
           label="Local editor integration"
           description={
@@ -562,7 +562,7 @@ export function LocalOpenTargetSettingsSection({
   }
 
   return (
-    <SettingsSection title="File Preferences">
+    <SettingsSection title="File preferences">
       <div className="space-y-5">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
@@ -1076,7 +1076,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   navigationRail: {
     label: "Navigation rail",
     description:
-      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. The rail stays when the sidebar is collapsed. Wide windows only.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",

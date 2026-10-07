@@ -15,11 +15,14 @@ export function parseErrorMessage(
     kind: "error",
     id: messageId(decoded.threadId, "error", `${meta.seq}`),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     scope: decoded.scope,
     rawType: decoded.type,
+    systemErrorCode:
+      decoded.type === "system/error" ? (decoded.code ?? null) : null,
     message: message || "Error event",
     detail: detail && detail !== message ? detail : null,
     ...(decoded.type === "provider/error" && decoded.errorInfo

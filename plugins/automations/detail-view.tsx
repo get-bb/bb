@@ -17,7 +17,7 @@ import {
   type ExperimentalProviderModelPickerValue,
 } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
-import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "@/components/ui/coarse-pointer-visibility";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
 import { DelayedLoading } from "@/components/ui/delayed-loading";
 import { Icon, type IconName } from "@/components/ui/icon";
 import {
@@ -458,7 +458,7 @@ export function RunRow({
           name="ChevronRight"
           className={cn(
             "size-3.5 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover/run:opacity-100 group-focus-visible/run:opacity-100",
-            COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS,
+            HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
           )}
           aria-hidden
         />

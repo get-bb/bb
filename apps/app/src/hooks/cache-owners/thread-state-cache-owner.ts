@@ -38,6 +38,11 @@ import {
   removeLiveThreadsFromCachedLists,
   type CachedThreadSnapshot,
 } from "./thread-archive-cache";
+import {
+  applyThreadPatches,
+  holdPendingThreadPatches,
+  type ThreadMetadataPatch,
+} from "./pending-thread-patches";
 
 interface ThreadIdCacheArgs {
   queryClient: QueryClient;
@@ -122,12 +127,14 @@ export interface ThreadListMutationTransaction {
   previousSidebarNavigation: CachedSidebarNavigationSnapshot;
   previousThread: ThreadWithRuntime | undefined;
   previousThreadLists: CachedThreadListSnapshot;
+  releasePendingPatches: () => void;
 }
 
 interface ThreadMetadataBatchTransaction {
   previousSidebarNavigation: CachedSidebarNavigationSnapshot;
   previousThreads: ReadonlyMap<string, ThreadWithRuntime | undefined>;
   previousThreadLists: CachedThreadListSnapshot;
+  releasePendingPatches: () => void;
 }
 
 export interface ArchiveThreadsTransaction {
@@ -246,7 +253,33 @@ async function runOptimisticThreadFieldTransaction({
     previousSidebarNavigation,
     previousThread,
     previousThreadLists,
+    releasePendingPatches: () => {},
   };
+}
+
+async function beginHeldThreadPatchTransaction({
+  patch,
+  queryClient,
+  threadId,
+}: ThreadIdCacheArgs & {
+  patch: ThreadMetadataPatch;
+}): Promise<ThreadListMutationTransaction> {
+  const patches = new Map([[threadId, patch]]);
+  const transaction = await runOptimisticThreadFieldTransaction({
+    applyToLists: (queryClient) => applyThreadPatches(queryClient, patches),
+    queryClient,
+    threadId,
+  });
+  return {
+    ...transaction,
+    releasePendingPatches: holdPendingThreadPatches(queryClient, patches),
+  };
+}
+
+export function settleThreadPatchTransaction(
+  transaction: ThreadListMutationTransaction | undefined,
+): void {
+  transaction?.releasePendingPatches();
 }
 
 export function beginPinThreadTransaction({
@@ -254,16 +287,8 @@ export function beginPinThreadTransaction({
   queryClient,
   threadId,
 }: BeginThreadPinTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return runOptimisticThreadFieldTransaction({
-    applyToLists: (queryClient, threadId) =>
-      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-        list.map((thread) =>
-          thread.id === threadId
-            ? { ...thread, pinnedAt, pinSortKey: null }
-            : thread,
-        ),
-      ),
-    patch: { pinnedAt },
+  return beginHeldThreadPatchTransaction({
+    patch: { pinnedAt, pinSortKey: null },
     queryClient,
     threadId,
   });
@@ -273,16 +298,8 @@ export function beginUnpinThreadTransaction({
   queryClient,
   threadId,
 }: ThreadIdCacheArgs): Promise<ThreadListMutationTransaction> {
-  return runOptimisticThreadFieldTransaction({
-    applyToLists: (queryClient, threadId) =>
-      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-        list.map((thread) =>
-          thread.id === threadId
-            ? { ...thread, pinnedAt: null, pinSortKey: null }
-            : thread,
-        ),
-      ),
-    patch: { pinnedAt: null },
+  return beginHeldThreadPatchTransaction({
+    patch: { pinnedAt: null, pinSortKey: null },
     queryClient,
     threadId,
   });
@@ -293,21 +310,8 @@ export function beginUnpinAndMoveThreadTransaction({
   queryClient,
   threadId,
 }: BeginUnpinAndMoveThreadTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return runOptimisticThreadFieldTransaction({
-    applyToLists: (queryClient, threadId) =>
-      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-        list.map((thread) =>
-          thread.id === threadId
-            ? {
-                ...thread,
-                sectionId,
-                pinnedAt: null,
-                pinSortKey: null,
-              }
-            : thread,
-        ),
-      ),
-    patch: { sectionId, pinnedAt: null },
+  return beginHeldThreadPatchTransaction({
+    patch: { sectionId, pinnedAt: null, pinSortKey: null },
     queryClient,
     threadId,
   });
@@ -452,7 +456,7 @@ function resolveThreadMetadataPatch({
   title,
 }: ThreadMetadataUpdate & {
   queryClient: QueryClient;
-}): Partial<ThreadWithRuntime> {
+}): ThreadMetadataPatch {
   if (parentThreadId === null && sectionId === undefined) {
     const thread = findThreadMetadataInCache(queryClient, threadId);
     if (thread?.parentThreadId) {
@@ -489,17 +493,7 @@ export function beginThreadMetadataTransaction({
     threadId,
     title,
   });
-  return runOptimisticThreadFieldTransaction({
-    applyToLists: (queryClient, threadId) =>
-      applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-        list.map((thread) =>
-          thread.id === threadId ? { ...thread, ...patch } : thread,
-        ),
-      ),
-    patch,
-    queryClient,
-    threadId,
-  });
+  return beginHeldThreadPatchTransaction({ patch, queryClient, threadId });
 }
 
 export async function beginThreadMetadataBatchTransaction({
@@ -526,7 +520,7 @@ export async function beginThreadMetadataBatchTransaction({
   });
   const previousSidebarNavigation =
     snapshotCachedSidebarNavigation(queryClient);
-  const patches = new Map<string, Partial<ThreadWithRuntime>>();
+  const patches = new Map<string, ThreadMetadataPatch>();
   for (const update of updates) {
     patches.set(update.threadId, {
       ...patches.get(update.threadId),
@@ -534,23 +528,13 @@ export async function beginThreadMetadataBatchTransaction({
     });
   }
 
-  for (const [threadId, patch] of patches) {
-    queryClient.setQueryData<ThreadWithRuntime>(
-      threadQueryKey(threadId),
-      (thread) => (thread ? { ...thread, ...patch } : thread),
-    );
-  }
-  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) =>
-    list.map((thread) => {
-      const patch = patches.get(thread.id);
-      return patch ? { ...thread, ...patch } : thread;
-    }),
-  );
+  applyThreadPatches(queryClient, patches);
 
   return {
     previousSidebarNavigation,
     previousThreads,
     previousThreadLists,
+    releasePendingPatches: holdPendingThreadPatches(queryClient, patches),
   };
 }
 

@@ -33,6 +33,7 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
     isConversationCollapsed: true,
     renderAsDrawer: false,
     isSidebarShowing: false as boolean | null,
+    sidebarKeepsCollapsedRail: false,
     reserveMacosTrafficLights: true,
   };
 
@@ -40,6 +41,15 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
     expect(resolveCollapsedPanelTrafficLightReserveClassName(base)).toBe(
       MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
     );
+  });
+
+  it("does not reserve beside a collapsed nav rail, where the title bar hosts the lights", () => {
+    expect(
+      resolveCollapsedPanelTrafficLightReserveClassName({
+        ...base,
+        sidebarKeepsCollapsedRail: true,
+      }),
+    ).toBe(false);
   });
 
   it("does not reserve when the main sidebar is showing (it hosts the lights)", () => {

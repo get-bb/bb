@@ -14,6 +14,7 @@ import {
 import { decideThreadDrop, type SplitZone } from "@/lib/split-drag";
 import type { PaneContent, SplitLayout } from "@/lib/split-layout";
 import { matchPath } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   APP_ROOT_ROUTE_PATH,
   getPluginDetailRoutePath,
@@ -26,6 +27,7 @@ import {
 
 const FIRST_PANE_ID = "pane-1";
 const SPLITTABLE_THREAD_ROUTE_PATH = "/projects/:projectId/threads/:threadId";
+const SPLITTABLE_PERSONAL_THREAD_ROUTE_PATH = "/threads/:threadId";
 
 export function threadPaneContent(thread: ThreadRoutePathArgs): PaneContent {
   return {
@@ -85,6 +87,17 @@ export function paneContentForPathname(pathname: string): PaneContent | null {
       kind: "thread",
       projectId: thread.params.projectId,
       threadId: thread.params.threadId,
+    };
+  }
+  const personalThread = matchPath(
+    { path: SPLITTABLE_PERSONAL_THREAD_ROUTE_PATH, end: false },
+    pathname,
+  );
+  if (personalThread?.params.threadId) {
+    return {
+      kind: "thread",
+      projectId: PERSONAL_PROJECT_ID,
+      threadId: personalThread.params.threadId,
     };
   }
   const detail = matchPath(PLUGIN_DETAIL_ROUTE_PATH, pathname);

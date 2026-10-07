@@ -21,6 +21,7 @@ import {
 import { relayedResponse } from "./response-encoding.js";
 import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 import {
+  GATE_OWNER_HEADER,
   HOP_HEADERS,
   RELAY_CONTENT_LENGTH_HEADER,
   RELAY_HAS_BODY_HEADER,
@@ -34,6 +35,7 @@ export interface Env {
   DB: D1Database;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
+  GATE_EVENTS: AnalyticsEngineDataset;
   ACCOUNT_APP_URL?: string;
   CLOUD_DEV?: string;
   ASSETLINKS_SHA256_FINGERPRINTS?: string;
@@ -92,6 +94,10 @@ export function parseClientProtocolVersion(raw: string | null): number {
   return n;
 }
 
+export function tunnelOwnerKey(kind: "machine" | "server", id: string): string {
+  return `${kind}:${id}`;
+}
+
 const PORT_SHARE_TOO_OLD =
   "this bb's connect plugin is too old for port sharing — update bb and reconnect";
 
@@ -107,6 +113,7 @@ export class TunnelDO {
   private readonly tunnelWaiters = new Set<() => void>();
   private nextStreamId: number;
   private clientProtocolVersion = 0;
+  private tunnelOwner: string | null = null;
 
   constructor(
     private readonly state: DurableObjectState,
@@ -130,6 +137,13 @@ export class TunnelDO {
         stored >= 0
       ) {
         this.clientProtocolVersion = stored;
+      }
+      const serverId = await this.state.storage.get<string>("serverId");
+      const machineId = await this.state.storage.get<string>("machineId");
+      if (machineId) {
+        this.tunnelOwner = tunnelOwnerKey("machine", machineId);
+      } else if (serverId) {
+        this.tunnelOwner = tunnelOwnerKey("server", serverId);
       }
     });
   }
@@ -166,6 +180,7 @@ export class TunnelDO {
       void this.state.storage.delete("machineId");
       void this.state.storage.delete("protocolVersion");
       this.clientProtocolVersion = 0;
+      this.tunnelOwner = null;
       this.wakeTunnelWaiters();
       return new Response(null, { status: 204 });
     }
@@ -186,6 +201,14 @@ export class TunnelDO {
     url: URL,
     tunnel: WebSocket,
   ): Response | Promise<Response> {
+    const expectedOwner = request.headers.get(GATE_OWNER_HEADER);
+    if (
+      expectedOwner !== null &&
+      this.tunnelOwner !== null &&
+      expectedOwner !== this.tunnelOwner
+    ) {
+      return this.offlineResponse();
+    }
     const target = readTunnelTarget(request.headers);
     if (target !== undefined && this.clientProtocolVersion < 1) {
       return new Response(`bb connect: ${PORT_SHARE_TOO_OLD}\n`, {
@@ -308,6 +331,7 @@ export class TunnelDO {
       await this.state.storage.delete("machineId");
       await this.state.storage.delete("protocolVersion");
       this.clientProtocolVersion = 0;
+      this.tunnelOwner = null;
       return;
     }
     await this.state.storage.setAlarm(this.nextPresenceAlarmAt());
@@ -344,11 +368,13 @@ export class TunnelDO {
     this.clientProtocolVersion = protocolVersion;
     void this.state.storage.put("protocolVersion", protocolVersion);
     if (serverId) {
+      this.tunnelOwner = tunnelOwnerKey("server", serverId);
       void this.state.storage.put("serverId", serverId);
       void this.state.storage.delete("machineId");
       void this.markPresence();
       void this.state.storage.setAlarm(this.nextPresenceAlarmAt());
     } else if (machineId) {
+      this.tunnelOwner = tunnelOwnerKey("machine", machineId);
       void this.state.storage.put("machineId", machineId);
       void this.state.storage.delete("serverId");
       void this.markPresence();

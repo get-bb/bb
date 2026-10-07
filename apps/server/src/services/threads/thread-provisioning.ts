@@ -42,7 +42,6 @@ import {
   ensureThreadProvisionEnvironmentReady,
   ensureWorkspaceReadyEvent,
   failThreadProvisioning,
-  loadActiveThreadProvisionContext,
   type ThreadProvisioningDeps,
 } from "./thread-provisioning-environment.js";
 import {
@@ -493,7 +492,7 @@ async function advanceThreadProvisioningOnce(
     clearThreadProvisionSchedule(thread.id);
     return;
   }
-  let context = loadActiveThreadProvisionContext(deps, thread.id);
+  let context = getThreadProvisionContext(deps.db, thread.id);
   if (!context) {
     failThreadProvisioning(deps, {
       thread,

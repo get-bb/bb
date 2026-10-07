@@ -630,7 +630,7 @@ export function PluginHealthBanner({
 
 export function PluginServices({ plugin }: { plugin: PluginListItem }) {
   return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
+    <div className="@container/plugin-detail max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
       <table
         aria-label="Background services"
         className="w-full max-w-full table-fixed border-collapse text-left"

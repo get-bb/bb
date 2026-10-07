@@ -1,14 +1,15 @@
+import { markThreadPruningWork } from "../../src/data/thread-pruning-work.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
-import { events, threadPruningCursors, threads } from "../../src/schema.js";
+import { events, threadPruningCursors, threadPruningWork, threads } from "../../src/schema.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
-import { createThread } from "../../src/data/threads.js";
+import { archiveThread, createThread, unarchiveThread } from "../../src/data/threads.js";
 import {
   advanceThreadPruning,
   getNextThreadPruningPolicy,
@@ -61,6 +62,7 @@ function seed(
       ...values,
     })
     .run();
+  markThreadPruningWork(f.db, [f.thread.id]);
 }
 function cycle(f: Fixture, policy: ThreadPruningPolicy) {
   const results = [];
@@ -84,6 +86,66 @@ function sequences(f: Fixture) {
 }
 
 describe("thread pruning", () => {
+  it("queues archive changes for every owned thread and rolls them back together", () => {
+    const f = setup();
+    try {
+      const child = createThread(f.db, noopNotifier, {
+        projectId: f.project.id,
+        providerId: "codex",
+        lifecycleOwnerThreadId: f.thread.id,
+      });
+      const work = () => f.db.select().from(threadPruningWork).all();
+      expect(() => f.db.transaction((tx) => {
+        archiveThread(tx, noopNotifier, f.thread.id);
+        throw new Error("rollback archive");
+      })).toThrow("rollback archive");
+      expect(work()).toEqual([]);
+      expect(f.db.select().from(threads).all().every((thread) => thread.archivedAt === null)).toBe(true);
+      archiveThread(f.db, noopNotifier, f.thread.id);
+      expect(work()).toHaveLength(2);
+      expect(work()).toEqual(expect.arrayContaining([
+        { policy: "rate-limits", threadId: f.thread.id, revision: 1 },
+        { policy: "rate-limits", threadId: child.id, revision: 1 },
+      ]));
+      archiveThread(f.db, noopNotifier, f.thread.id);
+      expect(work().every((row) => row.revision === 1)).toBe(true);
+      unarchiveThread(f.db, noopNotifier, f.thread.id);
+      expect(() => f.db.transaction(() => {
+        unarchiveThread(f.db, noopNotifier, child.id);
+        throw new Error("rollback unarchive");
+      })).toThrow("rollback unarchive");
+      expect(work().find((row) => row.threadId === child.id)?.revision).toBe(1);
+      expect(f.db.select().from(threads).where(eq(threads.id, child.id)).get()?.archivedAt).not.toBeNull();
+      unarchiveThread(f.db, noopNotifier, child.id);
+      expect(work().every((row) => row.revision === 2)).toBe(true);
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
+  it("advances past a thread that becomes dirty again before its next cycle", () => {
+    const f = setup();
+    try {
+      const other = createThread(f.db, noopNotifier, {
+        projectId: f.project.id,
+        providerId: "codex",
+      });
+      const [first, second] = [f.thread, other].sort((a, b) =>
+        a.id.localeCompare(b.id),
+      );
+      if (!first || !second) throw new Error("Missing pruning fixtures");
+      seed({ ...f, thread: first }, 1);
+      seed({ ...f, thread: second }, 1);
+      expect(advanceThreadPruning(f.db, "rate-limits").threadId).toBe(first.id);
+      seed({ ...f, thread: first }, 2);
+      expect(advanceThreadPruning(f.db, "rate-limits").threadId).toBe(
+        second.id,
+      );
+    } finally {
+      f.db.$client.close();
+    }
+  });
+
   it("requires output presence only when pruning command output deltas", () => {
     const f = setup();
     try {
@@ -545,6 +607,7 @@ describe("thread pruning", () => {
       const nextSurvivor = 599;
       expect(batch.removed).toBeLessThanOrEqual(64);
       writer.delete(events).where(eq(events.sequence, 600)).run();
+      markThreadPruningWork(writer, [f.thread.id]);
       cycle(f, "rate-limits");
       expect(sequences(f)).toEqual([nextSurvivor]);
       expect(
@@ -732,11 +795,7 @@ describe("thread pruning", () => {
   it("drains more than 500 resolved deltas and preserves scope, first-delta and output guards", () => {
     const f = setup();
     try {
-      f.db
-        .update(threads)
-        .set({ archivedAt: 1 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       f.db.transaction(() => {
         for (let i = 1; i <= 1200; i++)
           seed(f, i, {
@@ -843,25 +902,14 @@ describe("thread pruning", () => {
     try {
       for (let i = 1; i <= 130; i++) seed(f, i);
       seed(f, 131, { type: "turn/completed" });
-      f.db
-        .update(threads)
-        .set({ archivedAt: 1 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       expect(advanceThreadPruning(f.db, "rate-limits").removed).toBe(64);
-      f.db
-        .update(threads)
-        .set({ archivedAt: null })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      unarchiveThread(f.db, noopNotifier, f.thread.id);
       cycle(f, "rate-limits");
       expect(sequences(f)).toEqual([130, 131]);
-      f.db
-        .update(threads)
-        .set({ archivedAt: 2 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       f.db.delete(events).where(eq(events.sequence, 131)).run();
+      markThreadPruningWork(f.db, [f.thread.id]);
       cycle(f, "rate-limits");
       expect(sequences(f)).toEqual([130]);
       seed(f, 131, { type: "turn/completed" });
@@ -877,11 +925,7 @@ describe("thread pruning", () => {
     (archivedAt) => {
       const f = setup();
       try {
-        f.db
-          .update(threads)
-          .set({ archivedAt })
-          .where(eq(threads.id, f.thread.id))
-          .run();
+        if (archivedAt !== null) archiveThread(f.db, noopNotifier, f.thread.id);
         for (let sequence = 1; sequence <= 6; sequence++) {
           seed(f, sequence, {
             type: "thread/contextWindowUsage/updated",
@@ -1013,11 +1057,7 @@ describe("thread pruning", () => {
   it("restarts usage keeper discovery after a keeper disappears during a visit", () => {
     const f = setup();
     try {
-      f.db
-        .update(threads)
-        .set({ archivedAt: 1 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       f.db.transaction(() => {
         for (let i = 1; i <= 600; i++)
           seed(f, i, {
@@ -1038,6 +1078,7 @@ describe("thread pruning", () => {
       advanceThreadPruning(f.db, "usage");
       advanceThreadPruning(f.db, "usage");
       f.db.delete(events).where(eq(events.sequence, 600)).run();
+      markThreadPruningWork(f.db, [f.thread.id]);
       expect(advanceThreadPruning(f.db, "usage").removed).toBe(0);
       cycle(f, "usage");
       cycle(f, "usage");
@@ -1050,11 +1091,7 @@ describe("thread pruning", () => {
   it("revisits deltas whose completion arrives after their candidate window", () => {
     const f = setup();
     try {
-      f.db
-        .update(threads)
-        .set({ archivedAt: 1 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       f.db.transaction(() => {
         for (let i = 1; i <= 800; i++)
           seed(f, i, {
@@ -1085,11 +1122,7 @@ describe("thread pruning", () => {
   it("resumes bounded support probes through adversarial reused-item scopes", () => {
     let f = setup();
     try {
-      f.db
-        .update(threads)
-        .set({ archivedAt: 1 })
-        .where(eq(threads.id, f.thread.id))
-        .run();
+      archiveThread(f.db, noopNotifier, f.thread.id);
       seed(f, 1, {
         type: "item/agentMessage/delta",
         itemId: "reused",

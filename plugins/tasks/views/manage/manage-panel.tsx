@@ -20,6 +20,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Icon } from "@/components/ui/icon";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import {
   PERMISSION_LABELS,
@@ -194,7 +196,10 @@ function LabelsSection() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-6 text-muted-foreground opacity-0 group-hover:opacity-100"
+                  className={cn(
+                    "size-6 text-muted-foreground opacity-0 group-hover:opacity-100",
+                    HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                  )}
                   aria-label={`Edit label ${label.name}`}
                   onClick={() => setEditingId(label.id)}
                 >
@@ -203,7 +208,10 @@ function LabelsSection() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-6 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
+                  className={cn(
+                    "size-6 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100",
+                    HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                  )}
                   aria-label={`Delete label ${label.name}`}
                   onClick={() => void askDelete(label)}
                 >
@@ -345,7 +353,12 @@ function PresetsSection() {
                   {preset.instructions === "" ? "—" : preset.instructions}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100">
+                  <span
+                    className={cn(
+                      "flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100",
+                      HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                    )}
+                  >
                     <Button
                       size="icon"
                       variant="ghost"

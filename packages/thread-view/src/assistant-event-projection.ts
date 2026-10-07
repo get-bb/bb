@@ -44,6 +44,7 @@ function createAssistantTextMessage(
     kind: "assistant-text",
     id: messageId(args.decoded.threadId, "assistant", args.messageKey),
     threadId: args.decoded.threadId,
+    sourceEvent: { seq: args.meta.seq, part: 0 },
     sourceSeqStart: args.meta.seq,
     sourceSeqEnd: args.meta.seq,
     createdAt: args.meta.createdAt,

@@ -1380,6 +1380,76 @@ describe("workflow service policy integration", () => {
     }
   });
 
+  it("waits without claim transactions and wakes immediately for a new run", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const controller = new AbortController();
+    vi.useFakeTimers();
+    const transactions = vi.spyOn(test.db, "transaction");
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      transactions.mockClear();
+      await vi.advanceTimersByTimeAsync(2_200);
+      expect(transactions).not.toHaveBeenCalled();
+      const run = await test.start(source('return "awake";'));
+      await vi.waitFor(
+        () => expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        { timeout: 200, interval: 10 },
+      );
+      await vi.waitFor(
+        () =>
+          expect(getRunRequired(test.db, run.id).notificationSent).toBe(true),
+        { timeout: 200, interval: 10 },
+      );
+    } finally {
+      controller.abort();
+      await worker;
+      transactions.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["settings", "completion", "cancellation"] as const)(
+    "wakes queued runs when %s frees capacity",
+    async (change) => {
+      const test = setup({ ...DEFAULT_WORKFLOW_SETTINGS, maxActiveRuns: 1 });
+      harnesses.push(test.harness);
+      const first = await test.start(source('return await agent("held");'));
+      const second = await test.start(source('return "next";'));
+      const controller = new AbortController();
+      vi.useFakeTimers();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await vi.waitFor(() => expect(test.childCount()).toBe(1), {
+          timeout: 200,
+          interval: 1,
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        expect(getRunRequired(test.db, second.id).status).toBe("queued");
+        if (change === "settings") {
+          test.service.updateSettings({
+            ...DEFAULT_WORKFLOW_SETTINGS,
+            maxActiveRuns: 2,
+          });
+        } else if (change === "completion") {
+          test.service.onThreadIdle("child-1", "done");
+        } else {
+          await test.service.stop(first.id);
+        }
+        await vi.waitFor(
+          () =>
+            expect(getRunRequired(test.db, second.id).status).toBe("succeeded"),
+          { timeout: 20, interval: 1 },
+        );
+      } finally {
+        controller.abort();
+        await worker;
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("reconciles origins at startup without polling", async () => {
     const test = setup();
     harnesses.push(test.harness);

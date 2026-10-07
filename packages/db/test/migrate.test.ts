@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
-import { dropPluginEnabledFollowsDefaultColumn } from "./helpers/rewind.js";
+import {
+  dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
+  rewindThreadPruningWork,
+} from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
   createQueuedThreadMessage,
@@ -705,6 +709,8 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  dropIdleLifecycleIndexes(db);
+  rewindThreadPruningWork(db);
   dropPluginEnabledFollowsDefaultColumn(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -826,6 +832,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  rewindThreadPruningWork(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -856,6 +863,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   ) {
     db.$client.exec("ALTER TABLE project_sources DROP COLUMN owns_path");
   }
+  dropIdleLifecycleIndexes(db);
   db.$client.exec("DROP INDEX IF EXISTS hosts_live_launch_key_idx");
   for (const column of [
     "machine_provider_id",
@@ -3196,6 +3204,8 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      dropIdleLifecycleIndexes(db);
+      rewindThreadPruningWork(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
       db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();

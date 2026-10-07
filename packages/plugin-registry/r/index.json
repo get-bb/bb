@@ -70,10 +70,6 @@
       "type": "registry:ui"
     },
     {
-      "name": "coarse-pointer-visibility",
-      "type": "registry:ui"
-    },
-    {
       "name": "collapsible",
       "type": "registry:ui"
     },
@@ -111,6 +107,10 @@
     },
     {
       "name": "hover-card",
+      "type": "registry:ui"
+    },
+    {
+      "name": "hover-reveal",
       "type": "registry:ui"
     },
     {

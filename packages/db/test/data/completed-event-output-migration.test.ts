@@ -25,6 +25,7 @@ import {
   events,
   maintenanceScanCursors,
   retainedEventOutputs,
+  threadPruningWork,
 } from "../../src/schema.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
@@ -185,6 +186,39 @@ function migrateLegacyImageGeneration(db: DbConnection, migratedAt: number) {
 }
 
 describe("completed event output migration", () => {
+  it.each(["completed", "legacy-image"] as const)(
+    "queues %s rewrites atomically with event migration",
+    (kind) => {
+      const { db, thread } = setup();
+      const migratedAt = 1_800_000_000_000;
+      try {
+        const args = {
+          db, threadId: thread.id, eventId: "rewrite", sequence: 1,
+          createdAt: migratedAt - 1, output: "x".repeat(50_000),
+        };
+        if (kind === "completed")
+          insertLegacyOutput({ ...args, itemKind: "commandExecution", outputPath: "aggregatedOutput" });
+        else insertLegacyImageGeneration(args);
+        const migrateOutput = () => kind === "completed"
+          ? migrateCommandOutput(db, migratedAt)
+          : migrateLegacyImageGeneration(db, migratedAt);
+        const before = listStoredEventRows(db, { threadId: thread.id });
+        expect(() => db.transaction(() => {
+          expect(migrateOutput().action).toBe("migrated");
+          throw new Error("rollback rewrite");
+        })).toThrow("rollback rewrite");
+        expect(listStoredEventRows(db, { threadId: thread.id })).toEqual(before);
+        expect(db.select().from(threadPruningWork).all()).toEqual([]);
+        expect(migrateOutput().action).toBe("migrated");
+        expect(db.select().from(threadPruningWork).all()).toEqual([
+          { policy: "resolved-items", threadId: thread.id, revision: 1 },
+        ]);
+      } finally {
+        db.$client.close();
+      }
+    },
+  );
+
   it("migrates one retained legacy inline output without changing raw reads", () => {
     const migratedAt = 1_800_000_000_000;
     const createdAt = migratedAt - 60_000;

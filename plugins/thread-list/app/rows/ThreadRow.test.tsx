@@ -345,7 +345,7 @@ describe("ThreadRow", () => {
     expect(restore.classList.contains("bg-state-hover")).toBe(false);
     expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
-    expect(restore.closest(".max-md\\:pointer-coarse\\:hidden")).not.toBeNull();
+    expect(restore.closest(".\\[\\@media\\(hover\\:none\\)\\]\\:hidden")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
     fireEvent.keyDown(restore, { key: "Enter" });
@@ -1318,7 +1318,7 @@ describe("ThreadRow", () => {
         ),
       ).toBe("calc(var(--spacing) * 7.5)");
       expect(
-        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+        titleContainer?.classList.contains("[@media(hover:none)]:pr-0"),
       ).toBe(true);
       expect(navigationTarget?.classList.contains("flex-1")).toBe(true);
       expect(titleWrapper?.classList.contains("flex-1")).toBe(false);

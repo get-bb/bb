@@ -441,7 +441,7 @@ export function QuestionForm({
         event.preventDefault();
         handleAdvance();
       }}
-      className="flex min-h-0 flex-col text-xs text-muted-foreground"
+      className="-m-1 flex min-h-0 flex-col rounded-md p-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
     >
       {totalQuestions > 1 ? (
         <QuestionTabs

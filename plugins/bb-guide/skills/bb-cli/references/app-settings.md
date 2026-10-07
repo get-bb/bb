@@ -228,6 +228,11 @@ so they carry over between navigation plugins.
   vertical rail of destinations on the left edge of the sidebar on every
   screen: Home returns to the last thread, Settings sits at the bottom, and
   New thread moves into the sidebar header.
+- Collapsing the sidebar hides the list beside the rail and leaves the rail in
+  place.
+- In the macOS desktop app, wide windows add a title bar that holds the window
+  controls, Back and Forward, and the sidebar toggle. It shares the rail's
+  background, and the sidebar and page sit in a card below it.
 - While it is on, the Navigation and Header choices under Settings →
   Appearance are not used. Narrow windows and phones keep the regular drawer.
 

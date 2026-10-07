@@ -94,6 +94,7 @@ function createOptimisticThreadMutationBatcher(
         return request;
       }),
     );
+    transaction.releasePendingPatches();
     const fulfilledThreads = results.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : [],
     );

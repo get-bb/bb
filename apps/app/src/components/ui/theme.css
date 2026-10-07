@@ -326,8 +326,8 @@
     opacity: 0;
   }
 
-  @media (max-width: 767px) and (pointer: coarse) {
-    /* The overlay is hidden on coarse phones, so no room is reserved. */
+  @media (hover: none) {
+    /* The overlay is hidden where the primary input cannot hover, so no room is reserved. */
     .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
       .bb-sidebar-hover-actions-inset,
     .bb-sidebar-hover-actions-row:has(

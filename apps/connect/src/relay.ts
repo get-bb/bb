@@ -11,6 +11,7 @@ import {
   RELAY_HEADER,
   RELAY_METHOD_HEADER,
 } from "./protocol-headers.js";
+import type { GateProgress } from "./gate-deadline.js";
 import { relayedResponse } from "./response-encoding.js";
 import { responseHeadTimeoutMs } from "./response-head-timeout.js";
 
@@ -82,6 +83,7 @@ function sendFrame(socket: WebSocket, frame: Frame): boolean {
 async function pumpRequestBody(
   body: ReadableStream<Uint8Array>,
   socket: WebSocket,
+  progress: GateProgress,
 ): Promise<void> {
   const streamId = RELAY_PLACEHOLDER_STREAM_ID;
   try {
@@ -99,6 +101,7 @@ async function pumpRequestBody(
       }
     }
     sendFrame(socket, { type: "body-end", streamId });
+    progress.stage = "response-head";
   } catch {
     sendFrame(socket, {
       type: "close-stream",
@@ -109,7 +112,11 @@ async function pumpRequestBody(
   }
 }
 
-function relayResponse(socket: WebSocket, request: Request): Promise<Response> {
+function relayResponse(
+  socket: WebSocket,
+  request: Request,
+  progress: GateProgress,
+): Promise<Response> {
   return new Promise<Response>((resolve) => {
     let headSettled = false;
     let finished = false;
@@ -218,13 +225,19 @@ function relayResponse(socket: WebSocket, request: Request): Promise<Response> {
       fail(502, "tunnel disconnected mid-request");
     });
 
-    if (request.body !== null) void pumpRequestBody(request.body, socket);
+    if (request.body === null) {
+      progress.stage = "response-head";
+    } else {
+      progress.stage = "request-body";
+      void pumpRequestBody(request.body, socket, progress);
+    }
   });
 }
 
 export async function fetchThroughRelay(
   stub: RelayStub,
   request: Request,
+  progress: GateProgress,
 ): Promise<Response | null> {
   const upgraded = await stub.fetch(relayUpgradeRequest(request));
   const socket = upgraded.webSocket;
@@ -237,5 +250,5 @@ export async function fetchThroughRelay(
     } catch {}
     return null;
   }
-  return relayResponse(socket, request);
+  return relayResponse(socket, request, progress);
 }
