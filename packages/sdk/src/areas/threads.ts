@@ -26,6 +26,7 @@ import type {
   ForkThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
+  QueuedMessageEditHoldResponse,
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
@@ -77,8 +78,6 @@ import type {
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
-  BeginQueuedMessageEditRequest,
-  CancelQueuedMessageEditRequest,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
@@ -203,6 +202,8 @@ export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageDeleteResult = { ok: true };
+export type ThreadQueuedMessageEditHoldResult = QueuedMessageEditHoldResponse;
+export type ThreadQueuedMessageEditHoldReleaseResult = { ok: true };
 export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
 export type ThreadQueuedMessageGroupBoundaryResult =
@@ -519,18 +520,18 @@ export interface ThreadEventsArea {
 }
 
 export interface ThreadQueuedMessagesArea {
-  beginEdit(
-    args: ThreadQueuedMessageTargetArgs & BeginQueuedMessageEditRequest,
-  ): Promise<ThreadQueuedMessage>;
-  cancelEdit(
-    args: ThreadQueuedMessageTargetArgs & CancelQueuedMessageEditRequest,
-  ): Promise<ThreadQueuedMessage>;
   create(
     args: ThreadQueuedMessageCreateArgs,
   ): Promise<ThreadQueuedMessageCreateResult>;
   delete(
     args: ThreadQueuedMessageTargetArgs,
   ): Promise<ThreadQueuedMessageDeleteResult>;
+  experimental_holdForEdit(
+    args: ThreadQueuedMessageTargetArgs,
+  ): Promise<ThreadQueuedMessageEditHoldResult>;
+  experimental_releaseEditHold(
+    args: ThreadQueuedMessageTargetArgs,
+  ): Promise<ThreadQueuedMessageEditHoldReleaseResult>;
   list(args: ThreadQueuedMessageArgs): Promise<ThreadQueuedMessagesResult>;
   reorder(
     args: ThreadQueuedMessageReorderArgs,
@@ -996,32 +997,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   const queuedMessages: ThreadQueuedMessagesArea = {
-    async beginEdit(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].edit.$post({
-          param: { id: input.threadId, queuedMessageId: input.queuedMessageId },
-          json: {
-            expectedUpdatedAt: input.expectedUpdatedAt,
-            ...(input.editToken ? { editToken: input.editToken } : {}),
-          },
-        }),
-      );
-    },
-    async cancelEdit(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["queued-messages"][
-          ":queuedMessageId"
-        ].edit.cancel.$post({
-          param: { id: input.threadId, queuedMessageId: input.queuedMessageId },
-          json: {
-            expectedUpdatedAt: input.expectedUpdatedAt,
-            editToken: input.editToken,
-          },
-        }),
-      );
-    },
     async create(input) {
       const { threadId, ...json } = input;
       return transport.readJson(
@@ -1035,6 +1010,31 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       await transport.readVoid(
         transport.api.v1.threads[":id"]["queued-messages"][
           ":queuedMessageId"
+        ].$delete({
+          param: {
+            id: input.threadId,
+            queuedMessageId: input.queuedMessageId,
+          },
+        }),
+      );
+      return { ok: true };
+    },
+    async experimental_holdForEdit(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
+          "edit-hold"
+        ].$post({
+          param: {
+            id: input.threadId,
+            queuedMessageId: input.queuedMessageId,
+          },
+        }),
+      );
+    },
+    async experimental_releaseEditHold(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
+          "edit-hold"
         ].$delete({
           param: {
             id: input.threadId,

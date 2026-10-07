@@ -712,24 +712,6 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     mutate: mocks.stopThreadMutate,
     variables: null,
   }),
-  useBeginThreadQueuedMessageEdit: () => ({
-    isPending: false,
-    mutateAsync: async ({ queuedMessageId }: { queuedMessageId: string }) => {
-      const rows = mocks.queuedMessages;
-      if (!rows) throw new Error("Queued messages unavailable");
-      const row = rows.find((row) => row.id === queuedMessageId);
-      if (!row) throw new Error("Queued message not found");
-      const held = { ...row, editToken: "test-edit-token" };
-      mocks.queuedMessages = rows.map((message) =>
-        message.id === queuedMessageId ? held : message,
-      );
-      return held;
-    },
-  }),
-  useCancelThreadQueuedMessageEdit: () => ({
-    isPending: false,
-    mutateAsync: async () => undefined,
-  }),
   useUpdateThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.updateQueuedMessageMutateAsync,
@@ -927,7 +909,6 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 beforeAll(() => LazyQueuedMessagesList.preload());
 
 beforeEach(() => {
-  sessionStorage.clear();
   testQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -1319,11 +1300,6 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
 
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1361,7 +1337,6 @@ describe("ThreadDetailPromptArea", () => {
 
     await waitFor(() => {
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
-        editToken: "test-edit-token",
         expectedUpdatedAt: 1,
         id: "thr_1",
         input: [{ type: "text", text: "Edited queued message", mentions: [] }],
@@ -1402,11 +1377,6 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
     );
@@ -1435,7 +1405,6 @@ describe("ThreadDetailPromptArea", () => {
     );
     await waitFor(() => {
       expect(mocks.updateQueuedMessageMutateAsync).toHaveBeenCalledWith({
-        editToken: "test-edit-token",
         expectedUpdatedAt: 1,
         id: "thr_1",
         input: [
@@ -1456,17 +1425,12 @@ describe("ThreadDetailPromptArea", () => {
     });
   });
 
-  it("keeps back-to-back plugin updates in the active queued draft", async () => {
+  it("keeps back-to-back plugin updates in the active queued draft", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 
     renderPromptArea();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1486,7 +1450,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("First plugin update + second plugin update");
   });
 
-  it("renders text effects only for the active queued edit session", async () => {
+  it("renders text effects only for the active queued edit session", () => {
     mocks.queuedMessages = [
       makeQueuedMessage({ id: "qmsg_1" }),
       makeQueuedMessage({ id: "qmsg_2" }),
@@ -1495,11 +1459,6 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1519,11 +1478,6 @@ describe("ThreadDetailPromptArea", () => {
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 2" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
     expect(inlineEditor.getByTestId("composer-text-effect").textContent).toBe(
@@ -1566,7 +1520,7 @@ describe("ThreadDetailPromptArea", () => {
     });
   });
 
-  it("ignores a stale plugin write after the queued edit changes", async () => {
+  it("ignores a stale plugin write after the queued edit changes", () => {
     mocks.queuedMessages = [
       makeQueuedMessage({
         id: "qmsg_1",
@@ -1582,11 +1536,6 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
     );
@@ -1601,11 +1550,6 @@ describe("ThreadDetailPromptArea", () => {
 
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 2" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
     expect(inlineEditor.getByTestId("plugin-composer-scope").textContent).toBe(
@@ -1627,7 +1571,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("Second queued draft");
   });
 
-  it("keeps queued execution and commands source-locked during a bottom handoff", async () => {
+  it("keeps queued execution and commands source-locked during a bottom handoff", () => {
     mocks.defaultExecutionOptions = {
       model: "bottom-model",
       permissionMode: "auto",
@@ -1648,11 +1592,6 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch provider" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1710,50 +1649,43 @@ describe("ThreadDetailPromptArea", () => {
     });
   });
 
-  it("restores the inline draft after navigation and preserves it when the live row disappears", async () => {
+  it("dismisses an inline edit when its thread changes or its live row disappears", async () => {
     mocks.promptDraft.text = "Untouched bottom draft";
     mocks.queuedMessages = [makeQueuedMessage()];
     const view = renderPromptArea();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
+
     view.rerender(
       buildPromptAreaElement({ thread: makeThread({ id: "thr_2" }) }),
     );
     await waitFor(() =>
-      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull(),
-    );
-    expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Composer message",
-        }) as HTMLInputElement
-      ).value,
-    ).toBe("Untouched bottom draft");
-    view.rerender(buildPromptAreaElement());
-    await waitFor(() =>
       expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
+        (
+          screen.getByRole("textbox", {
+            name: "Composer message",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untouched bottom draft"),
+    );
+
+    view.rerender(buildPromptAreaElement());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
     );
     mocks.queuedMessages = [];
     view.rerender(buildPromptAreaElement());
-    expect(screen.queryByTestId("inline-queued-message-editor")).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Composer message",
+          }) as HTMLInputElement
+        ).value,
+      ).toBe("Untouched bottom draft"),
+    );
     expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
-    expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull();
-    expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Composer message",
-        }) as HTMLInputElement
-      ).value,
-    ).toBe("Untouched bottom draft");
   });
 
   it("does not attach a delayed queued upload to a later edit or the bottom draft", async () => {
@@ -1770,26 +1702,13 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
     );
     fireEvent.click(inlineEditor.getByRole("button", { name: "Attach file" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel queued edit" }));
-    await waitFor(() =>
-      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull(),
-    );
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     inlineEditor = within(screen.getByTestId("inline-queued-message-editor"));
 
@@ -1830,11 +1749,6 @@ describe("ThreadDetailPromptArea", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
-    );
 
     upload.resolve(uploaded);
 
@@ -1848,7 +1762,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("0");
   });
 
-  it("preserves a queued draft after stale or missing save responses", async () => {
+  it("dismisses a missing queued message but keeps a stale edit recoverable", async () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
       new BbHttpError({
@@ -1861,11 +1775,6 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     let inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),
@@ -1899,14 +1808,10 @@ describe("ThreadDetailPromptArea", () => {
       inlineEditor.getByRole("button", { name: "Submit composer" }),
     );
     await waitFor(() =>
-      expect(mocks.toastError).toHaveBeenCalledWith(
-        "Failed to update queued message",
-        { description: "Queued message not found" },
-      ),
+      expect(
+        screen.queryByRole("button", { name: "Cancel queued edit" }),
+      ).toBeNull(),
     );
-    expect(
-      screen.queryByRole("button", { name: "Cancel queued edit" }),
-    ).not.toBeNull();
   });
 
   it("auto-collapses concurrently running workflows into a stack that expands to independently expandable cards", () => {
@@ -2111,7 +2016,7 @@ describe("ThreadDetailPromptArea", () => {
     ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
   });
 
-  it("selects the provider fallback model for the next turn", async () => {
+  it("selects the provider fallback model for the next turn", () => {
     mocks.defaultExecutionOptions = {
       model: "claude-fable-5",
       permissionMode: "full",
@@ -2247,16 +2152,11 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.setPermissionMode).toHaveBeenCalledWith("full");
   });
 
-  it("gives the queued-message editor no pickers to set", async () => {
+  it("gives the queued-message editor no pickers to set", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     renderPromptArea();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message 1" }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByTestId("inline-queued-message-editor"),
-      ).not.toBeNull(),
     );
     const inlineEditor = within(
       screen.getByTestId("inline-queued-message-editor"),

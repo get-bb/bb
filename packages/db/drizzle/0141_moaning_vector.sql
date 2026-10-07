@@ -1,0 +1,1 @@
+ALTER TABLE `queued_thread_messages` ADD `edit_held_until` integer;

@@ -136,7 +136,6 @@ interface QueuedMessageRowProps {
   onExpandMobileActions: (id: string) => void;
   onSend: (id: string) => void;
   onEdit: (request: QueuedMessageEditRequest) => void;
-  onCancelEdit?: (id: string) => void;
   onDelete: (id: string) => void;
   compact: boolean;
   isGroupBoundary: boolean;
@@ -705,7 +704,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
   onExpandMobileActions,
   onSend,
   onEdit,
-  onCancelEdit,
   onDelete,
   compact,
   isGroupBoundary,
@@ -806,11 +804,6 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               queuedMessage={queuedMessage}
               resolveMentionLink={resolveMentionLink}
             />
-            {queuedMessage.editToken !== null ? (
-              <span className="shrink-0 text-2xs text-subtle-foreground">
-                Editing · held
-              </span>
-            ) : null}
             {attachmentCount > 0 ? (
               <span
                 data-queued-message-attachment=""
@@ -907,11 +900,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                           "shrink-0 text-muted-foreground",
                           compact ? "size-7" : "size-8",
                         )}
-                        disabled={
-                          actionDisabled ||
-                          sendDisabled ||
-                          queuedMessage.editToken !== null
-                        }
+                        disabled={actionDisabled || sendDisabled}
                         onClick={() => onSend(queuedMessage.id)}
                         aria-label={sendAriaLabel}
                       >
@@ -923,7 +912,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                     </TooltipContent>
                   </Tooltip>
                 ) : null}
-                {queuedMessage.editable || queuedMessage.editToken !== null ? (
+                {queuedMessage.editable ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -941,33 +930,15 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
                             queuedMessageIndex: index,
                           })
                         }
-                        aria-label={
-                          queuedMessage.editToken !== null
-                            ? `Resume held edit for queued message ${index + 1}`
-                            : `Edit queued message ${index + 1}`
-                        }
+                        aria-label={`Edit queued message ${index + 1}`}
                       >
-                        <Icon name={"Edit"} className="size-4" aria-hidden />
+                        <Icon name="Edit" className="size-4" aria-hidden />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent className="max-md:hidden">
-                      {queuedMessage.editToken !== null
-                        ? "Resume held edit"
-                        : "Edit"}
+                      Edit
                     </TooltipContent>
                   </Tooltip>
-                ) : null}
-                {queuedMessage.editToken !== null && onCancelEdit ? (
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    disabled={actionDisabled}
-                    onClick={() => onCancelEdit(queuedMessage.id)}
-                    aria-label={`Cancel held edit for queued message ${index + 1}`}
-                  >
-                    <Icon name="Close" className="size-4" aria-hidden />
-                  </Button>
                 ) : null}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1134,16 +1105,9 @@ function QueuedMessageInlineEditorSlot({
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
       <InlineMessageEditorFrame
         cancelLabel="Stop editing queued message"
-        label={
-          editor.notice
-            ? "Recovered queued draft"
-            : `Editing queued message ${editor.queuedMessageIndex + 1}`
-        }
+        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
-        {editor.notice ? (
-          <p className="text-sm text-muted-foreground">{editor.notice}</p>
-        ) : null}
         <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
           <div
             data-queued-editor-typeahead-reservation=""
@@ -1172,7 +1136,6 @@ export function QueuedMessagesList({
   onReorder,
   onSetGroupBoundary,
   onEdit,
-  onCancelEdit,
   onDelete,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
@@ -1559,7 +1522,6 @@ export function QueuedMessagesList({
           isGroupBoundary={messageIndex === groupBoundaryIndex}
           onSend={onSend}
           onEdit={handleEdit}
-          onCancelEdit={onCancelEdit}
           onDelete={onDelete}
         />,
       );

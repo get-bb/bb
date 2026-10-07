@@ -14,6 +14,7 @@ import {
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
+import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 type QueuedMessageSendGuard = "current-head" | "exists" | "none";
@@ -26,15 +27,12 @@ interface SendQueuedMessageByIdArgs {
 
 interface UseQueuedMessageActionsArgs {
   threadId: string;
-  queuedEditActionPending: boolean;
   queuedMessages: readonly ThreadQueuedMessage[];
   sendProcessingPersistence: "clear-on-settle" | "until-left-queue";
   onSendSuccess?: () => void;
   onSaveSuccess?: () => void;
   inlineEditingQueuedMessage: InlineQueuedMessageEditState | null;
-  clearInlineQueuedMessageEditor: (
-    expected?: InlineQueuedMessageEditState,
-  ) => void;
+  dismissInlineQueuedMessageEditor: () => void;
   activeComposerDraftInput: PromptInput[];
 }
 
@@ -56,13 +54,12 @@ interface UseQueuedMessageActionsResult {
 
 export function useQueuedMessageActions({
   threadId,
-  queuedEditActionPending,
   queuedMessages,
   sendProcessingPersistence,
   onSendSuccess,
   onSaveSuccess,
   inlineEditingQueuedMessage,
-  clearInlineQueuedMessageEditor,
+  dismissInlineQueuedMessageEditor,
   activeComposerDraftInput,
 }: UseQueuedMessageActionsArgs): UseQueuedMessageActionsResult {
   const updateQueuedMessage = useUpdateThreadQueuedMessage();
@@ -140,8 +137,7 @@ export function useQueuedMessageActions({
     if (
       !inlineEditingQueuedMessage ||
       activeComposerDraftInput.length === 0 ||
-      updateQueuedMessage.isPending ||
-      queuedEditActionPending
+      updateQueuedMessage.isPending
     ) {
       return;
     }
@@ -151,22 +147,25 @@ export function useQueuedMessageActions({
         (message) => message.id === inlineEditingQueuedMessage.queuedMessageId,
       )
     ) {
+      dismissInlineQueuedMessageEditor();
       return;
     }
-    const { expectedUpdatedAt, editToken, ownerThreadId, queuedMessageId } =
+    const { expectedUpdatedAt, ownerThreadId, queuedMessageId } =
       inlineEditingQueuedMessage;
     setProcessingQueuedMessage({ id: queuedMessageId, action: "edit" });
     try {
       await updateQueuedMessage.mutateAsync({
         expectedUpdatedAt,
-        editToken,
         id: ownerThreadId,
         input: activeComposerDraftInput,
         queuedMessageId,
       });
       onSaveSuccess?.();
-      clearInlineQueuedMessageEditor(inlineEditingQueuedMessage);
+      dismissInlineQueuedMessageEditor();
     } catch (error) {
+      if (error instanceof BbHttpError && error.status === 404) {
+        dismissInlineQueuedMessageEditor();
+      }
       showMutationErrorToast({
         error,
         fallbackMessage: "Failed to update queued message",
@@ -179,8 +178,7 @@ export function useQueuedMessageActions({
     }
   }, [
     activeComposerDraftInput,
-    queuedEditActionPending,
-    clearInlineQueuedMessageEditor,
+    dismissInlineQueuedMessageEditor,
     inlineEditingQueuedMessage,
     onSaveSuccess,
     threadId,
@@ -248,7 +246,6 @@ export function useQueuedMessageActions({
   );
 
   const queuedMessageActionPending =
-    queuedEditActionPending ||
     deleteQueuedMessage.isPending ||
     reorderQueuedMessage.isPending ||
     setQueuedMessageGroupBoundary.isPending ||
@@ -258,8 +255,7 @@ export function useQueuedMessageActions({
   return {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
-    isUpdateQueuedMessagePending:
-      updateQueuedMessage.isPending || queuedEditActionPending,
+    isUpdateQueuedMessagePending: updateQueuedMessage.isPending,
     sendQueuedMessageById,
     handleSaveInlineQueuedMessage,
     handleDeleteQueuedMessage,

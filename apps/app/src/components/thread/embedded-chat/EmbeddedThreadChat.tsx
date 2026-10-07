@@ -323,9 +323,6 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     updateInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
-    clearInlineQueuedMessageEditor,
-    cancelHeldQueuedMessageEdit,
-    queuedEditActionPending,
     beginEditQueuedMessage,
     queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
@@ -399,13 +396,12 @@ function EmbeddedThreadChatWithComposer({
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,
   } = useQueuedMessageActions({
-    queuedEditActionPending,
     threadId,
     queuedMessages,
     sendProcessingPersistence: "clear-on-settle",
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
-    clearInlineQueuedMessageEditor,
+    dismissInlineQueuedMessageEditor,
     activeComposerDraftInput,
   });
 
@@ -1128,13 +1124,6 @@ function EmbeddedThreadChatWithComposer({
     return {
       queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
-      notice: queuedMessages.some(
-        (row) =>
-          row.id === inlineEditingQueuedMessage.queuedMessageId &&
-          row.editToken === inlineEditingQueuedMessage.editToken,
-      )
-        ? undefined
-        : "This edit is no longer held by this client. Your draft is preserved; copy it before closing.",
       onDismiss: dismissInlineQueuedMessageEditor,
       content: (
         <FollowUpPromptBox
@@ -1166,7 +1155,6 @@ function EmbeddedThreadChatWithComposer({
     inlineComposerConfig,
     inlineComposerFocusNonce,
     inlineEditingQueuedMessage,
-    queuedMessages,
     inlineExecutionConfig,
     inlinePermissionConfig,
     promptActions,
@@ -1195,13 +1183,11 @@ function EmbeddedThreadChatWithComposer({
           onReorder={handleReorderQueuedMessage}
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
-          onCancelEdit={cancelHeldQueuedMessageEdit}
           onDelete={handleDeleteQueuedMessage}
         />
       ) : null,
     [
       beginEditQueuedMessage,
-      cancelHeldQueuedMessageEdit,
       handleDeleteQueuedMessage,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,

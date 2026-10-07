@@ -187,6 +187,7 @@ import type {
   ReorderPinnedThreadRequest,
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
+  QueuedMessageEditHoldResponse,
   ResolvePendingInteractionRequest,
   ResolveThreadMentionsRequest,
   ResolveThreadMentionsResponse,
@@ -311,10 +312,6 @@ import {
   createProjectSourceRequestSchema,
   createQueuedMessageRequestSchema,
   queuedMessageListQuerySchema,
-  beginQueuedMessageEditRequestSchema,
-  cancelQueuedMessageEditRequestSchema,
-  type BeginQueuedMessageEditRequest,
-  type CancelQueuedMessageEditRequest,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   forkThreadRequestSchema,
@@ -1450,24 +1447,6 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadQueuedMessage>({ status: 201 }),
     }),
-    beginQueuedMessageEdit: defineRoute({
-      path: "/threads/:id/queued-messages/:queuedMessageId/edit",
-      method: "post",
-      request: jsonRequest<
-        PathThreadAndQueuedMessage,
-        BeginQueuedMessageEditRequest
-      >(beginQueuedMessageEditRequestSchema),
-      response: jsonResponse<ThreadQueuedMessage>(),
-    }),
-    cancelQueuedMessageEdit: defineRoute({
-      path: "/threads/:id/queued-messages/:queuedMessageId/edit/cancel",
-      method: "post",
-      request: jsonRequest<
-        PathThreadAndQueuedMessage,
-        CancelQueuedMessageEditRequest
-      >(cancelQueuedMessageEditRequestSchema),
-      response: jsonResponse<ThreadQueuedMessage>(),
-    }),
     updateQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId",
       method: "patch",
@@ -1485,6 +1464,29 @@ export const publicApiRoutes = {
         SendQueuedMessageRequest
       >(sendQueuedMessageRequestSchema),
       response: jsonResponse<SendQueuedMessageResponse>(),
+    }),
+    /**
+     * Hold a queued message while someone edits it: no automatic dispatch
+     * claims it, and the drainable rows behind it wait, until the hold is
+     * released, a save clears it, or `leaseMs` passes without a renewal.
+     * Calling it again renews the lease. Responds 409 once a dispatch has
+     * claimed the row.
+     */
+    holdQueuedMessageForEdit: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId/edit-hold",
+      method: "post",
+      request: noRequest<PathThreadAndQueuedMessage>(),
+      response: jsonResponse<QueuedMessageEditHoldResponse>(),
+    }),
+    /**
+     * Release an edit hold without saving, letting the row dispatch as it
+     * would have. Releasing a row that is not held is a no-op.
+     */
+    releaseQueuedMessageEditHold: defineRoute({
+      path: "/threads/:id/queued-messages/:queuedMessageId/edit-hold",
+      method: "delete",
+      request: noRequest<PathThreadAndQueuedMessage>(),
+      response: jsonResponse<{ ok: true }>(),
     }),
     reorderQueuedMessage: defineRoute({
       path: "/threads/:id/queued-messages/:queuedMessageId/order",

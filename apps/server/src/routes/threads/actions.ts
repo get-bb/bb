@@ -1,8 +1,5 @@
-import { requestQueuedMessageDispatch } from "../../services/threads/queued-message-dispatch.js";
 import { refreshProviderRetirement } from "../../services/environments/environment-engine.js";
 import {
-  beginQueuedThreadMessageEdit,
-  cancelQueuedThreadMessageEdit,
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
@@ -49,6 +46,9 @@ import { resolvePromptAttachmentReferences } from "../../services/projects/attac
 import { threadTargetHostId } from "../../services/threads/dispatch-attempt.js";
 import {
   createQueuedMessageForThread,
+  holdQueuedMessageForEdit,
+  releaseQueuedMessageEditHold,
+  requestEditReleasedQueuedMessageDispatch,
   sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
 import {
@@ -323,53 +323,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  function editResult(result: ReturnType<typeof beginQueuedThreadMessageEdit>) {
-    if (result.kind === "not_found")
-      throw new ApiError(404, "invalid_request", "Queued message not found");
-    if (result.kind !== "updated")
-      throw new ApiError(
-        409,
-        "invalid_request",
-        result.kind === "claimed"
-          ? "Queued message is already being sent"
-          : "Queued message edit is held or changed",
-      );
-    return toThreadQueuedMessage(result.queuedMessage);
-  }
-  post(routes.beginQueuedMessageEdit, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    return context.json(
-      editResult(
-        beginQueuedThreadMessageEdit(deps.db, deps.hub, {
-          id: context.req.param("queuedMessageId"),
-          threadId: thread.id,
-          expectedUpdatedAt: payload.expectedUpdatedAt,
-          editToken: payload.editToken ?? null,
-        }),
-      ),
-    );
-  });
-  post(routes.cancelQueuedMessageEdit, (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    ensureThreadQueueIsWritable(thread);
-    const queuedMessageId = context.req.param("queuedMessageId");
-    const result = editResult(
-      cancelQueuedThreadMessageEdit(deps.db, deps.hub, {
-        id: queuedMessageId,
-        threadId: thread.id,
-        expectedUpdatedAt: payload.expectedUpdatedAt,
-        editToken: payload.editToken,
-      }),
-    );
-    requestQueuedMessageDispatch(deps, {
-      kind: "edit-released",
-      threadId: thread.id,
-      queuedMessageId,
-    });
-    return context.json(result);
-  });
-
   patch(routes.updateQueuedMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     ensureThreadQueueIsWritable(thread);
@@ -382,7 +335,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     const result = updateQueuedThreadMessage(deps.db, deps.hub, {
       content: input,
-      editToken: payload.editToken ?? null,
       expectedUpdatedAt: payload.expectedUpdatedAt,
       id: context.req.param("queuedMessageId"),
       threadId: thread.id,
@@ -397,12 +349,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Queued message is already being sent",
       );
     }
-    if (result.kind === "edit_conflict")
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "Queued message edit session changed",
-      );
     if (result.kind === "stale") {
       throw new ApiError(
         409,
@@ -410,12 +356,33 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Queued message changed since editing began",
       );
     }
-    requestQueuedMessageDispatch(deps, {
-      kind: "edit-released",
-      threadId: thread.id,
-      queuedMessageId: result.queuedMessage.id,
-    });
+    if (result.releasedEditHold) {
+      requestEditReleasedQueuedMessageDispatch(deps, {
+        queuedMessageId: result.queuedMessage.id,
+        threadId: thread.id,
+      });
+    }
     return context.json(toThreadQueuedMessage(result.queuedMessage));
+  });
+
+  post(routes.holdQueuedMessageForEdit, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    ensureThreadQueueIsWritable(thread);
+    return context.json(
+      holdQueuedMessageForEdit(deps, {
+        queuedMessageId: context.req.param("queuedMessageId"),
+        threadId: thread.id,
+      }),
+    );
+  });
+
+  del(routes.releaseQueuedMessageEditHold, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    releaseQueuedMessageEditHold(deps, {
+      queuedMessageId: context.req.param("queuedMessageId"),
+      threadId: thread.id,
+    });
+    return context.json({ ok: true });
   });
 
   del(routes.deleteQueuedMessage, (context) => {

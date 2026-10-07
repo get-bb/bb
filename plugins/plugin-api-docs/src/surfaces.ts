@@ -1258,6 +1258,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_pruneCache",
           "PluginBbSdk.plugins.experimental_startUpdate",
           "PluginBbSdk.plugins.experimental_updateJobs",
+          "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
+          "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

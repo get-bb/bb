@@ -489,9 +489,6 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
     dismissInlineQueuedMessageEditor,
-    clearInlineQueuedMessageEditor,
-    cancelHeldQueuedMessageEdit,
-    queuedEditActionPending,
     beginEditQueuedMessage,
     queuedMessageDraftSession,
   } = useInlineQueuedMessageEditing({
@@ -915,14 +912,13 @@ export function ThreadDetailPromptArea({
     handleReorderQueuedMessage,
     handleSetQueuedMessageGroupBoundary,
   } = useQueuedMessageActions({
-    queuedEditActionPending,
     threadId: thread.id,
     queuedMessages,
     sendProcessingPersistence: "until-left-queue",
     onSendSuccess: () => setInlineAttachmentError(null),
     onSaveSuccess: () => setInlineAttachmentError(null),
     inlineEditingQueuedMessage,
-    clearInlineQueuedMessageEditor,
+    dismissInlineQueuedMessageEditor,
     activeComposerDraftInput,
   });
   const isQueueMutationPending =
@@ -1896,13 +1892,6 @@ export function ThreadDetailPromptArea({
     const inlineEditor: QueuedMessageInlineEditor = {
       queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
-      notice: queuedMessages.some(
-        (row) =>
-          row.id === inlineEditingQueuedMessage.queuedMessageId &&
-          row.editToken === inlineEditingQueuedMessage.editToken,
-      )
-        ? undefined
-        : "This edit is no longer held by this client. Your draft is preserved; copy it before closing.",
       onDismiss: dismissInlineQueuedMessageEditor,
       content: buildInlineDraftComposer({
         attachments: {
@@ -1953,7 +1942,6 @@ export function ThreadDetailPromptArea({
     handleInlineComposerSubmit,
     inlineAttachmentError,
     inlineEditingQueuedMessage,
-    queuedMessages,
     inlineExecutionConfig,
     inlinePermissionConfig,
     isAttachingInlineFiles,
@@ -2233,7 +2221,6 @@ export function ThreadDetailPromptArea({
             onReorder={handleReorderQueuedMessage}
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
-            onCancelEdit={cancelHeldQueuedMessageEdit}
             onDelete={handleDeleteQueuedMessage}
           />
         )}
@@ -2247,7 +2234,6 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
-      cancelHeldQueuedMessageEdit,
       onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,

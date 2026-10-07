@@ -427,8 +427,6 @@ export {
 export type { HostDaemonSessionRow } from "./sessions.js";
 
 export {
-  beginQueuedThreadMessageEdit,
-  cancelQueuedThreadMessageEdit,
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,
@@ -440,6 +438,7 @@ export {
   getQueuedThreadMessage,
   hasQueuedRetryOfTurnRequest,
   hasClaimedQueuedThreadMessages,
+  holdQueuedThreadMessageForEdit,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
   listDueScheduledQueuedThreadMessages,
@@ -453,6 +452,7 @@ export {
   listRetryableFailedQueuedThreadMessages,
   listThreadIdsWithHostOfflineQueueWaits,
   releaseQueuedMessageClaim,
+  releaseQueuedThreadMessageEditHold,
   requeueClaimedQueuedThreadMessages,
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageWaitingOn,

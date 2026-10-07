@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { acquireProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -89,7 +88,6 @@ export interface CreateQueuedThreadMessageInput {
 }
 
 export interface UpdateQueuedThreadMessageInput {
-  editToken?: string | null;
   content: PromptInput[];
   expectedUpdatedAt: number;
   id: string;
@@ -218,11 +216,29 @@ export type SetQueuedThreadMessageGroupBoundaryResult =
   | ReorderQueuedThreadMessageClaimed;
 
 export type UpdateQueuedThreadMessageResult =
-  | { kind: "updated"; queuedMessage: QueuedThreadMessageRow }
+  | {
+      kind: "updated";
+      queuedMessage: QueuedThreadMessageRow;
+      releasedEditHold: boolean;
+    }
   | { kind: "not_found" }
   | { kind: "claimed" }
-  | { kind: "stale" }
-  | { kind: "edit_conflict" };
+  | { kind: "stale" };
+
+export interface QueuedThreadMessageEditHoldArgs {
+  id: string;
+  threadId: string;
+}
+
+export interface HoldQueuedThreadMessageForEditArgs
+  extends QueuedThreadMessageEditHoldArgs {
+  heldUntil: number;
+}
+
+export type HoldQueuedThreadMessageForEditResult =
+  | { kind: "held" }
+  | { kind: "not_found" }
+  | { kind: "claimed" };
 
 export type ReleaseQueuedMessageClaimArgs =
   ClaimedQueuedThreadMessageMutationArgs;
@@ -322,7 +338,7 @@ export function isOrdinaryTurnEndQueuedMessage(
  * pointer at the SQL so the two cannot drift silently.
  */
 function isIdleDrainableQueuedMessage(row: QueuedThreadMessageRow): boolean {
-  if (row.failureReason !== null || row.editToken !== null) return false;
+  if (row.failureReason !== null) return false;
   if (row.waitingOn === null) return true;
   try {
     const parsed = JSON.parse(row.waitingOn) as { kind?: unknown };
@@ -360,6 +376,15 @@ function queuedMessageGroupingEnvelopeMatches(
 
 function isQueuedThreadMessageClaimed(row: QueuedThreadMessageRow): boolean {
   return row.claimedAt !== null || row.claimToken !== null;
+}
+
+function isQueuedThreadMessageGroupEditHeld(
+  rows: readonly QueuedThreadMessageRow[],
+  now: number,
+): boolean {
+  return rows.some(
+    (row) => row.editHeldUntil !== null && row.editHeldUntil > now,
+  );
 }
 
 function requireClaimedQueuedThreadMessage(
@@ -488,7 +513,7 @@ function resolveQueuedThreadMessageNeighbor(
   if (
     !neighbor ||
     neighbor.threadId !== args.threadId ||
-    (isQueuedThreadMessageClaimed(neighbor) || neighbor.editToken !== null)
+    isQueuedThreadMessageClaimed(neighbor)
   ) {
     return false;
   }
@@ -550,11 +575,6 @@ function applyQueuedThreadMessageGroupBoundary(
     }
   }
 
-  const heldGroupIds = new Set(partitionQueuedMessageGroups(queuedMessages)
-    .filter((group) => group.some((row) => row.editToken !== null))
-    .flatMap((group) => group.map((row) => row.id)));
-  if (queuedMessages.some((row, index) => row.groupWithNext !== (index < boundaryIndex) &&
-    (heldGroupIds.has(row.id) || (index < boundaryIndex && heldGroupIds.has(queuedMessages[index + 1]?.id ?? ""))))) return { kind: "claimed" };
   let changed = false;
   const now = Date.now();
   for (const [index, queuedMessage] of queuedMessages.entries()) {
@@ -606,29 +626,6 @@ function applyPreservedLeadGroupAfterReorder(
   return changed ? listQueuedThreadMessages(db, threadId) : queuedMessages;
 }
 
-function preserveHeldGroupsAfterReorder(
-  before: QueuedThreadMessageRow[],
-  after: QueuedThreadMessageRow[],
-): QueuedThreadMessageRow[] {
-  const nextGroups = partitionQueuedMessageGroups(after);
-  for (const group of partitionQueuedMessageGroups(before)) {
-    if (!group.some((row) => row.editToken !== null)) continue;
-    const nextGroup = nextGroups.find((rows) =>
-      rows.some((row) => row.id === group[0]?.id),
-    );
-    if (
-      !nextGroup ||
-      !stringArraysEqual(
-        group.map((row) => row.id),
-        nextGroup.map((row) => row.id),
-      )
-    ) {
-      throw new ReorderQueuedThreadMessageRollback({ kind: "claimed" });
-    }
-  }
-  return after;
-}
-
 export function createQueuedThreadMessageInTransaction(
   tx: DbTransaction,
   input: CreateQueuedThreadMessageInput,
@@ -677,6 +674,7 @@ export function createQueuedThreadMessageInTransaction(
       groupWithNext: false,
       claimedAt: null,
       claimToken: null,
+      editHeldUntil: null,
       sortKey,
       createdAt: now,
       updatedAt: now,
@@ -698,49 +696,6 @@ export function createQueuedThreadMessage(
   return row;
 }
 
-export interface QueuedThreadMessageEditInput {
-  editToken?: string | null;
-  id: string;
-  threadId: string;
-  expectedUpdatedAt: number;
-}
-
-export function beginQueuedThreadMessageEdit(
-  db: DbConnection,
-  notifier: DbNotifier,
-  input: QueuedThreadMessageEditInput,
-): UpdateQueuedThreadMessageResult {
-  const result = db.transaction((tx): UpdateQueuedThreadMessageResult => {
-    const row = getQueuedThreadMessage(tx, input.id);
-    if (!row || row.threadId !== input.threadId) return { kind: "not_found" };
-    if (isQueuedThreadMessageClaimed(row)) return { kind: "claimed" };
-    if (row.editToken !== (input.editToken ?? null) || row.payloadKind !== "inline") return { kind: "edit_conflict" };
-    if (row.updatedAt !== input.expectedUpdatedAt) return { kind: "stale" };
-    const queuedMessage = tx.update(queuedThreadMessages).set({ editToken: randomUUID(), updatedAt: Math.max(Date.now(), row.updatedAt + 1) }).where(eq(queuedThreadMessages.id, row.id)).returning().get();
-    return queuedMessage ? { kind: "updated", queuedMessage } : { kind: "not_found" };
-  }, { behavior: "immediate" });
-  if (result.kind === "updated") notifier.notifyThread(input.threadId, ["queue-changed"]);
-  return result;
-}
-
-export function cancelQueuedThreadMessageEdit(
-  db: DbConnection,
-  notifier: DbNotifier,
-  input: QueuedThreadMessageEditInput & { editToken: string },
-): UpdateQueuedThreadMessageResult {
-  const result = db.transaction((tx): UpdateQueuedThreadMessageResult => {
-    const row = getQueuedThreadMessage(tx, input.id);
-    if (!row || row.threadId !== input.threadId) return { kind: "not_found" };
-    if (isQueuedThreadMessageClaimed(row)) return { kind: "claimed" };
-    if (row.editToken !== input.editToken) return { kind: "edit_conflict" };
-    if (row.updatedAt !== input.expectedUpdatedAt) return { kind: "stale" };
-    const queuedMessage = tx.update(queuedThreadMessages).set({ editToken: null, updatedAt: Math.max(Date.now(), row.updatedAt + 1) }).where(eq(queuedThreadMessages.id, row.id)).returning().get();
-    return queuedMessage ? { kind: "updated", queuedMessage } : { kind: "not_found" };
-  }, { behavior: "immediate" });
-  if (result.kind === "updated") notifier.notifyThread(input.threadId, ["queue-changed"]);
-  return result;
-}
-
 export function updateQueuedThreadMessage(
   db: DbConnection,
   notifier: DbNotifier,
@@ -755,9 +710,6 @@ export function updateQueuedThreadMessage(
       if (isQueuedThreadMessageClaimed(existing)) {
         return { kind: "claimed" };
       }
-      if (existing.editToken !== (input.editToken ?? null)) {
-        return { kind: "edit_conflict" };
-      }
       if (existing.updatedAt !== input.expectedUpdatedAt) {
         return { kind: "stale" };
       }
@@ -771,7 +723,7 @@ export function updateQueuedThreadMessage(
         .update(queuedThreadMessages)
         .set({
           content: JSON.stringify(input.content),
-          editToken: null,
+          editHeldUntil: null,
           updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
         })
         .where(eq(queuedThreadMessages.id, input.id))
@@ -780,7 +732,11 @@ export function updateQueuedThreadMessage(
       if (!queuedMessage) {
         return { kind: "not_found" };
       }
-      return { kind: "updated", queuedMessage };
+      return {
+        kind: "updated",
+        queuedMessage,
+        releasedEditHold: existing.editHeldUntil !== null,
+      };
     },
     { behavior: "immediate" },
   );
@@ -789,6 +745,48 @@ export function updateQueuedThreadMessage(
     notifier.notifyThread(input.threadId, ["queue-changed"]);
   }
   return result;
+}
+
+export function holdQueuedThreadMessageForEdit(
+  db: DbConnection,
+  args: HoldQueuedThreadMessageForEditArgs,
+): HoldQueuedThreadMessageForEditResult {
+  return db.transaction(
+    (tx): HoldQueuedThreadMessageForEditResult => {
+      const existing = getQueuedThreadMessage(tx, args.id);
+      if (!existing || existing.threadId !== args.threadId) {
+        return { kind: "not_found" };
+      }
+      if (isQueuedThreadMessageClaimed(existing)) {
+        return { kind: "claimed" };
+      }
+      tx.update(queuedThreadMessages)
+        .set({ editHeldUntil: args.heldUntil })
+        .where(eq(queuedThreadMessages.id, args.id))
+        .run();
+      return { kind: "held" };
+    },
+    { behavior: "immediate" },
+  );
+}
+
+export function releaseQueuedThreadMessageEditHold(
+  db: DbConnection,
+  args: QueuedThreadMessageEditHoldArgs,
+): boolean {
+  return (
+    db
+      .update(queuedThreadMessages)
+      .set({ editHeldUntil: null })
+      .where(
+        and(
+          eq(queuedThreadMessages.id, args.id),
+          eq(queuedThreadMessages.threadId, args.threadId),
+          isNotNull(queuedThreadMessages.editHeldUntil),
+        ),
+      )
+      .run().changes > 0
+  );
 }
 
 export function getQueuedThreadMessage(db: DbQueryConnection, id: string) {
@@ -995,8 +993,6 @@ function claimQueuedThreadMessageIdsInTransaction(
 ): ClaimedQueuedThreadMessageRow[] | null {
   if (ids.length === 0) return null;
 
-  const rows = tx.select().from(queuedThreadMessages).where(inArray(queuedThreadMessages.id, [...ids])).all();
-  if (rows.length !== ids.length || rows.some((row) => row.editToken !== null)) return null;
   const now = Date.now();
   const claimToken = createQueuedThreadMessageClaimToken();
   const updated = tx
@@ -1007,7 +1003,6 @@ function claimQueuedThreadMessageIdsInTransaction(
         inArray(queuedThreadMessages.id, [...ids]),
         isNull(queuedThreadMessages.claimedAt),
         isNull(queuedThreadMessages.claimToken),
-        isNull(queuedThreadMessages.editToken),
       ),
     )
     .returning()
@@ -1051,8 +1046,10 @@ function isAutomaticQueuedThreadMessageGroupClaimAllowed(
   rows: readonly QueuedThreadMessageRow[],
   pauseOrdinaryMessages: boolean,
   retryingFailure: boolean,
+  now: number,
 ): boolean {
   return (
+    !isQueuedThreadMessageGroupEditHeld(rows, now) &&
     (retryingFailure || rows.every((row) => row.failureReason === null)) &&
     (!pauseOrdinaryMessages ||
       rows.every((row) => !isOrdinaryTurnEndQueuedMessage(row)))
@@ -1077,7 +1074,7 @@ export function claimQueuedThreadMessageGroup(
         partitionQueuedMessageGroups(queuedMessages).find((rows) =>
           rows.some((row) => row.id === id),
         ) ?? null;
-      if (group === null || group.some((row) => row.editToken !== null)) {
+      if (group === null) {
         return null;
       }
       if (
@@ -1086,6 +1083,7 @@ export function claimQueuedThreadMessageGroup(
             group,
             isThreadQueueAutoSendPaused(tx, existing.threadId),
             policy.retryingFailure,
+            Date.now(),
           )) ||
         (policy.kind === "automatic" && !policy.isGroupEligible(group))
       ) {
@@ -1125,23 +1123,31 @@ export function claimNextQueuedThreadMessageGroup(
       // on. A group with one waiting member is skipped whole — dispatching
       // its drainable tail alone would split a batch the sender composed as
       // one prompt — and skipping it does not block the independent rows
-      // behind it: the queue is a queue, not a pipeline.
+      // behind it: the queue is a queue, not a pipeline. The one exception is
+      // a group someone is editing: the drainable rows behind it wait for the
+      // edit, so it still goes first once it is saved or cancelled.
       const queuedMessages = listQueuedThreadMessages(tx, threadId);
       const pauseOrdinaryMessages = isThreadQueueAutoSendPaused(tx, threadId);
+      const now = Date.now();
+      const drainableGroups = partitionQueuedMessageGroups(
+        queuedMessages,
+      ).filter((rows) => rows.some(isIdleDrainableQueuedMessage));
+      const editHeldIndex = drainableGroups.findIndex((rows) =>
+        isQueuedThreadMessageGroupEditHeld(rows, now),
+      );
       const group =
-        partitionQueuedMessageGroups(queuedMessages).find((rows) => {
-          const eligible =
-            !rows.some((row) => row.editToken !== null) &&
-            rows.some(isIdleDrainableQueuedMessage) && isGroupEligible(rows);
-          return (
-            eligible &&
-            isAutomaticQueuedThreadMessageGroupClaimAllowed(
-              rows,
-              pauseOrdinaryMessages,
-              false,
-            )
-          );
-        }) ?? null;
+        drainableGroups
+          .slice(0, editHeldIndex === -1 ? undefined : editHeldIndex)
+          .find(
+            (rows) =>
+              isGroupEligible(rows) &&
+              isAutomaticQueuedThreadMessageGroupClaimAllowed(
+                rows,
+                pauseOrdinaryMessages,
+                false,
+                now,
+              ),
+          ) ?? null;
       if (group === null) {
         return null;
       }
@@ -1179,8 +1185,6 @@ export function reorderQueuedThreadMessage({
         if (!movedQueuedMessage || movedQueuedMessage.threadId !== threadId) {
           return { kind: "not_found" };
         }
-        const movingGroup = partitionQueuedMessageGroups(listQueuedThreadMessages(tx, threadId)).find((group) => group.some((row) => row.id === queuedMessageId));
-        if (movingGroup?.some((row) => row.editToken !== null)) return { kind: "claimed" };
         if (isQueuedThreadMessageClaimed(movedQueuedMessage)) {
           return { kind: "claimed" };
         }
@@ -1307,28 +1311,23 @@ export function reorderQueuedThreadMessage({
           if (groupResult.kind === "updated") {
             return {
               kind: "reordered",
-              queuedMessages: preserveHeldGroupsAfterReorder(
-                currentQueuedMessages,
-                groupResult.queuedMessages,
-              ),
+              queuedMessages: groupResult.queuedMessages,
             };
           }
         } else {
           return {
             kind: "reordered",
-            queuedMessages: preserveHeldGroupsAfterReorder(
-              currentQueuedMessages,
-              applyPreservedLeadGroupAfterReorder(tx, threadId, originalLeadGroupIds),
+            queuedMessages: applyPreservedLeadGroupAfterReorder(
+              tx,
+              threadId,
+              originalLeadGroupIds,
             ),
           };
         }
 
         return {
           kind: "reordered",
-          queuedMessages: preserveHeldGroupsAfterReorder(
-            currentQueuedMessages,
-            listQueuedThreadMessages(tx, threadId),
-          ),
+          queuedMessages: listQueuedThreadMessages(tx, threadId),
         };
       },
       { behavior: "immediate" },
@@ -1608,7 +1607,6 @@ function liveQueuedThreadMessage() {
 
 function automaticallyDrainableQueuedThreadMessage() {
   return and(
-    isNull(queuedThreadMessages.editToken),
     liveQueuedThreadMessage(),
     isNull(queuedThreadMessages.failureReason),
   );

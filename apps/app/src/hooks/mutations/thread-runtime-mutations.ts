@@ -298,54 +298,6 @@ export function useCreateThreadQueuedMessage() {
   });
 }
 
-export function useBeginThreadQueuedMessageEdit() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      id: string;
-      queuedMessageId: string;
-      expectedUpdatedAt: number;
-      editToken?: string | null;
-    }) =>
-      sdk.threads.queuedMessages.beginEdit({
-        threadId: input.id,
-        queuedMessageId: input.queuedMessageId,
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        editToken: input.editToken,
-      }),
-    onSuccess: (queuedMessage, input) =>
-      applyQueuedMessageUpdateResult({
-        queryClient,
-        queuedMessage,
-        threadId: input.id,
-      }),
-  });
-}
-
-export function useCancelThreadQueuedMessageEdit() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      id: string;
-      queuedMessageId: string;
-      expectedUpdatedAt: number;
-      editToken: string;
-    }) =>
-      sdk.threads.queuedMessages.cancelEdit({
-        threadId: input.id,
-        queuedMessageId: input.queuedMessageId,
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        editToken: input.editToken,
-      }),
-    onSuccess: (queuedMessage, input) =>
-      applyQueuedMessageUpdateResult({
-        queryClient,
-        queuedMessage,
-        threadId: input.id,
-      }),
-  });
-}
-
 export function useUpdateThreadQueuedMessage() {
   const queryClient = useQueryClient();
 
@@ -357,14 +309,12 @@ export function useUpdateThreadQueuedMessage() {
     },
     mutationFn: ({
       expectedUpdatedAt,
-      editToken,
       id,
       input,
       queuedMessageId,
     }: UpdateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       sdk.threads.queuedMessages.update({
         expectedUpdatedAt,
-        editToken,
         input,
         queuedMessageId,
         threadId: id,

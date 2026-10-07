@@ -314,7 +314,6 @@ const retry: readonly ThreadQueuedMessage[] = [
       reason: "Rate limited",
     },
     sendAt: STORY_NOW + 18 * MINUTE_MS,
-    editToken: null,
     editable: false,
     createdAt: STORY_NOW - 22 * MINUTE_MS,
   }),
