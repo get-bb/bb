@@ -1425,7 +1425,20 @@ describe("slow query index plans", () => {
   });
 
   it("pins maintenance discovery to the typed sequence index", () => {
-    const { db } = setup();
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/diff/updated",
+        scope: turnScope("pruning-turn"),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: "{}",
+        createdAt: 1,
+      },
+    ]);
     const statements = captureStatements(db, () => {
       advanceThreadPruning(db, "turn-diffs");
     });

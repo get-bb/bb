@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
-import { dropPluginEnabledFollowsDefaultColumn } from "./helpers/rewind.js";
+import {
+  dropPluginEnabledFollowsDefaultColumn,
+  rewindThreadPruningWork,
+} from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
   createQueuedThreadMessage,
@@ -705,6 +708,7 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  rewindThreadPruningWork(db);
   dropPluginEnabledFollowsDefaultColumn(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -826,6 +830,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  rewindThreadPruningWork(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -3196,6 +3201,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      rewindThreadPruningWork(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
       db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();

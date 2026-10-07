@@ -4,6 +4,8 @@ import {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   environments,
   events,
+  insertEvents,
+  noopNotifier,
   getEnvironment,
   hostDaemonSessions,
   listQueuedThreadMessages,
@@ -565,20 +567,21 @@ describe("runPeriodicSweeps", () => {
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
-      for (const sequence of [1, 2])
-        harness.db
-          .insert(events)
-          .values({
-            id: `pruning-tick-${sequence}`,
-            threadId: thread.id,
-            sequence,
-            type: "turn/diff/updated",
-            scopeKind: "turn",
-            turnId: "turn",
-            data: "{}",
-            createdAt: 1,
-          })
-          .run();
+      insertEvents(
+        harness.db,
+        noopNotifier,
+        [1, 2].map((sequence) => ({
+          threadId: thread.id,
+          sequence,
+          type: "turn/diff/updated",
+          scope: { kind: "turn", turnId: "turn" },
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: "{}",
+          createdAt: 1,
+        })),
+      );
       harness.db
         .update(threads)
         .set({ status: "active" })
@@ -606,19 +609,19 @@ describe("runPeriodicSweeps", () => {
             .where(eq(events.threadId, thread.id))
             .all(),
         ).toEqual([{ sequence: 2 }]);
-        harness.db
-          .insert(events)
-          .values({
-            id: "pruning-tick-3",
+        insertEvents(harness.db, noopNotifier, [
+          {
             threadId: thread.id,
             sequence: 3,
             type: "turn/completed",
-            scopeKind: "turn",
-            turnId: "turn",
+            scope: { kind: "turn", turnId: "turn" },
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
             data: "{}",
             createdAt: now,
-          })
-          .run();
+          },
+        ]);
         clock.mockReturnValue(now + 20_000);
         await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
         expect(

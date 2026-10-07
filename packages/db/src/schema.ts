@@ -889,6 +889,7 @@ export const threadPruningCursors = sqliteTable(
     step: integer("step").notNull().default(0),
     sequence: integer("sequence").notNull().default(0),
     upperSequence: integer("upper_sequence").notNull().default(0),
+    workRevision: integer("work_revision").notNull().default(0),
     cycle: integer("cycle").notNull().default(0),
     latestRootSequence: integer("latest_root_sequence").notNull().default(0),
     latestContextSequence: integer("latest_context_sequence")
@@ -1307,6 +1308,21 @@ export const projectAttachmentThreads = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.attachmentId, table.threadId] }),
     index("project_attachment_threads_thread_idx").on(table.threadId),
+  ],
+);
+
+export const threadPruningWork = sqliteTable(
+  "thread_pruning_work",
+  {
+    policy: text("policy").notNull(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull().default(1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.policy, table.threadId] }),
+    index("thread_pruning_work_thread_idx").on(table.threadId),
   ],
 );
 

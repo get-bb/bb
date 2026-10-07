@@ -1,4 +1,5 @@
 import { prepareCachedQuery } from "../connection.js";
+import { markThreadPruningPolicyWork } from "./thread-pruning-work.js";
 import { copyProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -2084,18 +2085,22 @@ export function archiveThread(
   id: string,
 ) {
   const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({ archivedAt: now, updatedAt: now })
-    .where(
-      and(
-        inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .returning()
-    .all();
+  const updated = db.transaction((tx) => {
+    const archived = tx
+      .update(threads)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(
+        and(
+          inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
+          isNull(threads.archivedAt),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .returning()
+      .all();
+    markThreadPruningPolicyWork(tx, archived.map((thread) => thread.id), "rate-limits");
+    return archived;
+  });
   for (const thread of updated) {
     notifier.notifyThread(thread.id, ["archived-changed"], {
       projectId: thread.projectId,
@@ -2120,12 +2125,15 @@ export function unarchiveThread(
           return null;
       }
       const now = Date.now();
-      return tx
+      const unarchived = tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
         .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
+      if (unarchived)
+        markThreadPruningPolicyWork(tx, [unarchived.id], "rate-limits");
+      return unarchived;
     },
     { behavior: "immediate" },
   );
