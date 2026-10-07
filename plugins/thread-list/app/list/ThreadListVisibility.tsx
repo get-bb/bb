@@ -142,8 +142,6 @@ export function ThreadListVisibility({
     return () => cancelAnimationFrame(frame);
   }, [rowActionsThreadId]);
   const customizeRowActions = (threadId: string) => {
-    rowActionsFocusTarget.current = null;
-    setCustomizing(null);
     setRowActionsThreadId(threadId);
   };
   const finishCustomizingRowActions = useCallback(

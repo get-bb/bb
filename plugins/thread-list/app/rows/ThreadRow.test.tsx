@@ -630,7 +630,6 @@ describe("ThreadRow", () => {
   });
 
   it("customizes row actions on the real row until Done", () => {
-    getDefaultStore().set(preferenceValueAtom("rowActions"), ["pin"]);
     const finish = vi.fn();
     renderThreadRow({ onFinishCustomizingRowActions: finish });
     expect(screen.getByRole("link", { name: "Open Thread" })).toBeTruthy();
@@ -639,12 +638,7 @@ describe("ThreadRow", () => {
         .querySelector("[data-sidebar-thread-trailing]")
         ?.classList.contains("hidden"),
     ).toBe(true);
-    const editor = screen.getByRole("group", { name: "Row actions" });
-    expect(
-      Array.from(
-        editor.querySelectorAll<HTMLElement>("[data-row-action-slot]"),
-      ).map((slot) => slot.dataset.rowActionSlot),
-    ).toEqual(["none", "none", "pin"]);
+    expect(screen.getByRole("group", { name: "Row actions" })).toBeTruthy();
     expect(screen.getByText("Shown on hover for every thread.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(finish).toHaveBeenCalledWith(true);

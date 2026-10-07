@@ -27,7 +27,7 @@ afterEach(() => {
   cleanup();
 });
 
-it("shows empty slots before chosen actions, next to the menu", () => {
+it("previews empty slots before shown actions, next to the menu", () => {
   const store = createStore();
   store.set(threadRowActionsAtom, ["pin", "archive"]);
   render(

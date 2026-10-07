@@ -143,7 +143,6 @@ export function ThreadRowActionsEditor({
       role="group"
       aria-label="Row actions"
       {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
-      data-testid="sidebar-thread-list-row-actions-editor"
       className="relative z-10 flex shrink-0 items-center gap-0.5"
       onClick={(event) => event.stopPropagation()}
       onClickCapture={onClickCapture}
@@ -235,7 +234,6 @@ export function ThreadRowActionsCustomizeFooter({
   return (
     <div
       {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
-      data-testid="sidebar-thread-list-row-actions-footer"
       className="flex items-center gap-2 pr-1"
       style={style}
       onKeyDown={(event) => finishOnEscape(event, onDone)}
