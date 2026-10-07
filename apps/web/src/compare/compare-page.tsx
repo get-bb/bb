@@ -20,7 +20,13 @@ import {
 } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import type { CompareCell, Comparison, Mark } from "./comparisons";
+import type {
+  CompareCell,
+  CompareFaqGroup,
+  CompareHighlight,
+  Comparison,
+  Mark,
+} from "./comparisons";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
 import figmaLogo from "../assets/company-logos/figma.svg";
 import mapboxLogo from "../assets/company-logos/mapbox.svg";
@@ -63,7 +69,7 @@ function brandText(text: string): ReactNode {
   );
 }
 
-function brandProse(node: ReactNode): ReactNode {
+export function brandProse(node: ReactNode): ReactNode {
   if (typeof node === "string") return brandText(node);
   if (Array.isArray(node)) {
     return node.map((child, index) => (
@@ -81,11 +87,11 @@ function brandProse(node: ReactNode): ReactNode {
   return node;
 }
 
-function faqJsonLd(comparison: Comparison): string {
+export function faqJsonLd(faq: CompareFaqGroup[]): string {
   const data = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: comparison.faq.flatMap((group) =>
+    mainEntity: faq.flatMap((group) =>
       group.items.map((item) => ({
         "@type": "Question",
         name: item.question,
@@ -107,7 +113,9 @@ export function compareHead(comparison: Comparison) {
       `/compare/${comparison.slug}`,
     ),
     links: siteHeadLinks(compareCss),
-    scripts: [{ type: "application/ld+json", children: faqJsonLd(comparison) }],
+    scripts: [
+      { type: "application/ld+json", children: faqJsonLd(comparison.faq) },
+    ],
   };
 }
 
@@ -249,6 +257,80 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
   );
 }
 
+export function Highlight({ highlight }: { highlight: CompareHighlight }) {
+  if (highlight.wide) {
+    return (
+      <section className="band cmp-wide-band" data-reveal>
+        <div className="cmp-wide-copy">
+          <h2>{brandProse(highlight.title)}</h2>
+          {brandProse(highlight.body)}
+        </div>
+        {highlight.visual}
+      </section>
+    );
+  }
+  return (
+    <Band title={brandProse(highlight.title)} visual={highlight.visual}>
+      {brandProse(highlight.body)}
+    </Band>
+  );
+}
+
+export function FaqSection({
+  title,
+  faq,
+}: {
+  title: string;
+  faq: CompareFaqGroup[];
+}) {
+  return (
+    <section className="cmp-section cmp-faq" data-reveal>
+      <h2 className="sec-title">{title}</h2>
+      {faq.map((group) => (
+        <div key={group.title} className="cmp-faq-group">
+          <h3 className="cmp-faq-group-title">{group.title}</h3>
+          <div className="cmp-faq-list">
+            {group.items.map((item) => (
+              <details key={item.question} className="cmp-faq-item">
+                <summary>
+                  <span>{brandProse(item.question)}</span>
+                  <HugeiconsIcon
+                    icon={ArrowDown01Icon}
+                    className="cmp-faq-chevron"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="cmp-faq-answer">{brandProse(item.answer)}</div>
+              </details>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function Closer({ closer }: { closer: Comparison["closer"] }) {
+  return (
+    <section className="closer" data-reveal>
+      <h2 className="sec-title">{brandProse(closer.title)}</h2>
+      <p>{brandProse(closer.body)}</p>
+      <InstallOptions placement="closer" />
+      <div className="cmp-team">
+        <h3>Built by alumni from</h3>
+        <ul className="company-proof-logos cmp-team-logos">
+          {TEAM_COMPANIES.map(([name, logo]) => (
+            <li key={name} className="company-proof-company">
+              <img src={logo} alt="" width={20} height={20} />
+              {name}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export function ComparePage({ comparison }: { comparison: Comparison }) {
   useInitAnalytics();
   useScrollReveal();
@@ -278,29 +360,9 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         ) : null}
       </header>
 
-      {[comparison.tailored, ...comparison.sections].map((highlight) =>
-        highlight.wide ? (
-          <section
-            key={highlight.title}
-            className="band cmp-wide-band"
-            data-reveal
-          >
-            <div className="cmp-wide-copy">
-              <h2>{brandProse(highlight.title)}</h2>
-              {brandProse(highlight.body)}
-            </div>
-            {highlight.visual}
-          </section>
-        ) : (
-          <Band
-            key={highlight.title}
-            title={brandProse(highlight.title)}
-            visual={highlight.visual}
-          >
-            {brandProse(highlight.body)}
-          </Band>
-        ),
-      )}
+      {[comparison.tailored, ...comparison.sections].map((highlight) => (
+        <Highlight key={highlight.title} highlight={highlight} />
+      ))}
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title cmp-table-title">
@@ -319,48 +381,9 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <CompareTable comparison={comparison} />
       </section>
 
-      <section className="cmp-section cmp-faq" data-reveal>
-        <h2 className="sec-title">{comparison.faqTitle}</h2>
-        {comparison.faq.map((group) => (
-          <div key={group.title} className="cmp-faq-group">
-            <h3 className="cmp-faq-group-title">{group.title}</h3>
-            <div className="cmp-faq-list">
-              {group.items.map((item) => (
-                <details key={item.question} className="cmp-faq-item">
-                  <summary>
-                    <span>{brandProse(item.question)}</span>
-                    <HugeiconsIcon
-                      icon={ArrowDown01Icon}
-                      className="cmp-faq-chevron"
-                      aria-hidden="true"
-                    />
-                  </summary>
-                  <div className="cmp-faq-answer">
-                    {brandProse(item.answer)}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        ))}
-      </section>
+      <FaqSection title={comparison.faqTitle} faq={comparison.faq} />
 
-      <section className="closer" data-reveal>
-        <h2 className="sec-title">{brandProse(comparison.closer.title)}</h2>
-        <p>{brandProse(comparison.closer.body)}</p>
-        <InstallOptions placement="closer" />
-        <div className="cmp-team">
-          <h3>Built by alumni from</h3>
-          <ul className="company-proof-logos cmp-team-logos">
-            {TEAM_COMPANIES.map(([name, logo]) => (
-              <li key={name} className="company-proof-company">
-                <img src={logo} alt="" width={20} height={20} />
-                {name}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      <Closer closer={comparison.closer} />
 
       <SiteFooter current={`/compare/${comparison.slug}`} />
     </div>

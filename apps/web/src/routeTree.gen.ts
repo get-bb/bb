@@ -16,6 +16,7 @@ import { Route as PluginGuideRouteImport } from "./routes/plugin-guide";
 import { Route as MarketplaceRouteImport } from "./routes/marketplace_";
 import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
+import { Route as ClaudeCodeMobileRouteImport } from "./routes/claude-code-mobile";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
 import { Route as BlogRouteImport } from "./routes/blog";
 import { Route as IndexRouteImport } from "./routes/index";
@@ -76,6 +77,11 @@ const LinkRoute = LinkRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: "/dashboard",
   path: "/dashboard",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ClaudeCodeMobileRoute = ClaudeCodeMobileRouteImport.update({
+  id: "/claude-code-mobile",
+  path: "/claude-code-mobile",
   getParentRoute: () => rootRouteImport,
 } as any);
 const ChangelogRoute = ChangelogRouteImport.update({
@@ -217,6 +223,7 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
@@ -252,6 +259,7 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace": typeof MarketplaceRouteWithChildren;
@@ -288,6 +296,7 @@ export interface FileRoutesById {
   "/": typeof IndexRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
+  "/claude-code-mobile": typeof ClaudeCodeMobileRoute;
   "/dashboard": typeof DashboardRoute;
   "/link": typeof LinkRoute;
   "/marketplace_": typeof MarketplaceRouteWithChildren;
@@ -325,6 +334,7 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-mobile"
     | "/dashboard"
     | "/link"
     | "/marketplace"
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-mobile"
     | "/dashboard"
     | "/link"
     | "/marketplace"
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | "/"
     | "/blog"
     | "/changelog"
+    | "/claude-code-mobile"
     | "/dashboard"
     | "/link"
     | "/marketplace_"
@@ -431,6 +443,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   BlogRoute: typeof BlogRoute;
   ChangelogRoute: typeof ChangelogRoute;
+  ClaudeCodeMobileRoute: typeof ClaudeCodeMobileRoute;
   DashboardRoute: typeof DashboardRoute;
   LinkRoute: typeof LinkRoute;
   MarketplaceRoute: typeof MarketplaceRouteWithChildren;
@@ -510,6 +523,13 @@ declare module "@tanstack/react-router" {
       path: "/dashboard";
       fullPath: "/dashboard";
       preLoaderRoute: typeof DashboardRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/claude-code-mobile": {
+      id: "/claude-code-mobile";
+      path: "/claude-code-mobile";
+      fullPath: "/claude-code-mobile";
+      preLoaderRoute: typeof ClaudeCodeMobileRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/changelog": {
@@ -715,6 +735,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
+  ClaudeCodeMobileRoute: ClaudeCodeMobileRoute,
   DashboardRoute: DashboardRoute,
   LinkRoute: LinkRoute,
   MarketplaceRoute: MarketplaceRouteWithChildren,
