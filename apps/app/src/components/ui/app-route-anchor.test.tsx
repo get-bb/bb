@@ -94,6 +94,67 @@ describe("RouteAnchor transition navigation", () => {
       pathname: "/threads/thr-new",
     });
   });
+
+  it.each([{ metaKey: true }, { ctrlKey: true }])(
+    "opens the route in a split on modifier click %o",
+    (modifier) => {
+      render(
+        <MemoryRouter initialEntries={["/threads/thr-current"]}>
+          <RouteNavigationProvider>
+            <CurrentPath />
+            <RouteAnchor href="/projects/prj-a/threads/thr-next">
+              open thr-next
+            </RouteAnchor>
+          </RouteNavigationProvider>
+        </MemoryRouter>,
+      );
+
+      const notPrevented = fireEvent.click(
+        screen.getByRole("link", { name: "open thr-next" }),
+        modifier,
+      );
+
+      expect(notPrevented).toBe(false);
+      expect(openPaneContentInSplit).toHaveBeenCalledTimes(1);
+      expect(openPaneContentInSplit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: {
+            kind: "thread",
+            projectId: "prj-a",
+            threadId: "thr-next",
+          },
+          route: "/projects/prj-a/threads/thr-next",
+        }),
+      );
+      expect(screen.getByTestId("current-path").textContent).toBe(
+        "/threads/thr-current",
+      );
+    },
+  );
+
+  it("leaves shift-click to the browser", () => {
+    render(
+      <MemoryRouter initialEntries={["/threads/thr-current"]}>
+        <RouteNavigationProvider>
+          <CurrentPath />
+          <RouteAnchor href="/projects/prj-a/threads/thr-next">
+            open thr-next
+          </RouteAnchor>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    const notPrevented = fireEvent.click(
+      screen.getByRole("link", { name: "open thr-next" }),
+      { shiftKey: true },
+    );
+
+    expect(notPrevented).toBe(true);
+    expect(openPaneContentInSplit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("current-path").textContent).toBe(
+      "/threads/thr-current",
+    );
+  });
 });
 
 describe("useRouteAnchorDelegate plugin-detail links", () => {
