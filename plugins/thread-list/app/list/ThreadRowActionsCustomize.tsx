@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
@@ -12,7 +11,6 @@ import {
   SortableContext,
 } from "@dnd-kit/sortable";
 import { useAtom } from "jotai";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +31,7 @@ import { threadRowActionsAtom } from "../preferences/atoms.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
+import { SidebarControlButton } from "../rows/SidebarRowControls.js";
 import { THREAD_ROW_ACTIONS } from "../rows/threadRowActions.js";
 
 type RowActionSlot = ThreadRowActionId | null;
@@ -173,18 +172,11 @@ export function ThreadRowActionsEditor({
           ))}
         </SortableContext>
       </DndContext>
-      <span
-        aria-hidden="true"
-        className={cn(
-          SIDEBAR_CONTROL_BUTTON_CLASS,
-          "pointer-events-none flex items-center justify-center text-muted-foreground",
-        )}
-      >
-        <Icon
-          name="MoreHorizontal"
-          className={COARSE_POINTER_ICON_SIZE_CLASS}
-        />
-      </span>
+      <SidebarControlButton
+        label="Done"
+        icon="Check"
+        onClick={() => onDone(true)}
+      />
     </div>
   );
 }
@@ -222,36 +214,6 @@ export function useFinishRowActionsOnOutsideClick(
       document.removeEventListener("click", handleClick, true);
     };
   }, [onDone]);
-}
-
-export function ThreadRowActionsCustomizeFooter({
-  onDone,
-  style,
-}: {
-  onDone: (restoreFocus: boolean) => void;
-  style: CSSProperties;
-}) {
-  return (
-    <div
-      {...{ [CUSTOMIZE_ATTRIBUTE]: "" }}
-      className="flex items-center gap-2 pr-1"
-      style={style}
-      onKeyDown={(event) => finishOnEscape(event, onDone)}
-    >
-      <p className="min-w-0 flex-1 text-xs leading-5 text-muted-foreground">
-        Shown on hover for every thread.
-      </p>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-6 shrink-0 px-2 text-xs text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent focus-visible:ring-2 max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm"
-        onClick={() => onDone(true)}
-      >
-        Done
-      </Button>
-    </div>
-  );
 }
 
 function RowActionSlotPicker({

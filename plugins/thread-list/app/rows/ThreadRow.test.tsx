@@ -639,7 +639,6 @@ describe("ThreadRow", () => {
         ?.classList.contains("hidden"),
     ).toBe(true);
     expect(screen.getByRole("group", { name: "Row actions" })).toBeTruthy();
-    expect(screen.getByText("Shown on hover for every thread.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(finish).toHaveBeenCalledWith(true);
   });

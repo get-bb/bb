@@ -96,7 +96,6 @@ import {
 import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
 import { useThreadRowActionsCustomizing } from "../list/customizeRowActionsContext.js";
 import {
-  ThreadRowActionsCustomizeFooter,
   ThreadRowActionsEditor,
   focusFirstRowActionSlot,
 } from "../list/ThreadRowActionsCustomize.js";
@@ -813,25 +812,17 @@ function ThreadRowComponent({
   });
 
   return (
-    <>
-      <ThreadActionsContextMenu
-        thread={thread}
-        onOpenInSplit={splitAvailable ? openInSplit : undefined}
-        onOpenChange={setIsContextActionsOpen}
-        onRename={rename.startEditingFromMenu}
-        onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
-        disabled={isEditing}
-        dragging={rowDragBindings?.isDragging ?? false}
-      >
-        {row}
-      </ThreadActionsContextMenu>
-      {finishCustomizingActions ? (
-        <ThreadRowActionsCustomizeFooter
-          onDone={finishCustomizingActions}
-          style={rowStyle}
-        />
-      ) : null}
-    </>
+    <ThreadActionsContextMenu
+      thread={thread}
+      onOpenInSplit={splitAvailable ? openInSplit : undefined}
+      onOpenChange={setIsContextActionsOpen}
+      onRename={rename.startEditingFromMenu}
+      onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
+      disabled={isEditing}
+      dragging={rowDragBindings?.isDragging ?? false}
+    >
+      {row}
+    </ThreadActionsContextMenu>
   );
 }
 
