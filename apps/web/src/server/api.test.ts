@@ -617,6 +617,37 @@ describe("getAccountState with tunnel objects as the liveness source", () => {
   });
 });
 
+describe("pairing code purposes", () => {
+  it("refuses a machine code at the server redeem endpoint and leaves it usable for the machine", async () => {
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const pair = await createConnectCode(deps, "u1", {});
+    if ("error" in pair) throw new Error(pair.error);
+    const paired = await redeemConnectCode(deps, pair.code);
+    if ("error" in paired) throw new Error(paired.error);
+
+    const machineCode = await createMachineCodeForServerCredential(
+      deps,
+      paired.credential,
+    );
+    if ("status" in machineCode) throw new Error(machineCode.error);
+
+    expect(await redeemConnectCode(deps, machineCode.code)).toEqual({
+      error: "invalid-code",
+      status: 404,
+    });
+    const row = db
+      .select()
+      .from(server)
+      .where(eq(server.subdomain, "sawyer"))
+      .get();
+    expect(row?.credentialHash).toBe(await sha256Hex(paired.credential));
+
+    const redeemed = await redeemMachineCode(deps, machineCode.code, null);
+    expect("error" in redeemed).toBe(false);
+  });
+});
+
 describe("server-authenticated machine-code round trip", () => {
   it.each(["Pixel 9 Pro", null])(
     "mints for the exact server and redeems a device named %s",

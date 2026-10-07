@@ -22,6 +22,8 @@ import type { TunnelClientLogger } from "./logger.js";
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const HEARTBEAT_DEADLINE_MS = 60_000;
 const HEARTBEAT_LATE_TICK_MS = HEARTBEAT_INTERVAL_MS + 5_000;
+const SEND_BUFFER_HIGH_WATER_BYTES = 1024 * 1024;
+const SEND_BUFFER_POLL_MS = 10;
 
 const UNREGISTERED_PORT_BODY = "this port is not shared";
 const textEncoder = new TextEncoder();
@@ -220,6 +222,17 @@ export class TunnelSession {
     }
   }
 
+  private async waitForSendBuffer(signal: AbortSignal): Promise<void> {
+    const { tunnel } = this.options;
+    while (
+      !signal.aborted &&
+      tunnel.readyState === NodeWebSocket.OPEN &&
+      tunnel.bufferedAmount > SEND_BUFFER_HIGH_WATER_BYTES
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, SEND_BUFFER_POLL_MS));
+    }
+  }
+
   private onFrame(frame: Frame): void {
     this.noteActivity();
     switch (frame.type) {
@@ -343,6 +356,7 @@ export class TunnelSession {
           chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
         responseBytes += value.byteLength;
         for (const frame of chunkBody(streamId, value)) this.send(frame);
+        await this.waitForSendBuffer(stream.abort.signal);
       }
       this.send({ type: "body-end", streamId });
       if (initialThreadLoad) {

@@ -15,6 +15,7 @@ import {
   TUNNEL_OFFLINE_HEADER,
   TUNNEL_RESTART_REASON,
   TunnelDO,
+  tunnelOwnerKey,
   type Env,
 } from "./tunnel-do.js";
 import {
@@ -48,6 +49,7 @@ import {
 import {
   GATE_AUTH_HEADER,
   GATE_MACHINE_ID_HEADER,
+  GATE_OWNER_HEADER,
   MACHINE_CREDENTIAL_HEADER,
   RELAY_CONTENT_LENGTH_HEADER,
   RELAY_HAS_BODY_HEADER,
@@ -335,6 +337,7 @@ export function requestForTunnelDo(
   headers.delete(MACHINE_CREDENTIAL_HEADER);
   headers.delete(GATE_AUTH_HEADER);
   headers.delete(GATE_MACHINE_ID_HEADER);
+  headers.delete(GATE_OWNER_HEADER);
   headers.delete(RELAY_HEADER);
   headers.delete(RELAY_METHOD_HEADER);
   headers.delete(RELAY_HAS_BODY_HEADER);
@@ -405,20 +408,22 @@ const gate = {
   ): Promise<Response> {
     const runtime = resolveConnectRuntime(env);
     const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
-    if (url.pathname === "/api/connect/servers") {
-      return handleListAccountServers(request, env);
-    }
-    if (url.pathname === "/api/connect/disconnect") {
-      return handleDisconnectServer(request, env);
-    }
-    if (url.pathname === "/api/connect/desktop-session") {
-      return handleCreateDesktopSession(request, env);
-    }
-    if (url.pathname === "/api/connect/machine-label") {
-      return handleAssignMachineLabel(request, env);
-    }
     const host = resolveConnectRequestHost(request.headers, runtime);
     const parsed = parseVisitorHost(host, env.BASE_DOMAIN);
+    if (parsed === null || parsed.target === null) {
+      if (url.pathname === "/api/connect/servers") {
+        return handleListAccountServers(request, env);
+      }
+      if (url.pathname === "/api/connect/disconnect") {
+        return handleDisconnectServer(request, env);
+      }
+      if (url.pathname === "/api/connect/desktop-session") {
+        return handleCreateDesktopSession(request, env);
+      }
+      if (url.pathname === "/api/connect/machine-label") {
+        return handleAssignMachineLabel(request, env);
+      }
+    }
     if (!parsed) return text("bb connect: unknown host\n", 404);
     if (parsed.target === null) {
       const appLinks = handleAppLinkAssociationRequest(
@@ -446,8 +451,20 @@ const gate = {
 
     const routingKey =
       resolved.kind === "machine" ? resolved.routingKey : label;
-    const tunnelDo = (doRequest: Request) =>
-      fetchTunnelDo(env, routingKey, doRequest, "relay-when-enabled");
+    const tunnelOwner =
+      resolved.kind === "machine"
+        ? tunnelOwnerKey("machine", resolved.machine.id)
+        : tunnelOwnerKey("server", resolved.server.id);
+    const tunnelDo = (doRequest: Request) => {
+      const headers = new Headers(doRequest.headers);
+      headers.set(GATE_OWNER_HEADER, tunnelOwner);
+      return fetchTunnelDo(
+        env,
+        routingKey,
+        new Request(doRequest, { headers }),
+        "relay-when-enabled",
+      );
+    };
 
     if (isTunnelDial) {
       if (target !== null) return text("bb connect: not found\n", 404);

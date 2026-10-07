@@ -12,6 +12,7 @@ import {
 import {
   GATE_AUTH_HEADER,
   GATE_MACHINE_ID_HEADER,
+  GATE_OWNER_HEADER,
   TUNNEL_TARGET_HEADER,
 } from "./protocol-headers";
 
@@ -1136,6 +1137,65 @@ describe("gate worker share hosts", () => {
       );
     },
   );
+
+  it.each([
+    ["/api/connect/desktop-session", "POST"],
+    ["/api/connect/servers", "GET"],
+    ["/api/connect/disconnect", "POST"],
+    ["/api/connect/machine-label", "POST"],
+  ])(
+    "forwards %s on a share host to the shared app instead of answering it",
+    async (path, method) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("tenant"));
+      const res = await worker.fetch(
+        visitorRequest("sawyer--8000.getbb.app", path, {
+          method,
+          headers: { cookie: "tenant=kept" },
+        }),
+        env as never,
+        ctx,
+      );
+      await expect(res.text()).resolves.toBe("tenant");
+      expect(mockHandleCreateDesktopSession).not.toHaveBeenCalled();
+      expect(mockHandleListAccountServers).not.toHaveBeenCalled();
+      expect(mockHandleDisconnectServer).not.toHaveBeenCalled();
+      expect(mockHandleAssignMachineLabel).not.toHaveBeenCalled();
+      expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
+    },
+  );
+
+  it("tells the tunnel object which server the visitor resolved to", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+        headers: {
+          cookie: "tenant=kept",
+          [GATE_OWNER_HEADER]: "server:forged",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_OWNER_HEADER)).toBe("server:srv1");
+  });
+
+  it("tells the tunnel object which machine a share visitor resolved to", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const { env, ctx, captured } = makeEnv(() => new Response("ok"));
+    await worker.fetch(
+      visitorRequest("sawyer-air--8000.getbb.app", "/", {
+        headers: { cookie: "tenant=kept" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers.get(GATE_OWNER_HEADER)).toBe(
+      "machine:machine-air",
+    );
+  });
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
@@ -2433,6 +2493,80 @@ describe("TunnelDO dead tunnel sockets", () => {
     const res = await dob.fetch(new Request("https://do.internal/"));
     expect(res.status).toBe(503);
     expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+  });
+});
+
+describe("TunnelDO tunnel ownership", () => {
+  it("answers offline when the visitor resolved to a different server than the connected tunnel", async () => {
+    const send = vi.fn();
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(send), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/api/v1/threads", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-new" },
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("x-bb-tunnel-offline")).toBe("1");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("refuses a relay or WebSocket upgrade for a different owner", async () => {
+    const send = vi.fn();
+    const state = mockDoState({ protocolVersion: 1, machineId: "m-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(send), ["tunnel"]);
+
+    const res = await dob.fetch(
+      new Request("https://do.internal/ws", {
+        headers: {
+          upgrade: "websocket",
+          [GATE_OWNER_HEADER]: "machine:m-new",
+        },
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("forwards when the visitor resolved to the connected server", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+
+    void dob.fetch(
+      new Request("https://do.internal/app.js", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-old" },
+      }),
+    );
+    expect(sent.length).toBe(1);
+    const frame = decodeFrame(sent[0]);
+    if (frame.type !== "open-http") throw new Error("unreachable");
+    expect(
+      frame.headers.every(([name]) => name.toLowerCase() !== GATE_OWNER_HEADER),
+    ).toBe(true);
+  });
+
+  it("forgets the owner once the tunnel is closed by its owner", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv-old" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    await dob.fetch(new Request("https://do.internal/__control/close"));
+    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+
+    void dob.fetch(
+      new Request("https://do.internal/app.js", {
+        headers: { [GATE_OWNER_HEADER]: "server:srv-new" },
+      }),
+    );
+    expect(sent.length).toBe(1);
   });
 });
 
