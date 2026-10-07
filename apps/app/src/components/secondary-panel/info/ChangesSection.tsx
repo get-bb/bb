@@ -150,12 +150,25 @@ function ChangedFileRow({
       }
       trailing={
         lineStats ? (
-          <span className="group/diff relative z-10 flex h-full shrink-0 items-center">
-            <DiffSizeBar {...lineStats} className="group-hover/diff:hidden" />
+          <span
+            onClick={
+              onChangedFileClick
+                ? () => onChangedFileClick({ file, section })
+                : undefined
+            }
+            className={cn(
+              "group/diff relative z-10 flex h-full shrink-0 items-center",
+              onChangedFileClick && "cursor-pointer",
+            )}
+          >
+            <DiffSizeBar
+              {...lineStats}
+              className="group-hover/diff:hidden group-has-[:focus-visible]:hidden"
+            />
             <DiffStatsTally
               {...lineStats}
               hideZero
-              className="sr-only text-2xs tabular-nums group-hover/diff:not-sr-only"
+              className="sr-only text-2xs tabular-nums group-hover/diff:not-sr-only group-has-[:focus-visible]:not-sr-only"
             />
           </span>
         ) : null

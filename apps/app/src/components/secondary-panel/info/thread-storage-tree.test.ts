@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildThreadStorageTree,
   flattenThreadStorageNode,
+  threadStorageAncestorPaths,
   type ThreadStorageTreeNode,
 } from "./thread-storage-tree";
 
@@ -55,5 +56,16 @@ describe("buildThreadStorageTree", () => {
   it("hides the children of collapsed folders", () => {
     const tree = buildThreadStorageTree(files("notes/a.md", "notes/b.md"));
     expect(visiblePaths(tree, [])).toEqual(["notes"]);
+  });
+});
+
+describe("threadStorageAncestorPaths", () => {
+  it("lists every folder above a file, outermost first", () => {
+    expect(threadStorageAncestorPaths("qa/shots/after/a.png")).toEqual([
+      "qa",
+      "qa/shots",
+      "qa/shots/after",
+    ]);
+    expect(threadStorageAncestorPaths("handoff.md")).toEqual([]);
   });
 });

@@ -92,6 +92,13 @@ export function buildThreadStorageTree(
   return finalizeChildren(root);
 }
 
+export function threadStorageAncestorPaths(path: string): string[] {
+  const segments = path.split("/").filter((segment) => segment !== "");
+  return segments
+    .slice(0, -1)
+    .map((_, index) => segments.slice(0, index + 1).join("/"));
+}
+
 export function flattenThreadStorageNode(
   node: ThreadStorageTreeNode,
   isExpanded: (folderPath: string) => boolean,

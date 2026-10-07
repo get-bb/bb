@@ -33,4 +33,25 @@ describe("useThreadStorageBrowser", () => {
     });
     expect(result.current.filteredFiles).toHaveLength(2);
   });
+
+  it("opens the folders above a newly selected file", () => {
+    const { result, rerender } = renderHook(
+      ({ selectedPath }: { selectedPath: string | null }) =>
+        useThreadStorageBrowser({
+          files: FILES,
+          onSelectPath: vi.fn(),
+          selectedPath,
+        }),
+      { initialProps: { selectedPath: null as string | null } },
+    );
+    expect(result.current.expandedFolders.size).toBe(0);
+
+    rerender({ selectedPath: "docs/notes.md" });
+    expect([...result.current.expandedFolders]).toEqual(["docs"]);
+
+    act(() => {
+      result.current.toggleFolder("docs");
+    });
+    expect(result.current.expandedFolders.has("docs")).toBe(false);
+  });
 });

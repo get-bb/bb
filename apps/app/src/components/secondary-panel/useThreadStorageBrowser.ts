@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import type { WorkspaceFile } from "@bb/server-contract";
+import { threadStorageAncestorPaths } from "./info/thread-storage-tree";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
 
@@ -29,8 +30,18 @@ export function useThreadStorageBrowser({
 }: UseThreadStorageBrowserArgs): ThreadStorageBrowserController {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<ReadonlySet<string>>(
-    () => new Set(),
+    () => new Set(selectedPath ? threadStorageAncestorPaths(selectedPath) : []),
   );
+  const [revealedPath, setRevealedPath] = useState(selectedPath);
+  if (selectedPath !== revealedPath) {
+    setRevealedPath(selectedPath);
+    if (selectedPath !== null) {
+      const ancestors = threadStorageAncestorPaths(selectedPath);
+      if (ancestors.some((path) => !expandedFolders.has(path))) {
+        setExpandedFolders(new Set([...expandedFolders, ...ancestors]));
+      }
+    }
+  }
   const toggleFolder = useCallback((folderPath: string) => {
     setExpandedFolders((current) => {
       const next = new Set(current);
