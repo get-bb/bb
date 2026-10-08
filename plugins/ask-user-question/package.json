@@ -6,7 +6,7 @@
   "description": "Let any provider ask the user a multiple-choice question, the way Claude Code's AskUserQuestion does natively.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.29"
+    "bbPluginSdk": ">=0.6.30"
   },
   "bb": {
     "name": "Ask User Question",
