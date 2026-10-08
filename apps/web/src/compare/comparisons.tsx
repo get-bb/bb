@@ -34,7 +34,7 @@ import {
   PRICING_COPY,
   pricingSection,
 } from "./compare-sections";
-import type { BrandLogo } from "./compare-visuals";
+import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
 import { BB_VS_CURSOR } from "./cursor";
 import { BB_VS_T3_CODE } from "./t3-code";
@@ -105,7 +105,7 @@ const BB_VS_SUPERSET: Comparison = {
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
   sub: "No per-seat price: mobile, remote machines, and automations are free. Run Claude Code, Codex, or any agent on the same task.",
-  heroVisual: null,
+  heroVisual: <FleetVisual />,
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,
