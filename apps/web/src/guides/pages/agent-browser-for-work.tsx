@@ -70,13 +70,7 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
     },
   ],
   steps: [
-    {
-      ...PLUGINS_STEP,
-      shot: {
-        src: "/guides/agent-browser-for-work/window-plugins.png",
-        alt: "Browser Automation in bb's plugin catalog, made by BB Official, with an Install button",
-      },
-    },
+    PLUGINS_STEP,
     {
       ...SIGN_INS_STEP,
       lead: "For dashboards and tools behind a login, start bb's Browser signed in.",
@@ -87,11 +81,15 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
       lead: "Say what you need, which sites to use, and what to bring back.",
       body: (
         <>
+          <p>
+            Choose <strong>New thread</strong>, set the project to{" "}
+            <strong>Don't work in a project</strong>, then paste your request:
+          </p>
           <PromptBlock
             name="Example"
-            prompt="Compare the free plans of Linear, Trello, and Asana from their pricing pages: how many members, projects or boards, and file storage each allows. Work in a Browser tab here so I can watch. Put the result in a table and link each number to the page it came from."
+            prompt="Compare the cheapest paid plans of Linear, Trello, and Asana from their pricing pages: the plan name and its price per user per month, billed yearly. Work in a Browser tab here so I can watch. Put the result in a table and link each price to the page it came from."
           />
-          <p>Start a thread with no project. Jobs that work well:</p>
+          <p>Jobs that work well:</p>
           <ul className="gd-list">
             <li>
               <strong>Research.</strong> Compare plans, pricing, or reviews
@@ -115,7 +113,7 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
       ),
       shot: {
         src: "/guides/agent-browser-for-work/window-ask.png",
-        alt: "A bb thread with a table comparing the free plans of Linear, Trello, and Asana, each number linked to its pricing page, next to the Asana pricing page in a Browser tab",
+        alt: "A bb thread with a table of the cheapest paid plans of Linear, Trello, and Asana, each price linked to its pricing page, next to Asana's pricing page in a Browser tab",
       },
       options: [
         {
@@ -149,14 +147,14 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
             the text, number, or button.
           </li>
           <li>
-            Under <strong>What should change?</strong>, write your question or
-            request and choose <strong>Add to prompt</strong>. Then send.
+            In the box, write your question or request and choose{" "}
+            <strong>Add to prompt</strong>. Then send.
           </li>
         </Substeps>
       ),
       shot: {
         src: "/guides/agent-browser-for-work/window-annotate.png",
-        alt: "Asana's pricing page in a bb Browser tab with Unlimited storage, 100MB max per file selected, and the note: Is the 100 MB limit the same on Starter? Add a row for each paid plan's storage.",
+        alt: "Asana's pricing page in a bb Browser tab with the Starter price selected, and the note: Add each plan's monthly price as a second column.",
       },
       options: [],
     },
@@ -167,8 +165,8 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
       question: "Do I need a code project?",
       answer: (
         <p>
-          No. Start a thread with <strong>No project</strong> picked, and ask
-          for the job.
+          No. When you start the thread, set the project to{" "}
+          <strong>Don't work in a project</strong>, and ask for the job.
         </p>
       ),
     },
@@ -187,8 +185,8 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
       question: "What if a site doesn't list the number I asked for?",
       answer: (
         <p>
-          Ask your agent to say so instead of guessing. In the example above, it
-          left Trello's board limit blank because the page doesn't give one.
+          Ask your agent to say so instead of guessing, and to link the page it
+          checked so you can look yourself.
         </p>
       ),
     },
