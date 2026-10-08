@@ -58,11 +58,11 @@ function menuLink(link: ContentLink, label: string): ContentLink {
 export const GUIDE_MENU: (ContentGroup | ContentLink)[] = [
   menuLink(ORCHESTRATE_GUIDE, "Orchestrate agents"),
   {
-    label: "Automation",
+    label: "Automate",
     links: [
       menuLink(SCHEDULE_GUIDE, "Schedule agents"),
-      menuLink(BROWSER_GUIDE, "Test in a browser"),
-      menuLink(BROWSER_WORK_GUIDE, "Do browser work"),
+      menuLink(BROWSER_GUIDE, "Test web apps"),
+      menuLink(BROWSER_WORK_GUIDE, "Automate browser tasks"),
     ],
   },
   {

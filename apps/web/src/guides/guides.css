@@ -981,7 +981,21 @@
     gap: 36px;
   }
   .gd-needs {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(240px, 78%);
+    margin-inline: -28px;
+    padding: 0 28px 4px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 28px;
+    scrollbar-width: none;
+  }
+  .gd-needs::-webkit-scrollbar {
+    display: none;
+  }
+  .gd-need {
+    scroll-snap-align: start;
   }
 }
 
