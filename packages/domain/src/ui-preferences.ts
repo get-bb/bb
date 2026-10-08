@@ -57,6 +57,7 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.navigationProvider",
   "sidebar.headerProvider",
   "sidebar.threadListProvider",
+  "infoPanel.collapsedSections",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -192,6 +193,11 @@ export const uiPreferenceDefinitions = {
     ),
     "__automatic__",
     "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
+  ),
+  "infoPanel.collapsedSections": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Thread Info panel section ids that are collapsed, such as commits, uncommittedChanges, forks, or threadStorage.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

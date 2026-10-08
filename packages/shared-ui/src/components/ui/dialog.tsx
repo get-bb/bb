@@ -200,6 +200,29 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+function useChildrenRetainedWhileClosing(
+  open: boolean,
+  children: React.ReactNode,
+) {
+  const [wasOpen, setWasOpen] = React.useState(open);
+  const [closing, setClosing] = React.useState(false);
+  const [lastOpenChildren, setLastOpenChildren] =
+    React.useState<React.ReactNode>(open ? children : null);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    setClosing(!open);
+  }
+  if (open && lastOpenChildren !== children) setLastOpenChildren(children);
+  const finishClosing = React.useCallback(() => {
+    setClosing(false);
+    setLastOpenChildren(null);
+  }, []);
+  return {
+    content: !open && closing ? lastOpenChildren : children,
+    finishClosing,
+  };
+}
+
 type DialogContentProps = React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
 > & {
@@ -223,6 +246,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       useResponsiveDialog();
     useBrowserDimmingModal(open);
     const scopeProps = usePortalScopeProps();
+    const { content, finishClosing } = useChildrenRetainedWhileClosing(
+      open,
+      children,
+    );
 
     if (isCompactViewport) {
       const domProps = stripRadixContentProps(props);
@@ -231,6 +258,9 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           open={open}
           onOpenChange={onOpenChange}
           onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+          onContentAnimationEnd={(settledOpen) => {
+            if (!settledOpen) finishClosing();
+          }}
           onEscapeKeyDown={props.onEscapeKeyDown}
           onPointerDownOutside={props.onPointerDownOutside}
           onInteractOutside={props.onInteractOutside}
@@ -246,7 +276,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             )}
             {...domProps}
           >
-            {children}
+            {content}
           </div>
         </ResponsiveDrawerShell>
       );
@@ -259,6 +289,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           ref={ref}
           {...scopeProps}
           onCloseAutoFocus={(event) => {
+            finishClosing();
             onCloseAutoFocus?.(event);
             queueMicrotask(() => onAfterCloseAutoFocus?.());
           }}
@@ -268,7 +299,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           )}
           {...props}
         >
-          {children}
+          {content}
           {hideCloseButton ? null : (
             <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-state-active data-[state=open]:text-foreground">
               <Icon name="X" className="h-4 w-4" />

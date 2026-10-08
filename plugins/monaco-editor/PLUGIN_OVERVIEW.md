@@ -2,7 +2,7 @@ Edit a file in bb instead of only reading it. It applies to every place where bb
 
 ## What you get
 
-- Edit and save with Cmd+S, or Ctrl+S on Linux and Windows. If the file changed on disk since you opened it, the save stops and offers Reload or Overwrite.
+- Tap the Save icon in the file bar to write your edits, including on mobile. Cmd+S, or Ctrl+S on Linux and Windows, also saves. If the file changed on disk since you opened it, the save stops and offers Reload or Overwrite.
 - Find in file with Cmd+F or Ctrl+F, multiple cursors, block selection, bracket matching, and code folding.
 - Syntax highlighting for about 86 common file types.
 - A file tree that you toggle from the file bar. Filter by path, expand directories, and open another file. Right-click a row to copy its absolute path, relative path, or filename.
@@ -11,7 +11,7 @@ Edit a file in bb instead of only reading it. It applies to every place where bb
 
 ## How it works
 
-The plugin claims common code, configuration, and text extensions. Binary files such as images and PDFs stay with bb's own preview. Files larger than 8 MB open in the read-only preview.
+The plugin claims common code, configuration, and text extensions. Binary files such as images and PDFs stay with bb's own preview, and so do Markdown files, which bb renders. Files larger than 8 MB open in the read-only preview.
 
 To change the opener for one file type, go to Settings and open File openers. Right-click a file link for a one-off Open with choice.
 

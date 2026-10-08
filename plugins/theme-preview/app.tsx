@@ -1220,7 +1220,10 @@ function SettingsPage({
       variant="outline"
       size="sm"
       aria-label={label}
-      className="h-7 w-full min-w-0 cursor-pointer justify-between border-border/60 bg-card px-2 text-xs sm:w-36"
+      className={cn(
+        "h-7 min-w-0 cursor-pointer justify-between border-border/60 bg-card px-2 text-xs",
+        narrow ? "w-full" : "w-36",
+      )}
     >
       <span
         style={{

@@ -189,7 +189,7 @@ function UpdatesRow({
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-sm",
+        "@container/update-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-sm",
         ROW_SPACING,
       )}
     >
@@ -247,7 +247,11 @@ function RowName({
         {name}
       </span>
       {detail}
-      <RowVersions current={current} latest={latest} />
+      {current === null ? null : (
+        <span className="min-w-0 basis-full @min-[28rem]/update-row:basis-auto">
+          <RowVersions current={current} latest={latest} />
+        </span>
+      )}
     </span>
   );
 }
@@ -266,7 +270,7 @@ function RowStateCaption({
   children: ReactNode;
 }) {
   return (
-    <span className={cn("shrink-0 text-xs", stateTextClass(state))}>
+    <span className={cn("min-w-0 text-2xs break-words", stateTextClass(state))}>
       {children}
     </span>
   );
@@ -496,7 +500,7 @@ export function BbAppUpdateRows({
       actions={<RowActions>{indicator}</RowActions>}
     >
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-baseline gap-2">
+        <span className="flex min-w-0 flex-col gap-1 @min-[28rem]/update-row:flex-row @min-[28rem]/update-row:items-baseline @min-[28rem]/update-row:gap-2">
           {name}
           {caption}
         </span>

@@ -113,7 +113,7 @@ describe("buildPaletteThreadSearchRows", () => {
       },
     });
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", primaryText: "matching saved message", messageSeq: null });
+    expect(result.rows[0]).toMatchObject({ threadId: "saved", lifecycle: "active", excerpt: { text: "matching saved message" }, messageSeq: null });
   });
 
   it("preserves active and archived server matches in their ranked order", () => {
@@ -150,7 +150,7 @@ describe("buildPaletteThreadSearchRows", () => {
     ]);
   });
 
-  it("uses the matched message as primary while retaining title, project, and time metadata", () => {
+  it("keeps the title on top and carries the matched message as the excerpt", () => {
     const thread = makeThread("message", { title: "Original title" });
     const result = build({
       searchResponse: {
@@ -175,12 +175,15 @@ describe("buildPaletteThreadSearchRows", () => {
     });
 
     expect(result.rows[0]).toMatchObject({
-      primaryText: "the matching message",
-      secondaryTitle: "Original title",
+      primaryText: "Original title",
+      highlightRanges: [],
+      excerpt: {
+        text: "the matching message",
+        highlightRanges: [{ start: 4, end: 12 }],
+      },
       projectName: "Palette project",
       relativeTime: "just now",
       messageSeq: 42,
-      highlightRanges: [{ start: 4, end: 12 }],
     });
   });
 
@@ -308,6 +311,51 @@ describe("buildPaletteThreadSearchRows", () => {
       ]);
     });
 
+    it("does not list Personal threads by the Personal project's hidden name", () => {
+      expect(
+        build({
+          query: "pers",
+          projectNamesById: new Map([[PERSONAL_PROJECT_ID, "Personal"]]),
+          recentThreads: [
+            makeThread("personal", {
+              projectId: PERSONAL_PROJECT_ID,
+              title: "Unrelated",
+            }),
+          ],
+        }).rows,
+      ).toEqual([]);
+    });
+
+    it("fills only the rows left after title matches with project matches", () => {
+      const result = build({
+        query: "fix",
+        projectNamesById: new Map([
+          ["project-1", "Palette project"],
+          ["project-2", "Fixtures"],
+        ]),
+        recentThreads: [
+          ...Array.from({ length: 48 }, (_, index) =>
+            titled(`title-${index}`, `Fix ${index}`),
+          ),
+          ...[1, 3, 2].map((updatedAt) =>
+            makeThread(`fixtures-${updatedAt}`, {
+              projectId: "project-2",
+              title: "Unrelated",
+              updatedAt,
+            }),
+          ),
+        ],
+      });
+      expect(result.rows).toHaveLength(50);
+      expect(result.rows.slice(48).map((row) => row.threadId)).toEqual([
+        "fixtures-3",
+        "fixtures-2",
+      ]);
+      expect(result.rows[48]?.projectHighlightRanges).toEqual([
+        { start: 0, end: 3 },
+      ]);
+    });
+
     it("does not match a project on letters inside a word", () => {
       expect(
         build({
@@ -343,7 +391,7 @@ describe("buildPaletteThreadSearchRows", () => {
       ).toEqual([]);
     });
 
-    it("inserts server-only rows after three loaded rows and merges threads found both ways", () => {
+    it("lists every title match before message-only matches and merges threads found both ways", () => {
       const local = Array.from({ length: 6 }, (_, index) =>
         titled(`local-${index}`, `Fix ${index}`, NOW - index),
       );
@@ -386,19 +434,154 @@ describe("buildPaletteThreadSearchRows", () => {
         "local-0",
         "local-1",
         "local-2",
-        "message-only",
         "local-3",
         "local-4",
         "local-5",
+        "message-only",
       ]);
-      expect(result.rows[5]).toMatchObject({
+      expect(result.rows[4]).toMatchObject({
         id: "active:local-4",
-        primaryText: "please fix 4",
-        secondaryTitle: "Fix 4",
+        primaryText: "Fix 4",
+        highlightRanges: [{ start: 0, end: 3 }],
+        excerpt: {
+          text: "please fix 4",
+          highlightRanges: [{ start: 7, end: 10 }],
+        },
         messageSeq: 12,
-        highlightRanges: [{ start: 7, end: 10 }],
+      });
+      expect(result.rows[6]).toMatchObject({
+        primaryText: "Weekly sync",
+        excerpt: { text: "we should fix it" },
       });
     });
+
+    it("leads a server result with its title when both the title and a message matched", () => {
+      const thread = makeThread("archived-both", {
+        title: "Fix the importer",
+        archivedAt: NOW - 1,
+      });
+      const result = build({
+        query: "fix",
+        lifecycles: ["archived"],
+        searchResponse: {
+          active: { total: 0, results: [] },
+          archived: {
+            total: 1,
+            results: [
+              {
+                thread,
+                matches: [
+                  {
+                    sourceKind: "assistant_message",
+                    text: "the fix landed",
+                    highlightRanges: [{ start: 4, end: 7 }],
+                    sourceSeq: 9,
+                  },
+                  {
+                    sourceKind: "title",
+                    text: "Fix the importer",
+                    highlightRanges: [{ start: 0, end: 3 }],
+                    sourceSeq: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(result.rows[0]).toMatchObject({
+        primaryText: "Fix the importer",
+        excerpt: { text: "the fix landed" },
+        highlightRanges: [{ start: 0, end: 3 }],
+        messageSeq: 9,
+      });
+    });
+
+    it("lists archived title matches before archived message-only matches", () => {
+      const messageOnly = makeThread("message-only", {
+        title: "Weekly sync",
+        archivedAt: NOW - 1,
+      });
+      const titleHit = makeThread("title-hit", {
+        title: "Fix the importer",
+        archivedAt: NOW - 2,
+      });
+      const result = build({
+        query: "fix",
+        lifecycles: ["archived"],
+        searchResponse: {
+          active: { total: 0, results: [] },
+          archived: {
+            total: 2,
+            results: [
+              {
+                thread: messageOnly,
+                matches: [
+                  {
+                    sourceKind: "assistant_message",
+                    text: "we should fix it",
+                    highlightRanges: [{ start: 10, end: 13 }],
+                    sourceSeq: 7,
+                  },
+                ],
+              },
+              {
+                thread: titleHit,
+                matches: [
+                  {
+                    sourceKind: "title",
+                    text: "Fix the importer",
+                    highlightRanges: [{ start: 0, end: 3 }],
+                    sourceSeq: null,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+      expect(result.rows.map((row) => row.threadId)).toEqual([
+        "title-hit",
+        "message-only",
+      ]);
+    });
+
+    it.each([
+      ["cafe", "Café sync"],
+      ["plugin-sdk", "Plugin SDK docs"],
+      ["port", "Port forwarding"],
+      ["thread_search", "Search the thread list"],
+    ])(
+      "matches %s against title words the way the server does",
+      (query, title) => {
+        const messageOnly = makeThread("message-only", {
+          title: "Import pipeline",
+          archivedAt: NOW - 1,
+        });
+        const titleHit = makeThread("title-hit", {
+          title,
+          archivedAt: NOW - 2,
+        });
+        const result = build({
+          query,
+          lifecycles: ["archived"],
+          searchResponse: {
+            active: { total: 0, results: [] },
+            archived: {
+              total: 2,
+              results: [
+                { thread: messageOnly, matches: [] },
+                { thread: titleHit, matches: [] },
+              ],
+            },
+          },
+        });
+        expect(result.rows.map((row) => row.threadId)).toEqual([
+          "title-hit",
+          "message-only",
+        ]);
+      },
+    );
 
     it("keeps loaded matches while server results are stale", () => {
       const result = build({

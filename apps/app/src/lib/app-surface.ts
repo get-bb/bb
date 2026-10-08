@@ -23,6 +23,7 @@ export function appSurfaceRequestInit(init?: RequestInit): RequestInit {
   headers.set(APP_SURFACE_HEADER_NAME, getAppSurface());
   return {
     ...init,
+    cache: init?.cache ?? "no-store",
     headers,
   };
 }

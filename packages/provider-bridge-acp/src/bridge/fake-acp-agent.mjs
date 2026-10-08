@@ -159,14 +159,21 @@ process.on("SIGTERM", () => {
 });
 
 if (process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE) {
-  const descendant = spawn(
+  spawn(
     process.execPath,
-    ["-e", "process.on('SIGTERM', () => {}); setTimeout(() => {}, 5000);"],
+    [
+      "-e",
+      [
+        "process.on('SIGTERM', () => {});",
+        "const fs = require('node:fs');",
+        "const pidFile = process.argv[1];",
+        "fs.writeFileSync(pidFile + '.tmp', String(process.pid));",
+        "fs.renameSync(pidFile + '.tmp', pidFile);",
+        "setInterval(() => {}, 1000);",
+      ].join(" "),
+      process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE,
+    ],
     { stdio: "ignore" },
-  );
-  writeFileSync(
-    process.env.FAKE_ACP_LINGERING_DESCENDANT_PID_FILE,
-    String(descendant.pid),
   );
 }
 

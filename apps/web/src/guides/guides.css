@@ -1,0 +1,88 @@
+.guide-body a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--ink) 32%, var(--bg));
+  text-underline-offset: 2px;
+}
+
+.guide-body a:hover {
+  text-decoration-color: var(--ink);
+}
+
+.guide-body h2,
+.guide-body h3 {
+  scroll-margin-top: 24px;
+}
+
+.guide-body > p:first-child {
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.guide-body hr {
+  margin-top: 32px;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.guide-body pre {
+  margin-top: 16px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--surface-recessed);
+  border-radius: var(--radius);
+}
+
+.guide-body pre code {
+  padding: 0;
+  background: none;
+}
+
+.guide-table {
+  --guide-table-width: min(960px, calc(100vw - 48px));
+  width: var(--guide-table-width);
+  margin: 20px 0 0 calc((100% - var(--guide-table-width)) / 2);
+  overflow-x: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+
+.guide-table table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.guide-table th,
+.guide-table td {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.guide-table th {
+  color: var(--heading-sub);
+  font-weight: 600;
+  background: var(--surface);
+}
+
+.guide-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.guide-table td:first-child {
+  color: var(--ink);
+}
+
+.guide-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+}

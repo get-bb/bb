@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
@@ -11,13 +10,11 @@ import {
   DialogTitle,
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
-import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
+import { usePluginNotificationAction } from "@/components/plugin/PluginNotificationDescription";
+import { appToast } from "@/components/ui/app-toast";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
-import { invalidatePluginList } from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  applyPluginUpdate,
-  type PluginUpdateResult,
-} from "@/hooks/queries/plugin-catalog-queries";
+import { applyPluginUpdateJob } from "@/hooks/cache-owners/plugin-cache-owner";
+import { startPluginUpdate } from "@/hooks/queries/plugin-update-job-queries";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 import {
   DetailsDisclosure,
@@ -61,58 +58,26 @@ function UpdatePluginDialogContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const notificationAction = usePluginNotificationAction();
   const name = plugin.name ?? plugin.id;
   const state = plugin.updateState;
-  const [rolledBack, setRolledBack] = useState<PluginUpdateResult | null>(null);
-
   const update = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: () => applyPluginUpdate(fetch, plugin.id),
-    onSuccess: (result) => {
-      invalidatePluginList({ queryClient });
-      if (result.outcome === "rolled-back") {
-        setRolledBack(result);
-        return;
-      }
-      if (result.applied) {
-        pluginToast.success(
-          "Plugin updated",
-          plugin,
-          "installed",
-          result.to !== null
-            ? `Now running ${displayPluginVersion(result.to.display)}.`
-            : undefined,
-        );
-      } else {
-        pluginToast.message("Plugin is up to date", plugin, "installed");
-      }
+    mutationFn: () => startPluginUpdate(plugin.id),
+    onSuccess: (job) => {
+      applyPluginUpdateJob({ queryClient, job });
       onOpenChange(false);
     },
     onError: (error) => {
-      pluginToast.error(
-        "Plugin update failed",
-        plugin,
-        "installed",
-        pluginAdminErrorMessage(error),
-      );
+      appToast.error("Plugin update failed", {
+        description: `${plugin.name ?? plugin.id} — ${pluginAdminErrorMessage(error)}`,
+        action: notificationAction(plugin.id, "installed"),
+      });
     },
   });
 
   const fromLine = `Currently ${displayPluginVersion(plugin.version)}`;
-  const persistedFailure = state.lastFailure;
-  const failure =
-    rolledBack !== null
-      ? {
-          version:
-            rolledBack.to?.display ??
-            state.availableVersion ??
-            "The new version",
-          at: null,
-          detail: rolledBack.detail ?? "",
-        }
-      : persistedFailure === null
-        ? null
-        : persistedFailure;
+  const failure = state.lastFailure;
 
   if (failure !== null) {
     const retryVersion = state.availableVersion;
@@ -154,12 +119,6 @@ function UpdatePluginDialogContent({
               ? `The restored version can keep running. Try again when a compatible update becomes available.`
               : `A compatible update to ${displayPluginVersion(retryVersion)} is still available. Retry when you’re ready.`}
           </p>
-          {rolledBack === null ? null : (
-            <p className="text-xs text-subtle-foreground">
-              The plugin is marked &ldquo;Update failed&rdquo; in the installed
-              list until an update succeeds.
-            </p>
-          )}
         </div>
         <DialogFooter>
           <Button

@@ -152,7 +152,11 @@ describe("NewTaskDialog", () => {
               .getAttribute("value"),
           ).toBe("Keep this draft open"),
         );
-        fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+        const createButton = slot.getByRole("button", { name: "Create task" });
+        await waitFor(() =>
+          expect(createButton).toHaveProperty("disabled", false),
+        );
+        fireEvent.click(createButton);
         await waitFor(() => expect(createCalls).toHaveLength(1));
         expect(createCalls[0]).toMatchObject({
           title: "Keep this draft open",

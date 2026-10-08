@@ -9,8 +9,10 @@ import type {
   PluginCatalogEntrySelector,
   PluginCatalogService,
 } from "../services/plugin-catalog/plugin-catalog-service.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
 import { errorMessage } from "../services/lib/error-log-fields.js";
 import { hashedAssetCacheControl } from "./plugin-image-response.js";
+import { respondWithInstallJob } from "./plugin-install-jobs.js";
 
 function entrySelector(
   entryId: string | undefined,
@@ -26,6 +28,7 @@ function entrySelector(
 export function registerPluginCatalogRoutes(
   app: Hono,
   catalog: PluginCatalogService,
+  installJobs: PluginInstallJobs,
 ): void {
   app.get("/plugin-catalog", (context) =>
     context.json({ catalog: catalog.status() }),
@@ -89,14 +92,25 @@ export function registerPluginCatalogRoutes(
         422,
       );
     }
+    let entry: ReturnType<PluginCatalogService["describeEntry"]>;
     try {
-      return context.json({
-        ok: true as const,
-        plugin: await catalog.install(body.data),
-      });
+      entry = catalog.describeEntry(body.data);
     } catch (error) {
       return context.json({ error: errorMessage(error) }, 422);
     }
+    const input = body.data;
+    const job = installJobs.start({
+      target: {
+        kind: "catalog",
+        entryId: entry.entryId,
+        marketplace: entry.marketplace,
+      },
+      displayName: entry.displayName,
+      run: () => catalog.install(input),
+    });
+    return respondWithInstallJob(context, installJobs, job, (error) => ({
+      error,
+    }));
   });
 
   app.get("/marketplaces", (context) =>

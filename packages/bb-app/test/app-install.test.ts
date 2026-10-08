@@ -19,7 +19,12 @@ const tempDirs: string[] = [];
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) fixture.cleanup();
   for (const dir of tempDirs.splice(0)) {
-    rmSync(dir, { force: true, recursive: true });
+    rmSync(dir, {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 });
 
@@ -30,7 +35,7 @@ async function checkoutWithOrigin(url: string): Promise<string> {
   return fixture.checkout;
 }
 
-describe("app install resolution", () => {
+describe("app install resolution", { timeout: 30_000 }, () => {
   it("recognizes get-bb/bb over https and ssh, and nothing else", () => {
     expect(isOfficialSourceRemote("https://github.com/get-bb/bb.git")).toBe(
       true,

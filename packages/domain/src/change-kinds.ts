@@ -61,6 +61,8 @@ export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 export const SYSTEM_CHANGE_KINDS = [
   "config-changed",
   "plugins-changed",
+  "plugin-install-jobs-changed",
+  "plugin-update-jobs-changed",
   "provider-registrations-changed",
   "ui-preferences-changed",
   "environment-availability-changed",
@@ -210,6 +212,7 @@ export const threadChangeMetadataSchema = z
   .object({
     backgroundActivityChanged: z.boolean().optional(),
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
+    timelineSequence: z.number().int().nonnegative().optional(),
     hasPendingInteraction: z.boolean().optional(),
     projectId: z.string().optional(),
     statusChange: threadStatusChangeMetadataSchema.optional(),
@@ -290,6 +293,7 @@ const knownThreadEventTypes: ReadonlySet<string> = new Set(
 );
 
 const threadChangeMetadataLenientSchema = z.object({
+  timelineSequence: z.number().int().nonnegative().optional(),
   backgroundActivityChanged: z.boolean().optional(),
   eventTypes: z
     .array(z.string())

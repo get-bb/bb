@@ -24,14 +24,14 @@ import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { RELEASE_META } from "../../../../changelog-metadata";
-import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
+import { useInitAnalytics } from "../landing/analytics";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
@@ -65,31 +65,20 @@ import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { parseChangelog } from "../../../../changelog-parser";
-import { CommandButton } from "../landing/command-button";
-import {
-  DiscordLink,
-  DownloadLink,
-  GitHubLink,
-  SubscribeSection,
-} from "../landing/cta";
+import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
 import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { useDesktopPlatform } from "../landing/desktop-platform";
+import { ClaudeIcon } from "../landing/icons";
 import {
-  ClaudeIcon,
-  CursorIcon,
-  GrokIcon,
-  HermesAgentIcon,
-  LinuxIcon,
-  OmpIcon,
-  OpenAiIcon,
-  OpencodeIcon,
-  PiIcon,
-} from "../landing/icons";
-import type { CtaPlacement, DesktopPlatform } from "../landing/site";
+  Band,
+  InstallOptions,
+  ProviderChips,
+  CustomizeBuild,
+  SpawnSidebar,
+  useCycle,
+  useScrollReveal,
+} from "../landing/landing-visuals";
 import {
-  CLI_COMMAND,
-  DESKTOP_DOWNLOADS,
   OG_DESCRIPTION,
   SITE_DESCRIPTION,
   SITE_TITLE,
@@ -237,111 +226,6 @@ function LandingRoute() {
   return <LandingPage />;
 }
 
-const AppleSolidIcon: IconSvgElement = [
-  [
-    "path",
-    {
-      d: "M12 5.75C12 3.75 13.5 1.75 15.5 1.75C15.5 3.75 14 5.75 12 5.75Z",
-      fill: "currentColor",
-      key: "0",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M12.5 8.09001C11.9851 8.09001 11.5867 7.92646 11.1414 7.74368C10.5776 7.51225 9.93875 7.25 8.89334 7.25C7.02235 7.25 4 8.74945 4 12.7495C4 17.4016 7.10471 22.25 9.10471 22.25C9.77426 22.25 10.3775 21.9871 10.954 21.7359C11.4815 21.5059 11.9868 21.2857 12.5 21.2857C13.0132 21.2857 13.5185 21.5059 14.046 21.7359C14.6225 21.9871 15.2257 22.25 15.8953 22.25C17.2879 22.25 18.9573 19.8992 20 16.9008C18.3793 16.2202 17.338 14.618 17.338 12.75C17.338 11.121 18.2036 10.0398 19.5 9.25C18.5 7.75 17.0134 7.25 15.9447 7.25C14.8993 7.25 14.2604 7.51225 13.6966 7.74368C13.2514 7.92646 13.0149 8.09001 12.5 8.09001Z",
-      fill: "currentColor",
-      key: "1",
-    },
-  ],
-];
-
-function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
-  if (platform === "linux") {
-    return <LinuxIcon className="btn-ic" />;
-  }
-  return <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />;
-}
-
-function InstallOptions({ placement }: { placement: CtaPlacement }) {
-  const platform = useDesktopPlatform();
-  const download = DESKTOP_DOWNLOADS[platform];
-  const otherPlatform: DesktopPlatform =
-    platform === "macos" ? "linux" : "macos";
-  return (
-    <div className="install-options">
-      <div className="install-actions">
-        <span className="install-choice">
-          <DownloadLink
-            placement={placement}
-            platform={platform}
-            className="btn btn-primary btn-install"
-          >
-            <DesktopDownloadIcon platform={platform} />
-            {download.buttonLabel}
-          </DownloadLink>
-          <span className="install-note">
-            {download.note}
-            {" · "}
-            <DownloadLink
-              placement={placement}
-              platform={otherPlatform}
-              className="install-note-link"
-            >
-              Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
-            </DownloadLink>
-          </span>
-        </span>
-        <span className="install-choice">
-          <CommandButton
-            command={CLI_COMMAND}
-            label={`Copy browser install command: ${CLI_COMMAND}`}
-            size="hero"
-            onCopy={() =>
-              trackLandingEvent({
-                name: "landing_cli_command_copied",
-                properties: { placement, command: CLI_COMMAND },
-              })
-            }
-          />
-          <span className="install-note">
-            Windows (via WSL), Intel Macs &amp; remote machines
-          </span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function useScrollReveal() {
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const targets = Array.from(document.querySelectorAll("[data-reveal]"));
-    for (const target of targets) {
-      if (target.getBoundingClientRect().top > window.innerHeight * 0.9) {
-        target.classList.add("reveal-pending");
-      }
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.remove("reveal-pending");
-            observer.unobserve(entry.target);
-          }
-        }
-      },
-      { rootMargin: "0px 0px -12% 0px" },
-    );
-    for (const target of targets) {
-      observer.observe(target);
-    }
-    return () => observer.disconnect();
-  }, []);
-}
-
 function useConstructMock() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -405,40 +289,6 @@ function useFitMock() {
     observer.observe(wrap);
     return () => observer.disconnect();
   }, []);
-}
-
-const PROVIDER_ICONS = [
-  ClaudeIcon,
-  OpenAiIcon,
-  CursorIcon,
-  PiIcon,
-  OpencodeIcon,
-  GrokIcon,
-  OmpIcon,
-  HermesAgentIcon,
-] as const;
-
-const PROVIDER_ICONS_MOBILE_VISIBLE = 3;
-
-function ProviderChips() {
-  const extra = PROVIDER_ICONS.length - PROVIDER_ICONS_MOBILE_VISIBLE;
-  return (
-    <>
-      {PROVIDER_ICONS.map((Icon, i) => (
-        <Icon
-          key={i}
-          className={
-            i >= PROVIDER_ICONS_MOBILE_VISIBLE ? "plogo plogo-more" : "plogo"
-          }
-        />
-      ))}
-      {extra > 0 ? (
-        <span className="pmore" aria-label={`${extra} more providers`}>
-          +{extra} more
-        </span>
-      ) : null}
-    </>
-  );
 }
 
 type IconProps = { className?: string };
@@ -1243,58 +1093,6 @@ function HeroAppMock() {
   );
 }
 
-function Band({
-  title,
-  flip,
-  visual,
-  children,
-}: {
-  title: string;
-  flip?: boolean;
-  visual: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className={flip ? "band band-flip" : "band"} data-reveal>
-      <div className="band-grid">
-        <div className="band-copy">
-          <h2>{title}</h2>
-          {children}
-        </div>
-        <div className="band-visual">{visual}</div>
-      </div>
-    </section>
-  );
-}
-
-function useCycle(holdMs: number, fadeMs: number) {
-  const [cycle, setCycle] = useState(0);
-  const [leaving, setLeaving] = useState(false);
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    let holdTimer = 0;
-    let fadeTimer = 0;
-    const schedule = () => {
-      holdTimer = window.setTimeout(() => {
-        setLeaving(true);
-        fadeTimer = window.setTimeout(() => {
-          setCycle((c) => c + 1);
-          setLeaving(false);
-          schedule();
-        }, fadeMs);
-      }, holdMs);
-    };
-    schedule();
-    return () => {
-      window.clearTimeout(holdTimer);
-      window.clearTimeout(fadeTimer);
-    };
-  }, [holdMs, fadeMs]);
-  return { cycle, leaving };
-}
-
 function AgentChat() {
   const { cycle, leaving } = useCycle(6000, 600);
   return (
@@ -1360,335 +1158,6 @@ function AgentChat() {
         <span className="tg-send" aria-hidden>
           <PaperPlane className="tg-send-ic" />
         </span>
-      </div>
-    </div>
-  );
-}
-
-type CustomizeMessage = {
-  role: "user" | "agent" | "tool";
-  text: string;
-};
-
-type CustomizeTask = {
-  key: string;
-  title: string;
-  status: "in_progress" | "todo" | "backlog";
-  priority: "urgent" | "high" | "medium" | "low";
-};
-
-type CustomizeScenario = {
-  title: string;
-  prompt: string;
-  promptWidth: string;
-  branch: string;
-  messages: CustomizeMessage[];
-  panel: {
-    name: string;
-    tasks: CustomizeTask[];
-  };
-};
-
-const CUSTOMIZE_SCENARIO: CustomizeScenario = {
-  title: "Build a tasks plugin",
-  prompt: "Add a task management system",
-  promptWidth: "210px",
-  branch: "bb/tasks-plugin",
-  messages: [
-    { role: "user", text: "Add a task management system" },
-    {
-      role: "agent",
-      text: "I'll build it as a bb plugin and mount it in your sidebar.",
-    },
-    { role: "tool", text: "wrote plugin: tasks" },
-    { role: "tool", text: "registered panel + bb tasks CLI" },
-    { role: "agent", text: "Done. Tasks is live, and your agents can use it." },
-  ],
-  panel: {
-    name: "Tasks",
-    tasks: [
-      {
-        key: "BB-1",
-        title: "Ship task delegation",
-        status: "in_progress",
-        priority: "high",
-      },
-      {
-        key: "BB-2",
-        title: "Wire up the tasks CLI",
-        status: "todo",
-        priority: "medium",
-      },
-      {
-        key: "BB-3",
-        title: "Add label filters",
-        status: "todo",
-        priority: "low",
-      },
-      {
-        key: "BB-4",
-        title: "Nightly changelog draft",
-        status: "in_progress",
-        priority: "medium",
-      },
-      {
-        key: "BB-5",
-        title: "Triage flaky integration tests",
-        status: "backlog",
-        priority: "high",
-      },
-      {
-        key: "BB-6",
-        title: "Port the settings panel",
-        status: "backlog",
-        priority: "low",
-      },
-      {
-        key: "BB-7",
-        title: "Document the plugin API",
-        status: "backlog",
-        priority: "medium",
-      },
-    ],
-  },
-};
-
-function CustomizeBuild() {
-  const { cycle, leaving } = useCycle(10600, 500);
-  const run = CUSTOMIZE_SCENARIO;
-  const promptStyle = {
-    "--customize-prompt-width": run.promptWidth,
-  } as CSSProperties;
-  return (
-    <div className="mockup-wrap mockup-wrap-customize">
-      <div
-        className="mock mock-customize-mobile"
-        aria-label="Mobile bb preview: a prompt asks for a task management system, and the agent builds it as a plugin"
-      >
-        <div className="mock-bar">
-          <div className="bar-left">
-            <span className="bar-menu" aria-hidden>
-              <PanelIcon className="ri bar-ic" />
-            </span>
-          </div>
-          <div className="bar-main">
-            <span className="bar-title">{run.title}</span>
-          </div>
-        </div>
-
-        <div
-          className={
-            leaving
-              ? "mock-body customize-body leaving"
-              : "mock-body customize-body"
-          }
-          key={cycle}
-        >
-          <div className="main">
-            <div className="feed feed-live customize-feed">
-              {run.messages.map((message, i) => {
-                const style = { animationDelay: `${3.2 + i * 0.68}s` };
-                if (message.role === "user") {
-                  return (
-                    <div
-                      className="msg-user customize-msg"
-                      key={`${message.role}-${message.text}`}
-                      style={style}
-                    >
-                      {message.text}
-                    </div>
-                  );
-                }
-                if (message.role === "tool") {
-                  return (
-                    <div
-                      className="msg-step customize-msg customize-tool"
-                      key={`${message.role}-${message.text}`}
-                      style={style}
-                    >
-                      <ChevronRight className="step-chev" />
-                      {message.text}
-                    </div>
-                  );
-                }
-                return (
-                  <div
-                    className="msg-say customize-msg"
-                    key={`${message.role}-${message.text}`}
-                    style={style}
-                  >
-                    {message.text}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="composer customize-composer">
-              <div className="composer-box customize-composer-box">
-                <div className="composer-top">
-                  <span className="composer-input customize-typeahead">
-                    <span className="customize-type-text" style={promptStyle}>
-                      {run.prompt}
-                    </span>
-                    <span className="customize-caret" aria-hidden />
-                  </span>
-                  <Maximize2 className="cb-expand" />
-                </div>
-                <div className="composer-row">
-                  <span className="model">
-                    <OpenAiIcon className="model-ic" />
-                    Codex
-                    <ChevronDown className="chev-sm" />
-                  </span>
-                  <span className="composer-actions" aria-hidden>
-                    <Paperclip className="composer-clip" />
-                    <span className="send-btn customize-send">
-                      <SendIcon className="send-ic" />
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="context-row customize-context">
-                <span className="ctx">
-                  <GitBranchIcon className="ctx-ic" />
-                  <span className="ctx-branch">{run.branch}</span>
-                </span>
-                <Spinner className="ctx-spin" />
-              </div>
-            </div>
-          </div>
-
-          {}
-          <div className="plugin-panel" aria-hidden>
-            <div className="plugin-panel-bar">
-              <span className="plugin-panel-name">{run.panel.name}</span>
-              <span className="plugin-panel-badge">Plugin</span>
-            </div>
-            <div className="plugin-panel-rows">
-              {run.panel.tasks.map((task, i) => (
-                <div
-                  className="plugin-task"
-                  key={task.key}
-                  style={{ animationDelay: `${8.3 + i * 0.14}s` }}
-                >
-                  <span
-                    className={`plugin-task-status is-${task.status}`}
-                    aria-hidden
-                  />
-                  <span className="plugin-task-key">{task.key}</span>
-                  <span className="plugin-task-title">{task.title}</span>
-                  <span className={`plugin-task-prio is-${task.priority}`}>
-                    {task.priority}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SpawnRow({
-  icon,
-  name,
-  task,
-  status,
-  at,
-  doneAt,
-  parent,
-}: {
-  icon: ReactNode;
-  name: string;
-  task: string;
-  status: string;
-  at: number;
-  doneAt: number;
-  parent?: boolean;
-}) {
-  return (
-    <div
-      className={parent ? "sb-thread sb-parent" : "sb-thread"}
-      style={{ animationDelay: `${at}s` }}
-    >
-      <span className="sb-prov" aria-hidden>
-        {icon}
-      </span>
-      <span className="sb-body">
-        <span className="sb-name">{name}</span>
-        <span className="sb-task">{task}</span>
-      </span>
-      <span className="sb-stat" aria-hidden>
-        <span className="sb-run" style={{ animationDelay: `${doneAt}s` }}>
-          <span className="sb-dot" />
-          {status}
-        </span>
-        <span className="sb-done" style={{ animationDelay: `${doneAt}s` }}>
-          <CheckIcon className="sb-check" />
-          done
-        </span>
-      </span>
-    </div>
-  );
-}
-
-function SpawnSidebar() {
-  const { cycle, leaving } = useCycle(5600, 500);
-  return (
-    <div
-      className="spawnbar"
-      aria-label="bb spawns and manages a worker thread for each provider"
-    >
-      <div className="sb-head">
-        <span aria-hidden="true" className="bb-mark sb-mark" />
-        <span className="sb-title">Threads</span>
-        <span className="sb-active">5 active</span>
-      </div>
-      <div className={leaving ? "sb-list leaving" : "sb-list"} key={cycle}>
-        <SpawnRow
-          parent
-          icon={<ClaudeIcon className="sb-ic" />}
-          name="Claude Code"
-          task="Ship the release"
-          status="managing"
-          at={0.1}
-          doneAt={4}
-        />
-        <div className="sb-kids">
-          <SpawnRow
-            icon={<OpenAiIcon className="sb-ic" />}
-            name="Codex"
-            task="Port module to TS"
-            status="running"
-            at={0.6}
-            doneAt={2.3}
-          />
-          <SpawnRow
-            icon={<CursorIcon className="sb-ic" />}
-            name="Cursor"
-            task="Refactor the auth flow"
-            status="running"
-            at={1}
-            doneAt={3}
-          />
-          <SpawnRow
-            icon={<PiIcon className="sb-ic" />}
-            name="Pi"
-            task="Write release notes"
-            status="running"
-            at={1.4}
-            doneAt={3.7}
-          />
-          <SpawnRow
-            icon={<OpencodeIcon className="sb-ic" />}
-            name="OpenCode"
-            task="Add integration tests"
-            status="running"
-            at={1.8}
-            doneAt={3.4}
-          />
-        </div>
       </div>
     </div>
   );
@@ -1775,10 +1244,10 @@ function LandingPage() {
 
       <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
         <p>
-          Almost anything in bb can be changed in a single prompt. Ask for a
-          task tracker and one appears: a panel in your sidebar, a{" "}
-          <code>bb tasks</code> command, and a skill that teaches every agent to
-          use it.
+          Almost anything in bb can be changed in a single prompt. Ask for your
+          Linear issues and they appear: a panel in your sidebar, a{" "}
+          <code>bb linear</code> command, and a skill that teaches every agent
+          to use it.
         </p>
         <p>
           Many of bb&rsquo;s own features are built with the same tools you

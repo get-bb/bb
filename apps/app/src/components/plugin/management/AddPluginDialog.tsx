@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
-  type InstalledPlugin,
   type PluginCatalogInstallPlan,
   type PluginCatalogResolvedSource,
+  type PluginInstallJob,
 } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -17,19 +17,13 @@ import {
 } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
-import { appToast } from "@/components/ui/app-toast.js";
-import { pluginToast } from "@/components/plugin/PluginNotificationDescription";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
+import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
+import { useCatalogInstallPlan } from "@/hooks/queries/plugin-catalog-queries";
 import {
-  applyInstalledPlugin,
-  invalidatePluginCatalogSearch,
-  invalidatePluginList,
-} from "@/hooks/cache-owners/plugin-cache-owner";
-import {
-  installCatalogPlugin,
-  installPlugin,
-  useCatalogInstallPlan,
-} from "@/hooks/queries/plugin-catalog-queries";
+  startCatalogPluginInstall,
+  startPluginInstall,
+} from "@/hooks/queries/plugin-install-job-queries";
 import { CatalogEntryIcon, FullTrustWarning } from "./plugin-ui";
 
 export type AddPluginInitial = {
@@ -60,14 +54,14 @@ function catalogInstallDescription(
 interface AddPluginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onInstalled?: (plugin: InstalledPlugin) => void;
+  onInstallStarted?: (job: PluginInstallJob) => void;
   initial?: AddPluginInitial | null;
 }
 
 export function AddPluginDialog({
   open,
   onOpenChange,
-  onInstalled,
+  onInstallStarted,
   initial,
 }: AddPluginDialogProps) {
   return (
@@ -77,7 +71,7 @@ export function AddPluginDialog({
           <AddPluginDialogContent
             initial={initial ?? null}
             onOpenChange={onOpenChange}
-            onInstalled={onInstalled}
+            onInstallStarted={onInstallStarted}
           />
         ) : null}
       </DialogContent>
@@ -267,11 +261,11 @@ function ThirdPartySourceDisclosure({
 function AddPluginDialogContent({
   initial,
   onOpenChange,
-  onInstalled,
+  onInstallStarted,
 }: {
   initial: AddPluginInitial | null;
   onOpenChange: (open: boolean) => void;
-  onInstalled?: (plugin: InstalledPlugin) => void;
+  onInstallStarted?: (job: PluginInstallJob) => void;
 }) {
   const queryClient = useQueryClient();
   const [sourceText, setSourceText] = useState("");
@@ -291,34 +285,18 @@ function AddPluginDialogContent({
     meta: { showErrorToast: false },
     mutationFn: (body: NonNullable<typeof request>) =>
       body.kind === "catalog"
-        ? installCatalogPlugin(fetch, {
+        ? startCatalogPluginInstall(fetch, {
             entryId: body.entryId,
             marketplace: body.marketplace,
             ...(thirdParty && plan?.kind === "marketplace"
               ? { confirmedSource: plan.resolvedSource }
               : {}),
           })
-        : installPlugin(fetch, body.source),
-    onSuccess: (plugin) => {
-      applyInstalledPlugin({ queryClient, plugin });
-      invalidatePluginList({ queryClient });
-      invalidatePluginCatalogSearch({ queryClient });
-      pluginToast.success("Plugin installed", plugin, "installed");
+        : startPluginInstall(fetch, body.source),
+    onSuccess: (job) => {
+      applyPluginInstallJob({ queryClient, job });
       onOpenChange(false);
-      onInstalled?.(plugin);
-    },
-    onError: (error) => {
-      const detail = pluginAdminErrorMessage(error);
-      if (initial === null) {
-        appToast.error("Plugin installation failed", { description: detail });
-        return;
-      }
-      pluginToast.error(
-        "Plugin installation failed",
-        { id: initial.pluginId, name: initial.displayName },
-        "catalog",
-        detail,
-      );
+      onInstallStarted?.(job);
     },
   });
 
@@ -389,17 +367,7 @@ function AddPluginDialogContent({
           </p>
         ) : null}
 
-        {install.isPending ? (
-          <div
-            className="h-0.5 overflow-hidden rounded-full bg-border"
-            role="progressbar"
-            aria-label="Installing plugin"
-          >
-            <div className="h-full w-1/3 animate-indeterminate-progress rounded-full bg-muted-foreground" />
-          </div>
-        ) : (
-          <FullTrustWarning />
-        )}
+        <FullTrustWarning />
       </div>
       <DialogFooter className="gap-2">
         <Button
@@ -425,9 +393,7 @@ function AddPluginDialogContent({
           {install.isPending ? (
             <Icon name="Spinner" className="animate-spin" />
           ) : null}
-          {install.isPending
-            ? `Installing ${initial?.displayName ?? "plugin"}…`
-            : `Install ${initial?.displayName ?? "plugin"}`}
+          {`Install ${initial?.displayName ?? "plugin"}`}
         </Button>
       </DialogFooter>
     </>

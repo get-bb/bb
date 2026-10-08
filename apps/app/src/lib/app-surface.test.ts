@@ -45,6 +45,13 @@ describe("app surface request metadata", () => {
     expect(headers.get("x-existing")).toBe("kept");
   });
 
+  it("keeps API requests out of the browser HTTP cache unless the caller chooses a mode", () => {
+    expect(appSurfaceRequestInit().cache).toBe("no-store");
+    expect(appSurfaceRequestInit({ cache: "force-cache" }).cache).toBe(
+      "force-cache",
+    );
+  });
+
   it("marks Electron preload requests as desktop", () => {
     vi.stubGlobal("window", {
       bbDesktop: createBbDesktopApi(desktopInfo),

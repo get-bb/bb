@@ -313,13 +313,17 @@ export interface QuestionFormProps {
 export function QuestionForm({
   draftKey,
   questions,
-  disabled,
+  disabled: inputDisabled,
   cancelDisabled,
   onSubmit,
   onCancel,
 }: QuestionFormProps) {
   const { formState, setFormState, currentIndex, setCurrentIndex, clearDraft } =
     useQuestionFormDraft(draftKey, questions);
+  const [settledAction, setSettledAction] = useState<
+    "submit" | "cancel" | null
+  >(null);
+  const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
   const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
@@ -384,6 +388,7 @@ export function QuestionForm({
     if (disabled || voiceBusy || !allAnswered) return;
     try {
       await onSubmit(buildQuestionAnswers(questions, formState));
+      setSettledAction("submit");
       clearDraft();
     } catch {}
   };
@@ -441,7 +446,7 @@ export function QuestionForm({
         event.preventDefault();
         handleAdvance();
       }}
-      className="flex min-h-0 flex-col text-xs text-muted-foreground"
+      className="-m-1 flex min-h-0 flex-col rounded-md p-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
     >
       {totalQuestions > 1 ? (
         <QuestionTabs
@@ -475,10 +480,11 @@ export function QuestionForm({
           type="button"
           size="sm"
           variant="ghost"
-          disabled={cancelDisabled}
+          disabled={cancelDisabled || settledAction !== null}
           onClick={async () => {
             try {
               await onCancel();
+              setSettledAction("cancel");
               clearDraft();
             } catch {}
           }}
@@ -503,7 +509,7 @@ export function QuestionForm({
             disabled={disabled || voiceBusy || (isLast && !allAnswered)}
             onClick={handleAdvance}
           >
-            {disabled ? (
+            {inputDisabled || settledAction === "submit" ? (
               <Icon name="Spinner" className="size-3 animate-spin" />
             ) : null}
             {isLast ? "Submit answer" : "Next"}

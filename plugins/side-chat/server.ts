@@ -79,6 +79,31 @@ export const sideChatRpcContract = defineRpcContract({
 });
 
 export default async function plugin(bb: BbPluginApi) {
+  const db = bb.storage.database();
+  bb.storage.migrate(db, [
+    `CREATE TABLE cleanup_candidates (thread_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, due_at INTEGER NOT NULL);
+     CREATE INDEX cleanup_candidates_due_idx ON cleanup_candidates(due_at);
+     CREATE TABLE cleanup_discovery (id INTEGER PRIMARY KEY);`,
+  ]);
+  const enqueue = (threadId: string, createdAt: number) => {
+    db.prepare(
+      "INSERT OR IGNORE INTO cleanup_candidates (thread_id, created_at, due_at) VALUES (?, ?, ?)",
+    ).run(threadId, createdAt, createdAt + EMPTY_FORK_MAX_AGE_MS + 1);
+  };
+  for (const event of ["thread.archived", "thread.deleted"] as const)
+    bb.events.on(event, async ({ thread }) => {
+      db.prepare("DELETE FROM cleanup_candidates WHERE thread_id=?").run(
+        thread.id,
+      );
+      await bb.storage.kv.delete(`${KEPT_FORK_KEY_PREFIX}${thread.id}`);
+    });
+
+  bb.events.on("thread.unarchived", ({ thread }) => {
+    if (isOwnLiveHiddenFork(thread, bb.pluginId)) {
+      enqueue(thread.id, thread.createdAt);
+    }
+  });
+
   bb.rpc.register(sideChatRpcContract, {
     async createSideChat({ sourceThreadId, sourceSeqEnd, anchorText }) {
       const seedText = resolveReplySeedText(anchorText);
@@ -104,12 +129,14 @@ export default async function plugin(bb: BbPluginApi) {
           ...forkArgs,
           ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
         });
+        enqueue(fork.id, fork.createdAt);
         return { threadId: fork.id };
       } catch (error) {
         if (sourceSeqEnd === undefined || !isSessionUnavailableError(error)) {
           throw error;
         }
         const fork = await bb.sdk.threads.fork(forkArgs);
+        enqueue(fork.id, fork.createdAt);
         return { threadId: fork.id };
       }
     },
@@ -117,6 +144,32 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.schedule("empty-fork-cleanup", "13 * * * *", async () => {
     const now = Date.now();
+    if (db.prepare("SELECT id FROM cleanup_discovery WHERE id=1").get()) {
+      const candidates = z
+        .array(z.object({ threadId: z.string(), createdAt: z.number() }))
+        .parse(
+          db
+            .prepare(
+              `SELECT thread_id AS threadId, created_at AS createdAt FROM cleanup_candidates WHERE due_at <= ? ORDER BY due_at LIMIT ${EMPTY_FORK_SWEEP_PAGE_SIZE}`,
+            )
+            .all(now),
+        );
+      for (const candidate of candidates) {
+        const outcome = await sweepEmptyFork(
+          candidate.threadId,
+          candidate.createdAt,
+        );
+        if (outcome === "skipped")
+          db.prepare(
+            "UPDATE cleanup_candidates SET due_at=? WHERE thread_id=?",
+          ).run(now + 3600000, candidate.threadId);
+        else
+          db.prepare("DELETE FROM cleanup_candidates WHERE thread_id=?").run(
+            candidate.threadId,
+          );
+      }
+      return;
+    }
     const keptKeys = new Set(await bb.storage.kv.list(KEPT_FORK_KEY_PREFIX));
     const stillLive = new Set<string>();
     let offset = 0;
@@ -137,6 +190,7 @@ export default async function plugin(bb: BbPluginApi) {
           continue;
         }
         if (now - thread.createdAt <= EMPTY_FORK_MAX_AGE_MS) {
+          enqueue(thread.id, thread.createdAt);
           retained += 1;
           continue;
         }
@@ -152,6 +206,7 @@ export default async function plugin(bb: BbPluginApi) {
           await bb.storage.kv.set(keptKey, true);
           stillLive.add(keptKey);
         }
+        if (outcome === "skipped") enqueue(thread.id, thread.createdAt);
         retained += 1;
       }
       if (page.length < EMPTY_FORK_SWEEP_PAGE_SIZE) break;
@@ -160,6 +215,7 @@ export default async function plugin(bb: BbPluginApi) {
     for (const key of keptKeys) {
       if (!stillLive.has(key)) await bb.storage.kv.delete(key);
     }
+    db.prepare("INSERT INTO cleanup_discovery VALUES (1)").run();
   });
 
   async function sweepEmptyFork(
@@ -167,6 +223,8 @@ export default async function plugin(bb: BbPluginApi) {
     createdAt: number,
   ): Promise<"archived" | "kept" | "skipped"> {
     try {
+      const thread = await bb.sdk.threads.get({ threadId });
+      if (!isOwnLiveHiddenFork(thread, bb.pluginId)) return "kept";
       const timeline = await bb.sdk.threads.timeline({
         threadId,
         includeNestedRows: "true",
@@ -174,7 +232,7 @@ export default async function plugin(bb: BbPluginApi) {
       if (timelineRowsContainUserMessage(timeline.rows)) return "kept";
     } catch (error) {
       bb.log.warn(
-        `empty-fork sweep skipped ${threadId} (timeline read failed: ${
+        `empty-fork sweep skipped ${threadId} (thread or timeline read failed: ${
           error instanceof Error ? error.message : String(error)
         })`,
       );

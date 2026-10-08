@@ -16,7 +16,64 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  plan:
+    name: Select CI checks
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      selection: ${{ steps.select.outputs.selection }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+      - name: Check source files for literal NUL bytes
+        run: node scripts/check-source-nul.mjs
+      - name: Select affected checks
+        id: select
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          selection=$(node scripts/plan-ci.mjs --full)
+          if [[ -n "$BASE_SHA" ]]; then
+            if git fetch --no-tags --depth=1 origin "$BASE_SHA" && npx --yes turbo@2.10.12 query affected --base "$BASE_SHA" --head HEAD > "$RUNNER_TEMP/ci-affected.json"; then
+              selection=$(node scripts/plan-ci.mjs --base "$BASE_SHA" --affected "$RUNNER_TEMP/ci-affected.json")
+            else
+              echo "::warning::Change detection failed; running full CI."
+            fi
+          fi
+          echo "selection=$selection" >> "$GITHUB_OUTPUT"
+          echo "$selection" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check dependency inputs
+        id: dependencies
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "required=$(node scripts/ci-dependencies-changed.mjs "$BASE_SHA")" >> "$GITHUB_OUTPUT"
+
+      - name: Setup dependency validation tools
+        if: steps.dependencies.outputs.required == 'true'
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Validate frozen dependency installation
+        if: steps.dependencies.outputs.required == 'true'
+        timeout-minutes: 5
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+
+      - name: Check provider-literal ratchet
+        env:
+          BASE_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_BRANCH" || true
+          node scripts/check-provider-literal-ratchet.mjs --base "origin/$BASE_BRANCH"
+
   windows-foundation:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).foundation }}
     name: Windows host packages (Node 22.x)
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 15
@@ -44,20 +101,26 @@ jobs:
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
           cache-prefix: windows-foundation
-          turbo-cache: "false"
+          turbo-cache: "true"
           turbo-cache-max-size-mb: "256"
 
       - name: Install foundation dependencies
         timeout-minutes: 5
         shell: bash
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-provider-claude-code..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
 
       - name: Typecheck and test foundation packages
-        run: pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --force --continue --concurrency=2 --output-logs=full
+        shell: bash
+        run: pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --continue --concurrency=2 --output-logs=new-only --summarize
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
 
   windows-app-smoke:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).packaging }}
     name: Windows app smoke (Node 22.x)
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 40
@@ -88,12 +151,20 @@ jobs:
           turbo-cache: "true"
           turbo-cache-max-size-mb: "256"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         shell: bash
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
       - name: Build bb-app and boot it
         shell: bash
@@ -101,6 +172,57 @@ jobs:
 
       - name: Smoke test the bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --output-logs=new-only
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
+
+  windows-desktop-smoke:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).packaging }}
+    name: Windows desktop smoke (Node 22.x)
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Setup pnpm
+        run: npm install --global pnpm@${{ env.PNPM_VERSION }} --ignore-scripts
+
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: windows-desktop-smoke
+          turbo-cache: "true"
+          turbo-cache-max-size-mb: "256"
+
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        shell: bash
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
 
       - name: Package the desktop app
         env:
@@ -117,6 +239,8 @@ jobs:
 
   windows-tests:
     name: Windows tests (${{ matrix.shard }}, Node 22.x)
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection)['windows-tests'].include[0] != null }}
     runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 30
     permissions:
@@ -124,36 +248,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - shard: server-1
-            filter: --filter=@bb/server
-            concurrency: 4
-            args: -- --shard=1/2
-          - shard: server-2
-            filter: --filter=@bb/server
-            concurrency: 4
-            args: -- --shard=2/2
-          - shard: app-1
-            filter: --filter=@bb/app
-            concurrency: 4
-            args: -- --shard=1/2
-          - shard: app-2
-            filter: --filter=@bb/app
-            concurrency: 4
-            args: -- --shard=2/2
-          - shard: plugins
-            filter: --filter=bb-plugin-*
-            concurrency: 2
-            args: ""
-          - shard: packages-host
-            filter: --filter=@bb/host-daemon --filter=@bb/cli --filter=@bb/provider-parity --filter=@bb/integration-tests
-            concurrency: 1
-            args: ""
-          - shard: packages-other
-            filter: --filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-* --filter=!@bb/host-daemon --filter=!@bb/cli --filter=!@bb/provider-parity --filter=!@bb/integration-tests --filter=!@bb/process-utils --filter=!@bb/host-workspace --filter=!@bb/host-watcher --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol --filter=!@bb/provider-bridge-acp --filter=!@bb/host-daemon-contract --filter=!@bb/config --filter=!@bb/db
-            concurrency: 2
-            args: ""
+      matrix: ${{ fromJSON(needs.plan.outputs.selection)['windows-tests'] }}
 
     steps:
       - name: Checkout repository
@@ -179,15 +274,35 @@ jobs:
           turbo-cache: "true"
           turbo-cache-max-size-mb: "256"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         shell: bash
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+          APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
+          NON_MOBILE_SHARD: ${{ startsWith(matrix.shard, 'plugins-') || matrix.shard == 'packages-host' || matrix.shard == 'packages-build' || matrix.shard == 'integration' }}
+        run: |
+          filters=()
+          if [[ "$APP_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$SERVER_SHARD" == "true" ]]; then
+            filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
+          elif [[ "$NON_MOBILE_SHARD" == "true" ]]; then
+            filters=(--filter '!@bb/mobile')
+          fi
+          bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
 
       - name: Setup Bun
-        if: ${{ matrix.shard == 'plugins' }}
+        if: ${{ matrix.shard == 'plugins-1' }}
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76
         with:
           bun-version: "1.3.14"
@@ -215,9 +330,60 @@ jobs:
           if-no-files-found: ignore
 
       - name: Bound saved Turbo cache
-        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 256 --keep-run-summaries .turbo/runs
+
+  static-checks:
+    name: Lint and typecheck (ubuntu-latest, Node 22.x)
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).staticNeeded }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace tools
+        uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Restore workspace caches
+        id: cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          cache-prefix: static-checks
+          turbo-cache: "true"
+
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
+      - name: Install dependencies
+        timeout-minutes: 5
+        env:
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+        run: bash .github/actions/setup-workspace/install-dependencies.sh
+
+      - name: Lint and typecheck
+        run: pnpm exec turbo run lint typecheck ${{ fromJSON(needs.plan.outputs.selection).staticFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
+      - name: Bound saved Turbo cache
+        run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024 --keep-run-summaries .turbo/runs
 
   checks:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).buildNeeded }}
     name: Checks (ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
@@ -232,9 +398,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Check source files for literal NUL bytes
-        run: node scripts/check-source-nul.mjs
 
       - name: Setup workspace tools
         uses: ./.github/actions/setup-workspace-tools
@@ -252,25 +415,33 @@ jobs:
           cache-prefix: checks
           turbo-cache: "true"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       # Four tasks for four vCPUs: TypeScript 7 and esbuild are multi-threaded,
       # so turbo's default of ten concurrent tasks only adds contention here.
       # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the
       # default vs 90 s / 58 s at four.
-      - name: Build, typecheck, and lint
-        run: pnpm exec turbo run build typecheck lint --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+      - name: Build plugin SDK for version validation
+        if: ${{ fromJSON(needs.plan.outputs.selection).sdkBuild }}
+        run: pnpm exec turbo run build --filter=@get-bb/plugin-sdk --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --concurrency=4
 
-      # Runs after build and typecheck, so the guard's own turbo build is a
-      # cache hit and the package it packs is the one this commit really ships.
       # A published version whose packed files or consumer-facing manifest
       # fields changed is a hard failure; an unreachable registry or a failed
       # local pack (exit 2) is infrastructure, not a finding.
       - name: Check plugin SDK npm version guard
+        if: ${{ fromJSON(needs.plan.outputs.selection).sdkBuild }}
         run: |
           # +e so the exit code can be inspected: GitHub's default shell runs
           # with -e, which would abort the step before the exit-2 check.
@@ -284,20 +455,16 @@ jobs:
           fi
           exit "$guard_exit"
 
+      - name: Build
+        run: pnpm exec turbo run build ${{ fromJSON(needs.plan.outputs.selection).buildFilters }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4
+
       # Guards the JavaScript that blocks first paint in the web app, and the
       # thread route's static closure that blocks first thread paint. Heavy
       # editor, diff and math code reaches those paths through barrel
       # re-exports, which typecheck and lint cannot see.
       - name: Check app bundle budgets
+        if: ${{ fromJSON(needs.plan.outputs.selection).appBuild }}
         run: node apps/app/scripts/check-bundle-budget.mjs
-
-      # Provider-literal ratchet (G1 of the provider-plugin migration):
-      # core must never gain a new provider-id carve-out; the per-file
-      # baseline may only shrink. See docs/provider-plugin-api.md.
-      - name: Check provider-literal ratchet
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref || github.event.repository.default_branch }}" || true
-          node scripts/check-provider-literal-ratchet.mjs --base "origin/${{ github.base_ref || github.event.repository.default_branch }}"
 
       # Exceeding the Actions cache quota is silent: GitHub evicts entries
       # without failing or warning anything, so the only symptom is caches
@@ -315,47 +482,14 @@ jobs:
   # the same 4 vCPUs, which made tests the critical path of every run.
   tests:
     name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection)['tests'].include[0] != null }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 30
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - shard: server-1
-            filter: --filter=@bb/server
-            args: --shard=1/2
-          - shard: server-2
-            filter: --filter=@bb/server
-            args: --shard=2/2
-          # @bb/app is by far the largest suite (365 files) and was the critical
-          # path once the macOS smoke leg was fixed. Vitest splits by file, and
-          # Turbo hashes passthrough args, so each leg is a distinct cache entry
-          # rather than three jobs racing to reuse one.
-          - shard: app-1
-            filter: --filter=@bb/app
-            args: --shard=1/3
-          - shard: app-2
-            filter: --filter=@bb/app
-            args: --shard=2/3
-          - shard: app-3
-            filter: --filter=@bb/app
-            args: --shard=3/3
-          - shard: integration
-            filter: --filter=@bb/integration-tests
-            args: ""
-          - shard: plugins
-            filter: --filter='bb-plugin-*'
-            args: ""
-          - shard: packages-host
-            filter: --filter=@bb/host-daemon --filter=@bb/cli --filter=@bb/agent-runtime --filter=@bb/provider-parity --filter=@bb/db
-            args: ""
-          - shard: packages-build
-            filter: --filter=@bb/templates --filter=bb-app --filter=@bb/demo-server --filter=@bb/desktop --filter=@bb/plugin-build
-            args: ""
-          - shard: packages-other
-            filter: --filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests' --filter='!bb-plugin-*' --filter='!@bb/host-daemon' --filter='!@bb/cli' --filter='!@bb/agent-runtime' --filter='!@bb/provider-parity' --filter='!@bb/db' --filter='!@bb/templates' --filter='!bb-app' --filter='!@bb/demo-server' --filter='!@bb/desktop' --filter='!@bb/plugin-build'
-            args: ""
+      matrix: ${{ fromJSON(needs.plan.outputs.selection)['tests'] }}
 
     steps:
       - name: Checkout repository
@@ -377,11 +511,28 @@ jobs:
           cache-prefix: test-${{ matrix.shard }}
           turbo-cache: "true"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
+          APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
+          DEMO_ONLY: ${{ matrix.filter == '--filter=@bb/demo-server' }}
+        run: |
+          filters=()
+          if [[ "$APP_SHARD" == "true" ]]; then
+            filters=(--ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...')
+          elif [[ "$DEMO_ONLY" == "true" ]]; then
+            filters=(--ignore-scripts --filter bb --filter '@bb/demo-server...' --filter '@bb/db...')
+          fi
+          bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
       - name: Setup Bun
         if: ${{ startsWith(matrix.shard, 'packages-') || matrix.shard == 'plugins' }}
@@ -391,14 +542,13 @@ jobs:
           no-cache: true
 
       - name: Install Electron runtime libraries
-        if: ${{ matrix.shard == 'packages-build' }}
+        if: ${{ contains(matrix.filter, '--filter=@bb/desktop') }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64
+          bash .github/actions/setup-workspace/install-electron-libraries.sh
           ELECTRON_RUN_AS_NODE=1 pnpm --filter @bb/desktop exec electron --version
 
       - name: Test
-        run: ${{ matrix.shard == 'packages-build' && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
+        run: ${{ contains(matrix.filter, '--filter=@bb/desktop') && 'xvfb-run -a' || '' }} pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="${TURBO_CACHE_DIR:-.turbo/cache}" --output-logs=new-only --summarize --concurrency=4 -- --maxWorkers=2 ${{ matrix.args }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}
@@ -420,6 +570,8 @@ jobs:
   # unpinned CLI.
   # TODO: cover the npm build, macOS, and the full `test:integration` suite.
   plugin-forks:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).forks }}
     name: Plugin Fork Check (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
@@ -465,11 +617,19 @@ jobs:
           cache-prefix: plugin-forks-${{ matrix.shard }}
           turbo-cache: "true"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         if: steps.selection.outputs.count != '0'
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Setup Bun
@@ -490,13 +650,14 @@ jobs:
         run: node scripts/prune-turbo-cache.mjs --dir .turbo/cache --max-size-mb 1024
 
   provider-model-listing:
+    needs: plan
     name: Provider Model Listing
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
 
     # Fork pull requests cannot read secrets, so the probe would fail
     # unauthenticated for reasons unrelated to bb.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ fromJSON(needs.plan.outputs.selection).providers && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
 
     steps:
       - name: Checkout repository
@@ -518,10 +679,18 @@ jobs:
           cache-prefix: test-provider-model-listing
           turbo-cache: "true"
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       # The native build: bb resolves `claude` from PATH and `~/.local/bin`,
@@ -562,6 +731,8 @@ jobs:
   # evicted each other. `smoke:tarball` is itself `"cache": false`, so only its
   # build dependencies could ever have been reused.
   package-smoke:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.selection).packaging }}
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -597,10 +768,18 @@ jobs:
           cache-prefix: package-smoke
           turbo-cache: ${{ matrix.turbo-cache }}
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Smoke bb-app tarball
@@ -667,10 +846,18 @@ jobs:
           cache-prefix: compat-smoke
           turbo-cache: ${{ matrix.turbo-cache }}
 
+      - name: Restore pnpm cache
+        if: runner.os == 'macOS'
+        id: pnpm-cache
+        timeout-minutes: 1
+        continue-on-error: true
+        uses: ./.github/actions/cache-pnpm
+
       - name: Install dependencies
         timeout-minutes: 5
         env:
-          CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+          PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
         run: bash .github/actions/setup-workspace/install-dependencies.sh
 
       - name: Smoke bb-app tarball

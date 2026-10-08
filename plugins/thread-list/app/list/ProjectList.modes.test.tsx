@@ -11,6 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "../rows/SidebarInlineRename.js";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -198,7 +199,11 @@ interface HarnessProps {
 }
 
 function Harness({ store, children }: HarnessProps) {
-  return <JotaiProvider store={store}>{children}</JotaiProvider>;
+  return (
+    <JotaiProvider store={store}>
+      <SidebarRenameProvider>{children}</SidebarRenameProvider>
+    </JotaiProvider>
+  );
 }
 
 function renderMachineMode(

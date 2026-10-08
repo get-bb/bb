@@ -7,7 +7,6 @@ import { CompactSecondaryPanelShelf } from "@/components/secondary-panel/Compact
 import {
   KEYBOARD_OPEN_MIN_SHRINK_PX,
   SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-  shouldRestoreIOSViewportOnKeyboardDismissal,
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
 
@@ -584,45 +583,5 @@ describe("useMobileVisualViewportHeight", () => {
           expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
         }),
     );
-  });
-});
-
-describe("shouldRestoreIOSViewportOnKeyboardDismissal", () => {
-  it("recognizes iPhones and iPads using desktop-class browsing", () => {
-    expect(
-      shouldRestoreIOSViewportOnKeyboardDismissal({
-        userAgent:
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
-        platform: "iPhone",
-        maxTouchPoints: 5,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRestoreIOSViewportOnKeyboardDismissal({
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
-        platform: "MacIntel",
-        maxTouchPoints: 5,
-      }),
-    ).toBe(true);
-  });
-
-  it("skips the Safari dismissal workaround on Android and desktop", () => {
-    expect(
-      shouldRestoreIOSViewportOnKeyboardDismissal({
-        userAgent:
-          "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36",
-        platform: "Linux armv8l",
-        maxTouchPoints: 5,
-      }),
-    ).toBe(false);
-    expect(
-      shouldRestoreIOSViewportOnKeyboardDismissal({
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
-        platform: "MacIntel",
-        maxTouchPoints: 0,
-      }),
-    ).toBe(false);
   });
 });

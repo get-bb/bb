@@ -81,6 +81,7 @@ describe("thread conversation outline performance", () => {
 
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: cases.length,
     });
 
@@ -109,6 +110,7 @@ describe("thread conversation outline performance", () => {
     });
     const first = loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 1,
       outlineSequence,
     });
@@ -116,6 +118,7 @@ describe("thread conversation outline performance", () => {
 
     const second = loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 2,
       outlineSequence,
     });
@@ -148,6 +151,7 @@ describe("thread conversation outline performance", () => {
     ]);
     loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -163,6 +167,7 @@ describe("thread conversation outline performance", () => {
 
     loadThreadConversationOutline(db, renamedThread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -181,6 +186,7 @@ describe("thread conversation outline performance", () => {
 
     const rewound = loadThreadConversationOutline(db, renamedThread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 0,
       outlineSequence: 0,
     });
@@ -209,6 +215,7 @@ describe("thread conversation outline performance", () => {
 
     loadThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 1,
       outlineSequence: 1,
     });
@@ -257,6 +264,7 @@ describe("thread conversation outline performance", () => {
 
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 2,
     });
 
@@ -329,6 +337,7 @@ describe("thread conversation outline performance", () => {
 
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 4,
     });
 

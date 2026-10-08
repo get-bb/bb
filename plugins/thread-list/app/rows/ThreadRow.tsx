@@ -94,6 +94,11 @@ import {
   visibleThreadRowActions,
 } from "./ThreadActionsMenu.js";
 import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
+import { useThreadRowActionsCustomizing } from "../list/customizeRowActionsContext.js";
+import {
+  ThreadRowActionsEditor,
+  focusFirstRowActionSlot,
+} from "../list/ThreadRowActionsCustomize.js";
 import {
   ThreadStatusGlyph,
   resolveThreadStatus,
@@ -367,14 +372,17 @@ function ThreadRowComponent({
     label: "Thread name",
     onSave: handleRename,
   });
-  const { editor, isEditing, startEditing } = rename;
+  const { editor, isEditing, startEditing, startEditingFromDoubleClick } =
+    rename;
+  const finishCustomizingActions = useThreadRowActionsCustomizing(thread.id);
+  const isCustomizingActions = finishCustomizingActions !== null;
   const startTitleEditing = useCallback(
     (event: { preventDefault: () => void; stopPropagation: () => void }) => {
       event.preventDefault();
       event.stopPropagation();
-      startEditing();
+      startEditingFromDoubleClick();
     },
-    [startEditing],
+    [startEditingFromDoubleClick],
   );
   const miniMap = useThreadSplitMiniMap(thread.id);
   const isOpenInSplit = miniMap !== null;
@@ -451,7 +459,8 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const rowDragBindings = isEditing ? undefined : options.dragBindings;
+  const rowDragBindings =
+    isEditing || isCustomizingActions ? undefined : options.dragBindings;
   const nestTargetState = options.nestDrop?.state ?? null;
   const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
   const containerRef = useComposedRefs<HTMLDivElement>(
@@ -478,6 +487,7 @@ function ThreadRowComponent({
     !isActionsOpen && "data-[sidebar-touch-armed=true]:!bg-transparent",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
+    isCustomizingActions && "bg-sidebar-accent",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
@@ -505,6 +515,17 @@ function ThreadRowComponent({
     },
     [],
   );
+  const handleActionsMenuCloseAutoFocus = (event: Event) => {
+    if (isCustomizingActions) {
+      event.preventDefault();
+      focusFirstRowActionSlot(
+        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
+      );
+      return;
+    }
+    rename.onCloseAutoFocus(event);
+  };
+
   const rowContent = (
     <>
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
@@ -521,8 +542,9 @@ function ThreadRowComponent({
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
             !isEditing &&
+            !isCustomizingActions &&
             (reserveActionSpace
-              ? "pr-(--bb-sidebar-hover-actions-inset) max-md:pointer-coarse:pr-0"
+              ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
         style={getHoverActionsInsetStyle(
@@ -547,10 +569,12 @@ function ThreadRowComponent({
               openInSplit();
               return;
             }
-            if (consumeSidebarTitleDoubleClick(thread.id)) {
+            if (
+              consumeSidebarTitleDoubleClick(thread.id) &&
+              startEditingFromDoubleClick()
+            ) {
               event.preventDefault();
               event.stopPropagation();
-              startEditing();
               return;
             }
             onProjectSelect?.();
@@ -654,18 +678,18 @@ function ThreadRowComponent({
           "flex shrink-0 items-center gap-0.5",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
-          isEditing && "hidden",
+          (isEditing || isCustomizingActions) && "hidden",
         )}
       >
         {thread.archivedAt !== null ? (
-          <span className="relative flex items-center max-md:pointer-coarse:hidden">
+          <span className="relative flex items-center [@media(hover:none)]:hidden">
             <div
               data-sidebar-hover-actions-open={
                 isActionsOpen ? "true" : undefined
               }
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_CLASS,
-                "absolute right-full z-10 max-md:pointer-coarse:hidden",
+                "absolute right-full z-10 [@media(hover:none)]:hidden",
               )}
             >
               <ThreadActionsMenu
@@ -674,7 +698,7 @@ function ThreadRowComponent({
                 onOpenInSplit={splitAvailable ? openInSplit : undefined}
                 onOpenChange={setIsDropdownActionsOpen}
                 onRename={rename.startEditingFromMenu}
-                onCloseAutoFocus={rename.onCloseAutoFocus}
+                onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
               />
             </div>
             <ThreadRestoreStatusAction thread={thread} />
@@ -684,7 +708,7 @@ function ThreadRowComponent({
         ) : (
           <span
             className={cn(
-              "flex shrink-0 items-center justify-end max-md:pointer-coarse:pointer-events-none",
+              "flex shrink-0 items-center justify-end [@media(hover:none)]:pointer-events-none",
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
             )}
           >
@@ -733,7 +757,7 @@ function ThreadRowComponent({
                 }
                 className={cn(
                   SIDEBAR_HOVER_ACTIONS_CLASS,
-                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end max-md:pointer-coarse:hidden",
+                  "absolute inset-y-0 right-0 z-10 flex items-center justify-end [@media(hover:none)]:hidden",
                   isEditing && "invisible pointer-events-none",
                 )}
               >
@@ -756,7 +780,7 @@ function ThreadRowComponent({
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
                     onRename={rename.startEditingFromMenu}
-                    onCloseAutoFocus={rename.onCloseAutoFocus}
+                    onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
                   />
                 </SidebarRowControls>
               </div>
@@ -764,6 +788,9 @@ function ThreadRowComponent({
           </span>
         )}
       </span>
+      {finishCustomizingActions ? (
+        <ThreadRowActionsEditor onDone={finishCustomizingActions} />
+      ) : null}
     </>
   );
 
@@ -790,7 +817,7 @@ function ThreadRowComponent({
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
       onRename={rename.startEditingFromMenu}
-      onCloseAutoFocus={rename.onCloseAutoFocus}
+      onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
       disabled={isEditing}
       dragging={rowDragBindings?.isDragging ?? false}
     >

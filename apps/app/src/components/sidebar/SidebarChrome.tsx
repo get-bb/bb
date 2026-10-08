@@ -4,7 +4,10 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useCloseMobileSidebar } from "@/components/ui/sidebar.js";
+import {
+  useCloseMobileSidebar,
+  useIsSidebarFramed,
+} from "@/components/ui/sidebar.js";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -21,11 +24,7 @@ const BROWSER_HEADER_SLOT_START_CLASS =
 const MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
   "pl-[calc(84px_+_var(--bb-sidebar-control-size)_-_4px)]";
 
-export const NAV_RAIL_WIDTH_CLASS =
-  "w-[calc(var(--bb-sidebar-control-size)_+_24px)]";
-const NAV_RAIL_BROWSER_HEADER_SLOT_START_CLASS = "pl-0";
-const NAV_RAIL_MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
-  "pl-[calc(84px_-_4px_-_24px)]";
+const NAV_RAIL_HEADER_SLOT_START_CLASS = "pl-0";
 
 export function SidebarTopReserveRow({
   testId,
@@ -37,6 +36,7 @@ export function SidebarTopReserveRow({
   besideNavRail?: boolean;
 }) {
   const closeOnMobile = useCloseMobileSidebar();
+  const isFramed = useIsSidebarFramed();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
@@ -45,31 +45,35 @@ export function SidebarTopReserveRow({
     windowState: desktopWindowState,
   });
 
+  if (isFramed && renderHeaderSlot === undefined) {
+    return <div data-testid={testId} className="h-2 shrink-0" />;
+  }
+
   return (
     <div
       data-testid={testId}
       className={cn(
         CHROME_ROW_CLASS,
         "shrink-0 justify-end gap-1 px-2",
-        usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+        usesDesktopChrome && !isFramed && MACOS_WINDOW_DRAG_CLASS,
       )}
     >
       {renderHeaderSlot?.(
         besideNavRail
-          ? reserveMacosTrafficLights
-            ? NAV_RAIL_MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
-            : NAV_RAIL_BROWSER_HEADER_SLOT_START_CLASS
+          ? NAV_RAIL_HEADER_SLOT_START_CLASS
           : reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
             : BROWSER_HEADER_SLOT_START_CLASS,
       )}
-      <SidebarHistoryNavigationControls
-        onNavigate={closeOnMobile}
-        className={cn(
-          "shrink-0",
-          usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-        )}
-      />
+      {isFramed ? null : (
+        <SidebarHistoryNavigationControls
+          onNavigate={closeOnMobile}
+          className={cn(
+            "shrink-0",
+            usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+          )}
+        />
+      )}
     </div>
   );
 }

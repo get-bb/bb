@@ -11,8 +11,9 @@ function LoadingRow({ textWidthClassName }: { textWidthClassName: string }) {
   return (
     <div
       data-sidebar="navigation-loading-row"
-      className="flex h-7 items-center rounded-md"
+      className="flex h-7 items-center gap-2 rounded-md"
     >
+      <Skeleton className="size-4 shrink-0 rounded-md bg-sidebar-border/60" />
       <Skeleton
         className={cn(
           "h-3 rounded-sm bg-sidebar-border/50",
@@ -33,10 +34,12 @@ export function ThreadListPlaceholder({
       <div
         aria-label="Loading sidebar navigation"
         data-thread-list-placeholder="loading"
-        className="space-y-1.5 px-2 pt-1"
+        className="p-2"
       >
-        <LoadingRow textWidthClassName="w-2/3" />
-        <LoadingRow textWidthClassName="w-1/2" />
+        <div className="space-y-1.5 px-2 pt-1">
+          <LoadingRow textWidthClassName="w-2/3" />
+          <LoadingRow textWidthClassName="w-1/2" />
+        </div>
       </div>
     );
   }

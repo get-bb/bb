@@ -61,7 +61,7 @@ export async function deleteThreadStorage(
     path.join(options.threadStorageRootPath, command.threadId),
     "Thread storage path escapes the storage root",
   );
-  await killProcessesWithCwdUnder({ directory: storagePath });
+  await killProcessesWithCwdUnder({ directories: [storagePath] });
   await fs.rm(storagePath, { recursive: true, force: true });
 }
 

@@ -1,0 +1,20 @@
+name: Cache pnpm
+description: Restore and save the macOS pnpm store independently of Turbo outputs.
+runs:
+  using: composite
+  steps:
+    - name: Locate pnpm store
+      id: store
+      shell: bash
+      run: |
+        echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+        echo "arch=$(node -p process.arch)" >> "$GITHUB_OUTPUT"
+    - name: Cache pnpm store
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "1"
+      with:
+        path: ${{ steps.store.outputs.path }}
+        key: node-cache-${{ runner.os }}-${{ steps.store.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          node-cache-${{ runner.os }}-${{ steps.store.outputs.arch }}-pnpm-

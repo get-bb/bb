@@ -888,8 +888,18 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="fitted queue above the composer"
+        hint="toggle the full Queue header in either direction, or collapse below the messages; hover the bottom row to inspect the composer corners"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessages.slice(0, 2)}
+        />
+      </StoryRow>
+      <StoryRow
         label="stacked cards with Markdown + pills"
-        hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
+        hint="scroll the overflowing queue and toggle its header; edit a message to open the inline composer, or collapse the main composer on mobile"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>

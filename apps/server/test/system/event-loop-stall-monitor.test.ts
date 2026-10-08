@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { console as inspectorConsole } from "node:inspector";
+import { createConnection, migrate, setExperiments } from "@bb/db";
+import { startGatedPerformanceDiagnostics } from "../../src/services/system/performance-diagnostics.js";
+import { NotificationHub } from "../../src/ws/hub.js";
 
 interface MockEventLoopDelayHistogram {
   disable: () => void;
@@ -120,6 +127,8 @@ describe("event loop stall monitor", () => {
           p99DelayMs: 450,
           resolutionMs: 20,
           thresholdMs: expectedThreshold,
+          stallAttribution: "unattributed",
+          stallCauseCandidate: null,
           ...EMPTY_WORK_SNAPSHOT,
         },
         "Event loop stalled",
@@ -205,6 +214,8 @@ describe("event loop stall monitor", () => {
         lastCompletedWorkWallMs: null,
         longestSynchronousWork: null,
         longestSynchronousWorkWallMs: null,
+        stallAttribution: "unattributed",
+        stallCauseCandidate: null,
       }),
       "Event loop stalled",
     );
@@ -351,10 +362,114 @@ describe("event loop stall monitor", () => {
         longestSynchronousWork: "sweep:database-maintenance",
         longestSynchronousWorkWallMs: 650,
         longestSynchronousWorkCpuMs: 2,
+        stallAttribution: "candidate",
+        stallCauseCandidate: "sweep:database-maintenance",
       }),
       "Event loop stalled",
     );
 
     monitor.stop();
   });
+
+  it("leaves a two-second stall unattributed when measured work took one millisecond", () => {
+    installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
+    const logger = { info: vi.fn() };
+    const nowSpy = vi.spyOn(nodePerformance, "now");
+    try {
+      nowSpy.mockReturnValueOnce(0).mockReturnValueOnce(1);
+      runEventLoopWorkSync("ws:daemon heartbeat", () => undefined);
+    } finally {
+      nowSpy.mockRestore();
+    }
+    const monitor = startEventLoopStallMonitor({ logger });
+    try {
+      vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxDelayMs: 2_000,
+          longestSynchronousWork: "ws:daemon heartbeat",
+          longestSynchronousWorkWallMs: 1,
+          stallAttribution: "unattributed",
+          stallCauseCandidate: null,
+        }),
+        "Event loop stalled",
+      );
+    } finally {
+      monitor.stop();
+    }
+  });
+
+  it.each(["start", "finish", "serialize"] as const)(
+    "identifies a slow CPU profile %s as a candidate in stall logs",
+    async (phase) => {
+      installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
+      const db = createConnection(":memory:");
+      migrate(db);
+      setExperiments(db, { performanceDiagnostics: true });
+      const dataDir = await mkdtemp(join(tmpdir(), "bb-profile-attribution-"));
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const monitor = startEventLoopStallMonitor({ logger });
+      let clock = 0;
+      const nowSpy = vi
+        .spyOn(nodePerformance, "now")
+        .mockImplementation(() => clock);
+      const start = inspectorConsole.profile;
+      const finish = inspectorConsole.profileEnd;
+      const stringify = JSON.stringify;
+      const startSpy = vi
+        .spyOn(inspectorConsole, "profile")
+        .mockImplementation((title) => {
+          start(title);
+          if (phase === "start") clock += 2_000;
+        });
+      const finishSpy = vi
+        .spyOn(inspectorConsole, "profileEnd")
+        .mockImplementation((title) => {
+          finish(title);
+          if (phase === "finish") clock += 2_000;
+        });
+      const stringifySpy = vi
+        .spyOn(JSON, "stringify")
+        .mockImplementation((value, replacer, space) => {
+          const result = stringify(value, replacer, space);
+          if (phase === "serialize" && value && Array.isArray(value.nodes))
+            clock += 2_000;
+          return result;
+        });
+      let recorder:
+        | Awaited<ReturnType<typeof startGatedPerformanceDiagnostics>>
+        | undefined;
+      try {
+        recorder = await startGatedPerformanceDiagnostics({
+          allowed: true,
+          dataDir,
+          db,
+          hub: new NotificationHub(),
+          logger,
+        });
+        await recorder.stop();
+        vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            maxDelayMs: 2_000,
+            longestSynchronousWork: `cpu-profile:${phase}`,
+            longestSynchronousWorkWallMs: 2_000,
+            stallAttribution: "candidate",
+            stallCauseCandidate: `cpu-profile:${phase}`,
+          }),
+          "Event loop stalled",
+        );
+      } finally {
+        await recorder?.stop();
+        monitor.stop();
+        nowSpy.mockRestore();
+        startSpy.mockRestore();
+        finishSpy.mockRestore();
+        stringifySpy.mockRestore();
+        db.$client.close();
+        await rm(dataDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

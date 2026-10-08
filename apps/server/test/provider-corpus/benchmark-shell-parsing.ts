@@ -67,6 +67,7 @@ const results = cases.map(({ name, command }) => {
     const result = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: 1_500,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,

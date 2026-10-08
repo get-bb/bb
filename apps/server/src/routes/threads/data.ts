@@ -218,12 +218,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread.providerId,
     );
+    const settings = getAppSettings(deps.db);
     return {
       completedTurnDisplay: resolveThreadCompletedTurnDisplay(
         deps,
-        getAppSettings(deps.db),
+        settings,
         thread.providerId,
       ),
+      includeClearedContextHistory: settings.keepHistoryAfterContextClear,
       maxSeq: getLatestThreadSequence(deps.db, { threadId: thread.id }),
       ...(providerDisplayName === undefined ? {} : { providerDisplayName }),
     };
@@ -294,6 +296,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
     const settings = getAppSettings(deps.db);
     const includeDiagnosticOperations = settings.showDiagnosticEvents;
+    const includeClearedContextHistory = settings.keepHistoryAfterContextClear;
     const completedTurnDisplay = resolveThreadCompletedTurnDisplay(
       deps,
       settings,
@@ -311,6 +314,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       page,
       includeNestedRows,
       summaryOnly,
+      includeClearedContextHistory,
       includeDiagnosticOperations,
       completedTurnDisplay,
     };
@@ -324,6 +328,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           {
             completedTurnDisplay,
             eventBudget,
+            includeClearedContextHistory,
             includeDiagnosticOperations,
             includeNestedRows,
             maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,

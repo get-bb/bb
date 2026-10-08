@@ -151,3 +151,36 @@ it("gives every host user environment while forwarding automatic gh credentials 
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
+it("forwards automatic gh credentials to every machine when the server has no local host daemon", async () => {
+  const db = createConnection(":memory:");
+  const dataDir = await mkdtemp(join(tmpdir(), "bb-serverless-env-"));
+  try {
+    migrate(db);
+    upsertHost(db, noopNotifier, { id: "remote", name: "Remote" });
+    const bin = join(dataDir, "bin");
+    await mkdir(bin);
+    await writeFakeGh(bin);
+    vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+    const deps = { db, config: { dataDir } };
+    expect(
+      await resolveHostEnvironment(deps, { hostId: "remote", projectId: null }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "GH_TOKEN", value: "test-gh-secret" }),
+        expect.objectContaining({ name: "GIT_CONFIG_COUNT" }),
+      ]),
+    );
+    setAppSettings(db, {
+      ...defaultAppSettings,
+      machineGitCredentialsEnabled: false,
+    });
+    expect(
+      await resolveHostEnvironment(deps, { hostId: "remote", projectId: null }),
+    ).toEqual([]);
+  } finally {
+    vi.unstubAllEnvs();
+    db.$client.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

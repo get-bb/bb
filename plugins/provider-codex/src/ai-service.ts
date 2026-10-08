@@ -9,7 +9,7 @@ import {
 const CODEX_TEXT_MODELS = ["gpt-6-luna", "gpt-5.6-luna"] as const;
 const CODEX_TRANSCRIPTION_MODEL = "gpt-transcribe";
 const COMPLETE_TIMEOUT_MS = 5_000;
-const TRANSCRIBE_TIMEOUT_MS = 10_000;
+const TRANSCRIBE_TIMEOUT_MS = 65_000;
 const TRANSCRIBE_MAX_BYTES = 20 * 1024 * 1024;
 const HOST_CALL_GRACE_MS = 1_000;
 const RETRY_WITH_NEXT_MODEL: ReadonlySet<CodexAiFailureCode> = new Set([

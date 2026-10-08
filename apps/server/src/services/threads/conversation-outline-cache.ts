@@ -40,7 +40,7 @@ interface Checkpoint {
 interface Entry {
   agentMessageDeltaCount: number;
   checkpoint: Checkpoint;
-  contextBoundarySeq: number;
+  historySequenceStart: number;
   dataVersion: number;
   generation: number;
   key: string;
@@ -227,7 +227,7 @@ export function projectConversationOutlineIncrementally(args: {
   threadId: string;
   key: string;
   maxSeq: number;
-  contextBoundarySeq: number;
+  historySequenceStart: number;
   orderingBoundarySequence: number | null;
   resolveProjectionState: (
     sequenceStart: number,
@@ -254,7 +254,7 @@ export function projectConversationOutlineIncrementally(args: {
   const empty: Checkpoint = {
     agentMessageDeltaCount: 0,
     items: [],
-    sequenceStart: args.contextBoundarySeq,
+    sequenceStart: args.historySequenceStart,
     turnIds: new Set(),
     requestIds: new Set(),
     parentItemIds: new Set(),
@@ -264,13 +264,13 @@ export function projectConversationOutlineIncrementally(args: {
     entry.key === args.key &&
     entry.dataVersion === dataVersion &&
     entry.generation === generation &&
-    entry.contextBoundarySeq === args.contextBoundarySeq &&
+    entry.historySequenceStart === args.historySequenceStart &&
     (args.orderingBoundarySequence === null ||
       entry.checkpoint.sequenceStart <= args.orderingBoundarySequence) &&
     entry.maxSeq <= args.maxSeq;
   const previousState = canReuseEntry ? entry.projectionState : null;
   const projectionState = args.resolveProjectionState(
-    canReuseEntry ? entry.maxSeq + 1 : args.contextBoundarySeq,
+    canReuseEntry ? entry.maxSeq + 1 : args.historySequenceStart,
     previousState,
   );
   let checkpoint =
@@ -316,7 +316,7 @@ export function projectConversationOutlineIncrementally(args: {
     checkpoint,
     args.orderingBoundarySequence,
   );
-  if (next.sequenceStart > args.contextBoundarySeq) {
+  if (next.sequenceStart > args.historySequenceStart) {
     const chars =
       next === entry?.checkpoint
         ? entry.chars
@@ -329,7 +329,7 @@ export function projectConversationOutlineIncrementally(args: {
       cache.entries.set(args.threadId, {
         agentMessageDeltaCount,
         checkpoint: next,
-        contextBoundarySeq: args.contextBoundarySeq,
+        historySequenceStart: args.historySequenceStart,
         dataVersion,
         generation,
         key: args.key,

@@ -403,6 +403,28 @@ export function createWorkflowService(
 ): WorkflowService {
   let shuttingDown = false;
   let currentSettings = initialSettings;
+  let claimRequested = true;
+  let wakeWaiter: (() => void) | null = null;
+
+  function wakeWorker(): void {
+    claimRequested = true;
+    wakeWaiter?.();
+  }
+
+  function waitForWork(ms: number, signal: AbortSignal): Promise<void> {
+    if (claimRequested || signal.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+      const settle = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", settle);
+        wakeWaiter = null;
+        resolve();
+      };
+      const timeout = setTimeout(settle, Math.max(0, ms));
+      wakeWaiter = settle;
+      signal.addEventListener("abort", settle, { once: true });
+    });
+  }
   const controllers = new Map<string, AbortController>();
   const idleHandlers = new Set<string>();
   const handlerTasks = new Set<Promise<void>>();
@@ -632,6 +654,7 @@ export function createWorkflowService(
       settingsJson: JSON.stringify(currentSettings),
       resumedFromRunId: input.resumedFromRunId,
     });
+    wakeWorker();
     publishRunsChanged(created.originThreadId);
     return created;
   }
@@ -1339,6 +1362,7 @@ export function createWorkflowService(
     args: Parameters<typeof settleRun>[1],
   ): Promise<void> {
     const outstanding = settleRun(db, args);
+    wakeWorker();
     const settled = getRun(db, args.id);
     if (settled !== null) publishRunsChanged(settled.originThreadId);
     controllers.get(args.id)?.abort();
@@ -1640,7 +1664,9 @@ export function createWorkflowService(
     const active = new Set<Promise<void>>();
     let nextMaintenanceAt = 0;
     while (!signal.aborted) {
-      while (active.size < currentSettings.maxActiveRuns) {
+      const shouldClaim = claimRequested;
+      claimRequested = false;
+      while (shouldClaim && active.size < currentSettings.maxActiveRuns) {
         const run = claimQueuedRun(db, currentSettings.maxActiveRuns);
         if (run === null) break;
         publishRunsChanged(run.originThreadId);
@@ -1651,6 +1677,7 @@ export function createWorkflowService(
         const execution = executeRun(run, controller.signal).finally(() => {
           signal.removeEventListener("abort", abortRun);
           active.delete(execution);
+          wakeWorker();
         });
         active.add(execution);
       }
@@ -1667,7 +1694,7 @@ export function createWorkflowService(
           );
         }
       }
-      await sleep(active.size === 0 ? 250 : 50, signal);
+      await waitForWork(nextMaintenanceAt - Date.now(), signal);
     }
     shuttingDown = true;
     for (const controller of controllers.values()) controller.abort();
@@ -1680,6 +1707,7 @@ export function createWorkflowService(
   async function stop(runId: string): Promise<boolean> {
     const childThreadIds = activeChildThreadsForRun(db, runId);
     const stopped = cancelRun(db, runId);
+    wakeWorker();
     if (stopped) {
       const run = getRun(db, runId);
       if (run !== null) publishRunsChanged(run.originThreadId);
@@ -1700,6 +1728,7 @@ export function createWorkflowService(
     stop,
     updateSettings(settings) {
       currentSettings = settings;
+      wakeWorker();
     },
     runWorker,
     onThreadIdle,

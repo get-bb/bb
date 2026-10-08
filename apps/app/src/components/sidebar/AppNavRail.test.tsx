@@ -238,6 +238,34 @@ describe("AppNavRail", () => {
     expect(pathname()).toBe("/");
   });
 
+  it("does not mount a plugin panel's sidebar accessory", () => {
+    const accessoryMounted = vi.fn();
+    setPluginSlotRegistrations(
+      "garden",
+      registrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "BookOpen",
+            path: "docs",
+            component: () => null,
+            experimental_sidebarAccessory: () => {
+              accessoryMounted();
+              return <span>492/1</span>;
+            },
+          },
+        ],
+      }),
+    );
+
+    renderRail(THREAD_PATH);
+
+    expect(railButton("Docs")).toBeDefined();
+    expect(accessoryMounted).not.toHaveBeenCalled();
+    expect(rail().textContent).not.toContain("492/1");
+  });
+
   it("keeps hidden destinations out of the rail", () => {
     renderRail(THREAD_PATH, {
       visibleKeys: ["__bb__/new-thread", "__bb__/extensions"],
@@ -302,9 +330,12 @@ describe("AppNavRail", () => {
     expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
   });
 
-  it("keeps the customize popover where it opened while More moves under the pointer", async () => {
+  it("opens the customize popover at the top of the rail and keeps it there while More moves", async () => {
     renderRail(THREAD_PATH);
     let moreTop = 200;
+    vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 40, 28, 28),
+    );
     vi.spyOn(railButton("More"), "getBoundingClientRect").mockImplementation(
       () => new DOMRect(12, moreTop, 28, 28),
     );
@@ -315,7 +346,7 @@ describe("AppNavRail", () => {
       "[data-radix-popper-content-wrapper]",
     );
     if (!wrapper) throw new Error("Expected the popover position wrapper");
-    await waitFor(() => expect(wrapper.style.transform).toContain("200px"));
+    await waitFor(() => expect(wrapper.style.transform).toContain("40px"));
     const openedAt = wrapper.style.transform;
 
     moreTop = 120;

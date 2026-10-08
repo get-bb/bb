@@ -132,9 +132,9 @@ describe("bb-ai-gateway worker on D1", { timeout: 30_000 }, () => {
     });
     expect(upstreamBodies.at(-1)).toMatchObject({
       model: "nvidia/nemotron-3.5-lightning",
-      models: ["inception/mercury-2.5"],
       max_tokens: 128,
     });
+    expect(upstreamBodies.at(-1)).not.toHaveProperty("models");
 
     const db = (await mf.getD1Database("DB")) as unknown as D1Database;
     const row = await db

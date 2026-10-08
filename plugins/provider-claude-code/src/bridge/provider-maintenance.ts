@@ -370,7 +370,7 @@ function healthResult(
       minimumSupportedVersion: null,
       canInstall: true,
       canUpdate: status !== "not_installed",
-      loginCommand: "claude /login",
+      loginCommand: "claude auth login",
     },
   };
 }

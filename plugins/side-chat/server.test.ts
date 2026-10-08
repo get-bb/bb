@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
@@ -30,11 +30,32 @@ function timelineResult(rows: TimelineRow[]) {
   return { rows };
 }
 
+const hosts: ReturnType<typeof createFakePluginHost>[] = [];
+
+afterEach(async () => {
+  vi.useRealTimers();
+  await Promise.all(
+    hosts.splice(0).map((host) => host.harness.lifecycle.dispose()),
+  );
+});
+
 async function loadPlugin(sdkThreads: Record<string, unknown>) {
   const host = createFakePluginHost({
     pluginId: PLUGIN_ID,
-    sdk: { threads: sdkThreads },
+    sdk: {
+      threads: {
+        get: async ({ threadId }: { threadId: string }) =>
+          makeThreadResponse({
+            id: threadId,
+            originKind: "fork",
+            originPluginId: PLUGIN_ID,
+            visibility: "hidden",
+          }),
+        ...sdkThreads,
+      },
+    },
   });
+  hosts.push(host);
   await plugin(host.bb);
   return host;
 }
@@ -188,7 +209,214 @@ describe("createSideChat rpc", () => {
 });
 
 describe("empty-fork sweep", () => {
+  it("discovers existing forks once and remembers discovery after reload", async () => {
+    const list = vi.fn(async () => []);
+    const host = await loadPlugin({ list });
+    await host.harness.runSchedule("empty-fork-cleanup");
+    const reloaded = await host.harness.lifecycle.reload(plugin);
+    hosts.push(reloaded);
+    await reloaded.harness.runSchedule("empty-fork-cleanup");
+    await reloaded.harness.runSchedule("empty-fork-cleanup");
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a pending fork alone when it becomes visible before cleanup", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Date.now();
+    const thread = makeThreadResponse({
+      id: "thr_promoted",
+      originKind: "fork",
+      originPluginId: PLUGIN_ID,
+      visibility: "hidden",
+      createdAt: now,
+    });
+    const timeline = vi.fn(async () => timelineResult([]));
+    const archive = vi.fn(async () => ({ ok: true }));
+    const { harness } = await loadPlugin({
+      list: async () => [thread],
+      get: async () => thread,
+      timeline,
+      archive,
+      queuedMessages: { list: async () => [] },
+    });
+    await harness.runSchedule("empty-fork-cleanup");
+    thread.visibility = "visible";
+    vi.setSystemTime(now + EMPTY_FORK_MAX_AGE_MS + 1);
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(archive).not.toHaveBeenCalled();
+    expect(timeline).not.toHaveBeenCalled();
+  });
+
+  it("uses a deadline index when all pending candidates are in the future", async () => {
+    const { bb, harness } = await loadPlugin({ list: async () => [] });
+    await harness.runSchedule("empty-fork-cleanup");
+    const db = bb.storage.database();
+    db.prepare(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+      INSERT INTO cleanup_candidates(thread_id, created_at, due_at)
+      SELECT 'future-'||x,?,? FROM n`).run(
+      Date.now(),
+      Date.now() + EMPTY_FORK_MAX_AGE_MS,
+    );
+    const prepare = vi.spyOn(db, "prepare");
+    await harness.runSchedule("empty-fork-cleanup");
+    const queries = prepare.mock.calls.map(([sql]) => sql);
+    prepare.mockRestore();
+    const candidateQuery = queries.find((sql) =>
+      sql.includes("FROM cleanup_candidates"),
+    );
+    expect(candidateQuery).toBeDefined();
+    const plan = db
+      .prepare(`EXPLAIN QUERY PLAN ${candidateQuery}`)
+      .all(Date.now());
+    expect(plan).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          detail: expect.stringMatching(/SEARCH cleanup_candidates .*due_at</),
+        }),
+      ]),
+    );
+  });
+
+  it.each([false, true])(
+    "cleans up new forks only after their deadline (tip fallback: %s)",
+    async (fallback) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const createdAt = Date.now();
+      const thread = makeThreadResponse({
+        id: "thr_new",
+        createdAt,
+        originKind: "fork",
+        originPluginId: PLUGIN_ID,
+        visibility: "hidden",
+      });
+      const fork = vi.fn(async () => thread);
+      if (fallback)
+        fork.mockRejectedValueOnce(
+          Object.assign(new Error("unavailable"), {
+            code: "fork_source_session_unavailable",
+          }),
+        );
+      const list = vi.fn(
+        async (): Promise<ReturnType<typeof makeThreadResponse>[]> => [],
+      );
+      const archive = vi.fn(async () => {
+        list.mockResolvedValue([]);
+        return { ok: true };
+      });
+      const { harness } = await loadPlugin({
+        list,
+        fork,
+        archive,
+        timeline: async () => timelineResult([]),
+        queuedMessages: { list: async () => [] },
+      });
+      await harness.runSchedule("empty-fork-cleanup");
+      await harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_source",
+        sourceSeqEnd: 1,
+        anchorText: "answer",
+      });
+      list.mockResolvedValue([thread]);
+      vi.setSystemTime(createdAt + EMPTY_FORK_MAX_AGE_MS);
+      await harness.runSchedule("empty-fork-cleanup");
+      expect(archive).not.toHaveBeenCalled();
+      vi.setSystemTime(createdAt + EMPTY_FORK_MAX_AGE_MS + 1);
+      await harness.runSchedule("empty-fork-cleanup");
+      await harness.runSchedule("empty-fork-cleanup");
+      expect(archive).toHaveBeenCalledExactlyOnceWith({ threadId: "thr_new" });
+      expect(list).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("bounds due work and defers failed candidates so the backlog can progress", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Date.now();
+    const threads: ReturnType<typeof makeThreadResponse>[] = [];
+    const fork = vi.fn(async () => {
+      const thread = makeThreadResponse({
+        id: `thr_${fork.mock.calls.length}`,
+        createdAt: now - EMPTY_FORK_MAX_AGE_MS - 1,
+        originKind: "fork",
+        originPluginId: PLUGIN_ID,
+        visibility: "hidden",
+      });
+      threads.push(thread);
+      return thread;
+    });
+    const timeline = vi.fn(async () => {
+      throw new Error("unavailable");
+    });
+    const archive = vi.fn(async () => ({ ok: true }));
+    const { harness } = await loadPlugin({
+      list: async ({ offset = 0, limit = EMPTY_FORK_SWEEP_PAGE_SIZE }) =>
+        threads.slice(offset, offset + limit),
+      fork,
+      timeline,
+      archive,
+    });
+    await harness.runSchedule("empty-fork-cleanup");
+    for (let i = 0; i <= EMPTY_FORK_SWEEP_PAGE_SIZE; i++) {
+      await harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_source",
+        anchorText: "answer",
+      });
+    }
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(timeline).toHaveBeenCalledTimes(EMPTY_FORK_SWEEP_PAGE_SIZE);
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(timeline).toHaveBeenCalledTimes(EMPTY_FORK_SWEEP_PAGE_SIZE + 1);
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(timeline).toHaveBeenCalledTimes(EMPTY_FORK_SWEEP_PAGE_SIZE + 1);
+    expect(archive).not.toHaveBeenCalled();
+    vi.setSystemTime(now + 3_600_000);
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(timeline).toHaveBeenCalledTimes(2 * EMPTY_FORK_SWEEP_PAGE_SIZE + 1);
+  });
+
+  it.each(["thread.archived", "thread.deleted"] as const)(
+    "removes candidates on %s and tracks eligible unarchives",
+    async (event) => {
+      const thread = makeThreadResponse({
+        id: "thr_removed",
+        originKind: "fork",
+        originPluginId: PLUGIN_ID,
+        visibility: "hidden",
+        createdAt: Date.now() - EMPTY_FORK_MAX_AGE_MS - 1,
+      });
+      const archive = vi.fn(async () => ({ ok: true }));
+      const { bb, harness } = await loadPlugin({
+        list: async () => [],
+        fork: async () => thread,
+        archive,
+        timeline: async () => timelineResult([]),
+        queuedMessages: { list: async () => [] },
+      });
+      await harness.runSchedule("empty-fork-cleanup");
+      await harness.callRpc("createSideChat", {
+        sourceThreadId: "thr_source",
+        anchorText: "answer",
+      });
+      await bb.storage.kv.set(`kept-fork:${thread.id}`, true);
+      expect(await harness.emitThreadEvent(event, { thread })).toEqual({
+        errors: [],
+      });
+      await harness.runSchedule("empty-fork-cleanup");
+      expect(archive).not.toHaveBeenCalled();
+      expect(await bb.storage.kv.get(`kept-fork:${thread.id}`)).toBeUndefined();
+      if (event === "thread.archived") {
+        expect(
+          await harness.emitThreadEvent("thread.unarchived", { thread }),
+        ).toEqual({ errors: [] });
+        await harness.runSchedule("empty-fork-cleanup");
+        expect(archive).toHaveBeenCalledExactlyOnceWith({
+          threadId: thread.id,
+        });
+      }
+    },
+  );
+
   it("archives only old forks without user messages and logs what it drops", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const now = Date.now();
     const old = now - EMPTY_FORK_MAX_AGE_MS - 60_000;
     const emptyOldFork = makeThreadResponse({
@@ -257,6 +485,13 @@ describe("empty-fork sweep", () => {
       "thr_empty_old",
       "thr_replied_old",
     ]);
+
+    vi.setSystemTime(now + EMPTY_FORK_MAX_AGE_MS);
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(archive.mock.calls.map(([args]) => args.threadId)).toEqual([
+      "thr_empty_old",
+      "thr_empty_young",
+    ]);
   });
 
   it("advances the page offset by the forks it left behind", async () => {
@@ -318,13 +553,14 @@ describe("empty-fork sweep", () => {
   });
 
   it("remembers a kept fork and stops re-reading its timeline", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const now = Date.now();
     const fork = makeThreadResponse({
       id: "thr_has_work",
       originKind: "fork",
       originPluginId: PLUGIN_ID,
       visibility: "hidden",
-      createdAt: now - EMPTY_FORK_MAX_AGE_MS - 60_000,
+      createdAt: now - 60_000,
     });
     const timeline = vi.fn(async () =>
       timelineResult([turnRow([conversationRow("a reply", "user")])]),
@@ -339,6 +575,9 @@ describe("empty-fork sweep", () => {
       queuedMessages: { list: async () => [] },
     });
 
+    await harness.runSchedule("empty-fork-cleanup");
+    expect(timeline).not.toHaveBeenCalled();
+    vi.setSystemTime(now + EMPTY_FORK_MAX_AGE_MS);
     await harness.runSchedule("empty-fork-cleanup");
     await harness.runSchedule("empty-fork-cleanup");
 

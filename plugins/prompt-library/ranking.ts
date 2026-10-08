@@ -7,6 +7,23 @@ const SNIPPET_LEAD = 32;
 export interface RankedMatch<T> {
   item: T;
   positions: readonly number[];
+  prefix: boolean;
+  score: number;
+}
+
+export function compareRank(
+  left: RankedMatch<unknown>,
+  right: RankedMatch<unknown>,
+): number {
+  return Number(right.prefix) - Number(left.prefix) || right.score - left.score;
+}
+
+function startsWithQuery(text: string, prefix: string): boolean {
+  return text
+    .trimStart()
+    .replace(/\s+/gu, " ")
+    .toLowerCase()
+    .startsWith(prefix);
 }
 
 export function queryTerms(query: string): string[] {
@@ -61,8 +78,14 @@ export function rankByQuery<T>(
 ): RankedMatch<T>[] {
   const terms = queryTerms(query);
   if (terms.length === 0) {
-    return items.map((item) => ({ item, positions: [] }));
+    return items.map((item) => ({
+      item,
+      positions: [],
+      prefix: false,
+      score: 0,
+    }));
   }
+  const prefix = terms.join(" ").toLowerCase();
   const indexed = items.map((item, index) => ({ item, index }));
   let result = matchTerms(indexed, terms, getText, "v1");
   if (result.pool.length <= PRECISE_SCORING_POOL_LIMIT) {
@@ -70,16 +93,16 @@ export function rankByQuery<T>(
   }
   const { matches } = result;
   return result.pool
-    .map((entry) => ({ entry, match: matches.get(entry.index)! }))
-    .sort(
-      (left, right) =>
-        right.match.score - left.match.score ||
-        left.entry.index - right.entry.index,
-    )
-    .map(({ entry, match }) => ({
-      item: entry.item,
-      positions: [...match.positions].sort((left, right) => left - right),
-    }));
+    .map((entry) => {
+      const { score, positions } = matches.get(entry.index)!;
+      return {
+        item: entry.item,
+        positions: [...positions].sort((left, right) => left - right),
+        prefix: startsWithQuery(getText(entry.item), prefix),
+        score,
+      };
+    })
+    .sort(compareRank);
 }
 
 export function buildSnippet(

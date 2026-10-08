@@ -1,6 +1,7 @@
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import { z } from "zod";
 import {
+  getLatestThreadSequence,
   createEnvironment,
   type EnvironmentRow,
   createEventId,
@@ -204,6 +205,9 @@ function attachReadyEnvironment(
 
   if (result.kind === "attached" && result.changed) {
     deps.hub.notifyThread(args.thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: args.thread.id,
+      }),
       eventTypes: ["system/operation"],
     });
   }

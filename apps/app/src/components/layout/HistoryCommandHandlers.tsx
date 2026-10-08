@@ -7,18 +7,28 @@ export function HistoryCommandHandlers() {
     useRouteStateHistoryNavigation();
   const closeOnMobile = useCloseMobileSidebar();
 
-  useAppCommandHandler("history.back", () => {
-    if (!canGoBack) return false;
-    goBack();
-    closeOnMobile();
-    return true;
-  });
-  useAppCommandHandler("history.forward", () => {
-    if (!canGoForward) return false;
-    goForward();
-    closeOnMobile();
-    return true;
-  });
+  useAppCommandHandler(
+    "history.back",
+    () => {
+      goBack();
+      closeOnMobile();
+      return true;
+    },
+    0,
+    true,
+    () => canGoBack,
+  );
+  useAppCommandHandler(
+    "history.forward",
+    () => {
+      goForward();
+      closeOnMobile();
+      return true;
+    },
+    0,
+    true,
+    () => canGoForward,
+  );
 
   return null;
 }

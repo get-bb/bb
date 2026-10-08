@@ -70,6 +70,7 @@ function recordTurnFailedAnnouncements(): string[] {
     emitThreadEvents: () => {},
     emitTerminalInput: () => {},
     emitHostDeleted: () => {},
+    emitEnvironmentRemoved: () => {},
     emitThreadCreated: () => {},
     emitThreadActive: () => {},
     emitThreadIdle: () => {},

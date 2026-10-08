@@ -1501,6 +1501,8 @@ export interface PluginSidebarThreadActions {
   rename(threadId: string, title: string): Promise<void>;
   /** Confirms before including child threads unless archive confirmation is disabled in Settings → General. */
   archive(threadId: string): void;
+  /** Archives an environment's active thread trees with bb's optimistic updates, pane cleanup, and one Undo toast. Rejects after bb shows an error toast on failure. */
+  experimental_archiveEnvironmentThreads(environmentId: string): Promise<void>;
   /**
    * Opens bb's delete confirmation, which counts child threads first. Deletion
    * is destructive and recursive, so the host owns the confirmation: there is
@@ -3376,9 +3378,11 @@ export interface BbNavigate {
    */
   toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
   /**
-   * Open one of this plugin's registered thread-panel actions in the current
-   * thread surface. Returns false when the surface has no thread side panel or
-   * the action is unavailable.
+   * Open one of this plugin's registered panel actions in the current
+   * surface's side panel: a `threadPanelAction` in a thread, or an
+   * `experimental_newThreadPanelAction` on the New thread screen. Plugin
+   * commands use the same opener. Returns false when the surface has no side
+   * panel actions (plugin pages) or the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
   /**
@@ -3393,6 +3397,18 @@ export interface BbNavigate {
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
   ): boolean;
+  /**
+   * Show a terminal session in this surface's BB terminal panel: select its
+   * tab, adding one when needed, and reveal the panel. Create the session
+   * first with `useSdk().terminals.create`, whose scope chooses the thread,
+   * environment, or host directory it runs in. A thread surface accepts only
+   * that thread's terminals, the New thread screen only terminals in its
+   * current terminal scope, and a plugin page any terminal. Resolves false
+   * for unknown or exited terminals and surfaces without a terminal panel.
+   * Closing the tab closes the terminal. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_openTerminal(options: { terminalId: string }): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -3616,10 +3632,14 @@ export interface PluginSdkApp {
    * surfaces without further work. Reserve `useRpc` for work that needs your
    * server: secrets, host files, or your plugin's own storage.
    *
-   * Thread title, section, and parent updates are optimistic in bb's surfaces
-   * and synchronous calls are applied as one cache transaction. Other writes
-   * land when their realtime update does. `experimental_useSidebarThreadActions()`
-   * stays the optimistic path for pin, read state, rename, and archive.
+   * Thread title, section, parent, pin, and unpin writes are optimistic in
+   * bb's surfaces. Synchronous calls share one cache transaction; writes to
+   * the same thread execute in order, so unpin and move can be submitted
+   * together. Unarchive, environment-group archive, project/machine/environment
+   * renames, and project/section removal are also optimistic and roll back on
+   * failure. Created sections enter the cache when the server assigns their id.
+   * `experimental_useSidebarThreadActions()` owns navigation, read state,
+   * archive confirmation, and delete confirmation.
    *
    * The client is stable for the plugin's lifetime, so it is safe in effect
    * and callback dependency lists.

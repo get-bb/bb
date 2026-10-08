@@ -216,6 +216,7 @@ function RepresentativeInfoContent() {
     files: INFO_STORAGE_FILES,
     onSelectPath: setSelectedStoragePath,
     selectedPath: selectedStoragePath,
+    threadId: "thr_story",
   });
   const props: ThreadMetadataContentProps = {
     ...baseMetadataProps,
@@ -228,7 +229,6 @@ function RepresentativeInfoContent() {
     storage: {
       controller: storageController,
       filesError: null,
-      isFilesLoading: false,
     },
     onCommitClick: noop,
   };

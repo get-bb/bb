@@ -105,6 +105,24 @@ describe("ui preferences sync", () => {
     resetUiPreferencesSyncForTest();
   });
 
+  it("hydrates a preference whose module loads after sync starts", () => {
+    const queryClient = new QueryClient();
+    const store = createStore();
+    setCachedUiPreferences(
+      queryClient,
+      serverResponse({
+        "infoPanel.collapsedSections": { revision: 3, value: ["commits"] },
+      }),
+    );
+    startUiPreferencesSync({ queryClient, store });
+
+    const collapsedSectionsAtom = createSyncedPreferenceAtom(
+      "infoPanel.collapsedSections",
+    );
+
+    expect(store.get(collapsedSectionsAtom)).toEqual(["commits"]);
+  });
+
   it("retains a local section order when the initial cache lacks its entry", () => {
     const { orderAtom, queryClient, store } = createHarness();
     const localOrder = ["threads", "projects", "pinned"];

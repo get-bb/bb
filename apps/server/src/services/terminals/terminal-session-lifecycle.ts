@@ -53,6 +53,7 @@ import {
   type PendingRpcKey,
   PendingRpcRegistry,
 } from "./pending-rpc-registry.js";
+import { TerminalOutputFlowControl } from "./terminal-output-flow-control.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
 const DEFAULT_TERMINAL_CLOSE_TIMEOUT_MS = 5_000;
@@ -160,6 +161,7 @@ interface ResolvedTerminalLaunchTarget {
 }
 
 interface AttachBrowserTerminalArgs {
+  outputAcks: boolean;
   socket: TerminalClientSocket;
   sinceSeq: number;
   terminalId: string;
@@ -553,8 +555,18 @@ export class TerminalSessionLifecycle {
   >;
   private readonly catchingUpTerminalIds = new Set<string>();
   private readonly forwardedNextSeqByTerminalId = new Map<string, number>();
+  private readonly outputAckSocketVisibility = new WeakMap<
+    TerminalClientSocket,
+    boolean
+  >();
+  private readonly outputFlow: TerminalOutputFlowControl;
 
   constructor(private readonly options: TerminalSessionLifecycleOptions) {
+    this.outputFlow = new TerminalOutputFlowControl({
+      sendDaemonMessage: (daemonSessionId, message) => {
+        this.options.hub.sendDaemonSessionMessage(daemonSessionId, message);
+      },
+    });
     const attachTimeoutMs =
       options.attachTimeoutMs ?? DEFAULT_TERMINAL_OPEN_TIMEOUT_MS;
     const closeTimeoutMs =
@@ -1440,6 +1452,9 @@ export class TerminalSessionLifecycle {
   }
 
   attachBrowserTerminal(args: AttachBrowserTerminalArgs): void {
+    if (args.outputAcks) {
+      this.outputAckSocketVisibility.set(args.socket, true);
+    }
     const current = this.getBrowserTerminalSession({
       ...args,
       reportMissing: false,
@@ -1524,6 +1539,7 @@ export class TerminalSessionLifecycle {
     socket: TerminalClientSocket;
   }): void {
     this.options.hub.registerTerminalClient(args.session.id, args.socket);
+    this.addOutputFlowClient(args.session.id, args.socket, args.sinceSeq);
     this.forwardedNextSeqByTerminalId.set(
       args.session.id,
       Math.max(
@@ -1541,6 +1557,7 @@ export class TerminalSessionLifecycle {
 
   detachBrowserTerminal(args: DetachBrowserTerminalArgs): void {
     this.options.hub.unregisterTerminalClient(args.terminalId, args.socket);
+    this.outputFlow.removeClient(args.terminalId, args.socket);
     this.pendingAttaches.failAllMatching(
       (pending) =>
         pending.terminalId === args.terminalId &&
@@ -1561,6 +1578,26 @@ export class TerminalSessionLifecycle {
         return;
       case "resize":
         this.resizeBrowserTerminal(args);
+        return;
+      case "ack":
+        this.outputFlow.acknowledge(
+          args.terminalId,
+          args.socket,
+          args.message.nextSeq,
+        );
+        return;
+      case "visibility":
+        if (this.outputAckSocketVisibility.has(args.socket)) {
+          this.outputAckSocketVisibility.set(
+            args.socket,
+            args.message.visible,
+          );
+        }
+        this.outputFlow.setVisible(
+          args.terminalId,
+          args.socket,
+          args.message.visible,
+        );
         return;
     }
   }
@@ -1620,6 +1657,7 @@ export class TerminalSessionLifecycle {
         });
         if (exited) {
           this.forwardedNextSeqByTerminalId.delete(exited.id);
+          this.outputFlow.forgetTerminal(exited.id);
           this.pendingCloses.settle(
             terminalRpcKey(args.sessionId, exited.id, exited.id),
             exited,
@@ -1643,6 +1681,11 @@ export class TerminalSessionLifecycle {
         }
         return;
       case "terminal.output": {
+        this.outputFlow.recordOutput(
+          args.message.terminalId,
+          args.sessionId,
+          args.message.chunk.seq,
+        );
         const current = getTerminalById(
           this.options.db,
           args.message.terminalId,
@@ -1766,6 +1809,7 @@ export class TerminalSessionLifecycle {
     args: NotifyExitedTerminalSessionArgs,
   ): void {
     this.forwardedNextSeqByTerminalId.delete(args.session.id);
+    this.outputFlow.forgetTerminal(args.session.id);
     this.notifyTerminalSessionChanged(args.session);
     this.options.hub.sendTerminalClientMessage(args.session.id, {
       type: "exited",
@@ -2107,6 +2151,7 @@ export class TerminalSessionLifecycle {
     }
 
     this.options.hub.registerTerminalClient(current.id, pending.socket);
+    this.addOutputFlowClient(current.id, pending.socket, message.nextSeq);
     this.forwardedNextSeqByTerminalId.set(
       current.id,
       Math.max(
@@ -2125,6 +2170,17 @@ export class TerminalSessionLifecycle {
         type: "output",
         chunk: toTerminalOutputChunk(chunk),
       });
+    }
+  }
+
+  private addOutputFlowClient(
+    terminalId: string,
+    socket: TerminalClientSocket,
+    nextSeq: number,
+  ): void {
+    const visible = this.outputAckSocketVisibility.get(socket);
+    if (visible !== undefined) {
+      this.outputFlow.addClient(terminalId, socket, nextSeq, visible);
     }
   }
 

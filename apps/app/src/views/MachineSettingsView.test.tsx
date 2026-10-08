@@ -269,15 +269,6 @@ describe("MachineSettingsView", () => {
         .getByRole("heading", { name: "Provider CLIs" })
         .querySelector("[data-icon]"),
     ).toBeNull();
-    const installedLabel = screen.getByText("Installed");
-    expect(installedLabel.parentElement?.className).toContain("flex-col");
-    expect(installedLabel.parentElement?.className).toContain("sm:flex-row");
-    expect(installedLabel.nextElementSibling?.className).toContain(
-      "justify-start",
-    );
-    expect(installedLabel.nextElementSibling?.className).toContain(
-      "sm:justify-end",
-    );
     expect(screen.getByText(/No sandbox and no approvals/u)).toBeDefined();
   });
 

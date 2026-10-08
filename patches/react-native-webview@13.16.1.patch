@@ -102,7 +102,7 @@ new file mode 100644
 index 0000000..973f675
 --- /dev/null
 +++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClipboard.java
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,215 @@
 +package com.reactnativecommunity.webview;
 +
 +import android.content.ClipData;
@@ -149,16 +149,35 @@ index 0000000..973f675
 +            JSONObject message = new JSONObject(raw);
 +            if (!"request".equals(message.optString("type"))) return false;
 +            JSONObject request = message.getJSONObject("request");
-+            if (!"clipboard".equals(request.optString("kind"))) return false;
++            String kind = request.optString("kind");
++            if (!"clipboard".equals(kind) && !"clipboard-html".equals(kind)) return false;
 +            String id = message.getString("id");
 +            JSONObject payload = request.getJSONObject("payload");
 +            String text = payload.getString("text");
++            if ("clipboard-html".equals(kind)) {
++                String html = payload.getString("html");
++                if (id.isEmpty() || id.length() > 64 || text.length() > 100000 || html.length() > 1000000) return false;
++                webView.post(() -> copyRichText(id, text, html, sourceUrl));
++                return true;
++            }
 +            String imageUrl = payload.getString("imageUrl");
 +            if (id.isEmpty() || id.length() > 64 || text.length() > 100000) return false;
 +            webView.post(() -> start(id, text, imageUrl, sourceUrl));
 +            return true;
 +        } catch (Exception error) {
 +            return false;
++        }
++    }
++
++    private void copyRichText(String id, String text, String html, String sourceUrl) {
++        if (destroyed) return;
++        try {
++            if (!sameOrigin(new URI(webView.getUrl()), new URI(sourceUrl))) throw new IOException("Copy must be on the current server");
++            ClipboardManager clipboard = (ClipboardManager) webView.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
++            clipboard.setPrimaryClip(ClipData.newHtmlText("BB message", text, html));
++            respond(id, true, "");
++        } catch (Exception error) {
++            respond(id, false, error.getMessage());
 +        }
 +    }
 +
@@ -246,7 +265,11 @@ index 0000000..973f675
 +            webView.post(() -> {
 +                try {
 +                    checkActive(deadline);
-+                    ClipData clip = new ClipData("BB message", new String[]{mimeType}, new ClipData.Item(uri));
++                    String[] mimeTypes = text.isEmpty()
++                            ? new String[]{mimeType}
++                            : new String[]{mimeType, "text/plain"};
++                    ClipData.Item item = new ClipData.Item(text.isEmpty() ? null : text, null, uri);
++                    ClipData clip = new ClipData("BB message", mimeTypes, item);
 +                    ClipboardManager clipboard = (ClipboardManager) webView.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
 +                    clipboard.setPrimaryClip(clip);
 +                    respond(id, true, "");

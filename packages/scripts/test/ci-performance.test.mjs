@@ -17,12 +17,46 @@ import {
   listActionsCaches,
 } from "../../../scripts/lib/actions-cache.mjs";
 
-it("uses a real frozen install with isolated caches after a timed-out restore, while preserving successful restores", ({
+it("rejects a missing lockfile snapshot before starting CI jobs", ({
+  skip,
+}) => {
+  skip(process.platform === "win32", "the preflight runs on Linux");
+  const root = mkdtempSync(join(tmpdir(), "bb-ci-broken-lockfile-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "fixture", dependencies: { "is-number": "7.0.0" } }),
+  );
+  writeFileSync(
+    join(root, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\nimporters:\n  .:\n    dependencies:\n      is-number:\n        specifier: 7.0.0\n        version: 7.0.0\npackages: {}\nsnapshots: {}\n",
+  );
+  const result = spawnSync(
+    "bash",
+    [
+      fileURLToPath(
+        new URL(
+          "../../../.github/actions/setup-workspace/install-dependencies.sh",
+          import.meta.url,
+        ),
+      ),
+      "--ignore-scripts",
+      "--offline",
+    ],
+    { cwd: root, encoding: "utf8", timeout: 30_000 },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stdout + result.stderr).toContain(
+    "ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY",
+  );
+});
+
+it("isolates failed cache restores while preserving healthy caches through a real frozen install", ({
   skip,
 }) => {
   skip(
     process.platform === "win32",
-    "install-dependencies.sh runs only on Linux and macOS CI runners",
+    "this fixture invokes pnpm through its POSIX executable",
   );
   const root = mkdtempSync(join(tmpdir(), "bb-ci-cache-fallback-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -65,12 +99,20 @@ it("uses a real frozen install with isolated caches after a timed-out restore, w
   );
   execFileSync("bash", [script], {
     ...options,
-    env: { ...env, CACHE_RESTORE_OUTCOME: "success" },
+    env: {
+      ...env,
+      PNPM_CACHE_RESTORE_OUTCOME: "success",
+      TURBO_CACHE_RESTORE_OUTCOME: "success",
+    },
   });
   expect(sentinels.map(existsSync)).toEqual([true, true]);
   execFileSync("bash", [script], {
     ...options,
-    env: { ...env, CACHE_RESTORE_OUTCOME: "failure" },
+    env: {
+      ...env,
+      PNPM_CACHE_RESTORE_OUTCOME: "failure",
+      TURBO_CACHE_RESTORE_OUTCOME: "success",
+    },
   });
   expect(sentinels.map(existsSync)).toEqual([true, true]);
   const fallback = Object.fromEntries(
@@ -83,16 +125,25 @@ it("uses a real frozen install with isolated caches after a timed-out restore, w
       }),
   );
   expect(fallback.npm_config_store_dir).not.toBe(env.npm_config_store_dir);
-  expect(fallback.TURBO_CACHE_DIR).not.toBe(join(root, ".turbo/cache"));
-  expect(fallback.npm_config_store_dir).toMatch(
-    /bb-cache-fallback[^/]*\/pnpm$/,
-  );
-  expect(fallback.TURBO_CACHE_DIR).toMatch(/bb-cache-fallback[^/]*\/turbo$/);
+  expect(fallback.TURBO_CACHE_DIR).toBeUndefined();
+  expect(existsSync(fallback.npm_config_store_dir)).toBe(true);
   const nextStore = execFileSync("pnpm", ["store", "path", "--silent"], {
     ...options,
     env: { ...env, ...fallback },
   }).trim();
   expect(nextStore.startsWith(fallback.npm_config_store_dir)).toBe(true);
+  execFileSync("bash", [script], {
+    ...options,
+    env: {
+      ...env,
+      PNPM_CACHE_RESTORE_OUTCOME: "success",
+      TURBO_CACHE_RESTORE_OUTCOME: "failure",
+    },
+  });
+  expect(sentinels.map(existsSync)).toEqual([true, false]);
+  expect(
+    execFileSync("pnpm", ["store", "path", "--silent"], options).trim(),
+  ).toBe(store);
 }, 30_000);
 
 it("checks both sides of plugin renames and falls back to full coverage for shared or unavailable changes", () => {
@@ -252,4 +303,55 @@ it("reads every cache inventory page and refuses malformed inventories before pl
       actions_caches: [{ ...entries[0], last_accessed_at: "invalid" }],
     })),
   ).rejects.toThrow("Invalid Actions cache entry");
+});
+
+it("drops Turbo cache entries the job's run summaries do not name, and keeps everything when there is no summary", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-turbo-prune-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  const cache = join(root, "cache");
+  const runs = join(root, "runs");
+  mkdirSync(cache);
+  mkdirSync(runs);
+  const writeEntry = (hash) => {
+    writeFileSync(join(cache, `${hash}.tar.zst`), "archive");
+    writeFileSync(join(cache, `${hash}-meta.json`), "{}");
+  };
+  const entryFiles = (hash) =>
+    [`${hash}.tar.zst`, `${hash}-meta.json`].map((name) =>
+      existsSync(join(cache, name)),
+    );
+  const prune = (...args) =>
+    execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(
+          new URL("../../../scripts/prune-turbo-cache.mjs", import.meta.url),
+        ),
+        "--dir",
+        cache,
+        ...args,
+      ],
+      { encoding: "utf8" },
+    );
+  for (const hash of ["aaaa1111", "bbbb2222", "cccc3333"]) writeEntry(hash);
+
+  prune("--keep-run-summaries", runs);
+  expect(["aaaa1111", "bbbb2222", "cccc3333"].flatMap(entryFiles)).toEqual(
+    Array.from({ length: 6 }, () => true),
+  );
+
+  writeFileSync(
+    join(runs, "first.json"),
+    JSON.stringify({ tasks: [{ hash: "aaaa1111" }] }),
+  );
+  writeFileSync(
+    join(runs, "second.json"),
+    JSON.stringify({ tasks: [{ hash: "cccc3333" }, { hash: "dddd4444" }] }),
+  );
+  expect(prune("--keep-run-summaries", runs)).toContain(
+    "removed 1 entries this job did not use",
+  );
+  expect(entryFiles("aaaa1111")).toEqual([true, true]);
+  expect(entryFiles("bbbb2222")).toEqual([false, false]);
+  expect(entryFiles("cccc3333")).toEqual([true, true]);
 });

@@ -182,12 +182,12 @@ describe("parseOperationMessage operation titles", () => {
     });
   });
 
-  it("renders a context clear as a concise completed boundary", () => {
+  it("renders a completed context clear with current detail text over the stored message", () => {
     const row = factory().systemOperation({
       operation: "context_clear",
       status: "completed",
       message:
-        "New prompts won’t include messages above. Thread history and workspace are unchanged.",
+        "Earlier chat is hidden from the active timeline. Durable history and workspace are unchanged.",
     });
     const { event, meta } = decodeThreadEventRow(row);
 

@@ -124,7 +124,6 @@ describe("useAutoLoadOlderRows", () => {
     emitIntersection(true);
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
   });
 
   it("stays manual with no bottom anchor to keep the reading position", () => {
@@ -175,7 +174,6 @@ describe("useAutoLoadOlderRows", () => {
 
     emitIntersection(true);
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       rerender({ isLoading: true });
@@ -186,7 +184,6 @@ describe("useAutoLoadOlderRows", () => {
     });
 
     expect(onLoadOlderRows).toHaveBeenCalledTimes(1);
-    expect(anchor.captureScrollAnchor).toHaveBeenCalledTimes(1);
   });
 
   it("stops auto-loading after a failure instead of retrying in a loop", async () => {

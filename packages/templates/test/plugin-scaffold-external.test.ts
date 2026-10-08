@@ -48,6 +48,7 @@ const dependencyRequire = createRequire(join(pluginSdkRoot, "package.json"));
 const EXTERNAL_DEPENDENCIES = [
   "@hugeicons/core-free-icons",
   "@hugeicons/react",
+  "@radix-ui/react-checkbox",
   "@radix-ui/react-dialog",
   "@radix-ui/react-slot",
   "@testing-library/react",
@@ -288,19 +289,34 @@ async function installPackedSdk(
   targetDir: string,
   tarball: string,
 ): Promise<void> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(pluginSdkRoot, "package.json"), "utf8"),
+  );
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    !("dependencies" in manifest) ||
+    typeof manifest.dependencies !== "object" ||
+    manifest.dependencies === null
+  ) {
+    throw new Error("SDK manifest is missing runtime dependencies");
+  }
   await execFileAsync(
     npmCommand.file,
     [
       ...npmCommand.args,
       "install",
+      "--offline",
+      "--cache",
+      join(targetDir, ".npm-cache"),
       "--ignore-scripts",
       "--legacy-peer-deps",
       "--no-package-lock",
       "--no-save",
       "--no-audit",
       "--no-fund",
-      "--prefer-offline",
       tarball,
+      ...Object.keys(manifest.dependencies).map(packageRoot),
     ],
     { cwd: targetDir },
   );
@@ -367,12 +383,12 @@ describe("external plugin scaffold types", () => {
   beforeAll(async () => {
     packRoot = await mkdtemp(join(tmpdir(), "bb-external-pack-"));
     tarball = await packPluginSdk(join(packRoot, "pack"));
-    const templateDir = join(packRoot, "template");
-    await scaffoldPlugin({
-      targetDir: templateDir,
-      packageName: "bb-plugin-external-template",
-      bbVersion: "0.9.0",
-    });
+    const templateDir = join(packRoot, "installed");
+    await mkdir(templateDir);
+    await writeFile(
+      join(templateDir, "package.json"),
+      JSON.stringify({ name: "bb-plugin-external-fixture", private: true }),
+    );
     await installPackedSdk(templateDir, tarball);
     await linkExternalDependencies(templateDir);
     installedNodeModules = join(templateDir, "node_modules");

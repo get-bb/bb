@@ -355,6 +355,11 @@
       "outputs": ["build-output/**"],
       "passThroughEnv": ["*"]
     },
+    "@bb/mobile#build:android:dev": {
+      "cache": false,
+      "outputs": ["build-output/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/mobile#e2e:android": {
       "cache": false,
       "passThroughEnv": ["*"]
@@ -903,6 +908,13 @@
     // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
     // Either through a tsconfig `paths` map or through the workspace symlink's
     // package `types` field; both land on bundled-types/, a build output.
+    "bb-plugin-bb--storage-retention#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
     "bb-plugin-composer-customization#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },

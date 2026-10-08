@@ -5,6 +5,7 @@ export interface NativeShellApi extends NativeShellHandshake {
   post(message: unknown): void;
   request(kind: string, payload: unknown): Promise<unknown>;
   copyTextAndImage?(text: string, imageUrl: string): Promise<unknown>;
+  copyRichText?(text: string, html: string): Promise<unknown>;
   subscribe(listener: (event: unknown) => void): () => void;
 }
 
@@ -128,6 +129,9 @@ export function buildBridgeInjectionScript(
       post: post,
       copyTextAndImage: handshake.platform === "android" ? function (text, imageUrl) {
         return native.request("clipboard", { text: text, imageUrl: imageUrl });
+      } : undefined,
+      copyRichText: handshake.platform === "android" ? function (text, html) {
+        return native.request("clipboard-html", { text: text, html: html });
       } : undefined,
       request: function (kind, payload) {
         return new Promise(function (resolve, reject) {

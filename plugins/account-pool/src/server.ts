@@ -264,7 +264,10 @@ export function createAccountPoolPlugin(
           "Account Pooler is isolated from the parent bb server's pool on this instance",
       }));
     const contributeFor =
-      (provider: PoolProvider, serving: (token: string) => PoolEnvEntry[]) =>
+      (
+        provider: PoolProvider,
+        serving: (token: string) => Promise<PoolEnvEntry[]>,
+      ) =>
       async (context: { threadId: string; hostId: string }) => {
         const bypassed = await routing.isBypassed(context.threadId);
         if (!bypassed && (await canServe(provider))) {
@@ -272,10 +275,22 @@ export function createAccountPoolPlugin(
           if (provider === "claude") {
             await routing.recordRouted(context.threadId, context.hostId);
           }
-          return [...serving(token), ...markerEntries(token)];
+          return [...(await serving(token)), ...markerEntries(token)];
         }
         return parentPool === null ? [] : neutralized(provider);
       };
+    const subscriptionCacheEntries = async (): Promise<PoolEnvEntry[]> =>
+      proxyingParent() === null &&
+      (await operations.routesOnlyApiKeys("claude"))
+        ? []
+        : [
+            {
+              name: "ENABLE_PROMPT_CACHING_1H",
+              value: "1",
+              reason:
+                "Claude Code uses a 5-minute prompt cache behind a custom base URL; subscription accounts get the 1-hour cache Claude Code uses for a direct subscription login",
+            },
+          ];
     const proxiedHealth = async (provider: PoolProvider) =>
       (await canServe(provider))
         ? {
@@ -288,7 +303,7 @@ export function createAccountPoolPlugin(
         : null;
     bb.providers.experimental_contributeEnv(
       "claude-code",
-      contributeFor("claude", (token) => [
+      contributeFor("claude", async (token) => [
         {
           name: "ANTHROPIC_BASE_URL",
           value: { serverPath: HUB_BASE_PATH },
@@ -311,6 +326,7 @@ export function createAccountPoolPlugin(
           reason:
             "Claude Code limits Opus to a 200k context window behind a custom base URL; the hub forwards to Anthropic's API",
         },
+        ...(await subscriptionCacheEntries()),
       ]),
     );
     bb.providers.experimental_contributeEnvHealth("claude-code", () =>
@@ -318,7 +334,7 @@ export function createAccountPoolPlugin(
     );
     bb.providers.experimental_contributeEnv(
       "codex",
-      contributeFor("codex", (token) => [
+      contributeFor("codex", async (token) => [
         {
           name: "CODEX_OPENAI_BASE_URL",
           value: { serverPath: `${HUB_BASE_PATH}/v1` },

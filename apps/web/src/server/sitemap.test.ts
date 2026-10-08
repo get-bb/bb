@@ -11,7 +11,7 @@ const post = parsePost(
 
 describe("sitemapXml", () => {
   it("lists public pages, posts, plugins, and unique authors with update dates", () => {
-    const xml = sitemapXml("https://getbb.app", [post], {
+    const xml = sitemapXml("https://getbb.app", [post], ["/compare/a-b"], {
       status: "available",
       manifest: MARKETPLACE_V2_FIXTURE,
       stats: null,
@@ -26,6 +26,7 @@ describe("sitemapXml", () => {
       "/changelog",
       "/plugin-guide",
       "/privacy",
+      "/compare/a-b",
       "/marketplace",
       "/blog/an-agentic-ide",
       "/marketplace/prompt-library",
@@ -47,7 +48,7 @@ describe("sitemapXml", () => {
   });
 
   it("omits unavailable marketplace pages", () => {
-    const xml = sitemapXml("https://getbb.app", [post], {
+    const xml = sitemapXml("https://getbb.app", [post], [], {
       status: "unavailable",
     });
 

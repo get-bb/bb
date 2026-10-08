@@ -163,6 +163,11 @@ import {
 } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
+import {
+  readMessageClipboardHtml,
+  readMessageClipboardImage,
+} from "@/lib/message-clipboard";
+import { appToast } from "@/components/ui/app-toast";
 import { findPastedThreadLinkCandidates } from "./mentions/pasted-thread-link-candidates";
 import {
   blurPromptEditor,
@@ -1894,6 +1899,59 @@ export function PromptBoxInternal({
             .map((item) => item.getAsFile())
             .filter((file): file is File => file !== null);
 
+          const copiedMessage = skipThreadLinks
+            ? null
+            : readMessageClipboardHtml(html);
+          if (copiedMessage) {
+            event.preventDefault();
+            editorRef.current
+              ?.chain()
+              .focus()
+              .insertContent(
+                promptEditorInlineContentFromValue({
+                  text: copiedMessage.text,
+                  mentions: [],
+                }),
+              )
+              .setMeta("uiEvent", "paste")
+              .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
+              .run();
+            if (attachFiles) {
+              if (pastedFiles.length > 0) {
+                void attachFiles(pastedFiles);
+              } else {
+                const editor = editorRef.current;
+                const href = window.location.href;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 30000);
+                void readMessageClipboardImage(
+                  copiedMessage.imageUrl,
+                  controller.signal,
+                )
+                  .then((file) => {
+                    if (
+                      editor &&
+                      !editor.isDestroyed &&
+                      editorRef.current === editor &&
+                      window.location.href === href
+                    )
+                      return attachFiles([file]);
+                  })
+                  .catch(() => {
+                    if (
+                      editor &&
+                      !editor.isDestroyed &&
+                      editorRef.current === editor &&
+                      window.location.href === href
+                    )
+                      appToast.error("The copied image could not be attached");
+                  })
+                  .finally(() => clearTimeout(timer));
+              }
+            }
+            return true;
+          }
+
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
             void attachFiles(pastedFiles);
@@ -2010,6 +2068,9 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     editorRef.current = editor;
+    return () => {
+      editorRef.current = null;
+    };
   }, [editor]);
 
   useLayoutEffect(() => {

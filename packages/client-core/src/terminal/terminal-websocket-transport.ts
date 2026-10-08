@@ -14,7 +14,7 @@ const DEFAULT_RECONNECT_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 
 export type TerminalSocketConnectionState =
   | "connecting"
-  | "open"
+  | "attached"
   | "reconnecting"
   | "closed";
 
@@ -37,9 +37,10 @@ function socketBufferedAmount(socket: TerminalBrowserSocket): number {
   return socket.bufferedAmount ?? 0;
 }
 
-function terminalSocketUrlWithSinceSeq(url: string, sinceSeq: number): string {
+function terminalSocketUrl(url: string, sinceSeq: number): string {
   const parsed = new URL(url);
   parsed.searchParams.set("sinceSeq", String(sinceSeq));
+  parsed.searchParams.set("outputAcks", "1");
   return parsed.toString();
 }
 
@@ -81,12 +82,14 @@ export class TerminalWebSocketTransport {
   private lastPongAt = 0;
   private lastResize: { cols: number; rows: number } | null = null;
   private nextOutputSeq = 0;
+  private pendingOutputAckNextSeq: number | null = null;
   private pendingInputBytes = 0;
   private readonly pendingInputs: PendingTerminalInput[] = [];
   private reconnectAttempt = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private socket: TerminalBrowserSocket | null = null;
   private terminalEnded = false;
+  private visible = true;
 
   constructor(private readonly options: TerminalWebSocketTransportOptions) {
     this.createSocket = options.createSocket ?? ((url) => new WebSocket(url));
@@ -153,6 +156,47 @@ export class TerminalWebSocketTransport {
     return this.enqueueInput(pending);
   }
 
+  acknowledgeOutput(nextSeq: number): void {
+    if (
+      this.pendingOutputAckNextSeq !== null &&
+      nextSeq <= this.pendingOutputAckNextSeq
+    ) {
+      return;
+    }
+    const scheduled = this.pendingOutputAckNextSeq !== null;
+    this.pendingOutputAckNextSeq = nextSeq;
+    if (scheduled) {
+      return;
+    }
+    queueMicrotask(() => {
+      const ackNextSeq = this.pendingOutputAckNextSeq;
+      this.pendingOutputAckNextSeq = null;
+      const socket = this.socket;
+      if (
+        ackNextSeq === null ||
+        socket === null ||
+        socket.readyState !== SOCKET_OPEN
+      ) {
+        return;
+      }
+      this.trySend(
+        socket,
+        JSON.stringify({ type: "ack", nextSeq: ackNextSeq }),
+      );
+    });
+  }
+
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) {
+      return;
+    }
+    this.visible = visible;
+    const socket = this.socket;
+    if (socket !== null && socket.readyState === SOCKET_OPEN) {
+      this.trySend(socket, JSON.stringify({ type: "visibility", visible }));
+    }
+  }
+
   sendResize(cols: number, rows: number): void {
     if (this.lastResize?.cols === cols && this.lastResize.rows === rows) {
       return;
@@ -180,7 +224,7 @@ export class TerminalWebSocketTransport {
     let socket: TerminalBrowserSocket;
     try {
       socket = this.createSocket(
-        terminalSocketUrlWithSinceSeq(this.options.url, this.nextOutputSeq),
+        terminalSocketUrl(this.options.url, this.nextOutputSeq),
       );
     } catch {
       this.scheduleReconnect();
@@ -197,14 +241,18 @@ export class TerminalWebSocketTransport {
     if (this.disposed || this.socket !== socket) {
       return;
     }
-    this.reconnectAttempt = 0;
     this.lastPongAt = this.now();
-    this.options.onConnectionState?.("open");
     this.startHeartbeat(socket);
     if (this.lastResize !== null) {
       this.trySend(
         socket,
         JSON.stringify({ type: "resize", ...this.lastResize }),
+      );
+    }
+    if (!this.visible) {
+      this.trySend(
+        socket,
+        JSON.stringify({ type: "visibility", visible: false }),
       );
     }
     this.flushInputs();
@@ -229,6 +277,10 @@ export class TerminalWebSocketTransport {
     const message = parsed.data;
     if (message.type === "pong") {
       this.lastPongAt = this.now();
+    }
+    if (message.type === "attached") {
+      this.reconnectAttempt = 0;
+      this.options.onConnectionState?.("attached");
     }
     if (
       message.type === "attached" &&

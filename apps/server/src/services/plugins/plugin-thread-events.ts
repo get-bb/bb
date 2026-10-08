@@ -1,3 +1,4 @@
+import type { EnvironmentRemoval } from "@bb/domain";
 import type { ApplyThreadLifecycleEventOutcome, HostRow } from "@bb/db";
 import type { PendingInteraction, Thread } from "@bb/domain";
 import type { ThreadQueuedMessage } from "@bb/domain";
@@ -111,4 +112,10 @@ export function emitPluginTerminalInput(
 
 export function emitPluginHostDeleted(host: HostRow): void {
   emitter?.emitHostDeleted(host);
+}
+
+export function emitPluginEnvironmentRemoved(
+  removal: EnvironmentRemoval,
+): void {
+  emitter?.emitEnvironmentRemoved(removal);
 }

@@ -1,4 +1,5 @@
 import type { IconSvgElement } from "@hugeicons/react";
+import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
 import AiBrain01Icon from "@hugeicons/core-free-icons/AiBrain01Icon";
 import AiBrowserIcon from "@hugeicons/core-free-icons/AiBrowserIcon";
 import AiContentGenerator01Icon from "@hugeicons/core-free-icons/AiContentGenerator01Icon";
@@ -110,6 +111,11 @@ import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffIcon from "@hugeicons/core-free-icons/ViewOffIcon";
 import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
 import ZoomOutAreaIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
+import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
+import AlertSquareIcon from "@hugeicons/core-free-icons/AlertSquareIcon";
+import SquareDotIcon from "@hugeicons/core-free-icons/SquareDotIcon";
+import MinusSignSquareIcon from "@hugeicons/core-free-icons/MinusSignSquareIcon";
+import SquareArrowRight01Icon from "@hugeicons/core-free-icons/SquareArrowRight01Icon";
 import { type ExtendedIconMap, registerExtendedIcons } from "./icon-registry";
 
 const PaletteStrokeRoundedIcon: IconSvgElement = [
@@ -217,6 +223,11 @@ const GithubLogoIcon: IconSvgElement = [
 ];
 
 export const EXTENDED_ICON_MAP: ExtendedIconMap = {
+  DiffAdded: AddSquareIcon,
+  DiffConflict: AlertSquareIcon,
+  DiffModified: SquareDotIcon,
+  DiffRemoved: MinusSignSquareIcon,
+  DiffRenamed: SquareArrowRight01Icon,
   AiBrain01: AiBrain01Icon,
   AiBrowser: AiBrowserIcon,
   AiContentGenerator01: AiContentGenerator01Icon,
@@ -284,6 +295,7 @@ export const EXTENDED_ICON_MAP: ExtendedIconMap = {
   GitPullRequestDraft: GitPullRequestDraftIcon,
   Globe: InternetIcon,
   GridView: GridViewIcon,
+  Keyboard: KeyboardIcon,
   Laptop: LaptopIcon,
   Layers: Layers01Icon,
   Limitation: LimitationIcon,

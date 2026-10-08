@@ -75,11 +75,11 @@ const timelineRows: TimelineRow[] = Array.from(
       attachments:
         turnIndex === 2
           ? {
-              webImages: 0,
-              localImages: 1,
+              webImages: 1,
+              localImages: 0,
               localFiles: 0,
-              imageUrls: [],
-              localImagePaths: ["/workspace/design-reference.png"],
+              imageUrls: ["/icon-192.png"],
+              localImagePaths: [],
               localFilePaths: [],
             }
           : null,

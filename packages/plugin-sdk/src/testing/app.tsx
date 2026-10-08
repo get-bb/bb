@@ -190,6 +190,10 @@ export type NavigateCall =
   | {
       method: "experimental_openFileExternally";
       options: ExperimentalFileOpenOptions;
+    }
+  | {
+      method: "experimental_openTerminal";
+      options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
     };
 
 export interface ExperimentalFixedTabOpenCall {
@@ -302,6 +306,7 @@ interface TestFixedTabTargetStore {
 export interface SidebarActionCall {
   method: keyof PluginSidebarThreadActions;
   threadId?: string;
+  environmentId?: string;
   options?: Record<string, unknown>;
   title?: string;
   pinned?: boolean;
@@ -1571,6 +1576,10 @@ export interface RenderSlotOptions<
   openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
+  openTerminal?: (
+    options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
+  ) => boolean;
   /** Host acceptance for an owner-scoped fixed-tab selection. */
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
   /** Initial session target visible to `experimental_useFixedTabTarget`. */
@@ -1903,6 +1912,12 @@ export function renderSlot<
     archive(threadId) {
       sidebarActionCalls.push({ method: "archive", threadId });
     },
+    async experimental_archiveEnvironmentThreads(environmentId) {
+      sidebarActionCalls.push({
+        method: "experimental_archiveEnvironmentThreads",
+        environmentId,
+      });
+    },
     requestDelete(threadId) {
       sidebarActionCalls.push({ method: "requestDelete", threadId });
     },
@@ -1951,6 +1966,13 @@ export function renderSlot<
         options: fileOptions,
       });
       return options.openFileExternally?.(fileOptions) ?? false;
+    },
+    async experimental_openTerminal(terminalOptions) {
+      navigateCalls.push({
+        method: "experimental_openTerminal",
+        options: terminalOptions,
+      });
+      return options.openTerminal?.(terminalOptions) ?? false;
     },
   };
 

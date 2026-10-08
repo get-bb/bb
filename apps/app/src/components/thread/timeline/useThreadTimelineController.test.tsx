@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import type { CommitOlderTimelineRows } from "./load-older-timeline-rows.js";
+
 import {
   act,
   cleanup,
@@ -154,7 +156,9 @@ function makeServerError(): BbHttpError {
   });
 }
 
-async function renderControllerWithPendingOlderPage() {
+async function renderControllerWithPendingOlderPage(
+  commit?: CommitOlderTimelineRows,
+) {
   const olderPage = createDeferredPromise<ThreadTimelineResponse>();
   vi.mocked(sdk.threads.timeline)
     .mockResolvedValueOnce(
@@ -181,7 +185,7 @@ async function renderControllerWithPendingOlderPage() {
 
   let olderRequest: Promise<void> = Promise.resolve();
   act(() => {
-    olderRequest = result.current.loadOlderTimelineRows();
+    olderRequest = result.current.loadOlderTimelineRows(commit);
   });
   await waitFor(() => {
     expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
@@ -372,7 +376,7 @@ function startTimelineRefetch(queryClient: QueryClient): void {
 }
 
 function markTimelineHasNewEvents(queryClient: QueryClient): void {
-  markThreadTimelineUnseenEvents(queryClient, "thread-1");
+  markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
   void queryClient.invalidateQueries({
     queryKey: TIMELINE_QUERY_KEY,
     refetchType: "none",
@@ -682,6 +686,28 @@ describe("useThreadTimelineController", () => {
       expect(result.current.timelineError).toBeNull();
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("keeps fetched history out of the rendered timeline until the scroll owner commits it", async () => {
+    const ready = createDeferredPromise<void>();
+    const release = createDeferredPromise<void>();
+    const { result, settleOlderPage } =
+      await renderControllerWithPendingOlderPage(async (update) => {
+        ready.resolve();
+        await release.promise;
+        update();
+      });
+    const settled = settleOlderPage();
+    await ready.promise;
+    expect(rowIds(result.current)).toEqual([newestLoadedRow.id]);
+    expect(result.current.isLoadingOlderTimelineRows).toBe(true);
+    release.resolve();
+    await settled;
+    expect(rowIds(result.current)).toEqual([
+      olderPageRow.id,
+      newestLoadedRow.id,
+    ]);
+    expect(result.current.isLoadingOlderTimelineRows).toBe(false);
   });
 
   it.each([
@@ -1452,6 +1478,22 @@ describe("useThreadTimelineController commits", () => {
     });
     await flushQueryNotifications();
     expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+
+  it("keeps a timeline stale when a completed fetch does not include the known event", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    markTimelineHasNewEvents(queryClient);
+    const view = renderProfiledController(wrapper);
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
+    expect(hasThreadTimelineUnseenEvents(queryClient, "thread-1")).toBe(true);
   });
 
   it("clears unseen events once the catch-up fetch succeeds", async () => {

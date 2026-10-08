@@ -2,7 +2,7 @@ import type { ThreadPullRequest } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
-  getPullRequestAttentionDisplay,
+  describePullRequestStatus,
   getPullRequestStateDisplay,
   getPullRequestGithubCheckStatus,
 } from "@/lib/pull-request-display";
@@ -38,7 +38,7 @@ export function PullRequestStatusPill({
   const checkStatus = getPullRequestGithubCheckStatus(pullRequest);
   return (
     <span
-      title={getPullRequestAttentionDisplay(pullRequest).label}
+      title={describePullRequestStatus(pullRequest)}
       className={cn(
         "flex h-5 shrink-0 cursor-pointer items-center gap-1",
         checkStatus !== null

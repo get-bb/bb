@@ -20,8 +20,23 @@ export function startEventLoopStallMonitor(
     thresholdMs: options.thresholdMs,
     onSample: ({ stall }) => {
       const work = takeEventLoopWorkWindowSnapshot();
-      if (stall !== null)
-        options.logger.info({ ...stall, ...work }, "Event loop stalled");
+      if (stall !== null) {
+        const hasCandidate =
+          work.longestSynchronousWorkWallMs !== null &&
+          work.longestSynchronousWorkWallMs + stall.resolutionMs >=
+            stall.maxDelayMs;
+        options.logger.info(
+          {
+            ...stall,
+            ...work,
+            stallAttribution: hasCandidate ? "candidate" : "unattributed",
+            stallCauseCandidate: hasCandidate
+              ? work.longestSynchronousWork
+              : null,
+          },
+          "Event loop stalled",
+        );
+      }
     },
   });
 }

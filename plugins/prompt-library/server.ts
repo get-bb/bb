@@ -7,12 +7,17 @@ import {
 import type { ComposerDraft } from "@get-bb/plugin-sdk";
 import {
   promptLibraryRpcContract,
-  type RecentPromptRow,
-  type StarredPromptRow,
+  type PromptRow,
   type SearchPromptsInput,
 } from "./contract.js";
 import { createHistoryCache, type HistoryCandidate } from "./history-cache.js";
-import { buildSnippet, rankByQuery } from "./ranking.js";
+import {
+  buildSnippet,
+  compareRank,
+  queryTerms,
+  rankByQuery,
+  type RankedMatch,
+} from "./ranking.js";
 import {
   createStarredPromptStore,
   STARRED_PROMPT_MIGRATIONS,
@@ -47,8 +52,9 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
   function rankHistory(
     loaded: readonly HistoryCandidate[],
     input: SearchPromptsInput,
+    excludedTexts: ReadonlySet<string>,
   ) {
-    const seen = new Set<string>();
+    const seen = new Set<string>(excludedTexts);
     const candidates: HistoryCandidate[] = [];
     for (const candidate of loaded) {
       const text = candidate.prompt.text;
@@ -60,16 +66,19 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
     return rankByQuery(candidates, input.query, (item) => item.prompt.text);
   }
 
-  async function searchHistory(input: SearchPromptsInput) {
+  async function searchHistory(
+    input: SearchPromptsInput,
+    excludedTexts: ReadonlySet<string>,
+  ) {
     if (input.scope === "thread" && input.threadId === null) return [];
     if (input.scope === "project" && input.projectId === null) return [];
     let loaded: readonly HistoryCandidate[] | null =
       await historyCache.refresh();
-    let ranked = rankHistory(loaded, input);
+    let ranked = rankHistory(loaded, input, excludedTexts);
     while (ranked.length < RECENT_RESULT_LIMIT) {
       loaded = await historyCache.loadOlder();
       if (loaded === null) break;
-      ranked = rankHistory(loaded, input);
+      ranked = rankHistory(loaded, input, excludedTexts);
     }
     return ranked.slice(0, RECENT_RESULT_LIMIT);
   }
@@ -89,8 +98,9 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
   function starredRow(
     prompt: StarredPrompt,
     positions: readonly number[],
-  ): StarredPromptRow {
+  ): PromptRow {
     return {
+      kind: "starred",
       id: prompt.id,
       prompt: prompt.prompt,
       snippet: buildSnippet(prompt.prompt.text, positions),
@@ -100,6 +110,7 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
   }
 
   async function search(input: SearchPromptsInput) {
+    const searching = queryTerms(input.query).length > 0;
     const starredPrompts = store.list();
     const starredIdsByText = new Map(
       starredPrompts.map((prompt) => [prompt.prompt.text, prompt.id]),
@@ -110,14 +121,22 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
       (prompt) => prompt.prompt.text,
     )
       .slice(0, STARRED_RESULT_LIMIT)
-      .map((match) => starredRow(match.item, match.positions));
-    const history = await searchHistory(input);
+      .map((match) => ({
+        ...match,
+        row: starredRow(match.item, match.positions),
+      }));
+    const history = await searchHistory(
+      input,
+      searching ? new Set(starredIdsByText.keys()) : new Set(),
+    );
     const names = await projectNames(
       new Set(history.map((match) => match.item.projectId)),
     );
-    const recent: RecentPromptRow[] = history.map(({ item, positions }) => {
+    const recent = history.map((match) => {
+      const { item, positions } = match;
       const text = item.prompt.text;
-      return {
+      const row: PromptRow = {
+        kind: "recent",
         id: item.id,
         prompt: item.prompt,
         snippet: buildSnippet(text, positions),
@@ -127,8 +146,14 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
         threadId: item.threadId,
         starredId: starredIdsByText.get(text) ?? null,
       };
+      return { ...match, row };
     });
-    return { starred, recent };
+    const matches: (RankedMatch<unknown> & { row: PromptRow })[] = [
+      ...starred,
+      ...recent,
+    ];
+    if (searching) matches.sort(compareRank);
+    return { prompts: matches.map((match) => match.row) };
   }
 
   function star(prompt: ComposerDraft): StarredPrompt {
@@ -156,7 +181,7 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
       name: "prompts",
       summary: "Search previous prompts and manage starred prompts",
       description:
-        "Starred prompts appear first in the composer's Prompts… picker (Ctrl+R). Previous prompts come from bb's prompt history.",
+        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prefix matches first, then by fuzzy score, with starred and then newer prompts breaking ties. Previous prompts come from bb's prompt history.",
       commands: {
         search: cliCommand({
           summary: "Search starred and previous prompts",
@@ -196,15 +221,11 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
             if (options.json) {
               return { exitCode: 0, stdout: JSON.stringify(result) };
             }
-            const lines = [
-              ...result.starred.map(
-                (row) => `★ ${row.id}  ${row.snippet.text}`,
-              ),
-              ...result.recent.map(
-                (row) =>
-                  `  ${new Date(row.createdAt).toISOString()}  ${row.snippet.text}`,
-              ),
-            ];
+            const lines = result.prompts.map((row) =>
+              row.kind === "starred"
+                ? `★ ${row.id}  ${row.snippet.text}`
+                : `  ${new Date(row.createdAt).toISOString()}  ${row.snippet.text}`,
+            );
             return {
               exitCode: 0,
               stdout: lines.length > 0 ? lines.join("\n") : "No prompts found",

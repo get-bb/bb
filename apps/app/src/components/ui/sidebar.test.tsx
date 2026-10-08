@@ -14,13 +14,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   Sidebar,
+  SidebarCollapsibleBody,
   SidebarContent,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useIsSidebarFramed,
   useIsSidebarShowing,
   useOptionalIsSidebarShowing,
   useSidebar,
+  useSidebarKeepsCollapsedRail,
 } from "./sidebar";
 
 afterEach(() => {
@@ -209,6 +212,195 @@ describe("useIsSidebarShowing", () => {
   });
 });
 
+function CollapsedRailProbe() {
+  const keepsCollapsedRail = useSidebarKeepsCollapsedRail();
+  const isShowing = useIsSidebarShowing();
+  return (
+    <output
+      data-testid="collapsed-rail-probe"
+      data-keeps-rail={String(keepsCollapsedRail)}
+      data-showing={String(isShowing)}
+    />
+  );
+}
+
+function getDesktopSidebarParts(): {
+  root: HTMLElement;
+  gap: HTMLElement;
+  panel: HTMLElement;
+} {
+  const gap = document.querySelector('[data-sidebar="gap"]');
+  const panel = document.querySelector('[data-sidebar="panel"]');
+  const root = gap?.parentElement;
+  if (
+    !(gap instanceof HTMLElement) ||
+    !(panel instanceof HTMLElement) ||
+    !(root instanceof HTMLElement)
+  ) {
+    throw new Error("Expected the desktop sidebar root, gap, and panel");
+  }
+  return { root, gap, panel };
+}
+
+describe("desktop collapsed rail", () => {
+  it("collapses to the rail width instead of sliding off canvas", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider collapsedRailWidth="52px" defaultOpen>
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarTrigger />
+          <CollapsedRailProbe />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const { root, gap, panel } = getDesktopSidebarParts();
+    const probe = screen.getByTestId("collapsed-rail-probe");
+    expect(root.dataset.collapsible).toBe("");
+    expect(probe.dataset.keepsRail).toBe("true");
+    expect(probe.dataset.showing).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(root.dataset.state).toBe("collapsed");
+    expect(root.dataset.collapsible).toBe("rail");
+    expect(probe.dataset.showing).toBe("false");
+    for (const part of [gap, panel]) {
+      expect(part.style.getPropertyValue("--sidebar-rail-width")).toBe("52px");
+      expect(part.className).toContain(
+        "group-data-[collapsible=rail]:w-(--sidebar-rail-width)",
+      );
+    }
+  });
+
+  it("parks the body beside the rail at its expanded width and takes it out of reach", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider collapsedRailWidth="52px" width="333px" defaultOpen>
+          <Sidebar>
+            <SidebarCollapsibleBody data-testid="body">
+              <button type="button">Thread row</button>
+            </SidebarCollapsibleBody>
+          </Sidebar>
+          <SidebarTrigger />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const body = screen.getByTestId("body");
+    const content = screen.getByRole("button", {
+      name: "Thread row",
+    }).parentElement;
+    expect(body.hasAttribute("inert")).toBe(false);
+    expect(content?.style.width).toBe("calc(281px)");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(body.hasAttribute("inert")).toBe(true);
+    expect(content?.style.width).toBe("calc(281px)");
+    expect(body.className).toContain("group-data-[collapsible=rail]:invisible");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(body.hasAttribute("inert")).toBe(false);
+  });
+
+  it("slides fully off canvas when no rail width is configured", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider defaultOpen={false}>
+          <Sidebar>Sidebar content</Sidebar>
+          <CollapsedRailProbe />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const { root, panel } = getDesktopSidebarParts();
+    expect(root.dataset.collapsible).toBe("offcanvas");
+    expect(panel.style.getPropertyValue("--sidebar-rail-width")).toBe("");
+    expect(screen.getByTestId("collapsed-rail-probe").dataset.keepsRail).toBe(
+      "false",
+    );
+  });
+
+  it("drops the rail on compact viewports, where the drawer hides entirely", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider collapsedRailWidth="52px">
+          <Sidebar>Sidebar content</Sidebar>
+          <CollapsedRailProbe />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const probe = screen.getByTestId("collapsed-rail-probe");
+    expect(probe.dataset.keepsRail).toBe("false");
+    expect(probe.dataset.showing).toBe("false");
+    expect(document.querySelector('[data-sidebar="gap"]')).toBeNull();
+    expect(document.querySelector('[data-collapsible="rail"]')).toBeNull();
+  });
+});
+
+function FramedProbe() {
+  return (
+    <output data-testid="framed-probe">{String(useIsSidebarFramed())}</output>
+  );
+}
+
+describe("framed desktop sidebar", () => {
+  it("rounds the leading card corner on whichever surface touches the rail", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider
+          framed
+          collapsedRailWidth="52px"
+          data-testid="wrapper"
+          defaultOpen
+        >
+          <Sidebar>
+            <SidebarCollapsibleBody data-testid="body">
+              Sidebar content
+            </SidebarCollapsibleBody>
+          </Sidebar>
+          <SidebarInset data-testid="inset" />
+          <SidebarTrigger />
+          <FramedProbe />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const inset = screen.getByTestId("inset");
+    expect(screen.getByTestId("framed-probe").textContent).toBe("true");
+    expect(screen.getByTestId("wrapper").dataset.framed).toBe("");
+    expect(screen.getByTestId("body").classList.contains("rounded-tl-xl")).toBe(
+      true,
+    );
+    expect(inset.classList.contains("rounded-tl-xl")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    expect(inset.classList.contains("rounded-tl-xl")).toBe(true);
+  });
+
+  it("leaves compact viewports and unframed sidebars as they were", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider framed data-testid="wrapper">
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarInset data-testid="inset" />
+          <FramedProbe />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    expect(screen.getByTestId("framed-probe").textContent).toBe("false");
+    expect(screen.getByTestId("wrapper").dataset.framed).toBeUndefined();
+    expect(screen.getByTestId("inset").classList.contains("border-t")).toBe(
+      false,
+    );
+  });
+});
+
 describe("SidebarTrigger", () => {
   it("uses the shared sidebar icon on every viewport", () => {
     const markup = renderToString(
@@ -237,7 +429,7 @@ function getMobilePanel(): HTMLElement | null {
   return panel instanceof HTMLElement ? panel : null;
 }
 
-const SHELF_OPEN_TRANSLATE = "320px";
+const SHELF_OPEN_TRANSLATE = "360px";
 const SHELF_CLOSED_TRANSLATE = "0px";
 
 function getShelfRevealTranslate(): string {

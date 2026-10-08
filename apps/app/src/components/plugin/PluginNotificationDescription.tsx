@@ -1,7 +1,52 @@
-import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { appToast } from "@/components/ui/app-toast";
-import { getPluginDetailRoutePath } from "@/lib/route-paths";
+import { useCallback, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { appToast, type AppToastOptions } from "@/components/ui/app-toast";
+import {
+  getPluginDetailRoutePath,
+  getPluginPanelRoutePath,
+} from "@/lib/route-paths";
+import { getPluginSlotSnapshot, usePluginSlots } from "@/lib/plugin-slots";
+
+function PluginOpenActionLabel({ pluginId }: { pluginId: string }) {
+  const slots = usePluginSlots();
+  return slots.navPanels.some((panel) => panel.pluginId === pluginId)
+    ? "Open plugin"
+    : "View details";
+}
+
+export function usePluginNotificationAction() {
+  const navigate = useNavigate();
+  return useCallback(
+    (
+      pluginId: string,
+      destination: "app" | "installed" | "catalog",
+    ): NonNullable<AppToastOptions["action"]> => ({
+      label:
+        destination === "app" ? (
+          <PluginOpenActionLabel pluginId={pluginId} />
+        ) : (
+          "Details"
+        ),
+      onClick: () => {
+        const panel =
+          destination === "app"
+            ? getPluginSlotSnapshot().navPanels.find(
+                (panel) => panel.pluginId === pluginId,
+              )
+            : undefined;
+        navigate(
+          panel
+            ? getPluginPanelRoutePath({ pluginId, path: panel.path })
+            : getPluginDetailRoutePath({
+                pluginId,
+                ...(destination === "catalog" ? {} : { view: "installed" }),
+              }),
+        );
+      },
+    }),
+    [navigate],
+  );
+}
 
 interface PluginNotificationTarget {
   id: string;

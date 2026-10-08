@@ -43,15 +43,24 @@ Hooks:
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),
-experimental_openFilePreview(options), experimental_openFileExternally(options) }`.
+experimental_openFilePreview(options), experimental_openFileExternally(options),
+experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
-  in the current thread surface and returns whether the host accepted it; it
-  returns false on surfaces without a thread side panel.
+  in a thread, or its `experimental_newThreadPanelAction` tabs on the New
+  thread screen, and returns whether the host accepted it; it returns false on
+  plugin pages, which have no panel actions.
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
+  `experimental_openTerminal` shows a terminal the plugin created with
+  `useSdk().terminals.create` in the current surface's terminal panel; the
+  create scope (thread, environment, or host path) picks its directory. It
+  resolves false for unknown or exited terminals, for a thread surface when
+  the terminal belongs to another thread, and for the New thread screen when
+  it is outside that screen's terminal scope. Plugin pages accept any
+  terminal. Closing the tab closes the terminal.
 - `useComposer()` → one stable handle for the composer the calling surface
   belongs to: inside a composer slot, that composer; in a thread's panels,
   that thread's composer; elsewhere, the current route's draft. The same
@@ -203,7 +212,13 @@ diff viewers, and the new-thread composer.
   update path.
 - The registry's `icon` is a thin wrapper over `experimental_Icon`: vendored
   components draw bb's glyphs, including icons other plugins register, from
-  the host at runtime instead of bundling an icon set.
+  the host at runtime instead of bundling an icon set. Draw your own icons
+  through it too. Plugins scaffolded before SDK 0.5.16 vendored an older
+  `icon.tsx` (plus `icon-extended.tsx` and `icon-registry.ts`) that imports
+  `@hugeicons/*`: rerun `npx shadcn add @bb/icon`, delete the other two
+  files, and drop `@hugeicons/core-free-icons` and `@hugeicons/react` from
+  `dependencies`. A git install keeps every version's `node_modules` on the
+  user's disk, and the full hugeicons set is over 100 MB per copy.
 - `toast`: `import { toast } from "sonner"` — runtime-shimmed to the host's
   Toaster (`toast.success("Saved")` just works; never mount your own
   `<Toaster>`).
@@ -233,7 +248,7 @@ plugin types --check` reports drift). Never list one in `dependencies` —
   `@pierre/diffs` import. The shim stays for compatibility, but hand-rolled
   Pierre usage means owning patch normalization and the code theme yourself,
   and it opts you out of any installed renderer replacement.
-- Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
+- Everything else bundles from YOUR `node_modules` (lucide,
   non-portal radix, zod, form/calendar/chart libs): run `npm install`
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no

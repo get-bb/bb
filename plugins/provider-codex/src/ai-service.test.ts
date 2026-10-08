@@ -111,7 +111,7 @@ describe("Codex AI service", () => {
       mimeType: "audio/webm",
       filename: "clip.webm",
       hint: "bb",
-      timeoutMs: 10_000,
+      timeoutMs: 65_000,
     });
   });
 });

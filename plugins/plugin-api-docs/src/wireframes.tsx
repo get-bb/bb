@@ -1042,7 +1042,7 @@ function AppShellWireframeBody({
   if (scene === "navigation") {
     return (
       <WindowFrame className={cn("flex bg-background", MOBILE_SCREEN_CLASS)}>
-        <div className="flex w-[76%] flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
+        <div className="flex w-[86%] flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           <div className="flex h-12 items-center gap-3 px-3 text-sm">
             <MiniIcon icon="PanelLeft" />
             Navigation

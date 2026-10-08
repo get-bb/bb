@@ -18,7 +18,11 @@ import {
   setCompactSecondaryPanelPresentation,
 } from "@/components/ui/secondary-panel-shelf-visibility";
 
-const viewportState = vi.hoisted(() => ({ compact: false }));
+const viewportState = vi.hoisted(() => ({
+  compact: false,
+  macosChrome: false,
+  navigationRail: false,
+}));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.compact,
@@ -38,6 +42,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       experiments: {
         serverMove: false,
         performanceDiagnostics: false,
+        navigationRail: viewportState.navigationRail,
       },
     },
   }),
@@ -127,11 +132,12 @@ vi.mock("@/lib/bb-desktop", () => ({
   MACOS_CHROME_CONTROL_AXIS_CLASS: "",
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS: "",
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
+  MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS: "",
   MACOS_WINDOW_DRAG_CLASS: "",
   MACOS_WINDOW_NO_DRAG_CLASS: "",
   getBbDesktopInfo: () => null,
   shouldReserveMacosTrafficLights: () => false,
-  shouldUseMacosDesktopChrome: () => false,
+  shouldUseMacosDesktopChrome: () => viewportState.macosChrome,
 }));
 
 vi.mock("@/lib/favicon-color-preference", () => ({
@@ -202,6 +208,8 @@ function isHiddenByCompactShelf(element: HTMLElement): boolean {
 describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
+    viewportState.macosChrome = false;
+    viewportState.navigationRail = false;
     setCompactSecondaryPanelPresentation("closed");
   });
 
@@ -274,5 +282,42 @@ describe("AppLayout plugin panel header", () => {
     expect(
       screen.getByTestId("app-sidebar-trigger-overlay").dataset.panelShelf,
     ).toBeUndefined();
+  });
+
+  it("moves the trigger and history controls into a window title bar beside the macOS rail", () => {
+    viewportState.macosChrome = true;
+    viewportState.navigationRail = true;
+    renderPluginPanelRoute();
+
+    const titleBar = screen.getByTestId("app-window-title-bar");
+    expect(screen.getByTestId("app-layout-root").dataset.framed).toBe("");
+    expect(
+      titleBar.contains(
+        screen.getByRole("button", { name: /^Toggle sidebar/ }),
+      ),
+    ).toBe(true);
+    expect(
+      titleBar.contains(screen.getByRole("button", { name: "Go back" })),
+    ).toBe(true);
+    expect(screen.queryByTestId("app-desktop-sidebar-trigger")).toBeNull();
+  });
+
+  it("keeps the floating macOS trigger without the rail and on compact windows", () => {
+    viewportState.macosChrome = true;
+    renderPluginPanelRoute();
+
+    expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
+    expect(screen.getByTestId("app-desktop-sidebar-trigger")).toBeTruthy();
+    expect(
+      screen.getByTestId("app-layout-root").dataset.framed,
+    ).toBeUndefined();
+
+    cleanup();
+    viewportState.compact = true;
+    viewportState.navigationRail = true;
+    renderPluginPanelRoute();
+
+    expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
+    expect(screen.getByTestId("app-desktop-sidebar-trigger")).toBeTruthy();
   });
 });

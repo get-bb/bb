@@ -17,7 +17,7 @@ import {
   TooltipTrigger,
 } from "../tooltip";
 import { cn } from "../../../lib/utils";
-import { COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS } from "../coarse-pointer-visibility";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "../hover-reveal";
 
 export function targetsResourceAction(event: {
   currentTarget: Element;
@@ -301,8 +301,10 @@ export function ResourceRow({
               data-row-action
               className={cn(
                 "flex shrink-0 cursor-default items-center gap-0.5 transition-opacity",
-                actionsVisibility === "hover" &&
-                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 [@media(hover:none)]:opacity-100",
+                actionsVisibility === "hover" && [
+                  "opacity-0 group-hover:opacity-100 focus-within:opacity-100 has-[[data-state=open]]:opacity-100",
+                  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                ],
               )}
             >
               {actions}
@@ -325,7 +327,7 @@ export function ResourceRowDetailChevron() {
       name="ChevronRight"
       className={cn(
         "size-3.5 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
-        COARSE_POINTER_HOVER_REVEAL_VISIBLE_CLASS,
+        HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
       )}
       aria-hidden
     />

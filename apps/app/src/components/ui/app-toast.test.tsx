@@ -55,7 +55,7 @@ describe("AppToastContent", () => {
 
   it("neutralizes Sonner margins on custom toast icons", () => {
     const { container } = render(
-      <AppToastContent title="Thread Archived" tone="success" />,
+      <AppToastContent title="Thread archived" tone="success" />,
     );
 
     expect(

@@ -176,7 +176,7 @@ const mobileReviewRows: TimelineRow[] = [
     sourceSeqStart: 20,
     sourceSeqEnd: 20,
     role: "assistant",
-    text: "The mobile footer is ready. Earlier agent messages keep their actions in the overflow menu, while this final response exposes Copy and Fork inline.",
+    text: "The mobile footer is ready. Earlier agent messages keep their actions in the overflow menu, while this final response exposes Copy inline and keeps Fork in the overflow menu.",
   }),
 ];
 
@@ -317,77 +317,13 @@ export function ActionOverflow() {
 
 export function MobileActionsAndSelection() {
   return (
-    <div className="mobile-agent-actions-review mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">
-      <style>{`
-      /* Force the coarse-pointer presentation for desktop story review. The
-         production component still owns the real mobile media queries. */
-      .mobile-agent-actions-review
-        :is(
-          [data-timeline-row-id="mobile_actions_earlier_agent_message"],
-          [data-timeline-row-id="mobile_actions_earlier_user_message"]
-        )
-        [aria-label="Copy message"],
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_earlier_agent_message"]
-        [aria-label="Fork into new thread"],
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_earlier_agent_message"]
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_earlier_user_message"]
-        [aria-label="Add to chat"] {
-        display: none;
-      }
-
-      .mobile-agent-actions-review
-        :is(
-          [data-timeline-row-id="mobile_actions_earlier_agent_message"],
-          [data-timeline-row-id="mobile_actions_earlier_user_message"]
-        )
-        [aria-label="Message actions"] {
-        display: inline-flex;
-      }
-
-      .mobile-agent-actions-review
-        :is(
-          [data-timeline-row-id="mobile_actions_latest_agent_message"],
-          [data-timeline-row-id="mobile_actions_latest_user_message"]
-        )
-        [aria-label="Copy message"],
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Fork into new thread"],
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_agent_message"]
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_user_message"]
-        [aria-label="Add to chat"] {
-        width: 1.75rem;
-        height: 1.75rem;
-        opacity: 1;
-      }
-
-      .mobile-agent-actions-review
-        :is(
-          [data-timeline-row-id="mobile_actions_latest_agent_message"],
-          [data-timeline-row-id="mobile_actions_latest_user_message"]
-        )
-        [aria-label="Copy message"] svg,
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_agent_message"]
-        [aria-label="Fork into new thread"] svg,
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_agent_message"]
-      .mobile-agent-actions-review
-        [data-timeline-row-id="mobile_actions_latest_user_message"]
-        [aria-label="Add to chat"] svg {
-        width: 1rem;
-        height: 1rem;
-      }
-    `}</style>
+    <div className="mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
         Earlier user and agent messages: overflow menu. Latest user and agent
-        messages: compact inline actions. Drag-select with a mouse or long-press
-        agent text on touch to exercise the floating selection menu.
+        messages: Copy and an overflow menu. Fork is in the agent overflow menu.
+        Use a compact touch viewport to review mobile actions. Drag-select with a
+        mouse or long-press agent text on touch to exercise the floating selection
+        menu.
       </p>
       <ThreadTimelineRows
         canSpawnChild

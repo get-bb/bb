@@ -1,3 +1,5 @@
+import { ChildProcess } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -35,15 +37,6 @@ const threadDeltaParamsSchema = z.object({
   deltas: z.array(z.record(z.string(), z.unknown())),
 });
 
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export interface StartFakePiBridgeOptions {
   prefix: string;
   sessionDir?: (workspaceDir: string) => string;
@@ -78,6 +71,7 @@ export interface FakePiBridgeHarness {
     what: string,
   ): Promise<BridgeJsonRpcOutputMessage>;
   readProcessLog(): { spawned: number[]; exited: number[] };
+  runningChildPids(): number[];
   teardown(): Promise<void>;
 }
 
@@ -97,6 +91,18 @@ export async function startFakePiBridge(
     vi.stubEnv("FAKE_PI_PROCESS_LOG", processLogPath);
   }
   const harness = createBridgeJsonRpcTestHarness(handleLine);
+  const children: ChildProcess[] = [];
+  const childProcessChannel = channel("child_process");
+  const onChildProcess = (message: unknown): void => {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      "process" in message &&
+      message.process instanceof ChildProcess
+    ) {
+      children.push(message.process);
+    }
+  };
   let nextHarnessRequestId = FIRST_HARNESS_REQUEST_ID;
   const bridge: FakePiBridgeHarness = {
     workspaceDir,
@@ -173,22 +179,37 @@ export async function startFakePiBridge(
       }
       return { spawned, exited };
     },
-    async teardown() {
-      await experimental_closeAllForTests();
-      await bridge.waitFor(
-        () => bridge.readProcessLog().spawned.every((pid) => !isRunning(pid)),
-        "fake Pi processes to exit",
+    runningChildPids() {
+      return children.flatMap((child) =>
+        child.spawnargs.includes(fakePiPath) &&
+        child.pid !== undefined &&
+        child.exitCode === null &&
+        child.signalCode === null
+          ? [child.pid]
+          : [],
       );
-      harness.restore();
-      vi.unstubAllEnvs();
-      await rm(workspaceDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 10,
-        retryDelay: 100,
-      });
+    },
+    async teardown() {
+      try {
+        await experimental_closeAllForTests();
+        await bridge.waitFor(
+          () => bridge.runningChildPids().length === 0,
+          "fake Pi processes to exit",
+        );
+      } finally {
+        childProcessChannel.unsubscribe(onChildProcess);
+        harness.restore();
+        vi.unstubAllEnvs();
+        await rm(workspaceDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 10,
+          retryDelay: 100,
+        });
+      }
     },
   };
+  childProcessChannel.subscribe(onChildProcess);
   if (options.initialize) {
     try {
       await bridge.request(INITIALIZE_ID, "initialize", {

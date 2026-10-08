@@ -13,6 +13,7 @@ import {
 const HOSTS_QUERY_KEY = "hosts";
 const HOST_QUERY_KEY = "host";
 const HOST_DIRECTORY_QUERY_KEY = "hostDirectory";
+const HOST_DISCOVERED_REPOS_QUERY_KEY = "hostDiscoveredRepos";
 const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 const PROJECTS_QUERY_KEY = "projects";
 const PROJECT_PATHS_QUERY_KEY = "projectPaths";
@@ -82,6 +83,7 @@ const PLUGIN_SOURCE_QUERY_KEY = "plugin-source";
 const PLUGIN_CATALOG_SEARCH_QUERY_KEY = "plugin-catalog-search";
 const PLUGIN_CATALOG_INSTALL_PLAN_QUERY_KEY = "plugin-catalog-install-plan";
 const PLUGIN_MARKETPLACES_QUERY_KEY = "plugin-marketplaces";
+const PLUGIN_INSTALL_JOBS_QUERY_KEY = "plugin-install-jobs";
 export interface ThreadListQueryFilters {
   projectId?: string;
   hostId?: string;
@@ -520,6 +522,30 @@ export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
 
 export function allHostQueryKeyPrefix(): AllHostQueryKeyPrefix {
   return [HOST_QUERY_KEY];
+}
+
+const TERMINAL_OUTPUT_TAIL_QUERY_KEY = "terminalOutputTail";
+
+type TerminalOutputTailQueryKey = readonly [
+  typeof TERMINAL_OUTPUT_TAIL_QUERY_KEY,
+  string,
+];
+
+export function terminalOutputTailQueryKey(
+  terminalId: string,
+): TerminalOutputTailQueryKey {
+  return [TERMINAL_OUTPUT_TAIL_QUERY_KEY, terminalId];
+}
+
+type HostDiscoveredReposQueryKey = readonly [
+  typeof HOST_DISCOVERED_REPOS_QUERY_KEY,
+  HostQueryId,
+];
+
+export function hostDiscoveredReposQueryKey(
+  hostId: HostQueryId,
+): HostDiscoveredReposQueryKey {
+  return [HOST_DISCOVERED_REPOS_QUERY_KEY, hostId];
 }
 
 export function hostDirectoryQueryKey(
@@ -1287,6 +1313,14 @@ export function pluginMarketplacesQueryKey() {
   return [PLUGIN_MARKETPLACES_QUERY_KEY] as const;
 }
 
+export function pluginInstallJobsQueryKey() {
+  return [PLUGIN_INSTALL_JOBS_QUERY_KEY] as const;
+}
+
 export function systemProviderCatalogQueryKey() {
   return [SYSTEM_PROVIDERS_QUERY_KEY, "catalog"] as const;
+}
+
+export function pluginUpdateJobsQueryKey() {
+  return ["plugin-update-jobs"] as const;
 }

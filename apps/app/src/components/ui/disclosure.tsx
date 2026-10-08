@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   observedBorderBoxBlockSize,
@@ -109,7 +110,10 @@ export function CollapsibleHeader({
             ? "rotate-90"
             : forceChevronVisible
               ? "opacity-100"
-              : "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100 max-md:pointer-coarse:opacity-100",
+              : cn(
+                  "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100",
+                  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                ),
         )}
       />
     </button>

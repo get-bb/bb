@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   copyStoredThreadEventsInTransaction,
   findLastCompletedRootStoredTurn,
   findLastRootStoredTurnStarted,
@@ -314,6 +315,9 @@ export function copyForkSourceHistory(
     { behavior: "immediate" },
   );
   deps.hub.notifyThread(args.fork.id, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, {
+      threadId: args.fork.id,
+    }),
     eventTypes: [...new Set(rows.map((row) => row.type))],
   });
 }

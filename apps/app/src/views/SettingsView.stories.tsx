@@ -14,7 +14,7 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
+import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
@@ -32,6 +32,8 @@ import {
   SettingsUpdatesStory,
 } from "../../.ladle/settings-story-fixtures";
 import type { ThemePreference } from "@/hooks/useTheme";
+import type { AudioInputDeviceOption } from "@/hooks/useAudioInputDevices";
+import { useAudioInputDevicePreferenceValue } from "@/lib/audio-input-device-preference";
 import {
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
@@ -53,6 +55,11 @@ export default {
 };
 
 type StoredTargetId = LocalOpenTargetSettingsSectionProps["directoryTargetId"];
+
+const audioInputDevices: AudioInputDeviceOption[] = [
+  { deviceId: "macbook-mic", label: "MacBook Pro Microphone" },
+  { deviceId: "studio-mic", label: "Studio Display Microphone" },
+];
 
 const vscodeTarget: WorkspaceOpenTarget = {
   capabilities: {
@@ -115,13 +122,15 @@ function useSettingsStoryState() {
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
+  const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
+    useState(false);
+  const [showGitChanges, setShowGitChanges] = useState(true);
   const [streamerMode, setStreamerMode] = useState(false);
   const [telemetryEnabled, setTelemetryEnabled] = useState(true);
   const [managedBranchPrefix, setManagedBranchPrefix] = useState(
     defaultAppSettings.managedBranchPrefix,
   );
   const [showDiagnosticEvents, setShowDiagnosticEvents] = useState(false);
-
   const [directoryTargetId, setDirectoryTargetId] =
     useState<StoredTargetId>("finder");
   const [fileTargetId, setFileTargetId] =
@@ -139,8 +148,12 @@ function useSettingsStoryState() {
     openLinksInAppBrowser,
     rewriteLocalhostLinks,
     steerActiveThreadOnEnter,
+    showGitChanges,
+    setShowGitChanges,
     confirmThreadArchive,
     setConfirmThreadArchive,
+    keepHistoryAfterContextClear,
+    setKeepHistoryAfterContextClear,
     streamerMode,
     telemetryEnabled,
     setTelemetryEnabled,
@@ -162,7 +175,18 @@ function useSettingsStoryState() {
 }
 
 function VoiceInputStory() {
-  return <VoiceInputSettingsSection />;
+  const preferredDeviceId = useAudioInputDevicePreferenceValue();
+
+  return (
+    <VoiceInputSettingsSectionContent
+      devices={audioInputDevices}
+      errorMessage={null}
+      isLoading={false}
+      isSupported={true}
+      onRefresh={() => undefined}
+      preferredDeviceId={preferredDeviceId}
+    />
+  );
 }
 
 function GeneralSettingsStory({
@@ -175,8 +199,14 @@ function GeneralSettingsStory({
   return (
     <>
       <GeneralSettingsSection
+        showGitChanges={state.showGitChanges}
+        onShowGitChangesChange={state.setShowGitChanges}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
+        keepHistoryAfterContextClear={state.keepHistoryAfterContextClear}
+        onKeepHistoryAfterContextClearChange={
+          state.setKeepHistoryAfterContextClear
+        }
         desktopBrowserAvailable={desktopBrowserAvailable}
         generalSettingsDisabled={false}
         managedBranchPrefix={state.managedBranchPrefix}
@@ -186,6 +216,7 @@ function GeneralSettingsStory({
           state.setNavigateToThreadAfterCreate
         }
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
+        onReplaySetupGuide={() => {}}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
         openLinksInAppBrowser={state.openLinksInAppBrowser}
@@ -285,7 +316,9 @@ function ProvidersSettingsStory() {
     <ProvidersSettingsSection
       disabled={false}
       generalSettings={generalSettings}
-      onGeneralSettingsChange={setGeneralSettings}
+      onGeneralSettingsChange={(patch) =>
+        setGeneralSettings((current) => ({ ...current, ...patch }))
+      }
     />
   );
 }

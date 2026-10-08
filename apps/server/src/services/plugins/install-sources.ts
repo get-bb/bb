@@ -17,9 +17,16 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { resolveBundledNpmCli } from "@bb/plugin-build";
 import {
+  killPortableProcess,
+  killProcessGroup,
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
+  supportsProcessGroups,
 } from "@bb/process-utils";
+import {
+  installCancellationSignal,
+  PluginInstallCancelledError,
+} from "./install-cancellation.js";
 
 type ParsedGitSelector =
   | { kind: "ref"; ref: string }
@@ -610,12 +617,19 @@ export async function runInstallCommand(
   },
 ): Promise<string> {
   const timeoutMs = 5 * 60_000;
+  const cancellation = installCancellationSignal();
+  if (cancellation?.aborted) throw new PluginInstallCancelledError();
   const npmCliPath = command === "npm" ? resolveBundledNpmCli() : null;
   const child = spawnPortableOutputProcess({
     command: npmCliPath === null ? command : process.execPath,
     args: npmCliPath === null ? args : [npmCliPath, ...args],
+    detached: supportsProcessGroups(),
     env: omitNpmScriptPolicyEnv(process.env),
   });
+  const killCommand = () => {
+    if (supportsProcessGroups()) killProcessGroup({ child, signal: "SIGKILL" });
+    else killPortableProcess(child, "SIGKILL");
+  };
   let stderr = "";
   let stdout = "";
   let stdoutBytes = 0;
@@ -628,21 +642,28 @@ export async function runInstallCommand(
       if (stdout.length > 8192) stdout = stdout.slice(-8192);
     } else if (stdoutBytes > limit && !overflowed) {
       overflowed = true;
-      child.kill("SIGKILL");
+      killCommand();
     }
   });
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString("utf8");
     if (stderr.length > 8192) stderr = stderr.slice(-8192);
   });
+  let cancelled = false;
+  const cancel = () => {
+    cancelled = true;
+    killCommand();
+  };
+  cancellation?.addEventListener("abort", cancel, { once: true });
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
+      killCommand();
       reject(new Error(`${command} ${args[0]} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
     timer.unref?.();
     child.on("error", (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
+      cancellation?.removeEventListener("abort", cancel);
       if (error.code === "ENOENT") {
         reject(
           new Error(
@@ -655,6 +676,11 @@ export async function runInstallCommand(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      cancellation?.removeEventListener("abort", cancel);
+      if (cancelled) {
+        reject(new PluginInstallCancelledError());
+        return;
+      }
       if (overflowed) {
         reject(
           new Error(

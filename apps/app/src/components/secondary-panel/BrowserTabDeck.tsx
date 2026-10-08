@@ -67,8 +67,8 @@ function resolveBrowserTabPlacement(
   saved: BbDesktopBrowserTarget | undefined,
   windowTarget: WindowTargetCheck,
 ): BrowserTabPlacement {
-  if (saved === undefined) return "open";
   if (windowTarget.status === "pending") return "pending";
+  if (saved === undefined) return "open";
   const actual = windowTarget.target;
   if (actual === null || actual.hostId !== saved.hostId) return "unavailable";
   return actual.instanceId === saved.instanceId
@@ -115,7 +115,6 @@ export function BrowserTabDeck({
       : `${activeBrowserTab?.id}:${checkRound}:${target.hostId}:${target.instanceId}:${target.generation}`;
   const [stoppedCheckKey, setStoppedCheckKey] = useState<string | null>(null);
   useEffect(() => {
-    if (targetHostId === undefined) return;
     const getTarget = desktopBrowser?.getTarget?.bind(desktopBrowser);
     if (getTarget === undefined) return;
     let current = true;

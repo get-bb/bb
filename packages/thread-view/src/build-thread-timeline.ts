@@ -26,6 +26,7 @@ import {
   type ThreadTimelinePendingTodos,
 } from "@bb/domain";
 import type {
+  BuildEventProjectionMessagesOptions,
   EventProjectionFileEditChange,
   EventProjectionMessage,
   EventProjection,
@@ -854,11 +855,11 @@ function convertSteerMessage(
   };
 }
 
-function buildPendingSteerRowsFromEvents(
+export function buildPendingSteerMessagesFromEvents(
   acceptedClientRequestContext: AcceptedClientRequestContext,
   events: ThreadEventWithMeta[],
-  options: ThreadTimelineFromEventsBaseOptions,
-): TimelineUserConversationRow[] {
+  options: BuildEventProjectionMessagesOptions,
+): EventProjectionUserMessage[] {
   const orderedEvents = getOrderedThreadEvents(events);
   const acceptedClientRequestById = buildAcceptedClientRequestById({
     context: acceptedClientRequestContext,
@@ -918,7 +919,7 @@ function buildPendingSteerRowsFromEvents(
     }
     explicitRejectionNeedsCompanionError = false;
   }
-  const pendingSteerRows: TimelineUserConversationRow[] = [];
+  const pendingSteerMessages: EventProjectionUserMessage[] = [];
 
   for (const { event, meta } of orderedEvents) {
     if (
@@ -944,16 +945,13 @@ function buildPendingSteerRowsFromEvents(
       acceptedClientRequest === undefined &&
       rejectedMeta
     ) {
-      pendingSteerRows.push(
+      pendingSteerMessages.push(
         ...parseRejectedUsersFromClientRequest({
           decoded: event,
+          requestMeta: meta,
           meta: rejectedMeta,
           options,
-        })
-          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
-          .map((rejectedSteer) =>
-            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-          ),
+        }),
       );
       continue;
     }
@@ -962,16 +960,13 @@ function buildPendingSteerRowsFromEvents(
       acceptedClientRequest === undefined &&
       legacyRejectedMeta
     ) {
-      pendingSteerRows.push(
+      pendingSteerMessages.push(
         ...parseRejectedUsersFromClientRequest({
           decoded: event,
+          requestMeta: meta,
           meta: legacyRejectedMeta,
           options,
-        })
-          .filter((rejectedSteer) => !isSuppressedSystemMessage(rejectedSteer))
-          .map((rejectedSteer) =>
-            convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-          ),
+        }),
       );
       continue;
     }
@@ -984,16 +979,10 @@ function buildPendingSteerRowsFromEvents(
     if (pendingSteers.length === 0) {
       continue;
     }
-    pendingSteerRows.push(
-      ...pendingSteers
-        .filter((pendingSteer) => !isSuppressedSystemMessage(pendingSteer))
-        .map((pendingSteer) =>
-          convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
-        ),
-    );
+    pendingSteerMessages.push(...pendingSteers);
   }
 
-  return pendingSteerRows;
+  return pendingSteerMessages;
 }
 
 function isReconnectSystemRow(row: TimelineRow): boolean {
@@ -1109,6 +1098,17 @@ function orderRowsAfterExternalUserBoundary(
   return [...rows.slice(0, suffixStartIndex), ...orderedSuffix];
 }
 
+function materializeTimelineMessages(
+  messages: readonly EventProjectionMessage[],
+  options: BuildTimelineRowsOptions,
+): TimelineRow[] {
+  const rows: TimelineRow[] = [];
+  for (const message of messages) {
+    appendRows(rows, convertMessage(message, options));
+  }
+  return rows;
+}
+
 function materializeTimelinePlan(
   item: TimelineRowPlan,
   options: BuildTimelineRowsOptions,
@@ -1118,9 +1118,7 @@ function materializeTimelinePlan(
     options.includeNestedRows
       ? {
           ...item.row,
-          children: item.messages.flatMap((message) =>
-            convertMessage(message, options),
-          ),
+          children: materializeTimelineMessages(item.messages, options),
         }
       : item.row,
   ];
@@ -1168,11 +1166,15 @@ export function buildThreadTimelineFromEvents(
       rowIdPrefix: ROOT_TIMELINE_ROW_ID_PREFIX,
       workspaceRoot: args.options.workspaceRoot,
     }),
-    ...buildPendingSteerRowsFromEvents(
+    ...buildPendingSteerMessagesFromEvents(
       args.acceptedClientRequestContext,
       args.events,
       args.options,
-    ),
+    )
+      .filter((message) => !isSuppressedSystemMessage(message))
+      .map((message) =>
+        convertSteerMessage(message, ROOT_TIMELINE_ROW_ID_PREFIX),
+      ),
   ];
 
   return {
@@ -1265,9 +1267,7 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   if (matchingSummary) {
     return {
       kind: "matched",
-      rows: matchingSummary.messages.flatMap((message) =>
-        convertMessage(message, options),
-      ),
+      rows: materializeTimelineMessages(matchingSummary.messages, options),
     };
   }
   if (plan.some((item) => item.kind === "summary")) {

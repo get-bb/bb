@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   advanceThreadPruning,
   events,
+  insertEvents,
+  noopNotifier,
   getNextThreadPruningPolicy,
   getThreadEventRewriteGeneration,
   threadPruningCursors,
@@ -30,21 +32,21 @@ function seed(harness: TestAppHarness, count: number) {
   const host = seedHost(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
   const thread = seedThread(harness.deps, { projectId: project.id });
-  harness.db.transaction((tx) => {
-    for (let sequence = 1; sequence <= count; sequence++)
-      tx.insert(events)
-        .values({
-          id: `${thread.id}-${sequence}`,
-          threadId: thread.id,
-          sequence,
-          scopeKind: "turn",
-          turnId: "turn",
-          type: "turn/diff/updated",
-          data: '{"diff":"unused"}',
-          createdAt: 1,
-        })
-        .run();
-  });
+  insertEvents(
+    harness.db,
+    noopNotifier,
+    Array.from({ length: count }, (_, index) => ({
+      threadId: thread.id,
+      sequence: index + 1,
+      scope: { kind: "turn", turnId: "turn" },
+      type: "turn/diff/updated",
+      itemId: null,
+      itemKind: null,
+      parentToolCallId: null,
+      data: '{"diff":"unused"}',
+      createdAt: 1,
+    })),
+  );
   return thread;
 }
 
@@ -293,9 +295,8 @@ describe("thread pruning sweep", () => {
 
   it("rotates durable policy progress and honors the advance budget", async () => {
     await withTestHarness(async (harness) => {
-      const first = seed(harness, 0);
-      for (let i = 0; i < 100; i++)
-        seedThread(harness.deps, { projectId: first.projectId });
+      seed(harness, 1);
+      for (let i = 0; i < 100; i++) seed(harness, 1);
       const debug = vi.spyOn(harness.deps.logger, "debug");
       await runThreadPruningSweep(harness.deps, UNTIMED_SWEEP_LIMITS);
       const steps = debug.mock.calls.filter(

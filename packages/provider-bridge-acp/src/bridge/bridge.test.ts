@@ -72,7 +72,7 @@ async function waitFor<T>(
     if (Date.now() > deadline) {
       throw new Error(`Timed out waiting for ${description}`);
     }
-    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+    await new Promise((resolveTick) => realSetTimeout(resolveTick, 20));
   }
 }
 
@@ -233,6 +233,22 @@ function acpLaunchSpec(args: AgentLaunchArgs): Record<string, unknown> {
   };
 }
 
+function launchProviderOptions(args: AgentLaunchArgs): Record<string, unknown> {
+  return {
+    ...(args.dialectId ? { acpDialect: args.dialectId } : {}),
+    ...(args.parameterizedModelPicker === true
+      ? { parameterizedModelPicker: true }
+      : {}),
+    ...(args.reasoningProbePriorityModelIds
+      ? { reasoningProbePriorityModelIds: args.reasoningProbePriorityModelIds }
+      : {}),
+    ...(args.modelPickerPrimaryModels
+      ? { primaryModels: args.modelPickerPrimaryModels }
+      : {}),
+    acpLaunchSpec: acpLaunchSpec(args),
+  };
+}
+
 interface StartThreadArgs extends AgentLaunchArgs {
   permissionMode?: "accept-edits" | "full";
   permissionEscalation?: "ask" | "deny" | null;
@@ -257,20 +273,7 @@ async function startThread(args?: StartThreadArgs): Promise<{
     options: executionOptions({
       ...args,
       providerOptions: {
-        ...(args?.dialectId ? { acpDialect: args.dialectId } : {}),
-        ...(args?.parameterizedModelPicker === true
-          ? { parameterizedModelPicker: true }
-          : {}),
-        ...(args?.reasoningProbePriorityModelIds
-          ? {
-              reasoningProbePriorityModelIds:
-                args.reasoningProbePriorityModelIds,
-            }
-          : {}),
-        ...(args?.modelPickerPrimaryModels
-          ? { primaryModels: args.modelPickerPrimaryModels }
-          : {}),
-        acpLaunchSpec: acpLaunchSpec(args ?? {}),
+        ...launchProviderOptions(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
           ? {
               additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
@@ -459,6 +462,27 @@ async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
     () => threadEventsOfType("turn/completed").at(-1),
     "turn/completed thread event",
   );
+}
+
+async function completeTurnWith(
+  providerThreadId: string,
+  text: string,
+  options: Record<string, unknown>,
+): Promise<string | undefined> {
+  const completedBefore = threadEventsOfType("turn/completed").length;
+  const turnId = sendTurnRequest("turn/start", providerThreadId, {
+    input: [{ type: "text", text, mentions: [] }],
+    options,
+  });
+  expect((await waitForResponse(turnId)).error).toBeUndefined();
+  await waitFor(
+    () =>
+      threadEventsOfType("turn/completed").length > completedBefore
+        ? true
+        : undefined,
+    "next turn/completed thread event",
+  );
+  return agentMessageTexts().at(-1);
 }
 
 function agentMessageTexts(): string[] {
@@ -1387,6 +1411,154 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
 
     expect(agentMessageTexts()).toContain("selected-model:fake/strong");
+  });
+
+  it.each<{ label: string; env: Record<string, string> }>([
+    { label: "model config option", env: { FAKE_ACP_MODEL_CONFIG: "1" } },
+    { label: "session models state", env: { FAKE_ACP_MODELS_FIELD: "1" } },
+  ])(
+    "applies a changed ACP-native model before a follow-up prompt ($label)",
+    async ({ env }) => {
+      const requestLog = join(workspaceDir, "native-model-switch.jsonl");
+      const launch: AgentLaunchArgs = {
+        envVars: { ...env, FAKE_ACP_REQUEST_LOG: requestLog },
+      };
+      const { providerThreadId } = await startThread({
+        ...launch,
+        model: "fake/strong",
+      });
+      const turnOptions = (model: string) =>
+        executionOptions({
+          model,
+          providerOptions: launchProviderOptions(launch),
+        });
+
+      for (const model of ["fake/strong", "fake/default", "fake/strong"]) {
+        expect(
+          await completeTurnWith(
+            providerThreadId,
+            "echo-selected-model",
+            turnOptions(model),
+          ),
+        ).toBe(`selected-model:${model}`);
+      }
+      const methods = loggedAcpRequests(requestLog).map(
+        (request) => request.method,
+      );
+      expect(methods.filter((method) => method === "session/new")).toHaveLength(
+        1,
+      );
+      expect(methods).not.toContain("session/load");
+    },
+  );
+
+  it("applies changed ACP-native reasoning and service tier before a follow-up prompt", async () => {
+    const launch: AgentLaunchArgs = {
+      dialectId: "cursor",
+      parameterizedModelPicker: true,
+      envVars: { FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1" },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "grok-4.6",
+      reasoningLevel: "low",
+      serviceTier: "default",
+    });
+    const turnOptions = executionOptions({
+      model: "grok-4.6",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+      providerOptions: launchProviderOptions(launch),
+    });
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-effort",
+        turnOptions,
+      ),
+    ).toBe("selected-effort:high");
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-fast",
+        turnOptions,
+      ),
+    ).toBe("selected-fast:true");
+  });
+
+  it("rejects a follow-up turn whose ACP-native model the agent refuses", async () => {
+    const promptLog = join(workspaceDir, "rejected-model-prompts.jsonl");
+    const launch: AgentLaunchArgs = {
+      envVars: { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_PROMPT_LOG: promptLog },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/strong",
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: [{ type: "text", text: "echo-selected-model", mentions: [] }],
+      options: executionOptions({
+        model: "fake/missing",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+
+    expect((await waitForResponse(turnId)).error?.message).toContain(
+      "model not found: fake/missing",
+    );
+    expect(loggedPrompts(promptLog)).toEqual([]);
+  });
+
+  it("rebuilds the agent with the current turn's model selection", async () => {
+    const envVars = { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_MODEL_CONFIG: "1" };
+    const { providerThreadId } = await startThread({
+      envVars,
+      model: "fake/default",
+    });
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-selected-model",
+        executionOptions({
+          model: "fake/strong",
+          envVars: { REBUILD_MARKER: "changed" },
+          providerOptions: launchProviderOptions({ envVars }),
+        }),
+      ),
+    ).toBe("selected-model:fake/strong");
+    expect(notifications("session/replaced")).toHaveLength(1);
+  });
+
+  it("relaunches a CLI-selected ACP agent when a follow-up changes its model", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+    const launch: AgentLaunchArgs = {
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelListArgs: ["--list-models"],
+      selectFlag: "--model",
+      envVars: {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_MODEL_LINES: "pinme - Pin Me\nother - Other",
+      },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "pinme",
+    });
+
+    expect(
+      await completeTurnWith(
+        providerThreadId,
+        "echo-argv",
+        executionOptions({
+          model: "other",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      ),
+    ).toBe("argv:--model other");
+    expect(notifications("session/replaced")).toHaveLength(1);
   });
 
   it("selects ACP-native reasoning with session/set_config_option before the first prompt", async () => {
@@ -3686,32 +3858,43 @@ describe("acp bridge", () => {
         () => loggedPrompts(promptLog).includes("hang") || undefined,
         "pending prompt before exit",
       );
+      await waitForFileWithRealTimer(descendantPidFile);
       const descendantPid = Number(readFileSync(descendantPidFile, "utf8"));
-      process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
-      expect(await waitForTurnCompleted()).toMatchObject({ status: "failed" });
-      expect(process.kill(descendantPid, 0)).toBe(true);
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      });
+      try {
+        process.kill(Number(readFileSync(readyFile, "utf8")), "SIGTERM");
+        expect(await waitForTurnCompleted()).toMatchObject({
+          status: "failed",
+        });
+        expect(process.kill(descendantPid, 0)).toBe(true);
 
-      const steer = await waitForResponse(
-        sendTurnRequest("turn/steer", providerThreadId, {
-          expectedTurnId: "turn-1",
-          input: [{ type: "text", text: "late steer", mentions: [] }],
-        }),
-      );
-      expect(steer.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
-      const response = await waitForResponse(
-        sendTurnRequest("turn/start", providerThreadId, {
+        const steer = await waitForResponse(
+          sendTurnRequest("turn/steer", providerThreadId, {
+            expectedTurnId: "turn-1",
+            input: [{ type: "text", text: "late steer", mentions: [] }],
+          }),
+        );
+        expect(steer.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN);
+        const nextTurnId = sendTurnRequest("turn/start", providerThreadId, {
           input: [{ type: "text", text: "after", mentions: [] }],
-        }),
-      );
-      expect(response.error).toBeUndefined();
-      await waitFor(
-        () => threadEventsOfType("turn/completed")[1],
-        "recovered turn completion",
-      );
-      expect(
-        threadEventsOfType("turn/completed").map((event) => event.status),
-      ).toEqual(["failed", "completed"]);
-      expect(loggedPrompts(promptLog)).toEqual(["hang", "after"]);
+        });
+        await vi.advanceTimersByTimeAsync(2_000);
+        const response = await waitForResponse(nextTurnId);
+        expect(response.error).toBeUndefined();
+        await waitFor(
+          () => threadEventsOfType("turn/completed")[1],
+          "recovered turn completion",
+        );
+        expect(
+          threadEventsOfType("turn/completed").map((event) => event.status),
+        ).toEqual(["failed", "completed"]);
+        expect(loggedPrompts(promptLog)).toEqual(["hang", "after"]);
+      } finally {
+        await vi.advanceTimersByTimeAsync(2_000);
+        vi.useRealTimers();
+      }
     },
   );
 

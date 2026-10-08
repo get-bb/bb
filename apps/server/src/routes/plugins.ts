@@ -1,3 +1,4 @@
+import type { PluginUpdateJobs } from "../services/plugins/plugin-update-jobs.js";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -26,6 +27,11 @@ import type {
 } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
 import { PLUGIN_RPC_CALLER_HEADER } from "../services/plugins/plugin-rpc-caller.js";
+import type { PluginInstallJobs } from "../services/plugins/plugin-install-jobs.js";
+import {
+  prefersRespondAsync,
+  respondWithInstallJob,
+} from "./plugin-install-jobs.js";
 import {
   createAppAssetCompressionCache,
   type AppAssetCompressionCache,
@@ -37,6 +43,7 @@ import {
 } from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
+  pluginCachePruneRequestSchema,
   pluginRpcDiscoveryQuerySchema,
   pluginInstallRequestSchema,
   pluginSafeModeRequestSchema,
@@ -373,6 +380,8 @@ export function registerPluginRoutes(
   app: Hono,
   deps: PluginRoutesDeps,
   plugins: PluginService,
+  installJobs: PluginInstallJobs,
+  updateJobs: PluginUpdateJobs,
   upgradeWebSocket?: UpgradeWebSocket,
 ): void {
   const appAssetCompressionCache = createAppAssetCompressionCache(
@@ -670,22 +679,44 @@ export function registerPluginRoutes(
     }
   });
 
+  app.post("/plugins/cache/prune", async (context) => {
+    const json: unknown = await context.req.json().catch(() => null);
+    const body = pluginCachePruneRequestSchema.safeParse(json);
+    if (!body.success) {
+      return context.json({ error: 'expected { "dryRun"?: boolean }' }, 400);
+    }
+    return context.json(await plugins.pruneCache({ dryRun: body.data.dryRun }));
+  });
+
   app.post("/plugins/:id/update", async (context) => {
     const json: unknown = await context.req.json().catch(() => null);
     const body = pluginApplyUpdateRequestSchema.safeParse(json);
     if (!body.success) {
       return context.json({ error: "expected an empty JSON object" }, 400);
     }
-    try {
-      const outcome = await plugins.applyUpdate(context.req.param("id"));
-      if (!outcome.ok) return context.json({ error: outcome.error }, 422);
-      return context.json(outcome.result);
-    } catch (error) {
-      return context.json(
-        { error: error instanceof Error ? error.message : String(error) },
-        422,
-      );
-    }
+    const pluginId = context.req.param("id");
+    const job = updateJobs.start({
+      pluginId,
+      displayName: plugins.getDisplayName(pluginId),
+      run: async () => {
+        const outcome = await plugins.applyUpdate(pluginId);
+        if (!outcome.ok) throw new Error(outcome.error);
+        return outcome.result;
+      },
+    });
+    if (prefersRespondAsync(context)) return context.json({ job }, 202);
+    const settled = (await updateJobs.settled(job.id)) ?? job;
+    return settled.state === "completed"
+      ? context.json(settled.result)
+      : context.json(
+          {
+            error:
+              settled.state === "failed"
+                ? settled.error
+                : "update did not complete",
+          },
+          422,
+        );
   });
 
   app.post("/plugins/install", async (context) => {
@@ -705,21 +736,16 @@ export function registerPluginRoutes(
         422,
       );
     }
-    try {
-      const plugin = await plugins.install(
-        parsed.data.source,
-        parsed.data.selection,
-      );
-      return context.json({ ok: true, plugin });
-    } catch (error) {
-      return context.json(
-        {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        422,
-      );
-    }
+    const { source, selection } = parsed.data;
+    const job = installJobs.start({
+      target: { kind: "source", source, selection },
+      displayName: source,
+      run: () => plugins.install(source, selection),
+    });
+    return respondWithInstallJob(context, installJobs, job, (error) => ({
+      ok: false,
+      error,
+    }));
   });
 
   app.get("/plugins/:id/source", async (context) => {

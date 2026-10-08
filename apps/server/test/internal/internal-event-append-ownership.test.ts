@@ -291,6 +291,7 @@ describe("internal event append ownership", () => {
         buildThreadTimelineWithProfile(harness.db, thread, {
           completedTurnDisplay: "collapse",
           eventBudget: 1_000_000,
+          includeClearedContextHistory: false,
           includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
@@ -1100,6 +1101,7 @@ describe("interaction lifecycle records from the daemon", () => {
       const questionRows = buildThreadTimelineWithProfile(harness.db, thread, {
         completedTurnDisplay: "collapse",
         eventBudget: 1_000_000,
+        includeClearedContextHistory: false,
         includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
         maxSeq,

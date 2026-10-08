@@ -11,6 +11,7 @@ import {
   type ClientNotification,
   type PushSubscription,
 } from "./contract.js";
+import { notificationPreviewText, truncate } from "./notification-text.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
@@ -27,6 +28,11 @@ const PUSH_TITLE_MAX_LENGTH = 80;
 const PUSH_BODY_MAX_LENGTH = 180;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
+const FALLBACK_BODIES: Record<PushNotificationKind, string> = {
+  "pending-interaction": "Waiting for your input",
+  "thread-error": "The thread hit an error",
+  "turn-finished": "Finished and waiting for you",
+};
 const PUSH_KIND_PRIORITY: readonly PushNotificationKind[] = [
   "pending-interaction",
   "thread-error",
@@ -149,11 +155,6 @@ function firstLine(text: string): string {
     if (trimmed.length > 0) return trimmed;
   }
   return "";
-}
-
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function threadDisplayTitle(thread: ThreadResponse): string {
@@ -292,19 +293,20 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (kind === "pending-interaction") {
       return {
         kind,
-        body: interaction
-          ? describePendingInteraction(interaction)
-          : "Waiting for your input",
+        body: interaction ? describePendingInteraction(interaction) : "",
       };
     }
-    return {
-      kind,
-      body:
-        entry.bodies.get(kind) ??
-        (kind === "thread-error"
-          ? "The thread hit an error"
-          : "Finished and waiting for you"),
-    };
+    return { kind, body: entry.bodies.get(kind) ?? "" };
+  }
+
+  async function referencedThreadTitle(
+    threadId: string,
+  ): Promise<string | null> {
+    try {
+      return threadDisplayTitle(await bb.sdk.threads.get({ threadId }));
+    } catch {
+      return null;
+    }
   }
 
   async function flushThread(
@@ -330,8 +332,15 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     }
     const resolved = await resolvePush(thread, entry);
     if (resolved === null) return;
+    const preview = await notificationPreviewText(
+      resolved.body,
+      referencedThreadTitle,
+    );
     const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
-    const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const body = truncate(
+      preview || FALLBACK_BODIES[resolved.kind],
+      PUSH_BODY_MAX_LENGTH,
+    );
     const config = await args.getDeliverySettings();
     const channels: ClientNotification["channels"] = [];
     if (config.webEnabled) channels.push("web");
@@ -481,21 +490,13 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       );
     },
     onThreadFailed({ thread, error }) {
-      schedule(
-        thread.id,
-        "thread-error",
-        firstLine(error ?? "") || "The thread hit an error",
-      );
+      schedule(thread.id, "thread-error", firstLine(error ?? ""));
     },
     onThreadIdle({ thread, lastAssistantText }) {
       if (thread.parentThreadId !== null || thread.visibility !== "visible") {
         return;
       }
-      schedule(
-        thread.id,
-        "turn-finished",
-        firstLine(lastAssistantText ?? "") || "Finished and waiting for you",
-      );
+      schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     settle,
     async start() {

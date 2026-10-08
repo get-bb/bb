@@ -85,7 +85,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
-          "Add fixed tabs beside Browser and Terminal",
+          "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
           "Show live status on its sidebar row",
         ],
         apiSymbols: [
@@ -103,6 +103,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "useBbContext",
           "useBbNavigate",
           "BbNavigate.toPluginPanel",
+          "BbNavigate.experimental_openTerminal",
         ],
         firstParty: ["Automations", "Docs", "GitHub", "Tasks", "Theme Preview"],
       },
@@ -130,7 +131,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Group, sort, and draw every row your own way",
           "Read live threads, sections, projects, run status, and pull-request checks",
-          "Use bb's own actions to open, pin, rename, archive, and split threads",
+          "Use optimistic SDK writes and bb's actions to move, pin, rename, restore, archive, and split threads",
           "Keep bb's New thread button, search, and footer around it",
         ],
         apiSymbols: [
@@ -144,6 +145,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarSection",
           "experimental_useSidebarThreadActions",
           "PluginSidebarThreadActions",
+          "PluginSidebarThreadActions.experimental_archiveEnvironmentThreads",
           "PluginSidebarThreadActions.openNewThread",
           "PluginSidebarThreadActions.openNewThread.experimental_placement",
           "experimental_useSidebarThreadPullRequest",
@@ -944,15 +946,15 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "thread-events",
-        tagline: "React when threads start, finish, or fail",
-        title: "Thread lifecycle events",
+        tagline: "React when threads and environments change",
+        title: "Lifecycle events",
         summary:
-          "Run server code when a thread changes state. With this, a plugin can:",
+          "Run server code when threads change state or environments are removed. With this, a plugin can:",
         bullets: [
           "React when threads start, finish, fail, are archived or unarchived, or are deleted",
           "Follow queued messages, including ones cancelled before dispatch",
           "Get the provider's error and rate-limit windows when a turn fails",
-          "Send a notification, retry, or update its own records in response",
+          "Observe successful environment removal with its previous machine and path",
         ],
         apiSymbols: [
           "PluginEvents",
@@ -1123,6 +1125,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginHosts",
           "experimental_killProcessesWithCwdUnder",
+          "experimental_readProcessIdentity",
+          "ExperimentalProcessIdentity",
           "experimental_sanitizeInheritedChildProcessEnv",
           "ExperimentalSanitizeInheritedChildProcessEnvArgs",
           "experimental_spawnPortableOutputProcess",
@@ -1242,15 +1246,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Create threads, send messages, and manage projects and machines",
           "Do what the [bb CLI](cli) and the app can do",
           "Have the threads it creates attributed to the plugin",
+          "Start plugin updates in the background and follow their progress or rollback",
         ],
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
           "PluginBbSdk.hosts.get",
+          "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",
           "PluginBbSdk.environments.experimental_cleanup",
           "PluginBbSdk.plugins.experimental_getSafeMode",
           "PluginBbSdk.plugins.experimental_setSafeMode",
+          "PluginBbSdk.plugins.experimental_pruneCache",
+          "PluginBbSdk.plugins.experimental_startUpdate",
+          "PluginBbSdk.plugins.experimental_updateJobs",
+          "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
+          "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
         ],
         firstParty: [
           "Account Pooler [Experimental]",
@@ -1274,6 +1285,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Push notifications",
           "Secrets",
           "Side chat",
+          "Storage & retention [Experimental]",
           "Tasks",
           "Theme Preview",
           "Thread list",

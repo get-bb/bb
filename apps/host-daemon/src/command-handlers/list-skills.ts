@@ -25,6 +25,8 @@ import { writeHostFile } from "./file-write.js";
 
 type SkillRootResolution = DeclaredScanRootResolution;
 
+const SHARED_SKILLS_PROVIDER_ID = "bb-shared";
+
 function createBbSkillScanRoot(
   rootPath: string,
   rootKind: Extract<SkillRootKind, `bb-${string}`>,
@@ -44,7 +46,10 @@ function resolveBbSkillScanRoots(
   resolution: SkillRootResolution,
 ): SkillScanRoot[] {
   const roots: SkillScanRoot[] = [];
-  if (resolution.cwd !== null) {
+  if (
+    resolution.cwd !== null &&
+    resolution.providerId !== SHARED_SKILLS_PROVIDER_ID
+  ) {
     roots.push(
       createBbSkillScanRoot(
         path.join(resolution.cwd, ".bb", "skills"),
@@ -72,7 +77,7 @@ function classifySkillRoot(
   if (root.skillIdentitySeed === undefined) {
     return null;
   }
-  const shared = resolution.providerId === "bb-shared";
+  const shared = resolution.providerId === SHARED_SKILLS_PROVIDER_ID;
   return {
     identitySeed: root.skillIdentitySeed,
     rootKind: shared
