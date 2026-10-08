@@ -22,6 +22,7 @@ import { discoverSkills, type SkillScanRoot } from "../command-discovery.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import {
   deleteHostSkill,
+  readHostSkillFiles,
   resolveSkillScanRoots,
   writeHostSkill,
 } from "./list-skills.js";
@@ -752,5 +753,101 @@ describe("writeHostSkill", () => {
     );
     expect(stale).toMatchObject({ outcome: "conflict" });
     expect(await readFile(filePath, "utf8")).toBe("# Updated");
+  });
+});
+
+describe("readHostSkillFiles", () => {
+  it("returns top-level SKILL.md files without following symlinks", async () => {
+    const skillsRoot = path.join(tempRoot, "workspace", ".bb", "skills");
+    await writeSkill(path.join(skillsRoot, "review", "SKILL.md"), "review");
+    await writeSkill(path.join(skillsRoot, ".hidden", "SKILL.md"), "hidden");
+    await writeSkill(
+      path.join(skillsRoot, "nested", "inner", "SKILL.md"),
+      "inner",
+    );
+    await writeSkill(path.join(tempRoot, "outside", "SKILL.md"), "outside");
+    await symlink(
+      path.join(tempRoot, "outside"),
+      path.join(skillsRoot, "linked-dir"),
+    );
+    await mkdir(path.join(skillsRoot, "linked-file"));
+    await symlink(
+      path.join(tempRoot, "outside", "SKILL.md"),
+      path.join(skillsRoot, "linked-file", "SKILL.md"),
+    );
+    const reviewContent = await readFile(
+      path.join(skillsRoot, "review", "SKILL.md"),
+      "utf8",
+    );
+    await mkdir(path.join(skillsRoot, "large"));
+    await writeFile(
+      path.join(skillsRoot, "large", "SKILL.md"),
+      `${reviewContent}\n\n`,
+      "utf8",
+    );
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      limit: 10,
+      maxFileBytes: reviewContent.length,
+    });
+
+    expect(result).toEqual({
+      skills: [
+        {
+          directoryName: "large",
+          sizeBytes: reviewContent.length + 2,
+          content: null,
+        },
+        {
+          directoryName: "review",
+          sizeBytes: reviewContent.length,
+          content: reviewContent,
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("reports truncation past the directory limit", async () => {
+    const skillsRoot = path.join(tempRoot, "skills");
+    await writeSkill(path.join(skillsRoot, "a", "SKILL.md"), "a");
+    await writeSkill(path.join(skillsRoot, "b", "SKILL.md"), "b");
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      limit: 1,
+      maxFileBytes: 1024,
+    });
+
+    expect(result.skills.map((skill) => skill.directoryName)).toEqual(["a"]);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("returns no skills for a missing root and rejects a symlinked root", async () => {
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(tempRoot, "missing"),
+        limit: 10,
+        maxFileBytes: 1024,
+      }),
+    ).resolves.toEqual({ skills: [], truncated: false });
+
+    await mkdir(path.join(tempRoot, "real-skills"));
+    await symlink(
+      path.join(tempRoot, "real-skills"),
+      path.join(tempRoot, "linked-skills"),
+    );
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(tempRoot, "linked-skills"),
+        limit: 10,
+        maxFileBytes: 1024,
+      }),
+    ).rejects.toBeInstanceOf(CommandDispatchError);
   });
 });

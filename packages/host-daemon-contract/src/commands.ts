@@ -746,6 +746,15 @@ const hostListSkillsCommandSchema = z
   })
   .strict();
 
+const hostReadSkillFilesCommandSchema = z
+  .object({
+    type: z.literal("host.read_skill_files"),
+    path: z.string().min(1),
+    limit: z.number().int().positive(),
+    maxFileBytes: z.number().int().positive(),
+  })
+  .strict();
+
 export const deletableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
@@ -1155,6 +1164,17 @@ const commandListResultSchema = z.object({
 
 const skillListResultSchema = z.object({
   skills: z.array(discoveredSkillSchema),
+});
+
+const skillFileSchema = z.object({
+  directoryName: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  content: z.string().nullable(),
+});
+
+const skillFilesResultSchema = z.object({
+  skills: z.array(skillFileSchema),
+  truncated: z.boolean(),
 });
 
 const deleteSkillResultSchema = z.object({
@@ -1760,6 +1780,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "host.read_skill_files": defineHostDaemonCommandDescriptor({
+    type: "host.read_skill_files",
+    schema: hostReadSkillFilesCommandSchema,
+    resultSchema: skillFilesResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "host.delete_skill": defineHostDaemonCommandDescriptor({
     type: "host.delete_skill",
     schema: hostDeleteSkillCommandSchema,
@@ -2027,9 +2056,7 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [
-    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
-  ]: Descriptor["resultSchema"];
+  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

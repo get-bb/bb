@@ -40,6 +40,7 @@ import { listHostCommands } from "./command-handlers/list-commands.js";
 import {
   deleteHostSkill,
   listHostSkills,
+  readHostSkillFiles,
   writeHostSkill,
 } from "./command-handlers/list-skills.js";
 import {
@@ -646,6 +647,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
+  "host.read_skill_files": readHostSkillFiles,
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
   "host.install_global_skills": installGlobalSkills,

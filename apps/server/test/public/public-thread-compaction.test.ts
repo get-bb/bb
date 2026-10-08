@@ -56,6 +56,9 @@ function registerSuccessfulTurnResponder(
   return registerHostRpcResponder(harness, {
     ...args,
     handle: ({ command }): HostRpcHandlerResult => {
+      if (command.type === "host.read_skill_files") {
+        return { ok: true, result: { skills: [], truncated: false } };
+      }
       if (command.type === "host.list_files") {
         return { ok: true, result: { files: [], truncated: false } };
       }

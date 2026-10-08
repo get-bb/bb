@@ -105,22 +105,30 @@ function registerRemoteRuntimeFileResponder(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: ({ command }) => {
-      if (command.type === "host.list_files") {
+      if (command.type === "host.read_skill_files") {
         const prefix = `${command.path}${path.posix.sep}`;
-        const files = [...args.files.keys()]
-          .filter((filePath) => filePath.startsWith(prefix))
-          .map((filePath) => path.posix.relative(command.path, filePath))
-          .filter((relativePath) => {
-            const segments = relativePath.split(path.posix.sep);
-            return segments.length === 2 && segments[1] === "SKILL.md";
-          })
-          .sort()
-          .slice(0, command.limit)
-          .map((relativePath) => ({
-            name: path.posix.basename(relativePath),
-            path: relativePath,
-          }));
-        return { ok: true, result: { files, truncated: false } };
+        const skills = [...args.files.entries()]
+          .filter(([filePath]) => filePath.startsWith(prefix))
+          .map(([filePath, content]) => ({
+            content,
+            segments: path.posix
+              .relative(command.path, filePath)
+              .split(path.posix.sep),
+          }))
+          .filter(
+            ({ segments }) =>
+              segments.length === 2 && segments[1] === "SKILL.md",
+          )
+          .map(({ content, segments }) => ({
+            directoryName: segments[0] ?? "",
+            sizeBytes: Buffer.byteLength(content, "utf8"),
+            content,
+          }))
+          .sort((left, right) =>
+            left.directoryName.localeCompare(right.directoryName),
+          )
+          .slice(0, command.limit);
+        return { ok: true, result: { skills, truncated: false } };
       }
       if (command.type === "host.read_file") {
         const content = args.files.get(command.path);
@@ -1406,15 +1414,8 @@ describe("thread runtime config", () => {
         expect.arrayContaining([
           expect.objectContaining({
             command: expect.objectContaining({
-              type: "host.list_files",
+              type: "host.read_skill_files",
               path: path.posix.join(workspacePath, ".bb", "skills"),
-            }),
-          }),
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "host.read_file",
-              path: skillFilePath,
-              rootPath: workspacePath,
             }),
           }),
         ]),

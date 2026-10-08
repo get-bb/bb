@@ -22,10 +22,16 @@ import {
   resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
+import { isFsErrorWithCode } from "../fs-errors.js";
+import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 type SkillRootResolution = DeclaredScanRootResolution;
 
 const SHARED_SKILLS_PROVIDER_ID = "bb-shared";
+const SKILL_FILE_READ_CONCURRENCY = 16;
+
+type SkillFile =
+  HostDaemonOnlineRpcResult<"host.read_skill_files">["skills"][number];
 
 function createBbSkillScanRoot(
   rootPath: string,
@@ -120,6 +126,88 @@ export async function listHostSkills(
   });
   const skills = await discoverSkills({ roots });
   return { skills };
+}
+
+async function readSkillFile(args: {
+  directoryName: string;
+  maxFileBytes: number;
+  rootPath: string;
+}): Promise<SkillFile | null> {
+  const filePath = path.join(
+    args.rootPath,
+    args.directoryName,
+    SKILL_FILE_NAME,
+  );
+  try {
+    const stat = await fs.lstat(filePath);
+    if (!stat.isFile()) {
+      return null;
+    }
+    if (stat.size > args.maxFileBytes) {
+      return {
+        directoryName: args.directoryName,
+        sizeBytes: stat.size,
+        content: null,
+      };
+    }
+    return {
+      directoryName: args.directoryName,
+      sizeBytes: stat.size,
+      content: await fs.readFile(filePath, "utf8"),
+    };
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function readHostSkillFiles(
+  command: CommandOf<"host.read_skill_files">,
+): Promise<HostDaemonOnlineRpcResult<"host.read_skill_files">> {
+  if (!path.isAbsolute(command.path)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+  let rootPath: string;
+  try {
+    rootPath = await resolveNonSymlinkDirectoryPath({
+      description: "Path",
+      path: command.path,
+    });
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return { skills: [], truncated: false };
+    }
+    throw error;
+  }
+  const directoryNames = (await fs.readdir(rootPath, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+  const skills: SkillFile[] = [];
+  const limited = directoryNames.slice(0, command.limit);
+  for (
+    let offset = 0;
+    offset < limited.length;
+    offset += SKILL_FILE_READ_CONCURRENCY
+  ) {
+    const batch = await Promise.all(
+      limited
+        .slice(offset, offset + SKILL_FILE_READ_CONCURRENCY)
+        .map((directoryName) =>
+          readSkillFile({
+            directoryName,
+            maxFileBytes: command.maxFileBytes,
+            rootPath,
+          }),
+        ),
+    );
+    for (const skill of batch) {
+      if (skill !== null) skills.push(skill);
+    }
+  }
+  return { skills, truncated: directoryNames.length > command.limit };
 }
 
 function isSafeSkillName(name: string): boolean {

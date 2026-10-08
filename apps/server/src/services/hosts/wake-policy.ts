@@ -53,6 +53,7 @@ const hostCommandWakePolicy = {
   "connect-tunnel.ensure-identity": "work",
   "host.list_commands": "work",
   "host.list_skills": "work",
+  "host.read_skill_files": "work",
   "host.delete_skill": "work",
   "host.write_skill": "work",
   "host.install_global_skills": "work",
