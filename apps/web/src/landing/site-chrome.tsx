@@ -5,11 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
-import {
-  COMPARE_LINKS,
-  LANDING_LINKS,
-  type ContentLink,
-} from "./content-links";
+import { COMPARE_LINKS, type ContentLink } from "./content-links";
 import {
   DesktopDownloadButton,
   DiscordLink,
@@ -191,9 +187,6 @@ export function SiteFooter({ current }: { current?: string }) {
       </FooterColumn>
       <FooterColumn title="Compare">
         <FooterLinks links={COMPARE_LINKS} current={current} />
-      </FooterColumn>
-      <FooterColumn title="Use cases">
-        <FooterLinks links={LANDING_LINKS} current={current} />
       </FooterColumn>
       <FooterColumn title="Community">
         <li>

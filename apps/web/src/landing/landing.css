@@ -2953,7 +2953,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .footer {
   display: grid;
-  grid-template-columns: 0.65fr 0.95fr 1.1fr 1.2fr 0.7fr;
+  grid-template-columns: 0.65fr 0.95fr 1.3fr 0.7fr;
   gap: 32px;
   padding: 56px 0 64px;
   border-top: 1px solid var(--border-soft);
