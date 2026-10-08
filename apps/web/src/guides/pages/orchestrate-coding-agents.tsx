@@ -57,7 +57,7 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
   slug: "orchestrate-coding-agents",
   title: "Orchestrate your coding agents",
   description:
-    "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can see what each one is doing and step in.",
+    "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
   concept: <SpawnTimeline />,
   picker: null,
   handoffNote:
