@@ -3147,9 +3147,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: flex-start;
   }
 
-  /* Stack the two CTAs full-width so neither wraps awkwardly. */
   .install-actions {
     width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
     flex-direction: column;
     align-items: stretch;
   }
