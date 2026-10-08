@@ -75,9 +75,10 @@ backends run on the server or its enrolled hosts, rather than on the phone.
   remain available. See the [release setup](../apps/mobile/README.md#release-eas)
   and [Android setup](../apps/mobile/README.md#android-production-setup).
   No public App Store or Play release yet.
-- The built-in Push notifications plugin works on iOS when the bb server can
-  reach `exp.host`. The server needs no Apple or Google keys. Android push
-  support remains untested.
+- The built-in Push notifications plugin works on iOS and Android when the bb
+  server can reach `exp.host`. The server needs no Apple or Google keys.
+  Android builds need Firebase configuration and an FCM V1 credential in EAS;
+  see the [Android setup](../apps/mobile/README.md#android-production-setup).
 
 Plugin nav panels, DOM settings pages, composer customization and other
 page-based plugin surfaces run inside the PWA. Their usability depends on
