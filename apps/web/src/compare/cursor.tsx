@@ -131,7 +131,7 @@ export const BB_VS_CURSOR: Comparison = {
         },
         {
           feature: "Cloud agents",
-          bb: cell("yes", "Modal plugin, experimental"),
+          bb: cell("yes", "Via plugins"),
           competitor: cell("yes", "Hosted VMs at API rates", true),
         },
         {

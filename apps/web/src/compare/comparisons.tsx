@@ -154,7 +154,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Cloud sandboxes",
-          bb: cell("yes", "Modal plugin, experimental"),
+          bb: cell("yes", "Via plugins"),
           competitor: cell("partial", "When enabled for your account"),
         },
         {
@@ -177,7 +177,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Spawn, message, wait"),
+          bb: cell("yes", "Agents start and message each other"),
           competitor: cell("yes", "Via a coordinator skill"),
         },
         {
@@ -192,7 +192,7 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
+          bb: cell("yes", "300+, or build your own"),
           competitor: cell("partial", "Themes only"),
         },
         {
@@ -202,7 +202,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "GitHub integration",
-          bb: cell("yes", "Issues, PRs, checks"),
+          bb: cell("yes", "Have an agent review any PR"),
           competitor: cell("yes", "PR view with checks"),
         },
         {

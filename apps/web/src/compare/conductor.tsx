@@ -30,15 +30,14 @@ import { FleetVisual, type BrandLogo } from "./compare-visuals";
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
 const AWAY_SECTION = anywhereSection({
-  title: "Keep agents running on an always-on machine",
+  title: "Your agents keep working while you’re away",
   body: (
     <>
       <p>
-        You can use bb on an always-on desktop or server, so your agents keep
-        running while you’re out. Check in on them from the bb mobile app or any
-        browser.
+        Put bb on a desktop or server that stays on, and your agents keep going
+        after you close your laptop.
       </p>
-      <p>The mobile app, remote machines, and browser access are all free.</p>
+      <p>Check in from the mobile app or any browser. It’s all free.</p>
     </>
   ),
 });
@@ -49,14 +48,10 @@ const COST_SECTION = pricingSection(
     body: (
       <>
         <p>
-          bb is free at any team size, with the mobile app, remote machines,
-          automations, and plugins included. You only pay for the AI plans you
-          already have.
+          bb is free for any team size, with everything included. You only pay
+          for the AI plans you already have.
         </p>
-        <p>
-          It’s open source under the MIT license, so you can read every line and
-          use it anywhere, including at work.
-        </p>
+        <p>It’s MIT-licensed open source, free to use at work.</p>
       </>
     ),
   },
@@ -75,7 +70,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
     "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and keep working from anywhere.",
   competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
-  sub: "Run Claude Code, Codex, and any agent on Mac, or on Windows and Linux in alpha. Mobile and remote machines are free, and it’s MIT licensed.",
+  sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
   tailored: AWAY_SECTION,
   sections: [COST_SECTION, agentsSection(AGENTS_COPY)],
@@ -132,7 +127,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Cloud workspaces",
-          bb: cell("yes", "Modal plugin"),
+          bb: cell("yes", "Via plugins"),
           competitor: cell("yes", "Hosted", true),
         },
         {
@@ -155,7 +150,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Spawn, message, wait"),
+          bb: cell("yes", "Agents start and message each other"),
           competitor: cell("partial", "Via MCP, cloud workspaces", true),
         },
       ],
@@ -165,12 +160,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
       rows: [
         {
           feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
+          bb: cell("yes", "300+, or build your own"),
           competitor: cell("no"),
         },
         {
           feature: "GitHub integration",
-          bb: cell("yes", "Issues, PRs, checks"),
+          bb: cell("yes", "Have an agent review any PR"),
           competitor: cell("yes", "Checks tab, PR actions"),
         },
       ],
