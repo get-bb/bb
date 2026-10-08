@@ -5,7 +5,7 @@ description: Search prompt history and manage starred reusable prompts in BB.
 
 # Prompt library
 
-Open **+ → Prompts…** or press **Ctrl+R** in a composer. Search fuzzy-matches
+Open **+ → Prompts…** or press **Ctrl+R** in a composer. Search matches
 starred prompts and recent history. Select **Thread**, **Project**, or **All**;
 the scope is remembered per composer kind on this device. The new-thread
 composer offers Project and All. Arrow keys select, Tab switches scope, Enter
@@ -21,10 +21,12 @@ at the kept cursor. Inserting never sends a message.
 
 The plugin loads the newest 1000 prompts, fetches only newer prompts on later
 searches, and loads older pages only when a search finds fewer than 30 matches.
-It fuzzy-matches the loaded prompts in scope, returning up to 20 starred and 30
-recent results. Without a query, starred prompts come first, then recent ones.
+Each query word, ignoring case, must appear inside a single word of the prompt,
+either as text or as an abbreviation that starts at the word's first letter
+(`tmln` finds `timeline`); letters are never matched across words. It searches
+the loaded prompts in scope, returning up to 20 starred and 30 recent results. Without a query, starred prompts come first, then recent ones.
 A query returns one ranked list: prompts that start with the query, then
-fuzzy-match score, with starred and then newer prompts breaking ties. A starred
+matches at the start of a word, inside a word, and abbreviations, with starred and then newer prompts breaking ties. A starred
 prompt appears once, as its starred row. History contains user prompts; core records them without agent-only input. Prompts stay searchable until the server restarts, even if their
 thread is deleted.
 

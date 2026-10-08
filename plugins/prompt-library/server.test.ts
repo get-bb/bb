@@ -282,11 +282,12 @@ describe("prompt library server", () => {
     });
   });
 
-  it("fuzzy-matches every word and highlights the matched characters", async () => {
+  it("matches every word inside one prompt word and highlights it", async () => {
     const { call } = await setup([
       entry("h1", 1, "fix the timeline cache"),
       entry("h2", 2, "timeline only"),
       entry("h3", 3, "unrelated prompt"),
+      entry("h4", 4, "the main line can catch errors"),
     ]);
 
     const result = (await call("search", {
@@ -300,16 +301,37 @@ describe("prompt library server", () => {
     };
 
     expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
-    expect(result.prompts[0]?.snippet.highlights.length).toBeGreaterThan(0);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([
+      [8, 9],
+      [10, 11],
+      [12, 13],
+      [14, 15],
+      [17, 21],
+    ]);
   });
 
-  it("ranks a search as one list by prefix, fuzzy score, starred, then recency", async () => {
+  it("ignores case and never matches letters scattered across words", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "Secret questions are rejected because the current shell"),
+      entry("h2", 2, "please squash these commits"),
+      entry("h3", 3, "Squashed before merging"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "Squash" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h3", "h2"]);
+  });
+
+  it("ranks a search as one list by prefix, match quality, starred, then recency", async () => {
     const { call } = await setup([
       entry("h1", 1, "deploy the preview"),
       entry("h2", 2, "delete old preview logs yearly"),
       entry("h3", 3, "Deploy later"),
       entry("h4", 4, "please deploy the docs"),
       entry("h5", 5, "now deploy staging"),
+      entry("h6", 6, "redeploy the api"),
     ]);
     await call("star", { prompt: draft("please deploy the docs") });
     await call("star", { prompt: draft("deploy staging") });
@@ -324,7 +346,7 @@ describe("prompt library server", () => {
       ["recent", "deploy the preview"],
       ["starred", "please deploy the docs"],
       ["recent", "now deploy staging"],
-      ["recent", "delete old preview logs yearly"],
+      ["recent", "redeploy the api"],
     ]);
   });
 

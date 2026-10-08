@@ -4475,9 +4475,6 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
-      fzf:
-        specifier: ^0.5.2
-        version: 0.5.2
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -21420,9 +21417,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

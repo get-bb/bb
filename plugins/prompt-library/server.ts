@@ -181,14 +181,14 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
       name: "prompts",
       summary: "Search previous prompts and manage starred prompts",
       description:
-        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prefix matches first, then by fuzzy score, with starred and then newer prompts breaking ties. Previous prompts come from bb's prompt history.",
+        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prefix matches first, then by match quality, with starred and then newer prompts breaking ties. Previous prompts come from bb's prompt history.",
       commands: {
         search: cliCommand({
           summary: "Search starred and previous prompts",
           positionals: [
             {
               name: "query",
-              description: "Words to fuzzy-match; omit to list the most recent",
+              description: "Words that must each appear in a prompt word, as text or an abbreviation; omit to list the most recent",
               variadic: true,
             },
           ],
