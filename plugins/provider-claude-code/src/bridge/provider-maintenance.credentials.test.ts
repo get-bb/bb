@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   file: "",
   settings: null as string | null,
   localSettings: null as string | null,
+  authStatus: null as string | null,
 }));
 
 vi.mock("node:child_process", () => ({
@@ -58,6 +59,8 @@ vi.mock("@get-bb/plugin-sdk/provider-bridge", async (importOriginal) => ({
     typeof import("@get-bb/plugin-sdk/provider-bridge")
   >()),
   experimental_resolveExecutablePath: () => Promise.resolve("/test/claude"),
+  experimental_commandOutput: (_command: string, args: readonly string[]) =>
+    Promise.resolve(args[0] === "auth" ? state.authStatus : null),
 }));
 
 import {
@@ -98,6 +101,7 @@ beforeEach(() => {
   state.keychain = Buffer.from(credentials, "utf8").toString("hex");
   state.settings = null;
   state.localSettings = null;
+  state.authStatus = null;
   delete process.env.ANTHROPIC_API_KEY;
   vi.stubGlobal(
     "fetch",
@@ -149,12 +153,115 @@ describe("Claude Code credential loading", () => {
   });
 });
 
-describe("Claude Code provider health authentication", () => {
-  function clearOauthCredentials() {
-    state.keychain = "";
-    state.file = "";
-  }
+function clearOauthCredentials() {
+  state.keychain = "";
+  state.file = "";
+}
 
+function authStatus(status: {
+  loggedIn: boolean;
+  authMethod: string;
+  apiProvider?: string;
+}) {
+  state.authStatus = JSON.stringify({ apiProvider: "firstParty", ...status });
+}
+
+describe("Claude Code provider health from claude auth status", () => {
+  it("keeps the subscription plan label for a claude.ai login", async () => {
+    authStatus({ loggedIn: true, authMethod: "claude.ai" });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: "Max (5x)" }),
+    );
+  });
+
+  it("reports an expired claude.ai login", async () => {
+    authStatus({ loggedIn: true, authMethod: "claude.ai" });
+    const credentials = JSON.stringify({
+      claudeAiOauth: { accessToken: "test-access-token", expiresAt: 1 },
+    });
+    state.keychain = credentials;
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "expired" }),
+    );
+  });
+
+  it("reports the API key Claude Code uses over stored subscription credentials", async () => {
+    authStatus({ loggedIn: true, authMethod: "api_key" });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: "API key" }),
+    );
+  });
+
+  it("reports ready for an apiKeyHelper", async () => {
+    clearOauthCredentials();
+    authStatus({ loggedIn: true, authMethod: "api_key_helper" });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: "API key" }),
+    );
+  });
+
+  it("labels a third-party provider", async () => {
+    clearOauthCredentials();
+    authStatus({
+      loggedIn: true,
+      authMethod: "third_party",
+      apiProvider: "bedrock",
+    });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: "Amazon Bedrock" }),
+    );
+  });
+
+  it("reports ready for a long-lived OAuth token", async () => {
+    clearOauthCredentials();
+    authStatus({ loggedIn: true, authMethod: "oauth_token" });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: null }),
+    );
+  });
+
+  it("reports unauthenticated when Claude Code is logged out", async () => {
+    authStatus({ loggedIn: false, authMethod: "none" });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "unauthenticated" }),
+    );
+  });
+
+  it("falls back to credential files when the output is not auth status JSON", async () => {
+    clearOauthCredentials();
+    state.authStatus = "error: unknown command 'auth'";
+    state.settings = JSON.stringify({ env: { ANTHROPIC_API_KEY: "sk-test" } });
+
+    const result = await getClaudeProviderHealth();
+
+    expect(result.supported && result.health).toEqual(
+      expect.objectContaining({ status: "ready", planLabel: "API key" }),
+    );
+  });
+});
+
+describe("Claude Code provider health without claude auth status", () => {
   it("keeps the OAuth plan label when OAuth credentials exist alongside an API key", async () => {
     state.settings = JSON.stringify({ env: { ANTHROPIC_API_KEY: "sk-test" } });
 

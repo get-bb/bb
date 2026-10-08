@@ -409,34 +409,93 @@ function healthResult(
   };
 }
 
+const claudeAuthStatusSchema = z.object({
+  loggedIn: z.boolean(),
+  authMethod: z.string(),
+  apiProvider: z.string(),
+});
+
+const THIRD_PARTY_PLAN_LABELS = new Map([
+  ["bedrock", "Amazon Bedrock"],
+  ["vertex", "Google Vertex AI"],
+  ["foundry", "Microsoft Foundry"],
+]);
+
+async function readAuthStatus(command: string) {
+  const output = await commandOutput(command, ["auth", "status", "--json"]);
+  if (output === null) return null;
+  try {
+    const parsed = claudeAuthStatusSchema.safeParse(JSON.parse(output));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function subscriptionHealth(
+  credentials: ClaudeCredentials | null,
+  email: string | null,
+  version: string | null,
+): ProviderHealthResult {
+  const known = {
+    accountEmail: email,
+    planLabel: credentials ? planLabel(credentials) : null,
+    installedVersion: version,
+  };
+  return credentials?.expiresAt != null && Date.now() >= credentials.expiresAt
+    ? healthResult("expired", known)
+    : healthResult("ready", known);
+}
+
+async function authFileHealth(
+  version: string | null,
+): Promise<ProviderHealthResult> {
+  const [credentials, email] = await Promise.all([
+    readCredentials(),
+    readAccountEmail(),
+  ]);
+  if (credentials) return subscriptionHealth(credentials, email, version);
+  return (await hasApiKeyAuth())
+    ? healthResult("ready", { planLabel: "API key", installedVersion: version })
+    : healthResult("unauthenticated", { installedVersion: version });
+}
+
 export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
   const command = await claudeExecutable();
   if ((await resolveExecutablePath(command)) === null) {
     return healthResult("not_installed");
   }
-  const version = await readCliVersion(command);
+  const [version, authStatus] = await Promise.all([
+    readCliVersion(command),
+    readAuthStatus(command),
+  ]);
   try {
-    const [credentials, email] = await Promise.all([
-      readCredentials(),
-      readAccountEmail(),
-    ]);
-    if (!credentials) {
-      return (await hasApiKeyAuth())
-        ? healthResult("ready", {
-            planLabel: "API key",
-            accountEmail: null,
-            installedVersion: version,
-          })
-        : healthResult("unauthenticated", { installedVersion: version });
+    if (authStatus === null) return await authFileHealth(version);
+    if (!authStatus.loggedIn) {
+      return healthResult("unauthenticated", { installedVersion: version });
     }
-    const known = {
-      accountEmail: email,
-      planLabel: planLabel(credentials),
-      installedVersion: version,
-    };
-    return credentials.expiresAt != null && Date.now() >= credentials.expiresAt
-      ? healthResult("expired", known)
-      : healthResult("ready", known);
+    switch (authStatus.authMethod) {
+      case "claude.ai": {
+        const [credentials, email] = await Promise.all([
+          readCredentials(),
+          readAccountEmail(),
+        ]);
+        return subscriptionHealth(credentials, email, version);
+      }
+      case "api_key":
+      case "api_key_helper":
+        return healthResult("ready", {
+          planLabel: "API key",
+          installedVersion: version,
+        });
+      case "third_party":
+        return healthResult("ready", {
+          planLabel: THIRD_PARTY_PLAN_LABELS.get(authStatus.apiProvider),
+          installedVersion: version,
+        });
+      default:
+        return healthResult("ready", { installedVersion: version });
+    }
   } catch (error) {
     return healthResult("unknown", {
       installedVersion: version,
