@@ -184,27 +184,20 @@ export function NewTabActions({ actions }: NewTabActionsProps) {
 
 function NewTabActionList({ actions }: NewTabActionListProps) {
   const [storedOrder, setStoredOrder] = useAtom(newTabActionOrderAtom);
-  const { ordered, normalizedOrder } = useMemo(
+  const { normalizedOrder } = useMemo(
     () =>
       arrangeByStoredOrder({
-        items: actions.map((action) => action.id),
-        getId: (id) => id,
+        items: actions,
+        getId: (action) => action.id,
         storedOrder,
       }),
     [actions, storedOrder],
   );
-  const orderedActions = useMemo(() => {
-    const byId = new Map(actions.map((action) => [action.id, action]));
-    return ordered.flatMap((id) => {
-      const action = byId.get(id);
-      return action ? [action] : [];
-    });
-  }, [actions, ordered]);
 
-  if (orderedActions.length < 2) {
+  if (actions.length < 2) {
     return (
       <div className="flex flex-col gap-px">
-        {orderedActions.map((action) => (
+        {actions.map((action) => (
           <NewTabActionRow key={action.id} action={action} />
         ))}
       </div>
@@ -213,7 +206,7 @@ function NewTabActionList({ actions }: NewTabActionListProps) {
 
   return (
     <ReorderableNewTabActionList
-      actions={orderedActions}
+      actions={actions}
       normalizedOrder={normalizedOrder}
       onOrderChange={setStoredOrder}
     />

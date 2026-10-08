@@ -773,28 +773,18 @@ function NewTabResults({
   recent,
   sections,
 }: NewTabResultsProps) {
-  const actionsSection = sections.find((section) => section.kind === "actions");
-  const filesSection = sections.find((section) => section.kind === "files");
-  const recentSection = sections.find((section) => section.kind === "recent");
-  const showFilesSection = filesSection !== undefined;
-  const showRecentSection =
-    !hasQuery && (recentSection !== undefined || recent.emptyHintVisible);
+  const showFilesSection = sections.some((section) => section.kind === "files");
   const showLoading = isLoading && !showFilesSection;
   const showError = searchError && !showFilesSection && !showLoading;
   const showNoSearchResults =
     hasQuery && !showFilesSection && !showLoading && !showError;
   const showSearchMessage = showLoading || showError || showNoSearchResults;
-  const hasRecentSectionPredecessor = showFilesSection || showSearchMessage;
+  const hasRecentSectionPredecessor = !hasQuery && showSearchMessage;
   const showEmptyMessage =
-    actionsSection === undefined &&
-    !showFilesSection &&
-    !showRecentSection &&
+    sections.length === 0 &&
+    !recent.emptyHintVisible &&
     !showLoading &&
     !showError;
-  const showListbox =
-    actionsSection !== undefined ||
-    showFilesSection ||
-    recentSection !== undefined;
 
   if (showEmptyMessage) {
     return (
@@ -827,105 +817,76 @@ function NewTabResults({
     <div className="pb-1">
       {hasQuery ? null : searchMessage}
 
-      {showListbox ? (
+      {sections.length > 0 ? (
         <div id={listboxId} role="listbox" aria-label="Search results">
-          {actionsSection ? (
-            <section
-              role="group"
-              aria-label={FILE_SEARCH_SECTION_LABELS.actions}
-            >
-              <LauncherSectionHeader
-                label={FILE_SEARCH_SECTION_LABELS.actions}
-                sticky
-              />
-              <div className="flex flex-col gap-px">
-                {actionsSection.items.map(({ entry, index }) => {
-                  if (entry.kind !== "action") {
-                    return null;
+          {sections.map((section, sectionIndex) => {
+            const spaced = sectionIndex > 0 || hasRecentSectionPredecessor;
+            return (
+              <section
+                key={section.kind}
+                role="group"
+                aria-label={FILE_SEARCH_SECTION_LABELS[section.kind]}
+                className={cn(spaced && "mt-3")}
+              >
+                <LauncherSectionHeader
+                  label={FILE_SEARCH_SECTION_LABELS[section.kind]}
+                  count={
+                    section.kind === "recent" && recent.count > 0
+                      ? recent.count
+                      : undefined
                   }
-                  return (
-                    <ActionResultRow
-                      key={entry.action.id}
-                      action={entry.action}
-                      isActive={index >= 0 && index === activeIndex}
-                      onActivate={() => onActivateIndex(index)}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
-          {filesSection ? (
-            <section
-              role="group"
-              aria-label={FILE_SEARCH_SECTION_LABELS.files}
-              className={cn(actionsSection && "mt-3")}
-            >
-              <LauncherSectionHeader
-                label={FILE_SEARCH_SECTION_LABELS.files}
-                sticky
-                className={actionsSection ? "pt-2" : undefined}
-              />
-              <div className="flex flex-col gap-px">
-                {filesSection.items.map(({ entry, index }) => {
-                  if (entry.kind !== "suggestion") {
-                    return null;
-                  }
-                  const suggestion = entry.suggestion;
-                  return (
-                    <FileResultRow
-                      key={`${suggestion.source}:${suggestion.path}`}
-                      id={getFileSearchEntryId(entry)}
-                      suggestion={suggestion}
-                      isActive={index === activeIndex}
-                      onActivate={() => onActivateIndex(index)}
-                      onSelect={onSuggestionSelect}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
-          {recentSection ? (
-            <section
-              role="group"
-              aria-label={FILE_SEARCH_SECTION_LABELS.recent}
-              className={cn(hasRecentSectionPredecessor && "mt-3")}
-            >
-              <LauncherSectionHeader
-                label={FILE_SEARCH_SECTION_LABELS.recent}
-                count={recent.count > 0 ? recent.count : undefined}
-                sticky
-                className={hasRecentSectionPredecessor ? "pt-2" : undefined}
-              />
-              <div className="flex flex-col gap-px">
-                {recentSection.items.map(({ entry, index }) => {
-                  if (entry.kind !== "recent") {
-                    return null;
-                  }
-                  return (
-                    <RecentResultRow
-                      key={`recent:${entry.item.source}:${entry.item.path}`}
-                      id={getFileSearchEntryId(entry)}
-                      item={entry.item}
-                      isActive={index === activeIndex}
-                      nowMs={nowMs}
-                      onActivate={() => onActivateIndex(index)}
-                      onSelect={onRecentSelect}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
+                  sticky
+                  className={spaced ? "pt-2" : undefined}
+                />
+                <div className="flex flex-col gap-px">
+                  {section.items.map(({ entry, index }) => {
+                    const id = getFileSearchEntryId(entry);
+                    const isActive = index >= 0 && index === activeIndex;
+                    const onActivate = () => onActivateIndex(index);
+                    if (entry.kind === "action") {
+                      return (
+                        <ActionResultRow
+                          key={id}
+                          action={entry.action}
+                          isActive={isActive}
+                          onActivate={onActivate}
+                        />
+                      );
+                    }
+                    if (entry.kind === "suggestion") {
+                      return (
+                        <FileResultRow
+                          key={id}
+                          id={id}
+                          suggestion={entry.suggestion}
+                          isActive={isActive}
+                          onActivate={onActivate}
+                          onSelect={onSuggestionSelect}
+                        />
+                      );
+                    }
+                    return (
+                      <RecentResultRow
+                        key={id}
+                        id={id}
+                        item={entry.item}
+                        isActive={isActive}
+                        nowMs={nowMs}
+                        onActivate={onActivate}
+                        onSelect={onRecentSelect}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       ) : null}
 
       {hasQuery ? searchMessage : null}
 
-      {recent.emptyHintVisible && recentSection === undefined ? (
+      {recent.emptyHintVisible ? (
         <section className={cn(hasRecentSectionPredecessor && "mt-3")}>
           <LauncherSectionHeader
             label={FILE_SEARCH_SECTION_LABELS.recent}
