@@ -10,7 +10,10 @@ import {
   formatPendingInteractionSubjectDetailLines,
   type PendingInteractionToolUseAsk,
 } from "@bb/core-ui";
-import { extractShellCommandFromString } from "@bb/thread-view";
+import {
+  extractShellCommandFromString,
+  formatShellCommandForDisplay,
+} from "@bb/thread-view";
 import {
   isPluginPendingInteraction,
   type ApprovalPendingInteractionPayload,
@@ -497,14 +500,15 @@ function CommandPreview({
   detailLines: readonly string[];
 }) {
   const [showsAllLines, setShowsAllLines] = useState(false);
-  const lines = command.split("\n");
+  const displayCommand = formatShellCommandForDisplay(command);
+  const lines = displayCommand.split("\n");
   const hiddenLineCount = Math.max(
     0,
     lines.length - COMMAND_PREVIEW_LINE_COUNT,
   );
   const visibleCommand =
     showsAllLines || hiddenLineCount === 0
-      ? command
+      ? displayCommand
       : lines.slice(0, COMMAND_PREVIEW_LINE_COUNT).join("\n");
   return (
     <div

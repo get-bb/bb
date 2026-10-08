@@ -70,6 +70,26 @@ const longCommandApproval: PendingInteraction = {
   },
 };
 
+const chainedCommandApproval: PendingInteraction = {
+  ...basePendingInteraction(),
+  resolution: null,
+  id: "pi_demo_chained",
+  payload: {
+    kind: "approval",
+    subject: {
+      kind: "command",
+      itemId: "item_cmd_chained",
+      command:
+        "cd apps/app && pnpm exec vitest run src/components/thread/pending-interactions 2>&1 | tail -40 && git status --short",
+      cwd: "/workspace/bb",
+      actions: [],
+      sessionGrant: null,
+    },
+    reason: "Run the pending interaction tests",
+    availableDecisions: ["allow_once", "allow_for_session", "deny"],
+  },
+};
+
 const multiLineCommandApproval: PendingInteraction = {
   ...basePendingInteraction(),
   resolution: null,
@@ -247,6 +267,18 @@ export function Overview() {
           <ThreadPendingInteractionBanner
             interaction={longCommandApproval}
             threadId={longCommandApproval.threadId}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        className="grid-cols-1 gap-y-2 px-0 md:grid-cols-[210px_minmax(0,1fr)]"
+        label="command approval (chained one-liner)"
+        hint="each chained command starts on its own line"
+      >
+        <PromptStage>
+          <ThreadPendingInteractionBanner
+            interaction={chainedCommandApproval}
+            threadId={chainedCommandApproval.threadId}
           />
         </PromptStage>
       </StoryRow>
