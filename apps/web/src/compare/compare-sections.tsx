@@ -73,10 +73,10 @@ export const LIMITS_COPY: SectionCopy = {
   title: "Don’t lose work to usage limits",
   body: (
     <>
-      <p>See each agent’s usage and when its limits reset.</p>
+      <p>bb tracks every agent’s usage and when each limit resets.</p>
       <p>
-        When an agent hits a usage limit, bb picks the work back up once it
-        resets, with no message to resend.
+        When an agent hits a usage limit, bb schedules the work to resume right
+        after the reset, so it keeps going without you.
       </p>
     </>
   ),
