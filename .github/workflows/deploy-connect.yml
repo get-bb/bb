@@ -5,9 +5,18 @@ on:
     branches:
       - main
     paths:
-      - "apps/connect/**"
-      - "packages/connect-db/**"
-      - "packages/tunnel-contract/**"
+      - "apps/connect/src/**"
+      - "!apps/connect/src/**/*.test.ts"
+      - "apps/connect/package.json"
+      - "apps/connect/wrangler.jsonc"
+      - "packages/connect-db/src/**"
+      - "packages/connect-db/migrations/**"
+      - "packages/connect-db/package.json"
+      - "packages/text-utils/src/**"
+      - "!packages/text-utils/src/**/*.test.ts"
+      - "packages/text-utils/package.json"
+      - "packages/tunnel-contract/src/**"
+      - "packages/tunnel-contract/package.json"
   workflow_dispatch:
 
 env:
