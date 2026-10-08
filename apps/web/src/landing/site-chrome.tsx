@@ -7,7 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
-  type PointerEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 
@@ -108,7 +108,7 @@ function PluginsMenu({ current }: { current?: SiteNavPage }) {
 
 const INLINE_SUBMENU_QUERY = "(max-width: 760px)";
 
-function opensOnHover(event: PointerEvent<HTMLElement>) {
+function opensOnHover(event: ReactPointerEvent<HTMLElement>) {
   return (
     event.pointerType === "mouse" &&
     !window.matchMedia(INLINE_SUBMENU_QUERY).matches
