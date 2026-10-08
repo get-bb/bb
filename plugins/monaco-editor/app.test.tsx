@@ -199,8 +199,10 @@ it("undoes keeping the disk version without writing and restores conflict protec
   );
   const undo = await screen.findByRole("button", { name: "Undo" });
   expect(editor.getValue()).toBe("Updated on disk");
-  expect(document.activeElement).toBe(
-    screen.getByRole("status", { name: "Disk version loaded." }),
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      screen.getByRole("status", { name: "Disk version loaded." }),
+    ),
   );
   fireEvent.click(undo);
   expect(editor.getValue()).toBe("Edited on a phone");
