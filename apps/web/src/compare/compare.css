@@ -1409,6 +1409,10 @@
     margin-left: auto;
     margin-right: auto;
   }
+
+  .cmp-providers .label {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1418,10 +1422,6 @@
 
   .cmp-desktop {
     margin-top: 28px;
-  }
-
-  .cmp-providers .label {
-    display: none;
   }
 
   .cmp-page .cmp-wide-band h2 {
