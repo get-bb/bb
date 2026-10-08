@@ -16,7 +16,6 @@ import {
   COMPARE_LINKS,
   GUIDE_FOOTER_LINKS,
   GUIDE_MENU,
-  LANDING_LINKS,
   type ContentLink,
 } from "./content-links";
 import {
@@ -312,9 +311,6 @@ export function SiteFooter({ current }: { current?: string }) {
       </FooterColumn>
       <FooterColumn title="Compare">
         <FooterLinks links={COMPARE_LINKS} current={current} />
-      </FooterColumn>
-      <FooterColumn title="Use cases">
-        <FooterLinks links={LANDING_LINKS} current={current} />
       </FooterColumn>
       <FooterColumn title="Community">
         <li>
