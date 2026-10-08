@@ -23,17 +23,14 @@ export type CompetitorPlan = {
 };
 
 export const PRICING_COPY: SectionCopy = {
-  title: "Run more agents, $0 more.",
+  title: "Free for your whole team",
   body: (
     <>
       <p>
         You only pay for the AI plans you already have. bb is free, whether you
-        run one agent on your own or your whole team runs dozens.
+        run one agent or your whole team runs dozens.
       </p>
-      <p>
-        The mobile app, automations, remote access, and plugins all come
-        included.
-      </p>
+      <p>It’s MIT-licensed open source, free to use at work.</p>
     </>
   ),
 };
@@ -60,17 +57,14 @@ export const SPAWN_COPY: SectionCopy = {
 };
 
 export const ANYWHERE_COPY: SectionCopy = {
-  title: "Keep working from anywhere",
+  title: "Your agents keep working while you’re away",
   body: (
     <>
       <p>
-        Start tasks and answer your agents from the bb desktop app, the mobile
-        app, or any browser.
+        Put bb on a desktop or server that stays on, and your agents keep going
+        after you close your laptop.
       </p>
-      <p>
-        Run agents on your laptop, a desktop at home, or a cloud server, and
-        manage them all from one bb. They keep working while you’re out.
-      </p>
+      <p>Check in from the mobile app or any browser.</p>
     </>
   ),
 };

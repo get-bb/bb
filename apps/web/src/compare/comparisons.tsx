@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from "react";
 import supersetIcon from "../assets/competitors/superset.png";
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -120,31 +121,24 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Price and license",
       rows: [
         {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
+          ...BB_ROWS.pricing,
           competitor: price(
             "$0 solo",
             "$15 per user / month for teams, billed yearly",
           ),
         },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Elastic License 2.0"),
-        },
+        { ...BB_ROWS.license, competitor: cell("no", "Elastic License 2.0") },
       ],
     },
     {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Web access from any browser",
-          bb: cell("yes", "Free with bb Connect"),
-          competitor: cell("no", "Desktop and iPhone only"),
+          ...BB_ROWS.webAccess,
+          competitor: cell("partial", "Desktop and iPhone only"),
         },
         {
-          feature: "Run agents on other machines",
-          bb: cell("yes", "Enroll any machine"),
+          ...BB_ROWS.otherMachines,
           competitor: cell("partial", "Via Superset relay", true),
         },
         {
@@ -153,12 +147,12 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("partial", "Hosts go through Superset relay", true),
         },
         {
+          ...BB_ROWS.cloud,
           feature: "Cloud sandboxes",
-          bb: cell("yes", "Via plugins"),
-          competitor: cell("partial", "When enabled for your account"),
+          competitor: cell("partial", "Limited access"),
         },
         {
-          feature: "Scheduled automations",
+          ...BB_ROWS.automations,
           bb: cell("yes", "Cron, one-shot, scripts"),
           competitor: cell("partial", "Recurring only", true),
         },
@@ -167,22 +161,13 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Agents",
       rows: [
+        { ...BB_ROWS.multiAgent, competitor: cell("yes", "Any CLI agent") },
         {
-          feature: "Multi-agent support",
-          bb: cell(
-            "yes",
-            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
-          ),
-          competitor: cell("yes", "Any CLI agent"),
-        },
-        {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents can create and message each other"),
+          ...BB_ROWS.handoff,
           competitor: cell("yes", "Via a coordinator skill"),
         },
         {
-          feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Account Pooler, experimental"),
+          ...BB_ROWS.accountSwitch,
           competitor: cell("partial", "Manual default switch"),
         },
       ],
@@ -190,29 +175,14 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Integrations",
       rows: [
+        { ...BB_ROWS.marketplace, competitor: cell("partial", "Themes only") },
         {
-          feature: "Plugin marketplace",
-          bb: cell(
-            "yes",
-            "300+ community plugins, or share your own with your team",
-          ),
-          competitor: cell("partial", "Themes only"),
-        },
-        {
-          feature: "Linear integration",
-          bb: cell("yes", "Community plugin"),
+          ...BB_ROWS.linear,
           competitor: cell("yes", "Two-way issue sync", true),
         },
-        {
-          feature: "GitHub integration",
-          bb: cell("yes", "PR checks and merge"),
-          competitor: cell("yes", "PR view with checks"),
-        },
-        {
-          feature: "GitLab and Gitea",
-          bb: cell("yes", "Community plugins"),
-          competitor: cell("no", "GitHub only"),
-        },
+        { ...BB_ROWS.github, competitor: cell("yes", "PR view with checks") },
+        { ...BB_ROWS.gitlab, competitor: cell("no") },
+        { ...BB_ROWS.gitea, competitor: cell("no") },
         {
           feature: "Slack integration",
           bb: cell("no"),
@@ -223,11 +193,7 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Platforms",
       rows: [
-        {
-          feature: "Windows support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("no", "Planned, no date"),
-        },
+        { ...BB_ROWS.windows, competitor: cell("no") },
         {
           feature: "iOS app",
           bb: cell("yes", "TestFlight beta"),
@@ -236,33 +202,23 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Android app",
           bb: cell("yes", "Alpha"),
-          competitor: cell("no", "Waitlist"),
+          competitor: cell("no"),
         },
         {
-          feature: "macOS",
-          bb: cell("yes", "Apple Silicon app"),
+          ...BB_ROWS.macos,
           competitor: cell("yes", "Apple Silicon and Intel"),
         },
-        {
-          feature: "Linux support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("yes", "Experimental"),
-        },
+        { ...BB_ROWS.linux, competitor: cell("yes", "Experimental") },
       ],
     },
     {
       title: "Workspace and teams",
       rows: [
         {
-          feature: "Git worktrees",
-          bb: cell("yes", ".env copy, setup, teardown"),
+          ...BB_ROWS.worktrees,
           competitor: cell("yes", "Setup, teardown, run"),
         },
-        {
-          feature: "Diff review and merge",
-          bb: cell("yes"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
           feature: "Built-in terminal and browser",
           bb: cell("yes", "Browser on desktop"),
@@ -270,7 +226,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Code editor",
-          bb: cell("yes", "Opt-in plugin"),
+          bb: cell("yes"),
           competitor: cell("yes"),
         },
         {
@@ -279,8 +235,7 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("yes", "View, kill, group"),
         },
         {
-          feature: "Team plans and SSO",
-          bb: cell("no"),
+          ...BB_ROWS.teamPlans,
           competitor: cell("partial", "SSO on Enterprise", true),
         },
       ],
@@ -290,7 +245,7 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Side chats",
-          bb: cell("yes", "Ask without derailing the agent"),
+          bb: cell("yes"),
           competitor: cell("partial", "Fork a session"),
         },
         {

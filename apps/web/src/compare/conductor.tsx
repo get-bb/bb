@@ -1,6 +1,7 @@
 import conductorIcon from "../assets/competitors/conductor.png";
 import type { Comparison } from "./comparisons";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -22,46 +23,21 @@ import {
 import {
   AGENTS_COPY,
   agentsSection,
+  ANYWHERE_COPY,
   anywhereSection,
+  PRICING_COPY,
   pricingSection,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
 
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
-const AWAY_SECTION = anywhereSection({
-  title: "Your agents keep working while you’re away",
-  body: (
-    <>
-      <p>
-        Put bb on a desktop or server that stays on, and your agents keep going
-        after you close your laptop.
-      </p>
-      <p>Check in from the mobile app or any browser.</p>
-    </>
-  ),
+const COST_SECTION = pricingSection(PRICING_COPY, {
+  plan: "Conductor Teams",
+  logo: CONDUCTOR_LOGO,
+  yearlyPerSeatMonthly: 60,
+  priceNote: "Conductor Teams at $60 per person a month.",
 });
-
-const COST_SECTION = pricingSection(
-  {
-    title: "Free for your whole team",
-    body: (
-      <>
-        <p>
-          bb is free for any team size, with everything included. You only pay
-          for the AI plans you already have.
-        </p>
-        <p>It’s MIT-licensed open source, free to use at work.</p>
-      </>
-    ),
-  },
-  {
-    plan: "Conductor Teams",
-    logo: CONDUCTOR_LOGO,
-    yearlyPerSeatMonthly: 60,
-    priceNote: "Conductor Teams at $60 per person a month.",
-  },
-);
 
 export const BB_VS_CONDUCTOR: Comparison = {
   slug: "conductor-alternatives",
@@ -72,7 +48,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
   headline: "The free, open-source Conductor alternative",
   sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
-  tailored: AWAY_SECTION,
+  tailored: anywhereSection(ANYWHERE_COPY),
   sections: [COST_SECTION, agentsSection(AGENTS_COPY)],
   tableNote:
     "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
@@ -81,38 +57,20 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Price and license",
       rows: [
         {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
+          ...BB_ROWS.pricing,
           competitor: price("$0", "Teams at $60 per person a month"),
         },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Closed source"),
-        },
+        { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
     },
     {
       title: "Platforms",
       rows: [
+        { ...BB_ROWS.windows, competitor: cell("no", "Mac only") },
+        { ...BB_ROWS.linux, competitor: cell("no") },
+        { ...BB_ROWS.macos, competitor: cell("yes", "Mac app") },
         {
-          feature: "Windows support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("no", "Mac only"),
-        },
-        {
-          feature: "Linux support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("no"),
-        },
-        {
-          feature: "macOS",
-          bb: cell("yes", "Apple Silicon app"),
-          competitor: cell("yes", "Mac app"),
-        },
-        {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, Android alpha"),
+          ...BB_ROWS.mobile,
           competitor: cell("partial", "iOS, for cloud workspaces", true),
         },
       ],
@@ -121,18 +79,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Run agents on other machines",
-          bb: cell("yes", "Any computer you own"),
+          ...BB_ROWS.otherMachines,
           competitor: cell("partial", "Your Mac or Conductor’s cloud", true),
         },
+        { ...BB_ROWS.cloud, competitor: cell("yes", "Hosted", true) },
         {
-          feature: "Cloud workspaces",
-          bb: cell("yes", "Via plugins"),
-          competitor: cell("yes", "Hosted", true),
-        },
-        {
-          feature: "Scheduled automations",
-          bb: cell("yes", "On your own machines"),
+          ...BB_ROWS.automations,
           competitor: cell("partial", "Cloud routines", true),
         },
       ],
@@ -141,16 +93,11 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Agents",
       rows: [
         {
-          feature: "Multi-agent support",
-          bb: cell(
-            "yes",
-            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
-          ),
+          ...BB_ROWS.multiAgent,
           competitor: cell("yes", "Claude Code, Codex, Cursor, OpenCode"),
         },
         {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents can create and message each other"),
+          ...BB_ROWS.handoff,
           competitor: cell("partial", "Via MCP, cloud workspaces", true),
         },
       ],
@@ -158,23 +105,18 @@ export const BB_VS_CONDUCTOR: Comparison = {
     {
       title: "Integrations",
       rows: [
+        { ...BB_ROWS.marketplace, competitor: cell("no") },
         {
-          feature: "Plugin marketplace",
-          bb: cell(
-            "yes",
-            "300+ community plugins, or share your own with your team",
-          ),
-          competitor: cell("no"),
-        },
-        {
-          feature: "GitHub integration",
-          bb: cell("yes", "PR checks and merge"),
+          ...BB_ROWS.github,
           competitor: cell("yes", "Checks tab, PR actions"),
         },
         {
-          feature: "GitLab and Gitea",
-          bb: cell("yes", "Community plugins"),
-          competitor: cell("partial", "GitLab repos in local workspaces"),
+          ...BB_ROWS.gitlab,
+          competitor: cell("partial", "Repos in local workspaces"),
+        },
+        {
+          ...BB_ROWS.gitea,
+          competitor: cell("partial", "Repos in local workspaces"),
         },
       ],
     },
@@ -182,8 +124,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Workspace and teams",
       rows: [
         {
-          feature: "Git worktrees",
-          bb: cell("yes", "Setup and teardown scripts"),
+          ...BB_ROWS.worktrees,
           competitor: cell("yes", "Setup and archive scripts"),
         },
         {
@@ -192,23 +133,17 @@ export const BB_VS_CONDUCTOR: Comparison = {
           competitor: cell("yes", "Run script"),
         },
         {
-          feature: "Diff review and merge",
-          bb: cell("yes", "Line comments to the agent, checks, merge"),
+          ...BB_ROWS.diffReview,
           competitor: cell("yes", "Diff comments, checks, merge"),
         },
-        {
-          feature: "Go back to an earlier point",
-          bb: cell("yes", "Edit a message or fork from it"),
-          competitor: cell("yes", "Checkpoints"),
-        },
+        { ...BB_ROWS.rewind, competitor: cell("yes", "Checkpoints") },
         {
           feature: "Multiplayer workspaces",
           bb: cell("partial", "Share one bb with your team"),
           competitor: cell("yes", "Shared cloud workspaces", true),
         },
         {
-          feature: "Team plans and SSO",
-          bb: cell("no"),
+          ...BB_ROWS.teamPlans,
           competitor: cell("yes", "Teams plan, SSO on Enterprise", true),
         },
       ],

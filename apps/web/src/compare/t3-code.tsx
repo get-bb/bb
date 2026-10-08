@@ -1,6 +1,7 @@
 import t3CodeIcon from "../assets/competitors/t3-code.png";
 import type { Comparison } from "./comparisons";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -64,14 +65,7 @@ export const BB_VS_T3_CODE: Comparison = {
     {
       title: "Customize",
       rows: [
-        {
-          feature: "Plugin marketplace",
-          bb: cell(
-            "yes",
-            "300+ community plugins, or share your own with your team",
-          ),
-          competitor: cell("no", "Fork the code"),
-        },
+        { ...BB_ROWS.marketplace, competitor: cell("no", "Fork the code") },
       ],
     },
     {
@@ -83,16 +77,11 @@ export const BB_VS_T3_CODE: Comparison = {
           competitor: cell("no", "Subagent threads can't take messages"),
         },
         {
-          feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Account Pooler, experimental"),
+          ...BB_ROWS.accountSwitch,
           competitor: cell("partial", "Tracks limits, you switch"),
         },
         {
-          feature: "Multi-agent support",
-          bb: cell(
-            "yes",
-            "Claude Code, Codex, Cursor, OpenCode, and any ACP agent",
-          ),
+          ...BB_ROWS.multiAgent,
           competitor: cell(
             "yes",
             "Claude Code, Codex, Cursor, OpenCode, and more",
@@ -118,26 +107,14 @@ export const BB_VS_T3_CODE: Comparison = {
           bb: cell("yes", "iOS, Android, any browser"),
           competitor: cell("yes"),
         },
-        {
-          feature: "Go back to an earlier point",
-          bb: cell("yes", "Edit a message or fork from it"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.rewind, competitor: cell("yes") },
       ],
     },
     {
       title: "Price and license",
       rows: [
-        {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
-          competitor: price("$0", "No paid plan"),
-        },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("yes", "MIT"),
-        },
+        { ...BB_ROWS.pricing, competitor: price("$0", "No paid plan") },
+        { ...BB_ROWS.license, competitor: cell("yes", "MIT") },
       ],
     },
   ],

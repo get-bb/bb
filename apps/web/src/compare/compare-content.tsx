@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
-import type { CompareCell, CompareFaq, Comparison, Mark } from "./comparisons";
+import type {
+  CompareCell,
+  CompareFaq,
+  CompareRow,
+  Comparison,
+  Mark,
+} from "./comparisons";
 
 export function cell(mark: Mark | null, text = "", pro = false): CompareCell {
   return { mark, value: "", text, href: null, pro };
@@ -18,6 +24,66 @@ export function linkedCell(
 export function price(value: string, text: string): CompareCell {
   return { mark: null, value, text, href: null, pro: false };
 }
+
+type BbRow = Omit<CompareRow, "competitor">;
+
+export const BB_ROWS = {
+  pricing: { feature: "Pricing", bb: price("$0", "Any team size") },
+  license: { feature: "Open-source license", bb: cell("yes", "MIT") },
+  webAccess: {
+    feature: "Web access from any browser",
+    bb: cell("yes", "With bb Connect"),
+  },
+  otherMachines: {
+    feature: "Run agents on other machines",
+    bb: cell("yes", "Any computer you own"),
+  },
+  cloud: { feature: "Cloud workspaces", bb: cell("yes", "Via plugins") },
+  automations: {
+    feature: "Scheduled automations",
+    bb: cell("yes", "On your own machines"),
+  },
+  mobile: { feature: "Mobile app", bb: cell("yes", "iOS beta, Android alpha") },
+  multiAgent: {
+    feature: "Multi-agent support",
+    bb: cell("yes", "Claude Code, Codex, Cursor, OpenCode, and any ACP agent"),
+  },
+  handoff: {
+    feature: "Agent-to-agent handoff",
+    bb: cell("yes", "Agents can create and message each other"),
+  },
+  accountSwitch: {
+    feature: "Switch accounts at usage limits",
+    bb: cell("yes", "Account Pooler, experimental"),
+  },
+  marketplace: {
+    feature: "Plugin marketplace",
+    bb: cell("yes", "300+ community plugins, or share your own with your team"),
+  },
+  github: {
+    feature: "GitHub integration",
+    bb: cell("yes", "PR checks and merge"),
+  },
+  gitlab: { feature: "GitLab integration", bb: cell("yes", "Via plugins") },
+  gitea: { feature: "Gitea integration", bb: cell("yes", "Via plugins") },
+  linear: { feature: "Linear integration", bb: cell("yes", "Via plugins") },
+  windows: { feature: "Windows support", bb: cell("yes", "Alpha") },
+  linux: { feature: "Linux support", bb: cell("yes", "Alpha") },
+  macos: { feature: "macOS", bb: cell("yes", "Apple Silicon app") },
+  worktrees: {
+    feature: "Git worktrees",
+    bb: cell("yes", "Setup and teardown scripts"),
+  },
+  diffReview: {
+    feature: "Diff review and merge",
+    bb: cell("yes", "Line comments to the agent, checks, merge"),
+  },
+  rewind: {
+    feature: "Go back to an earlier point",
+    bb: cell("yes", "Edit a message or fork from it"),
+  },
+  teamPlans: { feature: "Team plans and SSO", bb: cell("no") },
+} satisfies Record<string, BbRow>;
 
 export const FAQ_GET_STARTED: CompareFaq = {
   question: "How do I get started?",

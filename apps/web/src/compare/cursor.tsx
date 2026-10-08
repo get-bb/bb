@@ -1,6 +1,7 @@
 import cursorIcon from "../assets/competitors/cursor.png";
 import type { Comparison } from "./comparisons";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -22,7 +23,12 @@ import {
   faqUsageLimit,
   price,
 } from "./compare-content";
-import { anywhereSection, SPAWN_COPY, spawnSection } from "./compare-sections";
+import {
+  ANYWHERE_COPY,
+  anywhereSection,
+  SPAWN_COPY,
+  spawnSection,
+} from "./compare-sections";
 import { AgentSplit, PlansVisual, type BrandLogo } from "./compare-visuals";
 
 const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
@@ -47,20 +53,6 @@ const PLANS_SECTION = {
   ),
 };
 
-const AWAY_SECTION = anywhereSection({
-  title: "Keep your agents running on your own machines",
-  body: (
-    <>
-      <p>
-        You can run any agent on your laptop, a desktop at home, or a cloud
-        server, and manage them all from one bb. Check in from the bb mobile app
-        or any browser while they keep working.
-      </p>
-      <p>Remote machines, the mobile app, and browser access are all free.</p>
-    </>
-  ),
-});
-
 export const BB_VS_CURSOR: Comparison = {
   slug: "cursor-alternative",
   title:
@@ -72,7 +64,7 @@ export const BB_VS_CURSOR: Comparison = {
   sub: "Run Claude Code and Codex on the subscriptions you already have, not at API rates. Cursor’s agent works too. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
-  sections: [spawnSection(SPAWN_COPY), AWAY_SECTION],
+  sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
   tableNote: "marks features that need a paid Cursor plan, from $20 a month.",
   table: [
     {
@@ -89,16 +81,14 @@ export const BB_VS_CURSOR: Comparison = {
           competitor: cell("partial", "As editor extensions"),
         },
         {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Any provider, each in its own thread"),
+          ...BB_ROWS.handoff,
           competitor: cell(
             "partial",
             "Subagents and Projects, Cursor’s agent only",
           ),
         },
         {
-          feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Account Pooler, experimental"),
+          ...BB_ROWS.accountSwitch,
           competitor: cell("no", "On-demand billing instead"),
         },
       ],
@@ -107,41 +97,34 @@ export const BB_VS_CURSOR: Comparison = {
       title: "Price and license",
       rows: [
         {
-          feature: "Pricing",
+          ...BB_ROWS.pricing,
           bb: price("$0", "You pay agent providers directly"),
           competitor: price(
             "$0 Hobby",
             "Pro $20 / mo, Teams from $40 per user / month",
           ),
         },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Closed source"),
-        },
+        { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
     },
     {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Run agents on other machines you own",
-          bb: cell("yes", "Any computer, free"),
+          ...BB_ROWS.otherMachines,
           competitor: cell("yes", "Self-hosted cloud agents", true),
         },
         {
+          ...BB_ROWS.cloud,
           feature: "Cloud agents",
-          bb: cell("yes", "Via plugins"),
           competitor: cell("yes", "Hosted VMs at API rates", true),
         },
         {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, Android alpha"),
+          ...BB_ROWS.mobile,
           competitor: cell("yes", "iPhone and iPad, web on Android"),
         },
         {
-          feature: "Scheduled automations",
-          bb: cell("yes", "On your own machines"),
+          ...BB_ROWS.automations,
           competitor: cell("yes", "Run as cloud agents", true),
         },
       ],
@@ -154,14 +137,9 @@ export const BB_VS_CURSOR: Comparison = {
           bb: cell("yes", "Setup runs for you"),
           competitor: cell("yes", "Agents window"),
         },
+        { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
-          feature: "Diff review and merge",
-          bb: cell("yes"),
-          competitor: cell("yes"),
-        },
-        {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Panels, commands, and agents"),
+          ...BB_ROWS.marketplace,
           competitor: cell(
             "yes",
             "Skills, MCP servers, hooks, and automations",

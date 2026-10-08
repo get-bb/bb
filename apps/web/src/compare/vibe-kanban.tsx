@@ -1,6 +1,12 @@
 import vibeKanbanIcon from "../assets/competitors/vibe-kanban.png";
 import type { CompareHighlight, Comparison } from "./comparisons";
-import { FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
+import {
+  BB_ROWS,
+  FAQ_AGENTS,
+  FAQ_REVIEW,
+  cell,
+  price,
+} from "./compare-content";
 import { AGENTS_COPY, agentsSection } from "./compare-sections";
 import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
 
@@ -34,16 +40,8 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
     {
       title: "Price and license",
       rows: [
-        {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
-          competitor: price("$0", "Open source"),
-        },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("yes", "Apache 2.0"),
-        },
+        { ...BB_ROWS.pricing, competitor: price("$0", "Open source") },
+        { ...BB_ROWS.license, competitor: cell("yes", "Apache 2.0") },
         {
           feature: "Active development",
           bb: cell("yes", "Weekly releases"),
@@ -75,8 +73,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
           competitor: cell("yes"),
         },
         {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents can create and message each other"),
+          ...BB_ROWS.handoff,
           competitor: cell("yes", "Through its MCP server"),
         },
       ],
