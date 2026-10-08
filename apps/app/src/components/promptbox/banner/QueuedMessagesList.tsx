@@ -1682,7 +1682,7 @@ export function QueuedMessagesList({
             buttonRef={focus.collapseRef}
             className={cn(
               "rounded-none",
-              attachedToComposer && !inlineEditor && "-mb-3 min-h-9 pb-3",
+              attachedToComposer && !inlineEditor && "-mb-3 min-h-7.5 pb-3",
             )}
             controlsId={listId}
             label="Collapse queued messages"
