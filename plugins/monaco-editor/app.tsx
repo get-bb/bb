@@ -425,13 +425,18 @@ function Notice({
   if (saveState.kind === "conflict") {
     return (
       <NoticeRow tone="warning" compact>
-        <span className="min-w-0 flex-1 truncate">Changed on disk</span>
-        <NoticeAction onClick={onReload}>Reload</NoticeAction>
+        <span className="min-w-0 flex-1 truncate">File changed</span>
+        <NoticeAction
+          onClick={onReload}
+          title="Discard your edits and load the saved file"
+        >
+          Discard edits
+        </NoticeAction>
         <NoticeAction
           onClick={onOverwrite}
-          title="Replace the saved file with my edits"
+          title="Replace the saved file with your edits"
         >
-          Save my version
+          Save edits
         </NoticeAction>
       </NoticeRow>
     );
