@@ -330,9 +330,12 @@ describe("AppNavRail", () => {
     expect(pathname()).toBe(SETTINGS_ROUTE_PATH);
   });
 
-  it("keeps the customize popover where it opened while More moves under the pointer", async () => {
+  it("opens the customize popover at the top of the rail and keeps it there while More moves", async () => {
     renderRail(THREAD_PATH);
     let moreTop = 200;
+    vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 40, 28, 28),
+    );
     vi.spyOn(railButton("More"), "getBoundingClientRect").mockImplementation(
       () => new DOMRect(12, moreTop, 28, 28),
     );
@@ -343,7 +346,7 @@ describe("AppNavRail", () => {
       "[data-radix-popper-content-wrapper]",
     );
     if (!wrapper) throw new Error("Expected the popover position wrapper");
-    await waitFor(() => expect(wrapper.style.transform).toContain("200px"));
+    await waitFor(() => expect(wrapper.style.transform).toContain("40px"));
     const openedAt = wrapper.style.transform;
 
     moreTop = 120;
