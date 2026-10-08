@@ -101,6 +101,10 @@ export const REMOTE_DEV_SERVERS: Guide = {
             over SSH.
           </li>
           <li>Sign in to your agents on that machine once.</li>
+          <li>
+            Check that the machine shows as Online in{" "}
+            <strong>Settings → Machines</strong>.
+          </li>
         </Substeps>
       ),
       shot: {
@@ -108,7 +112,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
         alt: "The Add a machine dialog in bb's Machines settings, with a macOS or Linux install command, a Copy button, and Waiting for the machine to connect",
       },
       options: [],
-      doneWhen: "the machine shows as Online in Settings → Machines.",
     },
     {
       id: "step-2",
@@ -138,7 +141,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
         alt: "A project's settings in bb, with a Checkouts section listing where the project lives on each machine",
       },
       options: [],
-      doneWhen: "Checkouts lists a folder on the new machine.",
     },
     {
       id: "step-3",
@@ -163,7 +165,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
         alt: "A new bb thread in acme-web with Worktree chosen and the Branch from list open, showing main and feature branches",
       },
       options: [],
-      doneWhen: "each branch has its own thread in the sidebar.",
     },
     {
       id: "step-4",
@@ -191,12 +192,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
         alt: "A bb thread with its side panel open on a Dev server terminal, showing a server running on 127.0.0.1 port 3001",
       },
       options: [],
-      doneWhen: (
-        <>
-          the terminal shows the server listening on <code>127.0.0.1</code> at
-          its port.
-        </>
-      ),
     },
     {
       id: "step-5",
@@ -220,7 +215,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
             <code>https://bb-worker-1--3001.getbb.app</code>. Every link is
             listed under <strong>Shared ports</strong> in{" "}
             <strong>Settings → bb connect</strong>, where you can copy it or
-            stop sharing when the branch is done.
+            stop sharing when the branch is done. Open each link on your phone
+            to check its branch.
           </p>
         </>
       ),
@@ -229,7 +225,6 @@ export const REMOTE_DEV_SERVERS: Guide = {
         alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
       },
       options: [],
-      doneWhen: "each branch's link opens its app on your phone.",
     },
   ],
   troubleshooting: [

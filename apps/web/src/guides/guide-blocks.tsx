@@ -190,19 +190,6 @@ export function Note({
   );
 }
 
-export function DoneWhen({ children }: { children: ReactNode }) {
-  return (
-    <div className="gd-check">
-      <span className="cmp-mark cmp-mark-yes">
-        <HugeiconsIcon icon={Tick02Icon} aria-hidden="true" />
-      </span>
-      <span>
-        <strong>Done when</strong> {children}
-      </span>
-    </div>
-  );
-}
-
 export function ProductShot({ src, alt }: { src: string; alt: string }) {
   const size = getImageSize(src);
   return (

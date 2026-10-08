@@ -79,12 +79,6 @@ export const WORK_FROM_ANYWHERE: Guide = {
         alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
       },
       options: [],
-      doneWhen: (
-        <>
-          the page shows your <code>https://&lt;handle&gt;.getbb.app</code>{" "}
-          address.
-        </>
-      ),
     },
     {
       id: "step-2",
@@ -115,8 +109,6 @@ export const WORK_FROM_ANYWHERE: Guide = {
         alt: "Keep Awake in bb's settings, with Prevent idle sleep on for all hosts",
       },
       options: [],
-      doneWhen:
-        "Prevent idle sleep is on for the computer that runs your agents.",
     },
     {
       id: "step-3",
@@ -137,7 +129,6 @@ export const WORK_FROM_ANYWHERE: Guide = {
         alt: "bb at phone width, showing an agent's reply in a thread and an Ask a follow-up box",
       },
       options: [],
-      doneWhen: "your threads load on your phone.",
     },
     {
       id: "step-4",
@@ -165,7 +156,6 @@ export const WORK_FROM_ANYWHERE: Guide = {
         alt: "bb's Mobile apps settings, with bb connect, a Join iOS TestFlight button, and the Android download",
       },
       options: [],
-      doneWhen: "the app shows your threads and you've allowed notifications.",
     },
   ],
   troubleshooting: [

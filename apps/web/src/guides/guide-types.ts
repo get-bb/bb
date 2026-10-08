@@ -19,7 +19,6 @@ export interface GuideStep {
   body: ReactNode;
   shot: GuideShot;
   options: GuideStepOption[];
-  doneWhen: ReactNode;
 }
 
 export interface GuideNeed {

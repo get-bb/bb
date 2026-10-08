@@ -133,8 +133,6 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
           },
         },
       ],
-      doneWhen:
-        "the thread has the result, with a link to where each fact came from.",
     },
     {
       id: "annotate",
@@ -161,8 +159,6 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
         alt: "Asana's pricing page in a bb Browser tab with Unlimited storage, 100MB max per file selected, and the note: Is the 100 MB limit the same on Starter? Add a row for each paid plan's storage.",
       },
       options: [],
-      doneWhen:
-        "your note shows up in the prompt box, and your agent gets the page and the exact text you picked.",
     },
   ],
   troubleshooting: BROWSER_TROUBLESHOOTING,

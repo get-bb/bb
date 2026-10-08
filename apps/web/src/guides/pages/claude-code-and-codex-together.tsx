@@ -91,7 +91,6 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, ending with the task: add per-user rate limiting to the upload endpoint, with a test.",
       },
       options: [],
-      doneWhen: "Claude Code is working on a new branch in its own worktree.",
     },
     {
       id: "step-2",
@@ -107,7 +106,6 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
       shot: NESTED_SHOT,
       options: [],
-      doneWhen: "the Codex thread shows up under the Claude Code thread.",
     },
     {
       id: "step-3",
@@ -124,7 +122,6 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
       shot: SPLIT_SHOT,
       options: [],
-      doneWhen: "both threads are open side by side.",
     },
     {
       id: "step-4",
@@ -138,8 +135,6 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       ),
       shot: TALK_SHOT,
       options: [],
-      doneWhen:
-        "Claude Code replies with what it built, what each review found, and what's left for you.",
     },
   ],
   troubleshooting: TEAM_TROUBLESHOOTING,

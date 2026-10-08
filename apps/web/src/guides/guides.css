@@ -803,33 +803,6 @@
   border-bottom-right-radius: 0;
 }
 
-.gd-check {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 20px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  font-size: 14.5px;
-  color: var(--dim);
-}
-
-.gd-check .cmp-mark {
-  margin-top: 1px;
-}
-
-.gd-check .cmp-mark svg {
-  width: 14px;
-  height: 14px;
-}
-
-.gd-check strong {
-  color: var(--heading-sub);
-  font-weight: 600;
-}
-
 .gd-note {
   margin-top: 20px;
   padding: 13px 16px;

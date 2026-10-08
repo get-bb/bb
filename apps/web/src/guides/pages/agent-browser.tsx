@@ -60,8 +60,6 @@ export const PLUGINS_STEP: GuideStep = {
     alt: "bb's Installed plugins page with Agent Annotations switched on, and Browser Automation open beside it, switched on",
   },
   options: [],
-  doneWhen:
-    "Browser Automation and Agent Annotations are both on in Installed plugins.",
 };
 
 export const SIGN_INS_STEP: GuideStep = {
@@ -88,7 +86,6 @@ export const SIGN_INS_STEP: GuideStep = {
     alt: "bb's Browser settings listing Google Chrome (running, quit to import), Chromium with an Import button, and Safari needing Full Disk Access",
   },
   options: [],
-  doneWhen: "the site opens signed in, in a Browser tab in bb.",
 };
 
 export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
@@ -308,8 +305,6 @@ export const AGENT_BROWSER: Guide = {
           },
         },
       ],
-      doneWhen:
-        "the thread shows screenshots of the change and what the agent tried.",
     },
     {
       ...SIGN_INS_STEP,
@@ -341,8 +336,6 @@ export const AGENT_BROWSER: Guide = {
         alt: "A Browser tab in bb with the All filter selected for annotation, and the note: Use our brand blue for the selected filter, like Export CSV",
       },
       options: [],
-      doneWhen:
-        "your note shows up in the prompt box, and your agent gets the page, the element, and its styles.",
     },
   ],
   troubleshooting: BROWSER_TROUBLESHOOTING,

@@ -12,13 +12,7 @@ import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import {
-  CopyToast,
-  DoneWhen,
-  ProductShot,
-  PROMPT_COPIED,
-  useCopy,
-} from "./guide-blocks";
+import { CopyToast, ProductShot, PROMPT_COPIED, useCopy } from "./guide-blocks";
 import type { Guide, GuideFaq, GuidePicker, GuideStep } from "./guide-types";
 import { getGuide } from "./guides";
 import guidesCss from "./guides.css?url";
@@ -219,7 +213,6 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
           <ProductShot src={option.shot.src} alt={option.shot.alt} />
         </div>
       ))}
-      <DoneWhen>{brandProse(step.doneWhen)}</DoneWhen>
     </section>
   );
 }

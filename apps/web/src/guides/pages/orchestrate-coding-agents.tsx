@@ -97,7 +97,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, ending with the task: add per-user rate limiting to the upload endpoint, with a test.",
       },
       options: [],
-      doneWhen: "the agent is working on a new branch in its own worktree.",
     },
     {
       id: "step-2",
@@ -113,7 +112,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       ),
       shot: NESTED_SHOT,
       options: [],
-      doneWhen: "the reviewer's thread shows up under yours in the sidebar.",
     },
     {
       id: "step-3",
@@ -143,8 +141,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
           shot: TALK_SHOT,
         },
       ],
-      doneWhen:
-        "your agent replies with what each review found, what it fixed, and what's left for you.",
     },
     {
       id: "step-4",
@@ -187,8 +183,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
           },
         },
       ],
-      doneWhen:
-        "asking the manager for triage runs its skill and applies your corrections.",
     },
     {
       id: "step-5",
@@ -216,8 +210,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
         alt: "The Weekday issue triage automation in bb: 9AM Mon-Fri in acme-web, posting to an existing thread with the prompt “Run your issue-triage skill on this morning's new issues,” and one successful run",
       },
       options: [],
-      doneWhen:
-        "the test run's report lands in the manager's thread, and the automation shows its next run.",
     },
     {
       id: "step-6",
@@ -247,8 +239,6 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
         alt: "bb's Installed plugins settings filtered to Workflows, with its switch off",
       },
       options: [],
-      doneWhen:
-        "your agent starts the workflow and its run shows in the thread.",
     },
   ],
   troubleshooting: [

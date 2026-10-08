@@ -91,8 +91,6 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
         alt: "The Automations page in bb, listing five automations with their project, schedule, next run, and an on/off switch",
       },
       options: [],
-      doneWhen:
-        "a new message opens with “Create a new bb automation to” filled in.",
     },
     {
       id: "step-2",
@@ -142,7 +140,6 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
           },
         },
       ],
-      doneWhen: "the automation shows up in Automations, paused.",
     },
     {
       id: "step-3",
@@ -167,7 +164,6 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
         alt: "The Morning issue triage automation in bb, with its schedule, prompt, model, an on/off switch, and a Run now button under Runs",
       },
       options: [],
-      doneWhen: "the run has a useful report and the automation is on.",
     },
     {
       id: "step-4",
@@ -187,6 +183,9 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
             For your phone, keep <strong>Mobile notifications</strong> on and
             pair the bb app in <strong>Settings → Mobile</strong>.
           </li>
+          <li>
+            Check that a notification arrives the next time a run finishes.
+          </li>
         </Substeps>
       ),
       shot: {
@@ -194,7 +193,6 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
         alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
       },
       options: [],
-      doneWhen: "a notification arrives on the device you'll use.",
     },
   ],
   troubleshooting: [
