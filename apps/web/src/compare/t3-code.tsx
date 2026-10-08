@@ -20,7 +20,7 @@ import {
   price,
 } from "./compare-content";
 import { CustomizeBuild } from "../landing/landing-visuals";
-import { agentsSection } from "./compare-sections";
+import { agentsSection, type SectionCopy } from "./compare-sections";
 import type { BrandLogo } from "./compare-visuals";
 
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
@@ -36,6 +36,17 @@ const AGENTS_SECTION = agentsSection({
   ),
 });
 
+const PLUGINS_COPY_T3: SectionCopy = {
+  title: "Your changes, without a fork to maintain",
+  body: (
+    <p>
+      Plugins add panels to the sidebar, commands to the bb CLI, tools your
+      agents can call, and new agents. 300+ are already in the marketplace, and
+      bb still updates every week with nothing for you to rebase.
+    </p>
+  ),
+};
+
 export const BB_VS_T3_CODE: Comparison = {
   slug: "t3-code-alternatives",
   title: "T3 Code Alternatives: bb, Change Anything Without Forking",
@@ -47,6 +58,7 @@ export const BB_VS_T3_CODE: Comparison = {
   heroVisual: <CustomizeBuild />,
   tailored: AGENTS_SECTION,
   sections: [],
+  pluginsCopy: PLUGINS_COPY_T3,
   tableNote: null,
   table: [
     {
