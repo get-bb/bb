@@ -427,7 +427,12 @@ function Notice({
       <NoticeRow tone="warning" compact>
         <span className="min-w-0 flex-1 truncate">Changed on disk</span>
         <NoticeAction onClick={onReload}>Reload</NoticeAction>
-        <NoticeAction onClick={onOverwrite}>Overwrite</NoticeAction>
+        <NoticeAction
+          onClick={onOverwrite}
+          title="Replace the saved file with my edits"
+        >
+          Save my version
+        </NoticeAction>
       </NoticeRow>
     );
   }
@@ -485,14 +490,17 @@ function NoticeRow({
 function NoticeAction({
   children,
   onClick,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
       className="cursor-pointer rounded-sm font-medium underline underline-offset-2 hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
     >
       {children}
