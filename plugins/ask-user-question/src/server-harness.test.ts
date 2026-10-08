@@ -258,6 +258,28 @@ describe("asking a question", () => {
     });
   });
 
+  it("keeps a question open for the configured timeout", async () => {
+    const host = createHost();
+    const first = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(30 * 60 * 1000);
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await first;
+
+    await host.harness.setSettings({ questionTimeout: "7 days" });
+    const second = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(
+      7 * 24 * 60 * 60 * 1000,
+    );
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await second;
+  });
+
   it("tells the model to carry on when the user dismisses the question", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });

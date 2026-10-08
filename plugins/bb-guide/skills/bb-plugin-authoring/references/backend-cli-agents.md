@@ -130,7 +130,8 @@ Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
 { signal? })` for sensitive or structured user input. Pair `rendererId` with a
 frontend `pendingInteraction` slot. The promise resolves to
 `{ outcome: "submitted", value }` or `{ outcome: "cancelled", reason }`.
-Payloads and responses are JSON values capped at 64 KiB.
+Payloads and responses are JSON values capped at 64 KiB. `timeoutMs` defaults
+to ten minutes and is capped at seven days.
 
 Two optional fields control the form's timeline row:
 
