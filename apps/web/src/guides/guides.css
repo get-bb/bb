@@ -681,6 +681,12 @@
   color: var(--subtle);
 }
 
+.gd-option {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border-soft);
+}
+
 .gd-h3 {
   margin-top: 28px;
   font-size: 16.5px;
@@ -853,7 +859,9 @@
 }
 
 .gd-shot {
-  margin-top: 22px;
+  width: min(1040px, calc(100vw - 48px));
+  margin: 22px 0 0 50%;
+  transform: translateX(-50%);
 }
 
 .gd-shot-frame {

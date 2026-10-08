@@ -1,23 +1,30 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import type { ReactNode } from "react";
 
+export interface GuideShot {
+  src: string;
+  alt: string;
+}
+
+export interface GuideStepOption {
+  title: string;
+  body: ReactNode;
+  shot: GuideShot;
+}
+
 export interface GuideStep {
   id: string;
   title: string;
   lead: ReactNode;
   body: ReactNode;
+  shot: GuideShot;
+  options: GuideStepOption[];
   doneWhen: ReactNode;
 }
 
 export interface GuideNeed {
   title: string;
   icon: IconSvgElement;
-  body: ReactNode;
-}
-
-export interface GuideSection {
-  id: string;
-  title: string;
   body: ReactNode;
 }
 
@@ -46,10 +53,9 @@ export interface Guide {
   picker: GuidePicker | null;
   handoffNote: string;
   agentPrompt: string;
-  needs: GuideNeed[];
+  needs: [GuideNeed, ...GuideNeed[]];
   steps: GuideStep[];
-  sections: GuideSection[];
-  faqTitle: string;
+  troubleshooting: [GuideFaq, ...GuideFaq[]];
   faq: GuideFaq[];
   closer: { title: string; body: string };
 }

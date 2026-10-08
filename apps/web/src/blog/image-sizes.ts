@@ -49,22 +49,6 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1538,
     height: 890,
   },
-  "/guides/run-an-agent-on-a-schedule/automations-list.png": {
-    width: 1920,
-    height: 1040,
-  },
-  "/guides/run-an-agent-on-a-schedule/new-automation.png": {
-    width: 1520,
-    height: 410,
-  },
-  "/guides/run-an-agent-on-a-schedule/automation-detail.png": {
-    width: 1280,
-    height: 1040,
-  },
-  "/guides/run-an-agent-on-a-schedule/script-runs.png": {
-    width: 1280,
-    height: 1240,
-  },
   "/guides/orchestrate-coding-agents/new-thread.png": {
     width: 1280,
     height: 420,
@@ -74,6 +58,30 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     height: 360,
   },
   "/guides/work-from-anywhere/keep-awake.png": { width: 1280, height: 840 },
+  "/guides/run-an-agent-on-a-schedule/window-list.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/run-an-agent-on-a-schedule/window-compose.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/run-an-agent-on-a-schedule/window-detail.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/run-an-agent-on-a-schedule/window-script.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/run-an-agent-on-a-schedule/window-once.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/run-an-agent-on-a-schedule/window-notify.png": {
+    width: 2048,
+    height: 1280,
+  },
   "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
   "/guides/remote-dev-servers/new-project-machine.png": {
     width: 1024,

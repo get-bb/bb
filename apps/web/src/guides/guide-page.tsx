@@ -12,8 +12,14 @@ import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { CopyToast, DoneWhen, PROMPT_COPIED, useCopy } from "./guide-blocks";
-import type { Guide, GuidePicker, GuideStep } from "./guide-types";
+import {
+  CopyToast,
+  DoneWhen,
+  ProductShot,
+  PROMPT_COPIED,
+  useCopy,
+} from "./guide-blocks";
+import type { Guide, GuideFaq, GuidePicker, GuideStep } from "./guide-types";
 import { getGuide } from "./guides";
 import guidesCss from "./guides.css?url";
 
@@ -39,7 +45,9 @@ export function guideHead(guide: Guide | undefined) {
     scripts: [
       {
         type: "application/ld+json",
-        children: faqJsonLd([{ title: "", items: guide.faq }]),
+        children: faqJsonLd([
+          { title: "", items: [...guide.troubleshooting, ...guide.faq] },
+        ]),
       },
     ],
   };
@@ -118,7 +126,7 @@ function GuidePickerField({
   );
 }
 
-function GuideHero({ guide, firstId }: { guide: Guide; firstId: string }) {
+function GuideHero({ guide }: { guide: Guide }) {
   return (
     <header className="hero cmp-hero gd-hero">
       <h1>{brandProse(guide.title)}</h1>
@@ -135,7 +143,10 @@ function GuideHero({ guide, firstId }: { guide: Guide; firstId: string }) {
           label="Copy for agent"
           className="btn-primary"
         />
-        <a className="btn btn-ghost" href={`#${firstId}`}>
+        <a
+          className="btn btn-ghost"
+          href={guide.steps.length > 0 ? "#before" : "#handoff"}
+        >
           {guide.steps.length > 0 ? "See the steps" : "See the prompt"}
         </a>
       </div>
@@ -200,26 +211,48 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
       </div>
       <p className="gd-lead">{brandProse(step.lead)}</p>
       {brandProse(step.body)}
+      <ProductShot src={step.shot.src} alt={step.shot.alt} />
+      {step.options.map((option) => (
+        <div key={option.title} className="gd-option">
+          <h3 className="gd-h3">{brandProse(option.title)}</h3>
+          {brandProse(option.body)}
+          <ProductShot src={option.shot.src} alt={option.shot.alt} />
+        </div>
+      ))}
       <DoneWhen>{brandProse(step.doneWhen)}</DoneWhen>
     </section>
   );
 }
 
+function FaqList({ items }: { items: GuideFaq[] }) {
+  return (
+    <div className="cmp-faq-list">
+      {items.map((item) => (
+        <details key={item.question} className="cmp-faq-item">
+          <summary>
+            <span>{brandProse(item.question)}</span>
+            <HugeiconsIcon
+              icon={ArrowDown01Icon}
+              className="cmp-faq-chevron"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="cmp-faq-answer">{brandProse(item.answer)}</div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 export function GuidePage({ guide }: { guide: Guide }) {
   useInitAnalytics();
-  const firstId =
-    guide.needs.length > 0
-      ? "before"
-      : guide.steps.length > 0
-        ? guide.steps[0].id
-        : "handoff";
 
   return (
     <CopyToast>
       <div className="wrap cmp-page gd-page">
         <SiteNav current="guides" path={`/guides/${guide.slug}`} />
 
-        <GuideHero guide={guide} firstId={firstId} />
+        <GuideHero guide={guide} />
 
         <section className="gd-plan">
           {guide.steps.length > 0 ? (
@@ -238,54 +271,36 @@ export function GuidePage({ guide }: { guide: Guide }) {
         </section>
 
         <div className="gd-main">
-          {guide.needs.length > 0 ? (
-            <section id="before">
-              <h2 className="gd-h2">Before you start</h2>
-              <div className="gd-needs">
-                {guide.needs.map((need) => (
-                  <div key={need.title} className="gd-need">
-                    <div className="gd-need-title">
-                      <HugeiconsIcon icon={need.icon} className="gd-ic" />
-                      <span>{brandProse(need.title)}</span>
-                    </div>
-                    <p>{brandProse(need.body)}</p>
+          <section id="before">
+            <h2 className="gd-h2">Before you start</h2>
+            <div className="gd-needs">
+              {guide.needs.map((need) => (
+                <div key={need.title} className="gd-need">
+                  <div className="gd-need-title">
+                    <HugeiconsIcon icon={need.icon} className="gd-ic" />
+                    <span>{brandProse(need.title)}</span>
                   </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+                  <p>{brandProse(need.body)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
           {guide.steps.map((step, index) => (
             <StepSection key={step.id} step={step} number={index + 1} />
           ))}
 
-          {guide.sections.map((section) => (
-            <section key={section.id} id={section.id}>
-              <h2 className="gd-h2">{brandProse(section.title)}</h2>
-              {brandProse(section.body)}
-            </section>
-          ))}
-
-          <section id="faq">
-            <h2 className="gd-h2">{guide.faqTitle}</h2>
-            <div className="cmp-faq-list">
-              {guide.faq.map((item) => (
-                <details key={item.question} className="cmp-faq-item">
-                  <summary>
-                    <span>{brandProse(item.question)}</span>
-                    <HugeiconsIcon
-                      icon={ArrowDown01Icon}
-                      className="cmp-faq-chevron"
-                      aria-hidden="true"
-                    />
-                  </summary>
-                  <div className="cmp-faq-answer">
-                    {brandProse(item.answer)}
-                  </div>
-                </details>
-              ))}
-            </div>
+          <section id="troubleshooting">
+            <h2 className="gd-h2">Troubleshooting</h2>
+            <FaqList items={guide.troubleshooting} />
           </section>
+
+          {guide.faq.length > 0 ? (
+            <section id="faq">
+              <h2 className="gd-h2">FAQ</h2>
+              <FaqList items={guide.faq} />
+            </section>
+          ) : null}
         </div>
 
         <section className="closer">
