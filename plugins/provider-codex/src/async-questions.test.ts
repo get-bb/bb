@@ -60,6 +60,9 @@ describe("Codex async questions", () => {
     expect(pending).toMatchObject({
       threadId: THREAD_ID,
       rendererId: CODEX_ASYNC_QUESTION_RENDERER_ID,
+      presentation: {
+        label: { pending: "Asking a question", completed: "Asked a question" },
+      },
       payload: {
         questions: [{ title: "Choose a, b, or c.", options: ["a", "b", "c"] }],
       },
@@ -94,6 +97,9 @@ describe("Codex async questions", () => {
       expect.objectContaining({ afterSeq: "5" }),
     );
     expect(host.harness.pendingInteractions).toHaveLength(0);
+    expect(await pending.describeSubmission?.({ answers: {} })).toEqual({
+      title: "Answered",
+    });
   });
 
   it("does not send anything when the question is dismissed", async () => {

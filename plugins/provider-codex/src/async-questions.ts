@@ -82,9 +82,10 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
       payload: { questions: state.questions },
       timeoutMs: QUESTION_TIMEOUT_MS,
       presentation: {
-        label: { pending: "Asking a question", completed: "Answered" },
+        label: { pending: "Asking a question", completed: "Asked a question" },
         icon: { glyph: "MessageQuestion" },
       },
+      describeSubmission: () => ({ title: "Answered" }),
     });
     if (result.outcome !== "submitted") return;
     const response = asyncQuestionResponseSchema.parse(result.value);
