@@ -186,20 +186,19 @@ export async function readHostSkillFiles(
         ? undefined
         : await orNullIfMissing(fs.readFile(filePath));
     if (bytes === null) continue;
-    if (bytes === undefined || bytes.length > allowedBytes) {
-      skills.push({
-        directoryName,
-        sizeBytes: bytes?.length ?? stat.size,
-        content: null,
-      });
+    const sizeBytes = bytes?.length ?? stat.size;
+    const content =
+      bytes === undefined || sizeBytes > command.maxFileBytes
+        ? null
+        : bytes.toString("utf8");
+    const encodedBytes =
+      content === null ? 0 : Buffer.byteLength(JSON.stringify(content));
+    if (content === null || encodedBytes > remainingBytes) {
+      skills.push({ directoryName, sizeBytes, content: null });
       continue;
     }
-    remainingBytes -= bytes.length;
-    skills.push({
-      directoryName,
-      sizeBytes: bytes.length,
-      content: bytes.toString("utf8"),
-    });
+    remainingBytes -= encodedBytes;
+    skills.push({ directoryName, sizeBytes, content });
   }
   return { skills, truncated: directoryNames.length > command.limit };
 }

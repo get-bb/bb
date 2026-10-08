@@ -860,6 +860,34 @@ describe("readHostSkillFiles", () => {
     ]);
   });
 
+  it("charges the budget by encoded size, not file size", async () => {
+    const skillsRoot = path.join(tempRoot, "encoded-skills");
+    for (const name of ["a", "b", "c"]) {
+      await mkdir(path.join(skillsRoot, name), { recursive: true });
+      await writeFile(
+        path.join(skillsRoot, name, "SKILL.md"),
+        "\u0001".repeat(10),
+        "utf8",
+      );
+    }
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 10,
+      maxTotalBytes: 130,
+      excludeNames: [],
+    });
+
+    expect(result.skills.map((skill) => skill.content !== null)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
   it("reports truncation past the directory limit", async () => {
     const skillsRoot = path.join(tempRoot, "skills");
     await writeSkill(path.join(skillsRoot, "a", "SKILL.md"), "a");
