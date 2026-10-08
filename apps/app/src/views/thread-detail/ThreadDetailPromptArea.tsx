@@ -2288,6 +2288,17 @@ export function ThreadDetailPromptArea({
   const pendingInteractionStack = useMemo(
     () => (
       <>
+        <ThreadPromptContextBanner
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={childThreadsSection}
+          pullRequestSection={null}
+          gitSection={null}
+          gitSectionPending={false}
+          expandedSection={expandedBannerSection}
+          onToggleSection={handleToggleBannerSection}
+        />
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
       </>
@@ -2296,7 +2307,10 @@ export function ThreadDetailPromptArea({
       activeGoalCard,
       activePromptMode,
       activePromptModeCard,
+      childThreadsSection,
+      expandedBannerSection,
       goal,
+      handleToggleBannerSection,
     ],
   );
 

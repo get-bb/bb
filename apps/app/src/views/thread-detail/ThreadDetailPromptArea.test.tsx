@@ -500,7 +500,16 @@ vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
-  ThreadPromptContextBanner: () => null,
+  ThreadPromptContextBanner: ({
+    childThreadsSection,
+  }: {
+    childThreadsSection: { items: readonly unknown[] } | null;
+  }) =>
+    childThreadsSection ? (
+      <div data-testid="child-threads-banner">
+        {childThreadsSection.items.length} child threads
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
@@ -834,6 +843,9 @@ function makePendingInteraction(): PendingInteraction {
 interface RenderPromptAreaOptions {
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   activeWorkflows?: TimelineWorkflowWorkRow[];
+  childThreadsSection?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["childThreadsSection"];
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
@@ -850,6 +862,7 @@ let testQueryClient: QueryClient;
 function buildPromptAreaElement({
   activePromptMode = null,
   activeWorkflows = [],
+  childThreadsSection = null,
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
@@ -867,7 +880,7 @@ function buildPromptAreaElement({
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
         canUseGitUi={false}
-        childThreadsSection={null}
+        childThreadsSection={childThreadsSection}
         composerFocusRequestNonce={0}
         contextBannerMergeBase={null}
         canRestoreEnvironment={false}
@@ -1896,6 +1909,29 @@ describe("ThreadDetailPromptArea", () => {
     expect(
       screen.queryByRole("button", { name: "Collapse 2 workflows" }),
     ).toBeNull();
+  });
+
+  it("keeps the child threads banner while the parent has its own pending interaction", () => {
+    renderPromptArea({
+      childThreadsSection: {
+        items: [
+          {
+            id: "thr_child",
+            title: "Install workspace tools",
+            href: "/threads/thr_child",
+            hasPendingInteraction: true,
+          },
+        ],
+        pendingInteractions: [],
+        waitingQuestion: null,
+      },
+      pendingInteractions: [makePendingInteraction()],
+    });
+
+    expect(screen.getByTestId("child-threads-banner").textContent).toBe(
+      "1 child threads",
+    );
+    expect(screen.getByText("Pending interaction")).toBeTruthy();
   });
 
   it("keeps Goal above a pending interaction", () => {
