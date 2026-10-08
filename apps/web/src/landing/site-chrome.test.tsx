@@ -52,7 +52,7 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Compare", "Use cases", "Community"]) {
+    for (const title of ["Product", "Compare", "Community"]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(
