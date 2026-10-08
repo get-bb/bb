@@ -1,5 +1,5 @@
 import type { LandingPage } from "./landing-template";
-import { textOnly } from "./landing-template";
+import { textOnly } from "../compare/compare-page";
 import {
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,

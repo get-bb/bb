@@ -29,10 +29,9 @@ import {
   agentsSection,
   ANYWHERE_COPY,
   anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
   PRICING_COPY,
   pricingSection,
+  type SectionCopy,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
@@ -88,6 +87,7 @@ export type Comparison = {
   heroVisual: ReactElement;
   tailored: CompareHighlight;
   sections: CompareHighlight[];
+  pluginsCopy?: SectionCopy;
   tableNote: string | null;
   table: CompareGroup[];
   faqTitle: string;
@@ -112,11 +112,7 @@ const BB_VS_SUPERSET: Comparison = {
     yearlyPerSeatMonthly: 20,
     priceNote: "Superset Pro at $20 per user a month.",
   }),
-  sections: [
-    agentsSection(AGENTS_COPY),
-    anywhereSection(ANYWHERE_COPY),
-    pluginsSection(PLUGINS_COPY),
-  ],
+  sections: [agentsSection(AGENTS_COPY), anywhereSection(ANYWHERE_COPY)],
   tableNote:
     "marks features that need a paid Superset plan, from $20 per user / month.",
   table: [

@@ -9,8 +9,9 @@ import {
   Highlight,
   PageHero,
   templatePageHead,
+  withPluginsSlot,
 } from "../compare/compare-page";
-import { PLUGINS_COPY, pluginsSection } from "../compare/compare-sections";
+import { PLUGINS_COPY } from "../compare/compare-sections";
 import type { CompareFaqGroup, CompareHighlight } from "../compare/comparisons";
 
 export type LandingPage = {
@@ -27,10 +28,6 @@ export type LandingPage = {
 
 const CLOSER_BODY =
   "Free and open source, on your own machines. Bring the agents you already use.";
-
-export function textOnly(section: CompareHighlight): CompareHighlight {
-  return { ...section, visual: null, wide: true };
-}
 
 export function landingPagePath(page: LandingPage): string {
   return `/${page.slug}`;
@@ -65,9 +62,11 @@ export function LandingTemplate({ page }: { page: LandingPage }) {
         visual={page.heroVisual}
       />
 
-      {[...page.sections, pluginsSection(PLUGINS_COPY)].map((highlight) => (
-        <Highlight key={highlight.title} highlight={highlight} />
-      ))}
+      {withPluginsSlot(page.heroVisual, page.sections, PLUGINS_COPY).map(
+        (highlight) => (
+          <Highlight key={highlight.title} highlight={highlight} />
+        ),
+      )}
 
       <FaqSection title="Common questions" faq={page.faq} />
 

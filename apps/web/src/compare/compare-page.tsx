@@ -16,6 +16,7 @@ import {
 import { useInitAnalytics } from "../landing/analytics";
 import {
   Band,
+  CustomizeBuild,
   InstallOptions,
   useScrollReveal,
 } from "../landing/landing-visuals";
@@ -29,6 +30,11 @@ import type {
   Mark,
 } from "./comparisons";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
+import {
+  PLUGINS_COPY,
+  pluginsSection,
+  type SectionCopy,
+} from "./compare-sections";
 import figmaLogo from "../assets/company-logos/figma.svg";
 import mapboxLogo from "../assets/company-logos/mapbox.svg";
 import metaLogo from "../assets/company-logos/meta.svg";
@@ -274,6 +280,30 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
   );
 }
 
+export function textOnly(section: CompareHighlight): CompareHighlight {
+  return { ...section, visual: null, wide: true };
+}
+
+function showsPlugins(node: ReactNode): boolean {
+  return isValidElement(node) && node.type === CustomizeBuild;
+}
+
+export function withPluginsSlot(
+  heroVisual: ReactElement,
+  sections: CompareHighlight[],
+  pluginsCopy: SectionCopy,
+): CompareHighlight[] {
+  const plugins = pluginsSection(pluginsCopy);
+  if (showsPlugins(heroVisual)) {
+    return [textOnly(plugins), ...sections];
+  }
+  const [lead, ...rest] = sections;
+  if (!lead || showsPlugins(lead.visual)) {
+    return sections;
+  }
+  return [lead, plugins, ...rest];
+}
+
 export function Highlight({ highlight }: { highlight: CompareHighlight }) {
   if (highlight.wide) {
     return (
@@ -398,7 +428,11 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         visual={comparison.heroVisual}
       />
 
-      {[comparison.tailored, ...comparison.sections].map((highlight) => (
+      {withPluginsSlot(
+        comparison.heroVisual,
+        [comparison.tailored, ...comparison.sections],
+        comparison.pluginsCopy ?? PLUGINS_COPY,
+      ).map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
       ))}
 

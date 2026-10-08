@@ -1,12 +1,7 @@
 import vibeKanbanIcon from "../assets/competitors/vibe-kanban.png";
 import type { CompareHighlight, Comparison } from "./comparisons";
 import { CLOSER, FAQ_AGENTS, FAQ_REVIEW, cell, price } from "./compare-content";
-import {
-  AGENTS_COPY,
-  agentsSection,
-  PLUGINS_COPY,
-  pluginsSection,
-} from "./compare-sections";
+import { AGENTS_COPY, agentsSection } from "./compare-sections";
 import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
 
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
@@ -33,7 +28,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   sub: "Hand any card to Claude Code, Codex, or another agent, and it works in its own Git worktree.",
   heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,
-  sections: [agentsSection(AGENTS_COPY), pluginsSection(PLUGINS_COPY)],
+  sections: [agentsSection(AGENTS_COPY)],
   tableNote: null,
   table: [
     {
