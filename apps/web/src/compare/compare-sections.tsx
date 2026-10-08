@@ -74,10 +74,10 @@ export const LIMITS_COPY: SectionCopy = {
   body: (
     <>
       <p>
-        When an agent hits a usage limit, bb schedules the work to resume right
-        after the reset, so it keeps going without you.
+        When an agent hits a usage limit, bb picks the work back up as soon as
+        the limit lifts, so it keeps going without you.
       </p>
-      <p>Watch every agent’s usage and reset times in one panel.</p>
+      <p>See at a glance which agent has room left for the next big task.</p>
     </>
   ),
 };
