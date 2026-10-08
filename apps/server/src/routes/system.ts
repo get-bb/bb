@@ -338,6 +338,11 @@ export function registerSystemRoutes(
     return context.json(compatibleGeneralSettings());
   });
 
+  post(routes.recordTelemetryEvent, (context, payload) => {
+    deps.telemetry.capture(payload);
+    return context.json({ ok: true });
+  });
+
   put(routes.keyboardSettings, (context, payload) => {
     setAppKeybindingOverrides(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);

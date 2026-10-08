@@ -383,6 +383,7 @@ type ExpectedSystemKey =
   | "config"
   | "executionOptions"
   | "installCliSkills"
+  | "recordTelemetryEvent"
   | "reloadConfig"
   | "setAiServiceSelection"
   | "testAiService"

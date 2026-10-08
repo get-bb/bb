@@ -7,13 +7,14 @@ interface RootComposeEmptyWelcomeProps {
   onCompose: (prompt?: string) => void;
   onAddProject: () => void;
   addProjectDisabled?: boolean;
+  setup?: ReactNode;
   footer?: ReactNode;
 }
 
 const IMPORT_PROJECTS_PROMPT =
   "Search my home directory (max depth 3) for git repositories touched in the last 30 days and import only those projects into bb using the cli";
 
-const LEARN_PROMPT =
+export const LEARN_PROMPT =
   "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads and projects.";
 
 interface WelcomeActionProps {
@@ -55,6 +56,7 @@ export function RootComposeEmptyWelcome({
   onCompose,
   onAddProject,
   addProjectDisabled,
+  setup,
   footer,
 }: RootComposeEmptyWelcomeProps) {
   const reducedMotion = usePrefersReducedMotion();
@@ -131,33 +133,35 @@ export function RootComposeEmptyWelcome({
           className="size-full object-contain dark:invert"
         />
       </div>
-      <div className="flex w-full max-w-[360px] flex-col gap-1">
-        <WelcomeAction
-          icon="MessageSquarePlus"
-          title="New thread"
-          description="Start a new conversation"
-          onClick={() => onCompose()}
-        />
-        <WelcomeAction
-          icon="FolderGit"
-          title="Automatically import my projects"
-          description="Find repos touched in the last 30 days"
-          onClick={() => onCompose(IMPORT_PROJECTS_PROMPT)}
-        />
-        <WelcomeAction
-          icon="FolderPlus"
-          title="New project"
-          description="Create one from a local folder"
-          onClick={onAddProject}
-          disabled={addProjectDisabled}
-        />
-        <WelcomeAction
-          icon="Explore"
-          title="Learn what bb can do"
-          description="Get a tour of its capabilities"
-          onClick={() => onCompose(LEARN_PROMPT)}
-        />
-      </div>
+      {setup ?? (
+        <div className="flex w-full max-w-[360px] flex-col gap-1">
+          <WelcomeAction
+            icon="MessageSquarePlus"
+            title="New thread"
+            description="Start a new conversation"
+            onClick={() => onCompose()}
+          />
+          <WelcomeAction
+            icon="FolderGit"
+            title="Automatically import my projects"
+            description="Find repos touched in the last 30 days"
+            onClick={() => onCompose(IMPORT_PROJECTS_PROMPT)}
+          />
+          <WelcomeAction
+            icon="FolderPlus"
+            title="New project"
+            description="Create one from a local folder"
+            onClick={onAddProject}
+            disabled={addProjectDisabled}
+          />
+          <WelcomeAction
+            icon="Explore"
+            title="Learn what bb can do"
+            description="Get a tour of its capabilities"
+            onClick={() => onCompose(LEARN_PROMPT)}
+          />
+        </div>
+      )}
       {footer}
     </div>
   );

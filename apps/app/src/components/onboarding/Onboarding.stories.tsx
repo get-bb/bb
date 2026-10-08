@@ -492,8 +492,10 @@ function DevicesFrame({
 function checklistItems(done: {
   agent: boolean;
   projects: boolean;
+  thread: boolean;
   plugins: boolean;
   devices: boolean;
+  notifications: boolean;
 }): SetupChecklistItem[] {
   return [
     {
@@ -503,6 +505,7 @@ function checklistItems(done: {
         ? "Ready on this computer"
         : "Needed before a thread can start",
       done: done.agent,
+      optional: false,
       actionLabel: "Set up",
     },
     {
@@ -512,23 +515,48 @@ function checklistItems(done: {
         ? "3 added"
         : "Import the repos you've used recently",
       done: done.projects,
-      actionLabel: "Review",
+      optional: false,
+      actionLabel: "Add",
+    },
+    {
+      id: "thread",
+      title: "Start your first thread",
+      detail: done.thread
+        ? "Your threads live in the sidebar"
+        : "Ask your agent what bb can do",
+      done: done.thread,
+      optional: false,
+      actionLabel: "Start",
     },
     {
       id: "plugins",
-      title: "Pick some plugins",
+      title: "Pick plugins",
       detail: done.plugins
         ? "2 turned on"
-        : "Browser automation, workflows, and more",
+        : "Browser automation, workflows, and more. Off until you want them.",
       done: done.plugins,
+      optional: true,
       actionLabel: "Browse",
     },
     {
       id: "devices",
       title: "Use bb from anywhere",
-      detail: done.devices ? CONNECT_URL : "Phone, browser, other machines",
+      detail: done.devices
+        ? CONNECT_URL
+        : "Check on agents from your phone, with a push when one needs you",
       done: done.devices,
+      optional: true,
       actionLabel: "Set up",
+    },
+    {
+      id: "notifications",
+      title: "Turn on notifications",
+      detail: done.notifications
+        ? "On for this device"
+        : "Know when an agent finishes or needs your answer",
+      done: done.notifications,
+      optional: true,
+      actionLabel: "Turn on",
     },
   ];
 }
@@ -552,13 +580,23 @@ function HomeFrame({
         draggable={false}
         className="h-16 w-20 select-none object-contain dark:invert"
       />
-      {agentMissing ? <NoAgentNotice onSetUp={() => onOpen("agent")} /> : null}
       {items === null ? (
-        <p className="text-sm text-muted-foreground">
-          The usual bb home screen goes here.
-        </p>
+        <>
+          {agentMissing ? (
+            <NoAgentNotice onSetUp={() => onOpen("agent")} />
+          ) : null}
+          <p className="text-sm text-muted-foreground">
+            The usual bb home screen goes here.
+          </p>
+        </>
       ) : (
-        <SetupChecklist items={items} onOpen={onOpen} onDismiss={onDismiss} />
+        <SetupChecklist
+          items={items}
+          onAction={(id) => {
+            if (id !== "thread" && id !== "notifications") onOpen(id);
+          }}
+          onDismiss={onDismiss}
+        />
       )}
     </div>
   );
@@ -650,8 +688,10 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
     const items = checklistItems({
       agent: anyReady(states),
       projects: imported,
+      thread: false,
       plugins: enabledPluginIds.size > 0,
       devices: false,
+      notifications: false,
     });
     return (
       <StoryWindow>
@@ -1045,16 +1085,18 @@ export function HomeAfterSkipping() {
     <Gallery>
       <Captioned
         label="Empty home after Skip setup"
-        hint="Shown under the welcome actions while no project exists; with projects, the home composer shows a one-line version. Dismissing it also stops the missing-agent notice."
+        hint="Replaces the welcome actions while no project exists; with projects, the home composer shows a one-line version. Dismissing it brings back the usual home."
       >
         <StoryWindow>
           <HomeFrame
             agentMissing
             items={checklistItems({
               agent: false,
-              projects: true,
+              projects: false,
+              thread: false,
               plugins: false,
               devices: false,
+              notifications: false,
             })}
           />
         </StoryWindow>

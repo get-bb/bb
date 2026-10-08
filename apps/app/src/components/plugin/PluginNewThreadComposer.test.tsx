@@ -248,10 +248,11 @@ vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
   SetupChecklistBanner: () => null,
   SetupChecklistCard: () => null,
   hasSetupChecklistBanner: () => false,
+  hasSetupChecklistItems: () => false,
   useSetupChecklist: () => ({
     items: null,
     agentMissing: false,
-    open: () => {},
+    act: () => {},
     dismiss: () => {},
   }),
 }));

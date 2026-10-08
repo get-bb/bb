@@ -62,6 +62,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           <OnboardingFlow
             key={reopenStep ?? "first-run"}
             initialStep={reopenStep ?? "agent"}
+            entry={firstRun ? "first_run" : "checklist"}
             onClose={() => {
               if (firstRun) {
                 setFirstRunClosed(true);

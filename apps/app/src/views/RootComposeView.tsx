@@ -32,6 +32,7 @@ import {
   SetupChecklistBanner,
   SetupChecklistCard,
   hasSetupChecklistBanner,
+  hasSetupChecklistItems,
   useSetupChecklist,
 } from "@/components/onboarding/SetupChecklistHost";
 import {
@@ -125,7 +126,10 @@ import {
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
-import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
+import {
+  LEARN_PROMPT,
+  RootComposeEmptyWelcome,
+} from "./RootComposeEmptyWelcome";
 import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
@@ -1443,7 +1447,9 @@ function RootComposeSurface({
     },
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
-  const setupChecklist = useSetupChecklist();
+  const setupChecklist = useSetupChecklist({
+    onStartThread: () => handleStartComposing(LEARN_PROMPT),
+  });
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return hasSetupChecklistBanner(setupChecklist) ? (
@@ -1593,7 +1599,16 @@ function RootComposeSurface({
                       !quickCreateProject.isAvailable ||
                       quickCreateProject.isCreating
                     }
-                    footer={<SetupChecklistCard checklist={setupChecklist} />}
+                    setup={
+                      hasSetupChecklistItems(setupChecklist) ? (
+                        <SetupChecklistCard checklist={setupChecklist} />
+                      ) : undefined
+                    }
+                    footer={
+                      hasSetupChecklistItems(setupChecklist) ? undefined : (
+                        <SetupChecklistCard checklist={setupChecklist} />
+                      )
+                    }
                   />
                 ) : (
                   promptBox
