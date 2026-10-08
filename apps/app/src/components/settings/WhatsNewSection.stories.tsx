@@ -154,7 +154,7 @@ export function States() {
       </StoryRow>
       <StoryRow
         label="Release without metadata"
-        hint="No published headline: the version line leads."
+        hint="No published headline or visual: the version line leads."
       >
         <Frame>
           <WhatsNewView

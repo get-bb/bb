@@ -8,6 +8,7 @@ export { RELEASE_META } from "../../../../../changelog-metadata";
 export type {
   ReleaseHero,
   ReleaseMeta,
+  ReleaseVisualId,
 } from "../../../../../changelog-metadata";
 export type { ChangelogBlock } from "../../../../../changelog-parser";
 export type { ChangelogEntry } from "../../../../../changelog-parser";

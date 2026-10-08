@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import { notifyWhatsNewSeenVersionChanged } from "@/components/settings/whats-new-seen";
 import { AppSidebar } from "./AppSidebar";
+import { SidebarWhatsNewCard } from "./SidebarWhatsNewCard";
 
 export default { title: "sidebar/What's new" };
 
@@ -56,5 +57,29 @@ export function AboveTheFooter() {
         </SidebarProvider>
       )}
     </SettingsStoryFixtures>
+  );
+}
+
+const CARD_VERSIONS = ["0.45.0", "0.42.0", "0.37.0"] as const;
+
+export function CardWithReleaseVisual() {
+  return (
+    <div className="flex flex-col">
+      {(["light", "dark"] as const).map((theme) => (
+        <div
+          key={theme}
+          className={`${theme} flex flex-wrap gap-4 bg-sidebar p-6 text-sidebar-foreground`}
+        >
+          {CARD_VERSIONS.map((version) => (
+            <div key={version} className="w-72">
+              <SidebarWhatsNewCard
+                installedVersion={version}
+                seenVersion="0.0.0"
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }

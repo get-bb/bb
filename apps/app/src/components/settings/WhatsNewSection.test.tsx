@@ -66,6 +66,7 @@ vi.mock("./changelog-preview", async (importOriginal) => {
         date: "October 2, 2026",
         headline: "Five headline",
         hero: { src: "https://example.test/five.png", alt: "Five in action" },
+        visual: "native-windows",
       },
       "0.4.0": { date: "September 20, 2026", headline: "Four headline" },
     },
@@ -131,6 +132,11 @@ describe("WhatsNewSection", () => {
     ).toBe("https://example.test/five.png");
     expect(section?.textContent).toContain("Five is here.");
     expect(section?.textContent).toContain("switch instantly.");
+    expect(
+      section
+        ?.querySelector('[data-release-visual="native-windows"]')
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
 
     const fixes = screen.getByText("Fix a five-specific crash.");
     expect(fixes.closest("[hidden]")).not.toBeNull();
@@ -200,6 +206,7 @@ describe("WhatsNewSection", () => {
       screen.getByRole("heading", { level: 3, name: "Four headline" }),
     ).toBeDefined();
     expect(document.querySelector("[data-whats-new-hero]")).toBeNull();
+    expect(document.querySelector("[data-release-visual]")).toBeNull();
     expect(screen.queryByText("Five is here.")).toBeNull();
   });
 

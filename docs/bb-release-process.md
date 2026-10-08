@@ -117,7 +117,8 @@ If any input is unclear, ask before bumping the version.
    `/changelog` page and the optional in-app Updates preview consume these
    shared files, so both changes must land before the release is published —
    redeploy `@bb/web` after the release commit lands so the site shows the new
-   version.
+   version. Draw the release's What's new visual with the
+   [release-visual skill](../.bb/skills/release-visual/SKILL.md).
 
 5. Make any release documentation updates requested by the user.
 

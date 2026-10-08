@@ -54,7 +54,11 @@ vi.mock("@/components/settings/changelog-preview", async (importOriginal) => {
     ...actual,
     CHANGELOG_ENTRIES: parseChangelog(fixtures.changelog),
     RELEASE_META: {
-      "0.5.0": { date: "October 2, 2026", headline: "Five headline" },
+      "0.5.0": {
+        date: "October 2, 2026",
+        headline: "Five headline",
+        visual: "native-windows",
+      },
       "0.4.0": { date: "September 20, 2026", headline: "Four headline" },
     },
   };
@@ -137,6 +141,11 @@ describe("SidebarWhatsNew", () => {
     const card = await screen.findByTestId("sidebar-whats-new");
     expect(card.textContent).toContain("What’s new · v0.5.0");
     expect(card.textContent).toContain("Five headline");
+    expect(
+      card
+        .querySelector('[data-release-visual="native-windows"]')
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
     expect(
       screen.getByRole("button", { name: "See what's new in bb 0.5.0" }),
     ).toBeDefined();

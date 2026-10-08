@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ReleaseVisual } from "@/components/release-art/ReleaseVisual";
 import {
   SettingsBadge,
   SettingsSection,
@@ -383,14 +384,19 @@ export function WhatsNewView({
             <ReleaseRow entry={available} badge="Update available" />
           </div>
         )}
-        <p className="text-xs leading-snug text-subtle-foreground">
-          {metaLine}
-        </p>
-        {meta === null ? null : (
-          <h3 className="mt-1.5 text-xl font-bold leading-tight tracking-tight text-balance text-foreground">
-            {meta.headline}
-          </h3>
-        )}
+        <div className="flex min-w-0 items-center gap-4">
+          <ReleaseVisual visual={meta?.visual} />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs leading-snug text-subtle-foreground">
+              {metaLine}
+            </p>
+            {meta === null ? null : (
+              <h3 className="mt-1.5 text-xl font-bold leading-tight tracking-tight text-balance text-foreground">
+                {meta.headline}
+              </h3>
+            )}
+          </div>
+        </div>
         {meta?.hero === undefined ? null : (
           <ReleaseHeroImage hero={meta.hero} />
         )}

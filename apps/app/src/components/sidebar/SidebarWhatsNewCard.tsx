@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
+import { ReleaseVisual } from "@/components/release-art/ReleaseVisual";
 import {
   CHANGELOG_ENTRIES,
   RELEASE_META,
@@ -38,7 +39,8 @@ export function SidebarWhatsNewCard({
   if (!isWhatsNewVersionUnseen(seenVersion, version)) {
     return null;
   }
-  const headline = RELEASE_META[version]?.headline ?? `bb ${version}`;
+  const meta = RELEASE_META[version];
+  const headline = meta?.headline ?? `bb ${version}`;
   const open = () => {
     markWhatsNewVersionSeen(version);
     onNavigate?.();
@@ -60,9 +62,12 @@ export function SidebarWhatsNewCard({
       >
         What&rsquo;s new · v{version}
       </p>
-      <p className="mt-1 line-clamp-2 text-sm font-medium leading-snug text-foreground">
-        {headline}
-      </p>
+      <div className="mt-1.5 flex min-w-0 items-start gap-2.5">
+        <ReleaseVisual visual={meta?.visual} className="size-10" />
+        <p className="line-clamp-3 min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">
+          {headline}
+        </p>
+      </div>
       <button
         type="button"
         data-whats-new-open
