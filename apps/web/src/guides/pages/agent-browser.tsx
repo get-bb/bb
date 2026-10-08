@@ -4,12 +4,20 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide, GuideFaq, GuideStep } from "../guide-types";
 
-const AGENT_PROMPT = `Use a real browser to check my app, click through the change, and show me screenshots.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "App URL", hint: "e.g. http://localhost:3000" },
+    { label: "Flow to check", hint: "the change to click through" },
+    { label: "Screen sizes", hint: "e.g. desktop and phone" },
+    { label: "Needs a sign-in", hint: "yes or no" },
+  ],
+  `Use a real browser to check my app, click through the change, and show me screenshots.
 Guide: https://getbb.app/guides/agent-browser
 
-You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check after each step. Stop if a check fails and tell me what failed. Ask for the app URL and the flow to check if they aren't clear from this thread.
+You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
 
 1. Set up browser access. Read bb guide browser and bb browser-automation --help. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation if it's missing, or enable it with bb plugin enable browser-automation if it's disabled. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Find this thread's machine with bb status --json and bb machine list.
    Check: both plugins are running and the chosen browser machine is connected.
@@ -25,7 +33,8 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
    Check: the flow behaves as requested, the layout works at both sizes, and any console errors are explained. Report what you actually exercised and show the screenshots; don't call a screenshot alone a passing interaction test.
 
 4. Leave the app ready for feedback. Close the automation session with bb browser-automation close and keep the preview server running. In desktop bb, use bb browser create with the selected host, instance, generation, current thread, URL, and --reveal to leave a Browser tab open for annotations. If no desktop instance is connected, explain that element annotations require the desktop app and give me the app URL. Tell me to choose Annotate elements, click the element, write the change, and choose Add to prompt. When I send an annotation, use its element context to make the change and verify it in a new browser session.
-   Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.`;
+   Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.`,
+);
 
 export const PLUGINS_STEP: GuideStep = {
   id: "plugins",
@@ -241,7 +250,7 @@ export const AGENT_BROWSER: Guide = {
   concept: <BrowserConcept scene="code" />,
   picker: null,
   handoffNote:
-    "Paste this into a thread with your app's address and what to check. Your agent opens a browser, tries the change, and shows you screenshots.",
+    "Fill in your app's address and what to check, or leave them and your agent asks. It opens a browser, tries the change, and shows you screenshots.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

@@ -4,6 +4,7 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { SpawnTimeline } from "../../compare/compare-visuals";
 import { PromptBlock, Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 import {
   NESTED_SHOT,
@@ -13,10 +14,15 @@ import {
   TEAM_TROUBLESHOOTING,
 } from "./agent-teams";
 
-const AGENT_PROMPT = `Build the task I describe, have a child thread running a different agent review it, talk it through with the reviewer, and stop after two review rounds.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "Task", hint: "what to build or fix" },
+    { label: "Reviewer", hint: "a different agent from you, e.g. Codex" },
+  ],
+  `Build the task I describe, have a child thread running a different agent review it, talk it through with the reviewer, and stop after two review rounds.
 Guide: https://getbb.app/guides/orchestrate-coding-agents
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. If I haven't described the task, ask me first.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
 
 1. Pick the reviewer. If I named an agent, use it. Otherwise use Codex if you're Claude Code, and Claude Code if you're anything else. Run \`bb provider list\` for the provider IDs.
    Check: the provider ID you picked is in the list.
@@ -39,7 +45,8 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 
 6. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`;
+Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`,
+);
 
 export const ORCHESTRATE_CODING_AGENTS: Guide = {
   slug: "orchestrate-coding-agents",
@@ -49,7 +56,7 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
   concept: <SpawnTimeline />,
   picker: null,
   handoffNote:
-    "Paste it into a thread with your task. Your agent builds it, brings in a second agent to review, and stops after two review rounds.",
+    "Fill in your task at the top, or leave it and your agent asks. It builds it, brings in a second agent to review, and stops after two rounds.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

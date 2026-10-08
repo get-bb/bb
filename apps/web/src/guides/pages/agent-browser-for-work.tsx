@@ -4,6 +4,7 @@ import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 import {
   BROWSER_FAQ,
@@ -12,10 +13,17 @@ import {
   SIGN_INS_STEP,
 } from "./agent-browser";
 
-const AGENT_PROMPT = `Use a real browser to do the web task I describe, with my sign-ins, and show me what you found.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "Task", hint: "what you want found, compared, or filled in" },
+    { label: "Sites", hint: "where to look" },
+    { label: "Sign-ins", hint: "sites that need your account, if any" },
+    { label: "Bring back", hint: "e.g. a table with a source link per row" },
+  ],
+  `Use a real browser to do the web task I describe, with my sign-ins, and show me what you found.
 Guide: https://getbb.app/guides/agent-browser-for-work
 
-You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check after each step. Stop if a check fails and tell me what failed. If I haven't described the task, or it's unclear which sites and accounts to use, ask me first.
+You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
 
 1. Set up browser access. Read bb guide browser and bb browser-automation --help. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation if it's missing, or enable it with bb plugin enable browser-automation if it's disabled. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations.
    Check: both plugins are running.
@@ -31,7 +39,8 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
    Check: you have the information or result I asked for, with the page each fact came from.
 
 4. Report and leave the tab for feedback. Stop controlling the tab with bb browser-automation stop so it stays open on the most relevant page, and tell me I can choose Annotate elements to point at anything to change or dig into.
-   Check: reply with the result as a table where it fits, a source link for each fact, screenshots of anything I should look at, and what you couldn't do.`;
+   Check: reply with the result as a table where it fits, a source link for each fact, screenshots of anything I should look at, and what you couldn't do.`,
+);
 
 export const AGENT_BROWSER_FOR_WORK: Guide = {
   slug: "agent-browser-for-work",
@@ -41,7 +50,7 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
   concept: <BrowserConcept scene="work" />,
   picker: null,
   handoffNote:
-    "Paste this into a thread with the task and the sites to use. Your agent works in a browser and reports what it found, with sources.",
+    "Fill in the task and sites at the top, or leave them and your agent asks. It works in a browser and reports back with sources.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

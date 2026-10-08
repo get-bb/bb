@@ -3,6 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 
 const GUIDE_URL = "https://getbb.app/guides/switch-to-bb";
@@ -174,7 +175,16 @@ Check: bb automation list --project <project id> shows each one, paused. Show me
 `
     : "";
   const folders = tool ? `${tool.name}'s folders` : "my old tool's folders";
-  return `Move every project and all my unfinished work from ${from} into bb.
+  return withIntake(
+    [
+      {
+        label: "Work to bring over",
+        hint: "default: every repo and all unfinished work",
+      },
+      { label: "Skip", hint: "repos or worktrees to leave out" },
+      { label: "Anything else", hint: "e.g. a repo your agents never touched" },
+    ],
+    `Move every project and all my unfinished work from ${from} into bb.
 Guide: ${url}
 
 You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or edit anything in ${folders}, and never push.
@@ -222,7 +232,8 @@ Check: I've confirmed each file, or there was nothing to bring over.
 ${automationStep}Reply with a table of each row and its thread ID${automations ? ", and a list of the automations you created" : ""}.
 
 Continue prompt:
-${CONTINUE_PROMPT}`;
+${CONTINUE_PROMPT}`,
+  );
 }
 
 export function switchToBb(variant: string | null): Guide {
@@ -246,7 +257,7 @@ export function switchToBb(variant: string | null): Guide {
         ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
       ],
     },
-    handoffNote: `Paste it into a new bb thread. It finds your repos and unfinished work, and checks with you before it starts any threads. ${keepsWorking}`,
+    handoffNote: `Paste it into a new bb thread. Fill in the top lines, or leave them and your agent asks. It checks with you before it starts any threads. ${keepsWorking}`,
     agentPrompt: switchPrompt(tool),
     needs: [
       {

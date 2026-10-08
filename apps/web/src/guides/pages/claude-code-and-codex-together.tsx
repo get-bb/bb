@@ -4,6 +4,7 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { AgentSplit } from "../../compare/compare-visuals";
 import { Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 import {
   NESTED_SHOT,
@@ -13,10 +14,12 @@ import {
   TEAM_TROUBLESHOOTING,
 } from "./agent-teams";
 
-const AGENT_PROMPT = `Build the task I describe, have a Codex child thread review it, talk it through with the reviewer, and stop after two review rounds.
+const AGENT_PROMPT = withIntake(
+  [{ label: "Task", hint: "what to build or fix" }],
+  `Build the task I describe, have a Codex child thread review it, talk it through with the reviewer, and stop after two review rounds.
 Guide: https://getbb.app/guides/claude-code-and-codex-together
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. If I haven't described the task, ask me first.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
 
 1. Build the task on this thread's branch and commit your work.
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
@@ -36,7 +39,8 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 
 5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it. Leave the Codex thread open so I can read it; don't archive it.
 
-Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`;
+Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`,
+);
 
 export const CLAUDE_CODE_AND_CODEX: Guide = {
   slug: "claude-code-and-codex-together",
@@ -46,7 +50,7 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
   concept: <AgentSplit />,
   picker: null,
   handoffNote:
-    "Paste it into a Claude Code thread with your task. It builds it, has Codex review, and stops after two review rounds.",
+    "Fill in your task at the top, or leave it and Claude Code asks. It builds it, has Codex review, and stops after two rounds.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

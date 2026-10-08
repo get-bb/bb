@@ -4,9 +4,16 @@ import UserAccountIcon from "@hugeicons/core-free-icons/UserAccountIcon";
 
 import { AnywhereConcept } from "../concepts";
 import { Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 
-const AGENT_PROMPT = `Get this bb ready for me to use from my phone, and keep this computer awake while I'm away.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "Phone", hint: "iPhone or Android" },
+    { label: "Notifications", hint: "yes or no" },
+    { label: "Keep this computer awake", hint: "yes or no" },
+  ],
+  `Get this bb ready for me to use from my phone, and keep this computer awake while I'm away.
 Guide: https://getbb.app/guides/work-from-anywhere
 
 You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
@@ -20,7 +27,8 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 3. Keep this computer awake: run \`bb keep-awake enable\`, then \`bb keep-awake status\`.
    Check: it shows Keep Awake enabled. If the command isn't found, run \`bb plugin enable keep-awake\` and try again.
 
-Reply with my getbb.app address and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep. Don't change any other settings.`;
+Reply with my getbb.app address and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep. Don't change any other settings.`,
+);
 
 export const WORK_FROM_ANYWHERE: Guide = {
   slug: "work-from-anywhere",
@@ -30,7 +38,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
   concept: <AnywhereConcept />,
   picker: null,
   handoffNote:
-    "Paste it into any bb thread on this computer. Your agent sets it up and sends you your address.",
+    "Fill in the lines at the top, or leave them and your agent asks. It sets everything up and sends you your address.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

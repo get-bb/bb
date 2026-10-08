@@ -4,12 +4,26 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { ScheduleConcept } from "../concepts";
 import { Substeps } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 
-const AGENT_PROMPT = `Set up a bb automation for this project and verify a real run.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "Job", hint: "what the agent or script should do" },
+    { label: "When", hint: "e.g. weekdays at 9am, with your timezone" },
+    {
+      label: "Results",
+      hint: "one thread for reports, or a new worktree each run for code changes",
+    },
+    {
+      label: "Agent or script",
+      hint: "an agent with a prompt, or a script that only wakes an agent when there is work",
+    },
+  ],
+  `Set up a bb automation for this project and verify a real run.
 Guide: https://getbb.app/guides/run-an-agent-on-a-schedule
 
-Do every step yourself, with a Check after each step. If a check fails, stop and report the command, error, and next action. Ask for the job, schedule, timezone, and destination thread if I haven't supplied them. Suggest morning issue triage on weekdays at 9am, with all results in a dedicated thread. Don't guess my timezone or create extra example jobs.
+Do every step yourself, with a Check after each step. If a check fails, stop and report the command, error, and next action. Suggest morning issue triage on weekdays at 9am, with all results in a dedicated thread. Don't guess my timezone or create extra example jobs.
 
 1. Read bb guide automations and bb automation create --help. Run bb plugin list; install Automations with bb plugin install automations if absent, or bb plugin enable automations if disabled. Read bb status --json, bb machine list, and bb provider models <provider> --json. Resolve this project's real ID and a signed-in provider/model. Confirm the bb server and execution machine will stay awake at the scheduled time.
    Check: Automations is enabled, the execution machine is connected, and the chosen model is listed.
@@ -26,17 +40,18 @@ Do every step yourself, with a Check after each step. If a check fails, stop and
 5. If I want notifications, install or enable Push notifications, inspect bb push-notifications status, and enable the requested channel with bb plugin config push-notifications set <webEnabled|desktopEnabled|mobileEnabled> true. Run bb push-notifications test web or desktop for that client. If browser permission or mobile pairing needs my interaction, stop and give me the exact Settings step.
    Check: I confirm the test arrived on my chosen device; a successful broadcast alone doesn't prove delivery.
 
-Reply with the automation ID, schedule and timezone, next run, result thread, and verified output. Include the run, pause, and resume commands. Don't promise an alert for every missed or disabled automation.`;
+Reply with the automation ID, schedule and timezone, next run, result thread, and verified output. Include the run, pause, and resume commands. Don't promise an alert for every missed or disabled automation.`,
+);
 
 export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
   slug: "run-an-agent-on-a-schedule",
   title: "Run an agent on a schedule",
   description:
-    "Wake up to triaged issues, test results, or a dependency update. Schedule an agent once or on repeat, or run a script first and only wake the agent when there's work.",
+    "Wake up to triaged issues, test results, or a dependency update. Run an agent once or on repeat, or have a script check first and wake it only when there's work.",
   concept: <ScheduleConcept />,
   picker: null,
   handoffNote:
-    "Paste this into a bb thread. Your agent sets up the job, runs it once, and checks the result.",
+    "Fill in the job at the top, or leave it and your agent asks. It sets up the automation, runs it once, and checks the result.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

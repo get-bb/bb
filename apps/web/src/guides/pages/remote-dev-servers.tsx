@@ -9,12 +9,19 @@ import {
   PromptBlock,
   Substeps,
 } from "../guide-blocks";
+import { withIntake } from "../prompt-intake";
 import type { Guide } from "../guide-types";
 
-const AGENT_PROMPT = `Run a dev server for each branch I name on a remote bb machine, and share each one at its own getbb.app link.
+const AGENT_PROMPT = withIntake(
+  [
+    { label: "Branches", hint: "the branches to preview" },
+    { label: "Machine", hint: "the remote machine to run them on" },
+    { label: "Dev server command", hint: "e.g. pnpm dev" },
+  ],
+  `Run a dev server for each branch I name on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. If I haven't named the branches or the machine, ask me first.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
 
 1. Find or add the machine: run \`bb machine list\`. If the machine I named isn't there, run \`bb machine create --provider manual\` and run the one-time command it prints on that machine over SSH.
    Check: \`bb machine list\` shows the machine as connected. If you can't reach it over SSH, stop and send me the command to run there.
@@ -36,7 +43,8 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
    bb connect expose <port> --host <machine>
    Check: \`bb connect shares --host <machine>\` lists every port.
 
-Reply with a table of branch, port, and link. Don't open firewall ports, send localhost links, or share ports I didn't ask for.`;
+Reply with a table of branch, port, and link. Don't open firewall ports, send localhost links, or share ports I didn't ask for.`,
+);
 
 const SETUP_SCRIPT = `#!/usr/bin/env bash
 set -euo pipefail
@@ -52,7 +60,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
   concept: <RemoteServersConcept />,
   picker: null,
   handoffNote:
-    "Paste it into a bb thread on your project. Your agent runs every step and stops if it needs you.",
+    "Fill in your branches and machine at the top, or leave them and your agent asks. It runs every step and stops if it needs you.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
