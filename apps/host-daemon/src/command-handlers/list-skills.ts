@@ -29,7 +29,6 @@ import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 type SkillRootResolution = DeclaredScanRootResolution;
 
 const SHARED_SKILLS_PROVIDER_ID = "bb-shared";
-const SKILL_FILE_READ_CONCURRENCY = 16;
 
 type SkillFile =
   HostDaemonOnlineRpcResult<"host.read_skill_files">["skills"][number];
@@ -129,59 +128,15 @@ export async function listHostSkills(
   return { skills };
 }
 
-interface SkillFileCandidate {
-  directoryName: string;
-  filePath: string;
-  sizeBytes: number;
-}
-
-async function statSkillFileCandidate(
-  rootPath: string,
-  directoryName: string,
-): Promise<SkillFileCandidate | null> {
-  const filePath = path.join(rootPath, directoryName, SKILL_FILE_NAME);
+async function orNullIfMissing<T>(operation: Promise<T>): Promise<T | null> {
   try {
-    const stat = await fs.lstat(filePath);
-    return stat.isFile()
-      ? { directoryName, filePath, sizeBytes: stat.size }
-      : null;
+    return await operation;
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return null;
     }
     throw error;
   }
-}
-
-async function readSkillFileCandidate(
-  candidate: SkillFileCandidate,
-  withinBudget: boolean,
-): Promise<SkillFile | null> {
-  const unread = {
-    directoryName: candidate.directoryName,
-    sizeBytes: candidate.sizeBytes,
-    content: null,
-  };
-  if (!withinBudget) {
-    return unread;
-  }
-  let bytes: Buffer;
-  try {
-    bytes = await fs.readFile(candidate.filePath);
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT")) {
-      return null;
-    }
-    throw error;
-  }
-  if (bytes.length > candidate.sizeBytes) {
-    return { ...unread, sizeBytes: bytes.length };
-  }
-  return {
-    directoryName: candidate.directoryName,
-    sizeBytes: bytes.length,
-    content: bytes.toString("utf8"),
-  };
 }
 
 export async function readHostSkillFiles(
@@ -193,17 +148,11 @@ export async function readHostSkillFiles(
   if (!path.isAbsolute(command.rootPath)) {
     throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
   }
-  let rootPath: string;
-  try {
-    rootPath = await resolveNonSymlinkDirectoryPath({
-      description: "Path",
-      path: command.path,
-    });
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT")) {
-      return { skills: [], truncated: false };
-    }
-    throw error;
+  const rootPath = await orNullIfMissing(
+    resolveNonSymlinkDirectoryPath({ description: "Path", path: command.path }),
+  );
+  if (rootPath === null) {
+    return { skills: [], truncated: false };
   }
   const realReadRootPath = await fs.realpath(command.rootPath);
   if (!isPathWithinDirectory(realReadRootPath, rootPath)) {
@@ -217,32 +166,31 @@ export async function readHostSkillFiles(
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
   const skills: SkillFile[] = [];
-  const limited = directoryNames.slice(0, command.limit);
   let remainingBytes = command.maxTotalBytes;
-  for (
-    let offset = 0;
-    offset < limited.length;
-    offset += SKILL_FILE_READ_CONCURRENCY
-  ) {
-    const candidates = await Promise.all(
-      limited
-        .slice(offset, offset + SKILL_FILE_READ_CONCURRENCY)
-        .map((directoryName) =>
-          statSkillFileCandidate(rootPath, directoryName),
-        ),
-    );
-    const reads: Array<Promise<SkillFile | null>> = [];
-    for (const candidate of candidates) {
-      if (candidate === null) continue;
-      const fits =
-        candidate.sizeBytes <= command.maxFileBytes &&
-        candidate.sizeBytes <= remainingBytes;
-      if (fits) remainingBytes -= candidate.sizeBytes;
-      reads.push(readSkillFileCandidate(candidate, fits));
+  for (const directoryName of directoryNames.slice(0, command.limit)) {
+    const filePath = path.join(rootPath, directoryName, SKILL_FILE_NAME);
+    const stat = await orNullIfMissing(fs.lstat(filePath));
+    if (!stat?.isFile()) continue;
+    const allowedBytes = Math.min(command.maxFileBytes, remainingBytes);
+    const bytes =
+      stat.size > allowedBytes
+        ? undefined
+        : await orNullIfMissing(fs.readFile(filePath));
+    if (bytes === null) continue;
+    if (bytes === undefined || bytes.length > allowedBytes) {
+      skills.push({
+        directoryName,
+        sizeBytes: bytes?.length ?? stat.size,
+        content: null,
+      });
+      continue;
     }
-    for (const skill of await Promise.all(reads)) {
-      if (skill !== null) skills.push(skill);
-    }
+    remainingBytes -= bytes.length;
+    skills.push({
+      directoryName,
+      sizeBytes: bytes.length,
+      content: bytes.toString("utf8"),
+    });
   }
   return { skills, truncated: directoryNames.length > command.limit };
 }
