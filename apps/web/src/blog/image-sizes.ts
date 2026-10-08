@@ -33,25 +33,9 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
-  "/guides/claude-code-and-codex-together/subthread-sidebar.png": {
-    width: 670,
-    height: 216,
-  },
-  "/guides/claude-code-and-codex-together/split-view.png": {
-    width: 2880,
-    height: 1800,
-  },
-  "/guides/claude-code-and-codex-together/talk-it-through.png": {
-    width: 2251,
-    height: 820,
-  },
   "/guides/work-from-anywhere/bb-connect-settings.png": {
     width: 1538,
     height: 890,
-  },
-  "/guides/orchestrate-coding-agents/new-thread.png": {
-    width: 1280,
-    height: 420,
   },
   "/guides/remote-dev-servers/new-thread-worktree.png": {
     width: 1280,
@@ -90,6 +74,42 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
   "/guides/remote-dev-servers/start-terminal.png": {
     width: 1120,
     height: 686,
+  },
+  "/guides/orchestrate-coding-agents/window-start.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/orchestrate-coding-agents/window-manager.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/orchestrate-coding-agents/window-drag.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/orchestrate-coding-agents/window-automation.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/orchestrate-coding-agents/window-workflows.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/claude-code-and-codex-together/window-start.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/claude-code-and-codex-together/window-nested.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/claude-code-and-codex-together/window-split.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/claude-code-and-codex-together/window-talk.png": {
+    width: 2048,
+    height: 1280,
   },
 };
 

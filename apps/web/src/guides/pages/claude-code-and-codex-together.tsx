@@ -3,15 +3,14 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { AgentSplit } from "../../compare/compare-visuals";
-import { AgentTeamConcept, NewThreadConcept } from "../concepts";
-import { ProductShot, Substeps } from "../guide-blocks";
+import { Substeps } from "../guide-blocks";
 import type { Guide } from "../guide-types";
 import {
-  CHILD_THREAD_SHOT,
-  TEAM_COST,
+  NESTED_SHOT,
+  SPLIT_SHOT,
+  TALK_SHOT,
+  TEAM_FAQ,
   TEAM_TROUBLESHOOTING,
-  WHEN_IT_PAYS,
-  talkStep,
 } from "./agent-teams";
 
 const AGENT_PROMPT = `Build the task I describe, have a Codex child thread review it, talk it through with the reviewer, and stop after two review rounds.
@@ -35,7 +34,7 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
    bb thread tell <codex-thread-id> "I fixed the serious issues in the latest commit. Review the branch again, read-only."
    Check: \`bb thread wait\` and \`bb thread output\` return a second review.
 
-5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it.
+5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it. Leave the Codex thread open so I can read it; don't archive it.
 
 Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`;
 
@@ -43,11 +42,11 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
   slug: "claude-code-and-codex-together",
   title: "Use Claude Code and Codex together",
   description:
-    "Have Claude Code be the parent and Codex review. They start each other, message each other, and report back, in threads you can watch side by side.",
+    "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
   concept: <AgentSplit />,
   picker: null,
   handoffNote:
-    "Paste it into a Claude Code thread with your task. It runs every step and stops after two review rounds.",
+    "Paste it into a Claude Code thread with your task. It builds it, has Codex review, and stops after two review rounds.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
@@ -58,11 +57,7 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
     {
       title: "Claude Code and Codex",
       icon: AiMagicIcon,
-      body: (
-        <>
-          Signed in once on your computer. bb runs the agents you already use.
-        </>
-      ),
+      body: "Each signed in once on your computer. bb runs the CLIs you already use.",
     },
     {
       title: "A Git repo",
@@ -73,94 +68,93 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
   steps: [
     {
       id: "step-1",
-      title: "Start a Claude Code thread",
-      lead: "This thread is the parent. Start it with the agent you want in charge.",
+      title: "Start a Claude Code thread with your task",
+      lead: "Claude Code builds it and brings in Codex. You only talk to one of them unless you want to.",
       body: (
-        <>
-          <NewThreadConcept />
-          <Substeps>
-            <li>
-              Start a new thread. Pick <strong>Claude Code</strong> and{" "}
-              <strong>Worktree</strong>.
-            </li>
-            <li>
-              Paste the prompt from <strong>Copy for agent</strong>, and
-              describe your task below it.
-            </li>
-          </Substeps>
-        </>
+        <Substeps>
+          <li>
+            Choose <strong>New thread</strong>. Pick a Claude model, like{" "}
+            <strong>Opus 5.5</strong>, and choose <strong>Worktree</strong>.
+          </li>
+          <li>
+            Paste the prompt from <strong>Copy for agent</strong>, and describe
+            your task below it.
+          </li>
+        </Substeps>
       ),
+      shot: {
+        src: "/guides/claude-code-and-codex-together/window-start.png",
+        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, ending with the task: add per-user rate limiting to the upload endpoint, with a test.",
+      },
+      options: [],
       doneWhen: "Claude Code is working on a new branch in its own worktree.",
     },
     {
       id: "step-2",
-      title: "Claude Code starts a Codex child thread",
-      lead: "The parent thread starts Codex as a child thread, with its own prompt, in the same worktree.",
-      body: CHILD_THREAD_SHOT,
+      title: "Claude Code brings in Codex to review",
+      lead: "A second model reads the change with fresh eyes and catches what the first one missed.",
+      body: (
+        <p>
+          Once its work is committed, Claude Code starts Codex in a thread of
+          its own, on the same branch, and nests it under its thread in the
+          sidebar. Codex reviews read-only and lists each issue as serious or
+          minor.
+        </p>
+      ),
+      shot: NESTED_SHOT,
+      options: [],
       doneWhen: "the Codex thread shows up under the Claude Code thread.",
     },
     {
       id: "step-3",
       title: "Watch them side by side",
-      lead: "Open the child thread next to its parent and follow both at once.",
+      lead: "Claude Code hears back as soon as Codex finishes, fixes what's serious, and asks for one more pass.",
       body: (
-        <>
-          <p>
-            Choose <strong>Open in split</strong> from the child thread's menu,
-            or drag it into the window. You can split the window into up to 8
-            threads, and each one keeps its right panel, with its Diff,
-            Terminal, and previews.
-          </p>
-          <ProductShot
-            src="/guides/claude-code-and-codex-together/split-view.png"
-            alt="bb with the Claude Code thread and its Codex child thread open side by side in a split"
-          />
-        </>
+        <Substeps>
+          <li>
+            In the sidebar, open the Codex thread's <strong>⋯</strong> menu and
+            choose <strong>Open in split</strong>.
+          </li>
+          <li>Type in either thread to step in yourself.</li>
+        </Substeps>
       ),
+      shot: SPLIT_SHOT,
+      options: [],
       doneWhen: "both threads are open side by side.",
     },
-    talkStep(
-      "step-4",
-      "Claude Code replies with what it built, what each review found, and what's left for you.",
-    ),
-  ],
-  sections: [
     {
-      id: "when-it-pays",
-      title: WHEN_IT_PAYS.title,
+      id: "step-4",
+      title: "Ask Codex a question through Claude Code",
+      lead: "When you want a second opinion on a finding, have Claude Code ask. It waits for Codex's answer and tells you what it said.",
       body: (
-        <>
-          <AgentTeamConcept />
-          {WHEN_IT_PAYS.body}
-          <p>
-            Any agent can be the parent, and any agent can join: Claude Code,
-            Codex, Cursor, OpenCode, Pi, and more. Ask for a Cursor thread to
-            write the release notes, or a second Claude Code thread to try
-            another approach. Each one shows up in your sidebar, under the
-            thread that started it. To keep a manager that runs every morning,
-            or to fan out across a whole codebase, see{" "}
-            <a href="/guides/orchestrate-coding-agents">
-              Orchestrate your coding agents
-            </a>
-            .
-          </p>
-        </>
+        <p>
+          Ask in the Claude Code thread, like “Ask the reviewer whether the
+          memory growth is worth fixing before this merges.”
+        </p>
       ),
+      shot: TALK_SHOT,
+      options: [],
+      doneWhen:
+        "Claude Code replies with what it built, what each review found, and what's left for you.",
     },
   ],
-  faqTitle: "Troubleshooting FAQ",
+  troubleshooting: TEAM_TROUBLESHOOTING,
   faq: [
-    ...TEAM_TROUBLESHOOTING,
+    ...TEAM_FAQ,
     {
-      question: "Can Codex be the parent and Claude Code review?",
+      question: "Can Codex build and Claude Code review?",
       answer: (
         <p>
-          Yes. Any thread can be the parent. Start a Codex thread and ask it to
-          have Claude Code review.
+          Yes. Start a Codex thread instead and ask it to have Claude Code
+          review. To keep a manager that runs every morning, or to fan out
+          across a whole codebase, see{" "}
+          <a href="/guides/orchestrate-coding-agents">
+            Orchestrate your coding agents
+          </a>
+          .
         </p>
       ),
     },
-    TEAM_COST,
   ],
   closer: {
     title: "Get your agents working together",
