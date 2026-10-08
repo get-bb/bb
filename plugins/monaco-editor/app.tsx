@@ -455,7 +455,7 @@ function Notice({
             onClick={onReload}
             title="Discard your edits and load the latest saved file"
           >
-            Discard my edits
+            Keep disk version
           </NoticeAction>
           <NoticeAction
             onClick={onOverwrite}
