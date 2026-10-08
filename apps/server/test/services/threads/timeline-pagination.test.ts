@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   TimelineRow,
   TimelineTurnRow,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
 import { paginateTimelineRows } from "../../../src/services/threads/timeline-pagination.js";
+import { timelineRowsFitByteBudget } from "../../../src/services/threads/timeline-content-pagination.js";
 
 function userRow(args: {
   id: string;
@@ -65,6 +66,77 @@ function assistantRow(
 }
 
 describe("paginateTimelineRows", () => {
+  it.each(["plain", "Zażółć 😀", '"\\\n\t', "\ud800"])(
+    "accounts exactly for nested JSON bytes containing %j",
+    (text) => {
+      const nested: TimelineTurnRow = {
+        id: "turn",
+        kind: "turn",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        sourceSeqStart: 1,
+        sourceSeqEnd: 3,
+        startedAt: 1,
+        createdAt: 3,
+        completedAt: 3,
+        status: "completed",
+        summaryCount: 2,
+        children: [
+          { ...assistantRow(2), text },
+          { ...assistantRow(3), text },
+        ],
+      };
+      const rows = [nested, assistantRow(4)];
+      const exactBytes = Buffer.byteLength(JSON.stringify(rows));
+      expect(timelineRowsFitByteBudget(rows, exactBytes)).toBe(true);
+      expect(timelineRowsFitByteBudget(rows, exactBytes - 1)).toBe(false);
+      expect(timelineRowsFitByteBudget(rows, 0)).toBe(false);
+    },
+  );
+  it("rejects an oversized omitted subtree before serializing the whole update", () => {
+    const older: TimelineTurnRow = {
+      id: "oversized-older-turn",
+      kind: "turn",
+      threadId: "thread-1",
+      turnId: "older-turn",
+      sourceSeqStart: 1,
+      sourceSeqEnd: 30,
+      startedAt: 1,
+      createdAt: 30,
+      completedAt: null,
+      status: "pending",
+      summaryCount: 100,
+      children: Array.from({ length: 100 }, (_, index) => ({
+        ...assistantRow(index + 2),
+        sourceSeqEnd: 30,
+        text: "large child output".repeat(100),
+      })),
+    };
+    const latest = userRow({ id: "latest", seq: 20, text: "Latest" });
+    const stringify = JSON.stringify;
+    const spy = vi.spyOn(JSON, "stringify").mockImplementation((value) => {
+      if (Array.isArray(value) && value.some((row) => row.id === older.id)) {
+        throw new Error("Serialized the entire oversized history subtree");
+      }
+      return stringify(value);
+    });
+    try {
+      const page = paginateTimelineRows({
+        knownHasOlderSegments: true,
+        maxLeaves: 100,
+        maxBytes: 1_000,
+        ownedSequenceStart: 20,
+        ownedSequenceEnd: 31,
+        page: { kind: "latest", segmentLimit: 1 },
+        rows: [older, latest],
+      });
+      expect(page.rows).toEqual([latest]);
+      expect(page.olderRowUpdates).toBeUndefined();
+      expect(page.olderRowsSourceSeqEnd).toBe(30);
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it("returns each row identity once when projection repeats a row", () => {
     const user = userRow({ id: "user", seq: 1, text: "Request" });
     const assistant = assistantRow(2);

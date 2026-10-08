@@ -26,6 +26,39 @@ function withChildren(row: TimelineRow, rows: TimelineRow[]): TimelineRow {
   return row;
 }
 
+export function timelineRowsFitByteBudget(
+  rows: readonly TimelineRow[],
+  maxBytes: number,
+): boolean {
+  let remainingBytes = maxBytes;
+  const consume = (items: readonly TimelineRow[]): boolean => {
+    remainingBytes -= 2;
+    if (remainingBytes < 0) return false;
+    for (let index = 0; index < items.length; index++) {
+      const row = items[index]!;
+      const nested = children(row);
+      const shell = nested === null ? row : withChildren(row, []);
+      if (index > 0) remainingBytes -= 1;
+      if (
+        Object.values(shell).some(
+          (value) =>
+            typeof value === "string" &&
+            Buffer.byteLength(value) > remainingBytes,
+        )
+      ) {
+        return false;
+      }
+      remainingBytes -=
+        Buffer.byteLength(JSON.stringify(shell)) - (nested === null ? 0 : 2);
+      if (remainingBytes < 0 || (nested !== null && !consume(nested))) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return consume(rows);
+}
+
 export function paginateTimelineContents(
   rows: readonly TimelineRow[],
   before: number | undefined,

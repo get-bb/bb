@@ -1,4 +1,7 @@
-import { paginateTimelineContents } from "./timeline-content-pagination.js";
+import {
+  paginateTimelineContents,
+  timelineRowsFitByteBudget,
+} from "./timeline-content-pagination.js";
 import type { TimelineContentCursor } from "./timeline-snapshot.js";
 import type {
   TimelinePaginationCursor,
@@ -172,10 +175,9 @@ export function paginateTimelineRows(
     const updates = changed.map((row) =>
       timelineRowChangesFrom(row, windowStart),
     );
-    const reported =
-      Buffer.byteLength(JSON.stringify(updates)) > remainingBytes
-        ? []
-        : changed;
+    const reported = timelineRowsFitByteBudget(updates, remainingBytes)
+      ? changed
+      : [];
     return {
       olderRowsSourceSeqEnd: omitted
         .filter((row) => !reported.includes(row))
