@@ -12,7 +12,12 @@ thirteen test shards that cover the remaining suites; see
 
 `Select CI checks` runs before provisioning test runners. Main pushes and manual
 runs retain the complete cross-platform matrix. PRs use the pinned Turbo query
-against the event's base SHA and the checked-out merge commit. The planner in
+against the checked-out merge commit and its first parent, after verifying that
+its second parent matches the PR event's head SHA. GitHub can refresh the merge
+ref after the event was queued; comparing that ref with the older event base
+would incorrectly include intervening main changes. Missing or mismatched merge
+history falls back to the event base. Dependency validation and fork selection
+use the same comparison base. The planner in
 `scripts/plan-ci.mjs` narrows the canonical matrices in `scripts/ci-test-shards.json`
 to affected tests, including dependents and explicit task inputs. Build and
 lint/typecheck run separately for the selected packages.
@@ -43,7 +48,7 @@ inside the planning job's ten-minute budget.
 ## Fork checks
 
 On pull requests, the fork checker compares the checked-out merge commit with
-the event's base SHA. When every changed path belongs to a listed forkable
+the comparison base resolved by the planning job. When every changed path belongs to a listed forkable
 plugin, only those plugins run. Renames include both old and new paths. Any
 shared, unknown, or unlisted-plugin change runs the complete list. Missing
 history also runs the complete list. Main and manual runs always check all
@@ -85,8 +90,8 @@ restores Turbo outputs for foundation checks, smokes, and test shards, capped at
 256 MB per job to bound transfer and storage costs. The Windows test shards
 also drop every entry their own Turbo run summary does not name before saving
 (`prune-turbo-cache.mjs --keep-run-summaries`). Windows installs retain
-`--ignore-scripts`; foundation checks reuse Windows-only cached results. macOS smoke jobs
-still omit Turbo caching.
+`--ignore-scripts`; foundation checks reuse Windows-only cached results. macOS smoke jobs retain at most 256 MB of Turbo outputs, limited to hashes
+referenced by the current run summaries.
 
 PR runs cancel superseded work. Main concurrency groups include the commit SHA,
 so different main commits can run concurrently and each successful job saves its
@@ -388,9 +393,19 @@ not become dozens of incidents. Same-commit failed-job recoveries are reported
 separately from reruns that remain red. Neither a recovery nor a failed workflow
 alone establishes a test flake. Cache transfer time is not a cache hit rate.
 
-The API collector includes every job attempt, paginates jobs, and rejects a
-truncated run inventory instead of publishing misleading statistics. Compare
-several daily artifacts, separating changes in selected work from runtime gains.
+The API collector includes every job attempt and paginates jobs. Transient read
+failures, including timeouts, disconnects, rate limits with retry hints, and
+retryable HTTP errors, get at most three attempts with bounded backoff. Permanent
+errors and mutations are not retried. Every inventory page and completed batch
+of six runs checkpoints the evidence and rendered report. Incomplete collections
+are prominently marked, exclude partially fetched runs from timings and recovery
+counts, and fail the reporting step while still uploading diagnostics. The report
+splits latency by trigger and measures dependent-job start delay from planning
+completion; this includes Actions scheduling and runner provisioning.
+
+Compare several daily artifacts, separating changes in selected work from runtime
+gains. Cache restore duration still does not establish task cache-hit rates; inspect
+Turbo summaries or logs for those.
 
 ## Avoiding repeated setup
 
@@ -419,3 +434,55 @@ The boot smoke waits for the host daemon to connect after the server and plugins
 are ready; these are independent startup milestones. It also clears its shutdown
 timeout when the process exits, avoiding a 15-second timer that previously kept
 the smoke process alive after cleanup.
+
+## October 8 measured follow-up
+
+The PR selection fix addresses an observed stale-base comparison in
+[run 37763307104](https://github.com/get-bb/bb/actions/runs/37763307104): checkout
+merged onto `5cd546507ed9cf7c721fb9c36cdd026ff336c82d`, while the event supplied
+`32f63ea825a241149972c277dc226d754ab90850`. The regression fixture advances main
+with an unrelated root configuration change, creates the refreshed merge, and
+checks that only the PR's app checks remain selected. Unknown paths and uncertain
+history retain conservative coverage.
+
+[Runner experiment 37808851050](https://github.com/get-bb/bb/actions/runs/37808851050)
+compared independent npm consumer installs in the tarball smoke. On Windows,
+sequential consumer checks took 86.5 seconds for the complete smoke versus 53.9
+seconds when the npx entrypoint and SDK consumer ran concurrently. Both jobs
+reused 54 of 56 Turbo tasks; the outer smoke steps took 110 and 80 seconds.
+The installs use separate directories. Both settle before temporary files are
+removed, including on failure. macOS measured 24.7 seconds sequential versus
+26.6 seconds concurrent, so it retains sequential consumer checks. These are
+paired measurements, not a promised workflow-wide saving.
+
+The same experiment restored an 81 MB macOS Turbo archive bounded to 256 MB,
+reused 54 of 56 tasks, and finished its outer smoke step in 44 seconds versus
+68 seconds without the archive. macOS package and Node compatibility jobs now
+use that cap and retain only the current run's referenced hashes. Package and
+compatibility smoke installs omit the mobile workspace, while retaining desktop
+and native dependencies. Full cross-platform smokes remain enabled.
+
+[Cold app experiment 37808270869](https://github.com/get-bb/bb/actions/runs/37808270869)
+ran the complete Linux app suite with four and eight shards. Summed job runtime
+was 496 versus 668 seconds, but the slowest cold test step increased from 81 to
+112 seconds with four shards. The workflow retains eight to protect app-only PR
+latency and preserve cache reuse between PRs and main.
+
+Narrower Windows installs were also tested against cold suites. Selecting only
+the tested packages missed app CSS needed by plugin generation. Adding the app
+prerequisites restored host/plugin suites, but build and other-package suites
+still required CLI and server generator dependencies outside their declared
+closures. The passing host/plugin candidates did not demonstrate faster installs
+in the paired run. These speculative install filters are not shipped; the
+existing scoped app/server installs and broader remaining installs are retained.
+Resolving the PR comparison base avoids paying these setup costs for unrelated
+main changes without dropping coverage for changes actually in the PR.
+
+The parent-notification tests wait for their persisted result after advancing the
+batch timer. A controlled one-millisecond delay at the existing workspace RPC
+responder made five prior assertions fail; all seven tests pass with the wait.
+Settings dropdown tests drain deferred unmount cleanup before jsdom teardown.
+The storage-retention wide-tree fixture retains twenty directories and two
+hundred files, but creates and accounts for independent directories concurrently
+instead of performing every filesystem operation serially. No timeout or
+assertion was relaxed.

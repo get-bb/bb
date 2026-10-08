@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 export function cacheFamily(key) {
   const pnpm =
     /^(node-cache-(?:Linux|macOS|Windows)-(?:x64|arm64)-pnpm)-[a-f0-9]{64}$/u.exec(
@@ -48,18 +50,51 @@ export function actionsApi() {
     throw new Error("GITHUB_REPOSITORY and GITHUB_TOKEN are required");
   const root = `${process.env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${repository}`;
   return async (path, method = "GET") => {
-    const response = await fetch(`${root}/${path}`, {
-      method,
-      signal: AbortSignal.timeout(10_000),
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${token}`,
-        "x-github-api-version": "2022-11-28",
-      },
-    });
-    if (!response.ok)
-      throw new Error(`Actions API ${method} ${path}: HTTP ${response.status}`);
-    return response.status === 204 ? null : response.json();
+    for (let attempt = 0; ; attempt++) {
+      let response;
+      try {
+        response = await fetch(`${root}/${path}`, {
+          method,
+          signal: AbortSignal.timeout(10_000),
+          headers: {
+            accept: "application/vnd.github+json",
+            authorization: `Bearer ${token}`,
+            "x-github-api-version": "2022-11-28",
+          },
+        });
+        if (response.ok)
+          return response.status === 204 ? null : await response.json();
+      } catch (error) {
+        if (
+          method !== "GET" ||
+          attempt >= 2 ||
+          !(
+            error instanceof TypeError ||
+            error?.name === "TimeoutError" ||
+            error?.name === "AbortError"
+          )
+        )
+          throw error;
+        await delay(1_000 * 2 ** attempt);
+        continue;
+      }
+      if (response.ok) return response.status === 204 ? null : response.json();
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const retryable =
+        [408, 429, 500, 502, 503, 504].includes(response.status) ||
+        (response.status === 403 && response.headers.has("retry-after"));
+      await response.body?.cancel();
+      if (method !== "GET" || attempt >= 2 || !retryable)
+        throw new Error(
+          `Actions API ${method} ${path}: HTTP ${response.status}`,
+        );
+      await delay(
+        Math.min(
+          30_000,
+          Math.max(1_000 * 2 ** attempt, retryAfter * 1_000 || 0),
+        ),
+      );
+    }
   };
 }
 

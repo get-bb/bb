@@ -258,3 +258,65 @@ it.each(["", "missing-ref"])(
     ).toBe("true");
   },
 );
+
+it("compares a refreshed PR merge against its actual base without treating unrelated main changes as PR work", () => {
+  const f = fixture();
+  f.plan("apps/app/src/index.ts");
+  const head = f.git("rev-parse", "HEAD");
+  f.git("branch", "feature");
+  f.git("checkout", "-b", "updated-main", f.base);
+  f.put("unrelated-root-config.json", "{}\n");
+  f.git("add", ".");
+  f.git("commit", "-m", "advance main after the PR event");
+  const currentBase = f.git("rev-parse", "HEAD");
+  f.git("merge", "--no-ff", "feature", "-m", "refreshed merge");
+  const resolveBase = (eventBase, prHead) =>
+    execFileSync(
+      process.execPath,
+      [join(root, "scripts/ci-comparison-base.mjs"), eventBase, prHead],
+      { cwd: f.cwd, encoding: "utf8" },
+    ).trim();
+  expect(resolveBase(f.base, head)).toBe(currentBase);
+  expect(resolveBase(f.base, "0".repeat(40))).toBe(f.base);
+  expect(resolveBase(f.base, "")).toBe(f.base);
+  const plan = (base) => {
+    f.put(
+      "affected.json",
+      execFileSync(
+        process.execPath,
+        [
+          join(root, "node_modules/turbo/bin/turbo"),
+          "query",
+          "affected",
+          "--base",
+          base,
+          "--head",
+          "HEAD",
+        ],
+        { cwd: f.cwd, encoding: "utf8" },
+      ),
+    );
+    return JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          join(root, "scripts/plan-ci.mjs"),
+          "--base",
+          base,
+          "--affected",
+          "affected.json",
+        ],
+        { cwd: f.cwd, encoding: "utf8" },
+      ),
+    );
+  };
+  expect(plan(f.base).packaging).toBe(true);
+  const selected = plan(resolveBase(f.base, head));
+  expect(selected.packaging).toBe(false);
+  expect(selected["windows-tests"].include).toEqual([]);
+  expect(
+    selected.tests.include.every(
+      (entry) => entry.filter === "--filter=@bb/app",
+    ),
+  ).toBe(true);
+});
