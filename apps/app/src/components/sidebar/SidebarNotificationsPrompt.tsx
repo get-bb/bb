@@ -1,6 +1,4 @@
-import { useEffect } from "react";
-import { useAtom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -14,16 +12,31 @@ import {
   requestNotificationPermission,
   useNotificationPermission,
 } from "@/hooks/useNotificationPermission";
-import { createJsonLocalStorage } from "@/lib/browser-storage";
+import { withLocalStorage } from "@/lib/browser-storage";
 
 type PromptState = "shown" | "answered";
 
-const promptStateAtom = atomWithStorage<PromptState | null>(
-  "bb.sidebar.notificationPrompt",
-  null,
-  createJsonLocalStorage<PromptState | null>(),
-  { getOnInit: true },
-);
+const PROMPT_STATE_STORAGE_KEY = "bb.sidebar.notificationPrompt";
+
+function readPromptState(): PromptState | null {
+  const stored = withLocalStorage(
+    (storage) => storage.getItem(PROMPT_STATE_STORAGE_KEY),
+    null,
+  );
+  return stored === "shown" || stored === "answered" ? stored : null;
+}
+
+function usePromptState() {
+  const [promptState, setState] = useState(readPromptState);
+  const setPromptState = useCallback((next: PromptState) => {
+    withLocalStorage(
+      (storage) => storage.setItem(PROMPT_STATE_STORAGE_KEY, next),
+      undefined,
+    );
+    setState(next);
+  }, []);
+  return [promptState, setPromptState] as const;
+}
 
 const PROMPT_LABEL = "Get notified when an agent needs you";
 
@@ -34,7 +47,7 @@ const CHIP_CLASS = cn(
 
 export function SidebarNotificationsPrompt() {
   const permission = useNotificationPermission();
-  const [promptState, setPromptState] = useAtom(promptStateAtom);
+  const [promptState, setPromptState] = usePromptState();
   const pushEnabled =
     usePluginList({ enabled: true }).data?.plugins.some(
       (plugin) => plugin.id === PUSH_NOTIFICATIONS_PLUGIN_ID && plugin.enabled,
