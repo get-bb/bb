@@ -440,15 +440,17 @@ function Notice({
         focusRef={conflictNoticeRef}
         label="File changed on disk, edits not saved."
       >
-        <Icon
-          name="AlertTriangle"
-          className="mt-1 size-4 shrink-0 self-start text-warning-text"
-          aria-hidden
-        />
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-          <span className="min-w-0 max-w-full flex-auto leading-6">
-            File changed on disk, edits not saved.
-          </span>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 @min-[32rem]/file-conflict:justify-between">
+          <div className="flex min-w-0 max-w-full items-start gap-2">
+            <Icon
+              name="AlertTriangle"
+              className="mt-1 size-4 shrink-0 text-warning-text"
+              aria-hidden
+            />
+            <span className="min-w-0 text-center leading-6">
+              File changed on disk, edits not saved.
+            </span>
+          </div>
           <div className="flex shrink-0 items-center gap-2">
             <NoticeAction
               onClick={onReload}
@@ -513,7 +515,7 @@ function NoticeRow({
       className={cn(
         "flex shrink-0 items-center gap-2 px-4 text-xs",
         compact
-          ? "py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          ? "@container/file-conflict py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
           : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
