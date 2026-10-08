@@ -1766,6 +1766,48 @@ describe("DesktopBrowserCdpAdapter", () => {
 });
 
 describe("DesktopBrowserViewManager", () => {
+  it("pauses media inside nested open shadow roots when hidden", async () => {
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 1,
+      contentBounds: { width: 1000, height: 800 },
+    });
+    const manager = createDesktopBrowserViewManager();
+    attachBrowserTab({
+      hostWindow,
+      manager,
+      tabId: "browser:shadow-media",
+      url: "https://example.com/video",
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:shadow-media", visible: false },
+    });
+    const code =
+      requireFakeView(
+        0,
+      ).webContents.mainFrame.framesInSubtree[0]?.executeJavaScript.mock.calls.at(
+        -1,
+      )?.[0];
+    expect(code).toBeDefined();
+    const pause = vi.fn();
+    const nestedHost = {
+      shadowRoot: { querySelectorAll: () => [{ pause }] },
+    };
+    const host = {
+      shadowRoot: {
+        querySelectorAll: (selector: string) =>
+          selector === "*" ? [nestedHost] : [],
+      },
+    };
+    await runInNewContext(code ?? "", {
+      document: {
+        querySelectorAll: (selector: string) =>
+          selector === "*" ? [host] : [],
+      },
+    });
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
   it("keeps newly created hidden tabs silent, including autoplay after loading", () => {
     const hostWindow = new FakeHostWindow({
       webContentsId: 1,
