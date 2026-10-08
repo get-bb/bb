@@ -1304,9 +1304,7 @@ function SettingsSidebarFixture() {
         data-tp-settings-sidebar=""
         className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-2"
       >
-        <MockSidebarRow label="Back to app" icon="ChevronLeft" interactive />
-        <MockSidebarLabel roomy>Settings</MockSidebarLabel>
-        <div className="mt-1 flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5">
           {SETTINGS_NAV_ITEMS.map((item) => (
             <MockSidebarRow
               key={item.label}

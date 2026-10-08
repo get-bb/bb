@@ -73,8 +73,6 @@ interface PaneContentSplitOptions {
   enabled: boolean;
   label: string;
   onNavigate?: () => void;
-  onDragStart?: () => void;
-  dragActivation?: "sidebar" | "distance";
 }
 
 export function usePaneContentSplitActions() {
@@ -99,14 +97,7 @@ export function usePaneContentSplitActions() {
   const onPointerDown = useCallback(
     (
       event: ReactPointerEvent<HTMLElement>,
-      {
-        content,
-        enabled,
-        label,
-        onNavigate,
-        onDragStart,
-        dragActivation,
-      }: PaneContentSplitOptions,
+      { content, enabled, label, onNavigate }: PaneContentSplitOptions,
     ) => {
       if (!enabled || isCompact || event.button !== 0) return;
       beginSidebarPaneContentSplitDrag({
@@ -116,8 +107,6 @@ export function usePaneContentSplitActions() {
         content,
         label,
         onNavigate,
-        onDragStart,
-        dragActivation,
       });
     },
     [isCompact, navigate, store],
@@ -139,8 +128,6 @@ interface BeginSidebarPaneContentSplitDragArgs {
   content: PaneContent;
   label: string;
   onNavigate?: () => void;
-  onDragStart?: () => void;
-  dragActivation?: "sidebar" | "distance";
 }
 
 export function beginSidebarPaneContentSplitDrag({
@@ -150,8 +137,6 @@ export function beginSidebarPaneContentSplitDrag({
   content,
   label,
   onNavigate,
-  onDragStart,
-  dragActivation = "sidebar",
 }: BeginSidebarPaneContentSplitDragArgs): void {
   const rowEl = event.currentTarget;
   const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
@@ -174,18 +159,15 @@ export function beginSidebarPaneContentSplitDrag({
     sourceEl: rowEl,
     fadeSourceOnEngage: false,
     renderGhost: false,
-    onEngage: onDragStart,
     ...(fallback ? { fallback } : {}),
     shouldEngage: (x, y) =>
-      dragActivation === "distance"
-        ? Math.hypot(x - startX, y - startY) > 12
-        : shouldEngageSidebarSplitDrag({
-            startX,
-            startY,
-            x,
-            y,
-            sidebarRightEdge,
-          }),
+      shouldEngageSidebarSplitDrag({
+        startX,
+        startY,
+        x,
+        y,
+        sidebarRightEdge,
+      }),
     decide: (_paneId, zone) => {
       const layout = store.get(splitLayoutAtom);
       if (layout === null) return null;

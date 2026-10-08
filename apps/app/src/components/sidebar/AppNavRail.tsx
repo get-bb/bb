@@ -8,7 +8,6 @@ import {
   type RefObject,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { ExperimentalSidebarNavigationItem } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import {
   ContextMenu,
@@ -25,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
@@ -38,15 +38,18 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import {
-  useSidebarNavigation,
-  useSidebarNavigationSplit,
-} from "@/lib/plugin-sidebar-navigation";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
 import { SidebarNavigationCustomize } from "./SidebarNavigationCustomize";
-import { SidebarNavigationIcon } from "./SidebarNavigationModel";
-import { NEW_THREAD_NAVIGATION_ITEM_ID } from "./sidebarNavigationItems";
+import {
+  SidebarNavigationIcon,
+  useSidebarNavigation,
+  useSidebarNavigationSplit,
+} from "./SidebarNavigationModel";
+import {
+  NEW_THREAD_NAVIGATION_ITEM_ID,
+  type SidebarNavigationItem,
+} from "./sidebarNavigationItems";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
 
 export interface NavRailCustomizeState {
@@ -101,7 +104,7 @@ function RailItem({
   onCustomize,
   onMenuCloseAutoFocus,
 }: {
-  item: ExperimentalSidebarNavigationItem;
+  item: SidebarNavigationItem;
   onCustomize: () => void;
   onMenuCloseAutoFocus: (event: Event) => void;
 }) {
@@ -202,7 +205,7 @@ function RailMoreMenu({
   onMenuCloseAutoFocus,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
-  hidden: readonly ExperimentalSidebarNavigationItem[];
+  hidden: readonly SidebarNavigationItem[];
   onCustomize: () => void;
   onMenuCloseAutoFocus: (event: Event) => void;
 }) {
@@ -258,6 +261,7 @@ export function AppNavRail({
   const settingsShortcut = useAppCommandShortcut("settings.open");
   const [desktopInfo] = useState(getBbDesktopInfo);
   const isFramed = useIsSidebarFramed();
+  const isCompactViewport = useIsCompactViewport();
 
   const isHomeActive =
     isAppMode &&
@@ -338,7 +342,11 @@ export function AppNavRail({
             <RailMoreMenu
               buttonRef={moreButtonRef}
               hidden={hidden}
-              onCustomize={requestCustomize}
+              onCustomize={
+                isCompactViewport
+                  ? () => customize.onOpenChange(true)
+                  : requestCustomize
+              }
               onMenuCloseAutoFocus={handleMenuCloseAutoFocus}
             />
             <PopoverContent
@@ -346,15 +354,15 @@ export function AppNavRail({
               align="start"
               sideOffset={12}
               aria-label="Customize rail"
+              mobileTitle="Customize rail"
               data-testid="nav-rail-customize"
-              className="flex max-h-(--radix-popover-content-available-height) w-64 flex-col p-2"
+              className="flex max-h-(--radix-popover-content-available-height) flex-col p-2 md:w-64"
               onCloseAutoFocus={(event) => {
                 event.preventDefault();
                 moreButtonRef.current?.focus();
               }}
             >
               <SidebarNavigationCustomize
-                surface="popover"
                 onClose={() => customize.onOpenChange(false)}
               />
             </PopoverContent>

@@ -188,10 +188,6 @@ function createUiPreferences(): UiPreferenceEntries {
     "sidebar.visiblePluginPanels": uiPreferenceEntry(
       "sidebar.visiblePluginPanels",
     ),
-    "sidebar.navigationProvider": uiPreferenceEntry(
-      "sidebar.navigationProvider",
-    ),
-    "sidebar.headerProvider": uiPreferenceEntry("sidebar.headerProvider"),
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
     ),

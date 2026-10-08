@@ -4,7 +4,6 @@ export const experimentKeys = [
   "changelogPreview",
   "serverMove",
   "performanceDiagnostics",
-  "navigationRail",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -22,5 +21,4 @@ export const defaultExperiments: Experiments = {
   changelogPreview: false,
   serverMove: false,
   performanceDiagnostics: false,
-  navigationRail: false,
 };

@@ -13,39 +13,23 @@ import {
   getBbDesktopInfo,
   MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
   MACOS_WINDOW_DRAG_CLASS,
-  shouldReserveMacosTrafficLights,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
-
-const BROWSER_HEADER_SLOT_START_CLASS =
-  "pl-[calc(env(safe-area-inset-left)_+_12px_+_var(--bb-sidebar-control-size)_-_4px)]";
-const MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS =
-  "pl-[calc(84px_+_var(--bb-sidebar-control-size)_-_4px)]";
-
-const NAV_RAIL_HEADER_SLOT_START_CLASS = "pl-0";
 
 export function SidebarTopReserveRow({
   testId,
-  renderHeaderSlot,
-  besideNavRail = false,
+  headerSlot,
 }: {
   testId: string;
-  renderHeaderSlot?: (startInsetClassName: string) => ReactNode;
-  besideNavRail?: boolean;
+  headerSlot?: ReactNode;
 }) {
   const closeOnMobile = useCloseMobileSidebar();
   const isFramed = useIsSidebarFramed();
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const desktopWindowState = useDesktopWindowState();
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
-  const reserveMacosTrafficLights = shouldReserveMacosTrafficLights({
-    desktopInfo,
-    windowState: desktopWindowState,
-  });
 
-  if (isFramed && renderHeaderSlot === undefined) {
+  if (isFramed && headerSlot === undefined) {
     return <div data-testid={testId} className="h-2 shrink-0" />;
   }
 
@@ -58,13 +42,7 @@ export function SidebarTopReserveRow({
         usesDesktopChrome && !isFramed && MACOS_WINDOW_DRAG_CLASS,
       )}
     >
-      {renderHeaderSlot?.(
-        besideNavRail
-          ? NAV_RAIL_HEADER_SLOT_START_CLASS
-          : reserveMacosTrafficLights
-            ? MACOS_TRAFFIC_LIGHT_HEADER_SLOT_START_CLASS
-            : BROWSER_HEADER_SLOT_START_CLASS,
-      )}
+      {headerSlot}
       {isFramed ? null : (
         <SidebarHistoryNavigationControls
           onNavigate={closeOnMobile}

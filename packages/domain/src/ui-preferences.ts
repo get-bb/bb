@@ -54,8 +54,6 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
-  "sidebar.navigationProvider",
-  "sidebar.headerProvider",
   "sidebar.threadListProvider",
   "infoPanel.collapsedSections",
 ] as const;
@@ -172,20 +170,6 @@ export const uiPreferenceDefinitions = {
     uiPreferenceStringListSchema.nullable(),
     null,
     "Navigation entries shown in the sidebar navigation strip; null shows every entry.",
-  ),
-  "sidebar.navigationProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__builtin__" ? "navigation/navigation" : value,
-    ),
-    "__automatic__",
-    "Plugin that renders the sidebar navigation, or __automatic__ for the first installed navigation plugin other than the bundled navigation/navigation, falling back to it. Legacy __builtin__ resolves to navigation/navigation.",
-  ),
-  "sidebar.headerProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__automatic__" ? "__builtin__" : value,
-    ),
-    "__builtin__",
-    "Plugin that renders controls beside the sidebar toggle, or __builtin__ for bb's own header only.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>

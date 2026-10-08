@@ -18,7 +18,7 @@ import { useLocation } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { SettingsStoryChrome } from "../../../.ladle/story-settings-chrome";
-import { AppSidebar } from "./AppSidebar";
+import { AppLayoutSidebar } from "@/components/layout/AppLayoutSidebar";
 import { sdk } from "@/lib/sdk";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
@@ -124,7 +124,8 @@ export function MachineNotices() {
         </SettingsStoryChrome>
       ) : (
         <SidebarProvider className="h-screen bg-background">
-          <AppSidebar
+          <AppLayoutSidebar
+            mode="app"
             isResizing={false}
             onResizeMouseDown={() => {}}
             settingsRoutePath="/settings/machines"

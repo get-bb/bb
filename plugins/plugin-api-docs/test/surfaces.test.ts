@@ -15,7 +15,6 @@ function surfaceIds(groupId: string): string[] {
 describe("product-map surfaces", () => {
   it("keeps app-window annotations in column-major visual reading order", () => {
     const ordered = [
-      "sidebar-navigation",
       "nav-panel",
       "thread-row-status",
       "thread-list",

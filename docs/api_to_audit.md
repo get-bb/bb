@@ -1613,15 +1613,11 @@ the `experimental_fixedTabOpenCalls` inspection list.
 **Kept experimental (2026-08-22).** one consumer (the tasks plugin); item 1 below (a narrower value/badge contract) would change the API shape.
 
 **What it does.** Lets a nav panel register a no-props, presentational React
-component at the trailing edge of its host-rendered sidebar row. The component
-can own an RPC query and realtime subscription, so a live count updates within
-that subtree instead of lifting plugin state into the whole sidebar. The host
-does not mount it on compact viewports, or in the icon-only rail of the
-`navigationRail` experiment. On wider viewports its layout box is
-limited to one line at 4rem wide by 1.25rem high; overflow is clipped and
-ordinary long text is ellipsized. It shares the trailing action column and
-fades out for the host options button on row hover or keyboard focus without
-unmounting. A crash hides only the accessory.
+component for a live value beside its navigation entry. The component can own
+an RPC query and realtime subscription, so a live count updates within that
+subtree instead of lifting plugin state into the whole sidebar. The SDK
+accepts the field, but no host surface mounts it, because the navigation rail
+is icon-only.
 
 **Audit before stabilizing.**
 
@@ -1633,10 +1629,9 @@ unmounting. A crash hides only the accessory.
    localization, browser zoom, and multiple plugin rows. Decide whether the
    host should expose a fixed badge treatment instead of accepting plugin
    styling.
-3. **Compact behavior.** The component is not mounted below the compact
-   breakpoint, so it performs no hidden queries there and loses local state
-   when the viewport crosses the breakpoint. Confirm that is preferable to a
-   mounted-but-CSS-hidden subtree.
+3. **Host surface.** No host surface mounts the component. Decide where a
+   live value belongs beside an icon-only rail destination (a badge, a
+   tooltip, or nowhere) before stabilizing, or remove the field.
 4. **Overflow and portals.** The wrapper clips ordinary descendants but cannot
    constrain content portalled elsewhere in the document. Confirm the
    presentational-only contract is sufficient, or enforce a non-component
@@ -2518,133 +2513,6 @@ renders in the same footer row.
    disclosure replacement, plugin reload, crash isolation, and removal while
    open across desktop and compact sidebar layouts.
 
-## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** Replaces the bounded sidebar navigation controls for New
-thread, Search threads, Plugins, Skills, and plugin panel destinations. The
-component receives `isCompactViewport` and `experimental_Original`; it reads
-items and host actions through `experimental_useSidebarNavigation()`. BB
-retains the drawer, thread list, footer, resize handle, and hidden-body
-shortcut policy. While a provider calls `openCustomize()`, the host renders
-its customize editor in the region and keeps the provider mounted but hidden.
-
-While the default-off `navigationRail` experiment is on, wide viewports do not
-mount this slot: the host draws a persistent rail from the same navigation
-model (items, order, visibility, split drags) and opens the
-customize editor in a popover beside the rail, including for `openCustomize()`
-calls. The rail is icon-only and does not mount panel sidebar accessories.
-Registrations and `sidebar.navigationProvider` are kept, so
-the picked provider returns when the experiment is turned off. Compact
-viewports still mount the slot.
-
-Search activation opens the quick palette. The removed inline sidebar search
-field, query state, combobox, and result list do not form part of this API.
-bb's own rows ship as the bundled Navigation plugin. `sidebar.navigationProvider`
-defaults to `__automatic__`, which uses the first other registered navigation
-plugin in slot snapshot order and falls back to the bundled plugin; legacy
-`__builtin__` resolves to the bundled plugin. A picked provider that is
-disabled or removed falls back to the bundled plugin once plugin frontends
-have loaded. The host keeps a placeholder for loading (skeleton rows at the
-provider's remembered height), missing (the bundled plugin is also off), and
-crashed (Reload) states. `experimental_Original` renders the bundled plugin, or
-nothing while it is disabled. A crash leaves the retained sidebar regions
-mounted.
-
-**Audit before stabilizing.**
-
-1. **Boundary.** Verify plugins can express useful navigation without control
-   of the drawer, thread list, footer, resize handle, or shortcuts.
-2. **Crash and delegation.** Verify the crash placeholder and
-   `experimental_Original` never recurse or remount the thread list and
-   footer. Remove `experimental_Original` once released plugins (Compact Nav
-   0.1.x) no longer render it.
-3. **Arbitration.** Confirm Automatic preferring installed navigation over
-   the bundled plugin, in plugin-id order, is right when several navigation
-   replacements exist.
-4. **Customize handoff.** Confirm providers accept the host editor replacing
-   their region, and that focus returns to the control that opened it from a
-   button, a dropdown item, and a context-menu item.
-
-## `experimental_useSidebarNavigation`, `experimental_useSidebarNavigationSplit`, `experimental_SidebarNavigationIcon` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** `experimental_useSidebarNavigation()` returns
-`{ items, activeItemId, isShortcutModifierHeld, actions }` from one host model mounted above the
-sidebar, so every caller sees the same data. Items arrive in the user's saved
-order with `isVisible`, `isLoading` (a remembered plugin panel whose bundle
-has not registered), `pluginId`, shortcut metadata, and
-`experimental_Accessory` (the panel's sidebar accessory, wrapped in the host's
-crash boundary; null on compact viewports). Item ids are the arrangement keys
-stored in `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`.
-Items keep their identity while unchanged.
-
-`actions` covers `activate(id, { openInSplit })`, `setVisible`, `setOrder`
-(a full or partial order; unknown ids are dropped and omitted ids keep their
-relative order at the end), `openCustomize`, `openDetails`, and
-`disablePlugin`. Each hook call binds the actions to its component: calls made
-after it unmounts do nothing. Outside the sidebar the hook returns no items
-and inert actions.
-
-`experimental_useSidebarNavigationSplit(id)` mirrors
-`experimental_useSidebarThreadSplit`. `experimental_SidebarNavigationIcon`
-renders bb's glyphs for its own items and explicit panel icons with plugin branding as fallback.
-
-**Audit before stabilizing.**
-
-1. **Semantic items.** Confirm the action and icon variants cover current
-   navigation without exposing routes or host React elements, including the
-   Skills and Automations destinations.
-2. **Accessory as a component.** Confirm handing providers a host-wrapped
-   component is preferable to a value contract, given the same questions as
-   `PluginNavPanelRegistration.experimental_sidebarAccessory`.
-3. **Order semantics.** Confirm `setOrder`'s partial-order rule works for
-   drag-and-drop in real providers, and that entries for disabled plugins keep
-   their stored position.
-4. **Split contract.** Audit split props and `activate(..., { openInSplit })`
-   for pointer, keyboard, modifier-click, pane-cap, and compact behavior.
-5. **Scope.** Decide whether the hook should work outside the sidebar (for
-   example in a command palette plugin) or stay sidebar-only.
-6. **Accessibility.** Validate labels, `aria-current`, shortcut metadata,
-   disabled and loading state, and focus order in third-party markup.
-
-## `app.slots.experimental_sidebarHeader` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** Renders one plugin component in the sidebar header row,
-between the sidebar toggle (and the macOS window controls) and bb's back and
-forward buttons. The slot is exclusive and opt-in: `sidebar.headerProvider`
-defaults to `__builtin__` (bb's controls only) and the user picks a provider
-under Settings → Appearance → Header. The component receives `width`,
-`controlSize`, and `isCompactViewport`. The host clips content to the row,
-keeps the window drag region on macOS while interactive descendants opt out,
-hides the header while the navigation customize editor is open, and removes
-it with one toast on a crash. While the `navigationRail` experiment is on,
-wide viewports do not mount this slot because New thread takes the header;
-`sidebar.headerProvider` is kept and applies again when the experiment is off. `--bb-sidebar-control-size` and
-`--bb-sidebar-control-icon-size` expose the header's control sizing.
-
-A plugin that moves its navigation into the header tracks whether its header
-is mounted itself (a module-level flag both components read) and returns null
-from its navigation component while it is. A plugin can pick its own header
-and navigation from `bb.onInstall`; later choices are the user's.
-
-**Audit before stabilizing.**
-
-1. **Exclusive versus shared.** Confirm one provider is right for the header
-   row, or whether several small controls should share it the way the sidebar
-   footer does.
-2. **Two pickers.** A plugin that wants its navigation in the header needs
-   both its header and its navigation picked, which plugins do for the user
-   from `bb.onInstall`. Decide whether that write should become a declared,
-   host-applied default, or whether a navigation registration should declare
-   a paired header instead.
-3. **Geometry.** Validate `width` and the start inset across macOS with and
-   without traffic lights, browsers, compact drawers, landscape safe areas,
-   and a sidebar narrower than one control.
-4. **Focus order.** Confirm header controls before the history buttons is
-   acceptable when a plugin splits one list of items across the header and
-   the navigation region.
-5. **Drag regions.** Confirm the interactive-descendant no-drag rule covers
-   real plugin markup, including custom elements and menus.
-
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
@@ -2677,7 +2545,7 @@ place of a whole sidebar would strand the user) plus one toast.
 2. **Fallback discoverability.** Confirm one toast plus the placeholder's
    Reload button is the right signal when the list crashes.
 3. **Region boundary.** The plugin gets the scrolling list and nothing else:
-   the New-thread button, search action, plugin nav rows, and footer stay
+   the New-thread button, the navigation rail, and the footer stay
    host-rendered, because they are shared surfaces (other plugins live in two
    of them) and a replaced list must not remove them. Confirm no real sidebar
    needs to claim more, and that passing those regions down as props — letting

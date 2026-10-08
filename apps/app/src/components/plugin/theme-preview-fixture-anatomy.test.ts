@@ -216,11 +216,7 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   settings: [
     {
       file: "apps/app/src/components/settings/SettingsSidebar.tsx",
-      mustContain: [
-        'backLabel="Back to app"',
-        "<SectionSidebarLabel>Settings</SectionSidebarLabel>",
-        "activeSection === section.id",
-      ],
+      mustContain: ["activeSection === section.id"],
       because:
         "The Appearance projection uses BB's settings navigation hierarchy and selected-row state.",
     },
