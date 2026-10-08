@@ -1,6 +1,6 @@
 # @bb/mobile
 
-Native iOS/Android shell for bb's web app (Expo SDK 57, React Native 0.86, Expo
+Native iOS/Android client for bb (Expo SDK 57, React Native 0.86, Expo
 Router, NativeWind v5).
 
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
