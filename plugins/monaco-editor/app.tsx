@@ -440,29 +440,29 @@ function Notice({
         focusRef={conflictNoticeRef}
         label="File changed on disk. Your edits weren’t saved."
       >
-        <div className="flex min-w-0 max-w-full flex-auto items-start gap-2">
-          <Icon
-            name="AlertTriangle"
-            className="mt-1 size-4 shrink-0 text-warning-text"
-            aria-hidden
-          />
-          <span className="min-w-0 leading-6">
+        <Icon
+          name="AlertTriangle"
+          className="mt-1 size-4 shrink-0 self-start text-warning-text"
+          aria-hidden
+        />
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+          <span className="min-w-0 max-w-full flex-auto leading-6">
             File changed on disk. Your edits weren’t saved.
           </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <NoticeAction
-            onClick={onReload}
-            title="Discard your edits and load the latest saved file"
-          >
-            Keep disk version
-          </NoticeAction>
-          <NoticeAction
-            onClick={onOverwrite}
-            title="Replace the saved file with your edits"
-          >
-            Save my edits
-          </NoticeAction>
+          <div className="flex shrink-0 items-center gap-2">
+            <NoticeAction
+              onClick={onReload}
+              title="Discard your edits and load the latest saved file"
+            >
+              Keep disk version
+            </NoticeAction>
+            <NoticeAction
+              onClick={onOverwrite}
+              title="Replace the saved file with your edits"
+            >
+              Save my edits
+            </NoticeAction>
+          </div>
         </div>
       </NoticeRow>
     );
@@ -513,7 +513,7 @@ function NoticeRow({
       className={cn(
         "flex shrink-0 items-center gap-2 px-4 text-xs",
         compact
-          ? "flex-wrap gap-y-0 py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          ? "py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
           : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
