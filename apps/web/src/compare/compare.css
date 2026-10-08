@@ -1420,18 +1420,8 @@
     margin-top: 28px;
   }
 
-  .cmp-wide-copy,
-  .cmp-page .band-copy {
-    text-align: left;
-  }
-
-  .cmp-wide-copy p,
-  .cmp-page .band-copy p {
-    margin-left: 0;
-  }
-
-  .cmp-wide-copy .cmp-providers {
-    justify-content: flex-start;
+  .cmp-providers .label {
+    display: none;
   }
 
   .cmp-page .cmp-wide-band h2 {

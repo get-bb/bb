@@ -86,9 +86,9 @@ export const PLUGINS_COPY: SectionCopy = {
       <p>
         When you want more—or less—customize in Settings, browse the{" "}
         <a href="/marketplace">plugin marketplace</a>, or ask an agent to build
-        exactly what you need. It’s ready right away wherever you use bb,
-        including your phone.
+        exactly what you need.
       </p>
+      <p>It’s available wherever you use bb, including your phone.</p>
     </>
   ),
 };
