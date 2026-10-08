@@ -308,11 +308,11 @@ describe("QueuedMessagesList", () => {
   });
 
   it.each([
-    { initiator: "system" as const, senderThreadId: null, height: "128px" },
+    { initiator: "system" as const, senderThreadId: null, height: "122px" },
     {
       initiator: "agent" as const,
       senderThreadId: "thr_sender",
-      height: "134px",
+      height: "128px",
     },
   ])(
     "reserves the metadata height for $initiator senders",
@@ -364,7 +364,7 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(toggle);
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(surface?.style.height).toBe("145px");
+    expect(surface?.style.height).toBe("139px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
@@ -380,7 +380,7 @@ describe("QueuedMessagesList", () => {
     expect(document.activeElement).toBe(toggle);
 
     fireEvent.click(toggle);
-    expect(surface?.style.height).toBe("145px");
+    expect(surface?.style.height).toBe("139px");
     toggle.focus();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -414,8 +414,8 @@ describe("QueuedMessagesList", () => {
       'section[aria-label="Queued messages"]',
     )?.style.height;
 
-    expect(plainHeight).toBe("112px");
-    expect(waitingHeight).toBe("128px");
+    expect(plainHeight).toBe("106px");
+    expect(waitingHeight).toBe("122px");
   });
 
   it("toggles an overflowing queue with the same disclosure as a fitted queue", () => {
@@ -1068,7 +1068,7 @@ describe("QueuedMessagesList", () => {
     rerender(renderSurface(false));
 
     await waitFor(() => {
-      expect(surface?.style.height).toBe("145px");
+      expect(surface?.style.height).toBe("139px");
       expect(
         container
           .querySelector("[data-queued-messages-mode]")
