@@ -444,6 +444,24 @@ export function createDesktopBrowserViewManager(
     return resizingHostIds.has(hostWindow.webContents.id);
   }
 
+  function pauseHiddenMedia(entry: BrowserViewEntry): void {
+    if (
+      entry.visible ||
+      entry.webContents.isDestroyed() ||
+      entry.rendererRecoveryState !== "healthy"
+    ) {
+      return;
+    }
+    for (const frame of entry.webContents.mainFrame.framesInSubtree) {
+      if (frame.detached) continue;
+      frame
+        .executeJavaScript(
+          'document.querySelectorAll("video, audio").forEach((media) => media.pause())',
+        )
+        .catch(() => {});
+    }
+  }
+
   function applyEntryVisibility(
     entry: BrowserViewEntry,
     hostWindow: DesktopBrowserHostWindow,
@@ -451,6 +469,8 @@ export function createDesktopBrowserViewManager(
     if (entry.webContents.isDestroyed()) {
       return;
     }
+    entry.webContents.setAudioMuted(!entry.visible);
+    pauseHiddenMedia(entry);
     entry.view.setVisible(
       entry.visible &&
         entry.rendererRecoveryState === "healthy" &&
@@ -816,6 +836,8 @@ export function createDesktopBrowserViewManager(
       applyEntryVisibility(entry, hostWindow);
       scheduleEntryRendererRecovery(entry, hostWindow, tabId);
     });
+
+    webContents.on("media-started-playing", () => pauseHiddenMedia(entry));
 
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-finish-load", () => {
