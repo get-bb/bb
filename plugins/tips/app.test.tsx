@@ -112,7 +112,11 @@ function renderTips(
         act: () => ({ ok: true }),
       },
       sdk: {
-        system: { experimental_recordTelemetryEvent: () => ({ ok: true }) },
+        system: {
+          experimental_recordTelemetryEvent: async () => ({
+            ok: true as const,
+          }),
+        },
       },
       ...behavior,
     },
