@@ -250,6 +250,7 @@ vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
   useSetupChecklist: () => ({
     items: null,
     agentMissing: false,
+    setupComplete: true,
     act: () => {},
     dismiss: () => {},
   }),

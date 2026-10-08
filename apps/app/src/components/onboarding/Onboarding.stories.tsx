@@ -576,6 +576,7 @@ function HomeFrame({
         checklist={{
           items,
           agentMissing,
+          setupComplete: false,
           act: (id) => {
             if (id !== "thread" && id !== "notifications") onOpen(id);
           },
