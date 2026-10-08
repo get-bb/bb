@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { COMPARISONS } from "../compare/comparisons";
 import { GUIDES } from "../guides/guides";
-import { CONTENT_PATHS, GUIDE_LINKS, GUIDE_MENU } from "./content-links";
+import {
+  canonicalPath,
+  CONTENT_PATHS,
+  GUIDE_LINKS,
+  GUIDE_MENU,
+} from "./content-links";
 import { LANDING_PAGES } from "./landing-pages";
 import { landingPagePath } from "./landing-template";
 
@@ -10,7 +15,9 @@ describe("CONTENT_PATHS", () => {
   it("links every comparison, guide, and landing page exactly once", () => {
     const pages = [
       ...COMPARISONS.map((comparison) => `/compare/${comparison.slug}`),
-      ...GUIDES.map((guide) => `/guides/${guide.slug}`),
+      ...GUIDES.map((guide) => `/guides/${guide.slug}`).filter(
+        (path) => canonicalPath(path) === path,
+      ),
       ...LANDING_PAGES.map(landingPagePath),
     ];
     expect([...CONTENT_PATHS].sort()).toEqual(pages.sort());

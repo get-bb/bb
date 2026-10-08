@@ -146,6 +146,16 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
   ],
   troubleshooting: TEAM_TROUBLESHOOTING,
   faq: [
+    {
+      question: "Why use Claude Code and Codex together?",
+      answer: (
+        <p>
+          A second model catches what the first one missed, and each agent runs
+          on its own subscription.{" "}
+          <a href="/claude-code-and-codex">See what it gets you</a>.
+        </p>
+      ),
+    },
     ...TEAM_FAQ,
     {
       question: "Can Codex build and Claude Code review?",

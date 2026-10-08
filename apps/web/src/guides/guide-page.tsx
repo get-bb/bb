@@ -13,6 +13,7 @@ import { useDesktopPlatform } from "../landing/desktop-platform";
 import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
+import { canonicalPath } from "../landing/content-links";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { CopyToast, ProductShot, PROMPT_COPIED, useCopy } from "./guide-blocks";
 import type { Guide, GuideFaq, GuidePicker, GuideStep } from "./guide-types";
@@ -37,7 +38,13 @@ export function guideHead(guide: Guide | undefined) {
       guide.description,
       `/guides/${guide.slug}`,
     ),
-    links: siteHeadLinks(blogCss, compareCss, guidesCss),
+    links: [
+      {
+        rel: "canonical",
+        href: `https://getbb.app${canonicalPath(`/guides/${guide.slug}`)}`,
+      },
+      ...siteHeadLinks(blogCss, compareCss, guidesCss),
+    ],
     scripts: [
       {
         type: "application/ld+json",

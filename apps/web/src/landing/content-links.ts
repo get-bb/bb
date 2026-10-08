@@ -95,11 +95,15 @@ export const LANDING_LINKS: ContentLink[] = [
 
 export const LANDING_PATHS: string[] = LANDING_LINKS.map((link) => link.href);
 
-const SITEMAP_ONLY_LINKS: ContentLink[] = [CODEX_GUIDE];
+export const CANONICAL_PATHS: Record<string, string> = {
+  [CODEX_GUIDE.href]: "/claude-code-and-codex",
+};
+
+export function canonicalPath(path: string): string {
+  return CANONICAL_PATHS[path] ?? path;
+}
 
 export const CONTENT_PATHS: string[] = [
-  ...[...GUIDE_LINKS, ...SITEMAP_ONLY_LINKS, ...COMPARE_LINKS].map(
-    (link) => link.href,
-  ),
+  ...[...GUIDE_LINKS, ...COMPARE_LINKS].map((link) => link.href),
   ...LANDING_PATHS,
 ];
