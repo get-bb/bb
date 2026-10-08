@@ -59,13 +59,10 @@ const CODEX_SECTION: CompareHighlight = {
   body: (
     <>
       <p>
-        Have one agent check another’s work. Claude Code asks Codex for a
-        review, then fixes what it finds, with no copy-paste.
+        Have one agent check another’s work and fix what it finds, with no
+        copy-paste.
       </p>
-      <p>
-        Each runs in its own thread on its own subscription, so you can see what
-        they send each other and step in anytime.
-      </p>
+      <p>You see everything they send each other and can step in anytime.</p>
     </>
   ),
 };
