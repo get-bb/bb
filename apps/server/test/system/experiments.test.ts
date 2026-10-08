@@ -22,7 +22,6 @@ describe("experiments settings", () => {
       expect(body.experiments).toEqual({
         serverMove: false,
         performanceDiagnostics: false,
-        navigationRail: false,
       });
     });
   });
@@ -55,12 +54,10 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         serverMove: true,
         performanceDiagnostics: true,
-        navigationRail: false,
       });
       expect(getExperiments(harness.db)).toEqual({
         serverMove: true,
         performanceDiagnostics: true,
-        navigationRail: false,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -69,7 +66,6 @@ describe("experiments settings", () => {
       ).toEqual({
         serverMove: true,
         performanceDiagnostics: true,
-        navigationRail: false,
       });
     });
   });
@@ -84,7 +80,6 @@ describe("experiments settings", () => {
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         serverMove: true,
         performanceDiagnostics: true,
-        navigationRail: false,
       });
       expect(
         harness.db.$client

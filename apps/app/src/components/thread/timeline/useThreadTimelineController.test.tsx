@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 
-import type { CommitOlderTimelineRows } from "./load-older-timeline-rows.js";
-
 import {
   act,
   cleanup,
@@ -156,9 +154,7 @@ function makeServerError(): BbHttpError {
   });
 }
 
-async function renderControllerWithPendingOlderPage(
-  commit?: CommitOlderTimelineRows,
-) {
+async function renderControllerWithPendingOlderPage() {
   const olderPage = createDeferredPromise<ThreadTimelineResponse>();
   vi.mocked(sdk.threads.timeline)
     .mockResolvedValueOnce(
@@ -185,7 +181,7 @@ async function renderControllerWithPendingOlderPage(
 
   let olderRequest: Promise<void> = Promise.resolve();
   act(() => {
-    olderRequest = result.current.loadOlderTimelineRows(commit);
+    olderRequest = result.current.loadOlderTimelineRows();
   });
   await waitFor(() => {
     expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
@@ -686,28 +682,6 @@ describe("useThreadTimelineController", () => {
       expect(result.current.timelineError).toBeNull();
       expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
-  });
-
-  it("keeps fetched history out of the rendered timeline until the scroll owner commits it", async () => {
-    const ready = createDeferredPromise<void>();
-    const release = createDeferredPromise<void>();
-    const { result, settleOlderPage } =
-      await renderControllerWithPendingOlderPage(async (update) => {
-        ready.resolve();
-        await release.promise;
-        update();
-      });
-    const settled = settleOlderPage();
-    await ready.promise;
-    expect(rowIds(result.current)).toEqual([newestLoadedRow.id]);
-    expect(result.current.isLoadingOlderTimelineRows).toBe(true);
-    release.resolve();
-    await settled;
-    expect(rowIds(result.current)).toEqual([
-      olderPageRow.id,
-      newestLoadedRow.id,
-    ]);
-    expect(result.current.isLoadingOlderTimelineRows).toBe(false);
   });
 
   it.each([

@@ -45,48 +45,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
       {
-        id: "sidebar-navigation",
-        title: "Sidebar navigation",
-        summary:
-          "Replace the navigation rows above the thread list with your own. With this, a plugin can:",
-        bullets: [
-          "Arrange New thread, Search, Plugins, Skills, and plugin pages in any layout",
-          "Keep the user's saved order, hidden items, and split-view behavior",
-          "Add controls to the header row beside the sidebar toggle",
-          "Start from the bundled Navigation plugin, which uses only this API",
-        ],
-        apiSymbols: [
-          "ExperimentalSidebarNavigationRegistration",
-          "ExperimentalSidebarNavigationProps",
-          "experimental_useSidebarNavigation",
-          "ExperimentalSidebarNavigationState",
-          "ExperimentalSidebarNavigationItem",
-          "ExperimentalSidebarNavigationAction",
-          "ExperimentalSidebarNavigationActions",
-          "ExperimentalSidebarNavigationIcon",
-          "experimental_SidebarNavigationIcon",
-          "ExperimentalSidebarNavigationIconProps",
-          "ExperimentalSidebarNavigationShortcut",
-          "ExperimentalSidebarNavigationActivationOptions",
-          "experimental_useSidebarNavigationSplit",
-          "ExperimentalSidebarNavigationSplit",
-          "ExperimentalSidebarNavigationSplitOptions",
-          "ExperimentalSidebarHeaderRegistration",
-          "ExperimentalSidebarHeaderProps",
-        ],
-        firstParty: ["Navigation"],
-        experimental: true,
-      },
-      {
         id: "nav-panel",
         title: "Full-page panels",
         summary:
-          "Add a sidebar row that opens a full page your plugin renders. With this, a plugin can:",
+          "Add a navigation rail destination that opens a full page your plugin renders. With this, a plugin can:",
         bullets: [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
-          "Show live status on its sidebar row",
         ],
         apiSymbols: [
           "PluginNavPanelRegistration",
@@ -1463,7 +1429,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Keep Awake",
           "Memory",
           "Modal Sandbox [Experimental]",
-          "Navigation",
           "PDF preview",
           "Personal workspace",
           "Pi provider",

@@ -9,19 +9,32 @@ import {
   useEffect,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 
 import { useInitAnalytics } from "../landing/analytics";
 import {
   Band,
+  CustomizeBuild,
   InstallOptions,
   useScrollReveal,
 } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import type { CompareCell, Comparison, Mark } from "./comparisons";
+import type {
+  CompareCell,
+  CompareFaqGroup,
+  CompareHighlight,
+  Comparison,
+  Mark,
+} from "./comparisons";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
+import {
+  PLUGINS_COPY,
+  pluginsSection,
+  type SectionCopy,
+} from "./compare-sections";
 import figmaLogo from "../assets/company-logos/figma.svg";
 import mapboxLogo from "../assets/company-logos/mapbox.svg";
 import metaLogo from "../assets/company-logos/meta.svg";
@@ -63,7 +76,7 @@ function brandText(text: string): ReactNode {
   );
 }
 
-function brandProse(node: ReactNode): ReactNode {
+export function brandProse(node: ReactNode): ReactNode {
   if (typeof node === "string") return brandText(node);
   if (Array.isArray(node)) {
     return node.map((child, index) => (
@@ -81,11 +94,11 @@ function brandProse(node: ReactNode): ReactNode {
   return node;
 }
 
-function faqJsonLd(comparison: Comparison): string {
+export function faqJsonLd(faq: CompareFaqGroup[]): string {
   const data = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: comparison.faq.flatMap((group) =>
+    mainEntity: faq.flatMap((group) =>
       group.items.map((item) => ({
         "@type": "Question",
         name: item.question,
@@ -99,16 +112,34 @@ function faqJsonLd(comparison: Comparison): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
-export function compareHead(comparison: Comparison) {
+export function templatePageHead({
+  path,
+  title,
+  description,
+  faq,
+}: {
+  path: string;
+  title: string;
+  description: string;
+  faq: CompareFaqGroup[];
+}) {
   return {
-    meta: pageMeta(
-      comparison.title,
-      comparison.description,
-      `/compare/${comparison.slug}`,
-    ),
-    links: siteHeadLinks(compareCss),
-    scripts: [{ type: "application/ld+json", children: faqJsonLd(comparison) }],
+    meta: pageMeta(title, description, path),
+    links: [
+      ...siteHeadLinks(compareCss),
+      { rel: "canonical", href: `https://getbb.app${path}` },
+    ],
+    scripts: [{ type: "application/ld+json", children: faqJsonLd(faq) }],
   };
+}
+
+export function compareHead(comparison: Comparison) {
+  return templatePageHead({
+    path: `/compare/${comparison.slug}`,
+    title: comparison.title,
+    description: comparison.description,
+    faq: comparison.faq,
+  });
 }
 
 const MARKS: Record<
@@ -249,58 +280,164 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
   );
 }
 
+export function textOnly(section: CompareHighlight): CompareHighlight {
+  return { ...section, visual: null, wide: true };
+}
+
+function showsPlugins(node: ReactNode): boolean {
+  return isValidElement(node) && node.type === CustomizeBuild;
+}
+
+export function withPluginsSlot(
+  heroVisual: ReactElement,
+  sections: CompareHighlight[],
+  pluginsCopy: SectionCopy,
+): CompareHighlight[] {
+  const plugins = pluginsSection(pluginsCopy);
+  if (showsPlugins(heroVisual)) {
+    return [textOnly(plugins), ...sections];
+  }
+  const [lead, ...rest] = sections;
+  if (!lead || showsPlugins(lead.visual)) {
+    return sections;
+  }
+  return [lead, plugins, ...rest];
+}
+
+export function Highlight({ highlight }: { highlight: CompareHighlight }) {
+  if (highlight.wide) {
+    return (
+      <section className="band cmp-wide-band" data-reveal>
+        <div className="cmp-wide-copy">
+          <h2>{brandProse(highlight.title)}</h2>
+          {brandProse(highlight.body)}
+        </div>
+        {highlight.visual}
+      </section>
+    );
+  }
+  return (
+    <Band title={brandProse(highlight.title)} visual={highlight.visual}>
+      {brandProse(highlight.body)}
+    </Band>
+  );
+}
+
+export function FaqSection({
+  title,
+  faq,
+}: {
+  title: string;
+  faq: CompareFaqGroup[];
+}) {
+  return (
+    <section className="cmp-section cmp-faq" data-reveal>
+      <h2 className="sec-title">{title}</h2>
+      {faq.map((group) => (
+        <div key={group.title} className="cmp-faq-group">
+          <h3 className="cmp-faq-group-title">{group.title}</h3>
+          <div className="cmp-faq-list">
+            {group.items.map((item) => (
+              <details key={item.question} className="cmp-faq-item">
+                <summary>
+                  <span>{brandProse(item.question)}</span>
+                  <HugeiconsIcon
+                    icon={ArrowDown01Icon}
+                    className="cmp-faq-chevron"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="cmp-faq-answer">{brandProse(item.answer)}</div>
+              </details>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function Closer({ closer }: { closer: Comparison["closer"] }) {
+  return (
+    <section className="closer" data-reveal>
+      <h2 className="sec-title">{brandProse(closer.title)}</h2>
+      <p>{brandProse(closer.body)}</p>
+      <InstallOptions placement="closer" />
+      <div className="cmp-team">
+        <h3>Built by alumni from</h3>
+        <ul className="company-proof-logos cmp-team-logos">
+          {TEAM_COMPANIES.map(([name, logo]) => (
+            <li key={name} className="company-proof-company">
+              <img src={logo} alt="" width={20} height={20} />
+              {name}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+export function PageHero({
+  top,
+  headline,
+  sub,
+  afterSub,
+  visual,
+}: {
+  top: ReactNode;
+  headline: string;
+  sub: string;
+  afterSub: ReactNode;
+  visual: ReactElement;
+}) {
+  return (
+    <header className="hero cmp-hero">
+      {top}
+      <h1>{brandProse(headline)}</h1>
+      <p className="sub">{brandProse(sub)}</p>
+      {afterSub}
+      <InstallOptions placement="hero" />
+      <div className="cmp-hero-visual">{visual}</div>
+    </header>
+  );
+}
+
 export function ComparePage({ comparison }: { comparison: Comparison }) {
   useInitAnalytics();
   useScrollReveal();
   const { competitor } = comparison;
+  const [lead, ...rest] = withPluginsSlot(
+    comparison.heroVisual,
+    [comparison.tailored, ...comparison.sections],
+    PLUGINS_COPY,
+  );
 
   return (
     <div className="wrap cmp-page">
       <SiteNav />
 
-      <header className="hero cmp-hero">
-        <div className="cmp-logos">
-          <span className="cmp-logo-item">
-            <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
-            bb
-          </span>
-          <span className="cmp-vs">vs</span>
-          <span className="cmp-logo-item">
-            <BrandMark logo={competitor.logo} className="cmp-logo" />
-            {competitor.name}
-          </span>
-        </div>
-        <h1>{brandProse(comparison.headline)}</h1>
-        <p className="sub">{brandProse(comparison.sub)}</p>
-        <InstallOptions placement="hero" />
-        {comparison.heroVisual ? (
-          <div className="cmp-hero-visual">{comparison.heroVisual}</div>
-        ) : null}
-      </header>
+      <PageHero
+        top={
+          <div className="cmp-logos">
+            <span className="cmp-logo-item">
+              <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
+              bb
+            </span>
+            <span className="cmp-vs">vs</span>
+            <span className="cmp-logo-item">
+              <BrandMark logo={competitor.logo} className="cmp-logo" />
+              {competitor.name}
+            </span>
+          </div>
+        }
+        headline={comparison.headline}
+        sub={comparison.sub}
+        afterSub={null}
+        visual={comparison.heroVisual}
+      />
 
-      {[comparison.tailored, ...comparison.sections].map((highlight) =>
-        highlight.wide ? (
-          <section
-            key={highlight.title}
-            className="band cmp-wide-band"
-            data-reveal
-          >
-            <div className="cmp-wide-copy">
-              <h2>{brandProse(highlight.title)}</h2>
-              {brandProse(highlight.body)}
-            </div>
-            {highlight.visual}
-          </section>
-        ) : (
-          <Band
-            key={highlight.title}
-            title={brandProse(highlight.title)}
-            visual={highlight.visual}
-          >
-            {brandProse(highlight.body)}
-          </Band>
-        ),
-      )}
+      <Highlight highlight={lead} />
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title cmp-table-title">
@@ -319,48 +456,13 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         <CompareTable comparison={comparison} />
       </section>
 
-      <section className="cmp-section cmp-faq" data-reveal>
-        <h2 className="sec-title">{comparison.faqTitle}</h2>
-        {comparison.faq.map((group) => (
-          <div key={group.title} className="cmp-faq-group">
-            <h3 className="cmp-faq-group-title">{group.title}</h3>
-            <div className="cmp-faq-list">
-              {group.items.map((item) => (
-                <details key={item.question} className="cmp-faq-item">
-                  <summary>
-                    <span>{brandProse(item.question)}</span>
-                    <HugeiconsIcon
-                      icon={ArrowDown01Icon}
-                      className="cmp-faq-chevron"
-                      aria-hidden="true"
-                    />
-                  </summary>
-                  <div className="cmp-faq-answer">
-                    {brandProse(item.answer)}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        ))}
-      </section>
+      {rest.map((highlight) => (
+        <Highlight key={highlight.title} highlight={highlight} />
+      ))}
 
-      <section className="closer" data-reveal>
-        <h2 className="sec-title">{brandProse(comparison.closer.title)}</h2>
-        <p>{brandProse(comparison.closer.body)}</p>
-        <InstallOptions placement="closer" />
-        <div className="cmp-team">
-          <h3>Built by alumni from</h3>
-          <ul className="company-proof-logos cmp-team-logos">
-            {TEAM_COMPANIES.map(([name, logo]) => (
-              <li key={name} className="company-proof-company">
-                <img src={logo} alt="" width={20} height={20} />
-                {name}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+      <FaqSection title={comparison.faqTitle} faq={comparison.faq} />
+
+      <Closer closer={comparison.closer} />
 
       <SiteFooter current={`/compare/${comparison.slug}`} />
     </div>

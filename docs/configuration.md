@@ -1042,10 +1042,8 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
 | `sidebar.footerOrder`                | Footer action order                                                                       |
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
-| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
-| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                  |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
 
@@ -1058,17 +1056,20 @@ Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-The sidebar navigation works the same way: `sidebar.navigationProvider` defaults to
-`__automatic__`, which prefers an installed navigation plugin over the bundled
-Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
-resolve to the bundled plugin. Order and visibility stay in
-`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
-navigation plugin.
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+order and show or hide rail destinations.
 
-`sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
-row, between the sidebar toggle and the back and forward buttons. It defaults to
-`__builtin__`, which leaves only bb's controls there. Set it with
-`bb settings ui set sidebar.headerProvider <plugin-id>/<slot-id>`.
+In the macOS desktop app, wide windows add a title bar holding the window
+controls, Back and Forward, and the sidebar toggle. It shares the rail's
+background, and the sidebar and page sit in a card below it. On narrow windows
+and phones the rail sits inside the drawer: Home, Plugins, Skills, and Settings
+swap the list beside it and leave the drawer open, and a plugin page closes it.
 
 New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
 Migrated installations with existing projects, threads, or UI preferences fall back
@@ -1216,14 +1217,14 @@ visibility, and every action in More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
-stable IDs: `builtin:settings`, `builtin:report-bug`, and
+stable IDs: `builtin:mobile`, `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
 Unknown and disabled-plugin IDs are retained across reloads; new actions default
 visible. The existing SDK UI preferences and CLI manage the same values:
 
 ```sh
 bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
-bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:mobile"]'
 bb settings ui reset sidebar.hiddenFooterItems
 ```
 
@@ -1483,18 +1484,6 @@ or a new browser) records its installed release as seen and shows no card
 until the next update. The card is hidden while the sidebar is collapsed.
 `bb whats-new` prints the same release notes in the terminal (`--version <v>`,
 `--since <v>`, `--json`) and never marks a release seen.
-The default-off `navigationRail` experiment keeps a vertical rail of
-destinations on the left edge of the sidebar on every screen. Home returns to
-the last thread, Settings sits at the bottom, and New thread moves into the
-sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
-and leaves the rail in place. In the macOS desktop app the rail and a title
-bar across the top of the window share one background; the title bar holds
-the window controls, Back and Forward, and the sidebar toggle, and the
-sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
-itself, so the Navigation and Header choices under Settings → Appearance are
-not used; they apply again when the experiment is turned off. Narrow windows
-and phones keep the regular drawer.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,

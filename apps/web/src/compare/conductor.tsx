@@ -1,6 +1,7 @@
 import conductorIcon from "../assets/competitors/conductor.png";
 import type { Comparison } from "./comparisons";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -18,57 +19,28 @@ import {
   faqTalk,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
+  ANYWHERE_COPY,
   anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
+  PRICING_COPY,
   pricingSection,
+  LIMITS_COPY,
+  limitsSection,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
 
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
-const AWAY_SECTION = anywhereSection({
-  title: "Keep working after you close your laptop",
-  body: (
-    <>
-      <p>
-        You can use bb on an always-on desktop or server, so your agents keep
-        running while you’re out. Check in on them from the bb mobile app or any
-        browser.
-      </p>
-      <p>The mobile app, remote machines, and browser access are all free.</p>
-    </>
-  ),
+const COST_SECTION = pricingSection(PRICING_COPY, {
+  plan: "Conductor Teams",
+  logo: CONDUCTOR_LOGO,
+  yearlyPerSeatMonthly: 60,
+  priceNote: "Conductor Teams at $60 per person a month.",
 });
-
-const COST_SECTION = pricingSection(
-  {
-    title: "Free for your whole team",
-    body: (
-      <>
-        <p>
-          bb is free at any team size, with the mobile app, remote machines,
-          automations, and plugins included. You only pay for the AI plans you
-          already have.
-        </p>
-        <p>
-          It’s open source under the MIT license, so you can read every line and
-          use it anywhere, including at work.
-        </p>
-      </>
-    ),
-  },
-  {
-    plan: "Conductor Teams",
-    logo: CONDUCTOR_LOGO,
-    yearlyPerSeatMonthly: 60,
-    priceNote: "Conductor Teams at $60 per person a month.",
-  },
-);
 
 export const BB_VS_CONDUCTOR: Comparison = {
   slug: "conductor-alternatives",
@@ -77,13 +49,13 @@ export const BB_VS_CONDUCTOR: Comparison = {
     "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and keep working from anywhere.",
   competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
-  sub: "Run Claude Code, Codex, and any agent on Mac, Windows, or Linux, and keep working from anywhere while they keep going.",
+  sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
-  tailored: AWAY_SECTION,
+  tailored: anywhereSection(ANYWHERE_COPY),
   sections: [
     COST_SECTION,
+    limitsSection(LIMITS_COPY),
     agentsSection(AGENTS_COPY),
-    pluginsSection(PLUGINS_COPY),
   ],
   tableNote:
     "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
@@ -92,38 +64,20 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Price and license",
       rows: [
         {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
+          ...BB_ROWS.pricing,
           competitor: price("$0", "Teams at $60 per person a month"),
         },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Closed source"),
-        },
+        { ...BB_ROWS.license, competitor: cell("no", "Closed source") },
       ],
     },
     {
       title: "Platforms",
       rows: [
+        { ...BB_ROWS.windows, competitor: cell("no", "Mac only") },
+        { ...BB_ROWS.linux, competitor: cell("no") },
+        { ...BB_ROWS.macos, competitor: cell("yes", "Mac app") },
         {
-          feature: "Windows support",
-          bb: cell("yes", "Native app"),
-          competitor: cell("no", "Mac only"),
-        },
-        {
-          feature: "Linux support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("no"),
-        },
-        {
-          feature: "macOS",
-          bb: cell("yes", "Apple Silicon app"),
-          competitor: cell("yes", "Mac app"),
-        },
-        {
-          feature: "Mobile app",
-          bb: cell("yes", "iOS beta, Android alpha"),
+          ...BB_ROWS.mobile,
           competitor: cell("partial", "iOS, for cloud workspaces", true),
         },
       ],
@@ -132,18 +86,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Run agents on other machines",
-          bb: cell("yes", "Any computer you own"),
+          ...BB_ROWS.otherMachines,
           competitor: cell("partial", "Your Mac or Conductor’s cloud", true),
         },
+        { ...BB_ROWS.cloud, competitor: cell("yes", "Hosted", true) },
         {
-          feature: "Cloud workspaces",
-          bb: cell("yes", "Modal plugin"),
-          competitor: cell("yes", "Hosted", true),
-        },
-        {
-          feature: "Scheduled automations",
-          bb: cell("yes", "On your own machines"),
+          ...BB_ROWS.automations,
           competitor: cell("partial", "Cloud routines", true),
         },
       ],
@@ -152,13 +100,11 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Agents",
       rows: [
         {
-          feature: "Multi-agent support",
-          bb: cell("yes", "Claude Code, Codex, and more"),
+          ...BB_ROWS.multiAgent,
           competitor: cell("yes", "Claude Code, Codex, Cursor, OpenCode"),
         },
         {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Spawn, message, wait"),
+          ...BB_ROWS.handoff,
           competitor: cell("partial", "Via MCP, cloud workspaces", true),
         },
       ],
@@ -166,15 +112,18 @@ export const BB_VS_CONDUCTOR: Comparison = {
     {
       title: "Integrations",
       rows: [
+        { ...BB_ROWS.marketplace, competitor: cell("no") },
         {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("no"),
+          ...BB_ROWS.github,
+          competitor: cell("yes", "Checks tab, PR actions"),
         },
         {
-          feature: "GitHub integration",
-          bb: cell("yes", "Issues, PRs, checks"),
-          competitor: cell("yes", "Checks tab, PR actions"),
+          ...BB_ROWS.gitlab,
+          competitor: cell("partial", "Repos in local workspaces"),
+        },
+        {
+          ...BB_ROWS.gitea,
+          competitor: cell("partial", "Repos in local workspaces"),
         },
       ],
     },
@@ -182,8 +131,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
       title: "Workspace and teams",
       rows: [
         {
-          feature: "Git worktrees",
-          bb: cell("yes", "Setup and teardown scripts"),
+          ...BB_ROWS.worktrees,
           competitor: cell("yes", "Setup and archive scripts"),
         },
         {
@@ -192,24 +140,18 @@ export const BB_VS_CONDUCTOR: Comparison = {
           competitor: cell("yes", "Run script"),
         },
         {
-          feature: "Diff review and merge",
-          bb: cell("yes", "Line comments to the agent, checks, merge"),
+          ...BB_ROWS.diffReview,
           competitor: cell("yes", "Diff comments, checks, merge"),
         },
-        {
-          feature: "Go back to an earlier point",
-          bb: cell("yes", "Edit a message or fork from it"),
-          competitor: cell("yes", "Checkpoints"),
-        },
+        { ...BB_ROWS.rewind, competitor: cell("yes", "Checkpoints") },
         {
           feature: "Multiplayer workspaces",
           bb: cell("partial", "Share one bb with your team"),
-          competitor: cell("partial", "Prompt the same agent", true),
+          competitor: cell("yes", "Shared cloud workspaces", true),
         },
         {
-          feature: "Team plans and SSO",
-          bb: cell("no"),
-          competitor: cell("partial", "SSO on Enterprise"),
+          ...BB_ROWS.teamPlans,
+          competitor: cell("yes", "Teams plan, SSO on Enterprise", true),
         },
       ],
     },
@@ -249,11 +191,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "How do I move a repo and my unfinished work to bb?",
           answer: (
             <p>
-              Ask bb to do it. Your repo and Conductor’s workspaces are plain
-              Git worktrees on your machine, so a bb agent can add the repo and
-              open each unfinished workspace as a thread. Your CLAUDE.md,
-              skills, MCP servers, slash commands, and agent sign-ins come
-              along, and Conductor keeps working while you try bb.
+              Ask bb to do it. Conductor’s local workspaces are plain Git
+              worktrees on your Mac, and its cloud workspaces push to branches,
+              so a bb agent can add the repo and open each unfinished workspace
+              or branch as a thread. Your CLAUDE.md, skills, MCP servers, slash
+              commands, and agent sign-ins come along, and Conductor keeps
+              working while you try bb.
             </p>
           ),
         },
@@ -262,13 +205,13 @@ export const BB_VS_CONDUCTOR: Comparison = {
           answer: (
             <ul>
               <li>
-                Each Conductor workspace becomes a thread, and several threads
-                can share one worktree, so a reviewer can work right next to the
-                agent that wrote the code.
+                Each Conductor chat becomes a thread. Threads can get their own
+                worktree or share one, like chats in a workspace.
               </li>
               <li>
-                Your setup script moves to <code>.bb-env-setup.sh</code>, and
-                Files to copy becomes a <code>.worktreeinclude</code> file.
+                Your setup script moves to <code>.bb-env-setup.sh</code>. A{" "}
+                <code>.worktreeinclude</code> file works as is, and Files to
+                copy patterns from Conductor’s settings move into it.
               </li>
               <li>
                 Threads run on whichever of your computers you pick, and follow
@@ -339,9 +282,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "Does bb have multiplayer?",
           answer: (
             <p>
-              Yes, free. Run bb on an always-on machine and share it with your
-              team. Everyone sees the same projects, threads, terminals, and
-              links, and can jump into any thread.
+              Yes, as one shared bb, free at any team size. Teams usually run
+              one bb on an always-on machine and share it, so everyone sees the
+              same projects, threads, terminals, and links, and can jump into
+              any thread. Keep it on your tailnet and let your Tailscale ACLs
+              decide who gets in, since everyone with access can run commands on
+              every machine.
             </p>
           ),
         },
@@ -362,6 +308,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         ),
         FAQ_PERMISSIONS,
         FAQ_CUSTOMIZE,
+        faqScript(null),
       ],
     },
     {
@@ -372,7 +319,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(null),
-        faqPlatforms("Conductor runs only on macOS."),
+        faqPlatforms("Conductor’s desktop app runs only on macOS."),
         FAQ_PRIVACY,
       ],
     },
