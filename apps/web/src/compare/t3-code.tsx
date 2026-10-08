@@ -33,7 +33,7 @@ import { AgentSplit, type BrandLogo } from "./compare-visuals";
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 
 const PLUGINS_COPY_T3: SectionCopy = {
-  title: "The features you want, without a fork to maintain",
+  title: "Customize everything with plugins",
   body: (
     <p>
       Plugins add panels to the sidebar, commands to the bb CLI, tools your
