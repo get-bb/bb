@@ -13,6 +13,15 @@ export const COMPARE_LINKS: ContentLink[] = [
   { label: "bb vs Vibe Kanban", href: "/compare/vibe-kanban-alternative" },
 ];
 
-export const CONTENT_PATHS: string[] = [...GUIDE_LINKS, ...COMPARE_LINKS].map(
-  (link) => link.href,
-);
+export const LANDING_LINKS: ContentLink[] = [
+  { label: "Claude Code on your phone", href: "/claude-code-mobile" },
+  { label: "Claude Code with Codex", href: "/claude-code-and-codex" },
+  { label: "Parallel coding agents", href: "/claude-code-parallel-agents" },
+];
+
+export const LANDING_PATHS: string[] = LANDING_LINKS.map((link) => link.href);
+
+export const CONTENT_PATHS: string[] = [
+  ...[...GUIDE_LINKS, ...COMPARE_LINKS].map((link) => link.href),
+  ...LANDING_PATHS,
+];

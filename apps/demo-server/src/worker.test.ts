@@ -102,10 +102,7 @@ it("serves the sidebar plugin frontends", async () => {
   const catalog = pluginListResponseSchema.parse(
     await (await fetch(`${origin}/api/v1/plugins`)).json(),
   );
-  expect(catalog.plugins.map((plugin) => plugin.id)).toEqual([
-    "navigation",
-    "thread-list",
-  ]);
+  expect(catalog.plugins.map((plugin) => plugin.id)).toEqual(["thread-list"]);
   await Promise.all(
     catalog.plugins.flatMap((plugin) => {
       if (plugin.app.bundle === null)

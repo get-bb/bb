@@ -172,7 +172,7 @@ describe("public prompt history list route", () => {
     });
   });
 
-  it("pages every prompt newest first with project and thread locations", async () => {
+  it("pages every prompt newest first with its project, thread, and scope", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -185,18 +185,19 @@ describe("public prompt history list route", () => {
         requestSequence: number,
         text: string,
         createdAt: number,
+        scope: "project" | "thread" = "thread",
       ) =>
         createPromptHistoryEntry(harness.deps.db, {
           projectId: project.id,
           threadId,
-          scope: "thread",
+          scope,
           requestSequence,
           input: textInput(text),
           createdAt,
         });
       const oldest = seed(first.id, 1, "Investigate auth flow", 10);
       const older = seed(first.id, 2, "Fix the login test", 20);
-      const newer = seed(second.id, 1, "Write release notes", 30);
+      const newer = seed(second.id, 1, "Write release notes", 30, "project");
       const newest = seed(second.id, 2, "Review release notes", 40);
       const page = async (query: string) =>
         promptHistoryListResponseSchema.parse(
@@ -213,6 +214,7 @@ describe("public prompt history list route", () => {
           input: textInput("Review release notes"),
           projectId: project.id,
           threadId: second.id,
+          scope: "thread",
         },
         {
           id: newer.id,
@@ -220,6 +222,7 @@ describe("public prompt history list route", () => {
           input: textInput("Write release notes"),
           projectId: project.id,
           threadId: second.id,
+          scope: "project",
         },
       ]);
       if (firstPage.nextCursor === null) throw new Error("expected a cursor");

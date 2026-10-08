@@ -55,8 +55,6 @@ import { ProvidersSettingsSection } from "@/components/settings/ProvidersSetting
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
-import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
-import { SidebarHeaderSetting } from "@/components/settings/SidebarHeaderSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { PluginsOverview } from "@/components/plugin/PluginsOverview";
@@ -157,7 +155,6 @@ interface AppearanceSettingsSectionProps {
   customThemes: readonly string[];
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
-  navigationRail: boolean;
   onAppearanceThemeChange: (themeId: string) => void;
   onAppearanceThemePrefetch: (themeIds: readonly string[]) => void;
   onAppearanceThemePreview: (themeId: string | null) => void;
@@ -684,7 +681,6 @@ export function AppearanceSettingsSection({
   customThemes,
   pluginThemes,
   faviconColor,
-  navigationRail,
   onAppearanceThemeChange,
   onAppearanceThemePrefetch,
   onAppearanceThemePreview,
@@ -844,8 +840,6 @@ export function AppearanceSettingsSection({
       <SettingsSection title="Interface">
         <div className="space-y-5">
           <SidebarThreadListSetting />
-          <SidebarNavigationSetting navigationRail={navigationRail} />
-          <SidebarHeaderSetting navigationRail={navigationRail} />
           <CodeRendererSettings />
           <SidebarFooterSettings />
         </div>
@@ -1106,11 +1100,6 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Show the latest release notes as a compact preview on the Updates page.",
   },
-  navigationRail: {
-    label: "Navigation rail",
-    description:
-      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. The rail stays when the sidebar is collapsed. Wide windows only.",
-  },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
     description:
@@ -1244,7 +1233,6 @@ export function SettingsView() {
         customThemes={systemConfigQuery.data?.customThemes ?? []}
         pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
-        navigationRail={experiments.navigationRail}
         themePreference={themePreference}
         onAppearanceThemeChange={(themeId) =>
           updateAppearanceMutation.mutate(

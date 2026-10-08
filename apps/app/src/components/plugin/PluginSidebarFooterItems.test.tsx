@@ -12,7 +12,6 @@ import {
   sidebarFooterCapacityAtom,
   sidebarFooterOrderAtom,
   sidebarFooterHiddenAtom,
-  sidebarFooterSettingsInRailAtom,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { SidebarFooterCustomize } from "@/components/sidebar/SidebarFooterCustomize";
 import { SidebarFooterSettings } from "@/components/settings/SidebarFooterSettings";
@@ -146,7 +145,7 @@ describe("PluginSidebarFooterItems", () => {
     );
     const store = createStore();
     store.set(sidebarFooterHiddenAtom, ["plugin:unloaded/action"]);
-    store.set(sidebarFooterCapacityAtom, 6);
+    store.set(sidebarFooterCapacityAtom, 5);
     renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
     const footerIcons = () =>
       Array.from(
@@ -154,7 +153,6 @@ describe("PluginSidebarFooterItems", () => {
         (element) => element.dataset.footerIcon,
       );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/two",
@@ -162,7 +160,7 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/four",
     ]);
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Remove Settings from footer" }),
+      screen.getByRole("button", { name: "Remove Mobile apps from footer" }),
     );
     expect(
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
@@ -177,7 +175,6 @@ describe("PluginSidebarFooterItems", () => {
       "plugin:example/two",
     ]);
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -188,7 +185,6 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "Add Action two to footer" }),
     );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -199,13 +195,12 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
     ).toHaveProperty("disabled", true);
 
-    act(() => store.set(sidebarFooterCapacityAtom, 7));
-    expect(footerIcons()).toHaveLength(6);
+    act(() => store.set(sidebarFooterCapacityAtom, 6));
+    expect(footerIcons()).toHaveLength(5);
     fireEvent.click(
       screen.getByRole("button", { name: "Add Report a bug to footer" }),
     );
     expect(footerIcons()).toEqual([
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/one",
       "plugin:example/three",
@@ -216,25 +211,6 @@ describe("PluginSidebarFooterItems", () => {
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
     ]);
-  });
-
-  it("does not spend a footer slot on Settings while the navigation rail hosts it", () => {
-    const store = createStore();
-    store.set(sidebarFooterCapacityAtom, 1);
-    store.set(sidebarFooterSettingsInRailAtom, true);
-    renderWithProviders(<SidebarFooterCustomize onDone={() => {}} />, store);
-    const footerIcons = () =>
-      Array.from(
-        document.querySelectorAll<HTMLElement>("[data-footer-icon]"),
-        (element) => element.dataset.footerIcon,
-      );
-    expect(footerIcons()).toEqual(["builtin:mobile"]);
-    expect(
-      screen.queryByRole("button", { name: "Add Settings to footer" }),
-    ).toBeNull();
-
-    act(() => store.set(sidebarFooterSettingsInRailAtom, false));
-    expect(footerIcons()).toEqual(["builtin:settings"]);
   });
 
   it("hides the whole footer from More and shows it again", async () => {
@@ -269,7 +245,6 @@ describe("PluginSidebarFooterItems", () => {
     );
     expect(store.get(sidebarFooterHiddenAtom)).toEqual([
       "plugin:unloaded/action",
-      "builtin:settings",
       "builtin:mobile",
       "plugin:example/action",
       "builtin:report-bug",
@@ -719,7 +694,6 @@ describe("PluginSidebarFooterItems", () => {
           activeDisclosureKey={null}
           onDisclosureCommand={vi.fn()}
           builtInActions={[
-            { id: "settings", onActivate: run },
             { id: "mobile", href: "/settings/mobile", onActivate: run },
             { id: "report-bug", onActivate: run },
           ]}
@@ -734,7 +708,6 @@ describe("PluginSidebarFooterItems", () => {
     ).toEqual([
       "builtin:report-bug",
       "plugin:example/action",
-      "builtin:settings",
       "builtin:mobile",
     ]);
     expect(
@@ -755,7 +728,9 @@ describe("PluginSidebarFooterItems", () => {
       screen.getByRole("button", { name: "More footer actions" }),
       { button: 0, ctrlKey: false, pointerType: "mouse" },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Report a bug" }),
+    );
     expect(run).toHaveBeenCalledTimes(1);
   });
 });

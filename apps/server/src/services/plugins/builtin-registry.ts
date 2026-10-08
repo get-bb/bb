@@ -175,11 +175,6 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "navigation",
-    pluginId: "navigation",
-    defaultEnabled: true,
-  },
-  {
     name: "prompt-library",
     pluginId: "bb--prompt-library",
     defaultEnabled: false,

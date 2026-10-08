@@ -1,6 +1,7 @@
 import t3CodeIcon from "../assets/competitors/t3-code.png";
 import type { Comparison } from "./comparisons";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -18,52 +19,77 @@ import {
   faqTeam,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
-import { pluginsSection, SPAWN_COPY, spawnSection } from "./compare-sections";
+import {
+  ANYWHERE_COPY,
+  anywhereSection,
+  pluginsSection,
+  SPAWN_COPY,
+  spawnSection,
+  type SectionCopy,
+  LIMITS_COPY,
+  limitsSection,
+} from "./compare-sections";
 import { AgentSplit, type BrandLogo } from "./compare-visuals";
 
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 
-const CUSTOMIZE_SECTION = pluginsSection({
-  title: "Change anything, no fork needed",
+const PLUGINS_COPY_T3: SectionCopy = {
+  title: "Customize everything in the app with plugins",
   body: (
-    <p>
-      Browse the <a href="/marketplace">plugin marketplace</a> or ask an agent
-      to build the panel, command, or agent you want. It’s ready right away,
-      wherever you use bb, including your phone.
-    </p>
+    <>
+      <p>
+        Plugins can change almost any part of bb: pages, side panels, message
+        cards, file editors, and the command palette. They can also add new
+        agents, tools and skills for your agents, background jobs, webhooks, and
+        machines to run on.
+      </p>
+      <p>
+        300+ are already in the marketplace, and bb still updates every week
+        with nothing for you to rebase.
+      </p>
+    </>
   ),
-});
+};
 
 export const BB_VS_T3_CODE: Comparison = {
   slug: "t3-code-alternatives",
-  title: "T3 Code Alternatives: bb, Where Your Agents Work Together",
+  title: "T3 Code Alternatives: bb, Change Anything Without Forking",
   description:
-    "bb is a free, open-source T3 Code alternative. Claude Code, Codex, and other agents start and message each other, and plugins let you change anything without forking.",
+    "bb is a free, open-source T3 Code alternative you can change without forking. Add panels, commands, and agents from the plugin marketplace, or have your agent build them.",
   competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
-  headline: "The T3 Code alternative where your agents work together",
-  sub: "Claude Code builds, Codex reviews in its own thread, and you can message either one mid-run. Free and open source, on Mac, Windows, and Linux.",
+  headline: "The T3 Code alternative you can change without forking",
+  sub: "Add what you need from the plugin marketplace, or have your agent build it and share it with your team. Free and open source.",
   heroVisual: <AgentSplit />,
-  tailored: CUSTOMIZE_SECTION,
-  sections: [spawnSection(SPAWN_COPY)],
+  tailored: pluginsSection(PLUGINS_COPY_T3),
+  sections: [
+    spawnSection(SPAWN_COPY),
+    limitsSection(LIMITS_COPY),
+    anywhereSection(ANYWHERE_COPY),
+  ],
   tableNote: null,
   table: [
+    {
+      title: "Customize",
+      rows: [
+        { ...BB_ROWS.marketplace, competitor: cell("no", "Fork the code") },
+      ],
+    },
     {
       title: "Agents",
       rows: [
         {
           feature: "Message a subagent",
           bb: cell("yes", "Mid-run, from any device"),
-          competitor: cell("no", "Subagent threads can't take messages"),
+          competitor: cell("no"),
         },
         {
-          feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Switches accounts automatically"),
+          ...BB_ROWS.accountSwitch,
           competitor: cell("partial", "Tracks limits, you switch"),
         },
         {
-          feature: "Multi-agent support",
-          bb: cell("yes", "Claude Code, Codex, Pi, and any ACP agent"),
+          ...BB_ROWS.multiAgent,
           competitor: cell(
             "yes",
             "Claude Code, Codex, Cursor, OpenCode, and more",
@@ -72,53 +98,23 @@ export const BB_VS_T3_CODE: Comparison = {
       ],
     },
     {
-      title: "Customize",
-      rows: [
-        {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("no", "Fork the code"),
-        },
-      ],
-    },
-    {
       title: "Everything you use today",
       rows: [
-        {
-          feature: "Git worktree per thread",
-          bb: cell("yes", "Setup and teardown scripts"),
-          competitor: cell("yes"),
-        },
-        {
-          feature: "Review and merge",
-          bb: cell("yes", "Line comments, checks, merge"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.worktrees, bb: cell("yes"), competitor: cell("yes") },
+        { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
           feature: "Phone and remote access",
-          bb: cell("yes", "iOS, Android, any browser"),
+          bb: cell("yes"),
           competitor: cell("yes"),
         },
-        {
-          feature: "Go back to an earlier point",
-          bb: cell("yes", "Edit a message or fork from it"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.rewind, competitor: cell("yes") },
       ],
     },
     {
       title: "Price and license",
       rows: [
-        {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
-          competitor: price("$0", "No paid plan"),
-        },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("yes", "MIT"),
-        },
+        { ...BB_ROWS.pricing, competitor: price("$0", "Any team size") },
+        { ...BB_ROWS.license, competitor: cell("yes", "MIT") },
       ],
     },
   ],
@@ -133,10 +129,12 @@ export const BB_VS_T3_CODE: Comparison = {
             <p>
               Both are free, MIT-licensed apps that run Claude Code, Codex, and
               other coding agents in Git worktrees on your own machines, with
-              mobile and remote access. In bb, every agent another agent starts
-              is a full thread you can open and message mid-run. You change bb
-              with plugins instead of a fork, and Account Pooler moves a thread
-              to your next account when one hits its limit.
+              mobile and remote access, and both let agents hand work to each
+              other. bb is built to be changed: install a plugin from the
+              marketplace or have an agent build one, instead of keeping a fork.
+              And in bb, every agent another agent starts is a full thread you
+              can open and message mid-run. bb is also fully scriptable: its CLI
+              and SDK can drive anything the app does.
             </p>
           ),
         },
@@ -145,9 +143,9 @@ export const BB_VS_T3_CODE: Comparison = {
           answer: (
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
-              use and change it for anything, including at work. Your agents
-              work together across providers, and plugins add whatever you need
-              without forking. <a href="/download/macos">Download bb</a>.
+              use and change it for anything, including at work. Plugins add
+              whatever you need without forking, and your agents work together
+              across providers. <a href="/download/macos">Download bb</a>.
             </p>
           ),
         },
@@ -168,6 +166,10 @@ export const BB_VS_T3_CODE: Comparison = {
           answer: (
             <ul>
               <li>
+                When you want a new panel, command, or agent, you install or
+                build a plugin instead of patching the app.
+              </li>
+              <li>
                 When an agent starts another, the new one is a full thread you
                 can message.
               </li>
@@ -180,11 +182,21 @@ export const BB_VS_T3_CODE: Comparison = {
                 <code>.bb-env-setup.sh</code>, and untracked files like{" "}
                 <code>.env</code> go in <code>.worktreeinclude</code>.
               </li>
-              <li>
-                When you want a new panel, command, or agent, you install or
-                build a plugin instead of patching the app.
-              </li>
             </ul>
+          ),
+        },
+        FAQ_CUSTOMIZE,
+        faqScript(
+          " T3 Code’s CLI mostly installs and runs its server, and outside agents can start and message threads through its MCP server.",
+        ),
+        {
+          question: "Do my skills and slash commands work in bb?",
+          answer: (
+            <p>
+              Yes. bb reads each agent’s own skills and slash commands and shows
+              them in that agent’s <code>/</code> menu, so the ones you use
+              today keep working.
+            </p>
           ),
         },
         FAQ_GET_STARTED,
@@ -230,7 +242,6 @@ export const BB_VS_T3_CODE: Comparison = {
         },
         faqPhone(null),
         faqSchedule(null),
-        FAQ_CUSTOMIZE,
       ],
     },
     {

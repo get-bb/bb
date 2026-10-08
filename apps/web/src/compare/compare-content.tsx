@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
-import type { CompareCell, CompareFaq, Comparison, Mark } from "./comparisons";
+import type {
+  CompareCell,
+  CompareFaq,
+  CompareRow,
+  Comparison,
+  Mark,
+} from "./comparisons";
 
 export function cell(mark: Mark | null, text = "", pro = false): CompareCell {
   return { mark, value: "", text, href: null, pro };
@@ -19,6 +25,63 @@ export function price(value: string, text: string): CompareCell {
   return { mark: null, value, text, href: null, pro: false };
 }
 
+type BbRow = Omit<CompareRow, "competitor">;
+
+export const BB_ROWS = {
+  pricing: { feature: "Pricing", bb: price("$0", "Any team size") },
+  license: { feature: "Open-source license", bb: cell("yes", "MIT") },
+  webAccess: {
+    feature: "Web access from any browser",
+    bb: cell("yes", "With bb Connect"),
+  },
+  otherMachines: {
+    feature: "Run agents on other machines",
+    bb: cell("yes", "Any computer you own"),
+  },
+  cloud: { feature: "Cloud workspaces", bb: cell("yes", "Via plugins") },
+  automations: {
+    feature: "Scheduled automations",
+    bb: cell("yes", "On your own machines"),
+  },
+  mobile: { feature: "Mobile app", bb: cell("yes", "iOS beta, Android alpha") },
+  multiAgent: {
+    feature: "Multi-agent support",
+    bb: cell("yes", "Claude Code, Codex, Cursor, OpenCode, and any ACP agent"),
+  },
+  handoff: {
+    feature: "Agent-to-agent handoff",
+    bb: cell("yes", "Agents can create and message each other"),
+  },
+  accountSwitch: {
+    feature: "Switch accounts at usage limits",
+    bb: cell("yes"),
+  },
+  marketplace: {
+    feature: "Plugin marketplace",
+    bb: cell("yes", "300+ community plugins, or share your own with your team"),
+  },
+  github: {
+    feature: "GitHub integration",
+    bb: cell("yes", "PR checks and merge"),
+  },
+  gitlab: { feature: "GitLab integration", bb: cell("yes", "Via plugins") },
+  gitea: { feature: "Gitea integration", bb: cell("yes", "Via plugins") },
+  linear: { feature: "Linear integration", bb: cell("yes", "Via plugins") },
+  windows: { feature: "Windows support", bb: cell("yes", "Alpha") },
+  linux: { feature: "Linux support", bb: cell("yes", "Alpha") },
+  macos: { feature: "macOS", bb: cell("yes", "Apple Silicon app") },
+  worktrees: {
+    feature: "Git worktrees",
+    bb: cell("yes", "Setup and teardown scripts"),
+  },
+  diffReview: { feature: "Diff review and merge", bb: cell("yes") },
+  rewind: {
+    feature: "Go back to an earlier point",
+    bb: cell("yes", "Edit a message or fork from it"),
+  },
+  teamPlans: { feature: "Team plans and SSO", bb: cell("no") },
+} satisfies Record<string, BbRow>;
+
 export const FAQ_GET_STARTED: CompareFaq = {
   question: "How do I get started?",
   answer: (
@@ -26,7 +89,7 @@ export const FAQ_GET_STARTED: CompareFaq = {
       <li>
         Download bb for <a href="/download/macos">macOS</a> (Apple Silicon),{" "}
         <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (alpha). On an Intel Mac, run{" "}
+        <a href="/download/linux">Linux</a> (both alpha). On an Intel Mac, run{" "}
         <code>npx bb-app@latest</code>, which needs Node.js 22.19 or later.
       </li>
       <li>
@@ -39,19 +102,32 @@ export const FAQ_GET_STARTED: CompareFaq = {
 };
 
 export const FAQ_CUSTOMIZE: CompareFaq = {
-  question: "Can I customize bb with plugins or scripts?",
+  question: "Can I customize bb with plugins?",
   answer: (
     <p>
       Yes. bb works out of the box, with worktrees, diff review, automations,
       and the mobile app ready from your first thread. When you want more,
       install plugins from the <a href="/marketplace">marketplace</a> or ask an
       agent to build one. Plugins can add panels, commands, and new agents, and
-      they work in the mobile app too. Everything in the app is also in the bb
-      CLI and HTTP API, so scripts and other agents can start, message, and
-      manage threads.
+      they work in the mobile app too.
     </p>
   ),
 };
+
+export function faqScript(contrast: ReactNode): CompareFaq {
+  return {
+    question: "Can I script bb from the command line?",
+    answer: (
+      <p>
+        Yes. The <code>bb</code> CLI covers everything the app does: start and
+        message threads, run terminals, schedule automations, and manage
+        machines and plugins, so a script or another agent can drive bb end to
+        end. The SDK and plugin API let you add your own commands, tools, and
+        screens.{contrast}
+      </p>
+    ),
+  };
+}
 
 export const FAQ_REVIEW: CompareFaq = {
   question: "Can I review and merge an agent’s changes in bb?",
@@ -108,13 +184,14 @@ export const FAQ_SUBSCRIPTIONS: CompareFaq = {
 
 export function faqUsageLimit(contrast: ReactNode): CompareFaq {
   return {
-    question: "Can bb switch accounts when I hit a usage limit?",
+    question: "What happens when I hit a usage limit?",
     answer: (
       <p>
-        Yes, with Account Pooler, an experimental plugin built into bb. Turn it
-        on and add the Claude Code and Codex accounts you own. When one account
-        hits its limit, bb moves the thread’s requests to the next one, so it
-        keeps running. {contrast}
+        bb picks the work back up. When an agent stops on a usage limit that
+        reports when it resets, bb sends the message again a little after the
+        reset, so you don’t have to come back and press send. To keep going on
+        another Claude Code or Codex account you own, turn on Account Pooler, a
+        plugin built into bb. {contrast}
       </p>
     ),
   };
@@ -210,8 +287,8 @@ export const FAQ_LAPTOP: CompareFaq = {
       stops idle sleep while bb runs. For long runs, add an always-on desktop or
       server to bb, or run threads in the cloud with a{" "}
       <a href="/marketplace">cloud plugin</a> like Modal Sandbox, which is built
-      in (experimental) and starts each thread in an on-demand sandbox in your
-      own Modal account.
+      in and starts each thread in an on-demand sandbox in your own Modal
+      account.
     </p>
   ),
 };
@@ -224,7 +301,7 @@ export function faqPlatforms(contrast: ReactNode): CompareFaq {
         Yes. Download the app for{" "}
         <a href="/download/macos">Apple Silicon Macs</a>,{" "}
         <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (alpha), or run{" "}
+        <a href="/download/linux">Linux</a> (both alpha), or run{" "}
         <code>npx bb-app@latest</code> on an Intel Mac. {contrast}
       </p>
     ),
@@ -248,10 +325,10 @@ export function faqTeam(contrast: ReactNode): CompareFaq {
     question: "Can my team use bb?",
     answer: (
       <p>
-        Yes, free at any team size{contrast}. Each person runs bb on their own
-        machines with their own agent subscriptions and shares work through Git
-        and pull requests as usual. bb doesn’t offer team plans, SSO, or a
-        support SLA.
+        Yes, free at any team size{contrast}. Teams can share one bb on an
+        always-on machine, so everyone sees the same projects and threads, or
+        each person can run their own and share work through Git as usual. bb
+        doesn’t offer team plans, SSO, or a support SLA.
       </p>
     ),
   };

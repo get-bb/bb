@@ -313,6 +313,7 @@ export function listPromptHistory(
       ),
       projectId: row.projectId,
       threadId: row.threadId,
+      scope: row.scope,
     }),
   });
   const last = pageRows.at(-1);

@@ -15,15 +15,13 @@ import {
   type OnboardingRepo,
 } from "./OnboardingViews";
 import {
-  NoAgentNotice,
-  SetupChecklist,
+  SetupChecklistBanner,
   type SetupChecklistItem,
-} from "./SetupChecklistViews";
+} from "./SetupChecklistHost";
 import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
-import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 export default {
   title: "onboarding/First run",
@@ -573,27 +571,20 @@ function HomeFrame({
   onDismiss?: () => void;
 }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
-      <img
-        src={bbLogoUrl}
-        alt="bb"
-        draggable={false}
-        className="h-16 w-20 select-none object-contain dark:invert"
-      />
-      {agentMissing ? <NoAgentNotice onSetUp={() => onOpen("agent")} /> : null}
-      {items === null ? (
-        <p className="text-sm text-muted-foreground">
-          The usual bb home screen goes here.
-        </p>
-      ) : (
-        <SetupChecklist
-          items={items}
-          onAction={(id) => {
+    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
+      <SetupChecklistBanner
+        checklist={{
+          items,
+          agentMissing,
+          act: (id) => {
             if (id !== "thread" && id !== "notifications") onOpen(id);
-          }}
-          onDismiss={onDismiss}
-        />
-      )}
+          },
+          dismiss: onDismiss,
+        }}
+      />
+      <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
+        The usual bb home composer goes here.
+      </p>
     </div>
   );
 }
@@ -1080,8 +1071,8 @@ export function HomeAfterSkipping() {
   return (
     <Gallery>
       <Captioned
-        label="Empty home after Skip setup"
-        hint="Shown under the welcome actions while no project exists; with projects, the home composer shows a one-line version. Dismissing it also stops the missing-agent notice."
+        label="Home after Skip setup, no agent ready"
+        hint="The home composer leads with the missing agent. Dismissing the checklist also stops this notice."
       >
         <StoryWindow>
           <HomeFrame
@@ -1091,6 +1082,42 @@ export function HomeAfterSkipping() {
               projects: false,
               thread: false,
               plugins: false,
+              devices: false,
+              notifications: false,
+            })}
+          />
+        </StoryWindow>
+      </Captioned>
+      <Captioned
+        label="Home with an agent ready and steps left"
+        hint="A one-line checklist counts the three required steps and names the next one; Continue starts the first thread."
+      >
+        <StoryWindow>
+          <HomeFrame
+            agentMissing={false}
+            items={checklistItems({
+              agent: true,
+              projects: true,
+              thread: false,
+              plugins: false,
+              devices: false,
+              notifications: false,
+            })}
+          />
+        </StoryWindow>
+      </Captioned>
+      <Captioned
+        label="Home with only optional extras left"
+        hint="Once the required steps are done, the line offers the next optional extra with its one-line reason."
+      >
+        <StoryWindow>
+          <HomeFrame
+            agentMissing={false}
+            items={checklistItems({
+              agent: true,
+              projects: true,
+              thread: true,
+              plugins: true,
               devices: false,
               notifications: false,
             })}
