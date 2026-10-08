@@ -49,8 +49,8 @@ export const SPAWN_COPY: SectionCopy = {
   title: "Let one agent orchestrate the rest",
   body: (
     <p>
-      Any agent can start other agents and message them as they work, whether
-      that’s Claude Code, Codex, Cursor, or another provider.
+      Any agent can start subagents from any provider and message them as they
+      work, so one task becomes a multi-agent team.
     </p>
   ),
 };
