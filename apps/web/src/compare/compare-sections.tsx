@@ -7,6 +7,7 @@ import {
   AnywhereVisual,
   SpawnTimeline,
   TeamCost,
+  UsageVisual,
   type BrandLogo,
 } from "./compare-visuals";
 
@@ -69,6 +70,19 @@ export const ANYWHERE_COPY: SectionCopy = {
         after you close your laptop.
       </p>
       <p>Check in from the mobile app or any browser.</p>
+    </>
+  ),
+};
+
+export const LIMITS_COPY: SectionCopy = {
+  title: "Don’t lose work to usage limits",
+  body: (
+    <>
+      <p>If an agent hits a usage limit, bb keeps your work moving.</p>
+      <p>
+        Spread work across the accounts you already have, and schedule it around
+        your limits.
+      </p>
     </>
   ),
 };
@@ -148,6 +162,15 @@ export function anywhereSection(copy: SectionCopy): CompareHighlight {
     title: copy.title,
     wide: false,
     visual: <AnywhereVisual />,
+    body: copy.body,
+  };
+}
+
+export function limitsSection(copy: SectionCopy): CompareHighlight {
+  return {
+    title: copy.title,
+    wide: false,
+    visual: <UsageVisual />,
     body: copy.body,
   };
 }
