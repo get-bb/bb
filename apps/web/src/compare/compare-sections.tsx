@@ -42,7 +42,7 @@ export const AGENTS_COPY: SectionCopy = {
   title: "Agents that work together like a team",
   body: (
     <p>
-      Claude Code builds, Codex reviews, and Cursor writes the release notes. No
+      Claude Code builds, Codex reviews, and Pi writes the release notes. No
       copying between tools.
     </p>
   ),
@@ -86,7 +86,7 @@ export const PLUGINS_COPY: SectionCopy = {
       <p>
         When you want more—or less—customize in Settings, browse the{" "}
         <a href="/marketplace">plugin marketplace</a>, or ask an agent to build
-        exactly what you need, immediately available wherever you use bb,
+        exactly what you need. It’s ready right away wherever you use bb,
         including your phone.
       </p>
     </>

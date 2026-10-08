@@ -27,6 +27,7 @@ import {
   CursorIcon,
   LinuxIcon,
   OpenAiIcon,
+  PiIcon,
 } from "../landing/icons";
 import { SpawnRow, useCycle } from "../landing/landing-visuals";
 
@@ -235,8 +236,8 @@ export function AgentSplit() {
                 </span>
                 <span className="composer-row">
                   <span className="model">
-                    <CursorIcon className="model-ic" />
-                    Cursor
+                    <PiIcon className="model-ic" />
+                    Pi
                     <HugeiconsIcon icon={ArrowDown01Icon} className="chev-sm" />
                   </span>
                   <span className="composer-actions" aria-hidden="true">
