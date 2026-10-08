@@ -544,12 +544,14 @@ function ChildQuestionSummary({
 }
 
 function ChildQuestionBody({
+  backButtonRef,
   current,
   index,
   total,
   onStep,
   onBack,
 }: {
+  backButtonRef: RefObject<HTMLButtonElement | null>;
   current: ChildThreadPendingAttention;
   index: number;
   total: number;
@@ -558,18 +560,10 @@ function ChildQuestionBody({
 }) {
   const position = `${index + 1} of ${total}`;
   return (
-    <div
-      className="px-3 pb-2 pt-1"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented) {
-          event.preventDefault();
-          event.stopPropagation();
-          onBack();
-        }
-      }}
-    >
+    <div className="px-3 pb-2 pt-1">
       <div className="flex min-w-0 items-center gap-2 text-xs">
         <button
+          ref={backButtonRef}
           type="button"
           onClick={onBack}
           className="-ml-1.5 flex h-6 shrink-0 items-center gap-0.5 rounded-md pl-0.5 pr-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -882,6 +876,33 @@ function ActiveChildThreadsCard({
       index: questionIndex,
     });
   }
+  const cardRef = useRef<HTMLElement>(null);
+  const backButtonRef = useRef<HTMLButtonElement>(null);
+  const focusBackOnOpen = useRef(false);
+  const openChildThreadId = currentQuestion?.childThreadId ?? null;
+  useEffect(() => {
+    if (openChildThreadId !== null && focusBackOnOpen.current) {
+      focusBackOnOpen.current = false;
+      backButtonRef.current?.focus();
+    }
+  }, [openChildThreadId]);
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || openChildThreadId === null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      returnFocusChildId.current = openChildThreadId;
+      setOpenQuestion(null);
+    };
+    card.addEventListener("keydown", handleKeyDown);
+    return () => card.removeEventListener("keydown", handleKeyDown);
+  }, [openChildThreadId]);
   if (items.length === 0) {
     return null;
   }
@@ -890,6 +911,7 @@ function ActiveChildThreadsCard({
       (item) => item.interaction.id === interactionId,
     );
     if (index >= 0) {
+      focusBackOnOpen.current = true;
       setOpenQuestion({ interactionId, index });
     }
   };
@@ -917,6 +939,7 @@ function ActiveChildThreadsCard({
   };
   return (
     <PromptStackCard
+      rootRef={cardRef}
       ariaLabel="Child threads"
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
@@ -1006,6 +1029,7 @@ function ActiveChildThreadsCard({
       >
         {currentQuestion ? (
           <ChildQuestionBody
+            backButtonRef={backButtonRef}
             current={currentQuestion}
             index={questionIndex}
             total={pendingInteractions.length}
