@@ -95,6 +95,7 @@ export const SidebarStickyTier = React.forwardRef<
         tier === "label" && SIDEBAR_GROUP_LABEL_BASE_CLASS,
         "bg-sidebar",
         className,
+        "rounded-none",
       )}
     >
       {children}
