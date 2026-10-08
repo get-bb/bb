@@ -56,10 +56,6 @@ import {
 } from "../ui/environment-workspace-display.js";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import {
-  resolveSectionName,
-  sectionNameOverridesAtom,
-} from "../model/section-name-overrides.js";
-import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "../ui/ConfirmDeleteDialog.js";
@@ -407,36 +403,11 @@ interface EnvironmentThreadGroupHeaderActionsProps {
 
 interface UseArchiveEnvironmentThreadGroupActionArgs {
   environmentId: string;
-  projectId: string;
-  selectedThreadId?: string;
-  threads: readonly SidebarThread[];
 }
 
 interface UseArchiveEnvironmentThreadGroupActionResult {
   archiveThreadsPending: boolean;
   onArchiveThreads: () => void;
-}
-
-interface FormatArchivedEnvironmentThreadsToastTitleArgs {
-  archivedThreadIds: readonly string[];
-  threads: readonly SidebarThread[];
-}
-
-export function formatArchivedEnvironmentThreadsToastTitle({
-  archivedThreadIds,
-  threads,
-}: FormatArchivedEnvironmentThreadsToastTitleArgs): string {
-  if (archivedThreadIds.length !== 1) {
-    return `Archived ${archivedThreadIds.length} threads`;
-  }
-
-  const archivedThread = threads.find(
-    (thread) => thread.id === archivedThreadIds[0],
-  );
-  if (!archivedThread) {
-    return "Archived 1 thread";
-  }
-  return `Archived ${archivedThread.displayTitle}`;
 }
 
 function getThreadRowDepth({
@@ -672,46 +643,18 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
 
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
-  projectId,
-  selectedThreadId,
-  threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const navigate = useBbNavigate();
-  const sdk = useSdk();
+  const actions = experimental_useSidebarThreadActions();
   const [archiveThreadsPending, setArchiveThreadsPending] = useState(false);
   const onArchiveThreads = useCallback(() => {
     setArchiveThreadsPending(true);
-    void sdk.environments
-      .archiveThreads({ environmentId })
-      .then((response) => {
-        toast.success(
-          formatArchivedEnvironmentThreadsToastTitle({
-            archivedThreadIds: response.archivedThreadIds,
-            threads,
-          }),
-        );
-        if (
-          selectedThreadId &&
-          response.archivedThreadIds.includes(selectedThreadId)
-        ) {
-          navigate.toProject(projectId);
-        }
-      })
-      .catch((error: unknown) => {
-        toast.error(
-          getMutationErrorMessage({
-            error,
-            fallbackMessage: "Failed to archive environment threads.",
-          }),
-        );
-      })
+    void actions
+      .experimental_archiveEnvironmentThreads(environmentId)
+      .catch(() => {})
       .finally(() => setArchiveThreadsPending(false));
-  }, [environmentId, navigate, projectId, sdk, selectedThreadId, threads]);
+  }, [actions, environmentId]);
 
-  return {
-    archiveThreadsPending,
-    onArchiveThreads,
-  };
+  return { archiveThreadsPending, onArchiveThreads };
 }
 
 function EnvironmentThreadGroupHeaderActions({
@@ -894,7 +837,7 @@ function EnvironmentThreadGroupHeader({
             onDoubleClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              rename.startEditing();
+              rename.startEditingFromDoubleClick();
             }}
           >
             {displayName}
@@ -922,7 +865,7 @@ function EnvironmentThreadGroupHeader({
             className={cn(
               SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
               COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
-              "pointer-events-none absolute right-0 flex items-center justify-center text-subtle-foreground max-md:pointer-coarse:static max-md:pointer-coarse:shrink-0",
+              "pointer-events-none absolute right-0 flex items-center justify-center text-subtle-foreground [@media(hover:none)]:static [@media(hover:none)]:shrink-0",
             )}
           >
             <CollapsedThreadStatusGlyph activity={childActivity} />
@@ -938,7 +881,7 @@ function EnvironmentThreadGroupHeader({
             SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
             "relative flex items-center justify-end",
             rename.isEditing && "hidden",
-            isCollapsed && "max-md:pointer-coarse:hidden",
+            isCollapsed && "[@media(hover:none)]:hidden",
           )}
         >
           <EnvironmentThreadGroupHeaderActions
@@ -1010,8 +953,6 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     depthOffset,
     nodeDepth,
   });
-  const depthAdjustment = rowDepth > 0 ? 1 : 0;
-  const groupDepth = rowDepth - depthAdjustment;
   const parentLineDepth =
     nodeDepth > 0
       ? getThreadRowDepth({
@@ -1026,14 +967,8 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     ? representativeThread.sectionId
     : null;
   const { sectionId, pinned } = useThreadCreationPlacement(sectionWhenUnpinned);
-  const threads = useMemo(() => nodes.map((node) => node.thread), [nodes]);
   const { archiveThreadsPending, onArchiveThreads } =
-    useArchiveEnvironmentThreadGroupAction({
-      environmentId,
-      projectId,
-      selectedThreadId,
-      threads,
-    });
+    useArchiveEnvironmentThreadGroupAction({ environmentId });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
     sidebarActions.openNewThread({
@@ -1074,7 +1009,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           environmentId={environmentId}
           environmentProviderId={environmentProviderId}
           representativeThread={representativeThread}
-          rowDepth={groupDepth}
+          rowDepth={rowDepth}
           stickyLevel={getThreadNodeStickyLevel({
             depthOffset,
             node: representativeNode,
@@ -1089,7 +1024,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
         />
         {!isCollapsed ? (
           <div className="relative space-y-px">
-            <ThreadTreeGroupLine parentRowDepth={groupDepth} />
+            <ThreadTreeGroupLine parentRowDepth={rowDepth} />
             <SidebarWindowedItems
               itemKeys={itemKeys}
               estimateRows={estimateRows}
@@ -1106,7 +1041,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                     projectId={projectId}
                     item={nodeItems[index]}
                     sectionDnd={sectionDnd}
-                    depthOffset={depthOffset + 1 - depthAdjustment}
+                    depthOffset={depthOffset + 1}
                     isEnvGrouped
                     selectedThreadId={selectedThreadId}
                     collapsedThreadIds={collapsedThreadIds}
@@ -1340,49 +1275,14 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   sortableStyle,
 }: SectionTreeItemRowProps) {
   const sdk = useSdk();
-  const sectionNameOverrides = useAtomValue(sectionNameOverridesAtom);
-  const setSectionNameOverrides = useSetAtom(sectionNameOverridesAtom);
-  const sectionName = resolveSectionName(
-    section.id,
-    section.name,
-    sectionNameOverrides,
-  );
+  const sectionName = section.name;
   const rename = useSidebarRename({
     kind: "section",
     id: section.id,
     ownerKey: `section:${section.id}:section:${depthOffset}`,
     name: sectionName,
     label: "Section name",
-    onSave: async (name) => {
-      const previousName =
-        sectionNameOverrides.get(section.id)?.previousName ?? section.name;
-      setSectionNameOverrides((current) =>
-        new Map(current).set(section.id, {
-          previousName,
-          name,
-        }),
-      );
-      try {
-        const result = await sdk.threadSections.update({
-          id: section.id,
-          name,
-        });
-        setSectionNameOverrides((current) =>
-          new Map(current).set(section.id, {
-            previousName,
-            name: result.name ?? name,
-          }),
-        );
-        return result;
-      } catch (error) {
-        setSectionNameOverrides((current) => {
-          const next = new Map(current);
-          next.delete(section.id);
-          return next;
-        });
-        throw error;
-      }
-    },
+    onSave: (name) => sdk.threadSections.update({ id: section.id, name }),
   });
   const [isTopLevelActionsOpen, setIsTopLevelActionsOpen] = useState(false);
   const collapsedSections = useAtomValue(sidebarCollapsedThreadSectionsAtom);
@@ -1485,7 +1385,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
       <TopLevelSidebarSection
         label={sectionName}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         sectionId={section.id}
         actions={topLevelActions}
         actionsOpen={isTopLevelActionsOpen}
@@ -1525,7 +1425,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
         label={sectionName}
         sectionId={buildSidebarEntitySectionId("section", section.id)}
         labelEditor={rename.editor}
-        onRename={rename.startEditing}
+        onRename={rename.startEditingFromDoubleClick}
         onRenameFromMenu={rename.startEditingFromMenu}
         depth={headerDepth}
         onCloseAutoFocus={rename.onCloseAutoFocus}
@@ -2344,7 +2244,7 @@ function ProjectRowComponent({
             label={project.name}
             dropParentKey={buildSidebarEntitySectionId("project", project.id)}
             labelEditor={rename.editor}
-            onRename={rename.startEditing}
+            onRename={rename.startEditingFromDoubleClick}
             actions={projectActions}
             actionsMobileAlways
             actionsOpen={isActionsOpen}

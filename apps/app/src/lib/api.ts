@@ -183,7 +183,10 @@ export async function loadFilePreview(
     return samplePreview;
   }
   const response = await requestResponse(
-    fetch(target.url, appSurfaceRequestInit({ method: "GET", signal })),
+    fetch(
+      target.url,
+      appSurfaceRequestInit({ method: "GET", cache: "default", signal }),
+    ),
   );
   return buildFilePreview({
     ...target,

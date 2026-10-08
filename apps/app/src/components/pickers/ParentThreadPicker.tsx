@@ -7,7 +7,6 @@ import {
   CommandList,
 } from "@bb/shared-ui/command";
 import {
-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -93,10 +92,7 @@ export function ParentThreadPicker({
           />
           <Icon
             name="ChevronDown"
-            className={cn(
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-              "text-muted-foreground",
-            )}
+            className="size-3 shrink-0 text-subtle-foreground max-md:pointer-coarse:size-5"
           />
         </button>
       </PopoverTrigger>

@@ -1,3 +1,7 @@
+import {
+  createAsyncTtlMemo,
+  type AsyncTtlMemo,
+} from "../lib/async-ttl-memo.js";
 import type {
   ProviderCliStatus,
   ProviderCliStatusResponse,
@@ -68,6 +72,35 @@ export async function aggregateProviderInstallations(
   );
 }
 
+const statusCaches = new WeakMap<
+  object,
+  AsyncTtlMemo<string, ProviderInstallationStatus>
+>();
+
+function providerStatusCache(deps: WorkSessionDeps) {
+  let cache = statusCaches.get(deps.db);
+  if (!cache) {
+    cache = createAsyncTtlMemo<string, ProviderInstallationStatus>({
+      maxEntries: 1_024,
+      ttlMs: 30_000,
+    });
+    statusCaches.set(deps.db, cache);
+    const hostCache = cache;
+    deps.hub.onChangedMessage((message) => {
+      if (
+        message.entity === "host" &&
+        message.changes.some(
+          (change) =>
+            change === "host-connected" || change === "host-disconnected",
+        )
+      ) {
+        hostCache.invalidateWhere((key) => key.startsWith(`${message.id} `));
+      }
+    });
+  }
+  return cache;
+}
+
 export async function getProviderInstallations(
   deps: WorkSessionDeps,
   args: { hostId: string },
@@ -105,15 +138,19 @@ export async function getProviderInstallations(
       }
       return async (timeoutMs) => {
         try {
-          return await callHostRetryableOnlineRpc(deps, {
-            hostId: args.hostId,
-            timeoutMs,
-            command: {
-              type: "provider.installation.status",
-              providerId: provider.id,
-              bridgeLaunch,
-            },
-          });
+          return await providerStatusCache(deps).run(
+            `${args.hostId} ${provider.id} ${deps.providerRegistry.getRegistrationRevision()} ${JSON.stringify(bridgeLaunch)}`,
+            () =>
+              callHostRetryableOnlineRpc(deps, {
+                hostId: args.hostId,
+                timeoutMs,
+                command: {
+                  type: "provider.installation.status",
+                  providerId: provider.id,
+                  bridgeLaunch,
+                },
+              }),
+          );
         } catch (error) {
           if (!canOmitProviderInstallationStatusError(error)) {
             throw error;
@@ -151,9 +188,14 @@ export async function serializeProviderInstallation<T>(
   });
   hosts.set(hostId, tail);
   await previous;
+  const cache = providerStatusCache(deps);
+  const invalidate = () =>
+    cache.invalidateWhere((key) => key.startsWith(`${hostId} `));
+  invalidate();
   try {
     return await run();
   } finally {
+    invalidate();
     release();
     if (hosts.get(hostId) === tail) hosts.delete(hostId);
   }

@@ -441,6 +441,17 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       ],
     },
   },
+  "host.discover_repos": {
+    repos: [
+      {
+        path: "/home/user/projects/bb",
+        name: "bb",
+        lastActivityAt: "2026-08-05T00:00:00.000Z",
+        originUrl: "https://github.com/example/bb",
+      },
+    ],
+    truncated: false,
+  },
   "provider.installation.status": {
     executableName: "codex",
     executablePath: null,
@@ -1195,7 +1206,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(228);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(230);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

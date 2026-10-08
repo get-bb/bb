@@ -162,6 +162,7 @@ export function MobileRecentsVisibilityStyle() {
 interface StoryComposerProps {
   id?: string;
   mentionMenuPlacement?: "top" | "bottom";
+  initialValue?: string;
   value?: string;
   onValueChange?: (value: string) => void;
   placeholder?: string;
@@ -171,12 +172,13 @@ interface StoryComposerProps {
 export function StoryComposer({
   id = "story-compact-home-composer",
   mentionMenuPlacement = "top",
+  initialValue = "",
   value: controlledValue,
   onValueChange,
   placeholder,
   focusRequest,
 }: StoryComposerProps = {}) {
-  const [uncontrolledValue, setValue] = useState("");
+  const [uncontrolledValue, setValue] = useState(initialValue);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
   const value = controlledValue ?? uncontrolledValue;
   return (
@@ -227,20 +229,30 @@ export function HomeRecents({ threads }: { threads: ThreadListEntry[] }) {
 
 export function CompactHomePage({
   threads = HOME_THREADS,
+  composerValue,
 }: {
   threads?: ThreadListEntry[];
+  composerValue?: string;
 }) {
   return (
-    <RootComposeCompactHome composer={<StoryComposer />}>
+    <RootComposeCompactHome
+      composer={<StoryComposer initialValue={composerValue} />}
+    >
       <HomeRecents threads={threads} />
     </RootComposeCompactHome>
   );
 }
 
-export function PhoneFrame({ children }: { children: ReactNode }) {
+export function PhoneFrame({
+  children,
+  heightClass = "h-[852px]",
+}: {
+  children: ReactNode;
+  heightClass?: string;
+}) {
   return (
     <div
-      className={`${MOBILE_RECENTS_VISIBILITY_CLASS} flex h-[852px] w-[393px] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-background`}
+      className={`${MOBILE_RECENTS_VISIBILITY_CLASS} flex ${heightClass} w-[393px] min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-background`}
     >
       <MobileRecentsVisibilityStyle />
       {children}

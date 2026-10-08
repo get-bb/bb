@@ -1268,6 +1268,33 @@ const providerCliInstallResultSchema = z
   })
   .strict();
 
+export const discoveredRepoSchema = z
+  .object({
+    path: z.string().min(1),
+    name: z.string().min(1),
+    lastActivityAt: z.string().datetime(),
+    originUrl: z.string().min(1).nullable(),
+  })
+  .strict();
+export type DiscoveredRepo = z.infer<typeof discoveredRepoSchema>;
+
+export const discoverReposResultSchema = z
+  .object({
+    repos: z.array(discoveredRepoSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+export type DiscoverReposResult = z.infer<typeof discoverReposResultSchema>;
+
+const discoverReposCommandSchema = z
+  .object({
+    type: z.literal("host.discover_repos"),
+    maxDepth: z.number().int().min(1).max(8),
+    sinceDays: z.number().int().min(1).max(3650),
+    limit: z.number().int().min(1).max(200),
+  })
+  .strict();
+
 type HostDaemonCommandTransport = "settled" | "onlineRpc";
 export type HostDaemonCommandEnvironmentLane = "read" | "write";
 type HostDaemonFlushEventsBeforeResult = boolean | "when-initiated";
@@ -1863,6 +1890,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.usage",
     schema: providerUsageCommandSchema,
     resultSchema: providerUsageResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.discover_repos": defineHostDaemonCommandDescriptor({
+    type: "host.discover_repos",
+    schema: discoverReposCommandSchema,
+    resultSchema: discoverReposResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

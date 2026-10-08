@@ -447,6 +447,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
+    onlineRpcResponseSuccessSchemaFor("host.discover_repos"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
     onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),
@@ -597,6 +598,22 @@ const hostDaemonTerminalCloseMessageSchema = z
   })
   .strict();
 
+const hostDaemonTerminalFlowControlMessageSchema = z
+  .object({
+    type: z.literal("terminal.flow-control"),
+    terminalId: terminalIdSchema,
+    enabled: z.boolean(),
+  })
+  .strict();
+
+const hostDaemonTerminalAckMessageSchema = z
+  .object({
+    type: z.literal("terminal.ack"),
+    terminalId: terminalIdSchema,
+    nextSeq: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -629,6 +646,8 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
   hostDaemonTerminalInputMessageSchema,
   hostDaemonTerminalResizeMessageSchema,
   hostDaemonTerminalCloseMessageSchema,
+  hostDaemonTerminalFlowControlMessageSchema,
+  hostDaemonTerminalAckMessageSchema,
 ]);
 export type HostDaemonServerWsMessage = z.infer<
   typeof hostDaemonServerWsMessageSchema

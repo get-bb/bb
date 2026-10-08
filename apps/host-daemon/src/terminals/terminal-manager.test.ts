@@ -108,6 +108,9 @@ async function cleanupTempDirs(): Promise<void> {
 
 class FakeTerminalPty implements TerminalPtyProcess {
   disposeCount: number;
+  exited = false;
+  paused = false;
+  pauseCount = 0;
   readonly killCalls: (string | null)[];
   readonly resizeCalls: ResizeCall[];
   readonly writeCalls: (Buffer | string)[];
@@ -131,6 +134,19 @@ class FakeTerminalPty implements TerminalPtyProcess {
 
   dispose(): void {
     this.disposeCount += 1;
+  }
+
+  hasExited(): boolean {
+    return this.exited;
+  }
+
+  pause(): void {
+    this.paused = true;
+    this.pauseCount += 1;
+  }
+
+  resume(): void {
+    this.paused = false;
   }
 
   kill(signal?: string): void {
@@ -1061,6 +1077,111 @@ describe("TerminalManager", () => {
       replayStartSeq: 0,
       nextSeq: 1,
     });
+  });
+
+  it("flushes the first output after an idle period without the batch delay", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+    vi.useFakeTimers({
+      toFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setImmediate",
+        "clearImmediate",
+        "performance",
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(4);
+
+    pty.emitData("a");
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(collectTerminalOutput(harness.messages)).toBe("a");
+
+    pty.emitData("b");
+    await vi.advanceTimersByTimeAsync(3);
+
+    expect(collectTerminalOutput(harness.messages)).toBe("a");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(collectTerminalOutput(harness.messages)).toBe("ab");
+
+    await vi.advanceTimersByTimeAsync(4);
+    pty.emitData("c");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(collectTerminalOutput(harness.messages)).toBe("abc");
+  });
+
+  it("pauses the PTY a window ahead of acknowledged output and resumes on acknowledgement", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+    await harness.manager.handleMessage({
+      type: "terminal.flow-control",
+      terminalId: "term-1",
+      enabled: true,
+    });
+    const chunk = "x".repeat(64 * 1024);
+
+    for (let index = 0; index < 16; index += 1) {
+      pty.emitData(chunk);
+    }
+    expect(pty.paused).toBe(false);
+    pty.emitData(chunk);
+    expect(pty.paused).toBe(true);
+
+    await harness.manager.handleMessage({
+      type: "terminal.ack",
+      terminalId: "term-1",
+      nextSeq: 8,
+    });
+    expect(pty.paused).toBe(true);
+    await harness.manager.handleMessage({
+      type: "terminal.ack",
+      terminalId: "term-1",
+      nextSeq: 9,
+    });
+    expect(pty.paused).toBe(false);
+  });
+
+  it("resumes a paused PTY whose process exited so node-pty can drain it", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+    await harness.manager.handleMessage({
+      type: "terminal.flow-control",
+      terminalId: "term-1",
+      enabled: true,
+    });
+    for (let index = 0; index < 17; index += 1) {
+      pty.emitData("x".repeat(64 * 1024));
+    }
+    expect(pty.paused).toBe(true);
+
+    pty.exited = true;
+
+    await vi.waitFor(() => {
+      expect(pty.paused).toBe(false);
+    });
+  });
+
+  it("stops pacing every PTY when the server connection is released", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+    await harness.manager.handleMessage({
+      type: "terminal.flow-control",
+      terminalId: "term-1",
+      enabled: true,
+    });
+    for (let index = 0; index < 17; index += 1) {
+      pty.emitData("x".repeat(64 * 1024));
+    }
+    expect(pty.paused).toBe(true);
+
+    harness.manager.releaseOutputFlowControl();
+    for (let index = 0; index < 17; index += 1) {
+      pty.emitData("x".repeat(64 * 1024));
+    }
+
+    expect(pty.paused).toBe(false);
+    expect(pty.pauseCount).toBe(1);
   });
 
   it("keeps a retained terminal read-only after it exits", async () => {

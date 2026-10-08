@@ -855,7 +855,7 @@ function MachineContextualEnvironmentOptions({
             />
           ))}
           {filteredHosts.length === 0 ? (
-            <div className="px-2 py-[0.3125rem] text-xs text-muted-foreground max-md:py-2">
+            <div className="px-2 py-[0.3125rem] text-xs text-muted-foreground max-md:pointer-coarse:py-2">
               No machines found
             </div>
           ) : null}
@@ -940,7 +940,7 @@ function MachineChoiceItem({
       aria-current={active ? "true" : undefined}
       onSelect={onSelect}
       className={cn(
-        "flex items-center gap-3 py-[0.3125rem] text-xs max-md:py-2",
+        "flex items-center gap-3 py-[0.3125rem] text-xs max-md:pointer-coarse:py-2",
         LIST_HOVER_TRANSITION,
         active && "font-medium text-foreground",
       )}
@@ -1145,7 +1145,7 @@ function EnvironmentMenuItem({
       }}
       className={cn(
         "flex items-start justify-between gap-3 whitespace-normal",
-        "py-[0.3125rem] text-xs max-md:py-2",
+        "py-[0.3125rem] text-xs max-md:pointer-coarse:py-2",
         LIST_HOVER_TRANSITION,
       )}
     >

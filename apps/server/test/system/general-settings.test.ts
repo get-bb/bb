@@ -35,6 +35,7 @@ describe("general settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.generalSettings).toEqual({
         ...defaultAppSettings,
+        machineGitCredentialsEnabled: false,
         showUnhandledProviderEvents: false,
       });
       expect(body.primaryHostId).toBeNull();
@@ -185,32 +186,35 @@ it("preserves telemetry opt-out when older clients update other settings", async
   });
 });
 
-it("persists archive confirmation opt-out and preserves it for older clients", async () => {
-  await withTestHarness(async (harness) => {
-    const put = (settings: object) =>
-      harness.app.request("/api/v1/settings/general", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-    expect(
-      (await put({ ...defaultAppSettings, confirmThreadArchive: false }))
-        .status,
-    ).toBe(200);
-    expect(getAppSettings(harness.db).confirmThreadArchive).toBe(false);
-    const { confirmThreadArchive, ...legacy } = defaultAppSettings;
-    expect(confirmThreadArchive).toBe(true);
-    expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
-      200,
-    );
-    const config = systemConfigResponseSchema.parse(
-      await readJson(await harness.app.request("/api/v1/system/config")),
-    );
-    expect(config.generalSettings.confirmThreadArchive).toBe(false);
-    expect(config.generalSettings.showKeyboardHints).toBe(false);
-    expect(
-      (await put({ ...defaultAppSettings, confirmThreadArchive: true })).status,
-    ).toBe(200);
-    expect(getAppSettings(harness.db).confirmThreadArchive).toBe(true);
-  });
-});
+it.each(["confirmThreadArchive", "showGitChanges"] as const)(
+  "persists %s opt-out and preserves it for older clients",
+  async (key) => {
+    await withTestHarness(async (harness) => {
+      const put = (settings: object) =>
+        harness.app.request("/api/v1/settings/general", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+      expect(getAppSettings(harness.db)[key]).toBe(true);
+      expect((await put({ ...defaultAppSettings, [key]: false })).status).toBe(
+        200,
+      );
+      expect(getAppSettings(harness.db)[key]).toBe(false);
+      const { [key]: omitted, ...legacy } = defaultAppSettings;
+      expect(omitted).toBe(true);
+      expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
+        200,
+      );
+      const config = systemConfigResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/system/config")),
+      );
+      expect(config.generalSettings[key]).toBe(false);
+      expect(config.generalSettings.showKeyboardHints).toBe(false);
+      expect((await put({ ...defaultAppSettings, [key]: true })).status).toBe(
+        200,
+      );
+      expect(getAppSettings(harness.db)[key]).toBe(true);
+    });
+  },
+);

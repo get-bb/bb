@@ -12,7 +12,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { console as inspectorConsole } from "node:inspector";
+import { setTimeout as delay } from "node:timers/promises";
 import { startPerformanceDiagnostics } from "../src/performance-diagnostics.js";
 
 describe("performance diagnostics", () => {
@@ -46,6 +48,64 @@ describe("performance diagnostics", () => {
       expect(warnings).toEqual([]);
     } finally {
       await monitor.stop();
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rotates continuous bounded windows and ignores unrelated console captures", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-rotation-"));
+    const savedPaths: string[] = [];
+    const warnings: unknown[] = [];
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const monitor = await startPerformanceDiagnostics({
+      dataDir,
+      logger: {
+        info: (fields, message) => {
+          if (
+            message === "Server CPU profile saved" &&
+            "path" in fields &&
+            typeof fields.path === "string"
+          )
+            savedPaths.push(fields.path);
+        },
+        warn: (fields) => {
+          warnings.push(fields);
+        },
+      },
+    });
+    try {
+      for (let window = 1; window <= 2; window++) {
+        inspectorConsole.profile("unrelated-user-capture");
+        const until = performance.now() + 40;
+        while (performance.now() < until) Math.sqrt(performance.now());
+        inspectorConsole.profileEnd("unrelated-user-capture");
+        await vi.advanceTimersByTimeAsync(30_000);
+        const deadline = Date.now() + 5_000;
+        while (savedPaths.length < window && Date.now() < deadline)
+          await delay(10);
+        expect(savedPaths).toHaveLength(window);
+      }
+      await Promise.all([monitor.stop(), monitor.stop()]);
+      expect(savedPaths).toHaveLength(3);
+      const profiles = await Promise.all(
+        savedPaths.map(async (path) =>
+          JSON.parse(await readFile(path, "utf8")),
+        ),
+      );
+      for (const profile of profiles) {
+        expect(profile.nodes.length).toBeGreaterThan(0);
+        expect(profile.endTime).toBeGreaterThan(profile.startTime);
+      }
+      expect(profiles[0].samples.length).toBeGreaterThan(0);
+      expect(profiles[1].samples.length).toBeGreaterThan(0);
+      expect(profiles[1].startTime).toBeLessThanOrEqual(profiles[0].endTime);
+      expect(profiles[2].startTime).toBeLessThanOrEqual(profiles[1].endTime);
+      expect(profiles[1].startTime).toBeGreaterThan(profiles[0].startTime);
+      expect(profiles[2].startTime).toBeGreaterThan(profiles[1].startTime);
+      expect(warnings).toEqual([]);
+    } finally {
+      await monitor.stop();
+      vi.useRealTimers();
       await rm(dataDir, { recursive: true, force: true });
     }
   });

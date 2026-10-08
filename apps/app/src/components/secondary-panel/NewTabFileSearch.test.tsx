@@ -54,7 +54,7 @@ function renderFileSearch({
       projectId="proj_1"
       environmentId="env_1"
       currentThreadId="thr_1"
-      idleActions={null}
+      actions={[]}
       onAutoFocusHandled={onAutoFocusHandled}
       onSelect={() => {}}
     />,

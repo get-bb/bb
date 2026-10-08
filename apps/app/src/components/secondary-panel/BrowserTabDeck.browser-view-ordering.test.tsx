@@ -738,6 +738,42 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(focusSpy).toHaveBeenCalled();
   });
 
+  it("preserves address focus and typed text when a new tab's ownership is saved", async () => {
+    const { api } = createRecordingBrowserApi();
+    api.getTarget = async () => desktopTarget;
+    installDesktopBrowser(api);
+    const consumed = vi.fn();
+    const tab = makeBrowserTab("tab-new", "");
+    const renderTab = (saved: boolean) => (
+      <BrowserTabDeck
+        browserTabs={[saved ? { ...tab, desktopTarget } : tab]}
+        activeBrowserTabId={tab.id}
+        addressFocusRequest={saved ? null : { requestId: 1, tabId: tab.id }}
+        onAddressFocusRequestConsumed={consumed}
+        environmentId="env-1"
+        canShowNativeBrowserView
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />
+    );
+    const view = render(renderTab(false));
+    await waitFor(() => expect(consumed).toHaveBeenCalled());
+    const address = screen.getByRole("textbox", {
+      name: /Address and search bar/,
+    });
+    expect(document.activeElement).toBe(address);
+    fireEvent.change(address, { target: { value: "google.co" } });
+
+    view.rerender(renderTab(true));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: /Address and search bar/ }),
+      ).toBe(document.activeElement),
+    );
+    expect(screen.getByDisplayValue("google.co")).toBe(document.activeElement);
+  });
+
   it("shows a neutral page state and hides the native view after a main-frame load error", async () => {
     const { api, emitState, visibility, visibilityWithoutFocus } =
       createRecordingBrowserApi();

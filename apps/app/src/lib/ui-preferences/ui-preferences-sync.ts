@@ -89,6 +89,11 @@ export function registerSyncedUiPreference<Key extends UiPreferenceKey>(
   registration: RegisteredPreference<Key>,
 ): void {
   registry.set(key, registration as RegisteredPreference<UiPreferenceKey>);
+  if (context === null) return;
+  const cached = getCachedUiPreferences(context.queryClient);
+  if (cached !== undefined) {
+    reconcileUiPreference(context, key, registration.valueAtom, cached);
+  }
 }
 
 export function startUiPreferencesSync(

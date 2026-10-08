@@ -13,6 +13,7 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "./SidebarInlineRename.js";
 import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
@@ -42,7 +43,10 @@ import {
   preferenceValueAtom,
   resetPreferencesSyncForTest,
 } from "../preferences/preferences-sync.js";
-import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
+import {
+  CustomizeRowActionsContext,
+  ThreadRowActionsCustomizingContext,
+} from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
 const { SidebarDraftPresenceSync } =
@@ -85,6 +89,7 @@ interface HarnessProps {
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
+  onFinishCustomizingRowActions?: (restoreFocus: boolean) => void;
   sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
@@ -96,6 +101,7 @@ function ThreadRowHarness({
   options = DEFAULT_OPTIONS,
   onRowEvent,
   onCustomizeRowActions,
+  onFinishCustomizingRowActions,
   sectionDestinations,
 }: HarnessProps) {
   const row = (
@@ -109,23 +115,33 @@ function ThreadRowHarness({
   const content = (
     <TooltipProvider>
       <SidebarDraftPresenceSync />
-      <CustomizeRowActionsContext.Provider
-        value={onCustomizeRowActions ?? null}
-      >
-        <div
-          onPointerDown={onRowEvent}
-          onKeyDown={onRowEvent}
-          onClick={onRowEvent}
+      <SidebarRenameProvider>
+        <CustomizeRowActionsContext.Provider
+          value={onCustomizeRowActions ?? null}
         >
-          {sectionDestinations ? (
-            <ThreadSectionMoveProvider destinations={sectionDestinations}>
-              {row}
-            </ThreadSectionMoveProvider>
-          ) : (
-            row
-          )}
-        </div>
-      </CustomizeRowActionsContext.Provider>
+          <ThreadRowActionsCustomizingContext.Provider
+            value={
+              onFinishCustomizingRowActions
+                ? { threadId: thread.id, onDone: onFinishCustomizingRowActions }
+                : null
+            }
+          >
+            <div
+              onPointerDown={onRowEvent}
+              onKeyDown={onRowEvent}
+              onClick={onRowEvent}
+            >
+              {sectionDestinations ? (
+                <ThreadSectionMoveProvider destinations={sectionDestinations}>
+                  {row}
+                </ThreadSectionMoveProvider>
+              ) : (
+                row
+              )}
+            </div>
+          </ThreadRowActionsCustomizingContext.Provider>
+        </CustomizeRowActionsContext.Provider>
+      </SidebarRenameProvider>
     </TooltipProvider>
   );
   return isCompactViewport === undefined ? (
@@ -342,7 +358,7 @@ describe("ThreadRow", () => {
     expect(restore.classList.contains("bg-state-hover")).toBe(false);
     expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
-    expect(restore.closest(".max-md\\:pointer-coarse\\:hidden")).not.toBeNull();
+    expect(restore.closest(".\\[\\@media\\(hover\\:none\\)\\]\\:hidden")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
     fireEvent.keyDown(restore, { key: "Enter" });
@@ -613,6 +629,20 @@ describe("ThreadRow", () => {
     expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
+  it("customizes row actions on the real row until Done", () => {
+    const finish = vi.fn();
+    renderThreadRow({ onFinishCustomizingRowActions: finish });
+    expect(screen.getByRole("link", { name: "Open Thread" })).toBeTruthy();
+    expect(
+      document
+        .querySelector("[data-sidebar-thread-trailing]")
+        ?.classList.contains("hidden"),
+    ).toBe(true);
+    expect(screen.getByRole("group", { name: "Row actions" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(finish).toHaveBeenCalledWith(true);
+  });
+
   it("asks the host to confirm deletion from the menu", async () => {
     const slot = renderThreadRow();
     openActionsMenu();
@@ -649,21 +679,16 @@ describe("ThreadRow", () => {
   });
 
   it("copies the canonical thread URL built from the href", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    renderThreadRow({
+    const slot = renderThreadRow({
       thread: createThread({ href: "/projects/proj_test/threads/thr_test" }),
     });
     openActionsMenu();
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Copy thread link" }),
     );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/projects/proj_test/threads/thr_test`,
-      ),
-    );
-    vi.unstubAllGlobals();
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: `${window.location.origin}/projects/proj_test/threads/thr_test` },
+    ]);
   });
 
   it("moves the thread to another section through the sdk", async () => {
@@ -1315,7 +1340,7 @@ describe("ThreadRow", () => {
         ),
       ).toBe("calc(var(--spacing) * 7.5)");
       expect(
-        titleContainer?.classList.contains("max-md:pointer-coarse:pr-0"),
+        titleContainer?.classList.contains("[@media(hover:none)]:pr-0"),
       ).toBe(true);
       expect(navigationTarget?.classList.contains("flex-1")).toBe(true);
       expect(titleWrapper?.classList.contains("flex-1")).toBe(false);
@@ -1703,6 +1728,18 @@ describe("ThreadRow", () => {
       expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     });
     expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("navigates instead of renaming when the title is double-tapped on a compact viewport", async () => {
+    renderThreadRow({ isCompactViewport: true });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    expect(fireEvent.click(link)).toBe(true);
+    expect(fireEvent.click(link)).toBe(true);
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    await act(async () => new Promise(requestAnimationFrame));
+
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
   });
 
   it("does not start a sortable drag while editing the title", async () => {

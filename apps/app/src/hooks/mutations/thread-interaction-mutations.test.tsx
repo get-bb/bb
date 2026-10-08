@@ -7,7 +7,11 @@ import { HttpError } from "@/lib/api";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
-import { hostsQueryKey } from "../queries/query-keys";
+import type { PendingInteraction } from "@bb/domain";
+import {
+  hostsQueryKey,
+  threadPendingInteractionsQueryKey,
+} from "../queries/query-keys";
 import { useResolveThreadPendingInteraction } from "./thread-interaction-mutations";
 
 vi.mock("@/lib/sdk", () => ({
@@ -85,5 +89,70 @@ describe("useResolveThreadPendingInteraction", () => {
       ]);
     });
     await waitFor(() => expect(result.current.error).toBeNull());
+  });
+
+  it("shows the server's resolving interaction before the pending list refetches", async () => {
+    const approval: PendingInteraction = {
+      id: "pint_plan",
+      threadId: "thr_1",
+      turnId: "turn_1",
+      providerId: "claude-code",
+      providerThreadId: "pt_1",
+      providerRequestId: "req_1",
+      status: "pending",
+      statusReason: null,
+      createdAt: 1,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "approval",
+        reason: null,
+        availableDecisions: ["allow_once", "deny"],
+        subject: {
+          kind: "plan",
+          itemId: "plan-1",
+          plan: "# Plan",
+          planFilePath: null,
+        },
+      },
+    };
+    const other: PendingInteraction = { ...approval, id: "pint_other" };
+    const resolution = {
+      decision: "allow_once" as const,
+      grantedPermissions: null,
+    };
+    vi.mocked(sdk.threads.get).mockReturnValue(new Promise(() => {}));
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(threadPendingInteractionsQueryKey("thr_1"), [
+      approval,
+      other,
+    ]);
+    const { result } = renderHook(
+      () => useResolveThreadPendingInteraction("thr_1"),
+      { wrapper },
+    );
+    const resolve = (status: PendingInteraction["status"]) =>
+      act(async () => {
+        vi.mocked(sdk.threads.interactions.resolve).mockResolvedValueOnce({
+          ...approval,
+          status,
+          resolution,
+        });
+        await result.current.mutateAsync({
+          threadId: "thr_1",
+          interactionId: "pint_plan",
+          resolution,
+        });
+      });
+
+    await resolve("resolving");
+    expect(
+      queryClient.getQueryData(threadPendingInteractionsQueryKey("thr_1")),
+    ).toEqual([{ ...approval, status: "resolving", resolution }, other]);
+
+    await resolve("resolved");
+    expect(
+      queryClient.getQueryData(threadPendingInteractionsQueryKey("thr_1")),
+    ).toEqual([other]);
   });
 });

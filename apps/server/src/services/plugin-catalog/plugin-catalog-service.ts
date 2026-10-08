@@ -128,6 +128,11 @@ export interface PluginCatalogService {
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
   install(input: PluginCatalogInstallInput): Promise<InstalledPlugin>;
+  describeEntry(selector: PluginCatalogEntrySelector): {
+    entryId: string;
+    marketplace: string;
+    displayName: string;
+  };
   icon(
     marketplace: string,
     entryId: string,
@@ -1228,6 +1233,15 @@ export function createPluginCatalogService(deps: {
       };
     },
 
+    describeEntry(selector) {
+      const { row, entry } = resolveEntry(selector);
+      return {
+        entryId: bundledRegistration(entry)?.name ?? entry.id,
+        marketplace: row.name,
+        displayName: entry.displayName,
+      };
+    },
+
     async install(input) {
       const resolved = resolveEntry(input);
       return withLock(resolved.row.name, async () => {
@@ -1333,7 +1347,10 @@ function installedPluginMayComeFromEntry(
 }
 
 function gitRepositoryKey(url: string): string {
-  return url.replace(/\/+$/u, "").replace(/\.git$/u, "").toLowerCase();
+  return url
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/u, "")
+    .toLowerCase();
 }
 
 function catalogEntryKey(marketplace: string, entryId: string): string {

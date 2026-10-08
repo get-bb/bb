@@ -13,7 +13,7 @@ Click a notification to open its thread. The browser focus attempt is preserved 
 - `desktopEnabled` / **Desktop notifications**: notify running desktop clients. Default: true.
 - `expoPushUrl` / **Expo push relay URL**: mobile relay endpoint. Defaults to `https://exp.host/--/api/v2/push/send`.
 
-Channel switches apply to this server and save immediately. Browser permission is granted separately on each device with **Allow notifications**. If blocked, change the browser or operating system notification settings. **Send test notification** sends to all connected, permitted clients of the current type. A successful test request confirms broadcast, not OS display; system settings and Focus modes can suppress banners.
+Channel switches apply to this server and save immediately. Browser permission is granted separately on each device with **Allow notifications**. The first time a thread you have open is running, a small card asks "Get notified when this agent needs you?" while web or desktop permission is still undecided; **Turn on** requests permission from that click, and after **Not now** or any browser answer it does not ask again on that device. If blocked, change the browser or operating system notification settings. **Send test notification** sends to all connected, permitted clients of the current type. A successful test request confirms broadcast, not OS display; system settings and Focus modes can suppress banners.
 
 ## CLI and SDK
 

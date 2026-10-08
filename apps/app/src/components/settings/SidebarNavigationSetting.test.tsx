@@ -11,8 +11,9 @@ import { sidebarNavigationProviderAtom } from "@/components/sidebar/sidebarNavig
 import { SidebarNavigationSetting } from "./SidebarNavigationSetting";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
 });

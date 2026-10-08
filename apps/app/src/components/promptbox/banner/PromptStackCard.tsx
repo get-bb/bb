@@ -8,6 +8,7 @@ import {
 } from "@bb/shared-ui/chrome-style-tokens";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
+export const PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT = 35;
 export const PROMPT_STACK_CARD_HEADER_BUTTON_CLASS =
   "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
 export const PROMPT_STACK_INLAY_INSET_CLASS = CONTEXT_CARD_INSET_CLASS;

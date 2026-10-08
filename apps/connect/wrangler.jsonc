@@ -45,6 +45,9 @@
       "migrations_dir": "../../packages/connect-db/migrations"
     }
   ],
+  "analytics_engine_datasets": [
+    { "binding": "GATE_EVENTS", "dataset": "bb_connect_gate_events" }
+  ],
   "routes": [{ "pattern": "*.getbb.app/*", "zone_name": "getbb.app" }],
   "env": {
     "staging": {
@@ -77,6 +80,12 @@
           "database_name": "bb-connect-staging",
           "database_id": "1aaa5562-457d-43a7-b11f-18b4f19bd62c",
           "migrations_dir": "../../packages/connect-db/migrations"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "GATE_EVENTS",
+          "dataset": "bb_connect_gate_events_staging"
         }
       ]
     }

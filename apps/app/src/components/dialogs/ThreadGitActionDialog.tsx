@@ -125,7 +125,7 @@ export function ThreadGitActionDialogContent({
             ) : null}
             {shouldShowChangedFilesRow && changedFilesSection ? (
               <ChangedFilesDetailRow
-                sections={[changedFilesSection]}
+                section={changedFilesSection}
                 rowClassName="mt-3"
                 rowValueClassName="pt-0.5"
                 listClassName="max-h-40"

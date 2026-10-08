@@ -84,7 +84,10 @@ import {
   usePluginPanelActions,
   type OpenPluginPanelArgs,
 } from "./PluginPanelActions";
-import { NewTabActions } from "@/components/secondary-panel/NewTabActions";
+import {
+  NewTabActions,
+  useNewTabActions,
+} from "@/components/secondary-panel/NewTabActions";
 import { buildFileOpenerPanelTab } from "./file-opener-tabs";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@bb/client-core";
@@ -2299,12 +2302,13 @@ describe("plugin thread panel actions", () => {
         openPluginPanel: (args) => setTab(createPluginPanelFixedPanelTab(args)),
         projectId: "proj_1",
       });
+      const actions = useNewTabActions({
+        onStartTerminal: () => undefined,
+        pluginActions: entries,
+      });
       return (
         <>
-          <NewTabActions
-            onStartTerminal={() => undefined}
-            pluginActions={entries}
-          />
+          <NewTabActions actions={actions} />
           {tab ? (
             <PluginPanelTabContent
               tab={tab}

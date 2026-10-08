@@ -341,6 +341,10 @@ function MonacoFileOpener({
       <FileToolbar
         path={activePath}
         indicator={indicatorFor(saveState, status)}
+        saveDisabled={
+          status.kind !== "ready" || isRefreshing || saveState.kind === "saving"
+        }
+        onSave={() => void save()}
         isRefreshing={isRefreshing}
         onRefresh={requestRefresh}
         isFilesOpen={isFilesOpen}

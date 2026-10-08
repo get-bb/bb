@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   applyPluginUpdate,
   checkPluginUpdates,
-  installCatalogPlugin,
-  installPlugin,
   searchPluginCatalog,
 } from "./plugin-catalog-queries";
 
@@ -91,28 +89,6 @@ describe("applyPluginUpdate", () => {
     await expect(
       applyPluginUpdate(fetchReturning({ status: "done" }), "linear"),
     ).rejects.toThrow();
-  });
-});
-
-describe("plugin installs", () => {
-  it("uses the direct install endpoint for source specs", async () => {
-    const { fetchImpl, calls } = recordingFetch({ installed: true });
-    await expect(installPlugin(fetchImpl, "./plugins/local")).rejects.toThrow();
-    expect(calls[0]?.url).toBe("/api/v1/plugins/install");
-    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
-      source: "./plugins/local",
-    });
-  });
-
-  it("uses the singleton catalog endpoint for catalog entries", async () => {
-    const { fetchImpl, calls } = recordingFetch({ installed: true });
-    await expect(
-      installCatalogPlugin(fetchImpl, { entryId: "linear" }),
-    ).rejects.toThrow();
-    expect(calls[0]?.url).toBe("/api/v1/plugin-catalog/install");
-    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({
-      entryId: "linear",
-    });
   });
 });
 

@@ -383,6 +383,13 @@ export type UpdateQueuedMessageRequest = z.infer<
   typeof updateQueuedMessageRequestSchema
 >;
 
+export const queuedMessageEditHoldResponseSchema = z.object({
+  leaseMs: z.number().int().positive(),
+});
+export type QueuedMessageEditHoldResponse = z.infer<
+  typeof queuedMessageEditHoldResponseSchema
+>;
+
 export const sendQueuedMessageRequestSchema = z.object({
   mode: sendQueuedMessageModeSchema,
 });

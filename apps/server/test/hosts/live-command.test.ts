@@ -1,8 +1,6 @@
 import {
   createEnvironment,
   getEnvironment,
-  getAppSettings,
-  setAppSettings,
   updateHost,
 } from "@bb/db";
 import { rm, writeFile } from "node:fs/promises";
@@ -116,10 +114,6 @@ it("preserves provisioning when the host transport disappears", async () => {
 
 it("resolves fresh setup values at dispatch without retaining them in the request", async () => {
   await withTestHarness(async (harness) => {
-    setAppSettings(harness.db, {
-      ...getAppSettings(harness.db),
-      machineGitCredentialsEnabled: false,
-    });
     const { host } = seedHostSession(harness.deps);
     updateHost(harness.db, harness.hub, host.id, {
       machineProviderId: "manual",
@@ -206,10 +200,6 @@ it("resolves fresh setup values at dispatch without retaining them in the reques
 
 it("fails provisioning if saved setup variables cannot be decrypted", async () => {
   await withTestHarness(async (harness) => {
-    setAppSettings(harness.db, {
-      ...getAppSettings(harness.db),
-      machineGitCredentialsEnabled: false,
-    });
     const { host } = seedHostSession(harness.deps);
     updateHost(harness.db, harness.hub, host.id, {
       machineProviderId: "manual",

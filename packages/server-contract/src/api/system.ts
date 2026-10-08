@@ -107,6 +107,7 @@ export type SystemExecutionOptionsQuery = z.infer<
 >;
 
 export const systemUsageLimitsQuerySchema = z.object({
+  refresh: z.enum(["true", "false"]).optional(),
   hostId: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),
 });
@@ -131,6 +132,7 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 export const systemProviderStateSchema = providerHealthSchema.extend({
   providerId: z.string().min(1),
   displayName: z.string().min(1),
+  localLoginCommand: z.string().min(1).nullable(),
 });
 export type SystemProviderState = z.infer<typeof systemProviderStateSchema>;
 
@@ -190,6 +192,126 @@ export const testAiServiceResponseSchema = z.discriminatedUnion("ok", [
   }),
 ]);
 export type TestAiServiceResponse = z.infer<typeof testAiServiceResponseSchema>;
+
+const onboardingStepTelemetrySchema = z.enum([
+  "agent",
+  "projects",
+  "plugins",
+  "devices",
+]);
+const onboardingEntryTelemetrySchema = z.enum(["first_run", "checklist"]);
+const onboardingStepTelemetryPropertiesSchema = z
+  .object({
+    step: onboardingStepTelemetrySchema,
+    entry: onboardingEntryTelemetrySchema,
+  })
+  .strict();
+export const setupChecklistItemIdSchema = z.enum([
+  "agent",
+  "projects",
+  "thread",
+  "plugins",
+  "devices",
+  "notifications",
+]);
+export type SetupChecklistItemId = z.infer<typeof setupChecklistItemIdSchema>;
+const notificationPromptTelemetryPropertiesSchema = z
+  .object({ surface: z.enum(["checklist", "thread"]) })
+  .strict();
+const checklistCountSchema = z.number().int().min(0).max(10);
+
+export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("onboarding_started"),
+      properties: z
+        .object({ agent_installed: z.boolean(), agent_ready: z.boolean() })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_reached"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_completed"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_skipped"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_finished"),
+      properties: z
+        .object({
+          outcome: z.enum(["completed", "skipped"]),
+          entry: onboardingEntryTelemetrySchema,
+          last_step: onboardingStepTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("setup_checklist_item_completed"),
+      properties: z
+        .object({
+          item: setupChecklistItemIdSchema,
+          optional: z.boolean(),
+          head_start: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("setup_checklist_dismissed"),
+      properties: z
+        .object({
+          required_done: checklistCountSchema,
+          required_total: checklistCountSchema,
+          optional_done: checklistCountSchema,
+          optional_total: checklistCountSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("notification_prompt_shown"),
+      properties: notificationPromptTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("notification_prompt_accepted"),
+      properties: notificationPromptTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("notification_prompt_dismissed"),
+      properties: notificationPromptTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("notification_prompt_denied"),
+      properties: notificationPromptTelemetryPropertiesSchema,
+    })
+    .strict(),
+]);
+export type RecordTelemetryEventRequest = z.infer<
+  typeof recordTelemetryEventRequestSchema
+>;
 
 export const serverAccessStatusSchema = z.object({
   providers: z.array(

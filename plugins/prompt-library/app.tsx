@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@/components/ui/hover-reveal";
 import { cn } from "@/lib/utils";
 import {
   definePluginApp,
@@ -34,7 +35,7 @@ const POPUP_ID = "prompt-library";
 
 type SearchResult = StandardSchemaV1InferOutput<
   (typeof promptLibraryRpcContract)["search"]["output"]
->;
+> & { query: string };
 
 type ComposerKind = "new-thread" | "follow-up";
 
@@ -44,6 +45,8 @@ type Row =
   | { kind: "recent"; key: string; row: RecentPromptRow };
 
 const TWO_PANE_MIN_WIDTH = 560;
+const SEARCH_TIMEOUT_MS = 5_000;
+const SLOW_SEARCH_MS = 300;
 
 const SCOPE_LABELS: Record<PromptScope, string> = {
   thread: "Thread",
@@ -169,11 +172,11 @@ function PromptLibraryPopup() {
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [isSlowSearch, setIsSlowSearch] = useState(false);
+  const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [twoPane, setTwoPane] = useState(true);
-  const requestRef = useRef(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
 
@@ -189,48 +192,75 @@ function PromptLibraryPopup() {
   }, []);
 
   useEffect(() => {
-    const request = ++requestRef.current;
+    let pending = true;
+    let timeout: number | undefined;
+    let slow: number | undefined;
+    const finish = (apply: () => void) => {
+      if (!pending) return;
+      pending = false;
+      window.clearTimeout(timeout);
+      window.clearTimeout(slow);
+      setIsSlowSearch(false);
+      apply();
+    };
     const handle = window.setTimeout(
-      () => {
-        rpc
-          .call("search", {
+      async () => {
+        setError(null);
+        slow = window.setTimeout(() => setIsSlowSearch(true), SLOW_SEARCH_MS);
+        timeout = window.setTimeout(
+          () => finish(() => setError("Loading prompts timed out. Try again.")),
+          SEARCH_TIMEOUT_MS,
+        );
+        try {
+          const next = await rpc.call("search", {
             query,
             scope,
             projectId: targets.projectId,
             threadId: targets.threadId,
-          })
-          .then((next) => {
-            if (request !== requestRef.current) return;
-            setResult(next);
-            setError(null);
-          })
-          .catch((cause: unknown) => {
-            if (request !== requestRef.current) return;
-            setError(cause instanceof Error ? cause.message : String(cause));
           });
+          finish(() => setResult({ ...next, query }));
+        } catch (cause: unknown) {
+          finish(() =>
+            setError(cause instanceof Error ? cause.message : String(cause)),
+          );
+        }
       },
       query.length === 0 ? 0 : 60,
     );
-    return () => window.clearTimeout(handle);
+    return () => {
+      pending = false;
+      window.clearTimeout(handle);
+      window.clearTimeout(timeout);
+      window.clearTimeout(slow);
+    };
   }, [query, reloadCount, rpc, scope, targets.projectId, targets.threadId]);
 
   const draftText = composer.draft.text.trim();
   const draftIsStarred =
-    result?.starred.some((row) => row.prompt.text.trim() === draftText) ??
-    false;
+    result?.prompts.some(
+      (row) => row.kind === "starred" && row.prompt.text.trim() === draftText,
+    ) ?? false;
+  const ranked = result !== null && result.query.trim().length > 0;
   const rows: Row[] = [
     ...(draftText.length > 0 && !draftIsStarred && query.length === 0
       ? [{ kind: "star-draft", key: "star-draft" } as const]
       : []),
-    ...(result?.starred ?? []).map(
-      (row) => ({ kind: "starred", key: `starred:${row.id}`, row }) as const,
-    ),
-    ...(result?.recent ?? []).map(
-      (row) => ({ kind: "recent", key: `recent:${row.id}`, row }) as const,
-    ),
+    ...(result?.prompts ?? []).map((row): Row => {
+      const key = ranked
+        ? `prompt:${row.prompt.text}`
+        : `${row.kind}:${row.id}`;
+      return row.kind === "starred"
+        ? { kind: "starred", key, row }
+        : { kind: "recent", key, row };
+    }),
   ];
-  const activeIndex = Math.min(highlightedIndex, Math.max(rows.length - 1, 0));
+  const activeIndex = Math.max(
+    rows.findIndex((row) => row.key === highlightedKey),
+    0,
+  );
   const activeRow = rows[activeIndex];
+  const activeKey = activeRow?.key ?? null;
+  if (highlightedKey !== activeKey) setHighlightedKey(activeKey);
   const previewRow = twoPane
     ? activeRow
     : rows.find((row) => row.key === previewKey);
@@ -243,7 +273,7 @@ function PromptLibraryPopup() {
 
   const changeScope = (next: PromptScope) => {
     setPreferredScope(next);
-    setHighlightedIndex(0);
+    setHighlightedKey(null);
     window.localStorage.setItem(scopeStorageKey(pluginId, kind), next);
   };
 
@@ -301,9 +331,9 @@ function PromptLibraryPopup() {
     insertPrompt(row.row.prompt);
   };
 
-  const choose = (row: Row, index: number) => {
-    setHighlightedIndex(index);
-    if (twoPane || row.kind === "star-draft") {
+  const choose = (row: Row) => {
+    setHighlightedKey(row.key);
+    if (row.kind === "star-draft") {
       activate(row);
     } else {
       setPreviewKey(row.key);
@@ -316,7 +346,8 @@ function PromptLibraryPopup() {
       event.preventDefault();
       if (rows.length === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setHighlightedIndex((activeIndex + step + rows.length) % rows.length);
+      const next = rows[(activeIndex + step + rows.length) % rows.length];
+      if (next !== undefined) setHighlightedKey(next.key);
     } else if (event.key === "Enter") {
       event.preventDefault();
       if (row !== undefined) activate(row);
@@ -375,13 +406,12 @@ function PromptLibraryPopup() {
           "group flex items-center gap-1 rounded px-2 py-1.5 text-xs",
           selected ? "bg-state-active" : "hover:bg-state-hover",
         )}
-        onMouseEnter={() => setHighlightedIndex(index)}
       >
         <button
           type="button"
           className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => choose(row, index)}
+          onClick={() => choose(row)}
         >
           {row.kind === "star-draft" ? (
             <span className="flex items-center gap-1.5 text-foreground">
@@ -405,7 +435,10 @@ function PromptLibraryPopup() {
             title={starred ? "Unstar" : "Star prompt"}
             className={cn(
               "flex size-6 shrink-0 items-center justify-center rounded text-subtle-foreground hover:text-foreground",
-              !selected && "opacity-0 group-hover:opacity-100",
+              !selected && [
+                "opacity-0 group-hover:opacity-100",
+                HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+              ],
             )}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => toggleStar(row)}
@@ -420,8 +453,12 @@ function PromptLibraryPopup() {
     );
   };
 
-  const starredStart = rows.findIndex((row) => row.kind === "starred");
-  const recentStart = rows.findIndex((row) => row.kind === "recent");
+  const starredStart = ranked
+    ? -1
+    : rows.findIndex((row) => row.kind === "starred");
+  const recentStart = ranked
+    ? -1
+    : rows.findIndex((row) => row.kind === "recent");
 
   const renderPreview = (row: Row) => {
     const starred = isStarred(row);
@@ -499,8 +536,12 @@ function PromptLibraryPopup() {
     <div ref={rootRef} className="flex flex-col">
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
         <Icon
-          name="Search"
-          className="size-3.5 shrink-0 text-muted-foreground"
+          name={isSlowSearch ? "Spinner" : "Search"}
+          aria-label={isSlowSearch ? "Searching prompts" : undefined}
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground",
+            isSlowSearch && "animate-spin",
+          )}
         />
         <input
           autoFocus
@@ -510,7 +551,7 @@ function PromptLibraryPopup() {
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setHighlightedIndex(0);
+            setHighlightedKey(null);
           }}
           onKeyDown={handleKeyDown}
           className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
@@ -540,6 +581,19 @@ function PromptLibraryPopup() {
           ))}
         </div>
       </div>
+      {error !== null ? (
+        <div role="alert" className="flex items-center gap-2 px-3 py-2 text-xs">
+          <span className="flex-1 text-destructive">{error}</span>
+          <button
+            type="button"
+            className="rounded px-2 py-1 text-foreground hover:bg-state-hover"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={reload}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <div className="flex h-80 min-h-0">
         {showList ? (
           <div
@@ -551,12 +605,15 @@ function PromptLibraryPopup() {
               twoPane ? "w-2/5 shrink-0 border-r border-border" : "flex-1",
             )}
           >
-            {error !== null ? (
-              <div className="px-3 py-2 text-xs text-destructive">{error}</div>
-            ) : result === null ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                Loading prompts…
-              </div>
+            {result === null ? (
+              error === null ? (
+                <div
+                  role="status"
+                  className="px-3 py-2 text-xs text-muted-foreground"
+                >
+                  Loading prompts…
+                </div>
+              ) : null
             ) : rows.length === 0 ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
                 No prompts found

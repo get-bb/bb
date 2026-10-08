@@ -596,9 +596,9 @@ describe("buildCodexConfig", () => {
     expect(() =>
       configFor({ ...FULL_OPTIONS, reasoningLevel: "ultracode" }),
     ).toThrow("Codex does not support the ultracode reasoning level.");
-    expect(() =>
+    expect(
       configFor({ ...FULL_OPTIONS, reasoningLevel: "none" }),
-    ).toThrow("Codex does not support the none reasoning level.");
+    ).toMatchObject({ model_reasoning_effort: "none" });
   });
 
   it("omits the writable-roots key for a full-access session", () => {

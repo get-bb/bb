@@ -229,6 +229,9 @@ export const migrations = [
      FROM workflow_calls calls JOIN workflow_runs runs ON runs.id = calls.run_id
      WHERE calls.child_thread_id IS NOT NULL;`,
   `ALTER TABLE workflow_workers ADD COLUMN cleanup_attempts INTEGER NOT NULL DEFAULT 0;`,
+  `CREATE INDEX workflow_runs_expiry_idx
+     ON workflow_runs(finished_at + json_extract(settings_json, '$.retentionDays') * 86400000)
+     WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1;`,
 ];
 
 export function createRun(
@@ -853,6 +856,12 @@ export function listExpiredTerminalRuns(
   now: number,
   limit: number,
 ): ExpiredTerminalRuns {
+  const due = db
+    .prepare(`SELECT id FROM workflow_runs INDEXED BY workflow_runs_expiry_idx
+    WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1
+    AND finished_at + json_extract(settings_json, '$.retentionDays') * 86400000 <= ? LIMIT 1`)
+    .get(now);
+  if (!due) return { runIds: [] };
   const runIds = (
     db.prepare(EXPIRED_TERMINAL_RUN_IDS_SQL).all(now, now, limit) as Array<{
       id: string;

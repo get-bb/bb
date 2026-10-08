@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
+import { cn, formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { ResourceInfiniteScrollSentinel } from "@bb/shared-ui/resource-pagination";
 import {
   ResourceDefinitionSection,
@@ -85,7 +86,10 @@ function SkillPath({ path, href }: { path: string; href?: string }) {
               <span className="truncate font-mono">{displayPath}</span>
               <Icon
                 name={copied ? "Check" : "Copy"}
-                className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                className={cn(
+                  "size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
+                  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                )}
                 aria-hidden
               />
             </button>

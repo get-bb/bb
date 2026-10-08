@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import bbLogoUrl from "../../../../assets/bb-logo.svg";
@@ -6,6 +7,7 @@ interface RootComposeEmptyWelcomeProps {
   onCompose: (prompt?: string) => void;
   onAddProject: () => void;
   addProjectDisabled?: boolean;
+  footer?: ReactNode;
 }
 
 const IMPORT_PROJECTS_PROMPT =
@@ -53,6 +55,7 @@ export function RootComposeEmptyWelcome({
   onCompose,
   onAddProject,
   addProjectDisabled,
+  footer,
 }: RootComposeEmptyWelcomeProps) {
   const reducedMotion = usePrefersReducedMotion();
   return (
@@ -155,6 +158,7 @@ export function RootComposeEmptyWelcome({
           onClick={() => onCompose(LEARN_PROMPT)}
         />
       </div>
+      {footer}
     </div>
   );
 }

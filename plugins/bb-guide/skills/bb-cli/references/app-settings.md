@@ -11,6 +11,20 @@ every window and client sees the same value.
 - Unknown keys and values of the wrong shape are rejected; the error names the
   keys bb knows.
 
+## Setup guide
+
+- A new bb install opens a first-run setup guide: connect an agent, add
+  projects, pick plugins, and set up devices. Every step can be skipped.
+- `onboardingCompletedAt` is the ISO timestamp of when the guide was finished
+  or skipped; `null` means the guide is showing.
+- `bb settings replay-onboarding` clears it. Settings → General → Setup guide
+  has the same button.
+- `setupChecklistVisible` shows the "Finish setting up bb" checklist on the
+  home screen. Turn it off with
+  `bb settings general setupChecklistVisible false`.
+- `bb project discover [--machine <id-or-name>]` lists the git repositories the
+  guide offers to import; add one with `bb project create --name <name> --root <path>`.
+
 ## Sidebar preferences
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
@@ -35,6 +49,10 @@ so they carry over between navigation plugins.
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
   `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
   `sidebar.headerProvider`, `sidebar.threadListProvider`).
+- The same registry stores `infoPanel.collapsedSections`, the thread Info panel
+  sections collapsed from their headings (`commits`, `uncommittedChanges`,
+  `forks`, `threadStorage`). Read or change it with `bb settings ui get` and
+  `bb settings ui set`.
 - The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
   including threads with saved messages. This selection is browser-local, not
   a server-backed preference or SDK/CLI setting. Selected archived rows
@@ -72,6 +90,29 @@ so they carry over between navigation plugins.
 - Its installed `thread-list` skill documents accepted keys and values. Keep
   plugin-specific settings out of `bb settings ui`; those legacy values are
   read only during one-time migration.
+
+## Git controls
+
+- Settings → General → Show Git changes and Commit button defaults to on.
+- `bb settings general showGitChanges false` hides the untracked, uncommitted,
+  and committed summary and file list, pull-request status and actions above the
+  composer, and Commit in the header and overflow menu.
+- Set it to `true` to restore them across every thread and connected client.
+  The server saves the choice across reloads.
+- Thread relationships and workspace warnings remain visible.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `showGitChanges`. Older clients that omit it preserve the saved choice.
+
+## Cleared context history
+
+- Settings → General → Show messages from before a context clear defaults to off.
+- `bb settings general keepHistoryAfterContextClear true` keeps messages from
+  before the latest `Context cleared` boundary in the timeline, conversation
+  outline, and `bb thread log --message` lookups. The next prompt still starts a
+  fresh provider conversation, and the context meter still resets.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `keepHistoryAfterContextClear`. Older clients that omit it preserve the
+  saved choice.
 
 ## Keyboard shortcuts
 
@@ -213,6 +254,11 @@ so they carry over between navigation plugins.
   vertical rail of destinations on the left edge of the sidebar on every
   screen: Home returns to the last thread, Settings sits at the bottom, and
   New thread moves into the sidebar header.
+- Collapsing the sidebar hides the list beside the rail and leaves the rail in
+  place.
+- In the macOS desktop app, wide windows add a title bar that holds the window
+  controls, Back and Forward, and the sidebar toggle. It shares the rail's
+  background, and the sidebar and page sit in a card below it.
 - While it is on, the Navigation and Header choices under Settings →
   Appearance are not used. Narrow windows and phones keep the regular drawer.
 
@@ -220,6 +266,10 @@ so they carry over between navigation plugins.
 
 - Long timelines keep stable row wrappers while mounting only rows near the
   active main or nested detail scrollport.
+- iPhone and iPad browsers, including the iOS app, keep every loaded row
+  mounted instead. Safari there cannot correct the scroll position during a
+  touch scroll's momentum, so rows measured above the viewport would move
+  the text being read.
 
 ## Server move
 
@@ -284,8 +334,8 @@ without build-number reporting cannot determine update status. Installed version
 and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
-Right-clicking the composer microphone or pressing Shift+F10 opens
-client-local voice preferences: a desktop popover or mobile drawer. Opening it
+Right-clicking the composer microphone, pressing Shift+F10, or clicking the
+Microphone control in Settings → Voice Input opens client-local voice preferences: a desktop popover or mobile drawer. Opening it
 starts a local waveform preview; select an input directly from the list. Closing
 the picker stops the preview. The recording row has no microphone menu.
 Missing or unreadable inputs fall back automatically; a missing preference alone

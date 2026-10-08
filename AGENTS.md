@@ -25,7 +25,8 @@
 
 - Every end-user feature must also be usable through the SDK and `bb` CLI; ship and document these surfaces with the UI.
 - For changes to CLI commands/flags or user-facing configuration (env vars, `.bb/` workspace files, settings), update the discoverable surfaces listed in [docs/cli-guide-and-skill.md](docs/cli-guide-and-skill.md).
-- New public plugin API members (`@get-bb/plugin-sdk/app` exports, `app.slots.*` methods, or `BbPluginApi` properties) require an `experimental_` prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing behavior and stabilization criteria. Stabilization includes the audit, a project-wide rename, and removal of the entry.
+- New public plugin API members (`@get-bb/plugin-sdk/app` exports, `app.slots.*` methods, or `BbPluginApi` properties) require an `experimental_` prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing behavior, stabilization criteria, and the core callers that use the same path. Stabilization includes the audit, a project-wide rename, and removal of the entry.
+- A plugin API that performs a core action must be the path core uses for that action. Extract core's implementation and route core's controls, shortcuts, and the API through it; never add a parallel plugin-only path. When several surfaces host the action, they share that implementation and one contract test table run against every surface. If core cannot use the API, it is not ready to ship.
 - The Plugin Guide is the only plugin API documentation. Add new surfaces to `plugins/plugin-api-docs/src/surfaces.ts` with their SDK symbols.
 
 ## Data Access

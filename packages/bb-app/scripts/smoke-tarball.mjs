@@ -1249,8 +1249,19 @@ async function smokeDaemonJoin(binDir) {
 try {
   const smokeStartedAt = performance.now();
   const tarballPath = await timed("npm pack", () => packTarball());
-  await timed("npx entrypoint", () => smokeNpxEntrypoint(tarballPath));
-  const sdkDir = await timed("sdk package", () => smokeSdkPackage(tarballPath));
+  let sdkDir;
+  if (process.platform === "win32") {
+    const [npxResult, sdkResult] = await Promise.allSettled([
+      timed("npx entrypoint", () => smokeNpxEntrypoint(tarballPath)),
+      timed("sdk package", () => smokeSdkPackage(tarballPath)),
+    ]);
+    if (npxResult.status === "rejected") throw npxResult.reason;
+    if (sdkResult.status === "rejected") throw sdkResult.reason;
+    sdkDir = sdkResult.value;
+  } else {
+    await timed("npx entrypoint", () => smokeNpxEntrypoint(tarballPath));
+    sdkDir = await timed("sdk package", () => smokeSdkPackage(tarballPath));
+  }
   const installedBinDir = join(sdkDir, "node_modules", ".bin");
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
   await timed("help commands", () => smokeHelpCommands(installedBinDir));

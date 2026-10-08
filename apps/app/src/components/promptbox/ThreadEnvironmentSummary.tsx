@@ -42,7 +42,7 @@ export function ThreadDetailsButton({
         OPTION_BASE_CLASS_NAME,
         OPTION_INTERACTIVE_CLASS_NAME,
         OPTION_MUTED_CLASS_NAME,
-        "h-6 max-md:h-11 max-md:px-2",
+        "h-6 max-md:pointer-coarse:h-11 max-md:pointer-coarse:px-2",
       )}
     >
       <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />

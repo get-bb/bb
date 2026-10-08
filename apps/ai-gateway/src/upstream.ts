@@ -1,7 +1,7 @@
 import type { GatewayConfig } from "./config.js";
 
 export const MAX_OUTPUT_TOKENS = 128;
-export const UPSTREAM_TIMEOUT_MS = 4_000;
+export const UPSTREAM_TIMEOUT_MS = 3_000;
 export const TRANSCRIBE_TIMEOUT_MS = 30_000;
 const TEMPERATURE = 0.2;
 
@@ -32,14 +32,12 @@ const NO_USAGE: UpstreamUsage = {
 };
 
 export function buildUpstreamRequest(
-  config: GatewayConfig,
+  model: string,
   prompt: string,
   userHash: string,
 ): Record<string, unknown> {
-  const [model, ...fallbacks] = config.models;
   return {
     model,
-    ...(fallbacks.length > 0 ? { models: fallbacks } : {}),
     messages: [{ role: "user", content: prompt }],
     max_tokens: MAX_OUTPUT_TOKENS,
     temperature: TEMPERATURE,
@@ -105,38 +103,33 @@ export function parseUpstreamResponse(body: unknown): UpstreamResult {
   return { kind: "ok", text: content, model, ...usage };
 }
 
-export async function callUpstream(args: {
+async function completeOnce(args: {
   fetch: UpstreamFetch;
   config: GatewayConfig;
   apiKey: string;
+  model: string;
   prompt: string;
   userHash: string;
-  timeoutMs: number;
+  signal: AbortSignal;
 }): Promise<UpstreamResult> {
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, args.timeoutMs);
   try {
     const response = await args.fetch(
       `${args.config.upstreamBaseUrl}/chat/completions`,
       {
         method: "POST",
-        signal: controller.signal,
+        signal: args.signal,
         headers: upstreamHeaders(args.apiKey),
         body: JSON.stringify(
-          buildUpstreamRequest(args.config, args.prompt, args.userHash),
+          buildUpstreamRequest(args.model, args.prompt, args.userHash),
         ),
       },
     );
     const body: unknown = await response.json().catch(() => null);
-    if (timedOut) {
+    if (args.signal.aborted) {
       return {
         kind: "error",
         reason: "timeout",
-        model: null,
+        model: args.model,
         mayBill: true,
         ...NO_USAGE,
       };
@@ -145,7 +138,7 @@ export async function callUpstream(args: {
       return {
         kind: "error",
         reason: "upstream_error",
-        model: null,
+        model: args.model,
         mayBill: false,
         ...readUsage(body),
       };
@@ -154,14 +147,27 @@ export async function callUpstream(args: {
   } catch {
     return {
       kind: "error",
-      reason: timedOut ? "timeout" : "upstream_error",
-      model: null,
+      reason: args.signal.aborted ? "timeout" : "upstream_error",
+      model: args.model,
       mayBill: true,
       ...NO_USAGE,
     };
-  } finally {
-    clearTimeout(timer);
   }
+}
+
+export function callUpstream(args: {
+  fetch: UpstreamFetch;
+  config: GatewayConfig;
+  apiKey: string;
+  prompt: string;
+  userHash: string;
+  timeoutMs: number;
+}): Promise<UpstreamResult> {
+  return firstAnsweringModel(
+    args.config.models,
+    args.timeoutMs,
+    (model, signal) => completeOnce({ ...args, model, signal }),
+  );
 }
 
 export const transcribeFormats = [
@@ -258,25 +264,19 @@ function billable(result: UpstreamResult): boolean {
   return result.kind === "ok" || result.mayBill;
 }
 
-export async function callTranscribe(args: {
-  fetch: UpstreamFetch;
-  config: GatewayConfig;
-  apiKey: string;
-  input: TranscribeInput;
-  timeoutMs: number;
-}): Promise<UpstreamResult> {
+async function firstAnsweringModel(
+  models: string[],
+  timeoutMs: number,
+  attempt: (model: string, signal: AbortSignal) => Promise<UpstreamResult>,
+): Promise<UpstreamResult> {
   let knownCost: number | null = null;
   let unknownBilledCost = false;
   let last: UpstreamResult | null = null;
-  for (const model of args.config.transcribeModels) {
+  for (const model of models) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), args.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      last = await transcribeOnce({
-        ...args,
-        model,
-        signal: controller.signal,
-      });
+      last = await attempt(model, controller.signal);
     } finally {
       clearTimeout(timer);
     }
@@ -287,7 +287,7 @@ export async function callTranscribe(args: {
     }
     if (last.kind === "ok") break;
   }
-  if (last === null) throw new Error("no transcription model is configured");
+  if (last === null) throw new Error("no model is configured");
   return {
     ...last,
     ...(last.kind === "error"
@@ -295,4 +295,18 @@ export async function callTranscribe(args: {
       : {}),
     costMicros: unknownBilledCost ? null : knownCost,
   };
+}
+
+export function callTranscribe(args: {
+  fetch: UpstreamFetch;
+  config: GatewayConfig;
+  apiKey: string;
+  input: TranscribeInput;
+  timeoutMs: number;
+}): Promise<UpstreamResult> {
+  return firstAnsweringModel(
+    args.config.transcribeModels,
+    args.timeoutMs,
+    (model, signal) => transcribeOnce({ ...args, model, signal }),
+  );
 }

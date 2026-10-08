@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { useRef, useState } from "react";
+import { useAutoLoadOlderRows } from "@/components/thread/timeline/useAutoLoadOlderRows";
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -135,10 +137,21 @@ function BottomAnchorProbe({
 
 function CapturePrependAnchorControl() {
   const bottomAnchor = useBottomAnchoredScroll();
+  const finishRef = useRef<((restore: boolean) => void) | null>(null);
   return (
-    <button type="button" onClick={() => bottomAnchor?.captureScrollAnchor()}>
-      Capture prepend anchor
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          finishRef.current = bottomAnchor?.captureScrollAnchor() ?? null;
+        }}
+      >
+        Capture prepend anchor
+      </button>
+      <button type="button" onClick={() => finishRef.current?.(true)}>
+        Finish prepend
+      </button>
+    </>
   );
 }
 
@@ -242,6 +255,35 @@ function renderTimeline({
     rerenderRows: (nextRowIds: string[]) => view.rerender(timeline(nextRowIds)),
     unmount: view.unmount,
   };
+}
+
+function PaginatedRows({ load }: { load: () => Promise<() => void> }) {
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const { loadOlderRows } = useAutoLoadOlderRows({
+    hasOlderTimelineRows: true,
+    isLoadingOlderTimelineRows: loading,
+    onLoadOlderRows: async (commit) => {
+      setLoading(true);
+      try {
+        const update = await load();
+        const apply = () => {
+          update();
+          setLoaded(true);
+        };
+        if (commit) await commit(apply);
+        else apply();
+      } finally {
+        setLoading(false);
+      }
+    },
+  });
+  return (
+    <>
+      <button onClick={loadOlderRows}>Load page</button>
+      <div data-timeline-row-id={loaded ? "older" : "current"}>Row</div>
+    </>
+  );
 }
 
 function readAnchor(threadId: string) {
@@ -498,6 +540,150 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     ).toBeLessThanOrEqual(8);
   });
 
+  it.each(["success", "failure", "empty", "cancelled"] as const)(
+    "settles a %s older-page request without waiting for a shell render",
+    async (outcome) => {
+      vi.useFakeTimers();
+      let resolveLoad: (update: () => void) => void = () => {};
+      let rejectLoad = () => {};
+      const load = () =>
+        new Promise<() => void>((resolve, reject) => {
+          resolveLoad = resolve;
+          rejectLoad = () => reject(new Error("offline"));
+        });
+      let showRows = true;
+      const shell = () => (
+        <BottomAnchoredScrollBody
+          footer={<div>Footer</div>}
+          maxWidthClassName="max-w-none"
+          scrollAreaClassName={SCROLL_AREA_CLASS}
+        >
+          {showRows ? <PaginatedRows load={load} /> : null}
+        </BottomAnchoredScrollBody>
+      );
+      const view = render(shell());
+      const scrollArea = requireHTMLElement(
+        view.container.querySelector(`.${SCROLL_AREA_CLASS}`),
+      );
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 1000,
+        clientHeight: 100,
+        scrollTop: 900,
+      });
+      getLatestResizeObserver().trigger();
+      fireEvent.touchStart(scrollArea);
+      scrollArea.scrollTop = 200;
+      fireEvent.scroll(scrollArea);
+      fireEvent.click(view.getByRole("button", { name: "Load page" }));
+      if (outcome === "cancelled") {
+        showRows = false;
+        view.rerender(shell());
+      }
+      await act(async () => {
+        if (outcome === "failure") rejectLoad();
+        else
+          resolveLoad(() => {
+            if (outcome === "success")
+              Object.defineProperty(scrollArea, "scrollHeight", {
+                configurable: true,
+                value: 1500,
+              });
+          });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(scrollArea.scrollHeight).toBe(1000);
+      expect(scrollArea.scrollTop).toBe(200);
+      fireEvent.touchEnd(scrollArea);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      scrollArea.scrollTop = 250;
+      fireEvent.scroll(scrollArea);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(scrollArea.scrollHeight).toBe(1000);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(150);
+      });
+      expect(scrollArea.scrollTop).toBe(outcome === "success" ? 750 : 250);
+      fireEvent.touchStart(scrollArea);
+      scrollArea.scrollTop = 400;
+      fireEvent.scroll(scrollArea);
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 1800,
+        clientHeight: 100,
+        scrollTop: 400,
+      });
+      view.rerender(shell());
+      expect(scrollArea.scrollTop).toBe(400);
+    },
+  );
+
+  it.each(["touchStart", "pointerDown", "wheel"] as const)(
+    "holds the visible row while virtual heights settle and releases it on %s",
+    (input) => {
+      vi.useFakeTimers();
+      const { getByRole, scrollArea, getRow } = renderTimeline({
+        threadId: "thread-a",
+        rowIds: ["row-a", "row-b"],
+        showCapturePrependAnchorControl: true,
+        virtualized: true,
+      });
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 1000,
+        clientHeight: 100,
+        scrollTop: 900,
+      });
+      getLatestResizeObserver().trigger();
+      let rowTop = 100;
+      mockScrollAreaRect(scrollArea);
+      vi.spyOn(getRow("row-a"), "getBoundingClientRect").mockImplementation(
+        () => new DOMRect(0, rowTop - scrollArea.scrollTop, 100, 300),
+      );
+      vi.spyOn(getRow("row-b"), "getBoundingClientRect").mockImplementation(
+        () => new DOMRect(0, rowTop + 300 - scrollArea.scrollTop, 100, 300),
+      );
+      fireEvent.touchStart(scrollArea);
+      scrollArea.scrollTop = 200;
+      fireEvent.scroll(scrollArea);
+      fireEvent.click(getByRole("button", { name: "Capture prepend anchor" }));
+      rowTop = 600;
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 2000,
+        clientHeight: 100,
+        scrollTop: 200,
+      });
+      fireEvent.click(getByRole("button", { name: "Finish prepend" }));
+      expect(getRow("row-a").getBoundingClientRect().top).toBe(-100);
+      rowTop = 800;
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 2200,
+        clientHeight: 100,
+        scrollTop: 700,
+      });
+      getLatestResizeObserver().trigger();
+      expect(scrollArea.scrollTop).toBe(900);
+      scrollArea.scrollTop = 1000;
+      fireEvent.scroll(scrollArea);
+      expect(getRow("row-a").getBoundingClientRect().top).toBe(-100);
+      fireEvent[input](scrollArea);
+      scrollArea.scrollTop = 850;
+      fireEvent.scroll(scrollArea);
+      expect(scrollArea.scrollTop).toBe(850);
+      rowTop = 1000;
+      setScrollMetrics(scrollArea, {
+        scrollHeight: 2400,
+        clientHeight: 100,
+        scrollTop: 850,
+      });
+      getLatestResizeObserver().trigger();
+      expect(scrollArea.scrollTop).toBe(850);
+    },
+  );
+
   it("does not treat a native-anchor jump during prepend as bottom intent", () => {
     const { getByRole, rerenderRows, scrollArea } = renderTimeline({
       threadId: "thread-a",
@@ -533,6 +719,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     expect(scrollArea.scrollTop).toBe(300);
 
     rerenderRows(["older-row", "row-a", "row-b", "row-c"]);
+    fireEvent.click(getByRole("button", { name: "Finish prepend" }));
     expect(scrollArea.scrollTop).toBe(250);
   });
 
@@ -564,6 +751,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
       scrollTop: scrollArea.scrollTop,
     });
     rerenderRows(["older-row", "row-a", "row-b", "row-c"]);
+    fireEvent.click(getByRole("button", { name: "Finish prepend" }));
 
     expect(scrollArea.scrollTop).toBe(200);
   });

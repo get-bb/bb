@@ -9,7 +9,7 @@ const PAGE_TITLE = "Privacy — bb";
 const PAGE_DESCRIPTION =
   "What bb collects, what stays on your own machines, and what bb connect can see.";
 
-const LAST_UPDATED = "October 1, 2026";
+const LAST_UPDATED = "October 8, 2026";
 const CONTACT_EMAIL = "sawyer@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
@@ -29,7 +29,7 @@ function PrivacyRoute() {
 
       <article className="post article">
         <div className="post-body">
-          <time className="date-pill" dateTime="2026-10-01">
+          <time className="date-pill" dateTime="2026-10-08">
             Last updated {LAST_UPDATED}
           </time>
           <h1>Privacy</h1>
@@ -67,6 +67,18 @@ function PrivacyRoute() {
             server and we do not receive its data. This includes your prompts,
             your agent conversations, your source code, your files, your
             terminal output, and your provider API keys.
+          </p>
+
+          <p>
+            Unless you turn it off, the bb server sends us anonymous usage
+            events through PostHog: app starts, thread and message counts,
+            plugin installs, and setup progress, such as which first-run steps
+            you completed or skipped and whether you turned on notifications.
+            Each event carries a random install ID, the app version, and your
+            operating system and architecture. Events never include your
+            prompts, code, file names, project names, or account details. Turn
+            this off in Settings &rarr; General &rarr; Share anonymous usage
+            data, or set <code>BB_TELEMETRY=false</code>.
           </p>
 
           <p>The iOS and Android apps store the following on your device:</p>

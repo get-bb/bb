@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "build:android:local": "bash scripts/build-android-local.sh",
+    "build:android:dev": "bash scripts/build-android-dev.sh",
     "prebuild": "expo prebuild",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint app src scripts plugins metro.config.js app.config.js",

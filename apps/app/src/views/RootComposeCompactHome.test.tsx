@@ -6,6 +6,7 @@ import {
   getCompactHomeScrollViewportTop,
   RootComposeCompactHome,
 } from "./RootComposeCompactHome";
+import { COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY } from "@/components/promptbox/ComposerEditorSlot";
 import {
   MOBILE_RECENT_LABEL_HEIGHT_PX,
   MOBILE_RECENT_ROW_HEIGHT_PX,
@@ -71,6 +72,34 @@ describe("RootComposeCompactHome", () => {
     );
     expect(viewport.style.top).toBe("310px");
     expect(bottomSpacer.style.height).toBe("188px");
+  });
+
+  it("caps the editor so a tall draft keeps the composer below the app chrome row", () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.dataset.testid === "root-compose-compact-home") return 480;
+        if (this.dataset.testid === "root-compose-compact-composer") {
+          return 682;
+        }
+        if (this.hasAttribute("data-promptbox-editor-scroll")) return 540;
+        return 0;
+      },
+    );
+
+    render(
+      <RootComposeCompactHome
+        composer={<div data-promptbox-editor-scroll="" />}
+      >
+        <div />
+      </RootComposeCompactHome>,
+    );
+
+    const composer = screen.getByTestId("root-compose-compact-composer");
+    expect(
+      composer.style.getPropertyValue(
+        COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY,
+      ),
+    ).toBe(`${480 - 56 - (682 - 540)}px`);
   });
 
   it("never lifts the scroll viewport above the app chrome row", () => {

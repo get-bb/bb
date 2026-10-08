@@ -2,8 +2,11 @@
 
 The `Windows host packages (Node 22.x)` job in
 `.github/workflows/ci.yml` runs on Blacksmith Windows Server 2025 x64. It runs on
-every pull request and main push, alongside the existing Linux checks. A failure
-fails the job; the Windows tests are not advisory.
+every main push and on pull requests affecting foundation packages, alongside
+the Linux checks. Unknown or shared CI configuration changes select full
+coverage. Frontend-only pull requests use affected Linux checks; their Windows
+coverage remains on main. See [PR selection](ci-performance.md#pr-selection).
+A selected Windows job is blocking, not advisory.
 
 The job runs complete test suites and typechecks for nine packages:
 
@@ -14,9 +17,9 @@ The job runs complete test suites and typechecks for nine packages:
 Every other test suite runs in the `Windows tests` jobs described under
 [Full test suite](#full-test-suite).
 
-Turbo runs with `--force`, so a cached result from another OS cannot stand in for
-Windows execution, and `--concurrency=2` limits contention between process-heavy
-suites. Packages use shared Vitest workers with isolation for tests that mutate
+Turbo reuses results from Windows-only cache keys; Linux and macOS entries
+cannot satisfy these checks. `--concurrency=2` limits contention between
+process-heavy suites. Packages use shared Vitest workers with isolation for tests that mutate
 global state.
 
 The native Windows coverage exercises:
@@ -52,7 +55,7 @@ Install and run the same slice from the repository root in PowerShell:
 ```powershell
 npm install --global pnpm@9.15.0 --ignore-scripts
 pnpm install --frozen-lockfile --ignore-scripts --filter bb --filter "@bb/process-utils..." --filter "@bb/host-workspace..." --filter "@bb/host-watcher..." --filter "@bb/agent-runtime..." --filter "@bb/provider-bridge-protocol..." --filter "@bb/provider-bridge-acp..." --filter "@bb/host-daemon-contract..." --filter "@bb/config..." --filter "@bb/db..." --filter "bb-plugin-provider-acp..." --filter "bb-plugin-provider-codex..." --filter "bb-plugin-echo-provider..." --filter "@bb/app..."
-pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --force --continue --concurrency=2 --output-logs=full
+pnpm exec turbo run lint typecheck test --filter=@bb/process-utils --filter=@bb/host-workspace --filter=@bb/host-watcher --filter=@bb/agent-runtime --filter=@bb/provider-bridge-protocol --filter=@bb/provider-bridge-acp --filter=@bb/host-daemon-contract --filter=@bb/config --filter=@bb/db --continue --concurrency=2 --output-logs=new-only --summarize
 ```
 
 The filtered install includes root tooling, package dependencies, and the real
@@ -158,7 +161,12 @@ suite exactly once:
 The shards are sized so that each finishes with the slowest Linux job instead
 of after it; see [ci-performance.md](ci-performance.md#windows-test-shards).
 
-The jobs install every workspace package with `--ignore-scripts`; Turbo runs the
+App shards install the app and database dependency closures. Server shards
+install the server, host daemon, app, and plugin dependency closures, including
+the plugins loaded dynamically by the server test harness. Plugin, host, build,
+and integration shards omit the mobile toolchain. The catch-all `packages-other`
+shard retains the full install because it runs mobile tests. All use
+`--ignore-scripts`; Turbo runs the
 generators and native-module preparation the suites depend on. They restore
 and save Turbo outputs. The cache key includes the runner OS, so a restored
 result was produced on Windows; a suite whose inputs are unchanged is not run
@@ -278,3 +286,7 @@ process-heavy suite is unexplained; running it alone avoids it.
 Keep the Linux suite running to protect existing behavior. Windows Server CI must
 eventually be supplemented with Windows 11 verification for installation,
 interactive terminals, updates, and actual provider sessions.
+
+Both Windows packaging smoke jobs install the workspace excluding `@bb/mobile`.
+The React Native toolchain is not part of the desktop or launcher dependency
+chain; all Turbo build dependencies and both runtime smoke checks remain enabled.

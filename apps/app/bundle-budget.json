@@ -159,6 +159,11 @@
     "sonner"
   ],
   "splitBoundaries": {
+    "src/components/promptbox/MicrophonePreferences.tsx": [
+      "boot",
+      "ThreadPage",
+      "NewThreadPage"
+    ],
     "src/components/code/BbDiff.tsx": ["boot", "ThreadPage", "NewThreadPage"],
     "src/components/code/BbSourceCode.tsx": [
       "boot",
@@ -201,11 +206,6 @@
       "NewThreadPage"
     ],
     "src/components/secondary-panel/ThreadSecondaryPanelTabContent.tsx": [
-      "boot",
-      "ThreadPage",
-      "NewThreadPage"
-    ],
-    "src/components/secondary-panel/ThreadStorageFileTree.tsx": [
       "boot",
       "ThreadPage",
       "NewThreadPage"
@@ -260,7 +260,6 @@
     "src/views/RootComposeView.tsx": ["boot", "ThreadPage"]
   },
   "onDemandPackages": {
-    "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
     "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
     "katex": "src/components/ui/markdown-katex.ts",
     "rehype-katex": "src/components/ui/markdown-katex.ts",

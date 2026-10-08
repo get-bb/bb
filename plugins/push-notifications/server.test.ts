@@ -349,7 +349,7 @@ describe("push sender", () => {
       expect(host.expo.requests[0]).toHaveLength(2);
       expect(host.expo.requests[0]?.[0]).toMatchObject({
         title: "Fix the flaky test",
-        body: "Done: the timer race is fixed.",
+        body: "Done: the timer race is fixed. More details.",
         data: {
           kind: "turn-finished",
           projectId: "project-1",
@@ -366,6 +366,41 @@ describe("push sender", () => {
           status: "sent",
           sentCount: 2,
         });
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("sends the first paragraph as plain text with thread references named", async () => {
+    const host = await setup();
+    try {
+      await host.addSubscription();
+      host.setThread({ id: "thr_aedn9u3q8i", title: "Fix scroll jumps" });
+      host.setThread({
+        id: "thr_23456789ab",
+        title:
+          "Compare bb in-app terminal against Moshi, Termius, and Blink Shell",
+      });
+      const thread = host.setThread({ title: "Discord Dude" });
+
+      await host.harness.behavior.emitThreadEvent("thread.idle", {
+        thread,
+        lastAssistantText: [
+          "## Summary",
+          "",
+          "@thread:thr_aedn9u3q8i fixed **[#4793](https://github.com/get-bb/bb/issues/4793)**",
+          "as `9579549809`; thr_8quy6y32b5 and snake_case_name remain.",
+          "Then see @thread:thr_23456789ab.",
+          "",
+          "Second paragraph.",
+        ].join("\n"),
+      });
+
+      await vi.waitFor(() => expect(host.expo.requests).toHaveLength(1));
+      expect(host.expo.requests[0]?.[0]).toMatchObject({
+        title: "Discord Dude",
+        body: "“Fix scroll jumps” fixed #4793 as 9579549809; thr_8quy6y32b5 and snake_case_name remain. Then see “Compare bb in-app terminal against Mosh…”.",
       });
     } finally {
       await host.cleanup();

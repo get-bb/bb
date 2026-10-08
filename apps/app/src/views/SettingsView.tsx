@@ -168,8 +168,12 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  showGitChanges: boolean;
+  onShowGitChangesChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
+  keepHistoryAfterContextClear: boolean;
+  onKeepHistoryAfterContextClearChange: (enabled: boolean) => void;
   desktopBrowserAvailable: boolean;
   generalSettingsDisabled: boolean;
   managedBranchPrefix: string;
@@ -177,6 +181,7 @@ interface GeneralSettingsSectionProps {
   onManagedBranchPrefixChange: (prefix: string) => Promise<void> | void;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
+  onReplaySetupGuide: () => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
@@ -250,7 +255,7 @@ const FAVICON_COLOR_LABELS: Record<FaviconColorPreference, string> = {
 };
 
 const SETTINGS_DROPDOWN_TRIGGER_CLASS =
-  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";
+  "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs @min-[36rem]/settings:w-36";
 const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
 
@@ -519,7 +524,7 @@ export function LocalOpenTargetSettingsSection({
           : "Enable";
 
     return (
-      <SettingsSection title="File Preferences">
+      <SettingsSection title="File preferences">
         <SettingsWithControl
           label="Local editor integration"
           description={
@@ -560,7 +565,7 @@ export function LocalOpenTargetSettingsSection({
   }
 
   return (
-    <SettingsSection title="File Preferences">
+    <SettingsSection title="File preferences">
       <div className="space-y-5">
         <LocalOpenTargetPreferenceControl
           definition={DIRECTORY_TARGET_PREFERENCE}
@@ -850,8 +855,12 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  showGitChanges,
+  onShowGitChangesChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
+  keepHistoryAfterContextClear,
+  onKeepHistoryAfterContextClearChange,
   desktopBrowserAvailable,
   generalSettingsDisabled,
   managedBranchPrefix,
@@ -859,6 +868,7 @@ export function GeneralSettingsSection({
   onManagedBranchPrefixChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
+  onReplaySetupGuide,
   onRewriteLocalhostLinksChange,
   onSteerActiveThreadOnEnterChange,
   openLinksInAppBrowser,
@@ -879,6 +889,18 @@ export function GeneralSettingsSection({
               checked={navigateToThreadAfterCreate}
               onCheckedChange={onNavigateToThreadAfterCreateChange}
               aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Show Git changes and Commit button"
+            description="Show Git and PR controls above the composer, and Commit in the header."
+          >
+            <Switch
+              checked={showGitChanges}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onShowGitChangesChange}
+              aria-label="Show Git changes and Commit button"
             />
           </SettingsWithControl>
 
@@ -945,6 +967,33 @@ export function GeneralSettingsSection({
               onCheckedChange={onConfirmThreadArchiveChange}
               aria-label="Thread archive confirmation"
             />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Show messages from before a context clear"
+            description="Earlier messages stay in the thread for you to read. The agent doesn't see them."
+          >
+            <Switch
+              checked={keepHistoryAfterContextClear}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onKeepHistoryAfterContextClearChange}
+              aria-label="Show messages from before a context clear"
+            />
+          </SettingsWithControl>
+
+          <SettingsWithControl
+            label="Setup guide"
+            description="Walk through connecting an agent, adding projects, plugins, and devices again."
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={generalSettingsDisabled}
+              onClick={onReplaySetupGuide}
+            >
+              Show setup guide
+            </Button>
           </SettingsWithControl>
         </div>
       </SettingsSection>
@@ -1022,7 +1071,7 @@ export function PrivacySettingsSection({
 
         <SettingsWithControl
           label="Share anonymous usage data"
-          description="Send anonymous app starts, thread and message counts, and plugin installs to help improve BB. Turning this off takes effect immediately for this server."
+          description="Send anonymous app starts, thread and message counts, plugin installs, and setup progress to help improve BB. Turning this off takes effect immediately for this server."
         >
           <Switch
             checked={telemetryEnabled}
@@ -1060,7 +1109,7 @@ const EXPERIMENT_DEFINITIONS: Record<
   navigationRail: {
     label: "Navigation rail",
     description:
-      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. Wide windows only.",
+      "Keep a vertical rail of destinations on the left edge of the sidebar on every screen, with Home at the top and Settings at the bottom. The rail stays when the sidebar is collapsed. Wide windows only.",
   },
   performanceDiagnostics: {
     label: "Server performance diagnostics",
@@ -1174,8 +1223,7 @@ export function SettingsView() {
     content = (
       <ProvidersSettingsSection
         disabled={
-          systemConfigQuery.data === undefined ||
-          updateGeneralSettingsMutation.isPending
+          systemConfigQuery.data === undefined
         }
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
@@ -1269,8 +1317,7 @@ export function SettingsView() {
     content = (
       <ExperimentsSettingsSection
         disabled={
-          systemConfigQuery.data === undefined ||
-          updateExperimentsMutation.isPending
+          systemConfigQuery.data === undefined
         }
         experiments={experiments}
         performanceDiagnosticsAvailable={
@@ -1291,22 +1338,40 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          showGitChanges={generalSettings.showGitChanges}
+          onShowGitChangesChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              showGitChanges: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               confirmThreadArchive: enabled,
+            })
+          }
+          keepHistoryAfterContextClear={
+            generalSettings.keepHistoryAfterContextClear
+          }
+          onKeepHistoryAfterContextClearChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              keepHistoryAfterContextClear: enabled,
+            })
+          }
+          onReplaySetupGuide={() =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              onboardingCompletedAt: null,
             })
           }
           desktopBrowserAvailable={desktopBrowserAvailable}
           generalSettingsDisabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
+            systemConfigQuery.data === undefined
           }
           managedBranchPrefix={generalSettings.managedBranchPrefix}
           onManagedBranchPrefixChange={async (prefix) => {
             await updateGeneralSettingsMutation.mutateAsync({
-              ...generalSettings,
               managedBranchPrefix: prefix,
             });
           }}
@@ -1319,7 +1384,6 @@ export function SettingsView() {
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               steerActiveThreadOnEnter: enabled,
             })
           }
@@ -1330,25 +1394,21 @@ export function SettingsView() {
           telemetryEnabled={generalSettings.telemetryEnabled}
           onTelemetryEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               telemetryEnabled: enabled,
             })
           }
           streamerMode={generalSettings.streamerMode}
           onStreamerModeChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               streamerMode: enabled,
             })
           }
           enabled={generalSettings.showDiagnosticEvents}
           disabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
+            systemConfigQuery.data === undefined
           }
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               showDiagnosticEvents: enabled,
             })
           }

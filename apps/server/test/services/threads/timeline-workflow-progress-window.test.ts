@@ -291,6 +291,7 @@ function buildPage(
   return buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
     eventBudget,
+    includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
     includeNestedRows: false,
     maxInlineOutputChars: 32_000,
@@ -366,6 +367,7 @@ describe("workflow progress snapshots across timeline pages", () => {
 
     const outline = buildThreadConversationOutline(db, thread, {
       completedTurnDisplay: "collapse",
+      includeClearedContextHistory: false,
       maxSeq: 0,
     });
     expect(outline.items.map((item) => item.role)).toEqual([

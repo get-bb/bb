@@ -606,6 +606,56 @@ describe("machine retirement", () => {
 });
 
 describe("machine suspension", () => {
+  it("requests removal during an in-flight sweep when the last ephemeral thread is archived", async () =>
+    withTestHarness(async (harness) => {
+      const started = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => {
+          started.resolve();
+          await release.promise;
+          return { resource: { id: "owned" } };
+        },
+      });
+      const target = seedHostSession(harness.deps, { id: "sweeping-resume" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: target.host.id,
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: target.host.id,
+        path: "/tmp/sweeping-resume",
+        providerOwnsPath: false,
+        status: "ready",
+        environmentProvider: null,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      updateHost(harness.db, harness.hub, target.host.id, {
+        machineProviderId: "test-machine",
+        type: "ephemeral",
+        phase: "resuming",
+        resource: { id: "owned" },
+        suspendedAt: Date.now(),
+      });
+      harness.hub.unregisterDaemon(target.session.id);
+      const first = sweepMachineLifecycles(harness.deps);
+      await started.promise;
+      try {
+        archiveThread(harness.db, harness.hub, thread.id);
+        await sweepMachineLifecycles(harness.deps, { background: true });
+        expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
+      } finally {
+        release.resolve();
+        await first;
+      }
+      await sweepMachineLifecycles(harness.deps);
+      expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
+    }));
+
   it("returns the durable resuming phase from an explicit resume request", async () =>
     withTestHarness(async (harness) => {
       const started = createDeferredPromise<void>();

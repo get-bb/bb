@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentPropsWithoutRef,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useAtom, useAtomValue, useStore } from "jotai";
@@ -19,18 +20,18 @@ import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   highlightedText,
   ThreadTitle,
-  useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import {
   ThreadStatusGlyph,
   resolveThreadStatus,
 } from "@/components/thread/ThreadStatusGlyph";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
+import { THREAD_LIFECYCLE_OPTIONS } from "@/components/thread/ThreadLifecycleFilter";
 import {
-  ThreadLifecycleFilter,
-  THREAD_LIFECYCLE_OPTIONS,
-} from "@/components/thread/ThreadLifecycleFilter";
-import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
+  paletteThreadLifecyclesAtom,
+  paletteThreadSortAtom,
+  paletteThreadSortDirectionAtom,
+} from "@/lib/command-palette/palette-preferences";
 import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
@@ -55,6 +56,7 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
+import { PaletteThreadViewMenu } from "./PaletteThreadViewMenu";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
@@ -97,15 +99,24 @@ export function ThreadSearchPaletteMode({
     () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
   );
+  const [sort, setSort] = useAtom(paletteThreadSortAtom);
+  const [sortDirection, setSortDirection] = useAtom(
+    paletteThreadSortDirectionAtom,
+  );
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
-  const filterKey = lifecycles.join(",");
+  const [shownCounts, setShownCounts] = useState<
+    Partial<Record<ThreadArchiveFilter, number>>
+  >({});
+  const filterKey = `${lifecycles.join(",")}:${sort}:${sortDirection}`;
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
     setPreviousFilterKey(filterKey);
     setExpandedGroups([]);
+    setShownCounts({});
+    setHighlightedKey(null);
   }
   const [now] = useState(() => Date.now());
   const navigation = useSidebarNavigation();
@@ -148,6 +159,8 @@ export function ThreadSearchPaletteMode({
         recentThreads,
         searchResponse: threadSearch.data,
         searchResultsAreCurrent,
+        sort,
+        sortDirection,
       }),
     [
       lifecycles,
@@ -156,19 +169,27 @@ export function ThreadSearchPaletteMode({
       query,
       recentThreads,
       searchResultsAreCurrent,
+      sort,
+      sortDirection,
       threadSearch.data,
     ],
   );
   const options = useMemo(() => {
     return lifecycles.flatMap((lifecycle) => {
       const rows = result.rows.filter((row) => row.lifecycle === lifecycle);
+      const limit =
+        lifecycle === "archived" && lifecycles.includes("active")
+          ? ARCHIVED_BESIDE_ACTIVE_LIMIT
+          : GROUP_LIMIT;
       const visible = expandedGroups.includes(lifecycle)
         ? rows
         : rows.slice(
             0,
-            lifecycle === "archived" && lifecycles.includes("active")
-              ? ARCHIVED_BESIDE_ACTIVE_LIMIT
-              : GROUP_LIMIT,
+            Math.max(
+              limit,
+              shownCounts[lifecycle] ?? 0,
+              rows.findIndex((row) => row.id === highlightedKey) + 1,
+            ),
           );
       const groupOptions: ThreadSearchOption[] = visible.map((row) => ({
         lifecycle,
@@ -178,7 +199,20 @@ export function ThreadSearchPaletteMode({
         groupOptions.push({ row: null, lifecycle });
       return groupOptions;
     });
-  }, [expandedGroups, lifecycles, result]);
+  }, [expandedGroups, highlightedKey, lifecycles, result, shownCounts]);
+  useLayoutEffect(() => {
+    setShownCounts((current) => {
+      let next = current;
+      for (const lifecycle of lifecycles) {
+        const shown = options.filter(
+          (option) => option.lifecycle === lifecycle && option.row !== null,
+        ).length;
+        if (shown > (next[lifecycle] ?? 0))
+          next = { ...next, [lifecycle]: shown };
+      }
+      return next;
+    });
+  }, [lifecycles, options]);
   const retainedIndex = options.findIndex(
     (option) => optionKey(option) === highlightedKey,
   );
@@ -217,16 +251,19 @@ export function ThreadSearchPaletteMode({
   const activeDescendantId =
     activeIndex < 0 ? undefined : `${optionIdPrefix}-${activeIndex}`;
   const activeRow = options[activeIndex]?.row;
+  const splitAvailable =
+    !isCompact &&
+    splitLayout !== null &&
+    countPanes(splitLayout.root) < MAX_PANES;
   const canSplit =
     activeRow != null &&
-    !isCompact &&
+    splitAvailable &&
     splitLayout !== null &&
     findPaneByContent(splitLayout.root, {
       kind: "thread",
       projectId: activeRow.projectId,
       threadId: activeRow.threadId,
-    }) === null &&
-    countPanes(splitLayout.root) < MAX_PANES;
+    }) === null;
   const splitModifier = isMacKeyboardPlatform(navigator.platform)
     ? "⌘"
     : "Ctrl";
@@ -324,6 +361,11 @@ export function ThreadSearchPaletteMode({
     [activeIndex, highlightOption, onExit, options, query.length, selectOption],
   );
 
+  const focusInputAfterMenuClose = (event: Event) => {
+    event.preventDefault();
+    inputRef.current?.focus();
+  };
+
   const isLoading =
     searchable &&
     (!searchResultsAreCurrent ||
@@ -356,7 +398,17 @@ export function ThreadSearchPaletteMode({
       inputLabel="Search threads"
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
-          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
+          <PaletteThreadViewMenu
+            lifecycles={lifecycles}
+            onLifecyclesChange={setLifecycles}
+            sort={sort}
+            sortDirection={sortDirection}
+            onSortChange={(nextSort, nextDirection) => {
+              setSort(nextSort);
+              setSortDirection(nextDirection);
+            }}
+            onCloseAutoFocus={focusInputAfterMenuClose}
+          />
         </div>
       }
       inputRef={inputRef}
@@ -375,6 +427,7 @@ export function ThreadSearchPaletteMode({
         setHighlightedIndex(0);
         setHighlightedKey(null);
         setExpandedGroups([]);
+        setShownCounts({});
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
@@ -443,11 +496,20 @@ export function ThreadSearchPaletteMode({
                         <ThreadSearchPaletteRow row={option.row} />
                       )}
                     </div>
-                    {index === activeIndex && canSplit ? (
+                    {option.row !== null && splitAvailable ? (
                       <button
                         type="button"
                         aria-label="Open in split"
-                        className="mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                        aria-hidden={
+                          index !== activeIndex || !canSplit || undefined
+                        }
+                        tabIndex={
+                          index === activeIndex && canSplit ? undefined : -1
+                        }
+                        className={cn(
+                          "ml-4 mr-1 inline-flex h-7 shrink-0 items-center gap-1 rounded-sm px-1 text-xs text-subtle-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
+                          (index !== activeIndex || !canSplit) && "invisible",
+                        )}
                         onClick={() => selectOption(option, index, true)}
                       >
                         <span className="mr-1">Open in split</span>
@@ -476,62 +538,33 @@ export function ThreadSearchPaletteMode({
 }
 
 function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
-  const primaryRef = useRef<HTMLSpanElement | null>(null);
-  const matchKey = `${row.primaryText}\u0000${row.highlightRanges
-    .map((range) => `${range.start}:${range.end}`)
-    .join(",")}`;
-  const [windowedMatchKey, setWindowedMatchKey] = useState<string | null>(null);
-  const shouldWindowMatch = windowedMatchKey === matchKey;
-  const primary = shouldWindowMatch
-    ? windowPaletteThreadSearchText({
-        text: row.primaryText,
-        highlightRanges: row.highlightRanges,
-      })
-    : { text: row.primaryText, highlightRanges: row.highlightRanges };
-
-  useLayoutEffect(() => {
-    if (shouldWindowMatch || row.highlightRanges.length === 0) return;
-    const container = primaryRef.current;
-    if (container === null) return;
-    const firstMatch = container.querySelector("mark");
-    if (firstMatch === null) return;
-    const containerRect = container.getBoundingClientRect();
-    const matchRect = firstMatch.getBoundingClientRect();
-    if (
-      matchRect.left < containerRect.left ||
-      matchRect.right > containerRect.right
-    ) {
-      setWindowedMatchKey(matchKey);
-    }
-  }, [matchKey, row.highlightRanges.length, shouldWindowMatch]);
-
-  const secondaryTitle = useThreadTitleDisplayText(row.secondaryTitle ?? "");
-  const metadata = [
-    row.secondaryTitle === null ? null : secondaryTitle,
-    row.projectName,
-    row.relativeTime,
-  ]
+  const metadata = [row.projectName, row.relativeTime]
     .filter(Boolean)
     .join(" · ");
   return (
     <span className="min-w-0 flex-1">
-      <ThreadTitle
-        ref={primaryRef}
-        title={primary.text}
-        highlightRanges={primary.highlightRanges}
+      <PaletteMatchText
+        text={row.primaryText}
+        highlightRanges={row.highlightRanges}
         className="text-foreground"
       />
       <span
         className="flex min-h-4 items-center gap-1.5"
         data-palette-thread-details
       >
-        {metadata.length === 0 ? null : (
+        {row.excerpt !== null ? (
+          <PaletteMatchText
+            text={row.excerpt.text}
+            highlightRanges={row.excerpt.highlightRanges}
+            className="text-xs leading-4 text-subtle-foreground"
+            data-palette-thread-excerpt
+          />
+        ) : metadata.length === 0 ? null : (
           <span
             className="min-w-0 truncate text-xs leading-4 text-subtle-foreground"
             data-palette-thread-metadata
             title={metadata}
           >
-            {row.secondaryTitle === null ? null : `${secondaryTitle} · `}
             {row.projectName === null ? null : (
               <>
                 <Icon
@@ -549,6 +582,53 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
         <ThreadSearchPaletteStatus row={row} />
       </span>
     </span>
+  );
+}
+
+function PaletteMatchText({
+  text,
+  highlightRanges,
+  className,
+  ...spanProps
+}: {
+  text: string;
+  highlightRanges: PaletteThreadSearchRow["highlightRanges"];
+  className: string;
+} & Omit<ComponentPropsWithoutRef<"span">, "children" | "title">) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const matchKey = `${text}\u0000${highlightRanges
+    .map((range) => `${range.start}:${range.end}`)
+    .join(",")}`;
+  const [windowedMatchKey, setWindowedMatchKey] = useState<string | null>(null);
+  const shouldWindowMatch = windowedMatchKey === matchKey;
+  const shown = shouldWindowMatch
+    ? windowPaletteThreadSearchText({ text, highlightRanges })
+    : { text, highlightRanges };
+
+  useLayoutEffect(() => {
+    if (shouldWindowMatch || highlightRanges.length === 0) return;
+    const container = ref.current;
+    if (container === null) return;
+    const firstMatch = container.querySelector("mark");
+    if (firstMatch === null) return;
+    const containerRect = container.getBoundingClientRect();
+    const matchRect = firstMatch.getBoundingClientRect();
+    if (
+      matchRect.left < containerRect.left ||
+      matchRect.right > containerRect.right
+    ) {
+      setWindowedMatchKey(matchKey);
+    }
+  }, [highlightRanges.length, matchKey, shouldWindowMatch]);
+
+  return (
+    <ThreadTitle
+      {...spanProps}
+      ref={ref}
+      title={shown.text}
+      highlightRanges={shown.highlightRanges}
+      className={cn("[&_span]:whitespace-nowrap", className)}
+    />
   );
 }
 

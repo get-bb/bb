@@ -22,6 +22,10 @@ import {
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
+import {
+  modelCatalogCacheKey,
+  readCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
 
 const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
@@ -51,6 +55,7 @@ function readyProviderStates(providerId: string): SystemProviderStatesResponse {
         canInstall: false,
         canUpdate: false,
         loginCommand: null,
+        localLoginCommand: null,
       },
     ],
   };
@@ -1031,7 +1036,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("re-routes to the host once the first probe's own roster declares host scope", async () => {
+  it("keeps a loaded catalog visible when its first roster reveals host scope", async () => {
     const hostScoped = executionOptionsResponse();
     const [provider] = hostScoped.providers;
     if (provider === undefined) throw new Error("fixture has no provider");
@@ -1039,14 +1044,16 @@ describe("useThreadCreationOptions", () => {
       ...provider.capabilities,
       modelCatalogScope: "host",
     };
-    vi.mocked(sdk.system.executionOptions).mockResolvedValue(hostScoped);
+    vi.mocked(sdk.system.executionOptions).mockImplementation((args) =>
+      args?.hostId ? new Promise(() => {}) : Promise.resolve(hostScoped),
+    );
 
     const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () =>
+    const { result, rerender } = renderHook(
+      ({ environmentId }) =>
         useThreadCreationOptions({
           scope: "component-local",
-          environmentId: "env_follow_up",
+          environmentId,
           environmentHostId: "host_follow_up",
           resetKey: "thr_cold_cache",
           initialProviderId: GLOBAL_PROVIDER_ID,
@@ -1054,18 +1061,30 @@ describe("useThreadCreationOptions", () => {
           initialReasoningLevel: "medium",
           initialPermissionMode: "full",
         }),
-      { wrapper },
+      { wrapper, initialProps: { environmentId: "env_follow_up" } },
     );
 
     await waitFor(() => {
-      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ environmentId: "env_follow_up" }),
-      );
+      expect(result.current.modelOptions).toHaveLength(2);
     });
+    expect(result.current.isLoadingModels).toBe(false);
+    expect(
+      result.current.reasoningOptions.map((option) => option.value),
+    ).toEqual(["medium", "high"]);
+    expect(result.current.executionOptionsRouting).toEqual({
+      environmentId: "env_follow_up",
+    });
+    expect(sdk.system.executionOptions).toHaveBeenCalledTimes(1);
+
+    rerender({ environmentId: "env_changed" });
     await waitFor(() => {
-      expect(result.current.executionOptionsRouting).toEqual({
-        hostId: "host_follow_up",
-      });
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          environmentId: undefined,
+          hostId: "host_follow_up",
+          providerId: GLOBAL_PROVIDER_ID,
+        }),
+      );
     });
   });
 
@@ -1375,6 +1394,47 @@ describe("useThreadCreationOptions", () => {
     expect(sdk.system.providerStates).not.toHaveBeenCalledWith(
       expect.objectContaining({ hostId: "second-host" }),
     );
+  });
+
+  it("loads the fallback provider's catalog when the stored provider is no longer offered", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "removed-provider");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      args?.providerId === "removed-provider"
+        ? {
+            ...executionOptionsResponse(),
+            models: [],
+            selectedOnlyModels: [],
+          }
+        : providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: GLOBAL_PROVIDER_ID }),
+      );
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.modelOptions.map((option) => option.value)).toEqual(
+        ["global-default", "global-remembered"],
+      );
+    });
+    expect(window.localStorage.getItem("bb.promptbox.provider")).toContain(
+      "removed-provider",
+    );
+    expect(
+      readCachedModelCatalog(
+        modelCatalogCacheKey({
+          environmentId: null,
+          hostId: null,
+          providerId: "removed-provider",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("routes reusable root-composer worktrees through their environment", async () => {

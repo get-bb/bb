@@ -310,8 +310,18 @@ export function registerSystemRoutes(
       allowFastServiceTier:
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
+      showGitChanges: settings.showGitChanges ?? current.showGitChanges,
+      keepHistoryAfterContextClear:
+        settings.keepHistoryAfterContextClear ??
+        current.keepHistoryAfterContextClear,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      onboardingCompletedAt:
+        settings.onboardingCompletedAt === undefined
+          ? current.onboardingCompletedAt
+          : settings.onboardingCompletedAt,
+      setupChecklistVisible:
+        settings.setupChecklistVisible ?? current.setupChecklistVisible,
       showDiagnosticEvents:
         diagnosticValue === undefined ||
         (showUnhandledProviderEvents !== undefined &&
@@ -326,6 +336,11 @@ export function registerSystemRoutes(
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
+  });
+
+  post(routes.recordTelemetryEvent, (context, payload) => {
+    deps.telemetry.capture(payload);
+    return context.json({ ok: true });
   });
 
   put(routes.keyboardSettings, (context, payload) => {

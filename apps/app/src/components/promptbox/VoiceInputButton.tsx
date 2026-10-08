@@ -3,8 +3,9 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { Icon } from "@bb/shared-ui/icon";
-import { Popover, PopoverAnchor, PopoverContent } from "@bb/shared-ui/popover";
-import { MicrophonePreferencesSplit } from "@/components/settings/MicrophonePreferencesSplit";
+import { Popover, PopoverAnchor } from "@bb/shared-ui/popover";
+import { MicrophonePreferencesSplit } from "./MicrophonePreferencesSplit";
+import { MicrophonePreferencesPopoverContent } from "./MicrophonePreferencesPopoverContent";
 
 export function VoiceInputButton({
   warning,
@@ -75,50 +76,32 @@ export function VoiceInputButton({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {visibleWarning
-                ? `${visibleWarning} Click to open voice preferences.`
-                : "Start voice input · Right-click for voice preferences"}
+              {visibleWarning ? (
+                <>
+                  <span className="block">{visibleWarning}</span>
+                  <span className="block">
+                    Click to open voice preferences.
+                  </span>
+                </>
+              ) : (
+                "Start voice input · Right-click for voice preferences"
+              )}
             </TooltipContent>
           </Tooltip>
         </span>
       </PopoverAnchor>
-      <PopoverContent
-        aria-label="Voice preferences"
-        mobileTitle="Voice preferences"
+      <MicrophonePreferencesPopoverContent
+        open={open}
+        onClose={() => setOpen(false)}
+        warning={visibleWarning}
+        onCaptureReady={handleCaptureReady}
         align="end"
         side="top"
-        sideOffset={8}
-        className="w-80 rounded-xl p-4 shadow-lg"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           triggerRef.current?.focus();
         }}
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Microphone</h2>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Close voice preferences"
-              onClick={() => setOpen(false)}
-            >
-              <Icon name="X" className="size-4" />
-            </Button>
-          </div>
-          {visibleWarning ? (
-            <p role="status" className="text-sm text-destructive">
-              {visibleWarning}
-            </p>
-          ) : null}
-          <MicrophonePreferencesSplit
-            open={open}
-            activeStream={null}
-            onCaptureReady={handleCaptureReady}
-          />
-        </div>
-      </PopoverContent>
+      />
     </Popover>
   );
 }

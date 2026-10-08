@@ -6,7 +6,10 @@ import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
 import { useEnvironment } from "../queries/environment-queries";
 import { useHosts } from "../queries/host-queries";
 import { useThread } from "../queries/thread-queries";
-import { invalidateThreadPendingInteractionResolutionQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  applyResolvedThreadPendingInteraction,
+  invalidateThreadPendingInteractionResolutionQueries,
+} from "../cache-owners/mutation-cache-effects";
 
 interface ResolveThreadPendingInteractionMutationRequest {
   threadId: string;
@@ -44,6 +47,7 @@ export function useResolveThreadPendingInteraction(threadId: string) {
         threadId,
       }),
     onSuccess: (interaction, variables) => {
+      applyResolvedThreadPendingInteraction({ interaction, queryClient });
       invalidateThreadPendingInteractionResolutionQueries({
         queryClient,
         threadId: variables.threadId,

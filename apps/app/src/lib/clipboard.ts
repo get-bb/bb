@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { appToast } from "@/components/ui/app-toast";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import { getNativeShell } from "@/lib/native-shell/native-shell";
+import { buildMessageClipboardHtml } from "./message-clipboard";
 
 interface CopyToClipboardOptions {
   successMessage?: string | null;
@@ -53,76 +55,89 @@ async function fetchClipboardImage(imageUrl: string): Promise<Blob> {
   return convertImageBlobToPng(await response.blob());
 }
 
-function copyWithEditingCommand(text: string): boolean {
+export interface ClipboardContent {
+  text: string;
+  html?: string;
+}
+
+async function writeWithDesktopClipboard(
+  content: ClipboardContent,
+): Promise<boolean> {
+  const desktop = getBbDesktopInfo();
+  if (desktop?.writeClipboard === undefined) return false;
+  try {
+    await desktop.writeClipboard(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeWithClipboardApi({
+  text,
+  html,
+}: ClipboardContent): Promise<boolean> {
+  if (typeof navigator === "undefined") return false;
+  try {
+    if (html === undefined) {
+      if (typeof navigator.clipboard?.writeText !== "function") return false;
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    if (
+      typeof navigator.clipboard?.write !== "function" ||
+      typeof ClipboardItem === "undefined"
+    ) {
+      return false;
+    }
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/plain": new Blob([text], { type: "text/plain" }),
+        "text/html": new Blob([html], { type: "text/html" }),
+      }),
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writeWithCopyCommand({ text, html }: ClipboardContent): boolean {
   if (
+    typeof window === "undefined" ||
     typeof document === "undefined" ||
-    document.body === null ||
     typeof document.execCommand !== "function"
   ) {
     return false;
   }
 
-  const activeElement =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  const selection = document.getSelection();
-  const selectedRanges = selection
-    ? Array.from({ length: selection.rangeCount }, (_, index) =>
-        selection.getRangeAt(index).cloneRange(),
-      )
-    : [];
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.readOnly = true;
-  textarea.setAttribute("aria-hidden", "true");
-  Object.assign(textarea.style, {
-    border: "0",
-    height: "1px",
-    left: "0",
-    opacity: "0",
-    padding: "0",
-    pointerEvents: "none",
-    position: "fixed",
-    top: "0",
-    width: "1px",
-  });
-  document.body.append(textarea);
-
-  let copied = false;
+  let written = false;
+  const writeCopiedContent = (event: ClipboardEvent) => {
+    if (!event.clipboardData) return;
+    event.clipboardData.setData("text/plain", text);
+    if (html !== undefined) event.clipboardData.setData("text/html", html);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    written = true;
+  };
+  window.addEventListener("copy", writeCopiedContent, true);
   try {
-    textarea.focus({ preventScroll: true });
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
-    copied = document.execCommand("copy");
+    return document.execCommand("copy") && written;
   } catch {
-    copied = false;
+    return false;
   } finally {
-    textarea.remove();
-    if (activeElement?.isConnected) {
-      activeElement.focus({ preventScroll: true });
-    }
-    if (selection) {
-      selection.removeAllRanges();
-      for (const range of selectedRanges) {
-        selection.addRange(range);
-      }
-    }
+    window.removeEventListener("copy", writeCopiedContent, true);
   }
-  return copied;
 }
 
-export async function copyTextToClipboard(text: string): Promise<boolean> {
-  if (
-    typeof navigator !== "undefined" &&
-    typeof navigator.clipboard?.writeText === "function"
-  ) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {}
-  }
-  return copyWithEditingCommand(text);
+export async function copyToClipboard(
+  content: ClipboardContent,
+): Promise<boolean> {
+  return (
+    (await writeWithDesktopClipboard(content)) ||
+    (await writeWithClipboardApi(content)) ||
+    writeWithCopyCommand(content)
+  );
 }
 
 async function copyTextAndImageToClipboard(
@@ -130,12 +145,27 @@ async function copyTextAndImageToClipboard(
   imageUrl: string,
 ): Promise<boolean> {
   const shell = getNativeShell();
+  const image = new URL(imageUrl, window.location.href);
+  const absoluteImageUrl = image.href;
+  const html = text ? buildMessageClipboardHtml(text, absoluteImageUrl) : "";
+  if (html && shell?.copyRichText) {
+    if (
+      image.origin !== window.location.origin ||
+      !["http:", "https:"].includes(image.protocol) ||
+      image.username ||
+      image.password
+    )
+      return false;
+    try {
+      const result = await shell.copyRichText(text, html);
+      return z.object({ copied: z.literal(true) }).safeParse(result).success;
+    } catch {
+      return false;
+    }
+  }
   if (shell?.copyTextAndImage) {
     try {
-      const result = await shell.copyTextAndImage(
-        text,
-        new URL(imageUrl, window.location.href).href,
-      );
+      const result = await shell.copyTextAndImage(text, absoluteImageUrl);
       return z.object({ copied: z.literal(true) }).safeParse(result).success;
     } catch {
       return false;
@@ -157,6 +187,7 @@ async function copyTextAndImageToClipboard(
     };
     if (text.length > 0) {
       clipboardData["text/plain"] = new Blob([text], { type: "text/plain" });
+      clipboardData["text/html"] = new Blob([html], { type: "text/html" });
     }
     await navigator.clipboard.write([new ClipboardItem(clipboardData)]);
     return true;
@@ -175,12 +206,12 @@ export async function copyToClipboardWithToast(
 ): Promise<boolean> {
   const copied = imageUrl
     ? await copyTextAndImageToClipboard(text, imageUrl)
-    : await copyTextToClipboard(text);
+    : await copyToClipboard({ text });
   if (copied) {
     if (successMessage) appToast.success(successMessage);
     return true;
   }
-  if (imageUrl && text && (await copyTextToClipboard(text))) {
+  if (imageUrl && text && (await copyToClipboard({ text }))) {
     appToast.success("Copied text; image could not be copied");
     return true;
   }

@@ -404,8 +404,14 @@ export function UsageSettingsContent({
             ? emptyUsageMessage(selected)
             : null;
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4 sm:items-start">
+    <section className="@container/usage-settings space-y-3">
+      <div
+        className={cn(
+          machines.length > 1
+            ? "flex flex-col gap-3 @min-[36rem]/usage-settings:flex-row @min-[36rem]/usage-settings:justify-between @min-[36rem]/usage-settings:gap-4 @min-[36rem]/usage-settings:items-start"
+            : "flex flex-row items-start justify-between gap-4",
+        )}
+      >
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
             <h2 className="min-w-0 text-sm font-semibold text-foreground">
@@ -503,7 +509,7 @@ export function UsageSettings() {
         const inventory = await rpc.call("getUsage", {
           force: false,
           machineIds: null,
-          providerId: null,
+          providerIds: [],
           maxAgeMs: 60_000,
         });
         if (disposed) return;
@@ -513,19 +519,24 @@ export function UsageSettings() {
           selectedId,
           null,
         );
-        if (selected && selected.status === "connected") {
-          for (const providerId of new Set(
-            selected.providers.map((provider) => provider.providerId),
-          )) {
-            const result = await rpc.call("getUsage", {
-              force,
-              machineIds: [selected.id],
-              providerId,
-              maxAgeMs: 60_000,
-            });
-            if (disposed) return;
-            setMachines(result.machines);
-          }
+        const providerIds = [
+          ...new Set(
+            selected?.providers.map((provider) => provider.providerId),
+          ),
+        ];
+        if (
+          selected &&
+          selected.status === "connected" &&
+          providerIds.length > 0
+        ) {
+          const result = await rpc.call("getUsage", {
+            force,
+            machineIds: [selected.id],
+            providerIds,
+            maxAgeMs: 60_000,
+          });
+          if (disposed) return;
+          setMachines(result.machines);
         }
       } catch {
         if (!disposed) setError(true);

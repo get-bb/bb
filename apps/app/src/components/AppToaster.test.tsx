@@ -262,7 +262,7 @@ describe("AppToaster", () => {
               />
             }
             id={id}
-            title="Thread Archived"
+            title="Thread archived"
             tone="success"
           />
         ),

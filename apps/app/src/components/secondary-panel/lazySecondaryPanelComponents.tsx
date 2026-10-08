@@ -16,7 +16,6 @@ import {
 import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelModule = typeof import("./ThreadSecondaryPanel");
-type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
 
 export function SecondaryPanelContentSkeleton() {
   return (
@@ -194,20 +193,6 @@ export const LazyFilePreview = defineSplit({
   id: "file-preview",
   load: () => import("./FilePreview").then((module) => module.FilePreview),
   loading: FilePreviewLoading,
-  tier: "intent",
-});
-
-export const LazyThreadStorageFileTree = defineSplit<
-  ComponentProps<ThreadStorageFileTreeModule["ThreadStorageFileTree"]> & {
-    fallback: ReactNode;
-  }
->({
-  id: "thread-storage-file-tree",
-  load: () =>
-    import("./ThreadStorageFileTree").then(
-      (module) => module.ThreadStorageFileTree,
-    ),
-  loading: ({ fallback }) => fallback,
   tier: "intent",
 });
 

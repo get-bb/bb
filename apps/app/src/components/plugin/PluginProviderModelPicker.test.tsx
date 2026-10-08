@@ -32,7 +32,7 @@ vi.mock("@/lib/sdk", () => ({
     hosts: { list: vi.fn().mockResolvedValue([]) },
     system: {
       config: vi.fn().mockResolvedValue({ primaryHostId: null }),
-      executionOptions: vi.fn(),
+      executionOptions: vi.fn(() => new Promise<never>(() => undefined)),
     },
   },
 }));

@@ -16,8 +16,8 @@ import {
 } from "./ai-service-registry.js";
 
 export const AI_TASK_TIMEOUT_MS: Record<AiTask, number> = {
-  "thread-title": 5_000,
-  "commit-message": 5_000,
+  "thread-title": 8_000,
+  "commit-message": 8_000,
   voice: 70_000,
 };
 

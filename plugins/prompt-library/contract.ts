@@ -102,6 +102,7 @@ export type PromptSnippet = z.infer<typeof snippetSchema>;
 
 const starredPromptSchema = z
   .object({
+    kind: z.literal("starred"),
     id: z.string(),
     prompt: promptSchema,
     snippet: snippetSchema,
@@ -113,6 +114,7 @@ export type StarredPromptRow = z.infer<typeof starredPromptSchema>;
 
 const recentPromptSchema = z
   .object({
+    kind: z.literal("recent"),
     id: z.string(),
     prompt: promptSchema,
     snippet: snippetSchema,
@@ -125,9 +127,15 @@ const recentPromptSchema = z
   .strict();
 export type RecentPromptRow = z.infer<typeof recentPromptSchema>;
 
+const promptRowSchema = z.discriminatedUnion("kind", [
+  starredPromptSchema,
+  recentPromptSchema,
+]);
+export type PromptRow = z.infer<typeof promptRowSchema>;
+
 export const searchPromptsInputSchema = z
   .object({
-    query: z.string().max(256),
+    query: z.string(),
     scope: promptScopeSchema,
     projectId: z.string().min(1).nullable(),
     threadId: z.string().min(1).nullable(),
@@ -140,8 +148,7 @@ export const promptLibraryRpcContract = defineRpcContract({
     input: searchPromptsInputSchema,
     output: z
       .object({
-        starred: z.array(starredPromptSchema),
-        recent: z.array(recentPromptSchema),
+        prompts: z.array(promptRowSchema),
       })
       .strict(),
   },

@@ -141,6 +141,33 @@ describe("BrowserTabContent persistent navigation", () => {
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
   });
 
+  it.each(["", "https://example.com/docs"])(
+    "moves focus from the address bar to the page after submitting from %s",
+    async (initialUrl) => {
+      const harness = createBrowserChromeHarness();
+      const navigate = vi.spyOn(harness.api, "navigate");
+      renderBrowserChrome(harness, initialUrl, {
+        canHandleBrowserCommands: true,
+        canShowNativeBrowserView: true,
+      });
+      const address = screen.getByRole("textbox", {
+        name: /Address and search bar/,
+      });
+      act(() => address.focus());
+      fireEvent.change(address, { target: { value: "google.com" } });
+      fireEvent.submit(address.closest("form")!);
+
+      expect(navigate).toHaveBeenCalledWith({
+        tabId: "browser:test",
+        url: "https://google.com",
+      });
+      expect(document.activeElement).not.toBe(address);
+      await waitFor(() =>
+        expect(harness.focus).toHaveBeenCalledWith("browser:test"),
+      );
+    },
+  );
+
   it.each(["Stop", "Take over"])(
     "releases native control with %s",
     async (action) => {

@@ -593,7 +593,7 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Streaming assistant response.");
     expect(markup).toContain('aria-label="Copy message"');
     expect(markup).toContain('aria-label="Message actions"');
-    expect(markup).toContain("max-md:pointer-coarse:opacity-100");
+    expect(markup).toContain("[@media(hover:none)]:opacity-100");
   });
 
   it("hides assistant message actions inside delegation rows", () => {

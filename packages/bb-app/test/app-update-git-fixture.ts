@@ -59,7 +59,13 @@ export async function createGitCheckout(): Promise<GitCheckoutFixture> {
   await git(root, "clone", "-q", origin, checkout);
   return {
     checkout,
-    cleanup: () => rmSync(root, { force: true, recursive: true }),
+    cleanup: () =>
+      rmSync(root, {
+        force: true,
+        recursive: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
     root,
     upstream,
   };

@@ -48,7 +48,7 @@ function formatDate(iso: string): string {
   }).format(new Date(`${iso}T00:00:00Z`));
 }
 
-function parseFrontMatter(source: string): {
+export function parseFrontMatter(source: string): {
   fields: Record<string, string>;
   body: string;
 } {

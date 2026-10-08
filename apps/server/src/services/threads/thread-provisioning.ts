@@ -1,4 +1,7 @@
-import { getNonDestroyedHostByLaunchKey } from "@bb/db";
+import {
+  getLatestThreadSequence,
+  getNonDestroyedHostByLaunchKey,
+} from "@bb/db";
 import { sweepProviderMachine } from "../machines/provider-orchestration.js";
 import { cancelProviderEnvironmentCreation } from "../environments/environment-engine.js";
 import { getPreparingEnvironment } from "@bb/db";
@@ -39,7 +42,6 @@ import {
   ensureThreadProvisionEnvironmentReady,
   ensureWorkspaceReadyEvent,
   failThreadProvisioning,
-  loadActiveThreadProvisionContext,
   type ThreadProvisioningDeps,
 } from "./thread-provisioning-environment.js";
 import {
@@ -182,6 +184,9 @@ function settleSeededThreadProvisioning(
   );
   if (settled.completedProvisioning) {
     deps.hub.notifyThread(args.threadId, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: args.threadId,
+      }),
       eventTypes: ["system/thread-provisioning"],
     });
   }
@@ -487,7 +492,7 @@ async function advanceThreadProvisioningOnce(
     clearThreadProvisionSchedule(thread.id);
     return;
   }
-  let context = loadActiveThreadProvisionContext(deps, thread.id);
+  let context = getThreadProvisionContext(deps.db, thread.id);
   if (!context) {
     failThreadProvisioning(deps, {
       thread,

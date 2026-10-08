@@ -5,6 +5,7 @@ import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
@@ -59,7 +60,11 @@ describe("plugin catalog routes", () => {
       ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     });
     const app = new Hono();
-    registerPluginCatalogRoutes(app, catalog);
+    registerPluginCatalogRoutes(
+      app,
+      catalog,
+      createPluginInstallJobs({ notifyChanged: () => {} }),
+    );
     return { app, catalog };
   }
 
@@ -105,6 +110,36 @@ describe("plugin catalog routes", () => {
       body: JSON.stringify({ entryId: "memory", version: "0.2.0" }),
     });
     expect(versionOverride.status).toBe(422);
+  });
+
+  it("identifies background installs with the same entry ID as catalog search", async () => {
+    const { app } = catalogApp();
+    const search = await app.request("/plugin-catalog/search?q=docs");
+    await expect(search.json()).resolves.toMatchObject({
+      results: expect.arrayContaining([
+        expect.objectContaining({ entryId: "docs" }),
+      ]),
+    });
+    for (const entryId of ["docs", "simple-notes"]) {
+      const install = await app.request("/plugin-catalog/install", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          prefer: "respond-async",
+        },
+        body: JSON.stringify({ entryId, marketplace: "bb-official" }),
+      });
+      expect(install.status).toBe(202);
+      await expect(install.json()).resolves.toMatchObject({
+        job: {
+          target: {
+            kind: "catalog",
+            entryId: "docs",
+            marketplace: "bb-official",
+          },
+        },
+      });
+    }
   });
 
   it("serves a cached icon with hash-gated caching and refuses unknown ones", async () => {

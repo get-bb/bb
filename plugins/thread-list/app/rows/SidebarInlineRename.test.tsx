@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
+import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
 import {
   SidebarRenameProvider,
   useSidebarRename,
@@ -60,6 +61,7 @@ function RenameRow({
       <button data-sidebar-rename-anchor="" onClick={rename.startEditing}>
         Rename {id}
       </button>
+      <button onClick={rename.startEditingFromMenu}>Menu rename {id}</button>
       {rename.isEditing ? rename.editor : <span>{name}</span>}
     </div>
   );
@@ -124,7 +126,7 @@ describe("renameError", () => {
 describe("sidebar inline rename", () => {
   it("selects the current name and restores row focus after Escape without saving", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow onSave={onSave} />);
+    render(<RenameRow onSave={onSave} />, { wrapper: SidebarRenameProvider });
     fireEvent.click(screen.getByRole("button", { name: "Rename first" }));
     const input = await screen.findByRole<HTMLInputElement>("textbox", {
       name: "first name",
@@ -146,7 +148,7 @@ describe("sidebar inline rename", () => {
   it("saves a trimmed value once while Enter and blur overlap, and cannot cancel an in-flight save", async () => {
     const pending = deferred();
     const onSave = vi.fn().mockReturnValue(pending.promise);
-    render(<RenameRow onSave={onSave} />);
+    render(<RenameRow onSave={onSave} />, { wrapper: SidebarRenameProvider });
     const input = await start("  New name  ");
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.blur(input);
@@ -163,7 +165,9 @@ describe("sidebar inline rename", () => {
 
   it("validates empty and overlong values and treats a trimmed unchanged name as a no-op", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow onSave={onSave} maxLength={20} />);
+    render(<RenameRow onSave={onSave} maxLength={20} />, {
+      wrapper: SidebarRenameProvider,
+    });
     const input = await start("   ");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByRole("alert").textContent).toBe("Name cannot be empty.");
@@ -182,7 +186,9 @@ describe("sidebar inline rename", () => {
   it("does not submit composition Enter or blur within the editor", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
+    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />, {
+      wrapper: SidebarRenameProvider,
+    });
     const input = await start();
     await waitFor(() => expect(document.activeElement).toBe(input));
     fireEvent.compositionStart(input);
@@ -202,7 +208,7 @@ describe("sidebar inline rename", () => {
       .fn()
       .mockRejectedValueOnce(new Error("Network unavailable"))
       .mockResolvedValueOnce(undefined);
-    render(<RenameRow onSave={onSave} />);
+    render(<RenameRow onSave={onSave} />, { wrapper: SidebarRenameProvider });
     fireEvent.keyDown(await start(), { key: "Enter" });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
@@ -222,7 +228,9 @@ describe("sidebar inline rename", () => {
       .fn()
       .mockRejectedValueOnce(new FakeHttpError(409, "section_name_conflict"))
       .mockRejectedValueOnce(new FakeHttpError(404, null));
-    render(<RenameRow kind="section" onSave={onSave} />);
+    render(<RenameRow kind="section" onSave={onSave} />, {
+      wrapper: SidebarRenameProvider,
+    });
     fireEvent.keyDown(await start(), { key: "Enter" });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
@@ -253,6 +261,7 @@ describe("sidebar inline rename", () => {
         <RenameRow onSave={onSave} />
         <button>Elsewhere</button>
       </>,
+      { wrapper: SidebarRenameProvider },
     );
     await start();
     const destination = screen.getByRole("button", { name: "Elsewhere" });
@@ -313,10 +322,62 @@ describe("sidebar inline rename", () => {
   it("clears environment names when the submitted value is empty", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClear = vi.fn().mockResolvedValue(undefined);
-    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />);
+    render(<RenameRow kind="environment" onSave={onSave} onClear={onClear} />, {
+      wrapper: SidebarRenameProvider,
+    });
     fireEvent.keyDown(await start(" "), { key: "Enter" });
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
     expect(onSave).not.toHaveBeenCalled();
     expect(onClear).toHaveBeenCalledOnce();
+  });
+});
+
+describe("compact menu rename", () => {
+  function CompactProviders({ children }: { children: React.ReactNode }) {
+    return (
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </CompactViewportOverrideProvider>
+    );
+  }
+
+  it("renames in a dialog instead of turning the row into an input", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<RenameRow onSave={onSave} />, { wrapper: CompactProviders });
+    fireEvent.click(screen.getByRole("button", { name: "Menu rename first" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.getByText("Original name")).not.toBeNull();
+    const input = await screen.findByRole<HTMLInputElement>("textbox", {
+      name: "first name",
+    });
+    expect(dialog.contains(input)).toBe(true);
+    expect(input.value).toBe("Original name");
+    fireEvent.change(input, { target: { value: "  From dialog  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onSave).toHaveBeenCalledExactlyOnceWith("From dialog");
+  });
+
+  it("keeps the dialog open with the error when saving fails, and discards on dismiss", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("offline"));
+    render(<RenameRow onSave={onSave} />, { wrapper: CompactProviders });
+    fireEvent.click(screen.getByRole("button", { name: "Menu rename first" }));
+    const input = await screen.findByRole("textbox", { name: "first name" });
+    fireEvent.change(input, { target: { value: "Unsaved" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rename thread" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Could not save the name. Try again.",
+    );
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(onSave).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Menu rename first" }));
+    expect(
+      (
+        await screen.findByRole<HTMLInputElement>("textbox", {
+          name: "first name",
+        })
+      ).value,
+    ).toBe("Original name");
   });
 });

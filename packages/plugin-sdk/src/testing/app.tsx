@@ -28,6 +28,7 @@ import {
   type ExperimentalQuestionFormHost,
   type PluginAppDefinition,
   type PluginAppSetup,
+  type ExperimentalClipboardContent,
   type PluginCodeThemeState,
   type PluginContentScriptDisposer,
   type PluginContentScriptRegistration,
@@ -192,7 +193,11 @@ export type NavigateCall =
       options: ExperimentalFileOpenOptions;
     }
   | { method: "experimental_openAppRoute"; path: string }
-  | { method: "experimental_runAppCommand"; commandId: string };
+  | { method: "experimental_runAppCommand"; commandId: string }
+  | {
+      method: "experimental_openTerminal";
+      options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
+    };
 
 export interface ExperimentalFixedTabOpenCall {
   surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
@@ -307,6 +312,7 @@ interface TestFixedTabTargetStore {
 export interface SidebarActionCall {
   method: keyof PluginSidebarThreadActions;
   threadId?: string;
+  environmentId?: string;
   options?: Record<string, unknown>;
   title?: string;
   pinned?: boolean;
@@ -970,6 +976,21 @@ function TestDiff({
   );
 }
 
+type TestClipboard = (content: ExperimentalClipboardContent) => Promise<boolean>;
+
+let activeClipboard: TestClipboard | null = null;
+
+function captureClipboardWrites(
+  result: TestClipboard | undefined,
+): ExperimentalClipboardContent[] {
+  const writes: ExperimentalClipboardContent[] = [];
+  activeClipboard = (content) => {
+    writes.push({ ...content });
+    return result?.(content) ?? Promise.resolve(true);
+  };
+  return writes;
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -1123,6 +1144,11 @@ const testPluginSdkApp = {
   },
   experimental_useCodeTheme(): PluginCodeThemeState {
     return useSlotEnv("experimental_useCodeTheme").codeTheme;
+  },
+  experimental_copyToClipboard(
+    content: ExperimentalClipboardContent,
+  ): Promise<boolean> {
+    return activeClipboard?.(content) ?? Promise.resolve(true);
   },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
@@ -1327,6 +1353,13 @@ export interface ContentScriptTestMountOptions {
    * thread-row status API. Current-host behavior is enabled by default.
    */
   omitExperimentalThreadRowStatus?: boolean;
+  /**
+   * Host result for `experimental_copyToClipboard()` writes, which are
+   * recorded in `inspection.experimental_clipboardWrites` until another
+   * mount or `renderSlot` takes the clipboard. Omitted → every write
+   * succeeds.
+   */
+  experimental_copyToClipboard?: TestClipboard;
 }
 
 export interface ContentScriptThreadRowStatusCall {
@@ -1341,6 +1374,8 @@ export interface MountedPluginContentScripts {
     readonly disposed: boolean;
     readonly threadRowStatusCalls: readonly ContentScriptThreadRowStatusCall[];
     getThreadRowStatus(threadId: string): PluginComposerThreadRowStatus | null;
+    /** Every `experimental_copyToClipboard()` write, in order. */
+    readonly experimental_clipboardWrites: readonly ExperimentalClipboardContent[];
   };
   lifecycle: {
     /** Abort, then run returned cleanup functions once in reverse order. */
@@ -1365,6 +1400,9 @@ export async function mountPluginContentScripts(
   }> = [];
   const threadRowStatuses = new Map<string, PluginComposerThreadRowStatus>();
   const threadRowStatusCalls: ContentScriptThreadRowStatusCall[] = [];
+  const experimental_clipboardWrites = captureClipboardWrites(
+    options.experimental_copyToClipboard,
+  );
   let disposed = false;
   const setThreadRowStatus = (threadId: unknown, status: unknown): void => {
     if (controller.signal.aborted) return;
@@ -1450,6 +1488,7 @@ export async function mountPluginContentScripts(
         const status = threadRowStatuses.get(threadId);
         return status === undefined ? null : { ...status };
       },
+      experimental_clipboardWrites,
     },
     lifecycle: { dispose },
   };
@@ -1519,6 +1558,14 @@ export interface RenderSlotOptions<
    * mode with no resolved document, the state a plugin sees on first paint.
    */
   codeTheme?: Partial<PluginCodeThemeState>;
+  /**
+   * Host result for `experimental_copyToClipboard()` writes, which are
+   * recorded in `inspection.experimental_clipboardWrites` either way. The
+   * clipboard is not slot-scoped: writes from anywhere (components, command
+   * callbacks) go to the most recently rendered slot or mounted content
+   * scripts. Omitted → every write succeeds.
+   */
+  experimental_copyToClipboard?: TestClipboard;
   branchesState?: Partial<BranchesState>;
   /** Checkout facts `experimental_useCheckoutState()` reports. */
   checkoutState?: Partial<CheckoutState>;
@@ -1580,6 +1627,10 @@ export interface RenderSlotOptions<
   openAppRoute?: (path: string) => boolean;
   /** Host acceptance for `experimental_runAppCommand`; omitted → false. */
   runAppCommand?: (commandId: string) => boolean;
+  /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
+  openTerminal?: (
+    options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
+  ) => boolean;
   /** Host acceptance for an owner-scoped fixed-tab selection. */
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
   /** Initial session target visible to `experimental_useFixedTabTarget`. */
@@ -1624,6 +1675,8 @@ export interface RenderedSlotInspectionState {
   readonly sidebarNavigationCalls: SidebarNavigationCall[];
   /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
   readonly sdkCalls: SdkCall[];
+  /** Every `experimental_copyToClipboard()` write, in order. */
+  readonly experimental_clipboardWrites: ExperimentalClipboardContent[];
   /** Everything written through `useComposer()`. */
   readonly composer: ComposerLog;
 }
@@ -1886,6 +1939,9 @@ export function renderSlot<
     name: options.codeTheme?.name ?? "pierre-light",
     theme: options.codeTheme?.theme ?? null,
   };
+  const experimental_clipboardWrites = captureClipboardWrites(
+    options.experimental_copyToClipboard,
+  );
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
       sidebarActionCalls.push({
@@ -1911,6 +1967,12 @@ export function renderSlot<
     },
     archive(threadId) {
       sidebarActionCalls.push({ method: "archive", threadId });
+    },
+    async experimental_archiveEnvironmentThreads(environmentId) {
+      sidebarActionCalls.push({
+        method: "experimental_archiveEnvironmentThreads",
+        environmentId,
+      });
     },
     requestDelete(threadId) {
       sidebarActionCalls.push({ method: "requestDelete", threadId });
@@ -1968,6 +2030,13 @@ export function renderSlot<
     experimental_runAppCommand(commandId) {
       navigateCalls.push({ method: "experimental_runAppCommand", commandId });
       return options.runAppCommand?.(commandId) ?? false;
+    },
+    async experimental_openTerminal(terminalOptions) {
+      navigateCalls.push({
+        method: "experimental_openTerminal",
+        options: terminalOptions,
+      });
+      return options.openTerminal?.(terminalOptions) ?? false;
     },
   };
 
@@ -2355,6 +2424,7 @@ export function renderSlot<
     sidebarActionCalls,
     sidebarNavigationCalls,
     sdkCalls,
+    experimental_clipboardWrites,
     composer: composerLog,
     behavior: {
       emitRealtime,
@@ -2369,6 +2439,7 @@ export function renderSlot<
       sidebarActionCalls,
       sidebarNavigationCalls,
       sdkCalls,
+      experimental_clipboardWrites,
       composer: composerLog,
     },
     lifecycle: { rerender: rerenderSlot, unmount: unmountSlot },

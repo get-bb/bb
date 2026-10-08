@@ -30,8 +30,15 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache-prefix: ${{ inputs.cache-prefix }}
         turbo-cache: ${{ inputs.turbo-cache }}
+    - name: Restore pnpm cache
+      if: runner.os == 'macOS'
+      id: pnpm-cache
+      continue-on-error: true
+      uses: ./.github/actions/cache-pnpm
+
     - name: Install dependencies
       shell: bash
       env:
-        CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+        TURBO_CACHE_RESTORE_OUTCOME: ${{ steps.cache.outcome }}
+        PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
       run: bash .github/actions/setup-workspace/install-dependencies.sh

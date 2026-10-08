@@ -45,7 +45,7 @@ function useMachineAccess(): MachineAccessState {
   const value = settings?.machineServerUrl ?? "";
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const disabled = !settings || update.isPending;
+  const disabled = !settings;
   const savedProviderId = access?.defaultProviderId ?? "direct";
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
@@ -75,7 +75,7 @@ function useMachineAccess(): MachineAccessState {
       if (!settings || providerId === selected) return;
       setSelectedProviderId(providerId);
       update.mutate(
-        { ...settings, defaultMachineAccess: providerId },
+        { defaultMachineAccess: providerId },
         { onError: () => setSelectedProviderId(null) },
       );
     },
@@ -101,10 +101,7 @@ function useMachineAccess(): MachineAccessState {
         }
       }
       try {
-        await update.mutateAsync({
-          ...settings,
-          machineServerUrl: url || null,
-        });
+        await update.mutateAsync({ machineServerUrl: url || null });
       } catch (saveError) {
         setError(
           getMutationErrorMessage({

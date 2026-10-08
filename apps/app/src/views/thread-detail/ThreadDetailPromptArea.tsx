@@ -1,4 +1,5 @@
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import {
@@ -203,12 +204,12 @@ interface ThreadDetailPromptAreaProps {
   pullRequestMergeMethod: PullRequestMergeMethod;
   isEnvironmentActionPending: boolean;
   pendingInteractions: readonly PendingInteraction[];
-  pendingInteractionsInitialLoading: boolean;
   queuedMessageCount: number;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
   projectId: string;
   resolveMentionLink: PromptMentionLinkResolver;
   workspaceChangedFilesSection: WorkspaceChangedFilesSection | null;
+  showGitChanges: boolean;
   workspaceStatusPending: boolean;
   contextBannerMergeBase: ContextBannerMergeBaseConfig | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
@@ -418,12 +419,12 @@ export function ThreadDetailPromptArea({
   pullRequestMergeMethod,
   isEnvironmentActionPending,
   pendingInteractions,
-  pendingInteractionsInitialLoading,
   queuedMessageCount,
   onChangedFileClick,
   projectId,
   resolveMentionLink,
   workspaceChangedFilesSection,
+  showGitChanges,
   workspaceStatusPending,
   contextBannerMergeBase,
   pendingTodos,
@@ -662,6 +663,10 @@ export function ThreadDetailPromptArea({
     setWorkflowStackExpandedThreadId(null);
   }
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
+  const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
+    threadId: thread.id,
+    queuedMessages: queuedMessagesQuery.data ?? null,
+  });
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -952,7 +957,6 @@ export function ThreadDetailPromptArea({
     return buildFollowUpSubmitMode({
       hasPendingInteraction,
       isDefaultExecutionOptionsLoading,
-      isPendingInteractionsInitialLoading: pendingInteractionsInitialLoading,
       isStopRequested,
       onStop: handleStopThread,
       runtimeDisplayStatus,
@@ -964,7 +968,6 @@ export function ThreadDetailPromptArea({
     isDefaultExecutionOptionsLoading,
     isHandoffSelection,
     modelLoadFailed,
-    pendingInteractionsInitialLoading,
     isStopRequested,
     runtimeDisplayStatus,
   ]);
@@ -2178,9 +2181,9 @@ export function ThreadDetailPromptArea({
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
-          pullRequestSection={pullRequestSection}
+          pullRequestSection={showGitChanges ? pullRequestSection : null}
           gitSection={
-            workspaceChangedFilesSection
+            workspaceChangedFilesSection && showGitChanges
               ? {
                   changedFiles: workspaceChangedFilesSection,
                   mergeBase: contextBannerMergeBase,
@@ -2190,7 +2193,7 @@ export function ThreadDetailPromptArea({
                 }
               : null
           }
-          gitSectionPending={workspaceStatusPending}
+          gitSectionPending={workspaceStatusPending && showGitChanges}
           expandedSection={expandedBannerSection}
           onToggleSection={handleToggleBannerSection}
         />
@@ -2202,7 +2205,10 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : queuedMessagesPending ? (
-          <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
+          <QueuedMessagesPendingCard
+            expanded={queueExpanded}
+            queuedMessageCount={queuedMessageCount}
+          />
         ) : (
           <LazyQueuedMessagesList
             attachedToComposer={true}
@@ -2224,11 +2230,15 @@ export function ThreadDetailPromptArea({
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
+            expanded={queueExpanded}
+            onExpandedChange={setQueueExpanded}
           />
         )}
       </>
     ),
     [
+      queueExpanded,
+      setQueueExpanded,
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,
@@ -2276,6 +2286,7 @@ export function ThreadDetailPromptArea({
       thread.archivedAt,
       thread.id,
       workspaceChangedFilesSection,
+      showGitChanges,
       workspaceStatusPending,
     ],
   );

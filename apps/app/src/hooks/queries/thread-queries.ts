@@ -977,7 +977,7 @@ async function fetchThreadTimeline({
   const timeline = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
-  clearThreadTimelineUnseenEvents(queryClient, threadId);
+  clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
   return timeline;
 }
 
@@ -1105,11 +1105,4 @@ export function getLatestPendingInteraction(
       interaction.createdAt > latest.createdAt ? interaction : latest,
     firstInteraction,
   );
-}
-
-export function isPendingInteractionStateUnknown(
-  interactions: readonly PendingInteraction[] | undefined,
-  isFetching: boolean,
-): boolean {
-  return getLatestPendingInteraction(interactions) === null && isFetching;
 }

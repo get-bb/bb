@@ -127,6 +127,22 @@ provider events. Warnings, errors, and model fallback stay visible. Existing
 unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
+Settings → General → Show Git changes and Commit button controls the git
+summary, expanded file list, pull-request status and actions above the composer,
+and Commit action in the thread header and overflow menu.
+`showGitChanges` defaults to true; use
+`bb settings general showGitChanges false` to hide them, or true to restore them.
+The server saves this preference across reloads and shares it across connected
+clients. Thread relationships and workspace warnings remain visible. SDK callers can update
+`showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
+
+Settings → General → Show messages from before a context clear controls whether a
+cleared thread still shows its earlier messages above the `Context cleared`
+boundary. `keepHistoryAfterContextClear` defaults to false; use
+`bb settings general keepHistoryAfterContextClear true` to keep them in the
+timeline, outline, and message lookups. The next prompt still starts a fresh
+provider conversation.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
@@ -166,11 +182,15 @@ branches bb creates after the change.
   bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
   bb settings ai-services test <thread-title|commit-message>
   bb settings general <key> <value>
+  bb settings replay-onboarding
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>]
+  bb settings usage [--machine <id-or-name>] [--refresh]
   bb settings version [--force]
   bb settings reload
+
+Use `--refresh` to fetch fresh provider usage; ordinary reads may reuse results
+for 10 seconds. The SDK equivalent is `bb.sdk.system.usageLimits({ refresh: true })`.
 
 `bb settings ai-services` shows which AI service writes thread titles (and so
 branch names), commit messages, and voice transcripts, plus every service a
@@ -187,6 +207,13 @@ own model.
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
 
+`bb settings replay-onboarding` clears `onboardingCompletedAt`, so the first-run
+setup guide (connect an agent, add projects, pick plugins, set up devices) shows
+again in every open client. Settings → General → Setup guide has the same
+button. `setupChecklistVisible` controls the "Finish setting up bb" checklist
+on the home screen; the guide turns it on when steps are left undone, and
+dismissing the checklist turns it off.
+
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final
 answer visible, and `flat` keeps every step visible. Each provider has a
@@ -201,7 +228,11 @@ The default-off `navigationRail` experiment keeps a vertical rail of
 destinations on the left edge of the sidebar on every screen. Home returns to
 the last thread, Settings sits at the bottom, and New thread moves into the
 sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. While it is on, bb draws the navigation
+list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
+and leaves the rail in place. In the macOS desktop app the rail and a title
+bar across the top of the window share one background; the title bar holds
+the window controls, Back and Forward, and the sidebar toggle, and the
+sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
 itself, so the Navigation and Header choices under Settings → Appearance are
 not used; they apply again when the experiment is turned off. Narrow windows
 and phones keep the regular drawer.
@@ -301,6 +332,14 @@ bindings in the same update; plugin defaults yield to explicit bindings.
 
 Push notifications
 
+For a standalone development APK from a source checkout, run
+`pnpm mobile:apk:dev`. It writes `apps/mobile/build-output/bb-dev.apk`, named
+**bb dev** with orange icons and separate package `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator. The command sets
+`BB_MOBILE_VARIANT=dev`; direct Expo commands default to `production`.
+The dev variant skips production Firebase and HTTPS app-link registration.
+See `apps/mobile/README.md` for prerequisites and per-thread artifact delivery.
+
 Android source builds accept `GOOGLE_SERVICES_JSON` (path to Firebase Android
 configuration), with `apps/mobile/google-services.json` as a local fallback.
 It is optional for building the app, required for Android push delivery.
@@ -361,7 +400,8 @@ Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
 visibility, hidden thread-list groups, and the navigation and thread-list
-provider pickers. The sidebar waits for them alongside the project list, and
+provider pickers. The same registry stores which thread Info panel sections
+are collapsed (`infoPanel.collapsedSections`). The sidebar waits for them alongside the project list, and
 an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
@@ -454,9 +494,9 @@ are visible by default. Example:
 
 Client-local UI preferences
 
-Open microphone preferences by right-clicking the composer microphone or pressing
-Shift+F10 while it is focused. A warning opens preferences when the microphone
-is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
 preferences starts a local microphone preview with the recording waveform and
 a list of inputs. Closing preferences releases the preview. The recording controls
 contain only cancel, stop, and send; microphone preferences are available while idle.
@@ -514,6 +554,30 @@ without build-number reporting cannot determine update status. Installed version
 and build are device-local; CLI and SDK release metadata report the published APK.
 Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
 
+Storage & retention is a default-disabled bundled plugin. Enable it
+with `bb plugin enable bb--storage-retention`.
+Its sidebar panel and `bb storage` commands own retention policies and machine
+cleanup. All retention settings in the panel save immediately. Enable **Delete thread storage on archive** with
+`bb storage retention --delete-storage-on-archive true --save --yes` (default:
+false). Future archives clear storage once stopped and online, keeping history
+and uploaded attachments and skipping pinned threads. Pending cleanup survives
+reloads and retries every minute; unarchiving cancels it.
+Separately, `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(default: false) scans online persistent machines hourly and removes `~/.bb-dev`
+folders with missing checkouts after successful scans, including manual scans
+and existing data. It rechecks absence, stops servers in removed checkouts,
+keeps unidentified sources, and retries failures on later scans.
+Use `bb storage clear-archived-files --machine HOST_ID --yes` to clear
+all stored files from archived, stopped, unpinned threads on that machine.
+`bb storage usage --machine HOST_ID` also reports worktree counts by project
+and, after a scan, a separate `~/.bb-dev` breakdown when that folder exists,
+including recovered source paths, checkout existence, and links to known threads.
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes development
+instances whose checkout no longer exists, stopping servers still running from it;
+add `--instance NAME` to remove one entry of any kind, stopping its dev server
+first if it is running.
+See the plugin’s storage-retention skill for commands and limitations.
+
 ### Opt-in server performance diagnostics
 
 Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,
@@ -536,3 +600,5 @@ experiment takes effect live on that server. Without startup permission it
 cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
+
+Storage cleanup can run in the background with `bb storage cleanup --machine HOST_ID --kind orphans|development|worktrees --yes`. Inspect `maintenance` with `bb storage usage`; failures release the machine lock and can be retried. Archived storage cleanup waits through the archive undo grace and rechecks eligibility before each batch.

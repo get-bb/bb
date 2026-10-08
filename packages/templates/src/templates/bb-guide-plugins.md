@@ -5,7 +5,6 @@ summary: Command reference for installing, configuring, running, and authoring b
 intent: Provide complete plugin command documentation plus an authoring walkthrough for agents and humans building bb plugins.
 editingNotes: Keep flags accurate against the CLI implementation (apps/cli/src/commands/plugin.ts, apps/cli/src/commands/marketplace.ts) and the server plugin service; a CLI test asserts every `bb plugin` and `bb marketplace` subcommand appears in this chapter. The full authoring reference is the bb-plugin-authoring builtin skill.
 ---
-
 Plugin commands
 
 A bb plugin is a TypeScript package that extends the bb server in-process and
@@ -190,15 +189,15 @@ The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
 Settings → Installed plugins or run `bb plugin enable workflows` before using:
 
-bb workflows validate (--script '<javascript>'|--source '<javascript>'|
---file <path>|--name <name>)
-bb workflows run (--script '<javascript>'|--source '<javascript>'|
---file <path>|--name <name>)
-[--args '<json>'] [--resume <run-id>]
-bb workflows status <run-id>
-bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]
-bb workflows list [--limit <1-50>]
-bb workflows stop <run-id>
+  bb workflows validate (--script '<javascript>'|--source '<javascript>'|
+                        --file <path>|--name <name>)
+  bb workflows run (--script '<javascript>'|--source '<javascript>'|
+                   --file <path>|--name <name>)
+                   [--args '<json>'] [--resume <run-id>]
+  bb workflows status <run-id>
+  bb workflows history <run-id> [--cursor <call-index>] [--limit <1-100>]
+  bb workflows list [--limit <1-50>]
+  bb workflows stop <run-id>
 
 Commands must run from a BB project thread. Workflows has six plugin
 settings, configurable with `bb plugin config workflows set <key> <value>`:
@@ -227,15 +226,15 @@ Providers to avoid duplicate or conflicting stores. Settings → Memory lists
 every global and project memory and supports version-checked edits and soft
 deletion.
 
-bb memory catalog [--scope project|global|all] [--json]
-bb memory search <query> [--scope project|global|all] [--json]
-bb memory get <id> [--scope project|global|all] [--json]
-bb memory add --scope project|global --name <name> --summary <text>
---details <text> --reason <text> [--kind <kind>]
-[--tag <tag>]... [--importance <0-100>] [--pinned] [--json]
-bb memory update <id> --expected-version <n> [fields...] [--json]
-bb memory forget <id> --expected-version <n> --reason <text> [--json]
-bb memory history <id> [--scope project|global|all] [--limit 1-100] [--json]
+  bb memory catalog [--scope project|global|all] [--json]
+  bb memory search <query> [--scope project|global|all] [--json]
+  bb memory get <id> [--scope project|global|all] [--json]
+  bb memory add --scope project|global --name <name> --summary <text>
+                --details <text> --reason <text> [--kind <kind>]
+                [--tag <tag>]... [--importance <0-100>] [--pinned] [--json]
+  bb memory update <id> --expected-version <n> [fields...] [--json]
+  bb memory forget <id> --expected-version <n> --reason <text> [--json]
+  bb memory history <id> [--scope project|global|all] [--limit 1-100] [--json]
 
 Project writes use the invoking CLI's current project. Global writes require
 the explicit `--scope global` flag.
@@ -244,13 +243,13 @@ The Docs plugin is an opt-in official plugin bundled with the app:
 `bb plugin install docs`. Read-only discovery remains direct, while edits use
 a manifest-backed local workspace:
 
-bb docs vaults [--json]
-bb docs list [--vault <id>] [--json]
-bb docs read <path> [--vault <id>]
-bb docs pull <path> [--folder] [--vault <id>] [--into <dir>]
-bb docs pull --all [--vault <id>] [--into <dir>]
-bb docs status [workspace-dir] [--delete] [--diff] [--json]
-bb docs push [workspace-dir] [--delete] [--dry-run] [--diff] [--json]
+  bb docs vaults [--json]
+  bb docs list [--vault <id>] [--json]
+  bb docs read <path> [--vault <id>]
+  bb docs pull <path> [--folder] [--vault <id>] [--into <dir>]
+  bb docs pull --all [--vault <id>] [--into <dir>]
+  bb docs status [workspace-dir] [--delete] [--diff] [--json]
+  bb docs push [workspace-dir] [--delete] [--dry-run] [--diff] [--json]
 
 Pull preserves vault-relative paths and writes `.bb-docs-state.json`; edit the
 ordinary files and leave that state file untouched. Push uses pulled SHA-256
@@ -266,10 +265,10 @@ CLI's working directory is not on the server machine. Direct `write`, `mkdir`,
 
 Docs can also propose revisions without overwriting the saved document:
 
-bb docs proposal <path> [--vault <id>] [--json]
-bb docs propose <path> --file <candidate.md> --expected-sha256 <hash> --version <none|N> [--vault <id>] [--json]
-bb docs proposal-update <path> --content <markdown> --version <N> [--vault <id>] [--json]
-bb docs accept|reject|undo|redo <path> --version <N> [--vault <id>] [--json]
+  bb docs proposal <path> [--vault <id>] [--json]
+  bb docs propose <path> --file <candidate.md> --expected-sha256 <hash> --version <none|N> [--vault <id>] [--json]
+  bb docs proposal-update <path> --content <markdown> --version <N> [--vault <id>] [--json]
+  bb docs accept|reject|undo|redo <path> --version <N> [--vault <id>] [--json]
 
 Read the current file and proposal before proposing. Use `none` only when no
 proposal exists; otherwise pass its current version. Markdown Docs cards are
@@ -280,15 +279,15 @@ The Tasks plugin is an opt-in official plugin bundled with the app:
 `bb plugin install tasks`. It adds a task tracker, agent delegation,
 and the `bb tasks` command. Common agent operations are:
 
-bb tasks show <key-or-id> [--json]
-bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--limit 1-500] [--cursor <opaque>] [--json]
-bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
-bb tasks attachment add <key-or-comment-id> --file <path> [--json]
-bb tasks attachment get <attachment-id> --out <path> [--json]
-bb tasks attach <key-or-id> [--thread <thread-id>] [--json]
-bb tasks detach <key-or-id> [--thread <thread-id>] [--json]
-bb tasks update <key-or-id> --status in_review [--json]
-bb tasks update <key-or-id> (--parent <parent-key-or-id> | --no-parent) [--json]
+  bb tasks show <key-or-id> [--json]
+  bb tasks list [--project <prefix-or-id>] [filters...] [--sort manual|priority|due] [--limit 1-500] [--cursor <opaque>] [--json]
+  bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
+  bb tasks attachment add <key-or-comment-id> --file <path> [--json]
+  bb tasks attachment get <attachment-id> --out <path> [--json]
+  bb tasks attach <key-or-id> [--thread <thread-id>] [--json]
+  bb tasks detach <key-or-id> [--thread <thread-id>] [--json]
+  bb tasks update <key-or-id> --status in_review [--json]
+  bb tasks update <key-or-id> (--parent <parent-key-or-id> | --no-parent) [--json]
 
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
@@ -310,146 +309,165 @@ snapshot.
 The builtin Secrets plugin provides a secure credential form and guarded
 dotenv reconciliation:
 
-bb secret request <NAME...> --write-env <path>
-[--purpose <text>] [--describe <NAME> <text>]...
+  bb secret request <NAME...> --write-env <path>
+                    [--purpose <text>] [--describe <NAME> <text>]...
 
 The command blocks until the user submits or cancels the form. Secret values
 never appear in command arguments, model-visible output, or persisted
 interaction data; success prints only the path, variable names, and
 added/updated/unchanged counts.
 
-bb plugin search <query> Search the store: the plugins bundled with
-the app plus every registered marketplace
-catalog. Results include a Category column
-bb plugin install <entry> Install a bundled official plugin by name
-(github, docs, memory, tasks),
-<entry-id>@<marketplace>, a Git repository
-URL, local path, builtin:<name>,
-git:<url>[@<ref|semver-range>], or
-npm:<package>[@<version|tag|range>]
-(installs prompt —
-pass --yes to skip). Managed git:/npm:
-installs refuse engines.bb / engines.bbPluginSdk
-mismatches, manifest/artifact identity
-mismatches, and ids reserved by bundled plugins
-Omitted npm specs, ranges, dist-tags, omitted
-Git refs, Git branches, and Git semver ranges
-track; exact npm versions, Git tags, and Git
-commits are pinned
---subdirectory <path> installs one plugin
-directory of a multi-plugin git:/path:
-repository; --plugin <name> installs the
-.bb/plugins.json entry with that name
-(the two flags are mutually exclusive)
---tag-prefix <prefix> resolves a git: semver
-range over <prefix>vX.Y.Z tags
-Installing a local path for an id that is
-already installed from another local path
-moves it there and keeps its settings
-bb plugin outdated Check installed plugins for compatible
-updates (table; --json for raw results).
-Columns: installed, latest compatible,
-blocked newer (incompatible releases not
-selected), status. Dev builds (bb 0.0.0)
-annotate that engines.bb is not enforced
-bb plugin update <id> | --all Apply compatible updates for one plugin or
-every tracking plugin with an update. Same
-full-trust confirmation as
-install (--yes skips; non-TTY refuses without
---yes). Use outdated to preview; pinned
-installs stay put
-bb plugin list Status, services, schedules, handler timings.
-`bb status` also names enabled plugins that
-are incompatible, failed, or missing
-bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
-semver range with its tag prefix and resolved
-tag, engine ranges, install time, and recent
-activation history
-bb plugin enable|disable <id> Load or unload an installed plugin
-bb plugin safe-mode [on|off] Show or change safe mode. `on` stops every
-plugin you installed (official store plugins
-included) without changing its enabled
-setting; plugins included with bb keep
-running. `off` restarts the ones that were
-enabled and exits 1 if any fail to start.
-Installs and updates of stopped plugins are
-refused until it is off. Also in the command
-palette
-bb plugin reload [id] Re-run factories against current sources.
-Exits 1 when a plugin does not come up on
-them (previous instance kept, or degraded
-because a service ignored its abort)
-bb plugin config <id> [set <key> <value> | unset <key>]
-Show or change a plugin's declared settings
-bb plugin logs <id> [-n N] [-f] Print (or follow) a plugin's bb.log output
-bb plugin run <id> [args...] Run a plugin command explicitly (also works when core owns its name)
-bb plugin token <id> [--rotate] Print the token for auth:"token" HTTP
-routes; --rotate generates a new token,
-invalidating the old one
-bb plugin remove <id> Uninstall and delete the plugin's settings,
-secrets, and schedules (managed git:/npm:
-files deleted; local path sources stay on
-disk; builtin removals are remembered)
-bb plugin new <name> Scaffold a todo-list plugin (server.ts,
-app.tsx with a sidebar page, a `bb <id>` CLI
-command, and a skill) and install its npm
-dependencies, including @get-bb/plugin-sdk
-pinned to this bb's exact SDK version (no
-server required)
-bb plugin types [path] Sync a plugin's @get-bb/plugin-sdk surface to
-this bb (default: cwd): repin the npm
-devDependency to this bb's SDK version and
-the type-only devDependencies of the packages
-bb shims at runtime (sonner, vaul, the portal
-radix families, ...) to this bb's versions;
-legacy vendored-layout plugins must migrate;
---check writes nothing and exits non-zero on
-a mismatch
-bb plugin migrate [path] Switch a plugin that still vendors types/ to
-the @get-bb/plugin-sdk npm package (default:
-cwd): pin the devDependency, drop the tsconfig
-path map, delete the vendored declarations.
-Prints the plan and asks first; --yes skips
-the prompt (required when stdin is not a
-terminal)
-bb plugin build [path] Compile the plugin into dist/ — the backend
-bundle (server.js, server.meta.json); when
-bb.app is declared, the minified frontend
-bundle (app.js, app.css, app.meta.json); when
-bb.host is declared, the self-contained Node
-host bundle (host.js, host.js.map,
-host.meta.json recording its digest — host
-daemons fetch and verify the bundle by that
-digest, and run it as a host RPC worker, a
-provider bridge, or both). Each
-\*.meta.json is stamped with SDK
-major/version, artifactFormatVersion,
-pluginId, pluginVersion, and builtWith (bb +
-plugin SDK versions); no server required
-bb plugin dev [path] Watch a plugin's sources (default: cwd) and
-on every change rebuild its declared frontend
-(unminified, for readable stack traces),
-host, and provider-bridge bundles, then
-reload the plugin; Ctrl+C to stop
+  bb plugin search <query>       Search the store: the plugins bundled with
+                                 the app plus every registered marketplace
+                                 catalog. Results include a Category column
+  bb plugin install <entry>      Install a bundled official plugin by name
+                                 (github, docs, memory, tasks),
+                                 <entry-id>@<marketplace>, a Git repository
+                                 URL, local path, builtin:<name>,
+                                 git:<url>[@<ref|semver-range>], or
+                                 npm:<package>[@<version|tag|range>]
+                                 (installs prompt —
+                                 pass --yes to skip). Managed git:/npm:
+                                 installs refuse engines.bb / engines.bbPluginSdk
+                                 mismatches, manifest/artifact identity
+                                 mismatches, and ids reserved by bundled plugins
+                                 Omitted npm specs, ranges, dist-tags, omitted
+                                 Git refs, Git branches, and Git semver ranges
+                                 track; exact npm versions, Git tags, and Git
+                                 commits are pinned
+                                 --subdirectory <path> installs one plugin
+                                 directory of a multi-plugin git:/path:
+                                 repository; --plugin <name> installs the
+                                 .bb/plugins.json entry with that name
+                                 (the two flags are mutually exclusive)
+                                 --tag-prefix <prefix> resolves a git: semver
+                                 range over <prefix>vX.Y.Z tags
+                                 Installing a local path for an id that is
+                                 already installed from another local path
+                                 moves it there and keeps its settings
+                                 Installs run one at a time as server jobs
+                                 that continue if the CLI or app disconnects;
+                                 a repeat request joins the active job.
+                                 --no-wait starts the job and prints its id
+  bb plugin install-jobs         List queued, running, and recently finished
+                                 installs (--json for the jobs)
+  bb plugin cancel-install <job> Cancel an install: a queued job is dropped;
+                                 a running job stops its download or build
+                                 and installs nothing, unless it already
+                                 started registering, which then finishes
+  bb plugin outdated             Check installed plugins for compatible
+                                 updates (table; --json for raw results).
+                                 Columns: installed, latest compatible,
+                                 blocked newer (incompatible releases not
+                                 selected), status. Dev builds (bb 0.0.0)
+                                 annotate that engines.bb is not enforced
+  bb plugin update <id> | --all  Apply compatible updates for one plugin or
+                                 every tracking plugin with an update. Same
+                                 full-trust confirmation as
+                                 install (--yes skips; non-TTY refuses without
+                                 --yes). Use outdated to preview; pinned
+                                 installs stay put
+  bb plugin list                 Status, services, schedules, handler timings.
+                                 `bb status` also names enabled plugins that
+                                 are incompatible, failed, or missing
+  bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
+                                 semver range with its tag prefix and resolved
+                                 tag, engine ranges, install time, and recent
+                                 activation history
+  bb plugin enable|disable <id>  Load or unload an installed plugin
+  bb plugin safe-mode [on|off]   Show or change safe mode. `on` stops every
+                                 plugin you installed (official store plugins
+                                 included) without changing its enabled
+                                 setting; plugins included with bb keep
+                                 running. `off` restarts the ones that were
+                                 enabled and exits 1 if any fail to start.
+                                 Installs and updates of stopped plugins are
+                                 refused until it is off. Also in the command
+                                 palette
+  bb plugin reload [id]          Re-run factories against current sources.
+                                 Exits 1 when a plugin does not come up on
+                                 them (previous instance kept, or degraded
+                                 because a service ignored its abort)
+  bb plugin config <id> [set <key> <value> | unset <key>]
+                                 Show or change a plugin's declared settings
+  bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output
+  bb plugin run <id> [args...]   Run a plugin command explicitly (also works when core owns its name)
+  bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
+                                 routes; --rotate generates a new token,
+                                 invalidating the old one
+  bb plugin remove <id>          Uninstall and delete the plugin's settings,
+                                 secrets, and schedules (managed git:/npm:
+                                 files deleted; local path sources stay on
+                                 disk; builtin removals are remembered)
+  bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
+                                 installed plugin uses (left by earlier bb
+                                 releases, rolled-back updates, or
+                                 interrupted operations) and leftover cache
+                                 directories, and print what was freed.
+                                 Updates and removals already delete what
+                                 they replace. Never touches a running
+                                 version or a local path source. Also in the
+                                 command palette
+  bb plugin new <name>           Scaffold a todo-list plugin (server.ts,
+                                 app.tsx with a sidebar page, a `bb <id>` CLI
+                                 command, and a skill) and install its npm
+                                 dependencies, including @get-bb/plugin-sdk
+                                 pinned to this bb's exact SDK version (no
+                                 server required)
+  bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
+                                 this bb (default: cwd): repin the npm
+                                 devDependency to this bb's SDK version and
+                                 the type-only devDependencies of the packages
+                                 bb shims at runtime (sonner, vaul, the portal
+                                 radix families, ...) to this bb's versions;
+                                 legacy vendored-layout plugins must migrate;
+                                 --check writes nothing and exits non-zero on
+                                 a mismatch
+  bb plugin migrate [path]       Switch a plugin that still vendors types/ to
+                                 the @get-bb/plugin-sdk npm package (default:
+                                 cwd): pin the devDependency, drop the tsconfig
+                                 path map, delete the vendored declarations.
+                                 Prints the plan and asks first; --yes skips
+                                 the prompt (required when stdin is not a
+                                 terminal)
+  bb plugin build [path]         Compile the plugin into dist/ — the backend
+                                 bundle (server.js, server.meta.json); when
+                                 bb.app is declared, the minified frontend
+                                 bundle (app.js, app.css, app.meta.json); when
+                                 bb.host is declared, the self-contained Node
+                                 host bundle (host.js, host.js.map,
+                                 host.meta.json recording its digest — host
+                                 daemons fetch and verify the bundle by that
+                                 digest, and run it as a host RPC worker, a
+                                 provider bridge, or both). Each
+                                 *.meta.json is stamped with SDK
+                                 major/version, artifactFormatVersion,
+                                 pluginId, pluginVersion, and builtWith (bb +
+                                 plugin SDK versions); no server required
+  bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
+                                 on every change rebuild its declared frontend
+                                 (unminified, for readable stack traces),
+                                 host, and provider-bridge bundles, then
+                                 reload the plugin; Ctrl+C to stop
 
-bb marketplace add <source> Add a marketplace from an https manifest URL,
-git:<url>[@<ref>], or path:<directory>. bb
-validates the manifest, caches the catalog,
-and fetches the entry icons. Adding a
-marketplace installs nothing
-bb marketplace list Name, source, entry count, and last refresh of
-every marketplace (--json for raw rows)
-bb marketplace refresh [name] Re-read one catalog, or every one of them.
-Discovery metadata and icons only — a refresh
-never installs, updates, or runs plugin code.
-A failed refresh keeps the last catalog bb
-validated and exits non-zero
-bb marketplace remove <name> Forget a marketplace. Its catalog rows and
-cached icons are deleted; plugins installed
-from it keep running as direct installs and
-keep checking for updates from their recorded
-source. bb-official and bb-community cannot
-be removed
+  bb marketplace add <source>    Add a marketplace from an https manifest URL,
+                                 git:<url>[@<ref>], or path:<directory>. bb
+                                 validates the manifest, caches the catalog,
+                                 and fetches the entry icons. Adding a
+                                 marketplace installs nothing
+  bb marketplace list            Name, source, entry count, and last refresh of
+                                 every marketplace (--json for raw rows)
+  bb marketplace refresh [name]  Re-read one catalog, or every one of them.
+                                 Discovery metadata and icons only — a refresh
+                                 never installs, updates, or runs plugin code.
+                                 A failed refresh keeps the last catalog bb
+                                 validated and exits non-zero
+  bb marketplace remove <name>   Forget a marketplace. Its catalog rows and
+                                 cached icons are deleted; plugins installed
+                                 from it keep running as direct installs and
+                                 keep checking for updates from their recorded
+                                 source. bb-official and bb-community cannot
+                                 be removed
 
 Multi-plugin repositories
 
@@ -457,15 +475,15 @@ One repository can hold several plugins. Each plugin directory stays an
 ordinary plugin package with its own package.json and bb manifest. An optional
 collection manifest at .bb/plugins.json indexes them:
 
-{
-"$schema": "https://getbb.app/schemas/plugins.schema.json",
-"schemaVersion": 1,
-"name": "acme-plugins",
-"plugins": [
-{ "name": "sidebar", "source": "./plugins/sidebar" },
-{ "name": "status", "source": "./apps/status" }
-]
-}
+  {
+    "$schema": "https://getbb.app/schemas/plugins.schema.json",
+    "schemaVersion": 1,
+    "name": "acme-plugins",
+    "plugins": [
+      { "name": "sidebar", "source": "./plugins/sidebar" },
+      { "name": "status", "source": "./apps/status" }
+    ]
+  }
 
 Every source is a repository-relative directory that starts with "./".
 Absolute paths, "..", and a source that selects the repository root are
@@ -475,9 +493,9 @@ plugin's own manifest.
 
 Install one plugin of the repository:
 
-bb plugin install git:github.com/acme/repo@main --plugin sidebar
-bb plugin install git:github.com/acme/repo@main --subdirectory plugins/sidebar
-bb plugin install path:/work/repo --plugin sidebar
+  bb plugin install git:github.com/acme/repo@main --plugin sidebar
+  bb plugin install git:github.com/acme/repo@main --subdirectory plugins/sidebar
+  bb plugin install path:/work/repo --plugin sidebar
 
 --subdirectory is the primitive and works without a collection manifest.
 --plugin resolves a name from .bb/plugins.json. Installs from one repository
@@ -541,9 +559,9 @@ Anyone can host a marketplace manifest. Add one with its https manifest URL,
 with git:<url>[@<ref>] (bb reads marketplace.json from the checkout), or with
 path:<directory> on the bb server's machine:
 
-bb marketplace add https://plugins.acme.dev/marketplace.json
-bb marketplace add git:github.com/acme/bb-marketplace@main
-bb marketplace add path:/work/acme-marketplace
+  bb marketplace add https://plugins.acme.dev/marketplace.json
+  bb marketplace add git:github.com/acme/bb-marketplace@main
+  bb marketplace add path:/work/acme-marketplace
 
 The manifest `name` is the marketplace identity. bb refuses a duplicate name.
 The `bb-official` and `bb-community` names are reserved. You cannot add or
@@ -560,7 +578,7 @@ unknown source keys because a source key changes the installed code.
 
 Install an entry of a specific marketplace with <entry-id>@<marketplace>:
 
-bb plugin install thread-hover-cards@acme-plugins
+  bb plugin install thread-hover-cards@acme-plugins
 
 A bare id resolves across every marketplace. Exactly one match installs.
 Several matches fail and list the id@marketplace choices. Every other source
@@ -610,9 +628,9 @@ Git semver ranges
 A git source can track releases the way an npm range does, over the
 repository's tags:
 
-bb plugin install git:github.com/acme/repo@^1.2.0
-bb plugin install git:github.com/acme/repo@semver:^1.2.0
-bb plugin install git:github.com/acme/repo@^1.2.0 --tag-prefix notes/
+  bb plugin install git:github.com/acme/repo@^1.2.0
+  bb plugin install git:github.com/acme/repo@semver:^1.2.0
+  bb plugin install git:github.com/acme/repo@^1.2.0 --tag-prefix notes/
 
 bb lists refs/tags, keeps the tags named [<tag-prefix>]vX.Y.Z that parse as
 semver, and installs the highest one the range allows. Prereleases are
@@ -708,11 +726,10 @@ frontend bundles re-import and their UI slots remount without a page refresh —
 and replace host worker generations on their next call.
 
 Frontend entries (app.tsx) default-export `definePluginApp` from
-`@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose; optional host-rendered
-title, omit it for a section that may render nothing),
+`@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title),
-navPanel (own sidebar entry + /plugins/<id>/<path>/\* route; the remainder
+navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
 zero-padding full-bleed body, including its scrolling; optional
@@ -746,12 +763,14 @@ client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
 workspace/host/thread-storage files, experimental_openAppRoute(path) for an
-in-app route such as /settings/mobile, and experimental_runAppCommand(id) for
-a built-in app command such as palette.open or thread.search), and useComposer (one stable handle for
+in-app route such as /settings/mobile, experimental_runAppCommand(id) for a
+built-in app command such as palette.open or thread.search, and
+experimental_openTerminal({ terminalId }), which shows a terminal created with
+useSdk().terminals.create in the current surface's terminal panel), and useComposer (one stable handle for
 the bound composer: read its text, mentions, reactive picker selection, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,
-preview a placeholder with experimental_setPlaceholderPreview(text), quote selections, submit exactly as Enter would, and focus the composer),
+quote selections, submit exactly as Enter would, and focus the composer),
 and useComposers (a handle for every composer on screen, so a panel can write
 into the one the user picks).
 Plain-text edits preserve attachments and reconcile only inline mentions
@@ -895,8 +914,8 @@ the plugin to pick up branding changes.
 
 The backend entry default-exports a factory receiving the full plugin API:
 
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
-export default async function plugin(bb: BbPluginApi) { ... }
+  import type { BbPluginApi } from "@get-bb/plugin-sdk";
+  export default async function plugin(bb: BbPluginApi) { ... }
 
 The import is type-only and erased at load; the scaffold depends on the npm
 package @get-bb/plugin-sdk, pinned to this bb's exact SDK version, so
@@ -930,7 +949,7 @@ its parent's visibility and still notifies that parent; plugins must archive
 finished hidden workers when appropriate and call `threads.stop` in a
 `finally` block to release each agent runtime promptly);
 bb.events.on (observe thread.created/idle/failed/deleted);
-bb.http.route (routes under /api/v1/plugins/<id>/http/\* with
+bb.http.route (routes under /api/v1/plugins/<id>/http/* with
 local/token/none auth); defineRpcContract + bb.rpc.register (Standard
 Schema-validated frontend data plane with inferred backend handlers and
 type-only frontend method/input/result inference);
@@ -1006,3 +1025,9 @@ Modal image debugging: `bb modal image build [--json]` prepares the saved image;
 `bb plugin rpc list [plugin-id] [--method <exact-name>] [--json]` lists discoverable methods from running plugins, optionally restricted to one plugin. `bb plugin rpc inspect <plugin-id> [method] [--json]` dumps registration and method descriptions plus input/output JSON Schemas. Copy the relevant schema into your consumer and call the existing plugin RPC endpoint. Discovery is opt-in advertising, not access control; method names may carry versions such as `provider-usage.v1.listResources`.
 
 `bb plugin rpc call <plugin-id> <method> [--input-file <json-path>] [--json]` invokes a method using server-side schema validation. Omitting the input file sends JSON null. Input files avoid putting sensitive values in command arguments.
+
+### Background updates
+
+`bb plugin update <id> --yes` starts a server job and waits by polling, so the activation stability check does not hold one HTTP request open. Add `--no-wait` to return immediately. Use `bb plugin update-jobs [job-id] --json` for progress and results, including automatic rollback. Queued/running updates continue after the CLI or app disconnects. Finished jobs remain for ten minutes; jobs do not survive server restarts. Running updates cannot be cancelled midway through activation.
+
+SDK: `plugins.applyUpdate({ pluginId })` waits; `plugins.experimental_startUpdate({ pluginId })` returns the job. Inspect with `plugins.experimental_updateJobs.list()` or `.get({ jobId })`. Raw HTTP callers opt in with `Prefer: respond-async`; legacy callers still receive the completed result.

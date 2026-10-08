@@ -29,6 +29,7 @@ import {
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
   settleThreadReadStateTransaction,
+  settleThreadPatchTransaction,
   type ArchiveThreadsTransaction,
   type DeleteThreadTransaction,
   type ThreadListMutationTransaction,
@@ -125,6 +126,9 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
     },
+    onSettled: (_data, _error, _variables, context) => {
+      settleThreadPatchTransaction(context);
+    },
   });
 }
 
@@ -153,7 +157,8 @@ export function usePinThread() {
     onSuccess: (thread) => {
       applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -183,7 +188,8 @@ export function useUnpinThread() {
     onSuccess: (thread) => {
       applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -224,7 +230,8 @@ export function useUnpinAndMoveThread() {
     onSuccess: (thread) => {
       applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -315,7 +322,8 @@ export function useUnarchiveThread() {
         transaction: context,
       });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -354,10 +362,9 @@ export function useDeleteThread() {
     },
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
-    onError: (_error, variables, context) => {
+    onError: (_error, _variables, context) => {
       rollbackDeleteThreadTransaction({
         queryClient,
-        threadId: variables.id,
         transaction: context,
       });
     },

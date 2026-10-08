@@ -2,6 +2,7 @@ import {
   DESKTOP_DOWNLOADS,
   DOWNLOAD_FALLBACK_URL,
   DOWNLOAD_RELEASE_ASSET_BASE_URL,
+  UTM_PARAM_NAMES,
 } from "./site";
 import type { CtaPlacement, DesktopPlatform } from "./site";
 
@@ -304,13 +305,7 @@ type AddUtmPropertiesArgs = {
 };
 
 function addUtmProperties(args: AddUtmPropertiesArgs): void {
-  for (const name of [
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_term",
-    "utm_content",
-  ] as const) {
+  for (const name of UTM_PARAM_NAMES) {
     const value = getTrackingParam({
       name,
       referrerSearchParams: args.referrerSearchParams,

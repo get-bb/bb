@@ -115,7 +115,7 @@ const baseProps = {
   rootPanelThreadId: "thread-current",
   rootProjectHostId: "host-current",
   shouldAutoFocusNewTab: false,
-  shouldAutoFocusTerminal: false,
+  autoFocusTerminalId: null,
   terminalTarget: {
     kind: "environment",
     environmentId: "env-current",

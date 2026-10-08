@@ -33,6 +33,12 @@ const STARTING_SESSION: TerminalSession = {
   updatedAt: 2,
 };
 
+const DISCONNECTED_SESSION: TerminalSession = {
+  ...BASE_TERMINAL_SESSION,
+  status: "disconnected",
+  updatedAt: 2,
+};
+
 const EXITED_SESSION: TerminalSession = {
   ...BASE_TERMINAL_SESSION,
   status: "exited",
@@ -43,7 +49,6 @@ const EXITED_SESSION: TerminalSession = {
 
 interface MakeControllerArgs {
   activeSession: TerminalSession | null;
-  canCreateTerminal: boolean;
   hasTerminalQueryError: boolean;
   isPanelOpen: boolean;
   terminalBodyMessage: string;
@@ -54,25 +59,20 @@ interface TerminalContentStageProps {
   controller: ThreadTerminalController;
 }
 
-function noopTerminalIdAction(_terminalId: string): void {}
-
 function noopSessionChange(_session: TerminalSession): void {}
 
 function noopTitleChange(_title: string): void {}
 
 function makeController({
   activeSession,
-  canCreateTerminal,
   hasTerminalQueryError,
   isPanelOpen,
   terminalBodyMessage,
 }: MakeControllerArgs): ThreadTerminalController {
   return {
     activeSession,
-    canCreateTerminal,
     handleActiveTerminalSessionChange: noopSessionChange,
     handleActiveTerminalTitleChange: noopTitleChange,
-    handleSelectTerminal: noopTerminalIdAction,
     hasTerminalQueryError,
     isPanelOpen,
     shouldMountTerminalView: isPanelOpen,
@@ -85,7 +85,6 @@ function terminalController(
 ): ThreadTerminalController {
   return makeController({
     activeSession,
-    canCreateTerminal: true,
     hasTerminalQueryError: false,
     isPanelOpen: true,
     terminalBodyMessage: "No terminals",
@@ -94,10 +93,11 @@ function terminalController(
 
 const startingController = terminalController(STARTING_SESSION);
 const exitedController = terminalController(EXITED_SESSION);
+const disconnectedController = terminalController(DISCONNECTED_SESSION);
+const reconnectingController = terminalController(RUNNING_SESSION);
 
 const emptyController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: false,
   isPanelOpen: true,
   terminalBodyMessage: "No terminals",
@@ -105,7 +105,6 @@ const emptyController = makeController({
 
 const loadingController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: false,
   isPanelOpen: true,
   terminalBodyMessage: "Starting terminal...",
@@ -113,7 +112,6 @@ const loadingController = makeController({
 
 const queryErrorController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: true,
   isPanelOpen: true,
   terminalBodyMessage: "No terminals",
@@ -156,6 +154,18 @@ export function Overview() {
         hint="Terminal has ended and cannot accept input."
       >
         <TerminalContentStage controller={exitedController} />
+      </StoryRow>
+      <StoryRow
+        label="disconnected"
+        hint="Host dropped; the session is held for reattach."
+      >
+        <TerminalContentStage controller={disconnectedController} />
+      </StoryRow>
+      <StoryRow
+        label="reconnecting"
+        hint="Socket is unreachable for over a second."
+      >
+        <TerminalContentStage controller={reconnectingController} />
       </StoryRow>
       <StoryRow label="empty" hint="Right panel tab with no visible sessions.">
         <TerminalContentStage controller={emptyController} />

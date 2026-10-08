@@ -160,6 +160,7 @@ function load(
   const threadId = testThread.thread.id;
   return loadThreadConversationOutline(testThread.db, testThread.thread, {
     completedTurnDisplay,
+    includeClearedContextHistory: false,
     maxSeq: getLatestThreadSequence(testThread.db, { threadId }),
     outlineSequence: getLatestStoredConversationOutlineSequence(testThread.db, {
       threadId,
@@ -175,6 +176,7 @@ function expectMatchesFull(
   expect(result).toEqual(
     buildThreadConversationOutline(testThread.coldDb, testThread.thread, {
       completedTurnDisplay,
+      includeClearedContextHistory: false,
       maxSeq: result.maxSeq,
     }),
   );

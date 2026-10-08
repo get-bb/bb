@@ -15,8 +15,6 @@ import {
   createTerminalSession,
   environments,
   getEnvironment,
-  getAppSettings,
-  setAppSettings,
   getHost,
   getThread,
   hosts,
@@ -131,10 +129,6 @@ it.each([
   "removes environments on a $phase persistent machine (cleanup fails first: $failCleanup)",
   async ({ phase, failCleanup }) =>
     withTestHarness(async (harness) => {
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        machineGitCredentialsEnabled: false,
-      });
       const target = seedHostSession(harness.deps, { id: "review-removing" });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: target.host.id,

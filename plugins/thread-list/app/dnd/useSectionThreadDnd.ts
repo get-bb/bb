@@ -103,6 +103,7 @@ export interface SectionThreadDndState {
 
 interface UseSectionThreadDndArgs {
   containerId: string;
+  containerProjectId?: string;
   enabled: boolean;
   rootItems: readonly ProjectThreadItem[];
   topLevelSectionOrder: readonly SidebarSectionId[];
@@ -126,6 +127,7 @@ interface SectionThreadDndLookup {
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
+  projectIdByParentKey: Map<string, string>;
   itemIdsByParentKey: Map<string, string[]>;
   itemKindById: Map<string, ProjectThreadItem["kind"]>;
   parentKeyByItemId: Map<string, string>;
@@ -198,6 +200,7 @@ type RowDropState = SectionThreadNestTarget;
 
 interface CollectSectionThreadDndLookupOptions {
   groups?: boolean;
+  containerProjectId?: string;
   pinnedRootItems?: readonly ProjectThreadItem[];
 }
 
@@ -233,6 +236,11 @@ export function collectSectionThreadDndLookup(
       [PINNED_THREAD_PARENT_KEY, "pinned"],
     ]),
     sectionIdByParentKey: new Map([[containerId, null]]),
+    projectIdByParentKey: new Map(
+      options.containerProjectId === undefined
+        ? []
+        : [[containerId, options.containerProjectId]],
+    ),
     itemIdsByParentKey: new Map([
       [PINNED_THREAD_PARENT_KEY, pinnedThreads.map((thread) => thread.id)],
     ]),
@@ -321,6 +329,12 @@ export function collectSectionThreadDndLookup(
         lookup.sectionParentKeyBySectionId.set(sectionId, item.group.key);
         lookup.sectionSectionIdByParentKey.set(item.group.key, sectionId);
         lookup.sectionIdByParentKey.set(item.group.key, item.group.id);
+        if (options.groups && sectionId.startsWith("project:")) {
+          lookup.projectIdByParentKey.set(
+            item.group.key,
+            sectionId.slice("project:".length),
+          );
+        }
         walk(item.group.items, item.group.key);
       }
     }
@@ -631,6 +645,13 @@ export function resolveSectionThreadDropDecision(
   const toParentKey =
     directParentKey ?? (isSelfCollision ? projectedParentKey : null);
   if (!toParentKey) return null;
+  const projectId = lookup.projectIdByParentKey.get(toParentKey);
+  if (
+    projectId !== undefined &&
+    threads.some((thread) => thread.projectId !== projectId)
+  ) {
+    return null;
+  }
 
   const threadIds = threads.map((thread) => thread.id);
   if (toParentKey === PINNED_THREAD_PARENT_KEY) {
@@ -871,6 +892,7 @@ function hasDropDecisionLanded(
 
 export function useSectionThreadDnd({
   containerId,
+  containerProjectId,
   enabled,
   rootItems,
   topLevelSectionOrder,
@@ -890,10 +912,11 @@ export function useSectionThreadDnd({
         containerId,
         pinnedThreads,
         pinnedRootNodes,
-        { groups, pinnedRootItems },
+        { groups, pinnedRootItems, containerProjectId },
       ),
     [
       containerId,
+      containerProjectId,
       groups,
       pinnedRootItems,
       pinnedRootNodes,
@@ -1042,10 +1065,27 @@ export function useSectionThreadDnd({
         onResolvedRow: handleResolvedRow,
         holdNestCandidate,
       });
-      const nestedCollisions = collisions.filter(({ id }) =>
+      const draggedThreads =
+        typeof args.active.id === "string"
+          ? resolveDraggedRootThreads(lookup, args.active.id)
+          : null;
+      const allowedCollisions = collisions.filter(({ id }) => {
+        if (typeof id !== "string" || draggedThreads === null) return true;
+        const parentKey = resolveSectionThreadDropParentKey(lookup, id);
+        const projectId = parentKey
+          ? lookup.projectIdByParentKey.get(parentKey)
+          : undefined;
+        return (
+          projectId === undefined ||
+          draggedThreads.every((thread) => thread.projectId === projectId)
+        );
+      });
+      const nestedCollisions = allowedCollisions.filter(({ id }) =>
         typeof id === "string" ? !topLevelSectionIds.has(id) : true,
       );
-      return nestedCollisions.length > 0 ? nestedCollisions : collisions;
+      return nestedCollisions.length > 0
+        ? nestedCollisions
+        : allowedCollisions;
     },
     [
       getNestBandFraction,
@@ -1077,6 +1117,9 @@ export function useSectionThreadDnd({
     useState<SectionThreadReorderTarget | null>(null);
   const [pendingDropDecision, setPendingDropDecision] =
     useState<SectionThreadDropDecision | null>(null);
+  const pendingDropDecisionRef = useRef<SectionThreadDropDecision | null>(
+    null,
+  );
   const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellTargetKeyRef = useRef<string | null>(null);
@@ -1093,6 +1136,7 @@ export function useSectionThreadDnd({
     setRowDrop(null);
     setReorderTarget(null);
     setPendingDropDecision(null);
+    pendingDropDecisionRef.current = null;
     setReadyNestCandidate(null);
     clearNestCandidate();
     armedNestThreadIdRef.current = null;
@@ -1120,6 +1164,7 @@ export function useSectionThreadDnd({
         : null;
       draggingThreadRef.current = thread !== null;
       setPendingDropDecision(null);
+      pendingDropDecisionRef.current = null;
       activeIdRef.current = thread ? activeId : null;
       armedNestThreadIdRef.current = null;
       latestRowCollisionRef.current = null;
@@ -1326,7 +1371,13 @@ export function useSectionThreadDnd({
         return;
       }
       const settle = (request: Promise<unknown>) => {
-        void request.catch(() => undefined).finally(clearProjectedDrag);
+        void request
+          .catch(() => undefined)
+          .finally(() => {
+            if (pendingDropDecisionRef.current === decision) {
+              clearProjectedDrag();
+            }
+          });
       };
       switch (decision.kind) {
         case "move":
@@ -1361,6 +1412,7 @@ export function useSectionThreadDnd({
           clearProjectedDrag();
           return;
       }
+      pendingDropDecisionRef.current = decision;
       setPendingDropDecision(decision);
     },
     [
@@ -1401,10 +1453,14 @@ export function useSectionThreadDnd({
       onDragCancel: handleDragCancel,
     });
 
-  if (!enabled) return null;
   const dropDecisionLanded =
     pendingDropDecision !== null &&
     hasDropDecisionLanded(lookup, pendingDropDecision);
+  useEffect(() => {
+    if (dropDecisionLanded) clearProjectedDrag();
+  }, [clearProjectedDrag, dropDecisionLanded]);
+
+  if (!enabled) return null;
   return {
     activeItemId: dropDecisionLanded ? null : activeIdRef.current,
     activeThread: dropDecisionLanded ? null : activeThread,
