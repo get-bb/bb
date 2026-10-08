@@ -224,7 +224,7 @@ export function paginateTimelineRows(
         olderCursor: hasOlderRows
           ? timelineWindowCursor(segment.sequenceStart)
           : null,
-        ...omittedRows(contents.olderRowsSourceSeqEnd, segment.sequenceStart),
+        ...omittedRows(contents.partialRowsSourceSeqEnd, segment.sequenceStart),
         contentCursor:
           contents.start > 0
             ? {
