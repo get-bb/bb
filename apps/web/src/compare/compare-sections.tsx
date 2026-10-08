@@ -49,12 +49,11 @@ export const AGENTS_COPY: SectionCopy = {
 };
 
 export const SPAWN_COPY: SectionCopy = {
-  title: "Hand off the whole job",
+  title: "Let one agent orchestrate the rest",
   body: (
     <p>
       Give one agent a big task. It splits the work across Claude Code, Codex,
-      Cursor, and others running side by side, and they message each other as
-      they go. You come back to finished work, not notes to pass between tools.
+      Cursor, and others, and they message each other as they go.
     </p>
   ),
 };
@@ -141,7 +140,7 @@ export function spawnSection(copy: SectionCopy): CompareHighlight {
     title: copy.title,
     wide: true,
     visual: <SpawnTimeline />,
-    body: agentsBody(copy),
+    body: copy.body,
   };
 }
 

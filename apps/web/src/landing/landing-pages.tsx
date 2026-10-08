@@ -10,6 +10,7 @@ import {
   faqFree,
   faqPhone,
 } from "../compare/compare-content";
+import { SPAWN_COPY, spawnSection } from "../compare/compare-sections";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -196,7 +197,12 @@ export const LANDING_PAGES: LandingPage[] = [
     sub: "Run Claude Code, Codex, and more in parallel. One list shows which are running, waiting on you, or done. Free and open source.",
     closer: "Put your software factory to work",
     heroVisual: <FleetVisual />,
-    sections: [textOnly(PARALLEL_SECTION), CODEX_SECTION, PHONE_SECTION],
+    sections: [
+      textOnly(PARALLEL_SECTION),
+      spawnSection(SPAWN_COPY),
+      CODEX_SECTION,
+      PHONE_SECTION,
+    ],
     faq: [
       {
         title: "Running several agents",
