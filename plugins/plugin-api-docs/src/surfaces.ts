@@ -153,6 +153,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run an action, or open a small panel above the footer",
           "Show quick status, such as usage limits, without leaving the thread",
           "Follow the user's order and visibility choices in Appearance",
+          "Show a short card directly above the footer, such as a release announcement",
         ],
         apiSymbols: [
           "ExperimentalSidebarFooter",
@@ -165,8 +166,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalSidebarFooterDisclosureController",
           "PluginSidebarFooterActionRegistration",
           "PluginSidebarFooterActionProps",
+          "ExperimentalSidebarFooterSectionRegistration",
+          "ExperimentalSidebarFooterSectionProps",
         ],
-        firstParty: ["Provider usage"],
+        firstParty: ["Provider usage", "What's new"],
         experimental: true,
       },
       {
@@ -641,6 +644,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Show anything that isn't a form field, such as a connect-account button",
           "Sit below the [generated fields](declarative-settings) under a heading bb renders",
+          "Render on Settings → Mobile or Settings → Updates instead of the plugin's own page",
         ],
         apiSymbols: [
           "PluginSettingsSectionRegistration.experimental_page",
@@ -657,6 +661,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Modal Sandbox [Experimental]",
           "Provider usage",
           "Push notifications",
+          "What's new",
         ],
       },
     ],

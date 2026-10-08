@@ -53,7 +53,7 @@ import {
   startAppUpdateCheck,
   subscribeAppUpdateCheck,
 } from "@/components/settings/app-update-check-store";
-import { WhatsNewSection } from "@/components/settings/WhatsNewSection";
+import { PluginUpdatesSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { openAppUpdateResultDetails } from "@/components/app-update/app-update-details-store";
 import {
   formatAppUpdateRevision,
@@ -1850,15 +1850,7 @@ export function UpdatesSettingsSection() {
         }}
       />
 
-      <WhatsNewSection
-        key={inventory.systemVersion?.currentVersion ?? "unknown"}
-        installedVersion={inventory.systemVersion?.currentVersion ?? null}
-        availableVersion={
-          inventory.systemVersion?.updateAvailable === true
-            ? inventory.systemVersion.latestVersion
-            : null
-        }
-      />
+      <PluginUpdatesSettingsSections />
       <ConfirmDeleteDialog
         open={confirmingAppUpdateThreads !== null}
         onOpenChange={(open) => {

@@ -73,6 +73,8 @@ describe("getReleaseNotes", () => {
       version: "0.44.0",
       date: "September 25, 2026",
       headline: "Diff filtering, safer archiving, and plugin safe mode",
+      visual: "diff-filter",
+      hero: null,
       lede: [{ kind: "paragraph", text: "Diff filtering." }],
     });
     expect(
@@ -124,6 +126,8 @@ describe("getReleaseNotes", () => {
       version: "0.46.0",
       headline: null,
       date: null,
+      visual: null,
+      hero: null,
     });
   });
 

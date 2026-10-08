@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
+import { PluginSidebarFooterSections } from "@/components/plugin/PluginSidebarFooterSections";
 import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
@@ -28,7 +29,6 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { SidebarWhatsNew } from "./SidebarWhatsNew";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -230,7 +230,7 @@ export function AppSidebar({
         )}
         {isFooterCustomizing ||
         pluginSidebarFooter.activeItem !== null ? null : (
-          <SidebarWhatsNew onNavigate={closeOnMobile} />
+          <PluginSidebarFooterSections onNavigate={closeOnMobile} />
         )}
         <SidebarMenu
           className={cn(

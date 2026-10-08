@@ -8,6 +8,7 @@ import type {
   ExperimentalSidebarFooterDisclosureController,
   ExperimentalSidebarFooterDisclosureRegistration,
   ExperimentalSidebarFooterItemRegistration,
+  ExperimentalSidebarFooterSectionRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
@@ -351,6 +352,7 @@ export interface CollectedPluginAppRegistrations {
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
+  sidebarFooterSections: ExperimentalSidebarFooterSectionRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -475,6 +477,7 @@ export function collectPluginAppRegistrations(
     pendingInteractions: [],
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
+    sidebarFooterSections: [],
     threadLists: [],
     threadHeaderActions: [],
     browserToolbarActions: [],
@@ -503,6 +506,7 @@ export function collectPluginAppRegistrations(
     composerPopup: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
+    sidebarFooterSection: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
@@ -593,8 +597,10 @@ export function collectPluginAppRegistrations(
           registration.description,
         );
         const page = registration.experimental_page;
-        if (page !== undefined && page !== "mobile") {
-          throw new Error(`${kind}: experimental_page must be "mobile"`);
+        if (page !== undefined && page !== "mobile" && page !== "updates") {
+          throw new Error(
+            `${kind}: experimental_page must be "mobile" or "updates"`,
+          );
         }
         collected.settingsSections.push({
           ...(page !== undefined ? { experimental_page: page } : {}),
@@ -766,6 +772,15 @@ export function collectPluginAppRegistrations(
         };
         collected.sidebarFooterActions.push(legacyRegistration);
         sidebarFooterItems.push(adaptSidebarFooterAction(legacyRegistration));
+      },
+      experimental_sidebarFooterSection(registration) {
+        const kind = "slots.experimental_sidebarFooterSection";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarFooterSection, id);
+        collected.sidebarFooterSections.push({
+          id,
+          component: requireComponent(kind, registration.component),
+        });
       },
       experimental_threadList(registration) {
         collected.threadLists.push(

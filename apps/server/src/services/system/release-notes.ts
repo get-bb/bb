@@ -41,6 +41,15 @@ function toReleaseNotes(entry: ChangelogEntry): ReleaseNotes {
     version: entry.version,
     date: meta?.date ?? null,
     headline: meta?.headline ?? null,
+    visual: meta?.visual ?? null,
+    hero:
+      meta?.hero === undefined
+        ? null
+        : {
+            src: meta.hero.src,
+            darkSrc: meta.hero.darkSrc ?? null,
+            alt: meta.hero.alt,
+          },
     lede: entry.lede,
     sections: entry.sections,
   };

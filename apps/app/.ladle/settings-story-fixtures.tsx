@@ -30,12 +30,6 @@ import {
   MODAL_MACHINE_PROVIDER,
 } from "./machine-story-fixtures";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
-import { WhatsNewView } from "../src/components/settings/WhatsNewSection";
-import {
-  CHANGELOG_ENTRIES,
-  RELEASE_META,
-  selectWhatsNewReleases,
-} from "../src/components/settings/changelog-preview";
 import {
   BbAppUpdateRows,
   BbUpdatesCard,
@@ -253,11 +247,6 @@ const noFailures = new Map<string, never>();
 const noop = () => {};
 
 export function SettingsUpdatesStory() {
-  const releases = selectWhatsNewReleases({
-    entries: CHANGELOG_ENTRIES,
-    installedVersion: null,
-    previousVersion: null,
-  });
   return (
     <div className="space-y-6">
       <BbUpdatesCard>
@@ -283,13 +272,6 @@ export function SettingsUpdatesStory() {
         onRetryAllDaemonUpdates={noop}
         onRecheckClis={noop}
       />
-      {releases === null ? null : (
-        <WhatsNewView
-          releases={releases}
-          meta={RELEASE_META[releases.current.version] ?? null}
-          available={null}
-        />
-      )}
     </div>
   );
 }

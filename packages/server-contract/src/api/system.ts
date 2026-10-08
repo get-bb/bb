@@ -289,6 +289,14 @@ export const releaseNotesSchema = z.object({
   version: z.string(),
   date: z.string().nullable(),
   headline: z.string().nullable(),
+  visual: z.string().nullable(),
+  hero: z
+    .object({
+      src: z.string(),
+      darkSrc: z.string().nullable(),
+      alt: z.string(),
+    })
+    .nullable(),
   lede: z.array(releaseNotesBlockSchema),
   sections: z.array(
     z.object({

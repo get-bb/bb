@@ -34,6 +34,11 @@ import {
 } from "@/components/provider-cli/provider-cli-install-store";
 import { appToast } from "@/components/ui/app-toast";
 import { sdk } from "@/lib/sdk";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
 import {
   useUpdateInventory,
@@ -91,22 +96,6 @@ vi.mock("@/hooks/useUpdateInventory", () => ({
 
 vi.mock("@/hooks/useDesktopUpdateInfo", () => ({
   useDesktopUpdateInfo: vi.fn(),
-}));
-
-vi.mock("@/components/settings/WhatsNewSection", () => ({
-  WhatsNewSection: ({
-    installedVersion,
-    availableVersion,
-  }: {
-    installedVersion: string | null;
-    availableVersion: string | null;
-  }) => (
-    <div
-      data-testid="whats-new"
-      data-installed-version={installedVersion ?? ""}
-      data-available-version={availableVersion ?? ""}
-    />
-  ),
 }));
 
 const hostDaemon = vi.hoisted(() => ({
@@ -383,6 +372,7 @@ afterEach(() => {
   window.localStorage.clear();
   resetAppUpdateCheckStoreForTests();
   resetProviderCliInstallStoreForTests();
+  resetPluginSlotStoreForTest();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -465,37 +455,43 @@ describe("UpdatesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("shows What's new after the update rows for the installed and available releases", () => {
+  it("renders plugin Updates sections after the update rows", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
       isDesktop: false,
     });
-    const inventory = makeInventory({});
-    useUpdateInventoryMock.mockReturnValue({
-      ...inventory,
-      systemVersion: {
-        ...inventory.systemVersion!,
-        currentVersion: "0.0.5",
-        latestVersion: "0.0.6",
-        updateAvailable: true,
-      },
-    });
+    useUpdateInventoryMock.mockReturnValue(makeInventory({}));
+    setPluginSlotRegistrations(
+      "bb--whats-new",
+      makePluginRegistrationSet({
+        settingsSections: [
+          {
+            id: "notes",
+            experimental_page: "updates",
+            component: () => <div data-testid="plugin-updates-section" />,
+          },
+          {
+            id: "config",
+            component: () => <div data-testid="plugin-config-section" />,
+          },
+        ],
+      }),
+    );
 
     renderSection();
 
-    const whatsNew = screen.getByTestId("whats-new");
-    expect(whatsNew.getAttribute("data-installed-version")).toBe("0.0.5");
-    expect(whatsNew.getAttribute("data-available-version")).toBe("0.0.6");
+    const section = screen.getByTestId("plugin-updates-section");
     const bbUpdates = document.querySelector('[data-updates-domain="bb"]');
     expect(bbUpdates).not.toBeNull();
     expect(
-      bbUpdates!.compareDocumentPosition(whatsNew) &
+      bbUpdates!.compareDocumentPosition(section) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    expect(screen.queryByTestId("plugin-config-section")).toBeNull();
   });
 
-  it("omits the available release when bb is up to date", () => {
+  it("renders no plugin Updates section when no enabled plugin registers one", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -505,9 +501,8 @@ describe("UpdatesSettingsSection", () => {
 
     renderSection();
 
-    const whatsNew = screen.getByTestId("whats-new");
-    expect(whatsNew.getAttribute("data-installed-version")).toBe("0.0.5");
-    expect(whatsNew.getAttribute("data-available-version")).toBe("");
+    expect(screen.queryByTestId("plugin-settings-sections")).toBeNull();
+    expect(document.getElementById("whats-new")).toBeNull();
   });
 
   it("keeps a recently checked healthy fleet quiet and accessible", async () => {

@@ -143,7 +143,8 @@ move and downloads the new server's bb-app package for its service.
 highlights, and other sections. `--version <v>` shows one release; `--since <v>`
 shows every release after `<v>` up to the installed one, newest first; `--json`
 prints the structured notes. It is read-only and never marks a release seen,
-so the user's sidebar What's new card stays.
+so the user's sidebar What's new card stays. It reads bb's release data and
+works with the What's new plugin (`bb--whats-new`) turned off.
 
 ## terminal
 

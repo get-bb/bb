@@ -102,6 +102,10 @@
     "category": "thread-management",
     "screenshots": []
   },
+  "whats-new": {
+    "category": "notifications",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { ReleaseVisualId } from "@bb/domain/changelog";
 import {
   Branch,
   CANVAS,
@@ -18,7 +17,7 @@ import {
   Sparkle,
   Window,
   Wrench,
-} from "./release-art-kit";
+} from "./release-art-kit.js";
 
 export type ReleaseArtTone = "blue" | "green" | "amber" | "orange";
 
@@ -54,7 +53,7 @@ function Spoke({
   return <path {...LINE} d={`M${from[0]} ${from[1]}L${to[0]} ${to[1]}`} />;
 }
 
-export const RELEASE_VISUALS: Record<ReleaseVisualId, ReleaseVisualDrawing> = {
+export const RELEASE_VISUALS = {
   "native-windows": {
     tone: "blue",
     draw: (accent) => (
@@ -331,4 +330,6 @@ export const RELEASE_VISUALS: Record<ReleaseVisualId, ReleaseVisualDrawing> = {
       </>
     ),
   },
-};
+} satisfies Record<string, ReleaseVisualDrawing>;
+
+export type ReleaseVisualId = keyof typeof RELEASE_VISUALS;

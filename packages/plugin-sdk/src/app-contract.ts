@@ -68,6 +68,20 @@ export interface PluginSettingsSectionProps {}
  */
 export interface ExperimentalAppOverlayProps {}
 
+/**
+ * Props passed to an `experimental_sidebarFooterSection` component, rendered
+ * in the app sidebar directly above the footer row.
+ */
+export interface ExperimentalSidebarFooterSectionProps {
+  /** True on phone-width viewports, where the sidebar is a drawer. */
+  isCompactViewport: boolean;
+  /**
+   * Call after the component navigates somewhere. It closes the compact
+   * sidebar drawer and does nothing on wide layouts.
+   */
+  onNavigate: () => void;
+}
+
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
   /**
@@ -503,8 +517,12 @@ export interface PluginHomepageSectionRegistration {
 }
 
 export interface PluginSettingsSectionRegistration {
-  /** Render on Mobile settings instead of the plugin configuration page. */
-  experimental_page?: "mobile";
+  /**
+   * Render on a bb Settings page instead of the plugin configuration page:
+   * `"mobile"` on Settings → Mobile, `"updates"` on Settings → Updates below
+   * bb's update rows.
+   */
+  experimental_page?: "mobile" | "updates";
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
   /** Optional host-rendered section heading. */
@@ -718,6 +736,22 @@ export interface PluginNewThreadPanelActionContext {
    * error semantics match `threadPanelAction`.
    */
   openPanel(options?: PluginPanelActionOpenOptions): boolean;
+}
+
+/**
+ * Render a component in the app sidebar directly above the footer row, for
+ * short, dismissible content such as an announcement card. Additive: every
+ * enabled plugin's registrations render, in plugin id order. The host hides
+ * the region while the sidebar is collapsed, while the footer is being
+ * customized, and while a footer disclosure is open; on compact layouts it
+ * renders inside the sidebar drawer. The region takes height from the thread
+ * list above it and never moves the footer row. Render nothing when there is
+ * nothing to show.
+ */
+export interface ExperimentalSidebarFooterSectionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  component: ComponentType<ExperimentalSidebarFooterSectionProps>;
 }
 
 /** Registration for the root New thread screen's panel Actions list. */
@@ -1893,6 +1927,14 @@ export interface PluginAppSlots {
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
+  ): void;
+  /**
+   * Render a component in the sidebar directly above the footer row (see
+   * {@link ExperimentalSidebarFooterSectionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sidebarFooterSection(
+    registration: ExperimentalSidebarFooterSectionRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see

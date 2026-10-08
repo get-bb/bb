@@ -1,0 +1,24 @@
+See what changed after each bb update. What's new shows a small card above the sidebar footer once per release, and the release notes in Settings → Updates.
+
+## What you get
+
+- After bb updates, a card above the sidebar footer names the new version, shows its headline and a small drawing, and links to the full notes. A brand-new install shows no card until its first update.
+- Click the card to open Settings → Updates at What's new. Dismiss it with × to hide it until the next release. Opening Settings → Updates hides it too.
+- Settings → Updates shows What's new below the update rows: a one-line summary of the installed release with **Show all changes** for the full notes, the releases you skipped since you last looked, and the notes for an available update.
+- The card hides while the sidebar is collapsed and follows the sidebar into the drawer on phones.
+
+## Turn it off
+
+- From the card: open the ⋯ menu and choose **Turn off What's new**. The card says where to turn it back on and offers **Undo**.
+- In the app: switch off **Show What's new** in Settings → Plugins → What's new, or disable the plugin there.
+- From a terminal: `bb plugin config bb--whats-new set enabled false`, or `bb plugin disable bb--whats-new` (`bb plugin enable bb--whats-new` turns it back on).
+
+Turning it off hides both the card and the Settings → Updates section.
+
+## How it works
+
+The release notes come from bb itself: the changelog bundled with your bb server, read through `GET /api/v1/system/release-notes` (`system.experimental_releaseNotes` in the SDK). Notes for an update you haven't installed yet are read from bb's published changelog. Which release you last saw is remembered in this browser or app window, so each device gets its own card.
+
+## For agents and scripts
+
+`bb whats-new` prints the installed release's notes, `--version <v>` one release, `--since <v>` every release after `<v>`, and `--json` structured notes. It is part of bb, works with this plugin off, and never marks a release seen.

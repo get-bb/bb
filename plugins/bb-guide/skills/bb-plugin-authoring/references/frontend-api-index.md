@@ -100,6 +100,7 @@ Read the installed SDK declarations for the exact current signatures.
   `app.slots.experimental_machineProviderInputs`
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
+- `ExperimentalSidebarFooterSectionProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
@@ -123,6 +124,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginHomepageSectionRegistration`
 - `PluginSettingsSectionRegistration`
 - `ExperimentalAppOverlayRegistration`
+- `ExperimentalSidebarFooterSectionRegistration`
 - `ExperimentalFixedTabTargetContract`
 - `ExperimentalPluginFixedTabReference`
 - `PluginFixedTabRegistration`

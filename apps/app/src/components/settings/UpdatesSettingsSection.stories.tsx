@@ -18,29 +18,12 @@ import {
   MachineUpdateRow,
   ProviderCliUpdatesSection,
 } from "./UpdatesSettingsSection";
-import { WhatsNewView } from "./WhatsNewSection";
-import {
-  CHANGELOG_ENTRIES,
-  RELEASE_META,
-  selectWhatsNewReleases,
-} from "./changelog-preview";
 
 export default {
   title: "settings/Updates",
 };
 
 const noop = () => {};
-const LATEST_RELEASES = (() => {
-  const releases = selectWhatsNewReleases({
-    entries: CHANGELOG_ENTRIES,
-    installedVersion: null,
-    previousVersion: null,
-  });
-  if (releases === null) {
-    throw new Error("The changelog has no releases");
-  }
-  return releases;
-})();
 const NO_JOBS: ReadonlySet<string> = new Set();
 const NO_FAILURES: ReadonlyMap<string, ProviderCliInstallFailure> = new Map();
 const STORY_NOW = 1_800_000_000_000;
@@ -1187,20 +1170,6 @@ export function SectionVariations() {
                 `${studioMac.host.id}:claude-code`,
               ])
             }
-          />
-        </div>
-      </StoryRow>
-      <StoryRow
-        label="What's new"
-        hint="A compact summary of the installed release sits below the update cards."
-      >
-        <div className="w-full space-y-6">
-          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
-          <StoryProviderClis machines={[workstation]} />
-          <WhatsNewView
-            releases={LATEST_RELEASES}
-            meta={RELEASE_META[LATEST_RELEASES.current.version] ?? null}
-            available={null}
           />
         </div>
       </StoryRow>

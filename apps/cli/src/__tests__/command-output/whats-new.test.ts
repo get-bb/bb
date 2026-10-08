@@ -13,6 +13,8 @@ const FORTY_FIVE = {
   version: "0.45.0",
   date: "October 2, 2026",
   headline: "Native Windows support, service tiers, and faster conversations",
+  visual: "native-windows",
+  hero: null,
   lede: [
     {
       kind: "paragraph" as const,
@@ -45,6 +47,8 @@ const FORTY_FOUR = {
   version: "0.44.0",
   date: null,
   headline: null,
+  visual: null,
+  hero: null,
   lede: [{ kind: "paragraph" as const, text: "Diff filtering." }],
   sections: [],
 };

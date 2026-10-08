@@ -37,6 +37,7 @@
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-provider-retry": "workspace:*",
     "bb-plugin-bb--provider-usage": "workspace:*",
+    "bb-plugin-bb--whats-new": "workspace:*",
     "bb-plugin-push-notifications": "workspace:*",
     "bb-plugin-bb--prompt-library": "workspace:*",
     "bb-plugin-scheduled-send": "workspace:*",

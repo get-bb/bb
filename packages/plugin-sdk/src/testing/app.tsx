@@ -25,6 +25,7 @@ import {
   type ComposerSubmitOptions,
   type ComposerView,
   type ExperimentalAppOverlayRegistration,
+  type ExperimentalSidebarFooterSectionRegistration,
   type ExperimentalQuestionFormHost,
   type PluginAppDefinition,
   type PluginAppSetup,
@@ -1232,6 +1233,7 @@ export interface CapturedPluginApp {
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
+  sidebarFooterSections: ExperimentalSidebarFooterSectionRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];

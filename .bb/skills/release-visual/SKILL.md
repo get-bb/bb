@@ -6,11 +6,12 @@ description: "Draw the small release visual for a new bb release and register it
 # Draw a release visual
 
 Each release in `RELEASE_META` (`packages/domain/src/changelog-metadata.ts`)
-names one drawing in `visual`. The sidebar What's new card and Settings →
-Updates → What's new show it at 40px. Drawings live in
-`apps/app/src/components/release-art/release-visuals.tsx` and are composed
-from the parts in `release-art-kit.tsx`. CI fails when the newest changelog release
-has no visual, a visual id has no drawing, or a drawing is unused.
+names one drawing in `visual`. The What's new plugin's sidebar card and its
+Settings → Updates section show it at 40px. Drawings live in the plugin, in
+`plugins/whats-new/release-visuals.tsx`, and are composed from the parts in
+`plugins/whats-new/release-art-kit.tsx`. CI fails when the newest changelog
+release has no visual, a visual id has no drawing, or a drawing is unused
+(`apps/app/src/lib/release-visual-coverage.test.ts`).
 
 ## Steps
 
@@ -21,11 +22,12 @@ has no visual, a visual id has no drawing, or a drawing is unused.
    abstract symbol, and make it distinct from the other drawings in the sheet.
 3. **Add the id.** Add a kebab-case id to `ReleaseVisualId` in
    `changelog-metadata.ts`, and set `visual` on the release's entry.
-4. **Draw it.** Add the entry to `RELEASE_VISUALS` with a `tone` and a `draw`
-   function built from kit parts. Follow the style rules below.
-5. **Check it in Ladle.** Open `settings/Updates/Release visuals` and check the
-   drawing at both sizes in light and dark, next to the existing ones. Also look
-   at `sidebar/What's new` → Card with release visual.
+4. **Draw it.** Add the entry under the same id to `RELEASE_VISUALS` in
+   `plugins/whats-new/release-visuals.tsx`, with a `tone` and a `draw` function
+   built from kit parts. Follow the style rules below.
+5. **Check it in Ladle.** Open `plugins/What's new/Release visuals` and check
+   the drawing at both sizes in light and dark, next to the existing ones. Also
+   look at `plugins/What's new` → Sidebar card.
 6. **Ship it in the release PR** with the CHANGELOG and `RELEASE_META` changes.
    Let CI run the tests.
 

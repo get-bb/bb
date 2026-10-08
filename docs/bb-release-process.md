@@ -114,7 +114,7 @@ If any input is unclear, ask before bumping the version.
 4. Update the release notes. Add the new version's section to the repo-root
    `CHANGELOG.md`, and add its entry (ship date and headline) to
    `RELEASE_META` in `packages/domain/src/changelog-metadata.ts`. The marketing
-   site's `/changelog` page, the in-app What's new, and `bb whats-new` consume
+   site's `/changelog` page, the What's new plugin, and `bb whats-new` consume
    these shared files, so both changes must land before the release is published —
    redeploy `@bb/web` after the release commit lands so the site shows the new
    version. Draw the release's What's new visual with the

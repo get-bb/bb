@@ -1,16 +1,23 @@
-import { cn } from "@bb/shared-ui/lib/utils";
-import type { ReleaseVisualId } from "@bb/domain/changelog";
-import { GRID, INK } from "./release-art-kit";
-import { RELEASE_VISUALS, TONE_COLOR } from "./release-visuals";
+import { cn } from "@/lib/utils";
+import { GRID, INK } from "./release-art-kit.js";
+import {
+  RELEASE_VISUALS,
+  TONE_COLOR,
+  type ReleaseVisualId,
+} from "./release-visuals.js";
+
+export function isReleaseVisualId(value: string): value is ReleaseVisualId {
+  return Object.hasOwn(RELEASE_VISUALS, value);
+}
 
 export function ReleaseVisual({
   visual,
   className,
 }: {
-  visual: ReleaseVisualId | undefined;
+  visual: string | null;
   className?: string;
 }) {
-  if (visual === undefined) {
+  if (visual === null || !isReleaseVisualId(visual)) {
     return null;
   }
   const { tone, draw } = RELEASE_VISUALS[visual];
