@@ -2358,8 +2358,8 @@ Implementation: the shared workflow is
    correct before freezing the shape.
 
 2. **Page-level behavior the adapter skips.** Fork seeds,
-   quick-create-project, the guided machine-setup dialog, welcome/empty
-   states, and codex-version submit blocking are all deliberately absent.
+   quick-create-project, the guided machine-setup dialog, and codex-version
+   submit blocking are all deliberately absent.
    Confirm none of them has become load-bearing for correctness (rather than
    convenience) on a plugin surface — codex-version blocking in particular
    means a plugin can submit to a machine whose CLI the primary surface would

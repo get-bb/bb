@@ -179,17 +179,24 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   ],
   new: [
     {
-      file: "apps/app/src/views/RootComposeEmptyWelcome.tsx",
+      file: "apps/app/src/views/RootComposeView.tsx",
       mustContain: [
-        'title="New thread"',
-        'description="Start a new conversation"',
-        'title="Automatically import my projects"',
-        'title="New project"',
-        'title="Learn what bb can do"',
-        "hover:bg-state-hover",
+        'ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14"',
+        "{promptBox}",
       ],
       because:
-        "The New thread projection uses BB's current empty-welcome actions, hierarchy, and hover state.",
+        "The New thread projection opens on the composer alone, aligned under the sidebar actions.",
+    },
+    {
+      file: "apps/app/src/views/RootComposeSecondaryContent.tsx",
+      mustContain: ['ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]"'],
+      because: "The New thread projection keeps BB's home column width.",
+    },
+    {
+      file: "apps/app/src/components/promptbox/NewThreadPromptBox.tsx",
+      mustContain: ['"Ask anything."'],
+      because:
+        "The empty composer uses the current new-thread prompt language.",
     },
   ],
   split: [

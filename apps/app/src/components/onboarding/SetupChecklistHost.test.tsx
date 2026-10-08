@@ -5,7 +5,6 @@ import { Provider, createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SetupChecklistBanner,
-  SetupChecklistCard,
   hasSetupChecklistBanner,
   useSetupChecklist,
 } from "./SetupChecklistHost";
@@ -115,7 +114,6 @@ function Harness() {
       <span data-testid="has-banner">
         {String(hasSetupChecklistBanner(checklist))}
       </span>
-      <SetupChecklistCard checklist={checklist} />
       <SetupChecklistBanner checklist={checklist} />
     </>
   );
@@ -159,7 +157,7 @@ describe("setup checklist", () => {
     const store = renderHarness();
 
     expect(screen.getByText("No agent is ready on this computer")).toBeTruthy();
-    fireEvent.click(screen.getAllByText("Connect an agent")[0] as HTMLElement);
+    fireEvent.click(screen.getByText("Connect an agent"));
     expect(store.get(onboardingReopenStepAtom)).toBe("agent");
   });
 
@@ -169,9 +167,7 @@ describe("setup checklist", () => {
     renderHarness();
 
     expect(screen.queryByText(/No agent is ready/u)).toBeNull();
-    expect(screen.getAllByText("Finish setting up bb").length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getByText("Finish setting up bb")).toBeTruthy();
   });
 
   it("points the compact banner at the first step that is still open", () => {
@@ -190,9 +186,7 @@ describe("setup checklist", () => {
     arrange({ agentStatuses: ["ready"], settings: { streamerMode: true } });
 
     renderHarness();
-    fireEvent.click(
-      screen.getAllByLabelText("Dismiss setup checklist")[0] as HTMLElement,
-    );
+    fireEvent.click(screen.getByLabelText("Dismiss setup checklist"));
 
     expect(mocks.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
