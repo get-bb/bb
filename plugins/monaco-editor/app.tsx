@@ -481,18 +481,18 @@ function Notice({
         focusRef={conflictNoticeRef}
         label="File changed on disk, edits not saved."
       >
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 @min-[32rem]/file-conflict:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-2">
           <div className="flex min-w-0 max-w-full items-start gap-2">
             <Icon
               name="AlertTriangle"
               className="mt-1 size-4 shrink-0 text-warning-text"
               aria-hidden
             />
-            <span className="min-w-0 text-center leading-6">
+            <span className="min-w-0 text-left leading-6">
               File changed on disk, edits not saved.
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-6">
+          <div className="ml-auto flex shrink-0 items-center gap-6">
             <NoticeAction
               disabled={isRefreshing}
               onClick={onReload}
@@ -541,7 +541,7 @@ function Notice({
         focusRef={conflictNoticeRef}
         label="Disk version loaded."
       >
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-6 @min-[32rem]/file-conflict:justify-start">
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-6 @min-[32rem]/file-conflict:justify-start">
           <span>Disk version loaded.</span>
           <NoticeAction disabled={isRefreshing} onClick={onUndoReload}>
             Undo
