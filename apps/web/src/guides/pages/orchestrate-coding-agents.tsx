@@ -92,14 +92,14 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
             <strong>Worktree</strong> so the work gets its own branch.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong>, and describe
-            your task below it.
+            Paste the prompt from <strong>Copy for agent</strong>, and fill in
+            your task and reviewer at the top.
           </li>
         </Substeps>
       ),
       shot: {
         src: "/guides/orchestrate-coding-agents/window-start.png",
-        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, ending with the task: add per-user rate limiting to the upload endpoint, with a test.",
+        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test, and Codex as the reviewer.",
       },
       options: [],
     },
@@ -158,8 +158,14 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
               Start a thread and name it after the job, like{" "}
               <strong>Issue triage</strong>.
             </li>
-            <li>Walk it through the job once, and correct it as you go.</li>
-            <li>Ask it to save the job as a skill.</li>
+            <li>
+              Walk it through the job once, like where new issues land and how
+              you rank them, and correct it as you go.
+            </li>
+            <li>
+              Ask it to save the job as a skill, a saved set of instructions it
+              reuses.
+            </li>
           </Substeps>
           <PromptBlock
             name="Ask the manager"
@@ -184,7 +190,7 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
           ),
           shot: {
             src: "/guides/orchestrate-coding-agents/window-drag.png",
-            alt: "The Fix emoji filenames thread being dragged onto Issue triage in the bb sidebar, with Issue triage outlined as the drop target",
+            alt: "The Fix emoji filenames thread being dragged onto Issue triage in the bb sidebar, with Issue triage outlined as the drop target. The Issue triage thread is open on its report for three new issues: one P0, one P1, and one P2, each with an owner.",
           },
         },
       ],
@@ -241,7 +247,7 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       ),
       shot: {
         src: "/guides/orchestrate-coding-agents/window-workflows.png",
-        alt: "bb's Installed plugins settings filtered to Workflows, with its switch off",
+        alt: "bb's Installed plugins settings filtered to Workflows, with its switch on",
       },
       options: [],
     },
