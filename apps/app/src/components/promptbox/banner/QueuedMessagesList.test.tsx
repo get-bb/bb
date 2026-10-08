@@ -559,7 +559,7 @@ describe("QueuedMessagesList", () => {
     expect(count()?.lastElementChild?.textContent).toBe("3");
   });
 
-  it("names the lead failure or wait in the collapsed header", () => {
+  it("names the newest failure, else the newest wait, in the collapsed header", () => {
     const sharedProps = {
       sendDisabled: false,
       actionDisabled: false,
@@ -582,10 +582,17 @@ describe("QueuedMessagesList", () => {
       },
       waitingOn: { kind: "time" },
       sendAt: 0,
+      createdAt: 2,
     });
     const failedMessage = {
       ...makeQueuedMessage("q_failed", "Post the summary"),
       failureReason: "Provider unavailable",
+      createdAt: 1,
+    };
+    const draftMessage = {
+      ...makeQueuedMessage("q_draft", "Release notes outline"),
+      waitingOn: { kind: "plugin" as const, pluginId: "drafts", reason: "Draft" },
+      createdAt: 3,
     };
     const { container, rerender } = render(
       <QueuedMessagesList
@@ -610,6 +617,14 @@ describe("QueuedMessagesList", () => {
     expect(headerWait()?.textContent).toMatch(
       /^Rate limited · retrying at .* · attempt 2$/u,
     );
+
+    rerender(
+      <QueuedMessagesList
+        {...sharedProps}
+        queuedMessages={[retryMessage, plainMessage, draftMessage]}
+      />,
+    );
+    expect(headerWait()?.textContent).toMatch(/· Draft$/u);
 
     expandQueue();
     expect(headerWait()).toBeNull();

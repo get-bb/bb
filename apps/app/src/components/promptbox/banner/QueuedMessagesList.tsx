@@ -678,10 +678,12 @@ function QueuedMessagesHeaderWait({
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
 }) {
+  const newestFirst = [...queuedMessages].sort(
+    (first, second) => second.createdAt - first.createdAt,
+  );
   const attentionMessage =
-    queuedMessages.find(
-      (queuedMessage) => queuedMessage.failureReason !== null,
-    ) ?? queuedMessages.find(queuedMessageHasWaitLine);
+    newestFirst.find((queuedMessage) => queuedMessage.failureReason !== null) ??
+    newestFirst.find(queuedMessageHasWaitLine);
   const pluginDisplayName = usePluginDisplayName(
     attentionMessage?.waitingOn?.kind === "plugin"
       ? attentionMessage.waitingOn.pluginId
