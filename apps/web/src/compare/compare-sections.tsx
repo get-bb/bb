@@ -73,8 +73,8 @@ export const PLUGINS_COPY: SectionCopy = {
   body: (
     <>
       <p>
-        bb comes with everything you need out of the box: worktrees, diffs,
-        automations, a mobile app and more.
+        bb comes with everything you need: worktrees, diffs, automations, a
+        mobile app and more.
       </p>
       <p>
         When you want more—or less—customize in Settings, browse the{" "}
