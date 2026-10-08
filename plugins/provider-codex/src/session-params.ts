@@ -564,23 +564,28 @@ export function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
   return input.map((chunk): CodexUserInput => {
     switch (chunk.type) {
       case "text": {
+        const slashSkillMentions = chunk.mentions.filter(
+          ({ start, end, resource }) =>
+            resource.kind === "command" &&
+            resource.source === "skill" &&
+            resource.trigger === "/" &&
+            start >= 0 &&
+            end <= chunk.text.length &&
+            chunk.text.slice(start, end) === `/${resource.name}`,
+        );
+        if (slashSkillMentions.length === 0) {
+          return { type: "text", text: chunk.text, text_elements: [] };
+        }
+
         let text = "";
         let offset = 0;
-        for (const mention of [...chunk.mentions].sort(
+        for (const mention of slashSkillMentions.sort(
           (left, right) => left.start - right.start,
         )) {
-          const resource = mention.resource;
-          if (
-            resource.kind !== "command" ||
-            resource.source !== "skill" ||
-            resource.trigger !== "/" ||
-            mention.start < offset ||
-            mention.end > chunk.text.length ||
-            chunk.text.slice(mention.start, mention.end) !== `/${resource.name}`
-          ) {
+          if (mention.start < offset) {
             continue;
           }
-          text += `${chunk.text.slice(offset, mention.start)}$${resource.name}`;
+          text += `${chunk.text.slice(offset, mention.start)}$${chunk.text.slice(mention.start + 1, mention.end)}`;
           offset = mention.end;
         }
         return {
