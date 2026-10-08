@@ -216,6 +216,19 @@ it("undoes keeping the disk version without writing and restores conflict protec
     content: "Edited on a phone",
     expectedSha256: "disk",
   });
+  fireEvent.click(screen.getByRole("button", { name: "Keep disk version" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  read.mockRejectedValueOnce(new Error("Disk unavailable"));
+  fireEvent.click(screen.getByRole("button", { name: "Keep disk version" }));
+  await screen.findByText("Disk unavailable");
+  act(() => editor.addCommand.mock.calls[0]![1]());
+  await screen.findByRole("button", { name: "Save my edits" });
+  expect(write).toHaveBeenLastCalledWith({
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: file.sha256,
+  });
 });
 
 it.each(["edit", "file"])(

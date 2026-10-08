@@ -29,7 +29,11 @@ import {
 
 type SaveState =
   | { kind: "clean" }
-  | { kind: "reloaded"; discardedContent: string }
+  | {
+      kind: "reloaded";
+      discardedContent: string;
+      discardedSha256: string | null;
+    }
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "error"; message: string }
@@ -161,12 +165,13 @@ function MonacoFileOpener({
       if (file.kind !== "text" || editorRef.current !== editor) return;
       const discardedContent =
         saveStateRef.current.kind === "conflict" ? editor.getValue() : null;
+      const discardedSha256 = sha256Ref.current;
       sha256Ref.current = file.sha256;
       editor.setValue(file.content);
       setSaveState(
         discardedContent === null
           ? { kind: "clean" }
-          : { kind: "reloaded", discardedContent },
+          : { kind: "reloaded", discardedContent, discardedSha256 },
       );
     } catch (error) {
       if (editorRef.current !== editor) return;
@@ -183,8 +188,10 @@ function MonacoFileOpener({
     const current = saveStateRef.current;
     const editor = editorRef.current;
     if (current.kind !== "reloaded" || !editor) return;
+    const currentSha256 = sha256Ref.current;
+    sha256Ref.current = current.discardedSha256;
     editor.setValue(current.discardedContent);
-    setSaveState({ kind: "conflict", currentSha256: sha256Ref.current });
+    setSaveState({ kind: "conflict", currentSha256 });
     editor.focus();
   }, [setSaveState]);
 
