@@ -9,7 +9,6 @@ import {
   TeamCost,
   UsageVisual,
   type BrandLogo,
-  UsageVisual,
 } from "./compare-visuals";
 
 export type SectionCopy = {
