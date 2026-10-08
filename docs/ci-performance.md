@@ -442,8 +442,11 @@ The PR selection fix addresses an observed stale-base comparison in
 merged onto `5cd546507ed9cf7c721fb9c36cdd026ff336c82d`, while the event supplied
 `32f63ea825a241149972c277dc226d754ab90850`. The regression fixture advances main
 with an unrelated root configuration change, creates the refreshed merge, and
-checks that only the PR's app checks remain selected. Unknown paths and uncertain
-history retain conservative coverage.
+checks that only the PR's app checks remain selected. Replaying the actual
+historical merge reduced the comparison from 259 paths to the three edited plugin
+files, selecting two Linux and two Windows test shards instead of fifteen and
+thirteen, and skipping unrelated package smokes, provider probing, and dependency
+validation. Unknown paths and uncertain history retain conservative coverage.
 
 [Runner experiment 37808851050](https://github.com/get-bb/bb/actions/runs/37808851050)
 compared independent npm consumer installs in the tarball smoke. On Windows,

@@ -97,7 +97,7 @@ it("handles an empty window without inventing timings", () => {
   ).toContain("median —s");
 });
 
-it("fetches all job attempts and rejects truncated or malformed API evidence", async () => {
+it("fetches all job attempts and marks truncated or malformed inventory incomplete", async () => {
   const calls = [];
   const runs = await collectCiHealth(
     async (path) => {

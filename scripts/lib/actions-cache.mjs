@@ -78,7 +78,6 @@ export function actionsApi() {
         await delay(1_000 * 2 ** attempt);
         continue;
       }
-      if (response.ok) return response.status === 204 ? null : response.json();
       const retryAfter = Number(response.headers.get("retry-after"));
       const retryable =
         [408, 429, 500, 502, 503, 504].includes(response.status) ||
