@@ -406,6 +406,7 @@ describe("ThreadPromptContextBanner", () => {
           parentThreadSection={null}
           childThreadsSection={{
             items: [childThreadItem("thr_child", "Investigate failing checks")],
+            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection={null}
@@ -440,6 +441,7 @@ describe("ThreadPromptContextBanner", () => {
               }),
               childThreadItem("thr_b", "Investigate failing checks"),
             ],
+            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection="childThreads"
@@ -473,6 +475,7 @@ describe("ThreadPromptContextBanner", () => {
                 "Host-owned SourceCode and Diff renderers",
               ),
             ],
+            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection={null}
@@ -494,6 +497,43 @@ describe("ThreadPromptContextBanner", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
   });
 
+  it("shows the waiting question in the header only while collapsed", () => {
+    const renderBanner = (expandedSection: "childThreads" | null) => (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              childThreadItem("thr_blocked", "Install workspace tools", {
+                pending: true,
+              }),
+              childThreadItem("thr_working", "Investigate failing checks"),
+            ],
+            waitingQuestion: "Which color should the badge use?",
+          }}
+          pullRequestSection={null}
+          expandedSection={expandedSection}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>
+    );
+
+    const collapsed = renderToStaticMarkup(renderBanner(null));
+    expect(collapsed).toContain(">Which color should the badge use?<");
+    expect(collapsed).toContain(
+      'aria-label="2 active child threads, needs input: Which color should the badge use?"',
+    );
+    expect(collapsed).not.toContain("Active child threads");
+
+    const expanded = renderToStaticMarkup(renderBanner("childThreads"));
+    expect(expanded).toContain("Active child threads");
+    expect(expanded).not.toContain(">Which color should the badge use?<");
+  });
+
   it("expands once when a child thread newly needs input, even across remounts", () => {
     const onToggleSection = vi.fn();
     const renderBanner = (
@@ -501,9 +541,11 @@ describe("ThreadPromptContextBanner", () => {
       {
         gitSection = null,
         gitSectionPending = false,
+        waitingQuestion = null,
       }: {
         gitSection?: ReturnType<typeof makeGitSection> | null;
         gitSectionPending?: boolean;
+        waitingQuestion?: string | null;
       } = {},
     ) => (
       <MemoryRouter>
@@ -513,7 +555,7 @@ describe("ThreadPromptContextBanner", () => {
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
-          childThreadsSection={{ items }}
+          childThreadsSection={{ items, waitingQuestion }}
           pullRequestSection={null}
           expandedSection={null}
           onToggleSection={onToggleSection}

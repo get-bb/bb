@@ -69,6 +69,7 @@ import {
 } from "../../hooks/queries/environment-queries";
 import {
   useChildThreadPendingAttention,
+  type ChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
 } from "../../hooks/queries/child-thread-pending-interactions";
 import {
@@ -98,6 +99,7 @@ import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeade
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
+  formatPendingInteractionSummary,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
@@ -1784,11 +1786,31 @@ function ThreadDetailViewInternal(
           hasPendingInteraction: entry.hasPendingInteraction,
         }));
       if (activeItems.length === 0) return null;
-      return { items: activeItems };
+      return { items: activeItems, waitingQuestion: null };
     }, [childThreadSubsetQuery.data]);
   const childPendingInteractions = useChildThreadPendingAttention(
     childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
   );
+  const childThreadsBannerSection =
+    useMemo((): ThreadPromptChildThreadsSection | null => {
+      if (!childThreadsSection) return null;
+      const latest = childPendingInteractions.reduce<
+        ChildThreadPendingAttention | null
+      >(
+        (newest, item) =>
+          newest === null ||
+          item.interaction.createdAt > newest.interaction.createdAt
+            ? item
+            : newest,
+        null,
+      );
+      return {
+        ...childThreadsSection,
+        waitingQuestion: latest
+          ? formatPendingInteractionSummary({ interaction: latest.interaction })
+          : null,
+      };
+    }, [childThreadsSection, childPendingInteractions]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -2410,7 +2432,7 @@ function ThreadDetailViewInternal(
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
       childPendingInteractions={childPendingInteractions}
-      childThreadsSection={childThreadsSection}
+      childThreadsSection={childThreadsBannerSection}
       pullRequest={pullRequest}
       thread={thread}
     />

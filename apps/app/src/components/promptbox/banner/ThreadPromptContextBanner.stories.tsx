@@ -378,6 +378,7 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: false,
     },
   ],
+  waitingQuestion: null,
 };
 
 const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
@@ -389,6 +390,7 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: true,
     },
   ],
+  waitingQuestion: "Which color should the QA badge use?",
 };
 
 function withPending(
@@ -403,6 +405,7 @@ function withPending(
       ...items.filter((item) => item.hasPendingInteraction),
       ...items.filter((item) => !item.hasPendingInteraction),
     ],
+    waitingQuestion: "Approve running the migration on staging?",
   };
 }
 
@@ -415,6 +418,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     href: `/projects/proj-1/threads/thr_large_${i}`,
     hasPendingInteraction: i === 0,
   })),
+  waitingQuestion: "Which branch should I rebase onto?",
 };
 
 function buildPullRequestFixture(
