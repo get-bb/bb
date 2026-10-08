@@ -132,7 +132,22 @@ export const BB_VS_T3_CODE: Comparison = {
               other. bb is built to be changed: install a plugin from the
               marketplace or have an agent build one, instead of keeping a fork.
               And in bb, every agent another agent starts is a full thread you
-              can open and message mid-run.
+              can open and message mid-run. bb is also fully scriptable: its CLI
+              and SDK can drive anything the app does.
+            </p>
+          ),
+        },
+        {
+          question: "Can I script bb from the command line?",
+          answer: (
+            <p>
+              Yes. The <code>bb</code> CLI covers everything the app does: start
+              and message threads, run terminals, schedule automations, and
+              manage machines and plugins, so a script or another agent can
+              drive bb end to end. The SDK and plugin API let you add your own
+              commands, tools, and screens. T3 Code’s CLI mostly installs and
+              runs its server, and outside agents can start and message threads
+              through its MCP server.
             </p>
           ),
         },
