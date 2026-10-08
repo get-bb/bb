@@ -7,13 +7,13 @@ import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
 
 const LEDGER_HIGHLIGHT: CompareHighlight = {
-  title: "Know which agent is on each task",
+  title: "See the agents on every task",
   wide: false,
   visual: <TaskLedger />,
   body: (
     <p>
-      Each task shows the agents working on it, live, with their comments and
-      pull requests.
+      Each task shows its agents working live, with their comments and pull
+      requests.
     </p>
   ),
 };
@@ -22,10 +22,10 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
   slug: "vibe-kanban-alternative",
   title: "Vibe Kanban Alternative: Get Your Board Back in bb",
   description:
-    "Vibe Kanban is sunsetting. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any card to Claude Code, Codex, or another agent in its own Git worktree.",
+    "Vibe Kanban retired its board. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any task to Claude Code, Codex, or another agent in its own Git worktree.",
   competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
-  headline: "Vibe Kanban is sunsetting. Get your board back in bb.",
-  sub: "Hand any card to Claude Code, Codex, or another agent on a local board, in an app that ships a release every week.",
+  headline: "Vibe Kanban retired its board. Get yours back in bb.",
+  sub: "Hand any task to Claude Code, Codex, or another agent on a local board, in an app that ships a release every week.",
   heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,
   sections: [agentsSection(AGENTS_COPY)],
