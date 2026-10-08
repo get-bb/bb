@@ -139,6 +139,7 @@ interface UseSetupChecklistArgs {
 
 interface SetupChecklistState {
   items: SetupChecklistItem[] | null;
+  loading: boolean;
   agentMissing: boolean;
   act: (id: SetupChecklistItemId) => void;
   dismiss: () => void;
@@ -323,16 +324,20 @@ export function useSetupChecklist({
 
   return {
     items: everythingDone ? null : allItems,
+    loading:
+      allItems === null &&
+      visible &&
+      (statesQuery.isLoading ||
+        navigationQuery.isLoading ||
+        pluginsQuery.isLoading),
     agentMissing,
     act,
     dismiss,
   };
 }
 
-export function hasSetupChecklistItems(
-  checklist: SetupChecklistState,
-): boolean {
-  return checklist.items !== null;
+export function leadsEmptyHome(checklist: SetupChecklistState): boolean {
+  return checklist.items !== null || checklist.loading;
 }
 
 export function SetupChecklistCard({

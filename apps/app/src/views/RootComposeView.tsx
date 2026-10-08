@@ -32,7 +32,7 @@ import {
   SetupChecklistBanner,
   SetupChecklistCard,
   hasSetupChecklistBanner,
-  hasSetupChecklistItems,
+  leadsEmptyHome,
   useSetupChecklist,
 } from "@/components/onboarding/SetupChecklistHost";
 import { FIRST_THREAD_PROMPT } from "@/components/onboarding/onboarding-model";
@@ -1449,7 +1449,7 @@ function RootComposeSurface({
     !startedComposing &&
     projects !== undefined &&
     projects.length === 0 &&
-    hasSetupChecklistItems(setupChecklist);
+    leadsEmptyHome(setupChecklist);
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return hasSetupChecklistBanner(setupChecklist) ? (
