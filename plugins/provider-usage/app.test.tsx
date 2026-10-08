@@ -239,7 +239,7 @@ describe("provider usage footer disclosure", () => {
             force: false,
             machineIds: null,
             maxAgeMs: 30 * 60_000,
-            providerId: null,
+            providerIds: [],
           }),
         }),
       ),
@@ -265,29 +265,25 @@ describe("provider usage footer disclosure", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      slot
-        .getAllByRole("region")
-        .map((row) => row.getAttribute("aria-label")),
+      slot.getAllByRole("region").map((row) => row.getAttribute("aria-label")),
     ).toEqual([
       "Codex team@example.com",
       "Codex personal@example.com",
       "Claude Code claude-team@example.com",
     ]);
-    for (const providerId of ["codex", "claude-code"]) {
-      await waitFor(() =>
-        expect(fetchMock).toHaveBeenCalledWith(
-          "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
-          expect.objectContaining({
-            body: JSON.stringify({
-              force: false,
-              machineIds: ["source:account-pool"],
-              maxAgeMs: 2 * 60_000,
-              providerId,
-            }),
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/plugins/bb--provider-usage/rpc/getUsage",
+        expect.objectContaining({
+          body: JSON.stringify({
+            force: false,
+            machineIds: ["source:account-pool"],
+            maxAgeMs: 2 * 60_000,
+            providerIds: ["codex", "claude-code"],
           }),
-        ),
-      );
-    }
+        }),
+      ),
+    );
     fireEvent.pointerDown(
       slot.getByRole("button", { name: "Usage machine: Account Pooler" }),
       { button: 0 },
@@ -364,7 +360,7 @@ describe("provider usage footer disclosure", () => {
           force: true,
           machineIds: ["host-intel"],
           maxAgeMs: 0,
-          providerId: null,
+          providerIds: [],
         }),
       }),
     );
@@ -383,7 +379,7 @@ describe("provider usage footer disclosure", () => {
           force: false,
           machineIds: null,
           maxAgeMs: 5 * 60_000,
-          providerId: null,
+          providerIds: [],
         }),
       }),
     );
@@ -550,5 +546,95 @@ it.each([
       slot.queryByRole("button", { name: "Retry usage refresh" }),
     ).toBeNull();
   }
+  await mounted.lifecycle.dispose();
+});
+
+it("keeps a measured refresh when an older snapshot response arrives late", async () => {
+  const account = (usage: UsageProvider["usage"]): UsageProvider => ({
+    id: "account",
+    providerId: "codex",
+    accountLabel: "review@example.com",
+    displayName: "Codex",
+    logoUrl: null,
+    icon: null,
+    strings: { iconTint: null },
+    signInHint: "Sign in.",
+    expiredHint: "Sign in again.",
+    usage,
+  });
+  const snapshot = (usage: UsageProvider["usage"]) =>
+    Response.json({
+      ok: true,
+      result: {
+        machines: [
+          {
+            id: "source:pool",
+            displayName: "Review pool",
+            status: "connected",
+            providers: [account(usage)],
+            error: null,
+          },
+        ],
+      },
+    });
+  let releaseInventory: (() => void) | null = null;
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const { providerIds } = JSON.parse(String(init?.body)) as {
+        providerIds: string[];
+      };
+      if (providerIds.length > 0)
+        return snapshot({
+          status: "ok",
+          accountEmail: "review@example.com",
+          planLabel: null,
+          windows: [
+            {
+              label: "Weekly limit",
+              usedPercent: 37,
+              resetsAt: null,
+              cost: null,
+            },
+          ],
+        });
+      if (fetchMock.mock.calls.length === 1) return snapshot(null);
+      await new Promise<void>((resolve) => {
+        releaseInventory = resolve;
+      });
+      return snapshot(null);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const app = await loadPluginApp(() => import("./app"));
+  const mounted = await mountPluginContentScripts(app, {
+    pluginId: "bb--provider-usage",
+  });
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+  window.dispatchEvent(new Event("blur"));
+  now.mockReturnValue(5 * 60_000 + 1_001);
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => expect(releaseInventory).not.toBeNull());
+  now.mockRestore();
+
+  const item = app.experimentalSidebarFooterItems[0];
+  if (item?.kind !== "disclosure") throw new Error("missing disclosure");
+  const slot = renderSlot(
+    item,
+    { dismiss: vi.fn() },
+    { pluginId: "bb--provider-usage" },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  releaseInventory!();
+  await waitFor(() => expect(slot.getByText("37%")).toBeTruthy());
+  await waitFor(() =>
+    expect(
+      slot
+        .getByRole("button", { name: "Reload provider usage" })
+        .hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  expect(slot.queryByText("Usage not reported.")).toBeNull();
+  expect(slot.getByText("37%")).toBeTruthy();
   await mounted.lifecycle.dispose();
 });
