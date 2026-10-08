@@ -109,6 +109,10 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
               time: prompt.lastUsedAt ?? prompt.createdAt,
             })),
             Date.now(),
+            (item) =>
+              item.kind === "starred" ||
+              item.candidate.scope ===
+                (input.composer === "new-thread" ? "project" : "thread"),
           )
           .map((match) => match.item)
       : [
@@ -231,7 +235,7 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
       name: "prompts",
       summary: "Search previous prompts and manage starred prompts",
       description:
-        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prompts that start with the query first, then by match type (exact, word start, typo, inside a word, abbreviation), then by relevance decayed by age. Previous prompts come from bb's prompt history.",
+        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prompts that start with the query first, then by match type (exact, word start, typo, inside a word, abbreviation), then starred prompts and prompts of the searching composer's kind (thread starts in the new-thread composer, follow-ups in a thread), then by relevance decayed by age. Previous prompts come from bb's prompt history.",
       commands: {
         search: cliCommand({
           summary: "Search starred and previous prompts",
@@ -251,6 +255,13 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
               type: "string",
               description: "Search this thread's prompts",
             },
+            composer: {
+              type: "enum",
+              values: ["new-thread", "follow-up"],
+              default: "follow-up",
+              description:
+                "Rank like this composer: new-thread favors prompts that started threads, follow-up favors follow-ups",
+            },
             json: JSON_OPTION,
           },
           constraints: [
@@ -267,6 +278,7 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
                     : "global",
               projectId: options.project ?? null,
               threadId: options.thread ?? null,
+              composer: options.composer,
             });
             if (options.json) {
               return { exitCode: 0, stdout: JSON.stringify(result) };

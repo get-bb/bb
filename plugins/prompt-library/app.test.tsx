@@ -211,6 +211,7 @@ describe("prompt library popup", () => {
       scope: "global",
       projectId: "proj_a",
       threadId: "thr_1",
+      composer: "follow-up",
     });
 
     fireEvent.keyDown(searchBox(first.slot), { key: "Tab" });
@@ -243,6 +244,7 @@ describe("prompt library popup", () => {
       scope: "global",
       projectId: "proj_a",
       threadId: null,
+      composer: "new-thread",
     });
     expect(
       within(newThread.slot.getByRole("radiogroup", { name: "Search scope" }))

@@ -15,7 +15,11 @@ function entry(
   id: string,
   createdAt: number,
   value: string,
-  location: { projectId?: string; threadId?: string } = {},
+  location: {
+    projectId?: string;
+    threadId?: string;
+    scope?: HistoryEntry["scope"];
+  } = {},
 ): HistoryEntry {
   return {
     id,
@@ -23,6 +27,7 @@ function entry(
     input: text(value),
     projectId: location.projectId ?? "proj_a",
     threadId: location.threadId ?? "thr_a",
+    scope: location.scope ?? "thread",
   };
 }
 
@@ -63,7 +68,12 @@ async function setup(entries: readonly HistoryEntry[]) {
   return { ...fake, history, list, call };
 }
 
-const GLOBAL = { scope: "global", projectId: null, threadId: null } as const;
+const GLOBAL = {
+  scope: "global",
+  projectId: null,
+  threadId: null,
+  composer: "follow-up",
+} as const;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -119,6 +129,7 @@ describe("prompt library server", () => {
         createdAt: 1,
         projectId: "proj_a",
         threadId: "thr_a",
+        scope: "thread",
         input: [
           {
             type: "text",
@@ -412,6 +423,24 @@ describe("prompt library server", () => {
     expect(result.prompts.map((row) => row.id)).toEqual(["h1", "h2", "h3"]);
   });
 
+  it("ranks prompts of the searching composer's kind first within a match type", async () => {
+    const { call } = await setup([
+      entry("start", 1, "investigate the flaky login test", {
+        scope: "project",
+      }),
+      entry("follow", 2, "the login test is still flaky"),
+    ]);
+    const search = async (composer: "new-thread" | "follow-up") =>
+      (
+        (await call("search", { ...GLOBAL, composer, query: "flaky" })) as {
+          prompts: { id: string }[];
+        }
+      ).prompts.map((row) => row.id);
+
+    expect(await search("new-thread")).toEqual(["start", "follow"]);
+    expect(await search("follow-up")).toEqual(["follow", "start"]);
+  });
+
   it("weighs how often a word appears against how old the prompt is", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const now = Date.UTC(2026, 9, 8);
@@ -458,6 +487,7 @@ describe("prompt library server", () => {
       scope: "thread",
       projectId: "proj_a",
       threadId: "thr_b",
+      composer: "follow-up",
     })) as { prompts: { id: string }[] };
     expect(thread.prompts.map((row) => row.id)).toEqual(["h2"]);
 
@@ -467,6 +497,7 @@ describe("prompt library server", () => {
       scope: "project",
       projectId: null,
       threadId: null,
+      composer: "new-thread",
     })) as { prompts: unknown[] };
     expect(missing.prompts).toEqual([]);
     expect(list).not.toHaveBeenCalled();

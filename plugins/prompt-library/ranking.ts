@@ -29,6 +29,7 @@ export interface SearchMatch<T> {
   item: T;
   prefix: boolean;
   quality: number;
+  favored: boolean;
   score: number;
   time: number;
 }
@@ -174,6 +175,7 @@ export function compareMatches(
   return (
     Number(right.prefix) - Number(left.prefix) ||
     right.quality - left.quality ||
+    Number(right.favored) - Number(left.favored) ||
     right.score - left.score ||
     right.time - left.time
   );
@@ -227,6 +229,7 @@ export function createSearchIndex<T>() {
       query: string,
       extras: readonly SearchDocument<T>[],
       now: number,
+      isFavored: (item: T) => boolean,
     ): SearchMatch<T>[] {
       const terms = queryTerms(query);
       if (terms.length === 0) return [];
@@ -276,6 +279,7 @@ export function createSearchIndex<T>() {
           item,
           prefix: startsWithOpening(text, opening),
           quality,
+          favored: isFavored(item),
           score: relevance * 0.5 ** (age / RECENCY_HALF_LIFE_MS),
           time,
         };

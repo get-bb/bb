@@ -12,6 +12,7 @@ export interface HistoryCandidate {
   prompt: ComposerDraftReplacement;
   projectId: string;
   threadId: string;
+  scope: HistoryEntry["scope"];
 }
 
 function candidate(entry: HistoryEntry): HistoryCandidate {
@@ -21,6 +22,7 @@ function candidate(entry: HistoryEntry): HistoryCandidate {
     prompt: promptFromHistory(entry.input),
     projectId: entry.projectId,
     threadId: entry.threadId,
+    scope: entry.scope,
   };
 }
 
