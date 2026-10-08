@@ -4546,6 +4546,9 @@ importers:
 
   plugins/provider-codex:
     dependencies:
+      '@bb/shared-ui':
+        specifier: workspace:*
+        version: link:../../packages/shared-ui
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
@@ -4562,6 +4565,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.13
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
@@ -4571,6 +4577,9 @@ importers:
       hono:
         specifier: 4.11.9
         version: 4.11.9
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'

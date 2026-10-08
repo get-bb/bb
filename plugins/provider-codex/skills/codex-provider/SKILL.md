@@ -10,6 +10,16 @@ and compaction through the corresponding core `bb thread` commands.
 `bb thread clear-goal <id>` clears its durable active Goal and waits for provider
 confirmation. Inspect the thread before recovery actions.
 
+Codex questions from `request_user_input` pause the turn until answered.
+Questions from `request_user_input_async` do not pause it: the plugin opens a
+question card for each one, one at a time, that stays open for up to an hour
+after the turn ends. Submitting sends the answer to the thread as a message
+(steering an active turn or starting a new one); dismissing sends nothing.
+From the CLI, find it with `bb thread interactions list <thread>` and answer
+with `bb thread interactions respond <interactionId> <thread> --value
+'{"answers":{"question-1":{"selected":["option-2"]}}}'`. Questions and options
+are numbered from 1 in order; use `"freeText"` for a typed answer.
+
 Unlisted model IDs are accepted by this provider; acceptance does not establish
 account access. Inspect models on the actual execution host with
 `bb provider models codex` using the machine or environment selector.
