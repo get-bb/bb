@@ -54,6 +54,16 @@
   margin-top: 56px;
 }
 
+.cmp-hero .cmp-hero-providers {
+  margin: 0 0 22px;
+}
+
+.cmp-hero-visual .cmp-anywhere {
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: left;
+}
+
 .cmp-team {
   margin-top: 64px;
   text-align: center;

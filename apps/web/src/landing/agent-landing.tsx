@@ -177,6 +177,7 @@ type VariantContent = {
   headline: string;
   sub: string;
   closer: string;
+  lead: CompareHighlight;
   sections: CompareHighlight[];
   faq: CompareFaqGroup[];
 };
@@ -189,7 +190,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     headline: "Claude Code on your phone. See which agent needs you.",
     sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
     closer: "Know which agent needs you",
-    sections: [PHONE_SECTION, CODEX_SECTION, PARALLEL_SECTION],
+    lead: PHONE_SECTION,
+    sections: [CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
       {
@@ -206,7 +208,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     headline: "Have Codex review Claude Code’s work",
     sub: "No copy-paste between them. Both run in one app on the subscriptions you already have. Free and open source.",
     closer: "Let your agents check each other’s work",
-    sections: [CODEX_SECTION, PARALLEL_SECTION, PHONE_SECTION],
+    lead: CODEX_SECTION,
+    sections: [PARALLEL_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Claude Code and Codex",
@@ -223,7 +226,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
     headline: "Run your own software factory of coding agents",
     sub: "Run Claude Code, Codex, and more in parallel. One list shows which are running, waiting on you, or done. Free and open source.",
     closer: "Put your software factory to work",
-    sections: [PARALLEL_SECTION, CODEX_SECTION, PHONE_SECTION],
+    lead: PARALLEL_SECTION,
+    sections: [CODEX_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Running several agents",
@@ -263,16 +267,21 @@ export function AgentLandingPage({ variant }: { variant: LandingVariant }) {
       <SiteNav />
 
       <header className="hero cmp-hero">
-        <h1>{brandProse(content.headline)}</h1>
-        <p className="sub">{brandProse(content.sub)}</p>
-        <InstallOptions placement="hero" />
-        <div className="providers">
+        <div className="providers cmp-hero-providers">
           <span className="label">Works with</span>
           <ProviderChips />
         </div>
+        <h1>{brandProse(content.headline)}</h1>
+        <p className="sub">{brandProse(content.sub)}</p>
+        <InstallOptions placement="hero" />
+        <div className="cmp-hero-visual">{content.lead.visual}</div>
       </header>
 
-      {[...content.sections, pluginsSection(PLUGINS_COPY)].map((highlight) => (
+      {[
+        { ...content.lead, visual: null, wide: true },
+        ...content.sections,
+        pluginsSection(PLUGINS_COPY),
+      ].map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
       ))}
 
