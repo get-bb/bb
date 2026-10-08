@@ -33,12 +33,14 @@ import { AgentSplit, type BrandLogo } from "./compare-visuals";
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 
 const PLUGINS_COPY_T3: SectionCopy = {
-  title: "Customize everything with plugins",
+  title: "Customize everything in the app with plugins",
   body: (
     <>
       <p>
-        Plugins add panels to the sidebar, commands to the bb CLI, tools your
-        agents can call, and new agents.
+        Plugins can change almost any part of bb: pages, side panels, message
+        cards, file editors, and the command palette. They can also add new
+        agents, tools and skills for your agents, background jobs, webhooks, and
+        machines to run on.
       </p>
       <p>
         300+ are already in the marketplace, and bb still updates every week
@@ -55,7 +57,7 @@ export const BB_VS_T3_CODE: Comparison = {
     "bb is a free, open-source T3 Code alternative you can change without forking. Add panels, commands, and agents from the plugin marketplace, or have your agent build them.",
   competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
   headline: "The T3 Code alternative you can change without forking",
-  sub: "Add what you need from the plugin marketplace, or have your agent build it. Free and open source.",
+  sub: "Add what you need from the plugin marketplace, or have your agent build it and share it with your team. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: pluginsSection(PLUGINS_COPY_T3),
   sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
@@ -73,7 +75,7 @@ export const BB_VS_T3_CODE: Comparison = {
         {
           feature: "Message a subagent",
           bb: cell("yes", "Mid-run, from any device"),
-          competitor: cell("no", "Subagent threads can't take messages"),
+          competitor: cell("no"),
         },
         {
           ...BB_ROWS.accountSwitch,
@@ -91,19 +93,11 @@ export const BB_VS_T3_CODE: Comparison = {
     {
       title: "Everything you use today",
       rows: [
-        {
-          feature: "Git worktree per thread",
-          bb: cell("yes", "Setup and teardown scripts"),
-          competitor: cell("yes"),
-        },
-        {
-          feature: "Review and merge",
-          bb: cell("yes", "Line comments, checks, merge"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.worktrees, bb: cell("yes"), competitor: cell("yes") },
+        { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
           feature: "Phone and remote access",
-          bb: cell("yes", "iOS, Android, any browser"),
+          bb: cell("yes"),
           competitor: cell("yes"),
         },
         { ...BB_ROWS.rewind, competitor: cell("yes") },
@@ -112,7 +106,7 @@ export const BB_VS_T3_CODE: Comparison = {
     {
       title: "Price and license",
       rows: [
-        { ...BB_ROWS.pricing, competitor: price("$0", "No paid plan") },
+        { ...BB_ROWS.pricing, competitor: price("$0", "Any team size") },
         { ...BB_ROWS.license, competitor: cell("yes", "MIT") },
       ],
     },
