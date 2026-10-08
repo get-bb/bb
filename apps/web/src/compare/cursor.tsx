@@ -39,10 +39,7 @@ const PLANS_SECTION = {
   visual: <PlansVisual />,
   body: (
     <>
-      <p>
-        Claude Code uses your Claude subscription, Codex your ChatGPT one, and
-        Cursor’s agent your Cursor plan. Pick the right agent for each task.
-      </p>
+      <p>Each agent runs on the plan you already pay for.</p>
       <p>
         When an agent hits a usage limit, bb picks the work back up once the
         limit resets.
@@ -80,10 +77,7 @@ export const BB_VS_CURSOR: Comparison = {
         },
         {
           ...BB_ROWS.handoff,
-          competitor: cell(
-            "partial",
-            "Subagents and Projects, Cursor’s agent only",
-          ),
+          competitor: cell("partial", "Only between Cursor’s own agents"),
         },
         {
           ...BB_ROWS.accountSwitch,
