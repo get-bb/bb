@@ -302,7 +302,7 @@ export function BrowserConcept({ scene }: { scene: "code" | "work" }) {
         </span>
       </div>
       <div className="gd-btab-control" aria-hidden="true">
-        <span>Claude Code is controlling this tab</span>
+        <span>Browser Automation is controlling this tab</span>
         <span className="gd-btab-action">Stop</span>
         <span className="gd-btab-action">Take over</span>
       </div>

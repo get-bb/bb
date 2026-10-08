@@ -37,7 +37,7 @@ const BROWSER_GUIDE: ContentLink = {
   href: "/guides/agent-browser",
 };
 const BROWSER_WORK_GUIDE: ContentLink = {
-  label: "Have an agent do your browser work",
+  label: "Get research and reports from any site",
   href: "/guides/agent-browser-for-work",
 };
 
