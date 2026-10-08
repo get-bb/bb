@@ -437,7 +437,7 @@ function Notice({
             onClick={onOverwrite}
             title="Replace the saved file with your edits"
           >
-            Keep my edits
+            Keep edits
           </NoticeAction>
         </div>
       </NoticeRow>
