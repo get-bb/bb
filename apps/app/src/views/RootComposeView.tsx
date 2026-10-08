@@ -30,7 +30,6 @@ import {
 } from "@/components/promptbox/NewThreadComposer";
 import {
   SetupChecklistBanner,
-  SetupChecklistCard,
   hasSetupChecklistBanner,
   useSetupChecklist,
 } from "@/components/onboarding/SetupChecklistHost";
@@ -126,7 +125,6 @@ import {
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
-import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
@@ -170,8 +168,6 @@ import {
 
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 
-const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
-  "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
 function readSectionIdFromLocationState(state: unknown): string | null {
@@ -402,14 +398,10 @@ export function RootComposeView() {
   const { navigateInPane } = usePaneContext();
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
-  const location = useLocation();
   const createThread = useCreateThread();
   const [placement, setPlacement] = useRootComposePlacement();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
-  );
-  const [startedComposing, setStartedComposing] = useState(() =>
-    shouldStartComposingFromLocationState(location.state),
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
@@ -452,8 +444,6 @@ export function RootComposeView() {
           lastCreatedThreadId={lastCreatedThreadId}
           rootComposeProjectId={rootComposeProjectId}
           setRootComposeProjectId={setRootComposeProjectId}
-          setStartedComposing={setStartedComposing}
-          startedComposing={startedComposing}
         />
       )}
     </NewThreadComposer>
@@ -465,8 +455,6 @@ interface RootComposeSurfaceProps {
   lastCreatedThreadId: string | null;
   rootComposeProjectId: string;
   setRootComposeProjectId: (projectId: string) => void;
-  setStartedComposing: (started: boolean) => void;
-  startedComposing: boolean;
 }
 
 function RootComposeSurface({
@@ -474,8 +462,6 @@ function RootComposeSurface({
   lastCreatedThreadId,
   rootComposeProjectId,
   setRootComposeProjectId,
-  setStartedComposing,
-  startedComposing,
 }: RootComposeSurfaceProps) {
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
@@ -528,10 +514,9 @@ function RootComposeSurface({
   useEffect(
     () =>
       subscribeComposerFocusRequests(promptDraft.storageKey, () => {
-        setStartedComposing(true);
         window.requestAnimationFrame(focusPromptBox);
       }),
-    [focusPromptBox, promptDraft.storageKey, setStartedComposing],
+    [focusPromptBox, promptDraft.storageKey],
   );
   const composerActions = useMemo(
     () => createCoreComposerActions(pluginComposerHost),
@@ -557,8 +542,8 @@ function RootComposeSurface({
   useEffect(() => {
     const initialPrompt = readInitialPromptFromSearch(location.search);
     if (initialPrompt === null || searchInitialDraft === undefined) return;
-    setStartedComposing(true);
     setPromptDraft(searchInitialDraft);
+    if (!isPointerCoarse) window.requestAnimationFrame(focusPromptBox);
     navigate(
       getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
       { replace: true, state: location.state },
@@ -566,9 +551,10 @@ function RootComposeSurface({
   }, [
     location.search,
     location.state,
+    focusPromptBox,
+    isPointerCoarse,
     navigate,
     setPromptDraft,
-    setStartedComposing,
     searchInitialDraft,
   ]);
   useEffect(() => {
@@ -582,9 +568,6 @@ function RootComposeSurface({
     if (!hasSingleUseRootComposeTargetState(location.state)) return;
     if (environmentTarget?.kind === "host" && !hostSelectionReady) {
       return;
-    }
-    if (shouldStartComposingFromLocationState(location.state)) {
-      setStartedComposing(true);
     }
     const targetPlacement = readThreadCreationPlacement(location.state);
     if (targetPlacement !== null) {
@@ -619,7 +602,6 @@ function RootComposeSurface({
     seedEnvironmentSelectionValue,
     selectHostForNewEnvironment,
     setPlacement,
-    setStartedComposing,
     stateInitialPrompt,
     stateInitialDraft,
   ]);
@@ -1389,27 +1371,6 @@ function RootComposeSurface({
       />
     </div>
   ) : null;
-  const showEmptyWelcome =
-    !startedComposing && projects !== undefined && projects.length === 0;
-  const handleStartComposing = useCallback(
-    (prefill?: string) => {
-      if (prefill) {
-        composerActions.replace({
-          text: prefill,
-          mentions: [],
-        });
-      }
-      setStartedComposing(true);
-    },
-    [composerActions, setStartedComposing],
-  );
-  useEffect(() => {
-    if (!startedComposing) return;
-    if (isProviderCliBlocked) return;
-    if (isPointerCoarse) return;
-    const handle = window.requestAnimationFrame(focusPromptBox);
-    return () => window.cancelAnimationFrame(handle);
-  }, [isProviderCliBlocked, isPointerCoarse, focusPromptBox, startedComposing]);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
   const currentProjectName = currentProject?.name ?? null;
@@ -1445,7 +1406,14 @@ function RootComposeSurface({
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
   const setupChecklist = useSetupChecklist({
-    onStartThread: () => handleStartComposing(FIRST_THREAD_PROMPT),
+    onStartThread: () => {
+      composerActions.replace((current) =>
+        current.text.trim() === ""
+          ? { ...current, text: FIRST_THREAD_PROMPT }
+          : current,
+      );
+      composerActions.focus();
+    },
   });
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
@@ -1504,12 +1472,10 @@ function RootComposeSurface({
     />
   );
 
-  const isCompactHomeLayout = isCompactViewport && !showEmptyWelcome;
-
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
     autoFocus: !isProviderCliBlocked,
-    mentionMenuPlacement: isCompactHomeLayout ? "top" : "bottom",
+    mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
     blockedReason:
       blockingProviderCliStatus === null
@@ -1545,22 +1511,18 @@ function RootComposeSurface({
             >
               <RootComposeSecondaryContent
                 contentClassName={
-                  showEmptyWelcome
-                    ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
-                    : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
+                  ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
                 }
-                isCompactHomeLayout={isCompactHomeLayout}
+                isCompactHomeLayout={isCompactViewport}
                 setupComplete={setupChecklist.setupComplete}
                 compactScrollContent={
-                  showEmptyWelcome ? null : (
-                    <RootComposeMobileRecents
-                      highlightedThreadId={lastCreatedThreadId}
-                      projectNamesById={mobileRecentProjectNamesById}
-                      providersById={mobileRecentProvidersById}
-                      showCreatingRow={isSubmitting}
-                      threads={mobileRecentThreads}
-                    />
-                  )
+                  <RootComposeMobileRecents
+                    highlightedThreadId={lastCreatedThreadId}
+                    projectNamesById={mobileRecentProjectNamesById}
+                    providersById={mobileRecentProvidersById}
+                    showCreatingRow={isSubmitting}
+                    threads={mobileRecentThreads}
+                  />
                 }
                 isSecondaryPanelOpen={isSecondaryPanelOpen}
                 onToggleSecondaryPanel={handleToggleSecondaryPanel}
@@ -1589,19 +1551,7 @@ function RootComposeSurface({
                   onPanelFocus: touchFixedPanelTabsState,
                 }}
               >
-                {showEmptyWelcome ? (
-                  <RootComposeEmptyWelcome
-                    onCompose={handleStartComposing}
-                    onAddProject={quickCreateProject.openCreateDialog}
-                    addProjectDisabled={
-                      !quickCreateProject.isAvailable ||
-                      quickCreateProject.isCreating
-                    }
-                    footer={<SetupChecklistCard checklist={setupChecklist} />}
-                  />
-                ) : (
-                  promptBox
-                )}
+                {promptBox}
               </RootComposeSecondaryContent>
             </PluginThreadPanelNavigationProvider>
           </AppNavigationHostProvider>

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -19,6 +20,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -33,20 +35,22 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { writeLastKnownPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import {
+  AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getThreadRoutePath,
   isPluginsRoutePath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
-import { useSidebarNavigation } from "@/lib/plugin-sidebar-navigation";
 import { AppNavRail, NavRailNewThreadButton } from "./AppNavRail";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
+  onNavigate: vi.fn(),
   onNewChat: vi.fn(),
 }));
 
@@ -71,15 +75,7 @@ const ALL_KEYS = [
   "garden/docs",
 ];
 const DOCS_PATH = getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
-
-function HostCustomizeTrigger() {
-  const { actions } = useSidebarNavigation();
-  return (
-    <button type="button" onClick={() => actions.openCustomize()}>
-      Plugin customize
-    </button>
-  );
-}
+const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
 function RailHarness() {
   const location = useLocation();
@@ -88,8 +84,8 @@ function RailHarness() {
   const [isCustomizing, setCustomizing] = useState(false);
   return (
     <SidebarNavigationModelProvider
+      onNavigate={mocks.onNavigate}
       onNewChat={mocks.onNewChat}
-      onOpenCustomize={() => setCustomizing(true)}
       splitEnabled={false}
     >
       <AppNavRail
@@ -99,7 +95,6 @@ function RailHarness() {
         customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
       />
       <NavRailNewThreadButton />
-      <HostCustomizeTrigger />
       <output data-testid="pathname">{location.pathname}</output>
     </SidebarNavigationModelProvider>
   );
@@ -107,7 +102,7 @@ function RailHarness() {
 
 function renderRail(
   initialPath: string,
-  options: { visibleKeys?: string[] } = {},
+  options: { visibleKeys?: string[]; isCompactViewport?: boolean } = {},
 ) {
   const store = createStore();
   if (options.visibleKeys) {
@@ -117,11 +112,15 @@ function renderRail(
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <TooltipProvider>
-          <SidebarProvider>
-            <RailHarness />
-          </SidebarProvider>
-        </TooltipProvider>
+        <CompactViewportOverrideProvider
+          isCompactViewport={options.isCompactViewport ?? false}
+        >
+          <TooltipProvider>
+            <SidebarProvider>
+              <RailHarness />
+            </SidebarProvider>
+          </TooltipProvider>
+        </CompactViewportOverrideProvider>
       </MemoryRouter>
     </Provider>,
   );
@@ -218,6 +217,89 @@ describe("AppNavRail", () => {
     expect(currentRailLabels()).toEqual(["Plugins"]);
   });
 
+  it("keeps a plugin panel highlighted on its nested routes", () => {
+    renderRail(`${DOCS_PATH}/guides/getting-started.md`);
+
+    expect(currentRailLabels()).toEqual(["Docs"]);
+  });
+
+  it("lists the Automations panel as a destination", () => {
+    setPluginSlotRegistrations(
+      AUTOMATIONS_PLUGIN_ID,
+      registrationSet({
+        navPanels: [
+          {
+            id: AUTOMATIONS_PLUGIN_PANEL_PATH,
+            title: "Automations",
+            icon: "Calendar",
+            path: AUTOMATIONS_PLUGIN_PANEL_PATH,
+            component: () => null,
+          },
+        ],
+      }),
+    );
+
+    renderRail(THREAD_PATH);
+
+    expect(railButton("Automations")).toBeDefined();
+  });
+
+  it("draws a remembered plugin panel before boot and keeps the same button when the plugin registers", () => {
+    resetPluginSlotStoreForTest();
+    resetPluginFrontendBootStateForTest();
+    writeLastKnownPluginNavPanelChrome([
+      {
+        pluginId: "demo",
+        id: "board",
+        path: "board",
+        title: "Demo board",
+        icon: "columns",
+      },
+    ]);
+    renderRail(THREAD_PATH);
+    const remembered = railButton("Demo board");
+
+    act(() => {
+      setPluginSlotRegistrations(
+        "demo",
+        registrationSet({
+          navPanels: [
+            {
+              id: "board",
+              title: "Demo board",
+              icon: "columns",
+              path: "board",
+              component: () => null,
+            },
+          ],
+        }),
+      );
+      markPluginFrontendsSettled();
+    });
+
+    expect(railButton("Demo board")).toBe(remembered);
+  });
+
+  it("drops a remembered plugin panel that never registers once frontends have settled", () => {
+    resetPluginSlotStoreForTest();
+    resetPluginFrontendBootStateForTest();
+    writeLastKnownPluginNavPanelChrome([
+      {
+        pluginId: "ghost",
+        id: "board",
+        path: "board",
+        title: "Ghost board",
+        icon: "columns",
+      },
+    ]);
+    renderRail(THREAD_PATH);
+    expect(railButton("Ghost board")).toBeDefined();
+
+    act(() => markPluginFrontendsSettled());
+
+    expect(railLabels()).not.toContain("Ghost board");
+  });
+
   it("returns Home to the last thread, skipping plugin panels and Settings visited since", () => {
     renderRail(THREAD_PATH);
 
@@ -236,6 +318,21 @@ describe("AppNavRail", () => {
     fireEvent.click(railButton("Home"));
 
     expect(pathname()).toBe("/");
+  });
+
+  it("dismisses the drawer for a plugin panel but not for destinations that swap the list beside the rail", () => {
+    renderRail(THREAD_PATH);
+
+    fireEvent.click(railButton("Plugins"));
+    fireEvent.click(railButton("Skills"));
+    fireEvent.click(railButton("Settings"));
+    fireEvent.click(railButton("Home"));
+    expect(pathname()).toBe(THREAD_PATH);
+    expect(mocks.onNavigate).not.toHaveBeenCalled();
+
+    fireEvent.click(railButton("Docs"));
+    expect(pathname()).toBe(DOCS_PATH);
+    expect(mocks.onNavigate).toHaveBeenCalledTimes(1);
   });
 
   it("does not mount a plugin panel's sidebar accessory", () => {
@@ -283,6 +380,28 @@ describe("AppNavRail", () => {
     );
 
     expect(mocks.dispatch).toHaveBeenCalledWith("thread.search", null);
+  });
+
+  it("opens the customize sheet from More on a compact viewport", async () => {
+    renderRail(THREAD_PATH, { isCompactViewport: true });
+
+    fireEvent.click(railButton("More"));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize rail" }),
+    );
+
+    const editor = await screen.findByTestId("nav-rail-customize");
+    const list = within(editor).getByRole("list", {
+      name: "Sidebar navigation",
+    });
+    fireEvent.click(within(list).getByRole("checkbox", { name: /Skills/u }));
+    expect(railLabels()).toEqual([
+      "Home",
+      "Plugins",
+      "Docs",
+      "More",
+      "Settings",
+    ]);
   });
 
   it("customizes the rail from a popover beside it without leaving Settings", async () => {
@@ -340,7 +459,10 @@ describe("AppNavRail", () => {
       () => new DOMRect(12, moreTop, 28, 28),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Plugin customize" }));
+    fireEvent.keyDown(railButton("More"), { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize rail" }),
+    );
     const editor = await screen.findByTestId("nav-rail-customize");
     const wrapper = editor.closest<HTMLElement>(
       "[data-radix-popper-content-wrapper]",
@@ -354,14 +476,6 @@ describe("AppNavRail", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(wrapper.style.transform).toBe(openedAt);
-  });
-
-  it("opens the same popover when a plugin asks the host to customize navigation", async () => {
-    renderRail(THREAD_PATH);
-
-    fireEvent.click(screen.getByRole("button", { name: "Plugin customize" }));
-
-    expect(await screen.findByTestId("nav-rail-customize")).toBeTruthy();
   });
 
   it("drops the header New thread button when the user hid New thread", () => {

@@ -50,18 +50,16 @@ failing. Cleared on the next load.
 the plugin and its server entry has loaded. It does not run on update,
 reload, enable, or server restart, and not for bb's bundled plugins;
 reinstalling after removal runs it again. Use it for one-time setup the user
-would expect from installing, such as picking the plugin's sidebar slots:
+would expect from installing, such as picking the plugin's thread list:
 
 ```ts
 bb.onInstall(async () => {
   const { preferences } = await bb.sdk.system.uiPreferences.list();
-  for (const key of ["sidebar.navigationProvider", "sidebar.headerProvider"] as const) {
-    await bb.sdk.system.uiPreferences.set({
-      key,
-      value: "my-plugin/icons",
-      expectedRevision: preferences[key].revision,
-    });
-  }
+  await bb.sdk.system.uiPreferences.set({
+    key: "sidebar.threadListProvider",
+    value: "my-plugin/inbox",
+    expectedRevision: preferences["sidebar.threadListProvider"].revision,
+  });
 });
 ```
 

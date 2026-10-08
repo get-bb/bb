@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
 import {
+  BB_ROWS,
   CLOSER,
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -23,18 +24,19 @@ import {
   faqTeam,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
   ANYWHERE_COPY,
   anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
   PRICING_COPY,
   pricingSection,
+  LIMITS_COPY,
+  limitsSection,
 } from "./compare-sections";
-import type { BrandLogo } from "./compare-visuals";
+import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
 import { BB_VS_CURSOR } from "./cursor";
 import { BB_VS_T3_CODE } from "./t3-code";
@@ -85,7 +87,7 @@ export type Comparison = {
   competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
-  heroVisual: ReactNode | null;
+  heroVisual: ReactElement;
   tailored: CompareHighlight;
   sections: CompareHighlight[];
   tableNote: string | null;
@@ -104,48 +106,44 @@ const BB_VS_SUPERSET: Comparison = {
     "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and check in from your phone. No Pro plan.",
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
-  sub: "Get Claude Code, Codex, or any agent working together on the same task, and check in from your phone.",
-  heroVisual: null,
+  sub: "Pay nothing per seat, with mobile, remote machines, and automations included. Run Claude Code, Codex, or any agent on the same task.",
+  heroVisual: <FleetVisual />,
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,
-    yearlyPerSeatMonthly: 20,
-    priceNote: "Superset Pro at $20 per user a month.",
+    yearlyPerSeatMonthly: 15,
+    priceNote: "Superset Pro at $15 per user a month, billed yearly.",
   }),
   sections: [
     agentsSection(AGENTS_COPY),
+    limitsSection(LIMITS_COPY),
     anywhereSection(ANYWHERE_COPY),
-    pluginsSection(PLUGINS_COPY),
   ],
   tableNote:
-    "marks features that need a paid Superset plan, from $20 per user / month.",
+    "marks features that need a paid Superset plan, from $15 per user / month, billed yearly.",
   table: [
     {
       title: "Price and license",
       rows: [
         {
-          feature: "Pricing",
-          bb: price("$0", "Any team size"),
-          competitor: price("$0 solo", "$20 per user / month for teams"),
+          ...BB_ROWS.pricing,
+          competitor: price(
+            "$0 solo",
+            "$15 per user / month for teams, billed yearly",
+          ),
         },
-        {
-          feature: "Open-source license",
-          bb: cell("yes", "MIT"),
-          competitor: cell("no", "Elastic License 2.0"),
-        },
+        { ...BB_ROWS.license, competitor: cell("no", "Elastic License 2.0") },
       ],
     },
     {
       title: "Away from your desk",
       rows: [
         {
-          feature: "Web access from any browser",
-          bb: cell("yes", "Free with bb Connect"),
-          competitor: cell("no", "No web dashboard"),
+          ...BB_ROWS.webAccess,
+          competitor: cell("partial", "Desktop and iPhone only"),
         },
         {
-          feature: "Run agents on other machines",
-          bb: cell("yes", "Enroll any machine"),
+          ...BB_ROWS.otherMachines,
           competitor: cell("partial", "Via Superset relay", true),
         },
         {
@@ -154,12 +152,12 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("partial", "Hosts go through Superset relay", true),
         },
         {
+          ...BB_ROWS.cloud,
           feature: "Cloud sandboxes",
-          bb: cell("yes", "Modal plugin, experimental"),
-          competitor: cell("partial", "When enabled for your account"),
+          competitor: cell("partial", "Limited access"),
         },
         {
-          feature: "Scheduled automations",
+          ...BB_ROWS.automations,
           bb: cell("yes", "Cron, one-shot, scripts"),
           competitor: cell("partial", "Recurring only", true),
         },
@@ -168,19 +166,13 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Agents",
       rows: [
+        { ...BB_ROWS.multiAgent, competitor: cell("yes", "Any CLI agent") },
         {
-          feature: "Multi-agent support",
-          bb: cell("yes", "Plus any you add"),
-          competitor: cell("yes", "Any CLI agent"),
-        },
-        {
-          feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Spawn, message, wait"),
+          ...BB_ROWS.handoff,
           competitor: cell("yes", "Via a coordinator skill"),
         },
         {
-          feature: "Switch accounts at usage limits",
-          bb: cell("yes", "Automatic with Account Pooler"),
+          ...BB_ROWS.accountSwitch,
           competitor: cell("partial", "Manual default switch"),
         },
       ],
@@ -188,21 +180,14 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Integrations",
       rows: [
+        { ...BB_ROWS.marketplace, competitor: cell("partial", "Themes only") },
         {
-          feature: "Plugin marketplace",
-          bb: cell("yes", "Gallery or agent-built"),
-          competitor: cell("partial", "Themes and integrations"),
+          ...BB_ROWS.linear,
+          competitor: cell("yes", "Two-way issue sync", true),
         },
-        {
-          feature: "Linear integration",
-          bb: cell("yes", "Community plugin"),
-          competitor: cell("partial", "", true),
-        },
-        {
-          feature: "GitHub integration",
-          bb: cell("yes", "Issues, PRs, checks"),
-          competitor: cell("yes", "PR view with checks"),
-        },
+        { ...BB_ROWS.github, competitor: cell("yes", "PR view with checks") },
+        { ...BB_ROWS.gitlab, competitor: cell("no") },
+        { ...BB_ROWS.gitea, competitor: cell("no") },
         {
           feature: "Slack integration",
           bb: cell("no"),
@@ -213,11 +198,7 @@ const BB_VS_SUPERSET: Comparison = {
     {
       title: "Platforms",
       rows: [
-        {
-          feature: "Windows support",
-          bb: cell("yes", "Native app"),
-          competitor: cell("no", "Planned, no date"),
-        },
+        { ...BB_ROWS.windows, competitor: cell("no") },
         {
           feature: "iOS app",
           bb: cell("yes", "TestFlight beta"),
@@ -226,33 +207,23 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Android app",
           bb: cell("yes", "Alpha"),
-          competitor: cell("no", "Waitlist"),
+          competitor: cell("no"),
         },
         {
-          feature: "macOS",
-          bb: cell("yes", "Apple Silicon app"),
+          ...BB_ROWS.macos,
           competitor: cell("yes", "Apple Silicon and Intel"),
         },
-        {
-          feature: "Linux support",
-          bb: cell("yes", "Alpha"),
-          competitor: cell("yes", "Experimental"),
-        },
+        { ...BB_ROWS.linux, competitor: cell("yes", "Experimental") },
       ],
     },
     {
       title: "Workspace and teams",
       rows: [
         {
-          feature: "Git worktrees",
-          bb: cell("yes", ".env copy, setup, teardown"),
+          ...BB_ROWS.worktrees,
           competitor: cell("yes", "Setup, teardown, run"),
         },
-        {
-          feature: "Diff review and merge",
-          bb: cell("yes"),
-          competitor: cell("yes"),
-        },
+        { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
           feature: "Built-in terminal and browser",
           bb: cell("yes", "Browser on desktop"),
@@ -260,7 +231,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Code editor",
-          bb: cell("yes", "Opt-in plugin"),
+          bb: cell("yes"),
           competitor: cell("yes"),
         },
         {
@@ -269,8 +240,7 @@ const BB_VS_SUPERSET: Comparison = {
           competitor: cell("yes", "View, kill, group"),
         },
         {
-          feature: "Team plans and SSO",
-          bb: cell("no"),
+          ...BB_ROWS.teamPlans,
           competitor: cell("partial", "SSO on Enterprise", true),
         },
       ],
@@ -280,8 +250,8 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Side chats",
-          bb: cell("yes", "Ask without derailing the agent"),
-          competitor: cell("no"),
+          bb: cell("yes"),
+          competitor: cell("partial", "Fork a session"),
         },
         {
           feature: "Drafts",
@@ -296,7 +266,7 @@ const BB_VS_SUPERSET: Comparison = {
         {
           feature: "Voice input",
           bb: cell("yes", "Dictate prompts"),
-          competitor: cell("no"),
+          competitor: cell("partial", "Dictation on iPhone", true),
         },
       ],
     },
@@ -312,11 +282,12 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Both run Claude Code, Codex, and other coding agents in parallel
               on your repo. bb is free for any team size and open source, while
-              Superset charges $20 per user a month for teams. bb includes phone
-              and browser access, remote machines, and automations at no cost,
-              and runs natively on <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>.
-              When one agent starts another, the new agent gets its own thread
-              (one conversation with one agent) that you can open and message.
+              Superset charges $15 per user a month for teams, billed yearly. bb
+              includes phone and browser access, remote machines, and
+              automations at no cost, and runs on{" "}
+              <a href={WINDOWS_DOWNLOAD_URL}>Windows</a> (alpha). When one agent
+              starts another, the new agent gets its own thread (one
+              conversation with one agent) that you can open and message.
             </p>
           ),
         },
@@ -345,9 +316,9 @@ const BB_VS_SUPERSET: Comparison = {
             <p>
               Yes: bb. It’s free for any team size and MIT-licensed, so you can
               use and change it for anything, including at work. Superset
-              charges $20 per user a month for teams, and its Elastic License
-              2.0 makes the code public but isn’t an open-source license.{" "}
-              <a href="/download/macos">Download bb</a>.
+              charges $15 per user a month for teams, billed yearly, and its
+              Elastic License 2.0 makes the code public but isn’t an open-source
+              license. <a href="/download/macos">Download bb</a>.
             </p>
           ),
         },
@@ -369,6 +340,7 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Working in bb",
       items: [
         FAQ_CUSTOMIZE,
+        faqScript(null),
         FAQ_REVIEW,
         faqSchedule("Superset’s automations only repeat and need Pro."),
       ],
@@ -377,7 +349,7 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Price and license",
       items: [
         faqFree(
-          ", while Superset puts its mobile app, remote machines, and automations on its $20-per-user Pro plan",
+          ", while Superset puts its mobile app, remote machines, and automations on its Pro plan, from $15 per user a month billed yearly",
         ),
         FAQ_SUBSCRIPTIONS,
         faqUsageLimit(
@@ -409,7 +381,9 @@ const BB_VS_SUPERSET: Comparison = {
       items: [
         faqPlatforms("Superset doesn’t run on Windows yet."),
         FAQ_PRIVACY,
-        faqTeam(", while Superset charges $20 per user a month for teams"),
+        faqTeam(
+          ", while Superset charges $15 per user a month for teams, billed yearly",
+        ),
       ],
     },
   ],

@@ -449,7 +449,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
                 scrollToBottom: () => {},
                 scrollElementIntoView: () => {},
                 scrollElementIntoViewClampedToMaxScroll: () => {},
-                captureScrollAnchor: () => () => {},
+                captureScrollAnchor: () => {},
                 holdContentPosition: () => {},
               }}
             >

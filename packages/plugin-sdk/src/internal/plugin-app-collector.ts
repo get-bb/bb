@@ -26,8 +26,6 @@ import type {
   ExperimentalIconRegistration,
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
-  ExperimentalSidebarNavigationRegistration,
-  ExperimentalSidebarHeaderRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -353,8 +351,6 @@ export interface CollectedPluginAppRegistrations {
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
-  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
-  experimentalSidebarHeaders: ExperimentalSidebarHeaderRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
@@ -479,8 +475,6 @@ export function collectPluginAppRegistrations(
     pendingInteractions: [],
     sidebarFooterActions: [],
     experimentalSidebarFooterItems: [],
-    experimentalSidebarNavigations: [],
-    experimentalSidebarHeaders: [],
     threadLists: [],
     threadHeaderActions: [],
     browserToolbarActions: [],
@@ -509,8 +503,6 @@ export function collectPluginAppRegistrations(
     composerPopup: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterItem: new Set<string>(),
-    sidebarNavigation: new Set<string>(),
-    sidebarHeader: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
@@ -778,24 +770,6 @@ export function collectPluginAppRegistrations(
         };
         collected.sidebarFooterActions.push(legacyRegistration);
         sidebarFooterItems.push(adaptSidebarFooterAction(legacyRegistration));
-      },
-      experimental_sidebarNavigation(registration) {
-        collected.experimentalSidebarNavigations.push(
-          collectTitledComponent(
-            "slots.experimental_sidebarNavigation",
-            seenIds.sidebarNavigation,
-            registration,
-          ),
-        );
-      },
-      experimental_sidebarHeader(registration) {
-        collected.experimentalSidebarHeaders.push(
-          collectTitledComponent(
-            "slots.experimental_sidebarHeader",
-            seenIds.sidebarHeader,
-            registration,
-          ),
-        );
       },
       experimental_threadList(registration) {
         collected.threadLists.push(

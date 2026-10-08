@@ -139,6 +139,7 @@ export const searchPromptsInputSchema = z
     scope: promptScopeSchema,
     projectId: z.string().min(1).nullable(),
     threadId: z.string().min(1).nullable(),
+    composer: z.enum(["new-thread", "follow-up"]),
   })
   .strict();
 export type SearchPromptsInput = z.infer<typeof searchPromptsInputSchema>;

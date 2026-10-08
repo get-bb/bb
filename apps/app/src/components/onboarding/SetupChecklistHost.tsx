@@ -19,11 +19,6 @@ import {
 } from "@/hooks/queries/system-queries";
 import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
 import {
-  NoAgentNotice,
-  SetupChecklist,
-  type SetupChecklistItem,
-} from "./SetupChecklistViews";
-import {
   ONBOARDING_PLUGINS,
   PUSH_NOTIFICATIONS_PLUGIN_ID,
   connectAccessUrl,
@@ -32,6 +27,15 @@ import {
 } from "./onboarding-model";
 import { onboardingReopenStepAtom } from "./onboarding-state";
 import { recordTelemetryEvent } from "./onboarding-telemetry";
+
+export interface SetupChecklistItem {
+  id: SetupChecklistItemId;
+  title: string;
+  detail: string;
+  done: boolean;
+  optional: boolean;
+  actionLabel: string;
+}
 
 const COMPLETED_ITEMS_STORAGE_KEY = "bb.setupChecklist.completedItems";
 
@@ -333,28 +337,6 @@ export function useSetupChecklist({
     act,
     dismiss,
   };
-}
-
-export function SetupChecklistCard({
-  checklist,
-}: {
-  checklist: SetupChecklistState;
-}) {
-  if (!checklist.agentMissing && checklist.items === null) return null;
-  return (
-    <div className="flex w-full flex-col items-center gap-4">
-      {checklist.agentMissing ? (
-        <NoAgentNotice onSetUp={() => checklist.act("agent")} />
-      ) : null}
-      {checklist.items === null ? null : (
-        <SetupChecklist
-          items={checklist.items}
-          onAction={checklist.act}
-          onDismiss={checklist.dismiss}
-        />
-      )}
-    </div>
-  );
 }
 
 export function hasSetupChecklistBanner(

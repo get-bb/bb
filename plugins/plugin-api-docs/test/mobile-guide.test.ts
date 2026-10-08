@@ -103,10 +103,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(visiblePage()).toBe("Sidebar");
     expect(previous.disabled).toBe(true);
     expect(current().querySelector('[data-guide-mobile-scene="navigation"]')).not.toBeNull();
-    openAnnotation("sidebar-navigation");
-    act(() => vi.advanceTimersByTime(400));
-    expect(scroll).toHaveBeenCalledTimes(1);
-    nextAnnotation();
+    openAnnotation("nav-panel");
     act(() => vi.advanceTimersByTime(400));
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(navigate).not.toHaveBeenCalled();

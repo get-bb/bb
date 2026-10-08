@@ -32,7 +32,7 @@ const artifactMetaSchema = z.object({
   sdkMajor: z.number().int(),
   sdkVersion: z.string(),
 });
-for (const id of ["navigation", "thread-list"]) {
+for (const id of ["thread-list"]) {
   const source = new URL(
     `../../../plugins/${id}/.bundled-runtime/`,
     import.meta.url,

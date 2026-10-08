@@ -78,7 +78,6 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         appShellScene: "navigation" as const,
         surfaces: group.surfaces.filter((surface) =>
           [
-            "sidebar-navigation",
             "nav-panel",
             "thread-row-status",
             "thread-list",

@@ -21,7 +21,6 @@ import {
 const viewportState = vi.hoisted(() => ({
   compact: false,
   macosChrome: false,
-  navigationRail: false,
 }));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
@@ -43,7 +42,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
         changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
-        navigationRail: viewportState.navigationRail,
       },
     },
   }),
@@ -210,7 +208,6 @@ describe("AppLayout plugin panel header", () => {
   beforeEach(() => {
     viewportState.compact = false;
     viewportState.macosChrome = false;
-    viewportState.navigationRail = false;
     setCompactSecondaryPanelPresentation("closed");
   });
 
@@ -287,7 +284,6 @@ describe("AppLayout plugin panel header", () => {
 
   it("moves the trigger and history controls into a window title bar beside the macOS rail", () => {
     viewportState.macosChrome = true;
-    viewportState.navigationRail = true;
     renderPluginPanelRoute();
 
     const titleBar = screen.getByTestId("app-window-title-bar");
@@ -303,8 +299,9 @@ describe("AppLayout plugin panel header", () => {
     expect(screen.queryByTestId("app-desktop-sidebar-trigger")).toBeNull();
   });
 
-  it("keeps the floating macOS trigger without the rail and on compact windows", () => {
+  it("keeps the floating macOS trigger on compact windows", () => {
     viewportState.macosChrome = true;
+    viewportState.compact = true;
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
@@ -312,13 +309,5 @@ describe("AppLayout plugin panel header", () => {
     expect(
       screen.getByTestId("app-layout-root").dataset.framed,
     ).toBeUndefined();
-
-    cleanup();
-    viewportState.compact = true;
-    viewportState.navigationRail = true;
-    renderPluginPanelRoute();
-
-    expect(screen.queryByTestId("app-window-title-bar")).toBeNull();
-    expect(screen.getByTestId("app-desktop-sidebar-trigger")).toBeTruthy();
   });
 });

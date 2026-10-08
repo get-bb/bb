@@ -31,8 +31,6 @@ export function makePluginRegistrationSet(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
-    experimentalSidebarNavigations: [],
-    experimentalSidebarHeaders: [],
     threadLists: [],
     threadHeaderActions: [],
     browserToolbarActions: [],

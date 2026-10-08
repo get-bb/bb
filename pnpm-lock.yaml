@@ -445,9 +445,6 @@ importers:
       bb-plugin-environment-modal-sandbox:
         specifier: workspace:*
         version: link:../../plugins/environment-modal-sandbox
-      bb-plugin-navigation:
-        specifier: workspace:*
-        version: link:../../plugins/navigation
       bb-plugin-provider-pi:
         specifier: workspace:*
         version: link:../../plugins/provider-pi
@@ -652,9 +649,6 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
-      bb-plugin-navigation:
-        specifier: workspace:*
-        version: link:../../plugins/navigation
       bb-plugin-thread-list:
         specifier: workspace:*
         version: link:../../plugins/thread-list
@@ -1439,21 +1433,6 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
-  examples/plugins/sidebar-navigation:
-    devDependencies:
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../../packages/plugin-sdk
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.13
-      react:
-        specifier: ^19.0.0
-        version: 19.2.4
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-
   examples/plugins/slack-bot:
     devDependencies:
       '@get-bb/plugin-sdk':
@@ -1686,9 +1665,6 @@ importers:
       bb-plugin-monaco-editor:
         specifier: workspace:*
         version: link:../../plugins/monaco-editor
-      bb-plugin-navigation:
-        specifier: workspace:*
-        version: link:../../plugins/navigation
       bb-plugin-pdf-preview:
         specifier: workspace:*
         version: link:../../plugins/pdf-preview
@@ -4285,58 +4261,6 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  plugins/navigation:
-    dependencies:
-      '@bb/shared-ui':
-        specifier: workspace:*
-        version: link:../../packages/shared-ui
-      '@dnd-kit/core':
-        specifier: ^6.3.1
-        version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@dnd-kit/sortable':
-        specifier: ^10.0.0
-        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
-      '@dnd-kit/utilities':
-        specifier: ^3.2.2
-        version: 3.2.2(react@19.2.4)
-    devDependencies:
-      '@bb/plugin-build':
-        specifier: workspace:*
-        version: link:../../packages/plugin-build
-      '@get-bb/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
-      '@testing-library/dom':
-        specifier: ^10.4.1
-        version: 10.4.1
-      '@testing-library/react':
-        specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.13))(@types/react@19.2.13)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.10
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.13
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.2.3(@types/react@19.2.13)
-      jsdom:
-        specifier: ^29.0.1
-        version: 29.0.1(@noble/hashes@2.4.0)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.4
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.4(react@19.2.4)
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: ^4.1.1
-        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
-
   plugins/pdf-preview:
     devDependencies:
       '@bb/plugin-build':
@@ -4478,9 +4402,6 @@ importers:
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
-      fzf:
-        specifier: ^0.5.2
-        version: 0.5.2
       zod:
         specifier: 4.6.5
         version: 4.6.5
@@ -21481,9 +21402,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

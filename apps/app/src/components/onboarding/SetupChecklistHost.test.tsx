@@ -11,7 +11,6 @@ import { Provider, createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SetupChecklistBanner,
-  SetupChecklistCard,
   hasSetupChecklistBanner,
   useSetupChecklist,
 } from "./SetupChecklistHost";
@@ -137,7 +136,6 @@ function Harness() {
       <span data-testid="setup-complete">
         {String(checklist.setupComplete)}
       </span>
-      <SetupChecklistCard checklist={checklist} />
       <SetupChecklistBanner checklist={checklist} />
     </>
   );
@@ -189,7 +187,7 @@ describe("setup checklist", () => {
     const store = renderHarness();
 
     expect(screen.getByText("No agent is ready on this computer")).toBeTruthy();
-    fireEvent.click(screen.getAllByText("Connect an agent")[0] as HTMLElement);
+    fireEvent.click(screen.getByText("Connect an agent"));
     expect(store.get(onboardingReopenStepAtom)).toBe("agent");
   });
 
@@ -199,9 +197,7 @@ describe("setup checklist", () => {
     renderHarness();
 
     expect(screen.queryByText(/No agent is ready/u)).toBeNull();
-    expect(screen.getAllByText("Finish setting up bb").length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.getByText("Finish setting up bb")).toBeTruthy();
   });
 
   it("points the compact banner at the first required step that is still open", () => {
@@ -217,15 +213,17 @@ describe("setup checklist", () => {
     expect(store.get(onboardingReopenStepAtom)).toBeNull();
   });
 
-  it("leads with required steps and keeps plugins and devices as optional extras", () => {
-    arrange({ agentStatuses: ["ready"] });
+  it("offers optional extras with their reason once the required steps are done", () => {
+    arrange({ agentStatuses: ["ready"], projectCount: 1, threadCount: 1 });
 
     const store = renderHarness();
 
-    const optional = screen.getByRole("list", { name: "Optional extras" });
-    expect(optional.textContent).toContain("Pick plugins");
-    expect(optional.textContent).toContain("Use bb from anywhere");
-    expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect(screen.getByText("Optional: Pick plugins")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Browser automation, workflows, and more. Off until you want them.",
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Browse" }));
     expect(store.get(onboardingReopenStepAtom)).toBe("plugins");
   });
@@ -236,11 +234,15 @@ describe("setup checklist", () => {
     vi.stubGlobal("isSecureContext", true);
     arrange({
       agentStatuses: ["ready"],
-      enabledPluginIds: ["push-notifications"],
+      projectCount: 1,
+      threadCount: 1,
+      enabledPluginIds: ["workflows", "push-notifications"],
+      connectOn: true,
     });
 
     renderHarness();
 
+    expect(screen.getByText("Optional: Turn on notifications")).toBeTruthy();
     expect(requestPermission).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
     await waitFor(() =>
@@ -254,7 +256,7 @@ describe("setup checklist", () => {
     expect(requestPermission).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the notification item once the browser denied permission", () => {
+  it("drops the notification item once the browser denied permission", () => {
     vi.stubGlobal("Notification", {
       permission: "denied",
       requestPermission: vi.fn(),
@@ -262,12 +264,16 @@ describe("setup checklist", () => {
     vi.stubGlobal("isSecureContext", true);
     arrange({
       agentStatuses: ["ready"],
-      enabledPluginIds: ["push-notifications"],
+      projectCount: 1,
+      threadCount: 1,
+      enabledPluginIds: ["workflows", "push-notifications"],
+      connectOn: true,
     });
 
     renderHarness();
 
-    expect(screen.queryByText("Turn on notifications")).toBeNull();
+    expect(screen.queryByText("Optional: Turn on notifications")).toBeNull();
+    expect(screen.getByTestId("has-banner").textContent).toBe("false");
   });
 
   it("counts steps already done as a head start, then reports new completions once", () => {
@@ -298,9 +304,7 @@ describe("setup checklist", () => {
     arrange({ agentStatuses: ["ready"], settings: { streamerMode: true } });
 
     renderHarness();
-    fireEvent.click(
-      screen.getAllByLabelText("Dismiss setup checklist")[0] as HTMLElement,
-    );
+    fireEvent.click(screen.getByLabelText("Dismiss setup checklist"));
 
     expect(mocks.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -346,17 +350,6 @@ describe("setup state for home-screen sections", () => {
   function setupComplete(): string | null {
     return screen.getByTestId("setup-complete").textContent;
   }
-
-  it("is not complete while the checklist leads the empty home", () => {
-    arrange({ agentStatuses: ["ready"] });
-
-    renderHarness();
-
-    expect(screen.getAllByText("Finish setting up bb").length).toBeGreaterThan(
-      0,
-    );
-    expect(setupComplete()).toBe("false");
-  });
 
   it("is not complete while the setup banner shows above the composer", () => {
     arrange({ agentStatuses: ["ready"], projectCount: 2 });

@@ -6,7 +6,7 @@
   "description": "Three contextual ideas under the composer on the New thread page.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.33"
+    "bbPluginSdk": ">=0.6.35"
   },
   "bb": {
     "name": "Tips",

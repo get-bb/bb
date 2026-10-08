@@ -246,7 +246,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
 
 vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
   SetupChecklistBanner: () => null,
-  SetupChecklistCard: () => null,
   hasSetupChecklistBanner: () => false,
   useSetupChecklist: () => ({
     items: null,

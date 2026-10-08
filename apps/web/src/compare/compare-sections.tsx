@@ -7,6 +7,7 @@ import {
   AnywhereVisual,
   SpawnTimeline,
   TeamCost,
+  UsageVisual,
   type BrandLogo,
 } from "./compare-visuals";
 
@@ -23,17 +24,14 @@ export type CompetitorPlan = {
 };
 
 export const PRICING_COPY: SectionCopy = {
-  title: "Run more agents, $0 more.",
+  title: "Run more agents, $0 more",
   body: (
     <>
       <p>
         You only pay for the AI plans you already have. bb is free, whether you
-        run one agent on your own or your whole team runs dozens.
+        run one agent or your whole team runs dozens.
       </p>
-      <p>
-        The mobile app, automations, remote access, and plugins all come
-        included.
-      </p>
+      <p>It’s MIT-licensed open source.</p>
     </>
   ),
 };
@@ -42,34 +40,45 @@ export const AGENTS_COPY: SectionCopy = {
   title: "Agents that work together like a team",
   body: (
     <p>
-      Claude Code builds, Codex reviews, and Cursor writes the release notes. No
+      Claude Code builds, Codex reviews, and Pi writes the release notes. No
       copying between tools.
     </p>
   ),
 };
 
 export const SPAWN_COPY: SectionCopy = {
-  title: "Hand off the whole job",
+  title: "Let one agent orchestrate the rest",
   body: (
     <p>
-      Give one agent a big task. It splits the work across Claude Code, Codex,
-      Cursor, and others running side by side, and they message each other as
-      they go. You come back to finished work, not notes to pass between tools.
+      Any agent can start new threads with any provider, hand each one part of
+      the job, and message them as they work. When a thread finishes, the agent
+      that started it hears back on its own, so one task becomes a multi-agent
+      team.
     </p>
   ),
 };
 
 export const ANYWHERE_COPY: SectionCopy = {
-  title: "Keep working from anywhere",
+  title: "Your agents keep working while you’re away",
   body: (
     <>
       <p>
-        Start tasks and answer your agents from the bb desktop app, the mobile
-        app, or any browser.
+        Put bb on a desktop or server that stays on, and your agents keep going
+        after you close your laptop.
       </p>
+      <p>Check in from the mobile app or any browser.</p>
+    </>
+  ),
+};
+
+export const LIMITS_COPY: SectionCopy = {
+  title: "Don’t lose work to usage limits",
+  body: (
+    <>
+      <p>If an agent hits a usage limit, bb keeps your work moving.</p>
       <p>
-        Run agents on your laptop, a desktop at home, or a cloud server, and
-        manage them all from one bb. They keep working while you’re out.
+        Spread work across the accounts you already have, and schedule it around
+        your limits.
       </p>
     </>
   ),
@@ -80,15 +89,15 @@ export const PLUGINS_COPY: SectionCopy = {
   body: (
     <>
       <p>
-        bb comes with everything you need out of the box: worktrees, diffs,
-        automations, a mobile app and more.
+        bb comes with everything you need: worktrees, diffs, automations, a
+        mobile app and more.
       </p>
       <p>
         When you want more—or less—customize in Settings, browse the{" "}
         <a href="/marketplace">plugin marketplace</a>, or ask an agent to build
-        exactly what you need, immediately available wherever you use bb,
-        including your phone.
+        exactly what you need.
       </p>
+      <p>It’s available wherever you use bb, including your phone.</p>
     </>
   ),
 };
@@ -141,7 +150,7 @@ export function spawnSection(copy: SectionCopy): CompareHighlight {
     title: copy.title,
     wide: true,
     visual: <SpawnTimeline />,
-    body: agentsBody(copy),
+    body: copy.body,
   };
 }
 
@@ -150,6 +159,15 @@ export function anywhereSection(copy: SectionCopy): CompareHighlight {
     title: copy.title,
     wide: false,
     visual: <AnywhereVisual />,
+    body: copy.body,
+  };
+}
+
+export function limitsSection(copy: SectionCopy): CompareHighlight {
+  return {
+    title: copy.title,
+    wide: false,
+    visual: <UsageVisual />,
     body: copy.body,
   };
 }
