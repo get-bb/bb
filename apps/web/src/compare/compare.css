@@ -54,8 +54,17 @@
   margin-top: 56px;
 }
 
-.cmp-hero-visual .mockup-wrap-customize {
-  margin: 0 auto;
+.cmp-hero-visual > * {
+  margin-inline: auto;
+}
+
+.cmp-hero .cmp-hero-providers {
+  margin: 0 0 22px;
+}
+
+.cmp-hero-visual .cmp-anywhere {
+  max-width: 480px;
+  text-align: left;
 }
 
 .cmp-team {

@@ -516,8 +516,8 @@ const FLEET: {
     ],
   },
   {
-    name: "Mobile",
-    os: "iOS & Android",
+    name: "Phone",
+    os: "All threads",
     icon: <HugeiconsIcon icon={SmartPhone01Icon} className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
@@ -589,7 +589,7 @@ function PhoneApp() {
           <span aria-hidden="true" className="bb-mark cmp-push-mark" />
           <span className="cmp-push-body">
             <span className="cmp-push-title">Review the rate limiter</span>
-            <span className="cmp-push-text">Finished and waiting for you</span>
+            <span className="cmp-push-text">Ready for you</span>
           </span>
           <span className="cmp-push-time">now</span>
         </div>

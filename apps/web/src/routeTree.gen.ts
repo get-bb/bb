@@ -18,6 +18,7 @@ import { Route as LinkRouteImport } from "./routes/link";
 import { Route as DashboardRouteImport } from "./routes/dashboard";
 import { Route as ChangelogRouteImport } from "./routes/changelog";
 import { Route as BlogRouteImport } from "./routes/blog";
+import { Route as SlugRouteImport } from "./routes/$slug";
 import { Route as IndexRouteImport } from "./routes/index";
 import { Route as MarketplacePluginIdRouteImport } from "./routes/marketplace_.$pluginId";
 import { Route as GuidesSlugRouteImport } from "./routes/guides.$slug";
@@ -86,6 +87,11 @@ const ChangelogRoute = ChangelogRouteImport.update({
 const BlogRoute = BlogRouteImport.update({
   id: "/blog",
   path: "/blog",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const SlugRoute = SlugRouteImport.update({
+  id: "/$slug",
+  path: "/$slug",
   getParentRoute: () => rootRouteImport,
 } as any);
 const IndexRoute = IndexRouteImport.update({
@@ -215,6 +221,7 @@ const ApiAccountLinkPollRoute = ApiAccountLinkPollRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
@@ -250,6 +257,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
@@ -286,6 +294,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/$slug": typeof SlugRoute;
   "/blog": typeof BlogRoute;
   "/changelog": typeof ChangelogRoute;
   "/dashboard": typeof DashboardRoute;
@@ -323,6 +332,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | "/"
+    | "/$slug"
     | "/blog"
     | "/changelog"
     | "/dashboard"
@@ -358,6 +368,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
+    | "/$slug"
     | "/blog"
     | "/changelog"
     | "/dashboard"
@@ -393,6 +404,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/"
+    | "/$slug"
     | "/blog"
     | "/changelog"
     | "/dashboard"
@@ -429,6 +441,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  SlugRoute: typeof SlugRoute;
   BlogRoute: typeof BlogRoute;
   ChangelogRoute: typeof ChangelogRoute;
   DashboardRoute: typeof DashboardRoute;
@@ -524,6 +537,13 @@ declare module "@tanstack/react-router" {
       path: "/blog";
       fullPath: "/blog";
       preLoaderRoute: typeof BlogRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/$slug": {
+      id: "/$slug";
+      path: "/$slug";
+      fullPath: "/$slug";
+      preLoaderRoute: typeof SlugRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/": {
@@ -713,6 +733,7 @@ const MarketplaceRouteWithChildren = MarketplaceRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SlugRoute: SlugRoute,
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,

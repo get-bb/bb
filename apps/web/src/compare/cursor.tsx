@@ -22,13 +22,7 @@ import {
   faqUsageLimit,
   price,
 } from "./compare-content";
-import {
-  anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
-  SPAWN_COPY,
-  spawnSection,
-} from "./compare-sections";
+import { anywhereSection, SPAWN_COPY, spawnSection } from "./compare-sections";
 import { AgentSplit, PlansVisual, type BrandLogo } from "./compare-visuals";
 
 const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
@@ -78,11 +72,7 @@ export const BB_VS_CURSOR: Comparison = {
   sub: "Run Claude Code and Codex on the subscriptions you already have, not at API rates. Cursor’s agent works too. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
-  sections: [
-    spawnSection(SPAWN_COPY),
-    AWAY_SECTION,
-    pluginsSection(PLUGINS_COPY),
-  ],
+  sections: [spawnSection(SPAWN_COPY), AWAY_SECTION],
   tableNote: "marks features that need a paid Cursor plan, from $20 a month.",
   table: [
     {

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
@@ -29,10 +29,9 @@ import {
   agentsSection,
   ANYWHERE_COPY,
   anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
   PRICING_COPY,
   pricingSection,
+  type SectionCopy,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
@@ -85,9 +84,10 @@ export type Comparison = {
   competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
-  heroVisual: ReactNode | null;
+  heroVisual: ReactElement;
   tailored: CompareHighlight;
   sections: CompareHighlight[];
+  pluginsCopy?: SectionCopy;
   tableNote: string | null;
   table: CompareGroup[];
   faqTitle: string;
@@ -112,11 +112,7 @@ const BB_VS_SUPERSET: Comparison = {
     yearlyPerSeatMonthly: 15,
     priceNote: "Superset Pro at $15 per user a month, billed yearly.",
   }),
-  sections: [
-    agentsSection(AGENTS_COPY),
-    anywhereSection(ANYWHERE_COPY),
-    pluginsSection(PLUGINS_COPY),
-  ],
+  sections: [agentsSection(AGENTS_COPY), anywhereSection(ANYWHERE_COPY)],
   tableNote:
     "marks features that need a paid Superset plan, from $15 per user / month, billed yearly.",
   table: [

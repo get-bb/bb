@@ -23,8 +23,6 @@ import {
   AGENTS_COPY,
   agentsSection,
   anywhereSection,
-  PLUGINS_COPY,
-  pluginsSection,
   pricingSection,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
@@ -80,11 +78,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
   sub: "Run Claude Code, Codex, and any agent on Mac, or on Windows and Linux in alpha. Mobile and remote machines are free, and it’s MIT licensed.",
   heroVisual: <FleetVisual />,
   tailored: AWAY_SECTION,
-  sections: [
-    COST_SECTION,
-    agentsSection(AGENTS_COPY),
-    pluginsSection(PLUGINS_COPY),
-  ],
+  sections: [COST_SECTION, agentsSection(AGENTS_COPY)],
   tableNote:
     "marks features that need a paid Conductor plan: Pro at $50 a month, or Teams at $60 per person.",
   table: [
