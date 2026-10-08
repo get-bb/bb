@@ -3,18 +3,27 @@ import { textOnly } from "../compare/compare-page";
 import {
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
+  FAQ_CUSTOMIZE,
   FAQ_GET_STARTED,
   FAQ_PARALLEL,
   FAQ_PRIVACY,
   FAQ_SUBSCRIPTIONS,
   faqFree,
   faqPhone,
+  faqScript,
+  faqTalk,
 } from "../compare/compare-content";
-import { SPAWN_COPY, spawnSection } from "../compare/compare-sections";
+import {
+  ANYWHERE_COPY,
+  anywhereSection,
+  SPAWN_COPY,
+  spawnSection,
+} from "../compare/compare-sections";
 import {
   AgentSplit,
   AnywhereVisual,
   FleetVisual,
+  WorktreesVisual,
 } from "../compare/compare-visuals";
 import type {
   CompareFaq,
@@ -48,33 +57,32 @@ const CODEX_SECTION: CompareHighlight = {
   body: (
     <>
       <p>
-        Ask Claude Code to have Codex review its branch. Codex sends its
-        findings back and Claude Code fixes them, with no copy-paste between
-        tools.
+        Have one agent check another’s work before it reaches you. Ask Claude
+        Code for a Codex review of its branch: Codex sends its findings back,
+        and Claude Code fixes them, with no copy-paste between tools.
       </p>
       <p>
-        Each agent runs in its own thread, signed in as usual, so you can read
-        exactly what one sent the other and step in at any point. Any pair of
-        agents works the same way.
+        Each agent runs in its own thread on its own subscription, so you can
+        read exactly what one sent the other and step in at any point. Any pair
+        of agents works the same way.
       </p>
     </>
   ),
 };
 
 const PARALLEL_SECTION: CompareHighlight = {
-  title: "Run agents side by side without collisions",
-  wide: true,
-  visual: <FleetVisual />,
+  title: "Every agent gets its own copy of your repo",
+  wide: false,
+  visual: <WorktreesVisual />,
   body: (
     <>
       <p>
-        Give each agent its own Git worktree so they don’t overwrite each
-        other’s changes. List your .env files and setup commands once, and bb
-        prepares every new worktree.
+        bb gives each agent its own Git worktree and branch, so a dozen agents
+        can work on one repo without overwriting each other.
       </p>
       <p>
-        Add a desktop at home or a cloud server, and one list shows every agent
-        on every machine.
+        List your <code>.env</code> files and setup commands once, and every new
+        worktree starts ready to work.
       </p>
     </>
   ),
@@ -178,7 +186,11 @@ export const LANDING_PAGES: LandingPage[] = [
     sub: "No copy-paste between them. Both run in one app on the subscriptions you already have. Free and open source.",
     closer: "Let your agents check each other’s work",
     heroVisual: <AgentSplit />,
-    sections: [textOnly(CODEX_SECTION), PARALLEL_SECTION, PHONE_SECTION],
+    sections: [
+      textOnly(CODEX_SECTION),
+      PARALLEL_SECTION,
+      anywhereSection(ANYWHERE_COPY),
+    ],
     faq: [
       {
         title: "Claude Code and Codex",
@@ -193,23 +205,31 @@ export const LANDING_PAGES: LandingPage[] = [
     title: "Run Claude Code Agents in Parallel — bb",
     description:
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
-    headline: "Run your own software factory of coding agents",
-    sub: "Run Claude Code, Codex, and more in parallel. One list shows which are running, waiting on you, or done. Free and open source.",
+    headline: "Build a software factory of coding agents",
+    sub: "Run Claude Code, Codex, and more in parallel, let them hand work to each other, and script it all with plugins and the bb CLI.",
     closer: "Put your software factory to work",
     heroVisual: <FleetVisual />,
     sections: [
-      textOnly(PARALLEL_SECTION),
+      PARALLEL_SECTION,
       spawnSection(SPAWN_COPY),
       CODEX_SECTION,
-      PHONE_SECTION,
+      anywhereSection(ANYWHERE_COPY),
     ],
     faq: [
       {
-        title: "Running several agents",
-        items: [FAQ_LIMIT_RESET, FAQ_CODEX_TOGETHER, FAQ_AGENTS],
+        title: "Running a software factory",
+        items: [
+          FAQ_PARALLEL,
+          faqTalk(null),
+          FAQ_CODEX_TOGETHER,
+          FAQ_CUSTOMIZE,
+          faqScript(null),
+          FAQ_LIMIT_RESET,
+          FAQ_STAY_ON,
+          FAQ_AGENTS,
+        ],
       },
       START_WITH_PLANS_FAQ,
-      PHONE_FAQ,
     ],
   },
 ];

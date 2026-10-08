@@ -52,24 +52,23 @@ export const SPAWN_COPY: SectionCopy = {
   title: "Let one agent orchestrate the rest",
   body: (
     <p>
-      Any agent can start subagents from any provider and message them as they
-      work, so one task becomes a multi-agent team.
+      Any agent can start new threads with any provider, hand each one part of
+      the job, and message them as they work. When a thread finishes, the agent
+      that started it hears back on its own, so one task becomes a multi-agent
+      team.
     </p>
   ),
 };
 
 export const ANYWHERE_COPY: SectionCopy = {
-  title: "Keep working from anywhere",
+  title: "Your agents keep working while you’re away",
   body: (
     <>
       <p>
-        Start tasks and answer your agents from the bb desktop app, the mobile
-        app, or any browser.
+        Put bb on a desktop or server that stays on, and your agents keep going
+        after you close your laptop.
       </p>
-      <p>
-        Run agents on your laptop, a desktop at home, or a cloud server, and
-        manage them all from one bb. They keep working while you’re out.
-      </p>
+      <p>Check in from the mobile app or any browser.</p>
     </>
   ),
 };

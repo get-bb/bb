@@ -1130,3 +1130,65 @@ export function PlansVisual() {
     </div>
   );
 }
+
+const WORKTREES = [
+  {
+    agent: ClaudeIcon,
+    title: "Add rate limiting",
+    branch: "feat/rate-limit",
+    status: "running",
+  },
+  {
+    agent: OpenAiIcon,
+    title: "Fix the flaky test",
+    branch: "fix/flaky-test",
+    status: "running",
+  },
+  {
+    agent: CursorIcon,
+    title: "Port the billing page",
+    branch: "feat/billing",
+    status: "waiting",
+  },
+  {
+    agent: PiIcon,
+    title: "Write release notes",
+    branch: "docs/release-notes",
+    status: "done",
+  },
+] as const;
+
+export function WorktreesVisual() {
+  return (
+    <div
+      className="cmp-worktrees"
+      role="img"
+      aria-label="Four agents working on one repo at once, each in its own Git worktree and branch, with setup already run in each"
+    >
+      <span className="cmp-worktrees-head">
+        <HugeiconsIcon icon={GitBranchIcon} className="cmp-worktrees-head-ic" />
+        acme/web
+        <span className="cmp-worktrees-count">4 worktrees</span>
+      </span>
+      <ul className="cmp-worktrees-list">
+        {WORKTREES.map((row) => (
+          <li key={row.branch} className="cmp-worktrees-row">
+            <row.agent className="cmp-worktrees-agent" />
+            <span className="cmp-worktrees-who">
+              <span className="cmp-worktrees-title">{row.title}</span>
+              <span className="cmp-worktrees-branch">{row.branch}</span>
+            </span>
+            <PhoneStatus status={row.status} />
+          </li>
+        ))}
+      </ul>
+      <span className="cmp-worktrees-foot">
+        <HugeiconsIcon
+          icon={CheckmarkCircle02Icon}
+          className="cmp-worktrees-foot-ic"
+        />
+        .env copied and setup run in each
+      </span>
+    </div>
+  );
+}

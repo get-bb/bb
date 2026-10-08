@@ -39,19 +39,32 @@ export const FAQ_GET_STARTED: CompareFaq = {
 };
 
 export const FAQ_CUSTOMIZE: CompareFaq = {
-  question: "Can I customize bb with plugins or scripts?",
+  question: "Can I customize bb with plugins?",
   answer: (
     <p>
       Yes. bb works out of the box, with worktrees, diff review, automations,
       and the mobile app ready from your first thread. When you want more,
       install plugins from the <a href="/marketplace">marketplace</a> or ask an
       agent to build one. Plugins can add panels, commands, and new agents, and
-      they work in the mobile app too. Everything in the app is also in the bb
-      CLI and HTTP API, so scripts and other agents can start, message, and
-      manage threads.
+      they work in the mobile app too.
     </p>
   ),
 };
+
+export function faqScript(contrast: ReactNode): CompareFaq {
+  return {
+    question: "Can I script bb from the command line?",
+    answer: (
+      <p>
+        Yes. The <code>bb</code> CLI covers everything the app does: start and
+        message threads, run terminals, schedule automations, and manage
+        machines and plugins, so a script or another agent can drive bb end to
+        end. The SDK and plugin API let you add your own commands, tools, and
+        screens.{contrast}
+      </p>
+    ),
+  };
+}
 
 export const FAQ_REVIEW: CompareFaq = {
   question: "Can I review and merge an agent’s changes in bb?",
