@@ -25,6 +25,7 @@ import {
 
 const STARRED_RESULT_LIMIT = 20;
 const RECENT_RESULT_LIMIT = 30;
+const INDEX_CHUNK_SIZE = 500;
 
 type SearchItem =
   | { kind: "starred"; prompt: StarredPrompt }
@@ -46,19 +47,36 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
 
   const index = createSearchIndex<SearchItem>();
   let indexedCount = 0;
+  let indexing: Promise<readonly HistoryCandidate[]> = Promise.resolve([]);
 
-  async function loadHistory(): Promise<readonly HistoryCandidate[]> {
+  async function indexNewHistory(): Promise<readonly HistoryCandidate[]> {
     const candidates = await historyCache.refresh();
-    const unindexed = candidates.length - indexedCount;
-    for (const candidate of candidates.slice(0, unindexed)) {
-      index.add({
-        item: { kind: "recent", candidate },
-        text: candidate.prompt.text,
-        time: candidate.createdAt,
-      });
+    while (indexedCount < candidates.length) {
+      const chunkEnd = Math.max(
+        0,
+        candidates.length - indexedCount - INDEX_CHUNK_SIZE,
+      );
+      for (
+        let position = candidates.length - indexedCount - 1;
+        position >= chunkEnd;
+        position -= 1
+      ) {
+        const candidate = candidates[position]!;
+        index.add({
+          item: { kind: "recent", candidate },
+          text: candidate.prompt.text,
+          time: candidate.createdAt,
+        });
+        indexedCount += 1;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
     }
-    indexedCount = candidates.length;
     return candidates;
+  }
+
+  function loadHistory(): Promise<readonly HistoryCandidate[]> {
+    indexing = indexing.catch(() => []).then(indexNewHistory);
+    return indexing;
   }
 
   function inScope(candidate: HistoryCandidate, input: SearchPromptsInput) {

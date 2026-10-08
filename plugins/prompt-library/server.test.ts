@@ -413,7 +413,7 @@ describe("prompt library server", () => {
   });
 
   it("weighs how often a word appears against how old the prompt is", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     const now = Date.UTC(2026, 9, 8);
     vi.setSystemTime(now);
     const day = 86_400_000;

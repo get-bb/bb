@@ -40,14 +40,13 @@ interface TermMatch {
 
 interface IndexedDocument<T> {
   item: T;
+  text: string;
   time: number;
   length: number;
-  opening: string;
 }
 
 interface AnalyzedText {
   length: number;
-  opening: string;
   counts: Map<string, number>;
 }
 
@@ -67,6 +66,28 @@ function normalizeOpening(text: string): string {
   );
 }
 
+function isSpace(char: string): boolean {
+  return /\s/u.test(char);
+}
+
+function startsWithOpening(text: string, opening: string): boolean {
+  let position = 0;
+  while (position < text.length && isSpace(text[position]!)) position += 1;
+  for (let index = 0; index < opening.length; index += 1) {
+    const char = text[position];
+    if (char === undefined) return false;
+    if (isSpace(char)) {
+      if (opening[index] !== " ") return false;
+      while (position < text.length && isSpace(text[position]!)) position += 1;
+      continue;
+    }
+    const lower = char.toLowerCase();
+    if ((lower.length === 1 ? lower : char) !== opening[index]) return false;
+    position += 1;
+  }
+  return true;
+}
+
 export function queryTerms(query: string): string[] {
   return [...new Set(foldCase(query).match(WORD) ?? [])];
 }
@@ -78,7 +99,7 @@ function analyze(text: string): AnalyzedText {
     length += 1;
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  return { length, opening: normalizeOpening(text), counts };
+  return { length, counts };
 }
 
 function abbreviationPositions(word: string, term: string): number[] | null {
@@ -160,7 +181,7 @@ export function compareMatches(
 
 export function createSearchIndex<T>() {
   const documents: IndexedDocument<T>[] = [];
-  const postings = new Map<string, { document: number; count: number }[]>();
+  const postings = new Map<string, number[]>();
   let totalLength = 0;
 
   function termMatches(term: string): Map<number, TermMatch> {
@@ -170,7 +191,9 @@ export function createSearchIndex<T>() {
       const kind = matchKind(word, term);
       if (kind === null) continue;
       const weight = MATCH_WEIGHTS[kind];
-      for (const { document, count } of list) {
+      for (let offset = 0; offset < list.length; offset += 2) {
+        const document = list[offset]!;
+        const count = list[offset + 1]!;
         const existing = matches.get(document);
         if (existing === undefined || weight > existing.weight) {
           matches.set(document, { weight, frequency: count });
@@ -184,15 +207,20 @@ export function createSearchIndex<T>() {
 
   return {
     add(document: SearchDocument<T>): void {
-      const { length, opening, counts } = analyze(document.text);
+      const { length, counts } = analyze(document.text);
       const index = documents.length;
       for (const [word, count] of counts) {
         const list = postings.get(word);
-        if (list === undefined) postings.set(word, [{ document: index, count }]);
-        else list.push({ document: index, count });
+        if (list === undefined) postings.set([...word].join(""), [index, count]);
+        else list.push(index, count);
       }
       totalLength += length;
-      documents.push({ item: document.item, time: document.time, length, opening });
+      documents.push({
+        item: document.item,
+        text: document.text,
+        time: document.time,
+        length,
+      });
     },
 
     search(
@@ -228,8 +256,8 @@ export function createSearchIndex<T>() {
       function scored(
         item: T,
         time: number,
+        text: string,
         length: number,
-        documentOpening: string,
         matches: readonly TermMatch[],
       ): SearchMatch<T> {
         const norm =
@@ -246,7 +274,7 @@ export function createSearchIndex<T>() {
         const age = Math.max(0, now - time);
         return {
           item,
-          prefix: documentOpening.startsWith(opening),
+          prefix: startsWithOpening(text, opening),
           quality,
           score: relevance * 0.5 ** (age / RECENCY_HALF_LIFE_MS),
           time,
@@ -265,8 +293,8 @@ export function createSearchIndex<T>() {
           scored(
             document.item,
             document.time,
+            document.text,
             document.length,
-            document.opening,
             matches as TermMatch[],
           ),
         );
@@ -277,8 +305,8 @@ export function createSearchIndex<T>() {
           scored(
             extra.item,
             extra.time,
+            extra.text,
             analyzed.length,
-            analyzed.opening,
             matches as TermMatch[],
           ),
         );
