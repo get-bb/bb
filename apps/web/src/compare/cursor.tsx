@@ -140,7 +140,7 @@ export const BB_VS_CURSOR: Comparison = {
         },
         {
           feature: "Code editor",
-          bb: cell("partial", "Via plugins, no Tab completion"),
+          bb: cell("yes", "Via plugins, no Tab completion"),
           competitor: cell("yes", "Full editor with Tab"),
         },
       ],
@@ -252,8 +252,8 @@ export const BB_VS_CURSOR: Comparison = {
               Yes. Every bb thread runs in the background on the machine you
               pick: your laptop, an always-on desktop, or a server you own. You
               can also start threads in on-demand cloud sandboxes in your own
-              Modal account with the built-in Modal Sandbox plugin
-              (experimental). Either way, you pay nothing extra to bb.
+              Modal account with the built-in Modal Sandbox plugin. Either way,
+              you pay nothing extra to bb.
             </p>
           ),
         },

@@ -190,8 +190,8 @@ export function faqUsageLimit(contrast: ReactNode): CompareFaq {
         bb picks the work back up. When an agent stops on a usage limit that
         reports when it resets, bb sends the message again a little after the
         reset, so you don’t have to come back and press send. To keep going on
-        another Claude Code or Codex account you own, turn on Account Pooler, an
-        experimental plugin built into bb. {contrast}
+        another Claude Code or Codex account you own, turn on Account Pooler, a
+        plugin built into bb. {contrast}
       </p>
     ),
   };
@@ -287,8 +287,8 @@ export const FAQ_LAPTOP: CompareFaq = {
       stops idle sleep while bb runs. For long runs, add an always-on desktop or
       server to bb, or run threads in the cloud with a{" "}
       <a href="/marketplace">cloud plugin</a> like Modal Sandbox, which is built
-      in (experimental) and starts each thread in an on-demand sandbox in your
-      own Modal account.
+      in and starts each thread in an on-demand sandbox in your own Modal
+      account.
     </p>
   ),
 };
