@@ -1,3 +1,4 @@
+import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
@@ -265,6 +266,8 @@ export interface PluginTurnFailedEvent {
  * queued row GET /threads/:id/queued-messages serves.
  */
 export interface PluginThreadEventPayloads {
+  "experimental_environment.removed": { removal: EnvironmentRemoval };
+
   /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
   "experimental_thread.events": { thread: ThreadResponse; sequence: number };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
@@ -967,7 +970,7 @@ export interface PluginInteractionRequest {
   rendererId: string;
   title: string;
   payload: JsonValue;
-  /** Defaults to ten minutes; capped at one hour. */
+  /** Defaults to ten minutes; capped at seven days. */
   timeoutMs?: number;
   /**
    * How the form reads as a timeline row while it waits and once it settles,

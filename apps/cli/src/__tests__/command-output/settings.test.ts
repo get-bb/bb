@@ -16,6 +16,35 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
+  it("clears the setup guide completion time and keeps every other setting", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          onboardingCompletedAt: "2026-10-01T00:00:00.000Z",
+          setupChecklistVisible: true,
+          streamerMode: true,
+        },
+      })),
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(["settings", "replay-onboarding"], register);
+
+    expect(put).toHaveBeenCalledWith({
+      json: {
+        ...defaultAppSettings,
+        onboardingCompletedAt: null,
+        setupChecklistVisible: true,
+        streamerMode: true,
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "The setup guide is showing again",
+    ]);
+  });
+
   it("sets and resets a plugin shortcut while preserving other overrides", async () => {
     const other = { command: "plugin:other/open", shortcut: null };
     const put = vi.fn(async ({ json }) => json);

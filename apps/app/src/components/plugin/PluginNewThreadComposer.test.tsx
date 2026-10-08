@@ -95,7 +95,7 @@ const mocks = vi.hoisted(() => ({
   extraProjects: [] as Array<Record<string, unknown>>,
   promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
   environmentProviders: [] as unknown[],
-  closeTerminal: vi.fn(),
+  closeTerminal: vi.fn(() => Promise.resolve()),
   plugins: [] as unknown[],
   serverAccessReady: true,
   machineProviders: [] as SystemMachineProvider[],
@@ -134,8 +134,7 @@ vi.mock("@/hooks/queries/thread-terminal-queries", async (importOriginal) => {
     ...actual,
     useTerminals: () => ({ data: undefined }),
     useEnvironmentTerminals: () => ({ data: undefined }),
-    useCloseTerminal: () => ({ mutate: mocks.closeTerminal }),
-    useCloseEnvironmentTerminal: () => ({ mutate: mocks.closeTerminal }),
+    useCloseTerminal: () => ({ mutateAsync: mocks.closeTerminal }),
   };
 });
 
@@ -245,6 +244,17 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
         },
 }));
 
+vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
+  SetupChecklistBanner: () => null,
+  SetupChecklistCard: () => null,
+  hasSetupChecklistBanner: () => false,
+  useSetupChecklist: () => ({
+    items: null,
+    agentMissing: false,
+    open: () => {},
+    dismiss: () => {},
+  }),
+}));
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [
@@ -1687,10 +1697,10 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(mocks.closeTerminal).not.toHaveBeenCalled();
     expect(command.dataset.activeDetail).toBe("");
     fireEvent.click(command);
-    expect(mocks.closeTerminal).toHaveBeenCalledWith(
-      { mode: "force", terminalId: "terminal-under-details" },
-      expect.anything(),
-    );
+    expect(mocks.closeTerminal).toHaveBeenCalledWith({
+      mode: "force",
+      terminalId: "terminal-under-details",
+    });
   });
 
   it("keeps a seeded fork's exact reuse selection while the sidebar bootstrap settles", async () => {

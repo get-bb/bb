@@ -1788,6 +1788,46 @@ describe("Account Pool plugin", () => {
     expect(await resolveToken(fixture.host)).toBe(fixture.key);
   });
 
+  it("restores the 1-hour prompt cache only while a subscription account can serve Claude", async () => {
+    const upstream = await startUpstream(async (request, response) => {
+      await readRequestBody(request);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    cleanups.push(upstream.close);
+    const fixture = await createFixture({
+      upstreamUrl: upstream.url,
+      options: { importCredentials: async () => importedCredentials() },
+    });
+    const cacheEntry = async () =>
+      (
+        await fixture.host.harness.behavior.resolveProviderEnv("claude-code", {
+          threadId: "thread-one",
+          projectId: "project-one",
+          hostId: "host-one",
+        })
+      ).find((entry) => entry.name === "ENABLE_PROMPT_CACHING_1H");
+    await expect(cacheEntry()).resolves.toBeUndefined();
+    const subscription = accountSchema.parse(
+      await fixture.host.harness.behavior.callRpc("account.add", {
+        provider: "claude",
+        source: { kind: "import" },
+        label: null,
+        priority: 100,
+      }),
+    );
+    await expect(cacheEntry()).resolves.toEqual({
+      name: "ENABLE_PROMPT_CACHING_1H",
+      value: "1",
+      reason:
+        "Claude Code uses a 5-minute prompt cache behind a custom base URL; subscription accounts get the 1-hour cache Claude Code uses for a direct subscription login",
+    });
+    await fixture.host.harness.behavior.callRpc("account.disable", {
+      id: subscription.id,
+    });
+    await expect(cacheEntry()).resolves.toBeUndefined();
+  });
+
   it("withholds env and proxied health when an enabled account secret is missing", async () => {
     const upstream = await startUpstream(async (request, response) => {
       await readRequestBody(request);
@@ -6927,6 +6967,7 @@ describe("Account Pool nested proxy", () => {
       "ANTHROPIC_AUTH_TOKEN",
       "ENABLE_TOOL_SEARCH",
       "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL",
+      "ENABLE_PROMPT_CACHING_1H",
       "BB_ACCOUNT_POOL_PARENT_URL",
       "BB_ACCOUNT_POOL_PARENT_TOKEN",
     ]);

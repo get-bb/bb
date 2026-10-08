@@ -4,6 +4,7 @@ import type {
   ExperimentalFileOpenOptions,
   JsonValue,
 } from "@get-bb/plugin-sdk";
+import type { TerminalSession } from "@bb/server-contract";
 import type { FileOpenerOverride } from "@/lib/plugin-slot-resolvers";
 
 interface AppUrlOpenIntent {
@@ -29,6 +30,7 @@ interface AppNavigationHostCapabilities {
   openFileExternally?: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview?: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab?: (intent: AppFixedTabOpenIntent) => boolean;
+  openTerminal?: (session: TerminalSession) => boolean;
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
@@ -36,6 +38,7 @@ interface ResolvedAppNavigationHostCapabilities {
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
   openFixedTab: (intent: AppFixedTabOpenIntent) => boolean;
+  openTerminal: (session: TerminalSession) => boolean;
   openUrl: (intent: AppUrlOpenIntent) => boolean;
 }
 
@@ -44,6 +47,7 @@ const DEFAULT_APP_NAVIGATION_HOST: ResolvedAppNavigationHostCapabilities = {
   openFileExternally: rejectNavigationIntent,
   openFilePreview: rejectNavigationIntent,
   openFixedTab: rejectNavigationIntent,
+  openTerminal: rejectNavigationIntent,
   openUrl: rejectNavigationIntent,
 };
 
@@ -66,16 +70,19 @@ export function AppNavigationHostProvider({
         capabilities.openFileExternally ?? parent.openFileExternally,
       openFilePreview: capabilities.openFilePreview ?? parent.openFilePreview,
       openFixedTab: capabilities.openFixedTab ?? parent.openFixedTab,
+      openTerminal: capabilities.openTerminal ?? parent.openTerminal,
       openUrl: capabilities.openUrl ?? parent.openUrl,
     }),
     [
       capabilities.openFileExternally,
       capabilities.openFilePreview,
       capabilities.openFixedTab,
+      capabilities.openTerminal,
       capabilities.openUrl,
       parent.openFileExternally,
       parent.openFilePreview,
       parent.openFixedTab,
+      parent.openTerminal,
       parent.openUrl,
     ],
   );

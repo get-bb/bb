@@ -11,7 +11,9 @@ thread/type/sequence index. These are hints: it does not inspect request input,
 resolve acceptance, or require the hinted event to produce a visible row. It
 prefers hints within the event budget, or the nearest older hint for an
 oversized conversation. Without a request hint it can cut at an ordinary event
-sequence. The latest completed context clear is the history floor.
+sequence. The latest completed context clear is the history floor unless the
+`keepHistoryAfterContextClear` general setting is on; then pages continue across
+it to the start of the thread.
 
 A page owns an event window `[start, end)`. It returns projected rows whose
 `sourceSeqStart` falls inside that window, in display order. Context loaded

@@ -3,6 +3,7 @@ import {
   definePluginApp,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
+  experimental_copyToClipboard,
   UrlLink,
   useBbNavigate,
   useRealtime,
@@ -627,9 +628,11 @@ function RowMenu({ item }: { item: Item }) {
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            navigator.clipboard.writeText(item.url).then(
-              () => toast.success("Link copied"),
-              () => toast.error("Could not copy the link"),
+            void experimental_copyToClipboard({ text: item.url }).then(
+              (copied) => {
+                if (copied) toast.success("Link copied");
+                else toast.error("Could not copy the link");
+              },
             );
           }}
         >

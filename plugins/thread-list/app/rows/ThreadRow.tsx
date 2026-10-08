@@ -70,6 +70,7 @@ import {
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_GLYPH_SLOT_CLASS,
+  SIDEBAR_ROW_ACCENT_STATE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
@@ -94,6 +95,11 @@ import {
   visibleThreadRowActions,
 } from "./ThreadActionsMenu.js";
 import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
+import { useThreadRowActionsCustomizing } from "../list/customizeRowActionsContext.js";
+import {
+  ThreadRowActionsEditor,
+  focusFirstRowActionSlot,
+} from "../list/ThreadRowActionsCustomize.js";
 import {
   ThreadStatusGlyph,
   resolveThreadStatus,
@@ -369,6 +375,8 @@ function ThreadRowComponent({
   });
   const { editor, isEditing, startEditing, startEditingFromDoubleClick } =
     rename;
+  const finishCustomizingActions = useThreadRowActionsCustomizing(thread.id);
+  const isCustomizingActions = finishCustomizingActions !== null;
   const startTitleEditing = useCallback(
     (event: { preventDefault: () => void; stopPropagation: () => void }) => {
       event.preventDefault();
@@ -452,7 +460,8 @@ function ThreadRowComponent({
   const linkLabel = hasComposerDraft
     ? `Open ${labelTitle} (unsubmitted draft)`
     : `Open ${labelTitle}`;
-  const rowDragBindings = isEditing ? undefined : options.dragBindings;
+  const rowDragBindings =
+    isEditing || isCustomizingActions ? undefined : options.dragBindings;
   const nestTargetState = options.nestDrop?.state ?? null;
   const reorderPlacement = options.nestDrop?.reorderPlacement ?? null;
   const containerRef = useComposedRefs<HTMLDivElement>(
@@ -473,12 +482,12 @@ function ThreadRowComponent({
       ? SIDEBAR_ROW_SELECTED_STATE_CLASS
       : SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
     !showActive && isOpenInSplit && SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-    !showActive &&
-      "has-[[data-state=open]]:bg-sidebar-accent has-[[data-sidebar-rename-anchor]:focus-visible]:bg-sidebar-accent",
+    !showActive && SIDEBAR_ROW_ACCENT_STATE_CLASS,
     rowDragBindings && !rowDragBindings.disabled && "select-none",
     !isActionsOpen && "data-[sidebar-touch-armed=true]:!bg-transparent",
     nestTargetState && NEST_TARGET_STATE_CLASS[nestTargetState],
     reorderPlacement && REORDER_PLACEMENT_CLASS[reorderPlacement],
+    isCustomizingActions && "bg-sidebar-accent",
   );
   const rowStyle = getThreadRowStyle(options.depth);
   const parentGuideLeft =
@@ -506,6 +515,17 @@ function ThreadRowComponent({
     },
     [],
   );
+  const handleActionsMenuCloseAutoFocus = (event: Event) => {
+    if (isCustomizingActions) {
+      event.preventDefault();
+      focusFirstRowActionSlot(
+        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
+      );
+      return;
+    }
+    rename.onCloseAutoFocus(event);
+  };
+
   const rowContent = (
     <>
       {parentOptions?.stickyLevel !== undefined && parentGuideLeft !== null ? (
@@ -522,6 +542,7 @@ function ThreadRowComponent({
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
           !shortcut &&
             !isEditing &&
+            !isCustomizingActions &&
             (reserveActionSpace
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
@@ -657,7 +678,7 @@ function ThreadRowComponent({
           "flex shrink-0 items-center gap-0.5",
           !isActionsOpen &&
             "group-data-[sidebar-touch-armed=true]/thread-row:hidden",
-          isEditing && "hidden",
+          (isEditing || isCustomizingActions) && "hidden",
         )}
       >
         {thread.archivedAt !== null ? (
@@ -677,7 +698,7 @@ function ThreadRowComponent({
                 onOpenInSplit={splitAvailable ? openInSplit : undefined}
                 onOpenChange={setIsDropdownActionsOpen}
                 onRename={rename.startEditingFromMenu}
-                onCloseAutoFocus={rename.onCloseAutoFocus}
+                onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
               />
             </div>
             <ThreadRestoreStatusAction thread={thread} />
@@ -759,7 +780,7 @@ function ThreadRowComponent({
                     onOpenInSplit={splitAvailable ? openInSplit : undefined}
                     onOpenChange={setIsDropdownActionsOpen}
                     onRename={rename.startEditingFromMenu}
-                    onCloseAutoFocus={rename.onCloseAutoFocus}
+                    onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
                   />
                 </SidebarRowControls>
               </div>
@@ -767,6 +788,9 @@ function ThreadRowComponent({
           </span>
         )}
       </span>
+      {finishCustomizingActions ? (
+        <ThreadRowActionsEditor onDone={finishCustomizingActions} />
+      ) : null}
     </>
   );
 
@@ -793,7 +817,7 @@ function ThreadRowComponent({
       onOpenInSplit={splitAvailable ? openInSplit : undefined}
       onOpenChange={setIsContextActionsOpen}
       onRename={rename.startEditingFromMenu}
-      onCloseAutoFocus={rename.onCloseAutoFocus}
+      onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
       disabled={isEditing}
       dragging={rowDragBindings?.isDragging ?? false}
     >

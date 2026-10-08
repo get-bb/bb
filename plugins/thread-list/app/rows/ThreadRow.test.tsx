@@ -43,7 +43,10 @@ import {
   preferenceValueAtom,
   resetPreferencesSyncForTest,
 } from "../preferences/preferences-sync.js";
-import { CustomizeRowActionsContext } from "../list/customizeRowActionsContext.js";
+import {
+  CustomizeRowActionsContext,
+  ThreadRowActionsCustomizingContext,
+} from "../list/customizeRowActionsContext.js";
 
 installTestPluginRuntime();
 const { SidebarDraftPresenceSync } =
@@ -86,6 +89,7 @@ interface HarnessProps {
   options?: ThreadRowOptions;
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
+  onFinishCustomizingRowActions?: (restoreFocus: boolean) => void;
   sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
@@ -97,6 +101,7 @@ function ThreadRowHarness({
   options = DEFAULT_OPTIONS,
   onRowEvent,
   onCustomizeRowActions,
+  onFinishCustomizingRowActions,
   sectionDestinations,
 }: HarnessProps) {
   const row = (
@@ -114,19 +119,27 @@ function ThreadRowHarness({
         <CustomizeRowActionsContext.Provider
           value={onCustomizeRowActions ?? null}
         >
-          <div
-            onPointerDown={onRowEvent}
-            onKeyDown={onRowEvent}
-            onClick={onRowEvent}
+          <ThreadRowActionsCustomizingContext.Provider
+            value={
+              onFinishCustomizingRowActions
+                ? { threadId: thread.id, onDone: onFinishCustomizingRowActions }
+                : null
+            }
           >
-            {sectionDestinations ? (
-              <ThreadSectionMoveProvider destinations={sectionDestinations}>
-                {row}
-              </ThreadSectionMoveProvider>
-            ) : (
-              row
-            )}
-          </div>
+            <div
+              onPointerDown={onRowEvent}
+              onKeyDown={onRowEvent}
+              onClick={onRowEvent}
+            >
+              {sectionDestinations ? (
+                <ThreadSectionMoveProvider destinations={sectionDestinations}>
+                  {row}
+                </ThreadSectionMoveProvider>
+              ) : (
+                row
+              )}
+            </div>
+          </ThreadRowActionsCustomizingContext.Provider>
         </CustomizeRowActionsContext.Provider>
       </SidebarRenameProvider>
     </TooltipProvider>
@@ -616,6 +629,20 @@ describe("ThreadRow", () => {
     expect(customize).toHaveBeenCalledWith("thr_test");
   });
 
+  it("customizes row actions on the real row until Done", () => {
+    const finish = vi.fn();
+    renderThreadRow({ onFinishCustomizingRowActions: finish });
+    expect(screen.getByRole("link", { name: "Open Thread" })).toBeTruthy();
+    expect(
+      document
+        .querySelector("[data-sidebar-thread-trailing]")
+        ?.classList.contains("hidden"),
+    ).toBe(true);
+    expect(screen.getByRole("group", { name: "Row actions" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(finish).toHaveBeenCalledWith(true);
+  });
+
   it("asks the host to confirm deletion from the menu", async () => {
     const slot = renderThreadRow();
     openActionsMenu();
@@ -652,21 +679,16 @@ describe("ThreadRow", () => {
   });
 
   it("copies the canonical thread URL built from the href", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    renderThreadRow({
+    const slot = renderThreadRow({
       thread: createThread({ href: "/projects/proj_test/threads/thr_test" }),
     });
     openActionsMenu();
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Copy thread link" }),
     );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/projects/proj_test/threads/thr_test`,
-      ),
-    );
-    vi.unstubAllGlobals();
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: `${window.location.origin}/projects/proj_test/threads/thr_test` },
+    ]);
   });
 
   it("moves the thread to another section through the sdk", async () => {

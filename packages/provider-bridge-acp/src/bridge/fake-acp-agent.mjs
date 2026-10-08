@@ -36,6 +36,8 @@
  *                            → fail session/set_config_option for one model
  * - FAKE_ACP_SET_CONFIG_FAST_ERROR=1
  *                            → fail session/set_config_option for Fast values
+ * - FAKE_ACP_EMPTY_MODEL_RESULT=1
+ *                            → answer model setters with an empty result
  * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
  *                            → mirror Cursor compatibility-vs-parameterized
  *                              model/config-option responses
@@ -96,6 +98,7 @@ const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
 const setConfigModelErrorValue =
   process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR_VALUE;
 const setConfigFastError = process.env.FAKE_ACP_SET_CONFIG_FAST_ERROR === "1";
+const emptyModelResult = process.env.FAKE_ACP_EMPTY_MODEL_RESULT === "1";
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
 const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
@@ -594,6 +597,10 @@ async function handlePrompt(message) {
   } else if (text.includes("echo-argv")) {
     // Lets bridge tests assert the launch args (e.g. the --model pin).
     notifyUpdate(messageChunk(`argv:${process.argv.slice(2).join(" ")}`));
+  } else if (text.includes("self-switch-model")) {
+    selectedModel = "fake/strong";
+    notifyUpdate({ sessionUpdate: "config_option_update", ...configState() });
+    notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
   } else if (text.includes("echo-selected-model")) {
     notifyUpdate(messageChunk(`selected-model:${selectedModel}`));
   } else if (text.includes("echo-selected-effort")) {
@@ -796,7 +803,11 @@ async function handleMessage(message) {
         return;
       }
       selectedModel = modelId;
-      send({ jsonrpc: "2.0", id: message.id, result: configState() });
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: emptyModelResult ? {} : configState(),
+      });
       return;
     }
     case "session/set_config_option": {
@@ -827,7 +838,11 @@ async function handleMessage(message) {
           return;
         }
         selectedModel = value;
-        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: emptyModelResult ? {} : configState(),
+        });
         return;
       }
       if (configId === "effort") {

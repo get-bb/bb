@@ -176,5 +176,9 @@
   "prompt-library": {
     "category": "memory-and-context",
     "screenshots": []
+  },
+  "storage-retention": {
+    "category": "tasks-and-workflows",
+    "screenshots": []
   }
 }

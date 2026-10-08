@@ -49,7 +49,6 @@ const EXITED_SESSION: TerminalSession = {
 
 interface MakeControllerArgs {
   activeSession: TerminalSession | null;
-  canCreateTerminal: boolean;
   hasTerminalQueryError: boolean;
   isPanelOpen: boolean;
   terminalBodyMessage: string;
@@ -60,25 +59,20 @@ interface TerminalContentStageProps {
   controller: ThreadTerminalController;
 }
 
-function noopTerminalIdAction(_terminalId: string): void {}
-
 function noopSessionChange(_session: TerminalSession): void {}
 
 function noopTitleChange(_title: string): void {}
 
 function makeController({
   activeSession,
-  canCreateTerminal,
   hasTerminalQueryError,
   isPanelOpen,
   terminalBodyMessage,
 }: MakeControllerArgs): ThreadTerminalController {
   return {
     activeSession,
-    canCreateTerminal,
     handleActiveTerminalSessionChange: noopSessionChange,
     handleActiveTerminalTitleChange: noopTitleChange,
-    handleSelectTerminal: noopTerminalIdAction,
     hasTerminalQueryError,
     isPanelOpen,
     shouldMountTerminalView: isPanelOpen,
@@ -91,7 +85,6 @@ function terminalController(
 ): ThreadTerminalController {
   return makeController({
     activeSession,
-    canCreateTerminal: true,
     hasTerminalQueryError: false,
     isPanelOpen: true,
     terminalBodyMessage: "No terminals",
@@ -105,7 +98,6 @@ const reconnectingController = terminalController(RUNNING_SESSION);
 
 const emptyController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: false,
   isPanelOpen: true,
   terminalBodyMessage: "No terminals",
@@ -113,7 +105,6 @@ const emptyController = makeController({
 
 const loadingController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: false,
   isPanelOpen: true,
   terminalBodyMessage: "Starting terminal...",
@@ -121,7 +112,6 @@ const loadingController = makeController({
 
 const queryErrorController = makeController({
   activeSession: null,
-  canCreateTerminal: true,
   hasTerminalQueryError: true,
   isPanelOpen: true,
   terminalBodyMessage: "No terminals",

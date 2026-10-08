@@ -108,7 +108,7 @@ export function ScopedMachineEnvironmentSettings({
       environment={query.data ?? null}
       loadFailed={query.isError}
       gitCredentialsEnabled={settings?.machineGitCredentialsEnabled ?? true}
-      gitSwitchDisabled={!settings || updateSettings.isPending}
+      gitSwitchDisabled={!settings}
       onSave={save}
       onSaved={() => {
         invalidateMachineEnvironment({ queryClient });
@@ -118,7 +118,7 @@ export function ScopedMachineEnvironmentSettings({
       onSetGitCredentials={(enabled) => {
         if (!settings) return;
         updateSettings.mutate(
-          { ...settings, machineGitCredentialsEnabled: enabled },
+          { machineGitCredentialsEnabled: enabled },
           { onSuccess: () => void query.refetch() },
         );
       }}

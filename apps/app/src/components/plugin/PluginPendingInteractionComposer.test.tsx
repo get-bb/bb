@@ -2,7 +2,13 @@
 
 import { resolve } from "node:path";
 import { useEffect, useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
@@ -319,6 +325,55 @@ describe("PluginPendingInteractionComposer", () => {
       }),
     );
   });
+
+  it.each([
+    ["submit", "respond"],
+    ["cancel", "cancel"],
+  ] as const)(
+    "keeps the plugin form disabled after a successful %s and re-enables it after a failure",
+    async (action, sdkMethod) => {
+      function Renderer({ submit, cancel }: PluginPendingInteractionProps) {
+        return (
+          <button
+            type="button"
+            onClick={() =>
+              void (action === "submit" ? submit("value") : cancel()).catch(
+                () => {},
+              )
+            }
+          >
+            Send
+          </button>
+        );
+      }
+      setPluginSlotRegistrations(
+        "secrets",
+        registrations([{ id: "secret-request", component: Renderer }]),
+      );
+      const call = vi
+        .spyOn(sdk.threads.interactions, sdkMethod)
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(undefined as never);
+      renderComposer(
+        <PluginPendingInteractionComposer
+          interaction={interaction}
+          request={secretsRequest}
+          origin="plugin"
+        />,
+      );
+      const send = () =>
+        screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+
+      fireEvent.click(send());
+      await vi.waitFor(() => expect(screen.getByText("offline")).toBeDefined());
+      expect(send().matches(":disabled")).toBe(false);
+
+      fireEvent.click(send());
+      await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+      await act(async () => {});
+      expect(send().matches(":disabled")).toBe(true);
+    },
+  );
 
   it("mounts only the renderer registered by the interaction's plugin", () => {
     function WrongRenderer() {

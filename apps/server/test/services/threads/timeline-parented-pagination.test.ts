@@ -335,6 +335,7 @@ describe("thread timeline parented pagination", () => {
     const timeline = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
@@ -353,6 +354,7 @@ describe("thread timeline parented pagination", () => {
     const latest = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,
@@ -362,6 +364,7 @@ describe("thread timeline parented pagination", () => {
     const timeline = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: 1_000_000,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: null,

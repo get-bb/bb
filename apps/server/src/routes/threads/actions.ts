@@ -46,6 +46,9 @@ import { resolvePromptAttachmentReferences } from "../../services/projects/attac
 import { threadTargetHostId } from "../../services/threads/dispatch-attempt.js";
 import {
   createQueuedMessageForThread,
+  holdQueuedMessageForEdit,
+  releaseQueuedMessageEditHold,
+  requestEditReleasedQueuedMessageDispatch,
   sendQueuedMessageNow,
 } from "../../services/threads/queued-messages.js";
 import {
@@ -353,7 +356,33 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         "Queued message changed since editing began",
       );
     }
+    if (result.releasedEditHold) {
+      requestEditReleasedQueuedMessageDispatch(deps, {
+        queuedMessageId: result.queuedMessage.id,
+        threadId: thread.id,
+      });
+    }
     return context.json(toThreadQueuedMessage(result.queuedMessage));
+  });
+
+  post(routes.holdQueuedMessageForEdit, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    ensureThreadQueueIsWritable(thread);
+    return context.json(
+      holdQueuedMessageForEdit(deps, {
+        queuedMessageId: context.req.param("queuedMessageId"),
+        threadId: thread.id,
+      }),
+    );
+  });
+
+  del(routes.releaseQueuedMessageEditHold, (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    releaseQueuedMessageEditHold(deps, {
+      queuedMessageId: context.req.param("queuedMessageId"),
+      threadId: thread.id,
+    });
+    return context.json({ ok: true });
   });
 
   del(routes.deleteQueuedMessage, (context) => {

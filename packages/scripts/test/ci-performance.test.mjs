@@ -17,6 +17,40 @@ import {
   listActionsCaches,
 } from "../../../scripts/lib/actions-cache.mjs";
 
+it("rejects a missing lockfile snapshot before starting CI jobs", ({
+  skip,
+}) => {
+  skip(process.platform === "win32", "the preflight runs on Linux");
+  const root = mkdtempSync(join(tmpdir(), "bb-ci-broken-lockfile-"));
+  onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "fixture", dependencies: { "is-number": "7.0.0" } }),
+  );
+  writeFileSync(
+    join(root, "pnpm-lock.yaml"),
+    "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\nimporters:\n  .:\n    dependencies:\n      is-number:\n        specifier: 7.0.0\n        version: 7.0.0\npackages: {}\nsnapshots: {}\n",
+  );
+  const result = spawnSync(
+    "bash",
+    [
+      fileURLToPath(
+        new URL(
+          "../../../.github/actions/setup-workspace/install-dependencies.sh",
+          import.meta.url,
+        ),
+      ),
+      "--ignore-scripts",
+      "--offline",
+    ],
+    { cwd: root, encoding: "utf8", timeout: 30_000 },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stdout + result.stderr).toContain(
+    "ERR_PNPM_LOCKFILE_MISSING_DEPENDENCY",
+  );
+});
+
 it("isolates failed cache restores while preserving healthy caches through a real frozen install", ({
   skip,
 }) => {

@@ -1367,6 +1367,16 @@ export interface PluginCodeThemeState {
 }
 
 /**
+ * What {@link PluginSdkApp.experimental_copyToClipboard} writes: plain text,
+ * plus an HTML representation for paste targets that accept rich text.
+ * Without `html`, only plain text is written.
+ */
+export interface ExperimentalClipboardContent {
+  text: string;
+  html?: string;
+}
+
+/**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
@@ -3378,9 +3388,11 @@ export interface BbNavigate {
    */
   toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
   /**
-   * Open one of this plugin's registered thread-panel actions in the current
-   * thread surface. Returns false when the surface has no thread side panel or
-   * the action is unavailable.
+   * Open one of this plugin's registered panel actions in the current
+   * surface's side panel: a `threadPanelAction` in a thread, or an
+   * `experimental_newThreadPanelAction` on the New thread screen. Plugin
+   * commands use the same opener. Returns false when the surface has no side
+   * panel actions (plugin pages) or the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
   /**
@@ -3395,6 +3407,18 @@ export interface BbNavigate {
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
   ): boolean;
+  /**
+   * Show a terminal session in this surface's BB terminal panel: select its
+   * tab, adding one when needed, and reveal the panel. Create the session
+   * first with `useSdk().terminals.create`, whose scope chooses the thread,
+   * environment, or host directory it runs in. A thread surface accepts only
+   * that thread's terminals, the New thread screen only terminals in its
+   * current terminal scope, and a plugin page any terminal. Resolves false
+   * for unknown or exited terminals and surfaces without a terminal panel.
+   * Closing the tab closes the terminal. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_openTerminal(options: { terminalId: string }): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -3645,6 +3669,19 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_useCodeTheme(): PluginCodeThemeState;
+  /**
+   * Writes content to the system clipboard through bb's own clipboard writer,
+   * the one bb's copy actions use. A plain function, callable from
+   * components, content scripts, and command callbacks. bb Desktop writes
+   * through the native clipboard, so copies work without window focus or a
+   * secure origin; browsers use the Clipboard API, then the copy command.
+   * Resolves true once the clipboard holds the content and false when every
+   * write path failed; it never rejects. Callers own their success and
+   * failure feedback. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_copyToClipboard(
+    content: ExperimentalClipboardContent,
+  ): Promise<boolean>;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

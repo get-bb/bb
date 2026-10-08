@@ -1,5 +1,15 @@
 # APIs To Audit
 
+## Environment removal notification
+
+`experimental_environment.removed` announces successful provider removal after
+its lifecycle transition is committed. The payload is `{ removal }`, containing
+the environment ID, previous host/path, provider ownership, and removal time.
+Delivery is ephemeral; plugins must reconcile external state after reload or
+missed events. Provider success does not guarantee filesystem deletion.
+Stabilization requires review of payload fields, repeat-removal semantics,
+notification timing, and recovery without guaranteed event delivery.
+
 ## Composer popups
 
 `ComposerCustomization.experimental_popups` registers an array of
@@ -80,7 +90,7 @@ model or default binding policy.
 
 `bb.rpc.register` accepts optional `experimental_discoverable` and `experimental_description` options. Method definitions accept `experimental_description`. Discoverable registration exports wire schemas through Standard JSON Schema; validation-only schemas remain usable without publication. Descriptions are published separately and absent descriptions become null. Discovery advertises methods without changing RPC authorization or dispatch.
 
-`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. The SDK RPC caller accepts an optional abort signal. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
+`bb.sdk.plugins.experimental_discoverRpc({ pluginId?, method?, signal? })` lists published methods from loaded plugins. Methods disappear on unload; callers handle the race between discovery and invocation. Discovery and the SDK RPC caller accept an optional abort signal. The fake host exposes `experimental_publishedRpcMethods` on its registration inspection surface.
 
 Before stabilization, audit schema export fidelity (especially refinements and transforms), descriptor size and reference limits, lifecycle races, and cross-plugin copied-schema compatibility. Verify `bb plugin rpc list|inspect` is sufficient to implement a consumer without a shared contract package. Method names carry optional versions; there is no negotiation.
 
@@ -89,6 +99,12 @@ Before stabilization, audit schema export fidelity (especially refinements and t
 `bb.sdk.plugins.experimental_getSafeMode()` returns `{ enabled }`, and `bb.sdk.plugins.experimental_setSafeMode({ enabled })` turns safe mode on or off and returns `{ enabled, problems }`, where `problems` names each plugin that did not start when safe mode ended. The server persists the flag. Plugins included with bb keep running: rows with `builtin` provenance, plus rows from an auto-installed bundled source that kept catalog provenance. Every other installed plugin, including official store plugins, stays unloaded with status `disabled` and detail `safe mode is on`. Each plugin's own `enabled` flag is untouched, so turning safe mode off reloads exactly the plugins that were enabled. While safe mode is on, enabling a stopped plugin keeps it unloaded, reloading it reports a failure, and installing or updating it is refused so install handlers and update validation never run against an unloaded plugin. The same toggle backs `bb plugin safe-mode [on|off]` and the command palette.
 
 Before stabilization, audit whether official store plugins should count as included, whether a plugin calling `experimental_setSafeMode` should be allowed to stop itself and others, whether the toggle should run asynchronously for installs with many slow plugins, and whether startup needs an out-of-band override (env var or flag) for a plugin that breaks the server before the toggle is reachable.
+
+## Queued message edit holds
+
+`bb.sdk.threads.queuedMessages.experimental_holdForEdit({ threadId, queuedMessageId })` (`POST /threads/:id/queued-messages/:queuedMessageId/edit-hold`) holds a queued message while someone edits it and returns `{ leaseMs }`. While the hold is live, no automatic dispatch (idle drain, schedule, plugin recheck, host reconnect, failed-retry) claims the row, and the idle drain also leaves the drainable rows behind it queued, so the edited message still goes first. Rows behind a held row that wait on something else (a schedule, a plugin) are not held back. Explicit send-now still claims a held row. Calling it again renews the lease; a hold that is not renewed within `leaseMs` lapses and the periodic sweep dispatches the row. It responds 409 once a dispatch has claimed the row and 404 for a missing row. Holding never changes `updatedAt`, so `expectedUpdatedAt` from before the hold stays valid for the save. A successful `queuedMessages.update` clears the hold in the same write. `experimental_releaseEditHold` (`DELETE` on the same path) cancels without saving and is a no-op for an unheld row; releasing or saving a held row immediately re-attempts its dispatch. The app's inline queued-message editor takes the hold when it opens, renews it every quarter lease, and releases it on close. Holds are not owned: any client may renew or release one.
+
+Before stabilization, audit whether holds need an owner token so two clients editing the same row cannot release each other's hold, whether queue DTOs and `bb thread queue list` should show that a row is being edited, and whether the lease length suits throttled background tabs.
 
 ## Plugin cache pruning
 
@@ -1345,6 +1361,14 @@ unterminated line is emitted before it.
 
 **Kept experimental (2026-08-22).** `experimental_hostId` is persisted inside opener-tab `paramsJson` (a rename needs a read-compat shim), Windows/UNC paths were never verified, and `experimental_openFilePreview` has no consumer.
 
+**Core callers.** `usePanelFiles` owns file opening on the thread view, New
+thread screen, and plugin page: core's workspace, host, and storage opens and
+this API's `openFilePreview` build the same tab requests, and one scope rule
+(workspace by environment, host files only with a thread and environment,
+storage by thread; plugin pages accept any explicit target) is checked in
+`usePanelFiles.test.tsx` against every surface. Links use `usePanelBrowser`
+for in-app browser tabs and link-preference routing on every surface.
+
 **What it does.** Gives plugin UI explicit, source-safe references to live
 workspace, host, and thread-storage files. Ordinary `experimental_FileLink`
 activation and the preview method use the current surface's shared file-tab
@@ -1376,7 +1400,43 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
 
-## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, and `experimental_createHostEntryHarness`)
+## Terminal navigation (`BbNavigate.experimental_openTerminal`)
+
+**What it does.** Shows an existing terminal session in the current surface's
+BB terminal panel: the host fetches the session, selects its tab (adding one
+when needed), and reveals the panel. Plugins create the session with
+`useSdk().terminals.create`, so the create scope (thread, environment, or host
+path) decides the directory. A thread surface accepts only that thread's
+terminals, the New thread screen only terminals in its current terminal scope,
+and a plugin page any terminal, tagging the tab with the session's own scope.
+It resolves false for unknown (404) or exited terminals and surfaces without a
+terminal panel; other fetch failures reject. Closing the tab force-closes the
+terminal, as for user-started terminals. Requested in #1132 and by a plugin
+author whose code review page could not show a terminal in the reviewed
+worktree.
+
+**Core callers.** Every surface's terminal tabs go through
+`usePanelTerminals`: its `open` is the navigation handler this API calls, and
+core's Start terminal row, the `terminal.open` shortcut, and terminal tab
+selection use the same `select` path after creating or choosing a terminal.
+`usePanelTerminals.test.tsx` runs one contract table against the thread view,
+New thread screen, and plugin page rules.
+
+**Audit before stabilizing.**
+
+1. Decide whether plugins need tabs that hide without closing the terminal
+   (#1132's `closeBehavior: "detach"`). Thread and New-thread surfaces derive
+   tabs from live sessions, so this needs a hidden-session notion in panel
+   state rather than a flag on the call.
+2. Confirm the per-surface acceptance rules with a real consumer, including
+   environment terminals opened from a thread view and host-path terminals
+   whose cwd differs from the New thread screen's target.
+3. Verify compact-viewport drawer reveal, split panes, and opening a terminal
+   whose host is disconnected.
+4. Decide whether a nav panel should also declare a default terminal scope so
+   the native "+ Terminal" button follows the page's worktree.
+
+## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, `experimental_killProcessesWithCwdUnder`, `experimental_readProcessIdentity`, and `experimental_createHostEntryHarness`)
 
 **Kept experimental (2026-08-22).** signals and watches have no consumer (decide whether to delete them or keep them experimental separately from calls), none of the lifetime/limit numbers has been measured against a plugin other than keep-awake, and the artifact-contract names (`experimental_apiVersion`, `experimental_signals`, the injected context members) are read by the daemon from installed artifacts, so renaming them needs a dual-name window plus a protocol bump.
 
@@ -1402,14 +1462,28 @@ unexpected-exit recovery without feature-specific core hooks.
 
 **Audit before stabilizing.**
 
-0a. **Process reap.** `experimental_killProcessesWithCwdUnder({ directory,
+0a. **Process reap.** `experimental_killProcessesWithCwdUnder({ directories,
    graceMs? })` from `@get-bb/plugin-sdk/host` is the same helper bb's own
 daemon used to reap a managed workspace before removing it: SIGTERM to
-every process whose working directory is at or under the path, SIGKILL
-after the grace, returning what it signalled. Published for the worktree
-and environment-personal-workspace plugins, which own their teardown and call it
-before deleting the directory. Confirm the platform coverage (Linux
+every process whose working directory is at or under any of the paths,
+SIGKILL after the grace, returning what it signalled. Each sweep lists
+process working directories once for all paths, so batch callers pass every
+directory in one call. The input was `{ directory }` through SDK 0.6.26;
+the SDK export still accepts that shape at runtime but types only
+`directories`, because git-installed plugins are rebuilt against the newest
+matching SDK without a type check. Published for the worktree and
+environment-personal-workspace plugins, which own their teardown and call it
+before deleting the directory; Storage & retention passes whole cleanup
+batches. Confirm the platform coverage (Linux
 `/proc`, macOS `lsof`) and whether the grace should be per call.
+
+0b. **Process identity.** `experimental_readProcessIdentity(pid)` from
+   `@get-bb/plugin-sdk/host` returns `{ command, startedAt }` (`ps` on POSIX,
+   CIM on Windows) or null. bb's launcher uses the same probe to confirm a
+   recorded PID before stopping it. Storage & retention checks a development
+   instance's recorded launcher entry path and start time before signalling
+   it, so a reused PID is never killed. Confirm start-time precision per
+   platform and whether a combined verified-stop helper should replace it.
 
 0. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` (default 30s,
    capped at 30 minutes) lets a plugin run a long host call — a setup
@@ -1960,6 +2034,43 @@ while a palette switch resolves, so a consumer never paints an unthemed frame.
    re-resolves. Confirm that matches what the built-in surfaces do.
 4. **Consumer count.** One consumer today. Confirm a second engine (CodeMirror,
    xterm) needs the same payload before the prefix drops.
+
+## `app.experimental_copyToClipboard` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** `experimental_copyToClipboard({ text, html? })` writes the
+system clipboard through `copyToClipboard`, the function bb's own copy
+actions call. It is a plain function, not a hook, so components, content
+scripts, setup code, and command callbacks all call it the same way. bb
+Desktop writes through Electron's main-process clipboard, so a copy works
+without document focus, transient activation, or a secure origin; a Desktop
+build without the bridge, or a rejected bridge write, falls through to the
+browser path: the Clipboard API (`write` with a plain and HTML item when
+`html` is set, otherwise `writeText`), then `execCommand("copy")` with the
+content set on the copy event. The promise resolves true only once some path
+wrote the content, so a copy command that reports success without writing is
+a failure. It never rejects. Callers own their toasts and fallback UI. Thread
+list, Plugin Guide, GitHub, Docs, File Editor, bb connect, Account Pooler, and
+Storage retention copy through it.
+
+The test harness replaces it with a fake clipboard. Writes are recorded in
+the most recently rendered slot's `inspection.experimental_clipboardWrites`,
+and resolve with that slot's `experimental_copyToClipboard` render option, or
+true when it is omitted or no slot has rendered.
+
+**Audit before stabilizing.**
+
+1. **Content shape.** Only plain text and HTML are supported. bb's message
+   copy also writes an image, through its own path with Android and browser
+   variants. Decide whether images belong in this contract or stay core-only.
+2. **Harness scoping.** The clipboard is global, so the harness routes writes
+   to the most recently rendered slot. Confirm that is enough for tests that
+   render several slots, and decide whether content-script tests need their
+   own capture.
+3. **Desktop bridge failures.** A rejected bridge write falls through to the
+   browser paths, which can then fail for the reasons the bridge avoids.
+   Confirm on Linux Wayland and X11 that the bridge write lands.
+4. **Feedback.** Every caller pairs the result with a toast or a manual-copy
+   fallback. Decide whether a shared toast helper belongs in the SDK.
 
 ## `app.experimental_usePluginId` (`@get-bb/plugin-sdk/app`)
 
@@ -3763,3 +3874,9 @@ Stabilize after verifying group archive and Undo with descendants, already archi
 Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
 
 Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.
+
+## `PluginBbSdk.hosts.experimental_discoverRepos`
+
+`hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).
+
+Stabilize after deciding whether depth, recency window, and limit should be caller options, and after exercising slow or network-mounted home directories and Windows hosts.

@@ -11,7 +11,7 @@ import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal"
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast, iconForTone } from "@/components/ui/app-toast";
-import { copyTextToClipboard } from "@/lib/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   clearNotifications,
@@ -59,7 +59,7 @@ function NotificationCopyButton({
         if (text.length === 0) {
           return;
         }
-        void copyTextToClipboard(text).then((success) => {
+        void copyToClipboard({ text }).then((success) => {
           if (success) {
             setCopied(true);
           }

@@ -132,7 +132,7 @@ export async function removeHostPath(
   }
   const targetInfo = await fs.lstat(target);
   if (targetInfo.isDirectory() && command.recursive) {
-    await killProcessesWithCwdUnder({ directory: target });
+    await killProcessesWithCwdUnder({ directories: [target] });
   }
   if (targetInfo.isDirectory() && !command.recursive) {
     await fs.rmdir(target);

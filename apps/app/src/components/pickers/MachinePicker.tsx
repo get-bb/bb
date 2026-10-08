@@ -195,7 +195,7 @@ export function MachinePickerUI({
                       handleOpenChange(false);
                     }}
                     className={cn(
-                      "flex items-center justify-between gap-3 py-[0.3125rem] text-xs max-md:py-2",
+                      "flex items-center justify-between gap-3 py-[0.3125rem] text-xs max-md:pointer-coarse:py-2",
                       LIST_HOVER_TRANSITION,
                     )}
                   >
@@ -243,7 +243,7 @@ export function MachinePickerUI({
                 );
               })}
               {showSearch && filteredHosts.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
+                <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:pointer-coarse:py-2">
                   No machines found
                 </div>
               ) : null}

@@ -1,13 +1,17 @@
 import { useMemo } from "react";
 import { keepPreviousData, skipToken, useQuery } from "@tanstack/react-query";
 import type { Host } from "@bb/domain";
-import type { HostDirectoryListing } from "@bb/server-contract";
+import type {
+  HostDirectoryListing,
+  HostDiscoveredReposResponse,
+} from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { useHostListRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   hostCloneDefaultPathQueryKey,
   hostDirectoryQueryKey,
+  hostDiscoveredReposQueryKey,
   hostsQueryKey,
 } from "./query-keys";
 import type { QueryOptions } from "./query-helpers";
@@ -79,6 +83,23 @@ export function useHostCloneDefaultPath(
               .path
         : skipToken,
     staleTime: 60_000,
+  });
+}
+
+export function useHostDiscoveredRepos(
+  hostId: string | null,
+  options?: QueryOptions,
+) {
+  return useQuery<HostDiscoveredReposResponse>({
+    queryKey: hostDiscoveredReposQueryKey(hostId),
+    queryFn:
+      hostId === null
+        ? skipToken
+        : ({ signal }) =>
+            sdk.hosts.experimental_discoverRepos({ hostId, signal }),
+    enabled: options?.enabled ?? true,
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }
 

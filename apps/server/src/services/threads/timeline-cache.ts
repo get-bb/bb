@@ -77,6 +77,7 @@ export interface ThreadTimelineCacheKeyArgs {
   page: ThreadTimelinePageRequest;
   includeNestedRows: boolean;
   summaryOnly: boolean;
+  includeClearedContextHistory: boolean;
   includeDiagnosticOperations: boolean;
   completedTurnDisplay: CompletedTurnDisplay;
 }
@@ -98,6 +99,7 @@ export function buildThreadTimelineParamsKey(
     pageKeyPart(args.page),
     args.includeNestedRows ? "1" : "0",
     args.summaryOnly ? "1" : "0",
+    args.includeClearedContextHistory ? "1" : "0",
     args.includeDiagnosticOperations ? "1" : "0",
     args.completedTurnDisplay,
   ].join("|");

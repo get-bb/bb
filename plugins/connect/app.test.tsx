@@ -122,7 +122,7 @@ describe("connect settings section", () => {
 
     await slot.findByRole("button", { name: "Sign in to your bb account" });
     slot.getByText("you.bb.localhost:42745");
-    slot.getByText(/your bb\.localhost:42745 account gets full control/);
+    slot.getByText(/Only your bb\.localhost:42745 account can open this bb/);
   });
 
   it("signs in through bb account, shows the code, and waits for approval", async () => {

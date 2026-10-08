@@ -582,6 +582,7 @@ export function createPluginApi(options: {
     "experimental_thread.events": [],
     "experimental_terminal.input": [],
     "experimental_host.deleted": [],
+    "experimental_environment.removed": [],
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],

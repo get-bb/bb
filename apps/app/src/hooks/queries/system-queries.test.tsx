@@ -65,6 +65,7 @@ function providerStates(providerId: string): SystemProviderStatesResponse {
         canInstall: false,
         canUpdate: false,
         loginCommand: null,
+        localLoginCommand: null,
       },
     ],
   };
@@ -625,11 +626,11 @@ describe("useSystemExecutionOptions", () => {
 
     prefetchSystemExecutionOptions(queryClient, {
       routing: { hostId: "host-a" },
-      providerIds: ["pi", "claude-code"],
+      providerIds: ["codex", "pi"],
     });
 
     await waitFor(() => {
-      for (const providerId of ["pi", "claude-code"]) {
+      for (const providerId of ["codex", "pi"]) {
         expect(
           queryClient.getQueryData<SystemExecutionOptionsResponse>(
             systemExecutionOptionsQueryKey({

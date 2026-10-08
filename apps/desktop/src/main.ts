@@ -47,6 +47,7 @@ import {
   type ClientMessage,
 } from "@bb/server-contract";
 import { z } from "zod";
+import { registerDesktopClipboardIpc } from "./desktop-clipboard.js";
 import { registerDesktopWindowFocusIpc } from "./desktop-window-focus.js";
 import {
   assertPathExists,
@@ -2246,6 +2247,7 @@ async function finishQuit(): Promise<void> {
 
 function registerDesktopUpdateIpc(): void {
   registerDesktopWindowFocusIpc(applicationWindowWebContentsIds);
+  registerDesktopClipboardIpc(applicationWindowWebContentsIds);
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
     if (parsed.success) {

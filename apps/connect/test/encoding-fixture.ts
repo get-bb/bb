@@ -84,6 +84,7 @@ export default {
         (await fetchThroughRelay(stub, originRequest, {
           stage: "routing",
           tunnelObjectAttempts: 0,
+          routingKey: null,
         })) ?? stub.fetch(originRequest)
       );
     };

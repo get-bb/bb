@@ -22,6 +22,10 @@ import {
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
+import {
+  modelCatalogCacheKey,
+  readCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
 
 const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
@@ -51,6 +55,7 @@ function readyProviderStates(providerId: string): SystemProviderStatesResponse {
         canInstall: false,
         canUpdate: false,
         loginCommand: null,
+        localLoginCommand: null,
       },
     ],
   };
@@ -1389,6 +1394,47 @@ describe("useThreadCreationOptions", () => {
     expect(sdk.system.providerStates).not.toHaveBeenCalledWith(
       expect.objectContaining({ hostId: "second-host" }),
     );
+  });
+
+  it("loads the fallback provider's catalog when the stored provider is no longer offered", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "removed-provider");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      args?.providerId === "removed-provider"
+        ? {
+            ...executionOptionsResponse(),
+            models: [],
+            selectedOnlyModels: [],
+          }
+        : providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: GLOBAL_PROVIDER_ID }),
+      );
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.modelOptions.map((option) => option.value)).toEqual(
+        ["global-default", "global-remembered"],
+      );
+    });
+    expect(window.localStorage.getItem("bb.promptbox.provider")).toContain(
+      "removed-provider",
+    );
+    expect(
+      readCachedModelCatalog(
+        modelCatalogCacheKey({
+          environmentId: null,
+          hostId: null,
+          providerId: "removed-provider",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("routes reusable root-composer worktrees through their environment", async () => {
