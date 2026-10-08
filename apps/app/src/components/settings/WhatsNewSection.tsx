@@ -342,6 +342,93 @@ function ReleaseHeroImage({ hero }: { hero: ReleaseHero }) {
   );
 }
 
+function CurrentRelease({
+  entry,
+  meta,
+  metaLine,
+}: {
+  entry: ChangelogEntry;
+  meta: ReleaseMeta | null;
+  metaLine: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
+  const summary = entry.lede.find((block) => block.kind === "paragraph");
+  const ledeList = entry.lede.filter((block) => block.kind === "list");
+  const sections = entry.sections.filter(
+    (section) => section.title !== "Thanks",
+  );
+  const hasMore =
+    meta?.hero !== undefined ||
+    ledeList.length > 0 ||
+    sections.length > 0 ||
+    contributorHandles(entry).length > 0;
+  return (
+    <div data-whats-new-current className="flex min-w-0 items-start gap-3">
+      <ReleaseVisual visual={meta?.visual} className="size-10" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs leading-snug text-subtle-foreground">
+          {metaLine}
+        </p>
+        {meta === null ? null : (
+          <h3 className="mt-0.5 text-sm font-semibold leading-snug text-foreground">
+            {meta.headline}
+          </h3>
+        )}
+        {summary === undefined ? null : (
+          <p
+            data-whats-new-summary
+            className={cn(
+              "mt-0.5 text-sm leading-relaxed text-muted-foreground",
+              !expanded && "line-clamp-1",
+            )}
+          >
+            <Inline text={summary.text} />
+          </p>
+        )}
+        {hasMore ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            className="-ml-3 mt-1 text-muted-foreground"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            <Icon
+              aria-hidden
+              name="ChevronRight"
+              className={cn(
+                "size-3.5 transition-transform motion-reduce:transition-none",
+                expanded && "rotate-90",
+              )}
+            />
+            {expanded ? "Show less" : "Show all changes"}
+          </Button>
+        ) : null}
+        <div id={panelId} hidden={!expanded} className="pb-1">
+          {meta?.hero === undefined ? null : (
+            <ReleaseHeroImage hero={meta.hero} />
+          )}
+          {ledeList.length === 0 ? null : (
+            <div className="mt-4">
+              <Blocks blocks={ledeList} />
+            </div>
+          )}
+          {sections.map((section) => (
+            <div key={section.title} className="mt-5 first:mt-3">
+              <SectionTitle title={section.title} />
+              <Blocks blocks={section.blocks} />
+            </div>
+          ))}
+          <ThanksLine entry={entry} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function WhatsNewView({
   releases: { current, skipped, updatedFrom },
   meta,
@@ -363,48 +450,28 @@ export function WhatsNewView({
       <SettingsSection
         title="What's new"
         action={
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
             aria-label={`Open the full bb ${current.version} changelog`}
-            className="-mr-3 text-muted-foreground"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             onClick={() =>
               openUrlInExternalBrowser(changelogUrl(current.version))
             }
           >
             Full changelog
-            <Icon aria-hidden name="ExternalLink" className="size-3.5" />
-          </Button>
+            <Icon aria-hidden name="ExternalLink" className="size-3" />
+          </button>
         }
         actionPlacement="inline"
       >
+        <CurrentRelease entry={current} meta={meta} metaLine={metaLine} />
         {available === null ? null : (
-          <div data-whats-new-available className="mb-4">
+          <div data-whats-new-available className="mt-4">
             <ReleaseRow entry={available} badge="Update available" />
           </div>
         )}
-        <div className="flex min-w-0 items-center gap-4">
-          <ReleaseVisual visual={meta?.visual} />
-          <div className="min-w-0 flex-1">
-            <p className="text-xs leading-snug text-subtle-foreground">
-              {metaLine}
-            </p>
-            {meta === null ? null : (
-              <h3 className="mt-1.5 text-xl font-bold leading-tight tracking-tight text-balance text-foreground">
-                {meta.headline}
-              </h3>
-            )}
-          </div>
-        </div>
-        {meta?.hero === undefined ? null : (
-          <ReleaseHeroImage hero={meta.hero} />
-        )}
-        <div className="mt-3">
-          <ReleaseNotes entry={current} />
-        </div>
         {skipped.length === 0 ? null : (
-          <div data-whats-new-skipped className="mt-5">
+          <div data-whats-new-skipped className="mt-4">
             <h4 className="mb-1.5 text-xs font-medium text-subtle-foreground">
               Also new since {updatedFrom}
             </h4>

@@ -1472,9 +1472,10 @@ while keeping workspace changes.
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
-Settings → Updates always shows a What's new section with the installed
-release's notes, releases skipped since this client last saw What's new, and
-the notes for an available update. Until this client sees the installed
+Settings → Updates always shows a What's new section below the update rows:
+a one-line summary of the installed release with its full notes behind Show
+all changes, releases skipped since this client last saw What's new, and the
+notes for an available update. Until this client sees the installed
 release, a What's new card sits above the sidebar footer; opening it goes to
 that section, and opening it, dismissing it, or visiting the section hides it
 until the next release. The card is hidden while the sidebar is collapsed.

@@ -222,9 +222,10 @@ default (Claude Code is `flat`, the other first-party providers `collapse`).
 that provider, and `default` removes the override. Settings → Providers has
 the same per-provider switch.
 
-Settings → Updates always shows a What's new section with the installed
-release's notes, releases skipped since this client last saw What's new, and
-the notes for an available update. Until this client sees the installed
+Settings → Updates always shows a What's new section below the update rows:
+a one-line summary of the installed release with its full notes behind Show
+all changes, releases skipped since this client last saw What's new, and the
+notes for an available update. Until this client sees the installed
 release, a What's new card sits above the sidebar footer; opening it goes to
 that section, and opening it, dismissing it, or visiting the section hides it
 until the next release. The card is hidden while the sidebar is collapsed.

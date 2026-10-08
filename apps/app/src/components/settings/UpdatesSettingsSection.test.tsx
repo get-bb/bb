@@ -465,7 +465,7 @@ describe("UpdatesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("shows What's new first for the installed and available releases", () => {
+  it("shows What's new after the update rows for the installed and available releases", () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -487,7 +487,12 @@ describe("UpdatesSettingsSection", () => {
     const whatsNew = screen.getByTestId("whats-new");
     expect(whatsNew.getAttribute("data-installed-version")).toBe("0.0.5");
     expect(whatsNew.getAttribute("data-available-version")).toBe("0.0.6");
-    expect(whatsNew.parentElement?.firstElementChild).toBe(whatsNew);
+    const bbUpdates = document.querySelector('[data-updates-domain="bb"]');
+    expect(bbUpdates).not.toBeNull();
+    expect(
+      bbUpdates!.compareDocumentPosition(whatsNew) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("omits the available release when bb is up to date", () => {

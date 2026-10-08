@@ -1824,16 +1824,6 @@ export function UpdatesSettingsSection() {
 
   return (
     <div className="space-y-6">
-      <WhatsNewSection
-        key={inventory.systemVersion?.currentVersion ?? "unknown"}
-        installedVersion={inventory.systemVersion?.currentVersion ?? null}
-        availableVersion={
-          inventory.systemVersion?.updateAvailable === true
-            ? inventory.systemVersion.latestVersion
-            : null
-        }
-      />
-
       <BbUpdatesCard>
         {serverRunsSeparately ? serverAppRow : appRow}
         {serverRunsSeparately && desktopRowNeedsAttention(desktopInfo)
@@ -1858,6 +1848,16 @@ export function UpdatesSettingsSection() {
         onRecheckClis={(hostId) => {
           void invalidateHostProviderCliStatus({ queryClient, hostId });
         }}
+      />
+
+      <WhatsNewSection
+        key={inventory.systemVersion?.currentVersion ?? "unknown"}
+        installedVersion={inventory.systemVersion?.currentVersion ?? null}
+        availableVersion={
+          inventory.systemVersion?.updateAvailable === true
+            ? inventory.systemVersion.latestVersion
+            : null
+        }
       />
       <ConfirmDeleteDialog
         open={confirmingAppUpdateThreads !== null}

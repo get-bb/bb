@@ -260,13 +260,6 @@ export function SettingsUpdatesStory() {
   });
   return (
     <div className="space-y-6">
-      {releases === null ? null : (
-        <WhatsNewView
-          releases={releases}
-          meta={RELEASE_META[releases.current.version] ?? null}
-          available={null}
-        />
-      )}
       <BbUpdatesCard>
         <BbAppUpdateRows
           systemVersion={systemVersion}
@@ -290,6 +283,13 @@ export function SettingsUpdatesStory() {
         onRetryAllDaemonUpdates={noop}
         onRecheckClis={noop}
       />
+      {releases === null ? null : (
+        <WhatsNewView
+          releases={releases}
+          meta={RELEASE_META[releases.current.version] ?? null}
+          available={null}
+        />
+      )}
     </div>
   );
 }

@@ -54,7 +54,7 @@ export function SidebarWhatsNewCard({
       aria-labelledby={labelId}
       data-testid="sidebar-whats-new"
       data-whats-new-version={version}
-      className="relative rounded-lg border border-sidebar-border bg-card px-3 pb-2.5 pt-2.5 shadow-xs transition-colors has-[[data-whats-new-open]:hover]:bg-sidebar-accent/40 has-[[data-whats-new-open]:focus-visible]:ring-1 has-[[data-whats-new-open]:focus-visible]:ring-sidebar-ring motion-reduce:transition-none dark:bg-sidebar-accent/50 dark:shadow-none"
+      className="relative rounded-lg bg-card px-3 pb-2.5 pt-2.5 shadow-xs transition-colors has-[[data-whats-new-open]:hover]:bg-sidebar-accent/40 has-[[data-whats-new-open]:focus-visible]:ring-1 has-[[data-whats-new-open]:focus-visible]:ring-sidebar-ring motion-reduce:transition-none dark:bg-sidebar-accent/50 dark:shadow-none"
     >
       <p
         id={labelId}

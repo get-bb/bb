@@ -12,6 +12,7 @@ import { useState, type ReactNode } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SystemVersionResponse } from "@bb/server-contract";
+import { HashNavigationScroll } from "@/App";
 import { WhatsNewSection } from "@/components/settings/WhatsNewSection";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -95,6 +96,19 @@ function SettingsSectionToggle() {
     <button type="button" onClick={() => setShown(true)}>
       Show settings
     </button>
+  );
+}
+
+function UpdatesRouteProbe() {
+  const location = useLocation();
+  if (location.pathname !== "/settings/updates") {
+    return null;
+  }
+  return (
+    <>
+      <section aria-label="bb" data-updates-domain="bb" />
+      <WhatsNewSection installedVersion="0.5.0" availableVersion={null} />
+    </>
   );
 }
 
@@ -193,6 +207,43 @@ describe("SidebarWhatsNew", () => {
     );
     expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
     expect(widget()).toBeNull();
+  });
+
+  it("scrolls to What's new below the update rows and marks the release seen", async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+    window.localStorage.setItem(SEEN_KEY, "0.4.0");
+    renderWidget({
+      extra: (
+        <>
+          <HashNavigationScroll />
+          <UpdatesRouteProbe />
+        </>
+      ),
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "See what's new in bb 0.5.0",
+      }),
+    );
+
+    const target = await waitFor(() => {
+      const element = document.getElementById("whats-new");
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    await waitFor(() => {
+      expect(scrollIntoView.mock.contexts).toContain(target);
+    });
+    expect(
+      document
+        .querySelector('[data-updates-domain="bb"]')
+        ?.compareDocumentPosition(target),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(document.activeElement).toBe(target);
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
+    expect(widget()).toBeNull();
+    scrollIntoView.mockRestore();
   });
 
   it("disappears once the Settings section has shown the release", async () => {

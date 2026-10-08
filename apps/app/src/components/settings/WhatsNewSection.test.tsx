@@ -115,7 +115,7 @@ afterEach(() => {
 });
 
 describe("WhatsNewSection", () => {
-  it("shows the installed release's highlights and keeps the rest one click away", () => {
+  it("shows a compact summary of the installed release and expands the notes in place", () => {
     renderSection("0.5.0");
 
     const section = document.getElementById("whats-new");
@@ -128,22 +128,30 @@ describe("WhatsNewSection", () => {
     ).toBeDefined();
     expect(screen.getByText("bb 0.5.0 · October 2, 2026")).toBeDefined();
     expect(
-      screen.getByRole("img", { name: "Five in action" }).getAttribute("src"),
-    ).toBe("https://example.test/five.png");
-    expect(section?.textContent).toContain("Five is here.");
-    expect(section?.textContent).toContain("switch instantly.");
-    expect(
       section
         ?.querySelector('[data-release-visual="native-windows"]')
         ?.getAttribute("aria-hidden"),
     ).toBe("true");
+    const summary = section?.querySelector("[data-whats-new-summary]");
+    expect(summary?.textContent).toBe("Five is here.");
+    expect(summary?.className).toContain("line-clamp-1");
 
+    const highlight = screen.getByText("switch instantly.");
     const fixes = screen.getByText("Fix a five-specific crash.");
+    expect(highlight.closest("[hidden]")).not.toBeNull();
     expect(fixes.closest("[hidden]")).not.toBeNull();
+    expect(screen.queryByRole("img", { name: "Five in action" })).toBeNull();
+
     const showAll = screen.getByRole("button", { name: "Show all changes" });
     expect(showAll.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(showAll);
+
+    expect(highlight.closest("[hidden]")).toBeNull();
     expect(fixes.closest("[hidden]")).toBeNull();
+    expect(summary?.className).not.toContain("line-clamp-1");
+    expect(
+      screen.getByRole("img", { name: "Five in action" }).getAttribute("src"),
+    ).toBe("https://example.test/five.png");
     expect(section?.textContent).toContain("Thanks to @ada, @grace.");
     expect(
       screen

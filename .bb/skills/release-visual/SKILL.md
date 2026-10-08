@@ -6,8 +6,8 @@ description: "Draw the small release visual for a new bb release and register it
 # Draw a release visual
 
 Each release in `RELEASE_META` (`changelog-metadata.ts`) names one drawing in
-`visual`. The sidebar What's new card shows it at 40px; Settings → Updates →
-What's new shows it at 64px. Drawings live in
+`visual`. The sidebar What's new card and Settings → Updates → What's new show
+it at 40px. Drawings live in
 `apps/app/src/components/release-art/release-visuals.tsx` and are composed from
 the parts in `release-art-kit.tsx`. CI fails when the newest changelog release
 has no visual, a visual id has no drawing, or a drawing is unused.

@@ -115,7 +115,7 @@ export function States() {
       </StoryRow>
       <StoryRow
         label="Hero screenshot"
-        hint="Optional per release; the image here is a placeholder."
+        hint="Optional per release, inside Show all changes; the image is a placeholder."
       >
         <Frame>
           <WhatsNewView
@@ -143,7 +143,7 @@ export function States() {
       </StoryRow>
       <StoryRow
         label="Update available"
-        hint="Installed 0.44.0; the 0.45.0 notes sit collapsed above."
+        hint="Installed 0.44.0; the 0.45.0 notes sit collapsed below."
       >
         <Frame>
           <WhatsNewView

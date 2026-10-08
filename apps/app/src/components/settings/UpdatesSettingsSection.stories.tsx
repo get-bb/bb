@@ -1192,16 +1192,16 @@ export function SectionVariations() {
       </StoryRow>
       <StoryRow
         label="What's new"
-        hint="The installed release's notes appear above the update cards."
+        hint="A compact summary of the installed release sits below the update cards."
       >
         <div className="w-full space-y-6">
+          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
+          <StoryProviderClis machines={[workstation]} />
           <WhatsNewView
             releases={LATEST_RELEASES}
             meta={RELEASE_META[LATEST_RELEASES.current.version] ?? null}
             available={null}
           />
-          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
-          <StoryProviderClis machines={[workstation]} />
         </div>
       </StoryRow>
     </StoryCard>

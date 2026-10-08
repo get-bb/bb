@@ -243,9 +243,10 @@ so they carry over between navigation plugins.
 
 ## What's new
 
-- Settings → Updates shows the installed release's notes, any releases
-  skipped since this client last saw What's new, and an available update's
-  notes.
+- Settings → Updates shows What's new below the update rows: a one-line
+  summary of the installed release with its full notes behind Show all
+  changes, any releases skipped since this client last saw What's new, and an
+  available update's notes.
 - Until this client sees the installed release, a What's new card sits above
   the sidebar footer. Opening it goes to that section; opening it, dismissing
   it, or visiting the section hides it until the next release. It is hidden
