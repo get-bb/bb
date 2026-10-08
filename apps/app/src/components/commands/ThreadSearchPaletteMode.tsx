@@ -26,11 +26,12 @@ import {
   resolveThreadStatus,
 } from "@/components/thread/ThreadStatusGlyph";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
+import { THREAD_LIFECYCLE_OPTIONS } from "@/components/thread/ThreadLifecycleFilter";
 import {
-  ThreadLifecycleFilter,
-  THREAD_LIFECYCLE_OPTIONS,
-} from "@/components/thread/ThreadLifecycleFilter";
-import { paletteThreadLifecyclesAtom } from "@/lib/command-palette/palette-preferences";
+  paletteThreadLifecyclesAtom,
+  paletteThreadSortAtom,
+  paletteThreadSortDirectionAtom,
+} from "@/lib/command-palette/palette-preferences";
 import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
@@ -55,6 +56,7 @@ import {
   type PaletteThreadSearchRow,
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
+import { PaletteThreadViewMenu } from "./PaletteThreadViewMenu";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
@@ -97,6 +99,10 @@ export function ThreadSearchPaletteMode({
     () => normalizeThreadLifecycleFilter(selectedLifecycles),
     [selectedLifecycles],
   );
+  const [sort, setSort] = useAtom(paletteThreadSortAtom);
+  const [sortDirection, setSortDirection] = useAtom(
+    paletteThreadSortDirectionAtom,
+  );
   const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
@@ -104,7 +110,7 @@ export function ThreadSearchPaletteMode({
   const [shownCounts, setShownCounts] = useState<
     Partial<Record<ThreadArchiveFilter, number>>
   >({});
-  const filterKey = lifecycles.join(",");
+  const filterKey = `${lifecycles.join(",")}:${sort}:${sortDirection}`;
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey);
   if (previousFilterKey !== filterKey) {
     setPreviousFilterKey(filterKey);
@@ -153,6 +159,8 @@ export function ThreadSearchPaletteMode({
         recentThreads,
         searchResponse: threadSearch.data,
         searchResultsAreCurrent,
+        sort,
+        sortDirection,
       }),
     [
       lifecycles,
@@ -161,6 +169,8 @@ export function ThreadSearchPaletteMode({
       query,
       recentThreads,
       searchResultsAreCurrent,
+      sort,
+      sortDirection,
       threadSearch.data,
     ],
   );
@@ -351,6 +361,11 @@ export function ThreadSearchPaletteMode({
     [activeIndex, highlightOption, onExit, options, query.length, selectOption],
   );
 
+  const focusInputAfterMenuClose = (event: Event) => {
+    event.preventDefault();
+    inputRef.current?.focus();
+  };
+
   const isLoading =
     searchable &&
     (!searchResultsAreCurrent ||
@@ -383,7 +398,17 @@ export function ThreadSearchPaletteMode({
       inputLabel="Search threads"
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
-          <ThreadLifecycleFilter value={lifecycles} onChange={setLifecycles} />
+          <PaletteThreadViewMenu
+            lifecycles={lifecycles}
+            onLifecyclesChange={setLifecycles}
+            sort={sort}
+            sortDirection={sortDirection}
+            onSortChange={(nextSort, nextDirection) => {
+              setSort(nextSort);
+              setSortDirection(nextDirection);
+            }}
+            onCloseAutoFocus={focusInputAfterMenuClose}
+          />
         </div>
       }
       inputRef={inputRef}

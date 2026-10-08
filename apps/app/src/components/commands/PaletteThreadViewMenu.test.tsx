@@ -9,8 +9,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  PaletteThreadSort,
+  PaletteThreadSortDirection,
+} from "@/lib/command-palette/palette-preferences";
 import type { ThreadArchiveFilter } from "@/lib/thread-lifecycle-filter";
-import { ThreadLifecycleFilter } from "./ThreadLifecycleFilter";
+import { PaletteThreadViewMenu } from "./PaletteThreadViewMenu";
 
 const viewport = vi.hoisted(() => ({ compact: false }));
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
@@ -22,20 +26,38 @@ afterEach(() => {
   viewport.compact = false;
 });
 
-function Filter() {
-  const [value, onChange] = useState<ThreadArchiveFilter[]>(["active"]);
-  return <ThreadLifecycleFilter value={value} onChange={onChange} />;
+function ViewMenu() {
+  const [lifecycles, setLifecycles] = useState<ThreadArchiveFilter[]>([
+    "active",
+  ]);
+  const [sort, setSort] = useState<PaletteThreadSort>("relevance");
+  const [direction, setDirection] =
+    useState<PaletteThreadSortDirection>("descending");
+  return (
+    <PaletteThreadViewMenu
+      lifecycles={lifecycles}
+      onLifecyclesChange={setLifecycles}
+      sort={sort}
+      sortDirection={direction}
+      onSortChange={(nextSort, nextDirection) => {
+        setSort(nextSort);
+        setDirection(nextDirection);
+      }}
+      onCloseAutoFocus={() => {}}
+    />
+  );
 }
 
-describe("ThreadLifecycleFilter", () => {
+describe("PaletteThreadViewMenu", () => {
   it.each([false, true])(
     "keeps a nonempty selection through the responsive menu (compact=%s)",
     async (compact) => {
       viewport.compact = compact;
-      const { container } = render(<Filter />);
+      const { container } = render(<ViewMenu />);
       const trigger = screen.getByRole("button", {
-        name: "Filter: Active",
+        name: "Filter and sort: Active, Relevance",
       });
+      expect(trigger.textContent).toBe("");
       if (compact) {
         fireEvent.click(trigger);
       } else {
@@ -72,4 +94,29 @@ describe("ThreadLifecycleFilter", () => {
       expect(container.closest('[aria-hidden="true"]')).toBeNull();
     },
   );
+
+  it("describes the settings without changing the icon and reverses the selected sort", async () => {
+    render(<ViewMenu />);
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: "Filter and sort: Active, Relevance" }),
+      { key: "Enter" },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: "Created at" }),
+    );
+    const trigger = await screen.findByRole("button", {
+      name: "Filter and sort: Active, Created at, descending",
+    });
+    expect(trigger.textContent).toBe("");
+    fireEvent.click(
+      screen.getByRole("menuitemradio", {
+        name: "Created at, descending. Sort ascending",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", {
+        name: "Filter and sort: Active, Created at, ascending",
+      }),
+    ).toBeTruthy();
+  });
 });

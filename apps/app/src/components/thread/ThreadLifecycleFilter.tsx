@@ -1,17 +1,9 @@
-import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
   normalizeThreadLifecycleFilter,
   type ThreadArchiveFilter,
 } from "@/lib/thread-lifecycle-filter";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
+import { DropdownMenuItem } from "@bb/shared-ui/dropdown-menu";
 
 export const THREAD_LIFECYCLE_OPTIONS = [
   { value: "active", label: "Active" },
@@ -68,44 +60,13 @@ export function ThreadLifecycleFilterItems({
   );
 }
 
-export function ThreadLifecycleFilter({
-  value: savedValue,
-  onChange,
-}: ThreadLifecycleFilterProps) {
+export function threadLifecycleFilterLabel(
+  savedValue: readonly ThreadArchiveFilter[],
+): string {
   const value = normalizeThreadLifecycleFilter(savedValue);
-  const label =
-    value.length === THREAD_LIFECYCLE_OPTIONS.length
-      ? "All"
-      : THREAD_LIFECYCLE_OPTIONS.filter((option) =>
-          value.includes(option.value),
-        )
-          .map((option) => option.label)
-          .join(", ");
-
-  return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="min-w-0 max-w-full justify-start font-normal text-subtle-foreground"
-          aria-label={`Filter: ${label}`}
-        >
-          <Icon
-            name="SlidersHorizontal"
-            className="size-3.5 shrink-0"
-            aria-hidden
-          />
-          <span className="truncate">{label}</span>
-          <Icon name="ChevronDown" className="size-3.5 shrink-0" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" mobileTitle="Filter">
-        <DropdownMenuGroup aria-label="Filter">
-          <DropdownMenuLabel>Filter</DropdownMenuLabel>
-          <ThreadLifecycleFilterItems value={value} onChange={onChange} />
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  return value.length === THREAD_LIFECYCLE_OPTIONS.length
+    ? "All"
+    : THREAD_LIFECYCLE_OPTIONS.filter((option) => value.includes(option.value))
+        .map((option) => option.label)
+        .join(", ");
 }
