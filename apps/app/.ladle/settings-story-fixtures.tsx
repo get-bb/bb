@@ -1,8 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID, type Host, type ProviderInfo } from "@bb/domain";
-import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import type {
   SidebarBootstrapResponse,
   SystemVersionResponse,
@@ -32,7 +30,6 @@ import {
   MODAL_MACHINE_PROVIDER,
 } from "./machine-story-fixtures";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
-import { getSettingsRoutePath } from "../src/lib/route-paths";
 import { WhatsNewView } from "../src/components/settings/WhatsNewSection";
 import {
   CHANGELOG_ENTRIES,
@@ -41,10 +38,8 @@ import {
 } from "../src/components/settings/changelog-preview";
 import {
   BbAppUpdateRows,
-  MachineUpdatesFleetSection,
-  MachineUpdatesRows,
-  MachineUpdatesSection,
-  UpdateActionButton,
+  BbUpdatesCard,
+  ProviderCliUpdatesSection,
 } from "../src/components/settings/UpdatesSettingsSection";
 import {
   HOST_IDS,
@@ -254,10 +249,10 @@ const settingsUpdateMachine = {
 } satisfies UpdateInventoryMachine;
 
 const noJobs: ReadonlySet<string> = new Set();
+const noFailures = new Map<string, never>();
 const noop = () => {};
 
 export function SettingsUpdatesStory() {
-  const navigate = useNavigate();
   const releases = selectWhatsNewReleases({
     entries: CHANGELOG_ENTRIES,
     installedVersion: null,
@@ -272,41 +267,29 @@ export function SettingsUpdatesStory() {
           available={null}
         />
       )}
-      <MachineUpdatesFleetSection
-        action={
-          <div role="toolbar" aria-label="Bulk update actions">
-            <UpdateActionButton
-              label="Update all 1 CLI tool"
-              tooltipLabel="Update all"
-              icon={UPDATE_ACTION_ICON}
-              visibleLabel="Update all"
-              variant="default"
-              onClick={noop}
-            />
-          </div>
-        }
-      >
-        <MachineUpdatesSection
-          machine={settingsUpdateMachine}
-          isThisMachine={false}
-          showServerBadge={false}
-        >
-          <BbAppUpdateRows
-            systemVersion={systemVersion}
-            desktopInfo={null}
-            isDesktop={false}
-            onRelaunchDesktop={null}
-            onRetryDesktop={null}
-          />
-          <MachineUpdatesRows
-            machine={settingsUpdateMachine}
-            runningJobKey={null}
-            queuedJobKeys={noJobs}
-            onStartInstall={noop}
-            onOpenProvider={() => navigate(getSettingsRoutePath("providers"))}
-          />
-        </MachineUpdatesSection>
-      </MachineUpdatesFleetSection>
+      <BbUpdatesCard>
+        <BbAppUpdateRows
+          systemVersion={systemVersion}
+          desktopInfo={null}
+          isDesktop={false}
+          onRelaunchDesktop={null}
+          onRetryDesktop={null}
+        />
+      </BbUpdatesCard>
+      <ProviderCliUpdatesSection
+        machines={[settingsUpdateMachine]}
+        now={0}
+        localDaemonHostId={null}
+        serverHostId={null}
+        retryPendingHostId={null}
+        runningJobKey={null}
+        queuedJobKeys={noJobs}
+        failuresByJobKey={noFailures}
+        onStartInstall={noop}
+        onRetryDaemonUpdate={noop}
+        onRetryAllDaemonUpdates={noop}
+        onRecheckClis={noop}
+      />
     </div>
   );
 }

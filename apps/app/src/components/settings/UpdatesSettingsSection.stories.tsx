@@ -1,6 +1,5 @@
 import type { Host } from "@bb/domain";
 import type { SystemAppUpdateStatus } from "@bb/server-contract";
-import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   type ProviderCliKey,
@@ -8,7 +7,6 @@ import {
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
 import type { ProviderCliInstallFailure } from "@/components/provider-cli/provider-cli-install-store";
 import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
-import { SettingsRowList } from "@/components/ui/settings-section";
 import {
   makeHost,
   makeProviderCliStatus,
@@ -16,12 +14,9 @@ import {
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   BbAppUpdateRows,
-  BbDaemonUpdateRow,
-  MachineUpdatesFleetSection,
-  MachineUpdatesRows,
-  MachineUpdatesSection,
-  ProviderCliCheckRow,
-  UpdateActionButton,
+  BbUpdatesCard,
+  MachineUpdateRow,
+  ProviderCliUpdatesSection,
 } from "./UpdatesSettingsSection";
 import { WhatsNewView } from "./WhatsNewSection";
 import {
@@ -47,6 +42,7 @@ const LATEST_RELEASES = (() => {
   return releases;
 })();
 const NO_JOBS: ReadonlySet<string> = new Set();
+const NO_FAILURES: ReadonlyMap<string, ProviderCliInstallFailure> = new Map();
 const STORY_NOW = 1_800_000_000_000;
 
 const NPM_VERSION = {
@@ -185,67 +181,71 @@ function failedProviderFailures(
   );
 }
 
-function StoryMachineRows({
+function StoryMachineRow({
   machine,
-  app = false,
-  appUpdate = false,
-  failuresByJobKey,
+  expanded = false,
+  tags = [],
+  runningJobKey = null,
+  queuedJobKeys = NO_JOBS,
+  failuresByJobKey = NO_FAILURES,
 }: {
   machine: UpdateInventoryMachine;
-  app?: boolean;
-  appUpdate?: boolean;
+  expanded?: boolean;
+  tags?: readonly string[];
+  runningJobKey?: string | null;
+  queuedJobKeys?: ReadonlySet<string>;
   failuresByJobKey?: ReadonlyMap<string, ProviderCliInstallFailure>;
 }) {
-  const showDaemon =
-    machine.canRetryDaemonUpdate || machine.host.status !== "connected";
   return (
-    <>
-      {app ? (
-        <BbAppUpdateRows
-          systemVersion={appUpdate ? undefined : NPM_VERSION}
-          desktopInfo={appUpdate ? DESKTOP_UPDATE : null}
-          isDesktop={appUpdate}
-          onRelaunchDesktop={noop}
-          onRetryDesktop={noop}
-        />
-      ) : null}
-      {showDaemon ? (
-        <BbDaemonUpdateRow
-          machine={machine}
-          now={STORY_NOW}
-          retryUpdatePending={false}
-          onRetryDaemonUpdate={noop}
-          onOpenMachine={noop}
-        />
-      ) : null}
-      {machine.statusError ? (
-        <ProviderCliCheckRow
-          machine={machine}
-          onRecheckClis={noop}
-          onOpenMachine={noop}
-        />
-      ) : null}
-      <MachineUpdatesRows
+    <div className="w-full overflow-hidden rounded-lg border border-border bg-card">
+      <MachineUpdateRow
         machine={machine}
-        runningJobKey={null}
-        queuedJobKeys={NO_JOBS}
+        now={STORY_NOW}
+        tags={tags}
+        expanded={expanded}
+        retryUpdatePending={false}
+        runningJobKey={runningJobKey}
+        queuedJobKeys={queuedJobKeys}
         failuresByJobKey={failuresByJobKey}
+        onToggle={noop}
         onStartInstall={noop}
-        onOpenProvider={noop}
+        onRetryDaemonUpdate={noop}
+        onRecheckClis={noop}
       />
-    </>
+    </div>
   );
 }
 
-function StoryMachineSection(props: Parameters<typeof StoryMachineRows>[0]) {
+function StoryProviderClis({
+  machines,
+  serverHostId = null,
+  localDaemonHostId = null,
+  runningJobKey = null,
+  queuedJobKeys = NO_JOBS,
+  failuresByJobKey = NO_FAILURES,
+}: {
+  machines: readonly UpdateInventoryMachine[];
+  serverHostId?: string | null;
+  localDaemonHostId?: string | null;
+  runningJobKey?: string | null;
+  queuedJobKeys?: ReadonlySet<string>;
+  failuresByJobKey?: ReadonlyMap<string, ProviderCliInstallFailure>;
+}) {
   return (
-    <MachineUpdatesSection
-      machine={props.machine}
-      isThisMachine={false}
-      showServerBadge={props.machine.isPrimary}
-    >
-      <StoryMachineRows {...props} />
-    </MachineUpdatesSection>
+    <ProviderCliUpdatesSection
+      machines={machines}
+      now={STORY_NOW}
+      localDaemonHostId={localDaemonHostId}
+      serverHostId={serverHostId}
+      retryPendingHostId={null}
+      runningJobKey={runningJobKey}
+      queuedJobKeys={queuedJobKeys}
+      failuresByJobKey={failuresByJobKey}
+      onStartInstall={noop}
+      onRetryDaemonUpdate={noop}
+      onRetryAllDaemonUpdates={noop}
+      onRecheckClis={noop}
+    />
   );
 }
 
@@ -270,30 +270,6 @@ function manualUpdateIssue(
   };
 }
 
-function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
-  const status = makeProviderCliStatus(provider, {
-    executablePath: null,
-    installed: false,
-    installSource: "notInstalled",
-    currentVersion: null,
-    latestVersion: "2.1.0",
-    installAction: {
-      kind: "install",
-      label: "Install",
-      command: "npm install -g @anthropic-ai/claude-code",
-    },
-    needsUpdate: false,
-  });
-  return {
-    provider,
-    status,
-    action: status.installAction,
-    title: `${status.displayName} CLI not installed`,
-    description: "Not installed",
-    fingerprint: `${provider}:not-installed`,
-  };
-}
-
 export function RowVariations() {
   const providerUpdate = machineOf({
     host: makeHost({ id: "state-provider-update", name: "workstation" }),
@@ -302,25 +278,19 @@ export function RowVariations() {
   });
   const providerInstalling = machineOf({
     host: makeHost({ id: "state-provider-installing", name: "studio-mac" }),
-    providers: ["claude-code"],
-    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
+    providers: ["codex", "claude-code"],
+    issues: [
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      updateIssue("claude-code", "2.0.1", "2.1.0"),
+    ],
   });
   const providerFailed = failedProviderMachine("state-provider-failed", [
     "codex",
   ]);
-  const providerInterrupted = failedProviderMachine(
-    "state-provider-interrupted",
-    ["claude-code"],
-  );
   const providerManual = machineOf({
     host: makeHost({ id: "state-provider-manual", name: "homelab" }),
     providers: ["codex"],
     issues: [manualUpdateIssue("codex", "0.145.0", "0.146.0")],
-  });
-  const providerMissing = machineOf({
-    host: makeHost({ id: "state-provider-missing", name: "workstation" }),
-    providers: ["claude-code"],
-    issues: [missingProviderIssue("claude-code")],
   });
   const daemonUpdating = machineOf({
     host: makeHost({
@@ -357,13 +327,13 @@ export function RowVariations() {
   return (
     <>
       <StoryCard className="max-w-5xl" labelWidth="240px">
-        <h2 className="px-4 py-3 text-sm font-semibold">bb app and daemons</h2>
+        <h2 className="px-4 py-3 text-sm font-semibold">Server and desktop</h2>
         <StoryRow
           label="Up to date"
           hint="Nothing to do. The settled state stays visually quiet."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={NPM_VERSION}
                 desktopInfo={null}
@@ -371,7 +341,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -379,8 +349,8 @@ export function RowVariations() {
           label="Checking"
           hint="The app version check is still in progress."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={null}
@@ -388,7 +358,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -396,8 +366,8 @@ export function RowVariations() {
           label="Update available"
           hint="A web install cannot replace itself, so its action copies the upgrade command."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -409,7 +379,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -417,8 +387,8 @@ export function RowVariations() {
           label="In-app update available"
           hint="bb runs under the update shim, so it can download the update and restart itself."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={NPM_VERSION}
                 appUpdate={IN_APP_UPDATE}
@@ -429,7 +399,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -437,8 +407,8 @@ export function RowVariations() {
           label="In-app update downloading"
           hint="The launcher is installing the new version while bb keeps running."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={NPM_VERSION}
                 appUpdate={{
@@ -458,7 +428,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -466,8 +436,8 @@ export function RowVariations() {
           label="In-app update failed"
           hint="The download failed, bb kept running the current version, and the row keeps the details until dismissed."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={NPM_VERSION}
                 appUpdate={{
@@ -491,7 +461,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -499,8 +469,8 @@ export function RowVariations() {
           label="Source checkout — manual Git updates"
           hint="Runs from a checkout without an update shim. No comparison with npm or origin/main has been made."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -513,7 +483,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -521,8 +491,8 @@ export function RowVariations() {
           label="Source checkout — revision unavailable"
           hint="A source tree with no detected Git revision shows its declared build version without claiming freshness."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -535,7 +505,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -543,8 +513,8 @@ export function RowVariations() {
           label="Release check unavailable"
           hint="The npm lookup failed. Retry forces another lookup without upgrading the app."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{ ...NPM_VERSION, latestVersion: null }}
                 desktopInfo={null}
@@ -553,7 +523,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onRetryAppCheck={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -561,8 +531,8 @@ export function RowVariations() {
           label="Source checkout — up to date"
           hint="The managed checkout has successfully checked origin/main and has no incoming commits."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -583,7 +553,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -591,8 +561,8 @@ export function RowVariations() {
           label="Source checkout — check unavailable"
           hint="The managed checkout could not fetch origin/main."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -616,7 +586,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -624,8 +594,8 @@ export function RowVariations() {
           label="Source checkout — branch blocked"
           hint="This branch cannot use automatic updates; no incoming update is shown."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -650,7 +620,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -658,8 +628,8 @@ export function RowVariations() {
           label="Source checkout update available"
           hint="A clean pnpm start checkout on main shows commits instead of a release version and offers to fast-forward."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -688,7 +658,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -696,8 +666,8 @@ export function RowVariations() {
           label="Source checkout — checking update"
           hint="The launcher rechecks origin/main before accepting the update target. The spinner and step replace the Update button."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -730,7 +700,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -738,8 +708,8 @@ export function RowVariations() {
           label="Source checkout — ready to restart"
           hint="Validation succeeded. The launcher is waiting for the server to approve the restart."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -772,7 +742,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -780,8 +750,8 @@ export function RowVariations() {
           label="Source checkout — restarting"
           hint="The last row before shutdown. Git fast-forward, dependency installation, and rebuilding happen while the server is offline; there are no live rows during those steps."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -813,7 +783,7 @@ export function RowVariations() {
                 onRelaunchDesktop={null}
                 onRetryDesktop={null}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -821,8 +791,8 @@ export function RowVariations() {
           label="Source checkout blocked"
           hint="Incoming commits stay visible, but there is no update button until the working tree is clean."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={{
                   ...NPM_VERSION,
@@ -856,7 +826,7 @@ export function RowVariations() {
                 onRetryDesktop={null}
                 onShowAppUpdateResult={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -864,8 +834,8 @@ export function RowVariations() {
           label="Downloading"
           hint="The desktop shell is fetching the update automatically."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={{
@@ -878,7 +848,7 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -886,8 +856,8 @@ export function RowVariations() {
           label="Desktop — not checked"
           hint="No check has completed yet. Check starts a lookup without claiming the installed version is current."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={{
@@ -903,7 +873,7 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -911,8 +881,8 @@ export function RowVariations() {
           label="Desktop — checking release"
           hint="The check is running. The action is disabled until it completes."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={{
@@ -929,7 +899,7 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -937,8 +907,8 @@ export function RowVariations() {
           label="Desktop — release check unavailable"
           hint="A check completed without establishing the latest release. The installed version stays visible with an explanation and Retry."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={{
@@ -953,7 +923,7 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -961,8 +931,8 @@ export function RowVariations() {
           label="Downloaded — relaunch"
           hint="The update is ready and needs one explicit relaunch."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={DESKTOP_UPDATE}
@@ -970,7 +940,7 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
         </StoryRow>
 
@@ -978,8 +948,8 @@ export function RowVariations() {
           label="Download failed"
           hint="The red caption states the failure; the neutral Retry button is the recovery."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
+          <div className="w-full">
+            <BbUpdatesCard>
               <BbAppUpdateRows
                 systemVersion={undefined}
                 desktopInfo={{
@@ -992,125 +962,84 @@ export function RowVariations() {
                 onRelaunchDesktop={noop}
                 onRetryDesktop={noop}
               />
-            </SettingsRowList>
+            </BbUpdatesCard>
           </div>
+        </StoryRow>
+      </StoryCard>
+      <StoryCard className="max-w-5xl" labelWidth="240px">
+        <h2 className="px-4 py-3 text-sm font-semibold">Machine rows</h2>
+        <StoryRow
+          label="Updates available"
+          hint="One line per machine: the face pile shows which provider CLIs are behind."
+        >
+          <StoryMachineRow machine={providerUpdate} tags={["Server"]} />
+        </StoryRow>
+
+        <StoryRow
+          label="Expanded"
+          hint="Each installed CLI with its versions and the updater bb will run."
+        >
+          <StoryMachineRow machine={providerUpdate} expanded />
+        </StoryRow>
+
+        <StoryRow
+          label="Installing"
+          hint="The running CLI spins in the pile; queued ones wait."
+        >
+          <StoryMachineRow
+            machine={providerInstalling}
+            expanded
+            runningJobKey={`${providerInstalling.host.id}:codex`}
+            queuedJobKeys={
+              new Set([`${providerInstalling.host.id}:claude-code`])
+            }
+          />
+        </StoryRow>
+
+        <StoryRow
+          label="Update failed"
+          hint="The row names the failure and retries; the expanded row opens the log."
+        >
+          <StoryMachineRow
+            machine={providerFailed}
+            expanded
+            failuresByJobKey={failedProviderFailures(providerFailed)}
+          />
+        </StoryRow>
+
+        <StoryRow
+          label="Update in terminal"
+          hint="bb cannot run this update, so the avatar is dashed and Update all skips it."
+        >
+          <StoryMachineRow machine={providerManual} expanded />
+        </StoryRow>
+
+        <StoryRow
+          label="Status check failed"
+          hint="The provider CLI check failed and can be retried."
+        >
+          <StoryMachineRow machine={providerCheckFailed} />
         </StoryRow>
 
         <StoryRow
           label="Machine updating bb"
           hint="The enrolled daemon is applying its required update automatically."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={daemonUpdating} />
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Machine offline"
-          hint="bb cannot currently reach this machine."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={daemonOffline} />
-          </div>
+          <StoryMachineRow machine={daemonUpdating} />
         </StoryRow>
 
         <StoryRow
           label="Machine update stalled"
           hint="The daemon update did not finish and can be retried."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={daemonStalled} />
-          </div>
-        </StoryRow>
-      </StoryCard>
-      <StoryCard className="max-w-5xl" labelWidth="240px">
-        <h2 className="px-4 py-3 text-sm font-semibold">Provider CLIs</h2>
-
-        <StoryRow
-          label="Update available"
-          hint="bb has an installer it can run for this provider."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={providerUpdate} />
-          </div>
+          <StoryMachineRow machine={daemonStalled} />
         </StoryRow>
 
         <StoryRow
-          label="Installing"
-          hint="The provider update is currently running."
+          label="Machine offline"
+          hint="Shown only after Show all; bb cannot currently reach this machine."
         >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
-              <MachineUpdatesRows
-                machine={providerInstalling}
-                runningJobKey="state-provider-installing:claude-code"
-                queuedJobKeys={NO_JOBS}
-                onStartInstall={noop}
-                onOpenProvider={noop}
-              />
-            </SettingsRowList>
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Update failed"
-          hint="The red warning marks the failure and opens the log; Retry is the recovery."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <SettingsRowList>
-              <MachineUpdatesRows
-                machine={providerFailed}
-                runningJobKey={null}
-                queuedJobKeys={NO_JOBS}
-                failuresByJobKey={failedProviderFailures(providerFailed)}
-                onStartInstall={noop}
-                onOpenProvider={noop}
-              />
-            </SettingsRowList>
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Connection interrupted"
-          hint="The machine disconnected during installation; the warning opens the captured log and Retry starts a new attempt."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <MachineUpdatesRows
-              machine={providerInterrupted}
-              runningJobKey={null}
-              queuedJobKeys={NO_JOBS}
-              failuresByJobKey={failedProviderFailures(providerInterrupted)}
-              onStartInstall={noop}
-              onOpenProvider={noop}
-            />
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Update in terminal"
-          hint="The CLI was installed outside bb, so the update must run in its own package manager."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={providerManual} />
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Never installed — no row"
-          hint="A CLI with no installed version has no update, so no row renders."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={providerMissing} />
-          </div>
-        </StoryRow>
-
-        <StoryRow
-          label="Status check failed"
-          hint="The machine is connected, but bb could not inspect its provider CLIs."
-        >
-          <div className="w-full rounded-lg border border-border bg-card px-4 py-3.5">
-            <StoryMachineRows machine={providerCheckFailed} />
-          </div>
+          <StoryMachineRow machine={daemonOffline} />
         </StoryRow>
       </StoryCard>
     </>
@@ -1132,7 +1061,17 @@ export function SectionVariations() {
   });
   const studioMac = machineOf({
     host: makeHost({ id: "section-studio", name: "studio-mac" }),
-    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
+    issues: [
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      updateIssue("claude-code", "2.0.1", "2.1.0"),
+    ],
+  });
+  const homelab = machineOf({
+    host: makeHost({ id: "section-homelab", name: "homelab" }),
+    issues: [
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      manualUpdateIssue("claude-code", "2.0.1", "2.1.0"),
+    ],
   });
   const offline = machineOf({
     host: makeHost({
@@ -1152,69 +1091,108 @@ export function SectionVariations() {
     canRetryDaemonUpdate: true,
   });
   const failed = failedProviderMachine("section-failed");
-  const updateAll = (count: number) => (
-    <UpdateActionButton
-      label={`Update all ${count} CLI tools`}
-      tooltipLabel="Update all"
-      icon={UPDATE_ACTION_ICON}
-      visibleLabel="Update all"
-      variant="default"
-      onClick={noop}
+  const serverRow = (
+    <BbAppUpdateRows
+      systemVersion={NPM_VERSION}
+      desktopInfo={null}
+      isDesktop={false}
+      onRelaunchDesktop={null}
+      onRetryDesktop={null}
+    />
+  );
+  const serverUpdateRow = (
+    <BbAppUpdateRows
+      systemVersion={NPM_VERSION}
+      appUpdate={IN_APP_UPDATE}
+      desktopInfo={null}
+      isDesktop={false}
+      onApplyAppUpdate={noop}
+      onRelaunchDesktop={null}
+      onRetryDesktop={null}
+      onShowAppUpdateResult={noop}
+    />
+  );
+  const desktopRow = (
+    <BbAppUpdateRows
+      name="Desktop"
+      systemVersion={undefined}
+      desktopInfo={DESKTOP_UPDATE}
+      isDesktop
+      onRelaunchDesktop={noop}
+      onRetryDesktop={noop}
     />
   );
 
   return (
     <StoryCard className="max-w-6xl" labelWidth="240px">
       <StoryRow
-        label="Single machine — current"
-        hint="The app and installed provider CLIs have no available updates."
+        label="Everything current"
+        hint="One Server row and one quiet line for the fleet."
       >
-        <div className="w-full">
-          <MachineUpdatesFleetSection>
-            <StoryMachineSection machine={current} app />
-          </MachineUpdatesFleetSection>
+        <div className="w-full space-y-6">
+          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
+          <StoryProviderClis machines={[current, offline]} />
         </div>
       </StoryRow>
       <StoryRow
         label="Single machine — updates available"
-        hint="Bulk actions sit beside the fleet heading; updates appear in the machine section."
+        hint="Update all sits beside the Provider CLIs heading."
       >
-        <div className="w-full">
-          <MachineUpdatesFleetSection action={updateAll(2)}>
-            <StoryMachineSection machine={workstation} app />
-          </MachineUpdatesFleetSection>
+        <div className="w-full space-y-6">
+          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
+          <StoryProviderClis
+            machines={[workstation]}
+            serverHostId={workstation.host.id}
+          />
         </div>
       </StoryRow>
       <StoryRow
         label="Multiple machines"
-        hint="A desktop relaunch, provider updates, failed installs, and a stalled daemon share one fleet layout."
+        hint="Server and desktop updates, provider updates, a manual update, a failed install, and a stalled daemon; quiet machines fold into the footer."
       >
-        <div className="w-full">
-          <MachineUpdatesFleetSection action={updateAll(5)}>
-            <StoryMachineSection machine={workstation} app appUpdate />
-            <StoryMachineSection machine={studioMac} />
-            <StoryMachineSection
-              machine={failed}
-              failuresByJobKey={failedProviderFailures(failed)}
-            />
-            <StoryMachineSection machine={stalled} />
-          </MachineUpdatesFleetSection>
+        <div className="w-full space-y-6">
+          <BbUpdatesCard>
+            {serverUpdateRow}
+            {desktopRow}
+          </BbUpdatesCard>
+          <StoryProviderClis
+            machines={[
+              workstation,
+              studioMac,
+              homelab,
+              failed,
+              stalled,
+              current,
+              offline,
+            ]}
+            serverHostId={workstation.host.id}
+            localDaemonHostId={studioMac.host.id}
+            failuresByJobKey={failedProviderFailures(failed)}
+          />
         </div>
       </StoryRow>
       <StoryRow
-        label="Offline machine"
-        hint="An unreachable machine keeps its own section and an offline daemon row."
+        label="Updating"
+        hint="Update all gives way to progress while the queue drains."
       >
-        <div className="w-full">
-          <MachineUpdatesFleetSection>
-            <StoryMachineSection machine={current} app />
-            <StoryMachineSection machine={offline} />
-          </MachineUpdatesFleetSection>
+        <div className="w-full space-y-6">
+          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
+          <StoryProviderClis
+            machines={[workstation, studioMac]}
+            runningJobKey={`${workstation.host.id}:codex`}
+            queuedJobKeys={
+              new Set([
+                `${workstation.host.id}:acp-cursor`,
+                `${studioMac.host.id}:codex`,
+                `${studioMac.host.id}:claude-code`,
+              ])
+            }
+          />
         </div>
       </StoryRow>
       <StoryRow
         label="What's new"
-        hint="The installed release's notes appear above the machine update sections."
+        hint="The installed release's notes appear above the update cards."
       >
         <div className="w-full space-y-6">
           <WhatsNewView
@@ -1222,9 +1200,8 @@ export function SectionVariations() {
             meta={RELEASE_META[LATEST_RELEASES.current.version] ?? null}
             available={null}
           />
-          <MachineUpdatesFleetSection action={updateAll(2)}>
-            <StoryMachineSection machine={workstation} app />
-          </MachineUpdatesFleetSection>
+          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
+          <StoryProviderClis machines={[workstation]} />
         </div>
       </StoryRow>
     </StoryCard>
