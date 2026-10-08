@@ -8,6 +8,7 @@ import {
   type TransitionEvent,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -71,6 +72,7 @@ import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
 import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
+import { FilePreviewScrollContext } from "./filePreviewScrollState";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -265,6 +267,19 @@ function ThreadSecondaryPanelContent({
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
+  const filePreviewScrollPositionsRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    const openScrollKeys = new Set(
+      tabs.map(({ tab }) =>
+        JSON.stringify([splitPanelStateId ?? null, tab.id]),
+      ),
+    );
+    for (const scrollKey of filePreviewScrollPositionsRef.current.keys()) {
+      if (!openScrollKeys.has(scrollKey)) {
+        filePreviewScrollPositionsRef.current.delete(scrollKey);
+      }
+    }
+  }, [splitPanelStateId, tabs]);
   const activeRenderableTab =
     tabs.find((tab) => tab.tab.id === activeTab?.id) ??
     (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
@@ -875,11 +890,21 @@ function ThreadSecondaryPanelContent({
                   : ""
               }
             >
-              {surfaceContent ?? (
-                <EmptyStatePanel className="mx-4 rounded-lg">
-                  No file preview content provided.
-                </EmptyStatePanel>
-              )}
+              <FilePreviewScrollContext.Provider
+                value={{
+                  positionsRef: filePreviewScrollPositionsRef,
+                  scrollKey: JSON.stringify([
+                    splitPanelStateId ?? null,
+                    activeSurfaceTab.tab.id,
+                  ]),
+                }}
+              >
+                {surfaceContent ?? (
+                  <EmptyStatePanel className="mx-4 rounded-lg">
+                    No file preview content provided.
+                  </EmptyStatePanel>
+                )}
+              </FilePreviewScrollContext.Provider>
             </div>
           ) : activeSurfaceFixedTab !== undefined &&
             fixedSurfaceContent !== undefined ? (

@@ -58,6 +58,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
 import { useImageTabLightbox } from "./ImageTabLightboxContext.js";
+import { useFilePreviewScrollRestoration } from "./filePreviewScrollState.js";
 
 export interface FilePreviewFile {
   cacheKey?: string;
@@ -1041,9 +1042,10 @@ function MarkdownFilePreview({
   onSelectionAddToChat,
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
+  const bodyRef = useFilePreviewScrollRestoration();
   return (
     <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
-      <div className="flex-auto bg-background px-4 py-4">
+      <div ref={bodyRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
           content={file.contents}
