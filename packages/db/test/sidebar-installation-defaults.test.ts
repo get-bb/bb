@@ -8,7 +8,12 @@ import {
   upsertHost,
   noopNotifier,
 } from "../src/index.js";
-import { dropPluginEnabledFollowsDefaultColumn } from "./helpers/rewind.js";
+import {
+  dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
+  rewindThreadPruningWork,
+  dropQueuedMessageEditHeldUntilColumn,
+} from "./helpers/rewind.js";
 
 const SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP = 1790009314673;
 
@@ -79,7 +84,10 @@ describe.each(["project", "thread", "preference"] as const)(
           const projects = db.$client.prepare("SELECT * FROM projects").all();
           const threads = db.$client.prepare("SELECT * FROM threads").all();
           db.$client.exec("DROP TABLE ui_preference_defaults");
+          dropIdleLifecycleIndexes(db);
+          rewindThreadPruningWork(db);
           dropPluginEnabledFollowsDefaultColumn(db);
+          dropQueuedMessageEditHeldUntilColumn(db);
           db.$client
             .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
             .run(SIDEBAR_INSTALLATION_DEFAULTS_MIGRATION_TIMESTAMP);

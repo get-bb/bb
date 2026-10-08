@@ -580,44 +580,46 @@ export function GitDiffCardImagePreviewBody({
   };
   return (
     <>
-      <div
-        className={
-          fitToFrame
-            ? imageSides.length > 1
-              ? "grid grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-2"
-              : "grid grid-cols-1 gap-3 px-3 py-3"
-            : "flex items-start gap-3 px-3 py-3"
-        }
-      >
-        {imageSides.map((side, index) => (
-          <figure key={side.url} className="min-w-0">
-            <button
-              type="button"
-              className={
-                fitToFrame
-                  ? "flex h-64 w-full cursor-zoom-in items-center justify-center rounded-md border border-border bg-surface-recessed p-3"
-                  : "block max-w-full cursor-zoom-in"
-              }
-              onClick={() => setExpandedImageIndex(index)}
-            >
-              <img
-                src={side.url}
-                alt={getGitDiffCardImageAlt(fileDiffLabel, side)}
-                style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+      <div className="@container/diff-preview min-w-0">
+        <div
+          className={
+            fitToFrame
+              ? imageSides.length > 1
+                ? "grid grid-cols-1 gap-3 px-3 py-3 @min-[32rem]/diff-preview:grid-cols-2"
+                : "grid grid-cols-1 gap-3 px-3 py-3"
+              : "flex flex-col items-start gap-3 px-3 py-3 @min-[32rem]/diff-preview:flex-row"
+          }
+        >
+          {imageSides.map((side, index) => (
+            <figure key={side.url} className="min-w-0 max-w-full">
+              <button
+                type="button"
                 className={
                   fitToFrame
-                    ? "block h-full w-full object-contain"
-                    : "block max-h-80 max-w-full rounded-md border border-border object-contain"
+                    ? "flex h-64 w-full cursor-zoom-in items-center justify-center rounded-md border border-border bg-surface-recessed p-3"
+                    : "block max-w-full cursor-zoom-in"
                 }
-              />
-            </button>
-            {side.caption !== null ? (
-              <figcaption className="mt-1 text-xs text-muted-foreground">
-                {side.caption}
-              </figcaption>
-            ) : null}
-          </figure>
-        ))}
+                onClick={() => setExpandedImageIndex(index)}
+              >
+                <img
+                  src={side.url}
+                  alt={getGitDiffCardImageAlt(fileDiffLabel, side)}
+                  style={IMAGE_TRANSPARENCY_CHECKER_STYLE}
+                  className={
+                    fitToFrame
+                      ? "block h-full w-full object-contain"
+                      : "block max-h-80 max-w-full rounded-md border border-border object-contain"
+                  }
+                />
+              </button>
+              {side.caption !== null ? (
+                <figcaption className="mt-1 text-xs text-muted-foreground">
+                  {side.caption}
+                </figcaption>
+              ) : null}
+            </figure>
+          ))}
+        </div>
       </div>
       <ImageLightbox
         title={`${fileDiffLabel} image preview`}

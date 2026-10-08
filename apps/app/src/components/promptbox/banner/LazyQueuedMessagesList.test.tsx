@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
 import { afterEach, expect, it, vi } from "vitest";
@@ -71,6 +78,9 @@ it("downloads the queue only for queued work, warming it from the pending summar
   expect(
     screen.queryByRole("status", { name: "Loading queued messages" }),
   ).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Toggle queued messages" }),
+  );
   screen.getByRole("button", { name: "Send queued message 1 now" });
   screen.getByRole("button", { name: "Reorder queued message 2" });
 });

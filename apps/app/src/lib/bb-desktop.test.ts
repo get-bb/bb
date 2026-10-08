@@ -3,10 +3,8 @@ import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
-  MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS,
-  MACOS_NAV_RAIL_TRAFFIC_LIGHT_ROW_HEIGHT_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
-  shouldDockMacosSidebarTriggerBelowTrafficLights,
+  MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   shouldReserveMacosTrafficLights,
 } from "./bb-desktop";
 
@@ -65,49 +63,9 @@ describe("desktop chrome geometry", () => {
     );
   });
 
-  it("docks the nav rail sidebar trigger under a row that clears the traffic lights", () => {
-    const TRAFFIC_LIGHT_TOP = 18;
-    const TRAFFIC_LIGHT_MAX_DIAMETER = 14;
-    const ROW_HEIGHT = px(MACOS_NAV_RAIL_TRAFFIC_LIGHT_ROW_HEIGHT_CLASS);
-
-    expect(px(MACOS_NAV_RAIL_SIDEBAR_TRIGGER_TOP_CLASS)).toBe(ROW_HEIGHT);
-    expect(ROW_HEIGHT).toBeGreaterThanOrEqual(
-      TRAFFIC_LIGHT_TOP + TRAFFIC_LIGHT_MAX_DIAMETER,
+  it("starts the framed title bar controls where the lone trigger sits", () => {
+    expect(px(MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS)).toBe(
+      px(MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS),
     );
-  });
-
-  it("docks the sidebar trigger below the traffic lights only beside an open nav rail", () => {
-    const docked = {
-      reserveMacosTrafficLights: true,
-      navigationRail: true,
-      isCompactViewport: false,
-      isSidebarOpen: true,
-    };
-
-    expect(shouldDockMacosSidebarTriggerBelowTrafficLights(docked)).toBe(true);
-    expect(
-      shouldDockMacosSidebarTriggerBelowTrafficLights({
-        ...docked,
-        isSidebarOpen: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldDockMacosSidebarTriggerBelowTrafficLights({
-        ...docked,
-        navigationRail: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldDockMacosSidebarTriggerBelowTrafficLights({
-        ...docked,
-        isCompactViewport: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldDockMacosSidebarTriggerBelowTrafficLights({
-        ...docked,
-        reserveMacosTrafficLights: false,
-      }),
-    ).toBe(false);
   });
 });

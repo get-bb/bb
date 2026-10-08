@@ -26,24 +26,21 @@ function toSharedSkill(
   deps: Pick<LoggedWorkSessionDeps, "logger">,
   skill: DiscoveredSkill,
 ): { runtimeSource: SharedInjectedSkillSource; summary: SkillSummary } | null {
-  if (
-    (skill.rootKind !== "shared-user" && skill.rootKind !== "shared-project") ||
-    skill.description === null
-  ) {
+  const sourceType = skill.rootKind;
+  if (sourceType !== "shared-user" && sourceType !== "shared-project") {
+    return null;
+  }
+  if (skill.description === null) {
     deps.logger.warn(
       {
         filePath: skill.filePath,
         name: skill.name,
-        reason:
-          skill.description === null
-            ? "Shared skill description is missing"
-            : `Unexpected shared skill root kind ${skill.rootKind}`,
+        reason: "Shared skill description is missing",
       },
       "Skipping invalid shared skill",
     );
     return null;
   }
-  const sourceType = skill.rootKind;
   return {
     runtimeSource: {
       kind: "host-path",

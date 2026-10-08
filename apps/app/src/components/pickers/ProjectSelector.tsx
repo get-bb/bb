@@ -22,7 +22,8 @@ import { useResetPickerScroll } from "./useResetPickerScroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
 const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";
-const PROJECT_PICKER_ITEM_CLASS_NAME = "py-[0.3125rem] text-xs max-md:py-2";
+const PROJECT_PICKER_ITEM_CLASS_NAME =
+  "py-[0.3125rem] text-xs max-md:pointer-coarse:py-2";
 
 export interface ProjectSelectorOption {
   id: string;
@@ -248,7 +249,7 @@ export function ProjectSelector({
                     </CommandItem>
                   ))}
                   {showSearch && filteredProjects.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:pointer-coarse:py-2">
                       No projects found
                     </div>
                   ) : null}

@@ -198,9 +198,11 @@ export default experimental_defineHostEntry({
 Do not construct the entry object without this helper.
 
 A host entry that deletes a directory it owns should first call
-`experimental_killProcessesWithCwdUnder({ directory })` from
+`experimental_killProcessesWithCwdUnder({ directories: [directory] })` from
 `@get-bb/plugin-sdk/host`, which SIGTERMs every process whose working
-directory is at or under it and SIGKILLs what survives the grace. Removing a
+directory is at or under any listed directory and SIGKILLs what survives the
+grace. Each call lists process working directories once, so pass a whole batch
+in one call rather than looping. Removing a
 workspace out from under a running process otherwise leaves it alive.
 
 The server factory calls only its own host entry:

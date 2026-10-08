@@ -237,7 +237,8 @@ describe("Codex credential health and usage", () => {
         minimumSupportedVersion: "0.136.0",
         canInstall: true,
         canUpdate: true,
-        loginCommand: "codex login",
+        loginCommand: "codex login --device-auth",
+        localLoginCommand: "codex login",
       },
     });
     await expect(getCodexProviderUsage()).resolves.toEqual({

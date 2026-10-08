@@ -358,7 +358,7 @@ const KeyboardCommandRow = memo(
       <div
         aria-busy={pending || undefined}
         className={cn(
-          "flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-5",
+          "flex flex-col gap-2 py-3 first:pt-0 last:pb-0 @min-[36rem]/settings:flex-row @min-[36rem]/settings:items-center @min-[36rem]/settings:gap-5",
           pending && "opacity-50",
         )}
       >
@@ -745,14 +745,9 @@ export function KeyboardSettingsSection() {
           <Switch
             aria-label="Show keyboard hints when holding CMD / Control"
             checked={generalSettings.showKeyboardHints}
-            disabled={
-              systemConfig.data === undefined || updateGeneralSettings.isPending
-            }
+            disabled={systemConfig.data === undefined}
             onCheckedChange={(showKeyboardHints) =>
-              updateGeneralSettings.mutate({
-                ...generalSettings,
-                showKeyboardHints,
-              })
+              updateGeneralSettings.mutate({ showKeyboardHints })
             }
           />
         </SettingsWithControl>

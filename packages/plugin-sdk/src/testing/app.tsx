@@ -190,6 +190,10 @@ export type NavigateCall =
   | {
       method: "experimental_openFileExternally";
       options: ExperimentalFileOpenOptions;
+    }
+  | {
+      method: "experimental_openTerminal";
+      options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
     };
 
 export interface ExperimentalFixedTabOpenCall {
@@ -1572,6 +1576,10 @@ export interface RenderSlotOptions<
   openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
+  openTerminal?: (
+    options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
+  ) => boolean;
   /** Host acceptance for an owner-scoped fixed-tab selection. */
   experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
   /** Initial session target visible to `experimental_useFixedTabTarget`. */
@@ -1958,6 +1966,13 @@ export function renderSlot<
         options: fileOptions,
       });
       return options.openFileExternally?.(fileOptions) ?? false;
+    },
+    async experimental_openTerminal(terminalOptions) {
+      navigateCalls.push({
+        method: "experimental_openTerminal",
+        options: terminalOptions,
+      });
+      return options.openTerminal?.(terminalOptions) ?? false;
     },
   };
 

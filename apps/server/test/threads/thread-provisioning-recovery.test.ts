@@ -11,6 +11,8 @@ import {
   listEvents,
   setThreadStartupContext,
   markThreadDeleted,
+  threads,
+  reserveEnvironment,
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -62,6 +64,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
 import { onDaemonSocketOpen } from "../../src/ws/daemon-protocol.js";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { advanceEnvironmentProvisioning } from "../../src/services/environments/environment-engine.js";
 
 const THREAD_START_EXECUTION = {
   model: "gpt-5",
@@ -72,6 +75,85 @@ const THREAD_START_EXECUTION = {
 } satisfies ResolvedThreadExecutionOptions;
 
 describe("thread provisioning recovery", () => {
+  it("keeps attached offline provisioning stable and repairs missing attachment state", async () =>
+    withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        status: "provisioning",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "starting",
+      });
+      const context = createThreadStartup({
+        clientRequestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        environmentIntent: { type: "reuse", environmentId: environment.id },
+        execution: THREAD_START_EXECUTION,
+        fork: null,
+        input: [],
+        titleProvided: true,
+        seedWithoutRun: false,
+      });
+      context.state.environmentId = environment.id;
+      saveThreadProvisionContext({
+        db: harness.db,
+        replace: true,
+        threadId: thread.id,
+        context,
+      });
+      harness.db
+        .update(threads)
+        .set({ updatedAt: 1 })
+        .where(eq(threads.id, thread.id))
+        .run();
+      await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+      expect(getThread(harness.db, thread.id)?.updatedAt).toBe(1);
+      for (const missing of ["thread", "context"] as const) {
+        if (missing === "thread") {
+          harness.db
+            .update(threads)
+            .set({ environmentId: null })
+            .where(eq(threads.id, thread.id))
+            .run();
+        } else {
+          context.state.environmentId = null;
+          saveThreadProvisionContext({
+            db: harness.db,
+            replace: true,
+            threadId: thread.id,
+            context,
+          });
+        }
+        await advanceThreadProvisioning(harness.deps, { threadId: thread.id });
+        expect(getThread(harness.db, thread.id)?.environmentId).toBe(
+          environment.id,
+        );
+        expect(
+          getThreadProvisionContext(harness.db, thread.id)?.state.environmentId,
+        ).toBe(environment.id);
+      }
+      reserveEnvironment(harness.db, {
+        projectId: project.id,
+        hostId: host.id,
+        ownerThreadId: thread.id,
+        environmentProviderId: "reserved-provider",
+        status: "ready",
+        path: "/tmp/reserved-other-workspace",
+      });
+      await expect(
+        advanceEnvironmentProvisioning(harness.deps, {
+          environmentId: environment.id,
+          threadId: thread.id,
+        }),
+      ).rejects.toThrow("Provisioning must attach its reserved environment");
+    }));
+
   it("marks workspace-ready thread starts interrupted instead of reissuing RPC after restart", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

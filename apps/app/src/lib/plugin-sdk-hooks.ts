@@ -53,7 +53,7 @@ import {
   listedComposerHandles,
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
-import { sdk } from "@/lib/sdk";
+import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
@@ -412,6 +412,20 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
+  const experimental_openTerminal = useCallback<
+    BbNavigate["experimental_openTerminal"]
+  >(
+    async ({ terminalId }) => {
+      const session = await sdk.terminals
+        .get({ terminalId })
+        .catch((error: unknown) => {
+          if (error instanceof BbHttpError && error.status === 404) return null;
+          throw error;
+        });
+      return session !== null && appNavigation.openTerminal(session);
+    },
+    [appNavigation],
+  );
   return useMemo<BbNavigate>(
     () => ({
       toThread,
@@ -421,6 +435,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
     }),
     [
@@ -431,6 +446,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
     ],
   );

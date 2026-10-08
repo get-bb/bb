@@ -59,6 +59,29 @@ function select() {
   )
     .split("\0")
     .filter(Boolean);
+  if (
+    paths.length > 0 &&
+    paths.every((path) =>
+      /^docs\/(?:ci-performance|windows-ci|debugging-and-qa|filing-issues|cli-guide-and-skill)\.md$/u.test(
+        path,
+      ),
+    )
+  ) {
+    return {
+      ...full,
+      tests: { include: [] },
+      "windows-tests": { include: [] },
+      foundation: false,
+      packaging: false,
+      providers: false,
+      forks: false,
+      buildNeeded: false,
+      staticNeeded: false,
+      appBuild: false,
+      sdkBuild: false,
+      reason: "CI and contributor documentation only",
+    };
+  }
   const known = /^(?:apps|packages|plugins|examples\/plugins|tests)\//u;
   if (paths.some((path) => !known.test(path))) return full;
   const result = JSON.parse(readFileSync(values.affected, "utf8"));

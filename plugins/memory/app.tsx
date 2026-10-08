@@ -35,8 +35,8 @@ function MemoryEditor({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
-      <div className="grid gap-3 lg:grid-cols-2">
+    <div className="@container/memory-editor space-y-3 rounded-md border border-border bg-muted/20 p-3">
+      <div className="grid gap-3 @min-[36rem]/memory-editor:grid-cols-2">
         <label className="space-y-1 text-xs text-muted-foreground">
           Summary
           <Input
@@ -70,7 +70,7 @@ function MemoryEditor({
           }
         />
       </label>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 @min-[32rem]/memory-editor:grid-cols-3">
         <label className="space-y-1 text-xs text-muted-foreground">
           Kind
           <select

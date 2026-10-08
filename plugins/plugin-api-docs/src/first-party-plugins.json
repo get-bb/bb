@@ -125,6 +125,11 @@
     "icon": "SideChat"
   },
   {
+    "id": "bb--storage-retention",
+    "name": "Storage & retention [Experimental]",
+    "icon": null
+  },
+  {
     "id": "tasks",
     "name": "Tasks",
     "icon": "ListTodo"

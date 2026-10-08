@@ -108,7 +108,7 @@ export function ScopedMachineEnvironmentSettings({
       environment={query.data ?? null}
       loadFailed={query.isError}
       gitCredentialsEnabled={settings?.machineGitCredentialsEnabled ?? true}
-      gitSwitchDisabled={!settings || updateSettings.isPending}
+      gitSwitchDisabled={!settings}
       onSave={save}
       onSaved={() => {
         invalidateMachineEnvironment({ queryClient });
@@ -118,7 +118,7 @@ export function ScopedMachineEnvironmentSettings({
       onSetGitCredentials={(enabled) => {
         if (!settings) return;
         updateSettings.mutate(
-          { ...settings, machineGitCredentialsEnabled: enabled },
+          { machineGitCredentialsEnabled: enabled },
           { onSuccess: () => void query.refetch() },
         );
       }}
@@ -363,7 +363,7 @@ export function MachineEnvironmentSettingsContent({
           <Button
             size="sm"
             variant="outline"
-            className="flex-1 sm:flex-none"
+            className="flex-1 @min-[36rem]/settings:flex-none"
             disabled={disabled}
             onClick={addRow}
           >
@@ -372,13 +372,13 @@ export function MachineEnvironmentSettingsContent({
           <Button
             size="sm"
             variant="outline"
-            className="flex-1 sm:flex-none"
+            className="flex-1 @min-[36rem]/settings:flex-none"
             disabled={disabled}
             onClick={() => setImporting(true)}
           >
             Import from .env
           </Button>
-          <div className="ml-auto flex w-full items-center justify-end gap-2 sm:w-auto">
+          <div className="ml-auto flex w-full items-center justify-end gap-2 @min-[36rem]/settings:w-auto">
             {isDirty && (
               <Button
                 size="sm"
@@ -413,7 +413,7 @@ export function MachineEnvironmentSettingsContent({
 }
 
 const ROW_GRID_CLASS_NAME =
-  "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]";
+  "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 @min-[32rem]/variable:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]";
 const ROW_CAPTION_CLASS_NAME = "text-xs leading-snug text-subtle-foreground";
 
 function GlobalSettingsLink() {
@@ -458,10 +458,10 @@ export function MachineEnvironmentAutomaticRow({
   const dimmed = !enabled || overridden;
   const missing = git?.status === "not logged in";
   return (
-    <div className="space-y-2">
+    <div className="@container/variable space-y-2">
       <div className={ROW_GRID_CLASS_NAME}>
         <Input
-          className={`col-span-2 font-mono sm:col-span-1 ${dimmed ? "opacity-50" : ""}`}
+          className={`col-span-2 font-mono @min-[32rem]/variable:col-span-1 ${dimmed ? "opacity-50" : ""}`}
           aria-label="Automatic variable name"
           value="GH_TOKEN"
           readOnly
@@ -548,10 +548,10 @@ export function MachineEnvironmentInheritedRow({
   onOverride: () => void;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="@container/variable space-y-2">
       <div className={ROW_GRID_CLASS_NAME}>
         <Input
-          className="col-span-2 font-mono sm:col-span-1"
+          className="col-span-2 font-mono @min-[32rem]/variable:col-span-1"
           aria-label={`Global variable ${variable.name}`}
           value={variable.name}
           readOnly
@@ -611,10 +611,10 @@ export function MachineEnvironmentVariableRow({
   onRemove: () => void;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="@container/variable space-y-2">
       <div className={ROW_GRID_CLASS_NAME}>
         <Input
-          className="col-span-2 font-mono sm:col-span-1"
+          className="col-span-2 font-mono @min-[32rem]/variable:col-span-1"
           aria-label={`Variable name ${index + 1}`}
           placeholder="KEY"
           value={row.name}

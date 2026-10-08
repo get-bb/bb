@@ -114,8 +114,6 @@ function shouldRenderClientRequestedInput(
     case "idle":
     case "active":
     case "stopping":
-    // A pending thread's first message is queued and has not been accepted,
-    // so the requested input is the only record of it there is to show.
     case "pending":
       return true;
     default:
@@ -130,8 +128,6 @@ export function shouldPreservePendingMessages(
   switch (threadStatus) {
     case "starting":
     case "active":
-    // The queued first message is exactly what must survive: nothing has been
-    // accepted yet, so dropping it would leave the timeline empty.
     case "pending":
       return true;
     case "error":
@@ -176,6 +172,7 @@ interface ParsePendingSteerFromClientRequestArgs extends ParseUserFromClientRequ
 }
 
 interface ParseRejectedUsersFromClientRequestArgs {
+  requestMeta: EventMeta;
   decoded: ThreadEvent;
   meta: EventMeta;
   options?: BuildEventProjectionMessagesOptions;
@@ -259,9 +256,11 @@ function resolveClientUserMessageTurnId(
 }
 
 interface BuildClientUserMessageArgs {
+  sourceSeq: number;
   acceptedClientRequest?: AcceptedClientRequest;
   decoded: ClientTurnRequestedEvent;
-  idSuffix?: string;
+  inputGroupIndex: number;
+  visibleMessageIndex: number;
   input: ReadonlyArray<PromptInput>;
   meta: EventMeta;
   requestStatus: EventProjectionTurnRequest["status"];
@@ -270,7 +269,9 @@ interface BuildClientUserMessageArgs {
 function buildClientUserMessage({
   acceptedClientRequest,
   decoded,
-  idSuffix,
+  inputGroupIndex,
+  visibleMessageIndex,
+  sourceSeq,
   input,
   meta,
   requestStatus,
@@ -306,10 +307,13 @@ function buildClientUserMessage({
     id: messageId(
       decoded.threadId,
       "user-seed",
-      idSuffix ? `${meta.seq}-${idSuffix}` : `${meta.seq}`,
+      visibleMessageIndex > 0
+        ? `${meta.seq}-${visibleMessageIndex}`
+        : `${meta.seq}`,
     ),
     threadId: decoded.threadId,
     messageSeq: meta.seq,
+    sourceEvent: { seq: sourceSeq, part: inputGroupIndex },
     sourceSeqStart: rowMeta.seq,
     sourceSeqEnd: rowMeta.seq,
     createdAt: rowMeta.createdAt,
@@ -327,16 +331,14 @@ function buildClientUserMessage({
   };
 }
 
-function clientUserMessageIdSuffix(messageIndex: number): string | undefined {
-  return messageIndex > 0 ? String(messageIndex) : undefined;
-}
-
 function buildClientUserMessagesForInputGroups({
+  sourceSeq,
   acceptedClientRequest,
   decoded,
   meta,
   requestStatus,
 }: {
+  sourceSeq: number;
   acceptedClientRequest: AcceptedClientRequest | undefined;
   decoded: ClientTurnRequestedEvent;
   meta: EventMeta;
@@ -344,13 +346,15 @@ function buildClientUserMessagesForInputGroups({
 }): EventProjectionUserMessage[] {
   const groups = decoded.inputGroups ?? [decoded.input];
   const messages: EventProjectionUserMessage[] = [];
-  for (const input of groups) {
+  for (const [inputGroupIndex, input] of groups.entries()) {
     if (!parsePromptInput(input)) continue;
     messages.push(
       buildClientUserMessage({
         acceptedClientRequest,
         decoded,
-        idSuffix: clientUserMessageIdSuffix(messages.length),
+        inputGroupIndex,
+        visibleMessageIndex: messages.length,
+        sourceSeq,
         input,
         meta,
         requestStatus,
@@ -380,6 +384,7 @@ export function parseUsersFromClientRequest(
   }
 
   return buildClientUserMessagesForInputGroups({
+    sourceSeq: meta.seq,
     acceptedClientRequest,
     decoded,
     meta,
@@ -402,6 +407,7 @@ export function parsePendingSteersFromClientRequest(
   }
 
   return buildClientUserMessagesForInputGroups({
+    sourceSeq: meta.seq,
     acceptedClientRequest: undefined,
     decoded,
     meta,
@@ -429,6 +435,7 @@ export function parseAcceptedSteersFromClientRequest(
   }
 
   return buildClientUserMessagesForInputGroups({
+    sourceSeq: meta.seq,
     acceptedClientRequest,
     decoded,
     meta,
@@ -439,7 +446,7 @@ export function parseAcceptedSteersFromClientRequest(
 export function parseRejectedUsersFromClientRequest(
   args: ParseRejectedUsersFromClientRequestArgs,
 ): EventProjectionUserMessage[] {
-  const { decoded, meta, options } = args;
+  const { decoded, meta, options, requestMeta } = args;
   if (decoded.type !== "client/turn/requested") {
     return [];
   }
@@ -448,6 +455,7 @@ export function parseRejectedUsersFromClientRequest(
   }
 
   return buildClientUserMessagesForInputGroups({
+    sourceSeq: requestMeta.seq,
     acceptedClientRequest: undefined,
     decoded,
     meta,
@@ -476,6 +484,7 @@ export function parseProviderUserMessage(
     id: messageId(decoded.threadId, "provider-input", decoded.item.id),
     threadId: decoded.threadId,
     messageSeq: meta.seq,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
@@ -510,6 +519,7 @@ export function parseLegacyUserMessage(
     kind: "assistant-text",
     id: messageId(decoded.threadId, "assistant", `legacy:${meta.seq}`),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,

@@ -41,6 +41,7 @@ function WorkInProgressPanel() {
     files: STORAGE_FILES,
     onSelectPath: setSelectedPath,
     selectedPath,
+    threadId: "thr_story",
   });
   return render({
     pullRequest: makePullRequest(),

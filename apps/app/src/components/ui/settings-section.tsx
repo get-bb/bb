@@ -19,19 +19,19 @@ export function SettingsSection({
   bodyClassName,
 }: SettingsSectionProps) {
   return (
-    <section className="space-y-3">
+    <section className="@container/settings space-y-3">
       <div
         className={cn(
           actionPlacement === "inline"
             ? "flex flex-row justify-between gap-4"
-            : "flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4",
+            : "flex flex-col gap-3 @min-[36rem]/settings:flex-row @min-[36rem]/settings:justify-between @min-[36rem]/settings:gap-4",
           description
             ? actionPlacement === "inline"
               ? "items-start"
-              : "sm:items-start"
+              : "@min-[36rem]/settings:items-start"
             : actionPlacement === "inline"
               ? "items-center"
-              : "sm:items-center",
+              : "@min-[36rem]/settings:items-center",
         )}
       >
         <div className="min-w-0">
@@ -99,12 +99,14 @@ export function SettingsDetailRow({
   children: ReactNode;
 }) {
   return (
-    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="shrink-0 text-foreground">{label}</span>
-      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
-        {children}
-      </div>
-    </SettingsRow>
+    <div className="@container/settings w-full min-w-0 py-2.5 first:pt-0 last:pb-0">
+      <SettingsRow className="flex-col py-0 items-stretch gap-1.5 @min-[36rem]/settings:flex-row @min-[36rem]/settings:items-center @min-[36rem]/settings:gap-3">
+        <span className="shrink-0 text-foreground">{label}</span>
+        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground @min-[36rem]/settings:ml-auto @min-[36rem]/settings:justify-end @min-[36rem]/settings:text-right">
+          {children}
+        </div>
+      </SettingsRow>
+    </div>
   );
 }
 
@@ -136,42 +138,46 @@ export function SettingsWithControl({
   const inline = controlPlacement === "inline";
   const trailing = controlPlacement === "trailing";
   return (
-    <div
-      data-control-placement={controlPlacement}
-      className={cn(
-        trailing
-          ? "flex flex-row justify-between gap-5"
-          : "flex flex-col gap-2.5",
-        trailing && (description ? "items-start" : "items-center"),
-        inline &&
-          "has-[[role=switch]]:flex-row has-[[role=switch]]:justify-between has-[[role=switch]]:gap-5 sm:flex-row sm:justify-between sm:gap-5",
-        inline &&
-          (description
-            ? "has-[[role=switch]]:items-start sm:items-start"
-            : "has-[[role=switch]]:items-center sm:items-center"),
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="min-w-0 text-sm font-normal text-foreground">{label}</p>
-          {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
-        </div>
-        {description ? (
-          <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-            {description}
-          </p>
-        ) : null}
-      </div>
+    <div className="@container/settings w-full min-w-0">
       <div
-        className={
+        data-control-placement={controlPlacement}
+        className={cn(
           trailing
-            ? "flex shrink-0 justify-end"
-            : inline
-              ? "shrink-0 sm:flex sm:justify-end"
-              : "w-full min-w-0"
-        }
+            ? "flex flex-row justify-between gap-5"
+            : "flex flex-col gap-2.5",
+          trailing && (description ? "items-start" : "items-center"),
+          inline &&
+            "has-[[role=switch]]:flex-row has-[[role=switch]]:justify-between has-[[role=switch]]:gap-5 @min-[36rem]/settings:flex-row @min-[36rem]/settings:justify-between @min-[36rem]/settings:gap-5",
+          inline &&
+            (description
+              ? "has-[[role=switch]]:items-start @min-[36rem]/settings:items-start"
+              : "has-[[role=switch]]:items-center @min-[36rem]/settings:items-center"),
+        )}
       >
-        {children}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 text-sm font-normal text-foreground">
+              {label}
+            </p>
+            {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
+          </div>
+          {description ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        <div
+          className={
+            trailing
+              ? "flex shrink-0 justify-end"
+              : inline
+                ? "shrink-0 @min-[36rem]/settings:flex @min-[36rem]/settings:justify-end"
+                : "w-full min-w-0"
+          }
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

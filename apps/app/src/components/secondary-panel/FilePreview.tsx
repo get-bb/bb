@@ -22,7 +22,10 @@ import {
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useElementWidth } from "@/hooks/useElementWidth";
 import { SourceCodeHost } from "@/components/code/SourceCodeHost";
-import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import {
+  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+  COARSE_POINTER_TEXT_SM_CLASS,
+} from "@bb/shared-ui/coarse-pointer-sizing";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { CopyButton } from "@/components/ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
@@ -679,12 +682,7 @@ function FilePreviewHeader({
 
   return (
     <div ref={headerRef} className="sticky top-0 z-10 bg-sidebar">
-      <div
-        className={cn(
-          "flex items-center gap-2 bg-surface-raised",
-          isNarrow ? "h-12 px-3" : "h-9 px-4",
-        )}
-      >
+      <div className="flex h-9 items-center gap-2 bg-surface-raised px-4 max-md:pointer-coarse:h-12 max-md:pointer-coarse:px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {previewIcon}
           <FilePreviewPath path={path} copyPath={copyPath} />
@@ -842,7 +840,10 @@ function FilePreviewHeader({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-10 shrink-0 [&_[data-icon-root]]:size-5"
+                    className={cn(
+                      FILE_PREVIEW_HEADER_ICON_BUTTON_CLASS,
+                      "shrink-0 max-md:pointer-coarse:size-10",
+                    )}
                     aria-label="File actions"
                   >
                     <Icon name="MoreHorizontal" aria-hidden />
@@ -851,7 +852,7 @@ function FilePreviewHeader({
                 <DropdownMenuContent
                   align="end"
                   mobileTitle="File actions"
-                  className="[&_[role=menuitem]]:min-h-11 [&_[role=menuitem]]:text-sm [&_[role=menuitemcheckbox]]:min-h-11 [&_[role=menuitemcheckbox]]:text-sm"
+                  className="max-md:pointer-coarse:[&_[role=menuitem]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitem]]:text-sm max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:min-h-11 max-md:pointer-coarse:[&_[role=menuitemcheckbox]]:text-sm"
                 >
                   <DropdownMenuLabel className="max-w-80 break-all font-mono">
                     {path}
@@ -1247,7 +1248,12 @@ function FilePreviewIcon({ loading }: { loading: boolean }) {
   }, [loading]);
   const spinning = loading && showLoading;
   return (
-    <span className="flex size-3.5 shrink-0 items-center justify-center text-subtle-foreground @max-[560px]/page:size-5">
+    <span
+      className={cn(
+        "flex items-center justify-center text-subtle-foreground",
+        COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+      )}
+    >
       <Icon
         name={spinning ? "Spinner" : "File"}
         className={cn(

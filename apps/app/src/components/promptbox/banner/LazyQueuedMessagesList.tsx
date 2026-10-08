@@ -1,11 +1,14 @@
 import { useEffect, type ReactNode } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import {
-  getPendingQueuedMessagesDrawerHeight,
+  PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
+import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import {
   getQueuedMessagesDrawerHeight,
+  QUEUED_MESSAGES_COLLAPSED_HEIGHT,
 } from "@/components/promptbox/banner/queued-messages-layout";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
@@ -68,12 +71,15 @@ function QueuedMessagesCardFrame({
         attached ? "-mb-5 rounded-b-none border-b-0 pb-3" : "mb-0 pb-4",
       )}
     >
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border/35 px-2">
-        <div className="flex min-w-16 items-baseline gap-1.5 pl-1">
-          <span className="text-xs font-medium text-foreground">Queue</span>
-          <span className="text-2xs tabular-nums text-subtle-foreground">
-            {queuedMessageCount}
-          </span>
+      <header className="shrink-0">
+        <div
+          className={cn(
+            PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+            "cursor-default hover:bg-transparent",
+          )}
+        >
+          <span className="font-normal">Queue</span>
+          <QueuedMessagesCountPill count={queuedMessageCount} />
         </div>
       </header>
       {children}
@@ -81,28 +87,8 @@ function QueuedMessagesCardFrame({
   );
 }
 
-const LOADING_ROW_WIDTHS = ["w-3/4", "w-1/2", "w-2/3"];
-
-function QueuedMessagesLoadingRows({
-  queuedMessageCount,
-}: {
-  queuedMessageCount: number;
-}) {
-  return (
-    <div
-      role="status"
-      aria-label="Loading queued messages"
-      className="min-h-0 flex-1 py-1"
-    >
-      {LOADING_ROW_WIDTHS.slice(0, Math.max(1, queuedMessageCount)).map(
-        (width) => (
-          <div key={width} className="flex h-[33px] items-center px-3.5">
-            <Skeleton className={cn("h-3 rounded-sm", width)} />
-          </div>
-        ),
-      )}
-    </div>
-  );
+function QueuedMessagesLoadingStatus() {
+  return <span role="status" aria-label="Loading queued messages" />;
 }
 
 function isAttachedToComposer({
@@ -116,12 +102,10 @@ function QueuedMessagesListLoading(props: QueuedMessagesListProps) {
   return (
     <QueuedMessagesCardFrame
       attached={isAttachedToComposer(props)}
-      height={getQueuedMessagesDrawerHeight(props)}
+      height={QUEUED_MESSAGES_COLLAPSED_HEIGHT}
       queuedMessageCount={props.queuedMessages.length}
     >
-      <QueuedMessagesLoadingRows
-        queuedMessageCount={props.queuedMessages.length}
-      />
+      <QueuedMessagesLoadingStatus />
     </QueuedMessagesCardFrame>
   );
 }
@@ -136,7 +120,9 @@ function QueuedMessagesListFailure({
       height={getQueuedMessagesDrawerHeight(props)}
       queuedMessageCount={props.queuedMessages.length}
     >
-      <SplitLoadFailure retry={retry} />
+      <div className="min-h-0 flex-1 border-t border-border/35">
+        <SplitLoadFailure retry={retry} />
+      </div>
     </QueuedMessagesCardFrame>
   );
 }
@@ -163,10 +149,10 @@ export function QueuedMessagesPendingCard({
   return (
     <QueuedMessagesCardFrame
       attached
-      height={getPendingQueuedMessagesDrawerHeight(queuedMessageCount)}
+      height={QUEUED_MESSAGES_COLLAPSED_HEIGHT}
       queuedMessageCount={queuedMessageCount}
     >
-      <QueuedMessagesLoadingRows queuedMessageCount={queuedMessageCount} />
+      <QueuedMessagesLoadingStatus />
     </QueuedMessagesCardFrame>
   );
 }

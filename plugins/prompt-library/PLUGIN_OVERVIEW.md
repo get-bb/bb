@@ -7,7 +7,7 @@ Disabled by default. Enable **Prompt Library** in Settings → Plugins or run
 
 - A **Prompts…** entry in the composer plus menu, also bound to **Ctrl+R** (rebind it as "Search prompts" in keyboard settings).
 - A search box that fuzzy-matches your previous prompts as you type.
-- **Starred** prompts pinned above **Recent** ones, most recently used first.
+- **Starred** prompts pinned above **Recent** ones, most recently used first. Searching shows one ranked list: prompts that start with your query first, then the closest fuzzy matches, with starred and newer prompts winning ties.
 - Scope toggles: **Thread**, **Project**, and **All** in a thread; **Project** and **All** in the new-thread composer. The last choice is remembered on this device.
 - `bb prompts search|list|star|unstar` for the same data from the terminal.
 

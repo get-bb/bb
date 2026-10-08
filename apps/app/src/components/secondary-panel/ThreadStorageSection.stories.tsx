@@ -26,8 +26,12 @@ function makeFile(path: string): WorkspaceFile {
 
 const FILES: WorkspaceFile[] = [
   makeFile("notes/current-work.md"),
+  makeFile("notes/archive/2026-09.md"),
   makeFile("plans/kickoff.md"),
+  makeFile("qa/screenshots/after/info-panel.png"),
+  makeFile("qa/screenshots/after/info-panel-dark.png"),
   makeFile("reports/status.md"),
+  makeFile("handoff.md"),
 ];
 
 function InteractiveRow({
@@ -42,6 +46,7 @@ function InteractiveRow({
     files,
     onSelectPath: setSelectedPath,
     selectedPath,
+    threadId: "thr_story",
   });
   return (
     <ThreadStorageSection
@@ -56,7 +61,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="default"
-        hint="Flat list of thread-storage files; click a row to select it"
+        hint="Folders collapse by default; click a folder to expand it and a file to select it"
       >
         <PanelStage>
           <InteractiveRow files={FILES} />

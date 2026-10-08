@@ -22,8 +22,9 @@ write into a composer the user picks use `useComposers()`, one handle per
 composer on screen.
 Any mounted plugin component can use
 `useBbNavigate().openThreadPanel(...)` to request one of the
-same plugin's registered thread-panel actions; it returns false when the
-current surface has no thread side panel.
+same plugin's registered panel actions: `threadPanelAction` in a thread,
+`experimental_newThreadPanelAction` on the New thread screen. It returns false
+on plugin pages, which have no panel actions.
 
 Use `UrlLink` for a real anchor that applies BB's current
 in-app/external-browser preference on ordinary HTTP(S) activation, or
@@ -47,6 +48,13 @@ frontend harness. Buttons and menus can call
 the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
+
+To show a terminal beside your UI, create it with `useSdk().terminals.create`
+in the thread, environment, or host directory you want, then call
+`useBbNavigate().experimental_openTerminal({ terminalId })`. It resolves
+whether the current surface selected the terminal's tab; thread surfaces accept
+only their own thread's terminals. The harness records the call and accepts an
+`openTerminal` behavior option.
 
 A nav panel's `fixedTabs` entries must include the containing nav
 panel's `id` as `panelId`; each entry is also a stable reference to that

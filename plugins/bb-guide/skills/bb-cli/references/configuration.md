@@ -34,7 +34,7 @@
 - Use `bb settings general <key> <value>` or
   `bb settings experiment <key> <value>` for updates.
 - Use `bb settings keyboard list`, `set`, and `reset` for shortcut overrides.
-- Use `bb settings usage [--machine <id-or-name>]` for provider limits.
+- Use `bb settings usage [--machine <id-or-name>] [--refresh]` for provider limits. `--refresh` bypasses completed cached results; ordinary reads may reuse results for 10 seconds.
   `--host` is an alias for `--machine`.
 - Use `bb settings version [--force]` for release information.
 - Use `bb settings reload` to reload BB-managed configuration.

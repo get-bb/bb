@@ -76,6 +76,7 @@ import { WindowFindHost } from "./components/layout/WindowFindHost";
 import { DesktopZoomIndicator } from "./components/layout/DesktopZoomIndicator";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { ServerMoveOverlay } from "./components/machines/ServerMoveOverlay";
+import { OnboardingGate } from "./components/onboarding/OnboardingGate";
 import { AppUpdateHost } from "./components/app-update/AppUpdateHost";
 import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost";
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
@@ -478,7 +479,14 @@ export function App() {
                   path={AUTH_CALLBACK_ROUTE_PATH}
                   element={<AuthCallbackView />}
                 />
-                <Route path="*" element={<AppRoutes />} />
+                <Route
+                  path="*"
+                  element={
+                    <OnboardingGate>
+                      <AppRoutes />
+                    </OnboardingGate>
+                  }
+                />
               </Routes>
               <WindowFindHost />
               <DesktopZoomIndicator />

@@ -916,6 +916,7 @@ function createExecMessage(
   const base = {
     id: messageId(call.threadId, rowKindForId, call.callId),
     threadId: call.threadId,
+    sourceEvent: { seq: call.sourceSeqStart, part: 0 },
     sourceSeqStart: call.sourceSeqStart,
     sourceSeqEnd: call.sourceSeqEnd,
     createdAt: call.createdAt,

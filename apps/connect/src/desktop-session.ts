@@ -7,7 +7,7 @@ import {
   session,
   type ConnectDb,
 } from "@bb/connect-db";
-import { cacheGet, cacheStore, type CacheEntry } from "./session.js";
+import { SettledLookupCache } from "./session.js";
 
 export const DESKTOP_SESSION_TTL_MS = CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000;
 const DESKTOP_SESSION_REFRESH_BEFORE_EXPIRY_MS =
@@ -38,7 +38,7 @@ export interface VerifiedDesktopSession {
   refreshGrant: DesktopSessionGrant | null;
 }
 
-const grantCache = new Map<string, CacheEntry<string | null>>();
+const grantCache = new SettledLookupCache<string | null>();
 
 function grantKey(grant: DesktopSessionGrant): string {
   return grant.kind === "session"
@@ -241,16 +241,11 @@ function resolveGrantUserId(
   db: ConnectDb,
   now: number,
 ): Promise<string | null> {
-  const key = grantKey(grant);
-  return (
-    cacheGet(grantCache, key, now) ??
-    cacheStore(
-      grantCache,
-      key,
-      lookupGrantUserId(grant, db, now),
-      now + GRANT_TTL_MS,
-    )
-  );
+  return grantCache.read(grantKey(grant), {
+    now,
+    expires: () => now + GRANT_TTL_MS,
+    load: () => lookupGrantUserId(grant, db, now),
+  });
 }
 
 export async function verifyDesktopSessionCookie(

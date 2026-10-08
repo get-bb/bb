@@ -125,6 +125,83 @@ async function stopThread(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the requested queue drain", () => {
+  it.each([
+    { finish: "save", sentText: "SAVED EDIT" },
+    { finish: "cancel", sentText: "ORIGINAL" },
+  ] as const)(
+    "holds a queued message through turn completion while it is edited, then sends it on $finish",
+    async ({ finish, sentText }) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-edit-hold-${finish}`,
+          status: "active",
+        });
+        const edited = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("ORIGINAL"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        const behind = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("BEHIND"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        const editHoldPath = `/api/v1/threads/${thread.id}/queued-messages/${edited.id}/edit-hold`;
+        const holdResponse = await harness.app.request(editHoldPath, {
+          method: "POST",
+        });
+        expect(holdResponse.status).toBe(200);
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "idle-recovery",
+          now: Date.now(),
+        });
+
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual([edited.id, behind.id]);
+
+        const finishResponse =
+          finish === "save"
+            ? await harness.app.request(
+                `/api/v1/threads/${thread.id}/queued-messages/${edited.id}`,
+                {
+                  method: "PATCH",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    expectedUpdatedAt: edited.updatedAt,
+                    input: textInput("SAVED EDIT"),
+                  }),
+                },
+              )
+            : await harness.app.request(editHoldPath, { method: "DELETE" });
+        expect(finishResponse.status).toBe(200);
+
+        await vi.waitFor(() => {
+          expect(turnRequests(harness, thread.id)).toHaveLength(
+            turnsBefore + 1,
+          );
+        });
+        expect(turnRequests(harness, thread.id).at(-1)?.data).toContain(
+          sentText,
+        );
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual([behind.id]);
+      });
+    },
+  );
+
   it("keeps child interruption details when an offline parent notice dispatches", async () => {
     await withTestHarness(async (harness) => {
       const { thread, environment } = seedRunnableThread(harness, {

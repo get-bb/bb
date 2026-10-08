@@ -16,7 +16,7 @@ export function TruncateStart({
       dir="rtl"
       className={cn("block w-min max-w-full truncate", className)}
     >
-      {`‎${children}`}
+      {`‎${children}‎`}
     </span>
   );
 }

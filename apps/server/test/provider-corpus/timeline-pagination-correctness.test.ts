@@ -168,6 +168,7 @@ describe.skipIf(!corpusAvailable())(
           const { profile } = buildThreadTimelineWithProfile(db, thread, {
             completedTurnDisplay: "collapse",
             eventBudget: 1_500,
+            includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
             maxInlineOutputChars: 32_000,
             maxSeq: getLatestThreadSequence(db, { threadId }),
