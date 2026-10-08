@@ -18,7 +18,11 @@ import {
   useSystemProviderStates,
 } from "@/hooks/queries/system-queries";
 import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
-import { SetupChecklist, type SetupChecklistItem } from "./SetupChecklistViews";
+import {
+  NoAgentNotice,
+  SetupChecklist,
+  type SetupChecklistItem,
+} from "./SetupChecklistViews";
 import {
   ONBOARDING_PLUGINS,
   PUSH_NOTIFICATIONS_PLUGIN_ID,
@@ -139,7 +143,6 @@ interface UseSetupChecklistArgs {
 
 interface SetupChecklistState {
   items: SetupChecklistItem[] | null;
-  loading: boolean;
   agentMissing: boolean;
   act: (id: SetupChecklistItemId) => void;
   dismiss: () => void;
@@ -324,20 +327,10 @@ export function useSetupChecklist({
 
   return {
     items: everythingDone ? null : allItems,
-    loading:
-      allItems === null &&
-      visible &&
-      (statesQuery.isLoading ||
-        navigationQuery.isLoading ||
-        pluginsQuery.isLoading),
     agentMissing,
     act,
     dismiss,
   };
-}
-
-export function leadsEmptyHome(checklist: SetupChecklistState): boolean {
-  return checklist.items !== null || checklist.loading;
 }
 
 export function SetupChecklistCard({
@@ -345,13 +338,20 @@ export function SetupChecklistCard({
 }: {
   checklist: SetupChecklistState;
 }) {
-  if (checklist.items === null) return null;
+  if (!checklist.agentMissing && checklist.items === null) return null;
   return (
-    <SetupChecklist
-      items={checklist.items}
-      onAction={checklist.act}
-      onDismiss={checklist.dismiss}
-    />
+    <div className="flex w-full flex-col items-center gap-4">
+      {checklist.agentMissing ? (
+        <NoAgentNotice onSetUp={() => checklist.act("agent")} />
+      ) : null}
+      {checklist.items === null ? null : (
+        <SetupChecklist
+          items={checklist.items}
+          onAction={checklist.act}
+          onDismiss={checklist.dismiss}
+        />
+      )}
+    </div>
   );
 }
 

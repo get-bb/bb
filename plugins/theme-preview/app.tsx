@@ -697,6 +697,29 @@ function ThreadTocFixture() {
   );
 }
 
+const NEW_THREAD_ACTIONS = [
+  {
+    icon: "MessageSquarePlus",
+    title: "New thread",
+    description: "Start a new conversation",
+  },
+  {
+    icon: "FolderGit",
+    title: "Automatically import my projects",
+    description: "Find repos touched in the last 30 days",
+  },
+  {
+    icon: "FolderPlus",
+    title: "New project",
+    description: "Create one from a local folder",
+  },
+  {
+    icon: "Explore",
+    title: "Learn what bb can do",
+    description: "Get a tour of its capabilities",
+  },
+] as const;
+
 function Thread({
   title = "Endless theme family — blacklight pass",
   active = true,
@@ -734,17 +757,73 @@ function Thread({
     >
       {empty ? (
         <div
-          data-tp-new-home=""
+          data-tp-new-welcome=""
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
+            alignItems: "center",
             justifyContent: "center",
+            gap: narrow ? 22 : 34,
             padding: `0 ${pad}px`,
           }}
         >
-          <div style={{ width: "100%", maxWidth: 640, margin: "0 auto" }}>
-            <Composer focused={active} empty />
+          <div
+            role="img"
+            aria-label="bb"
+            style={{
+              fontSize: narrow ? 28 : 34,
+              lineHeight: 1,
+              fontWeight: 700,
+              letterSpacing: "-0.08em",
+              color: v("foreground"),
+            }}
+          >
+            bb
+          </div>
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 360,
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            {NEW_THREAD_ACTIONS.map((action) => (
+              <BbButton
+                key={action.title}
+                type="button"
+                variant="ghost"
+                className="h-auto w-full cursor-pointer justify-start gap-3 px-3 py-2.5 text-left"
+              >
+                <Icon
+                  name={action.icon}
+                  className="size-5 shrink-0 text-subtle-foreground"
+                />
+                <span
+                  style={{
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: v("foreground"),
+                    }}
+                  >
+                    {action.title}
+                  </span>
+                  <span style={{ fontSize: 12, color: v("muted-foreground") }}>
+                    {action.description}
+                  </span>
+                </span>
+              </BbButton>
+            ))}
           </div>
         </div>
       ) : (

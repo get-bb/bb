@@ -363,14 +363,24 @@ describe("Theme Preview", () => {
 
       cleanup();
       renderPreview(rpc, "new");
-      const home = await waitFor(() => {
-        const found = document.querySelector<HTMLElement>("[data-tp-new-home]");
+      const welcome = await waitFor(() => {
+        const found = document.querySelector<HTMLElement>(
+          "[data-tp-new-welcome]",
+        );
         expect(found).not.toBeNull();
         return found as HTMLElement;
       });
-      expect(within(home).getByText("Ask anything…")).toBeDefined();
-      expect(within(home).queryByText("Learn what bb can do")).toBeNull();
-      expect(within(home).queryByText("What are we building?")).toBeNull();
+      expect(
+        within(welcome).getByRole("button", {
+          name: /New thread\s*Start a new conversation/i,
+        }),
+      ).toBeDefined();
+      expect(
+        within(welcome).getByRole("button", {
+          name: /Learn what bb can do\s*Get a tour/i,
+        }),
+      ).toBeDefined();
+      expect(within(welcome).queryByText("What are we building?")).toBeNull();
 
       cleanup();
       renderPreview(rpc, "split");

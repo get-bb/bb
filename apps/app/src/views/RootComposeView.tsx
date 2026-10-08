@@ -32,7 +32,6 @@ import {
   SetupChecklistBanner,
   SetupChecklistCard,
   hasSetupChecklistBanner,
-  leadsEmptyHome,
   useSetupChecklist,
 } from "@/components/onboarding/SetupChecklistHost";
 import { FIRST_THREAD_PROMPT } from "@/components/onboarding/onboarding-model";
@@ -127,6 +126,7 @@ import {
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
+import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import {
   shouldLoadThreadStorageFileList,
   useThreadStorageViewer,
@@ -170,7 +170,7 @@ import {
 
 const ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14";
 
-const ROOT_COMPOSE_SETUP_HOME_CONTENT_CLASS =
+const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
   "min-h-full flex-1 items-center justify-center pb-12";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
@@ -1389,6 +1389,8 @@ function RootComposeSurface({
       />
     </div>
   ) : null;
+  const showEmptyWelcome =
+    !startedComposing && projects !== undefined && projects.length === 0;
   const handleStartComposing = useCallback(
     (prefill?: string) => {
       if (prefill) {
@@ -1445,11 +1447,6 @@ function RootComposeSurface({
   const setupChecklist = useSetupChecklist({
     onStartThread: () => handleStartComposing(FIRST_THREAD_PROMPT),
   });
-  const showSetupHome =
-    !startedComposing &&
-    projects !== undefined &&
-    projects.length === 0 &&
-    leadsEmptyHome(setupChecklist);
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
       return hasSetupChecklistBanner(setupChecklist) ? (
@@ -1507,7 +1504,7 @@ function RootComposeSurface({
     />
   );
 
-  const isCompactHomeLayout = isCompactViewport && !showSetupHome;
+  const isCompactHomeLayout = isCompactViewport && !showEmptyWelcome;
 
   const promptBox = renderPromptBox({
     id: "root-compose-prompt",
@@ -1548,13 +1545,13 @@ function RootComposeSurface({
             >
               <RootComposeSecondaryContent
                 contentClassName={
-                  showSetupHome
-                    ? ROOT_COMPOSE_SETUP_HOME_CONTENT_CLASS
+                  showEmptyWelcome
+                    ? ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS
                     : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
                 }
                 isCompactHomeLayout={isCompactHomeLayout}
                 compactScrollContent={
-                  showSetupHome ? null : (
+                  showEmptyWelcome ? null : (
                     <RootComposeMobileRecents
                       highlightedThreadId={lastCreatedThreadId}
                       projectNamesById={mobileRecentProjectNamesById}
@@ -1591,10 +1588,16 @@ function RootComposeSurface({
                   onPanelFocus: touchFixedPanelTabsState,
                 }}
               >
-                {showSetupHome ? (
-                  <div className="flex w-full flex-col items-center px-4 duration-500 animate-in fade-in-0 slide-in-from-bottom-2">
-                    <SetupChecklistCard checklist={setupChecklist} />
-                  </div>
+                {showEmptyWelcome ? (
+                  <RootComposeEmptyWelcome
+                    onCompose={handleStartComposing}
+                    onAddProject={quickCreateProject.openCreateDialog}
+                    addProjectDisabled={
+                      !quickCreateProject.isAvailable ||
+                      quickCreateProject.isCreating
+                    }
+                    footer={<SetupChecklistCard checklist={setupChecklist} />}
+                  />
                 ) : (
                   promptBox
                 )}

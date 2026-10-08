@@ -23,6 +23,7 @@ import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
+import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 export default {
   title: "onboarding/First run",
@@ -573,15 +574,17 @@ function HomeFrame({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
+      <img
+        src={bbLogoUrl}
+        alt="bb"
+        draggable={false}
+        className="h-16 w-20 select-none object-contain dark:invert"
+      />
+      {agentMissing ? <NoAgentNotice onSetUp={() => onOpen("agent")} /> : null}
       {items === null ? (
-        <>
-          {agentMissing ? (
-            <NoAgentNotice onSetUp={() => onOpen("agent")} />
-          ) : null}
-          <p className="text-sm text-muted-foreground">
-            The usual home composer goes here.
-          </p>
-        </>
+        <p className="text-sm text-muted-foreground">
+          The usual bb home screen goes here.
+        </p>
       ) : (
         <SetupChecklist
           items={items}
@@ -1078,7 +1081,7 @@ export function HomeAfterSkipping() {
     <Gallery>
       <Captioned
         label="Empty home after Skip setup"
-        hint="The empty home while no project exists; with projects, the home composer shows a one-line version. Dismissing it leaves the usual composer."
+        hint="Shown under the welcome actions while no project exists; with projects, the home composer shows a one-line version. Dismissing it also stops the missing-agent notice."
       >
         <StoryWindow>
           <HomeFrame
