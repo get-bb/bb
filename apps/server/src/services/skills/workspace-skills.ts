@@ -2,6 +2,7 @@ import { joinHostPathSegments } from "../lib/host-path.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../routes/path-list-policy.js";
 import {
   resolveProjectSkillSourceFromContent,
   type ProjectInjectedSkillSource,
@@ -35,6 +36,7 @@ export async function resolveWorkspaceProjectSkills(
       limit: MAX_PROJECT_SKILLS,
       maxFileBytes: MAX_PROJECT_SKILL_FILE_BYTES,
       maxTotalBytes: MAX_PROJECT_SKILLS_TOTAL_BYTES,
+      excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });
   if (result.truncated) {

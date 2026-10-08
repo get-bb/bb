@@ -754,6 +754,7 @@ const hostReadSkillFilesCommandSchema = z
     limit: z.number().int().positive(),
     maxFileBytes: z.number().int().positive(),
     maxTotalBytes: z.number().int().positive(),
+    excludeNames: z.array(z.string().min(1)),
   })
   .strict();
 

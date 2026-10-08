@@ -793,6 +793,7 @@ describe("readHostSkillFiles", () => {
       limit: 10,
       maxFileBytes: reviewContent.length,
       maxTotalBytes: 1_000_000,
+      excludeNames: [],
     });
 
     expect(result).toEqual({
@@ -810,6 +811,25 @@ describe("readHostSkillFiles", () => {
       ],
       truncated: false,
     });
+  });
+
+  it("skips excluded directories and SKILL.md with the wrong case", async () => {
+    const skillsRoot = path.join(tempRoot, "match-skills");
+    await writeSkill(path.join(skillsRoot, "kept", "SKILL.md"), "kept");
+    await writeSkill(path.join(skillsRoot, "venv", "SKILL.md"), "venv");
+    await writeSkill(path.join(skillsRoot, "lower", "skill.md"), "lower");
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 1024,
+      maxTotalBytes: 1024,
+      excludeNames: ["venv"],
+    });
+
+    expect(result.skills.map((skill) => skill.directoryName)).toEqual(["kept"]);
   });
 
   it("withholds content once the total byte budget is spent", async () => {
@@ -830,6 +850,7 @@ describe("readHostSkillFiles", () => {
       limit: 10,
       maxFileBytes: 10,
       maxTotalBytes: 25,
+      excludeNames: [],
     });
 
     expect(result.skills).toEqual([
@@ -851,6 +872,7 @@ describe("readHostSkillFiles", () => {
       limit: 1,
       maxFileBytes: 1024,
       maxTotalBytes: 1_000_000,
+      excludeNames: [],
     });
 
     expect(result.skills.map((skill) => skill.directoryName)).toEqual(["a"]);
@@ -866,6 +888,7 @@ describe("readHostSkillFiles", () => {
         limit: 10,
         maxFileBytes: 1024,
         maxTotalBytes: 1_000_000,
+        excludeNames: [],
       }),
     ).resolves.toEqual({ skills: [], truncated: false });
 
@@ -882,6 +905,7 @@ describe("readHostSkillFiles", () => {
         limit: 10,
         maxFileBytes: 1024,
         maxTotalBytes: 1_000_000,
+        excludeNames: [],
       }),
     ).rejects.toBeInstanceOf(CommandDispatchError);
   });
@@ -901,6 +925,7 @@ describe("readHostSkillFiles", () => {
         limit: 10,
         maxFileBytes: 1024,
         maxTotalBytes: 1_000_000,
+        excludeNames: [],
       }),
     ).rejects.toBeInstanceOf(CommandDispatchError);
   });

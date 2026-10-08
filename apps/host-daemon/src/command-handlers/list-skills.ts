@@ -161,14 +161,23 @@ export async function readHostSkillFiles(
       `Path "${command.path}" escapes read root`,
     );
   }
+  const excludedNames = new Set(command.excludeNames);
   const directoryNames = (await fs.readdir(rootPath, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
+        !excludedNames.has(entry.name),
+    )
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
   const skills: SkillFile[] = [];
   let remainingBytes = command.maxTotalBytes;
   for (const directoryName of directoryNames.slice(0, command.limit)) {
-    const filePath = path.join(rootPath, directoryName, SKILL_FILE_NAME);
+    const directoryPath = path.join(rootPath, directoryName);
+    const entryNames = await orNullIfMissing(fs.readdir(directoryPath));
+    if (!entryNames?.includes(SKILL_FILE_NAME)) continue;
+    const filePath = path.join(directoryPath, SKILL_FILE_NAME);
     const stat = await orNullIfMissing(fs.lstat(filePath));
     if (!stat?.isFile()) continue;
     const allowedBytes = Math.min(command.maxFileBytes, remainingBytes);
