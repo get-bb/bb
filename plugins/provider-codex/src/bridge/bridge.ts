@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { createJsonLineWriter } from "./json-line-writer.js";
 import {
   isStandaloneBuiltinCompactCommand,
   approvalInteractionOutcomeSchema,
@@ -227,9 +228,26 @@ interface BridgeRuntimeRequest {
   params: Record<string, unknown>;
 }
 
+const connections = new Set<CodexAppServerConnection>();
+const activeRequests = new Set<Promise<void>>();
+let outputPaused = false;
+let shuttingDown = false;
+const output = createJsonLineWriter({
+  stream: process.stdout,
+  onPressureChange(paused) {
+    outputPaused = paused;
+    if (paused || shuttingDown) process.stdin.pause();
+    else process.stdin.resume();
+    for (const connection of connections) connection.setOutputPaused(paused);
+  },
+  onError(error) {
+    process.stderr.write(`Codex bridge stdout failed: ${error.message}\n`);
+    shutdown(1);
+  },
+});
 const { send, sendResult, sendError } = createBridgeIo<
   BridgeNotification | BridgeRuntimeRequest
->();
+>({ write: output.write });
 
 function sendNotification(
   method: string,
@@ -428,7 +446,6 @@ interface CodexBridgeSession {
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
-const maintenanceConnections = new Set<CodexAppServerConnection>();
 let modelListConnection: CodexAppServerConnection | null = null;
 let modelListConnectionPromise: Promise<CodexAppServerConnection> | null = null;
 let sessionSerialCounter = 0;
@@ -839,16 +856,24 @@ function spawnChildConnection(callbacks: {
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
 }): CodexAppServerConnection {
+  if (shuttingDown) throw new Error("Codex bridge is shutting down");
   const env = buildAppServerEnv(callbacks.envVars);
   const launch = resolveAppServerLaunch(appServerLaunchEnv(callbacks.envVars));
   const { envVars: _envVars, ...connectionCallbacks } = callbacks;
-  return createCodexAppServerConnection({
+  const connection = createCodexAppServerConnection({
     command: launch.command,
     args: launch.args,
     cwd: process.cwd(),
     env,
     ...connectionCallbacks,
+    onExit(info) {
+      connections.delete(connection);
+      callbacks.onExit(info);
+    },
   });
+  connections.add(connection);
+  connection.setOutputPaused(outputPaused);
+  return connection;
 }
 
 const ignoredChildResultSchema = z.unknown();
@@ -1173,12 +1198,10 @@ async function withMaintenanceChild<T>(
     },
     onExit: () => {},
   });
-  maintenanceConnections.add(connection);
   try {
     await initializeChild(connection);
     return await fn(connection);
   } finally {
-    maintenanceConnections.delete(connection);
     await connection.kill();
   }
 }
@@ -1202,19 +1225,16 @@ async function getModelListConnection(): Promise<CodexAppServerConnection> {
         );
       },
       onExit: () => {
-        maintenanceConnections.delete(connection);
         if (modelListConnection === connection) {
           modelListConnection = null;
         }
       },
     });
-    maintenanceConnections.add(connection);
     try {
       await initializeChild(connection);
       modelListConnection = connection;
       return connection;
     } catch (error) {
-      maintenanceConnections.delete(connection);
       await connection.kill();
       throw error;
     }
@@ -1230,7 +1250,6 @@ async function getModelListConnection(): Promise<CodexAppServerConnection> {
 }
 
 function retireModelListConnection(connection: CodexAppServerConnection): void {
-  maintenanceConnections.delete(connection);
   if (modelListConnection === connection) {
     modelListConnection = null;
   }
@@ -1872,6 +1891,7 @@ async function handleRequest(
 }
 
 function handleParsedMessage(parsed: unknown): void {
+  if (shuttingDown) return;
   const response = decodeBridgeJsonRpcResponse(parsed);
   if (response && typeof response.id === "number") {
     const pending = pendingRuntimeRequests.get(response.id);
@@ -1902,41 +1922,73 @@ function handleParsedMessage(parsed: unknown): void {
     );
     return;
   }
-  runBridgeRequest({ request: decoded.request, handleRequest, sendError });
+  const request = runRequest(decoded.request);
+  activeRequests.add(request);
+  void request.finally(() => activeRequests.delete(request));
+}
+
+function runRequest(
+  request: Parameters<typeof handleRequest>[0],
+): Promise<void> {
+  return new Promise((resolve) => {
+    runBridgeRequest({
+      request,
+      handleRequest: async (request) => {
+        await handleRequest(request);
+        resolve();
+      },
+      sendError(...args) {
+        sendError(...args);
+        resolve();
+      },
+    });
+  });
 }
 
 export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
-function killAllChildren(): void {
+function killAllChildren(): Promise<void[]> {
   for (const session of sessionsByBbThreadId.values()) {
     session.closing = true;
-    session.connection?.kill();
     session.connection = null;
   }
   sessionsByBbThreadId.clear();
   modelListConnection = null;
   modelListConnectionPromise = null;
-  for (const connection of maintenanceConnections) {
-    connection.kill();
-  }
-  maintenanceConnections.clear();
+  return Promise.all([...connections].map((connection) => connection.kill()));
 }
 
-/** @internal Test cleanup for bridge tests that create a persistent child. */
 export const experimental_killAllChildrenForTests = killAllChildren;
+
+function shutdown(code = 0): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stdin.pause();
+  const deadline = setTimeout(() => {
+    process.stderr.write("Codex bridge shutdown timed out\n");
+    process.exit(1);
+  }, 10_000);
+  void (async () => {
+    try {
+      const childrenExited = killAllChildren();
+      if (code !== 0) {
+        for (const connection of connections) connection.setOutputPaused(false);
+      }
+      await childrenExited;
+      await Promise.all(activeRequests);
+      await output.flush();
+      clearTimeout(deadline);
+      process.exit(code);
+    } catch {
+      clearTimeout(deadline);
+      process.exit(1);
+    }
+  })();
+}
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
-  onClose: () => {
-    killAllChildren();
-    process.exit(0);
-  },
-  onSigterm: () => {
-    killAllChildren();
-    process.exit(0);
-  },
-  onSigint: () => {
-    killAllChildren();
-    process.exit(0);
-  },
+  onClose: () => shutdown(),
+  onSigterm: () => shutdown(),
+  onSigint: () => shutdown(),
 });

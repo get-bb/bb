@@ -2,11 +2,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
+import { createJsonLineWriter } from "./json-line-writer.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
 const CLOSE_AFTER_EXIT_GRACE_MS = 1_000;
 const KILL_ESCALATION_MS = 4_000;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 
 export interface CodexAppServerRequestResponder {
   result(value: unknown): void;
@@ -45,6 +45,7 @@ interface CodexAppServerRequestArgs<TResult> {
 export interface CodexAppServerConnection {
   request<TResult>(args: CodexAppServerRequestArgs<TResult>): Promise<TResult>;
   kill(): Promise<void>;
+  setOutputPaused(paused: boolean): void;
   readonly exited: boolean;
 }
 
@@ -89,14 +90,6 @@ function parseChildLine(line: string): ParsedChildMessage | null {
   return parsed as ParsedChildMessage;
 }
 
-function isClosedChildStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    CLOSED_STDIN_ERROR_CODES.has(error.code)
-  );
-}
-
 export function createCodexAppServerConnection(
   options: CreateCodexAppServerConnectionOptions,
 ): CodexAppServerConnection {
@@ -122,6 +115,7 @@ export function createCodexAppServerConnection(
   let stdinFailure: CodexAppServerExitedError | null = null;
   let closeGraceTimer: NodeJS.Timeout | null = null;
   let stdoutLines: Interface | null = null;
+  let outputPaused = false;
   let resolveExit!: () => void;
   const exitPromise = new Promise<void>((resolve) => {
     resolveExit = resolve;
@@ -174,18 +168,22 @@ export function createCodexAppServerConnection(
     child.kill("SIGKILL");
   }
 
+  const stdinWriter = child.stdin
+    ? createJsonLineWriter({ stream: child.stdin, onError: handleBrokenStdin })
+    : null;
+
   function writeLine(message: object): void {
     if (stdinFailure !== null) {
       return;
     }
-    const stdin = child.stdin;
-    if (!stdin || stdin.destroyed || !stdin.writable) {
+    if (exitStatus !== null) return;
+    if (stdinWriter === null) {
       if (exitStatus === null) {
         handleBrokenStdin(new Error("stdin is not writable"));
       }
       return;
     }
-    stdin.write(JSON.stringify(message) + "\n");
+    stdinWriter.write(JSON.stringify(message) + "\n");
   }
 
   function finalizeExit(status: {
@@ -196,6 +194,7 @@ export function createCodexAppServerConnection(
       return;
     }
     finalized = true;
+    stdinWriter?.abort(new Error("codex app-server exited"));
     if (closeGraceTimer !== null) {
       clearTimeout(closeGraceTimer);
       closeGraceTimer = null;
@@ -220,7 +219,13 @@ export function createCodexAppServerConnection(
   }
 
   if (child.stdout) {
+    child.stdout.on("resume", () => {
+      if (outputPaused) child.stdout?.pause();
+    });
     stdoutLines = createInterface({ input: child.stdout, terminal: false });
+    stdoutLines.on("close", () => {
+      stdoutLines = null;
+    });
     stdoutLines.on("line", (line) => {
       if (finalized) {
         return;
@@ -302,19 +307,17 @@ export function createCodexAppServerConnection(
     finalizeExit({ code: null, signal: null });
   });
 
-  child.stdin?.on("error", (error) => {
-    if (!isClosedChildStdinError(error)) {
-      throw error;
-    }
-    handleBrokenStdin(error);
-  });
-
-  child.on("exit", (code, signal) => {
-    exitStatus = { code: code ?? null, signal: signal ?? null };
+  function startCloseGrace(): void {
+    if (outputPaused || finalized || exitStatus === null) return;
     closeGraceTimer = setTimeout(() => {
       finalizeExit(exitStatus ?? { code: null, signal: null });
     }, CLOSE_AFTER_EXIT_GRACE_MS);
     closeGraceTimer.unref?.();
+  }
+
+  child.on("exit", (code, signal) => {
+    exitStatus = { code: code ?? null, signal: signal ?? null };
+    startCloseGrace();
   });
 
   child.on("close", (code, signal) => {
@@ -374,6 +377,21 @@ export function createCodexAppServerConnection(
 
     kill() {
       return killChild();
+    },
+
+    setOutputPaused(paused) {
+      if (outputPaused === paused || finalized) return;
+      outputPaused = paused;
+      if (paused) {
+        if (closeGraceTimer !== null) {
+          clearTimeout(closeGraceTimer);
+          closeGraceTimer = null;
+        }
+        stdoutLines?.pause();
+      } else {
+        stdoutLines?.resume();
+        startCloseGrace();
+      }
     },
   };
 }

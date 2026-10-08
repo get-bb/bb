@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -196,3 +197,103 @@ describe("codex app-server connection", () => {
     }
   }, 30_000);
 });
+
+it("delivers repeated large requests to a paused child stdin without corrupting UTF8", async () => {
+  const exited = deferred<CodexAppServerExitInfo>();
+  const connection = createCodexAppServerConnection({
+    command: process.execPath,
+    args: [
+      "-e",
+      [
+        'const { createHash } = require("node:crypto");',
+        'const lines = require("node:readline").createInterface({ input: process.stdin });',
+        'lines.on("line", line => {',
+        "const message = JSON.parse(line);",
+        "const value = message.params.value;",
+        'process.stdout.write(JSON.stringify({ id: message.id, result: { length: value.length, hash: createHash("sha256").update(value).digest("hex") } }) + "\\n");',
+        "});",
+        "lines.pause(); setTimeout(() => lines.resume(), 100);",
+      ].join(""),
+    ],
+    cwd: process.cwd(),
+    env: process.env,
+    recordThreadId: null,
+    onNotification: () => undefined,
+    onRequest: () => undefined,
+    onExit: exited.resolve,
+  });
+  const values = [
+    "x".repeat(9_418_764) + "🌈",
+    "y".repeat(11_102_429) + "漢字",
+  ];
+  try {
+    for (let burst = 0; burst < 2; burst += 1) {
+      const results = await Promise.all(
+        values.map((value) =>
+          connection.request({
+            method: "echo",
+            params: { value },
+            resultSchema: z.object({ length: z.number(), hash: z.string() }),
+          }),
+        ),
+      );
+      expect(results).toEqual(
+        values.map((value) => ({
+          length: value.length,
+          hash: createHash("sha256").update(value).digest("hex"),
+        })),
+      );
+    }
+  } finally {
+    await stopConnection(connection, exited.promise);
+  }
+}, 30_000);
+
+it("preserves unread final output when a child exits during downstream pressure", async () => {
+  const exited = deferred<CodexAppServerExitInfo>();
+  const connection = createCodexAppServerConnection({
+    command: process.execPath,
+    args: [
+      "-e",
+      [
+        'process.stdin.once("data", () => {',
+        'process.stderr.write("final stderr\\n");',
+        'process.stdout.write(JSON.stringify({ id: 1, result: "final response" }) + "\\n", () => process.exit(7));',
+        "});",
+      ].join(""),
+    ],
+    cwd: process.cwd(),
+    env: process.env,
+    recordThreadId: null,
+    onNotification: () => undefined,
+    onRequest: () => undefined,
+    onExit: exited.resolve,
+  });
+  connection.setOutputPaused(true);
+  const response = connection.request({
+    method: "echo",
+    resultSchema: z.string(),
+  });
+  let settled = false;
+  void response.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  try {
+    await delay(1_200);
+    expect(settled).toBe(false);
+    connection.setOutputPaused(false);
+    await expect(response).resolves.toBe("final response");
+    await expect(exited.promise).resolves.toMatchObject({
+      code: 7,
+      stderrTail: "final stderr",
+    });
+  } finally {
+    connection.setOutputPaused(false);
+    await stopConnection(connection, exited.promise);
+  }
+}, 30_000);

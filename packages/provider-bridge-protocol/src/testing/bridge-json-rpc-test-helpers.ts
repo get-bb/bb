@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import type { JsonValue } from "@bb/domain";
 import { z } from "zod";
 
@@ -92,21 +93,30 @@ function waitForNextBridgeTick(): Promise<void> {
 export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
   const messages: BridgeJsonRpcOutputMessage[] = [];
   const originalWrite = process.stdout.write;
+  const decoder = new StringDecoder("utf8");
+  let pendingText = "";
   const capturingWrite: typeof process.stdout.write = (
     buffer: string | Uint8Array,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void,
   ) => {
-    const text =
-      typeof buffer === "string"
-        ? buffer
-        : Buffer.from(buffer).toString("utf8");
-    for (const line of text.split("\n")) {
+    pendingText +=
+      typeof buffer === "string" ? buffer : decoder.write(Buffer.from(buffer));
+    let newline = pendingText.indexOf("\n");
+    while (newline !== -1) {
+      const line = pendingText.slice(0, newline);
+      pendingText = pendingText.slice(newline + 1);
       if (line.trim().length > 0) {
         messages.push(bridgeJsonRpcOutputSchema.parse(JSON.parse(line)));
       }
+      newline = pendingText.indexOf("\n");
     }
+    const onWrite =
+      typeof encodingOrCallback === "function" ? encodingOrCallback : callback;
+    if (onWrite) queueMicrotask(() => onWrite());
     return true;
   };
-  process.stdout.write = capturingWrite;
+  globalThis.process.stdout.write = capturingWrite;
   let drained = 0;
   return {
     messages,
@@ -117,7 +127,7 @@ export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
     },
     restore() {
       if (process.stdout.write === capturingWrite) {
-        process.stdout.write = originalWrite;
+        globalThis.process.stdout.write = originalWrite;
       }
     },
   };
