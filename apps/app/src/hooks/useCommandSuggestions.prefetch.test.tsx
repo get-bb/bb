@@ -63,6 +63,27 @@ describe("useCommandSuggestions catalog prefetch", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
+  it("skips the prefetch for a composer left before the delay", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { rerender } = renderHook(
+      (props: { environmentId: string }) =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          ...props,
+          composerFocused: true,
+        }),
+      { wrapper, initialProps: { environmentId: "env-1" } },
+    );
+    rerender({ environmentId: "env-2" });
+
+    await waitFor(() => {
+      expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+    });
+    expect(vi.mocked(sdk.projects.commands).mock.calls[0]?.[0]).toMatchObject({
+      environmentId: "env-2",
+    });
+  });
 
   it("still fetches on the first trigger without any focus signal", async () => {
     const { wrapper } = createQueryClientTestHarness();
