@@ -128,17 +128,17 @@ it("overwrites the conflicted version and requires confirmation for a newer conf
   });
   await waitFor(() => expect(create).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Keep my changes" }));
-  await screen.findByRole("button", { name: "Keep my changes" });
+  fireEvent.click(await screen.findByRole("button", { name: "Keep my edits" }));
+  await screen.findByRole("button", { name: "Keep my edits" });
   expect(write).toHaveBeenNthCalledWith(2, {
     path: base.path,
     source: base.source,
     content: "Edited on a phone",
     expectedSha256: "external",
   });
-  fireEvent.click(screen.getByRole("button", { name: "Keep my changes" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep my edits" }));
   await waitFor(() =>
-    expect(screen.queryByRole("button", { name: "Keep my changes" })).toBeNull(),
+    expect(screen.queryByRole("button", { name: "Keep my edits" })).toBeNull(),
   );
   expect(write).toHaveBeenNthCalledWith(3, {
     path: base.path,

@@ -425,19 +425,24 @@ function Notice({
   if (saveState.kind === "conflict") {
     return (
       <NoticeRow tone="warning" compact>
-        <span className="min-w-0 flex-1 truncate">File changed</span>
-        <NoticeAction
-          onClick={onReload}
-          title="Discard your draft and load the latest saved file"
-        >
-          Use saved file
-        </NoticeAction>
-        <NoticeAction
-          onClick={onOverwrite}
-          title="Replace the saved file with your draft"
-        >
-          Keep my changes
-        </NoticeAction>
+        <span>
+          This file changed elsewhere. Replace your edits with the saved file, or
+          keep your edits.
+        </span>
+        <div className="flex flex-wrap items-center gap-x-3">
+          <NoticeAction
+            onClick={onReload}
+            title="Discard your edits and load the latest saved file"
+          >
+            Overwrite edits
+          </NoticeAction>
+          <NoticeAction
+            onClick={onOverwrite}
+            title="Replace the saved file with your edits"
+          >
+            Keep my edits
+          </NoticeAction>
+        </div>
       </NoticeRow>
     );
   }
@@ -478,10 +483,10 @@ function NoticeRow({
     <div
       role="status"
       className={cn(
-        "flex shrink-0 items-center gap-2 px-4 text-xs",
+        "flex shrink-0 px-4 text-xs",
         compact
-          ? "py-0.5 [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
-          : "py-1.5",
+          ? "flex-col items-start gap-0 py-1 [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          : "items-center gap-2 py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
           : "bg-surface-recessed text-foreground",
