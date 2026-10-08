@@ -66,7 +66,10 @@ export const BB_VS_T3_CODE: Comparison = {
       rows: [
         {
           feature: "Plugin marketplace",
-          bb: cell("yes", "300+, or build your own"),
+          bb: cell(
+            "yes",
+            "300+ community plugins, or share your own with your team",
+          ),
           competitor: cell("no", "Fork the code"),
         },
       ],

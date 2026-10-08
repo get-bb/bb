@@ -150,7 +150,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         },
         {
           feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents start and message each other"),
+          bb: cell("yes", "Agents can create and message each other"),
           competitor: cell("partial", "Via MCP, cloud workspaces", true),
         },
       ],
@@ -160,13 +160,21 @@ export const BB_VS_CONDUCTOR: Comparison = {
       rows: [
         {
           feature: "Plugin marketplace",
-          bb: cell("yes", "300+, or build your own"),
+          bb: cell(
+            "yes",
+            "300+ community plugins, or share your own with your team",
+          ),
           competitor: cell("no"),
         },
         {
           feature: "GitHub integration",
-          bb: cell("yes", "Have an agent review any PR"),
+          bb: cell("yes", "PR checks and merge"),
           competitor: cell("yes", "Checks tab, PR actions"),
+        },
+        {
+          feature: "GitLab and Gitea",
+          bb: cell("yes", "Community plugins"),
+          competitor: cell("partial", "GitLab repos in local workspaces"),
         },
       ],
     },

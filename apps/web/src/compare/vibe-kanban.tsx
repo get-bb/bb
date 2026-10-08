@@ -76,7 +76,7 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
         },
         {
           feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents start and message each other"),
+          bb: cell("yes", "Agents can create and message each other"),
           competitor: cell("yes", "Through its MCP server"),
         },
       ],

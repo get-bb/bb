@@ -177,7 +177,7 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "Agent-to-agent handoff",
-          bb: cell("yes", "Agents start and message each other"),
+          bb: cell("yes", "Agents can create and message each other"),
           competitor: cell("yes", "Via a coordinator skill"),
         },
         {
@@ -192,7 +192,10 @@ const BB_VS_SUPERSET: Comparison = {
       rows: [
         {
           feature: "Plugin marketplace",
-          bb: cell("yes", "300+, or build your own"),
+          bb: cell(
+            "yes",
+            "300+ community plugins, or share your own with your team",
+          ),
           competitor: cell("partial", "Themes only"),
         },
         {
@@ -202,8 +205,13 @@ const BB_VS_SUPERSET: Comparison = {
         },
         {
           feature: "GitHub integration",
-          bb: cell("yes", "Have an agent review any PR"),
+          bb: cell("yes", "PR checks and merge"),
           competitor: cell("yes", "PR view with checks"),
+        },
+        {
+          feature: "GitLab and Gitea",
+          bb: cell("yes", "Community plugins"),
+          competitor: cell("no", "GitHub only"),
         },
         {
           feature: "Slack integration",
