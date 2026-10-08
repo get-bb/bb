@@ -404,6 +404,11 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
   useInitAnalytics();
   useScrollReveal();
   const { competitor } = comparison;
+  const [lead, ...rest] = withPluginsSlot(
+    comparison.heroVisual,
+    [comparison.tailored, ...comparison.sections],
+    PLUGINS_COPY,
+  );
 
   return (
     <div className="wrap cmp-page">
@@ -428,13 +433,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         visual={comparison.heroVisual}
       />
 
-      {withPluginsSlot(
-        comparison.heroVisual,
-        [comparison.tailored, ...comparison.sections],
-        PLUGINS_COPY,
-      ).map((highlight) => (
-        <Highlight key={highlight.title} highlight={highlight} />
-      ))}
+      <Highlight highlight={lead} />
 
       <section className="cmp-section" data-reveal>
         <h2 id="cmp-table-title" className="sec-title cmp-table-title">
@@ -452,6 +451,10 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         ) : null}
         <CompareTable comparison={comparison} />
       </section>
+
+      {rest.map((highlight) => (
+        <Highlight key={highlight.title} highlight={highlight} />
+      ))}
 
       <FaqSection title={comparison.faqTitle} faq={comparison.faq} />
 
