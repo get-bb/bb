@@ -69,7 +69,9 @@ function renderPrompt(
       settings: { webEnabled: true },
       context: { projectId: "project-one", threadId: "thr_running" },
       sidebarThreads: { status: "ready", threads: [thread(status)] },
-      sdk: { system: { recordTelemetryEvent } },
+      sdk: {
+        system: { experimental_recordTelemetryEvent: recordTelemetryEvent },
+      },
     },
   );
 }
@@ -171,6 +173,23 @@ describe("running thread notification prompt", () => {
     const second = renderPrompt("active");
     expect(second.queryByRole("dialog")).toBeNull();
     expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("stops asking once permission was decided after the overlay mounted", () => {
+    const reads: NotificationPermission[] = ["default"];
+    vi.stubGlobal("Notification", {
+      get permission() {
+        return reads.shift() ?? "granted";
+      },
+      requestPermission: vi.fn(),
+    });
+    vi.stubGlobal("isSecureContext", true);
+    const recordTelemetryEvent = vi.fn(async () => ({ ok: true as const }));
+
+    const view = renderPrompt("active", recordTelemetryEvent);
+
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(recordTelemetryEvent).not.toHaveBeenCalled();
   });
 
   it("never asks once the browser already denied permission", () => {

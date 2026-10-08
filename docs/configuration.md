@@ -2063,7 +2063,7 @@ Anonymous usage telemetry sends these PostHog events with a random install id,
 the app version, install kind, platform, OS release, architecture, and Node
 version: `app_started`, `telemetry_disabled`, `thread_created`,
 `user_message_sent`, and `plugin_installed`, plus setup events the app reports
-through `POST /api/v1/system/telemetry/events` (`sdk.system.recordTelemetryEvent`):
+through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordTelemetryEvent`):
 `onboarding_started` (whether an agent was installed or ready at first launch),
 `onboarding_step_reached`, `onboarding_step_completed`, and
 `onboarding_step_skipped` (per first-run step), `onboarding_finished` (completed

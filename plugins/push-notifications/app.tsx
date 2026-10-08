@@ -78,7 +78,9 @@ function RunningThreadPrompt({
   const sdk = useSdk();
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
+  const undecided = notificationPermission() === "default";
   const running =
+    undecided &&
     threadId !== null &&
     threads.some(
       (thread) =>
@@ -91,17 +93,17 @@ function RunningThreadPrompt({
     if (!shown || reportedShownRef.current) return;
     reportedShownRef.current = true;
     void sdk.system
-      .recordTelemetryEvent({
+      .experimental_recordTelemetryEvent({
         name: "notification_prompt_shown",
         properties: { surface: "thread" },
       })
       .catch(() => undefined);
   }, [sdk, shown]);
-  if (!shown || threadId === null) return null;
+  if (!shown || !undecided || threadId === null) return null;
 
   const answer = (outcome: PromptOutcome) => {
     void sdk.system
-      .recordTelemetryEvent({
+      .experimental_recordTelemetryEvent({
         name: PROMPT_OUTCOME_EVENTS[outcome],
         properties: { surface: "thread" },
       })

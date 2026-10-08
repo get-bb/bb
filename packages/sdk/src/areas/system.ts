@@ -173,7 +173,7 @@ export interface SystemArea {
   installCliSkills(
     args: SystemInstallCliSkillsArgs,
   ): Promise<SystemInstallCliSkillsResult>;
-  recordTelemetryEvent(
+  experimental_recordTelemetryEvent(
     args: SystemRecordTelemetryEventArgs,
   ): Promise<SystemRecordTelemetryEventResult>;
   reloadConfig(): Promise<SystemReloadConfigResult>;
@@ -337,7 +337,7 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.system["cli-skills"].install.$post({ json: input }),
       );
     },
-    async recordTelemetryEvent(input) {
+    async experimental_recordTelemetryEvent(input) {
       return transport.readJson(
         transport.api.v1.system.telemetry.events.$post({ json: input }),
       );
