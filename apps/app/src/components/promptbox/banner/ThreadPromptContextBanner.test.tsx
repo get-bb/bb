@@ -406,6 +406,7 @@ describe("ThreadPromptContextBanner", () => {
           parentThreadSection={null}
           childThreadsSection={{
             items: [childThreadItem("thr_child", "Investigate failing checks")],
+            pendingInteractions: [],
             waitingQuestion: null,
           }}
           pullRequestSection={null}
@@ -441,6 +442,7 @@ describe("ThreadPromptContextBanner", () => {
               }),
               childThreadItem("thr_b", "Investigate failing checks"),
             ],
+            pendingInteractions: [],
             waitingQuestion: null,
           }}
           pullRequestSection={null}
@@ -475,6 +477,7 @@ describe("ThreadPromptContextBanner", () => {
                 "Host-owned SourceCode and Diff renderers",
               ),
             ],
+            pendingInteractions: [],
             waitingQuestion: null,
           }}
           pullRequestSection={null}
@@ -513,6 +516,7 @@ describe("ThreadPromptContextBanner", () => {
               }),
               childThreadItem("thr_working", "Investigate failing checks"),
             ],
+            pendingInteractions: [],
             waitingQuestion: "Which color should the badge use?",
           }}
           pullRequestSection={null}
@@ -555,7 +559,7 @@ describe("ThreadPromptContextBanner", () => {
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
-          childThreadsSection={{ items, waitingQuestion }}
+          childThreadsSection={{ items, pendingInteractions: [], waitingQuestion }}
           pullRequestSection={null}
           expandedSection={null}
           onToggleSection={onToggleSection}

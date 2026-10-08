@@ -378,6 +378,7 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: false,
     },
   ],
+  pendingInteractions: [],
   waitingQuestion: null,
 };
 
@@ -390,6 +391,7 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: true,
     },
   ],
+  pendingInteractions: [],
   waitingQuestion: "Which color should the QA badge use?",
 };
 
@@ -405,11 +407,116 @@ function withPending(
       ...items.filter((item) => item.hasPendingInteraction),
       ...items.filter((item) => !item.hasPendingInteraction),
     ],
+    pendingInteractions: [],
     waitingQuestion: "Approve running the migration on staging?",
   };
 }
 
 const childThreadsMixedFixture = withPending(["thr_b"]);
+
+function childQuestionFixture(
+  childThreadId: string,
+  childTitle: string,
+  prompt: string,
+  options: readonly { label: string; description: string }[],
+  createdAt: number,
+) {
+  return {
+    childThreadId,
+    childTitle,
+    href: `/projects/proj-1/threads/${childThreadId}`,
+    interaction: {
+      id: `pint_${childThreadId}`,
+      threadId: childThreadId,
+      turnId: "turn_story",
+      providerId: "claude-code",
+      providerThreadId: "provider-thread-story",
+      providerRequestId: `request-${childThreadId}`,
+      status: "pending" as const,
+      statusReason: null,
+      createdAt,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "user_question" as const,
+        questions: [
+          {
+            id: "choice",
+            prompt,
+            multiSelect: false,
+            allowFreeText: true,
+            options: options.map((option) => ({
+              value: option.label.toLowerCase(),
+              ...option,
+            })),
+          },
+        ],
+      },
+    },
+  };
+}
+
+const childThreadsQuestionsFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_size",
+      title: "Pick a size",
+      href: "/projects/proj-1/threads/thr_size",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_shape",
+      title: "Pick a shape",
+      href: "/projects/proj-1/threads/thr_shape",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_color",
+      title: "Pick a color",
+      href: "/projects/proj-1/threads/thr_color",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_working",
+      title: "Investigate failing checks",
+      href: "/projects/proj-1/threads/thr_working",
+      hasPendingInteraction: false,
+    },
+  ],
+  pendingInteractions: [
+    childQuestionFixture(
+      "thr_size",
+      "Pick a size",
+      "Which size?",
+      [
+        { label: "Small", description: "Proceed with a small-scale change." },
+        { label: "Large", description: "Proceed with a large-scale change." },
+      ],
+      3,
+    ),
+    childQuestionFixture(
+      "thr_shape",
+      "Pick a shape",
+      "Which shape?",
+      [
+        { label: "Circle", description: "Select the circle shape." },
+        { label: "Square", description: "Select the square shape." },
+      ],
+      2,
+    ),
+    childQuestionFixture(
+      "thr_color",
+      "Pick a color",
+      "Which color?",
+      [
+        { label: "Red", description: "Choose red." },
+        { label: "Blue", description: "Choose blue." },
+      ],
+      1,
+    ),
+  ],
+  waitingQuestion: "Which size?",
+};
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
   items: Array.from({ length: 12 }, (_, i) => ({
@@ -418,6 +525,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     href: `/projects/proj-1/threads/thr_large_${i}`,
     hasPendingInteraction: i === 0,
   })),
+  pendingInteractions: [],
   waitingQuestion: "Which branch should I rebase onto?",
 };
 
@@ -803,6 +911,12 @@ export function Overview() {
         hint="the banner expands on its own to show it"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="answer child questions in the banner"
+        hint="click the collapsed question or a needs-input row; ‹ 1 of 3 › steps through waiting questions"
+      >
+        <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="thread with active child threads (collapsed)"

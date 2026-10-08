@@ -68,8 +68,8 @@ import {
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
+  EMPTY_CHILD_THREAD_PENDING_ATTENTION,
   useChildThreadPendingAttention,
-  type ChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
 } from "../../hooks/queries/child-thread-pending-interactions";
 import {
@@ -1786,7 +1786,11 @@ function ThreadDetailViewInternal(
           hasPendingInteraction: entry.hasPendingInteraction,
         }));
       if (activeItems.length === 0) return null;
-      return { items: activeItems, waitingQuestion: null };
+      return {
+        items: activeItems,
+        pendingInteractions: EMPTY_CHILD_THREAD_PENDING_ATTENTION,
+        waitingQuestion: null,
+      };
     }, [childThreadSubsetQuery.data]);
   const childPendingInteractions = useChildThreadPendingAttention(
     childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
@@ -1794,18 +1798,14 @@ function ThreadDetailViewInternal(
   const childThreadsBannerSection =
     useMemo((): ThreadPromptChildThreadsSection | null => {
       if (!childThreadsSection) return null;
-      const latest = childPendingInteractions.reduce<
-        ChildThreadPendingAttention | null
-      >(
-        (newest, item) =>
-          newest === null ||
-          item.interaction.createdAt > newest.interaction.createdAt
-            ? item
-            : newest,
-        null,
+      const pendingInteractions = [...childPendingInteractions].sort(
+        (left, right) =>
+          right.interaction.createdAt - left.interaction.createdAt,
       );
+      const latest = pendingInteractions[0];
       return {
         ...childThreadsSection,
+        pendingInteractions,
         waitingQuestion: latest
           ? formatPendingInteractionSummary({ interaction: latest.interaction })
           : null,
@@ -2391,7 +2391,6 @@ function ThreadDetailViewInternal(
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
-      childPendingInteractions={childPendingInteractions}
       childThreadsSection={childThreadsBannerSection}
       pullRequest={pullRequest}
       thread={thread}
