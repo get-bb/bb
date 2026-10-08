@@ -82,6 +82,42 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
+  "/guides/agent-browser/window-plugins.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser/window-check.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser/window-screenshots.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser/window-sign-ins.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser/window-annotate.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser-for-work/window-plugins.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser-for-work/window-ask.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser-for-work/window-take-over.png": {
+    width: 2560,
+    height: 1800,
+  },
+  "/guides/agent-browser-for-work/window-annotate.png": {
+    width: 2560,
+    height: 1800,
+  },
   "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
   "/guides/remote-dev-servers/new-project-machine.png": {
     width: 1024,
