@@ -165,7 +165,7 @@ function renderPicker({
   serviceTierValue,
   serviceTierOptions = [],
   serviceTierSupportByProvider,
-  alternateProvider,
+  alternateProvider = makeProviderInfo({ id: "claude-code" }),
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
   pickerReasoningOptions = reasoningOptions,
@@ -221,9 +221,7 @@ function renderPicker({
           isDefault: true,
         }),
       ],
-      ...(alternateProvider === undefined
-        ? {}
-        : { providers: [alternateProvider] }),
+      providers: [alternateProvider],
     }),
   );
 
@@ -797,6 +795,42 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
     expect(onExit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+  });
+
+  it("does not offer a fallback catalog as the removed handoff provider's models", () => {
+    const onSelect = vi.fn();
+    renderPicker({
+      alternateProvider: makeProviderInfo({ id: "codex" }),
+      alternateProviderModels: [
+        availableModel({
+          value: "fallback-model",
+          label: "Fallback model",
+          isDefault: true,
+        }),
+      ],
+      handoff: {
+        sourceProviderId: "codex",
+        active: false,
+        onStart: vi.fn(),
+        onExit: vi.fn(),
+        onSelect,
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    expect(screen.queryByText("Fallback model")).toBeNull();
+    act(() => {
+      commandHandlers.get("modelPicker.cycleModel")?.({
+        target: document.body,
+      });
+    });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -357,15 +357,6 @@ export function ModelReasoningPicker({
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
-  const previewCatalogIsVerified =
-    isPreviewing &&
-    previewQuery.data !== undefined &&
-    !previewQuery.isPlaceholderData &&
-    !previewQuery.isError &&
-    previewQuery.data.modelLoadError === null;
-  const previewSelectionBlocked =
-    requireVerifiedProviderPreview && isPreviewing && !previewCatalogIsVerified;
-
   const previewProvider = useMemo(
     () =>
       isPreviewing
@@ -375,12 +366,26 @@ export function ModelReasoningPicker({
         : undefined,
     [isPreviewing, previewProviderId, previewQuery.data?.providers],
   );
+  const previewCatalogIsVerified =
+    isPreviewing &&
+    previewProvider !== undefined &&
+    previewQuery.data !== undefined &&
+    !previewQuery.isPlaceholderData &&
+    !previewQuery.isError &&
+    previewQuery.data.modelLoadError === null;
+  const previewSelectionBlocked =
+    isPreviewing &&
+    (previewProvider === undefined ||
+      (requireVerifiedProviderPreview && !previewCatalogIsVerified));
+
   const previewSelection = useMemo(
     () =>
       isPreviewing
         ? resolveModelCatalogSelection({
-            models: previewQuery.data?.models ?? [],
-            selectedOnlyModels: previewQuery.data?.selectedOnlyModels ?? [],
+            models: previewProvider ? (previewQuery.data?.models ?? []) : [],
+            selectedOnlyModels: previewProvider
+              ? (previewQuery.data?.selectedOnlyModels ?? [])
+              : [],
             selectedModel: "",
             preferredReasoningLevel: reasoningValue,
             provider: previewProvider,
