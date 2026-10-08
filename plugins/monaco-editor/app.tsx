@@ -428,15 +428,15 @@ function Notice({
         <span className="min-w-0 flex-1 truncate">File changed</span>
         <NoticeAction
           onClick={onReload}
-          title="Discard your edits and load the saved file"
+          title="Discard your draft and load the latest saved file"
         >
-          Discard edits
+          Use saved file
         </NoticeAction>
         <NoticeAction
           onClick={onOverwrite}
-          title="Replace the saved file with your edits"
+          title="Replace the saved file with your draft"
         >
-          Save edits
+          Save my draft
         </NoticeAction>
       </NoticeRow>
     );
