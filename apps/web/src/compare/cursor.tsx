@@ -22,6 +22,7 @@ import {
   faqTeam,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   ANYWHERE_COPY,
@@ -284,6 +285,7 @@ export const BB_VS_CURSOR: Comparison = {
         faqSchedule(null),
         FAQ_LAPTOP,
         FAQ_CUSTOMIZE,
+        faqScript(null),
       ],
     },
     {

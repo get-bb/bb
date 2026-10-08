@@ -24,6 +24,7 @@ import {
   faqTeam,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   AGENTS_COPY,
@@ -339,6 +340,7 @@ const BB_VS_SUPERSET: Comparison = {
       title: "Working in bb",
       items: [
         FAQ_CUSTOMIZE,
+        faqScript(null),
         FAQ_REVIEW,
         faqSchedule("Superset’s automations only repeat and need Pro."),
       ],

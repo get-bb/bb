@@ -19,6 +19,7 @@ import {
   faqTalk,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   AGENTS_COPY,
@@ -307,6 +308,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
         ),
         FAQ_PERMISSIONS,
         FAQ_CUSTOMIZE,
+        faqScript(null),
       ],
     },
     {

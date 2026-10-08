@@ -109,12 +109,25 @@ export const FAQ_CUSTOMIZE: CompareFaq = {
       and the mobile app ready from your first thread. When you want more,
       install plugins from the <a href="/marketplace">marketplace</a> or ask an
       agent to build one. Plugins can add panels, commands, and new agents, and
-      they work in the mobile app too. Everything in the app is also in the bb
-      CLI and HTTP API, so scripts and other agents can start, message, and
-      manage threads.
+      they work in the mobile app too.
     </p>
   ),
 };
+
+export function faqScript(contrast: ReactNode): CompareFaq {
+  return {
+    question: "Can I script bb from the command line?",
+    answer: (
+      <p>
+        Yes. The <code>bb</code> CLI covers everything the app does: start and
+        message threads, run terminals, schedule automations, and manage
+        machines and plugins, so a script or another agent can drive bb end to
+        end. The SDK and plugin API let you add your own commands, tools, and
+        screens.{contrast}
+      </p>
+    ),
+  };
+}
 
 export const FAQ_REVIEW: CompareFaq = {
   question: "Can I review and merge an agent’s changes in bb?",
@@ -312,10 +325,10 @@ export function faqTeam(contrast: ReactNode): CompareFaq {
     question: "Can my team use bb?",
     answer: (
       <p>
-        Yes, free at any team size{contrast}. Each person runs bb on their own
-        machines with their own agent subscriptions and shares work through Git
-        and pull requests as usual. bb doesn’t offer team plans, SSO, or a
-        support SLA.
+        Yes, free at any team size{contrast}. Teams can share one bb on an
+        always-on machine, so everyone sees the same projects and threads, or
+        each person can run their own and share work through Git as usual. bb
+        doesn’t offer team plans, SSO, or a support SLA.
       </p>
     ),
   };

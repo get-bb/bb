@@ -19,6 +19,7 @@ import {
   faqTeam,
   faqUsageLimit,
   price,
+  faqScript,
 } from "./compare-content";
 import {
   ANYWHERE_COPY,
@@ -138,20 +139,6 @@ export const BB_VS_T3_CODE: Comparison = {
           ),
         },
         {
-          question: "Can I script bb from the command line?",
-          answer: (
-            <p>
-              Yes. The <code>bb</code> CLI covers everything the app does: start
-              and message threads, run terminals, schedule automations, and
-              manage machines and plugins, so a script or another agent can
-              drive bb end to end. The SDK and plugin API let you add your own
-              commands, tools, and screens. T3 Code’s CLI mostly installs and
-              runs its server, and outside agents can start and message threads
-              through its MCP server.
-            </p>
-          ),
-        },
-        {
           question: "Is there a free, open-source T3 Code alternative?",
           answer: (
             <p>
@@ -199,6 +186,9 @@ export const BB_VS_T3_CODE: Comparison = {
           ),
         },
         FAQ_CUSTOMIZE,
+        faqScript(
+          " T3 Code’s CLI mostly installs and runs its server, and outside agents can start and message threads through its MCP server.",
+        ),
         {
           question: "Do my skills and slash commands work in bb?",
           answer: (
