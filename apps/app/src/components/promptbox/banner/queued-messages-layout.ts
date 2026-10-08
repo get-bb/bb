@@ -3,7 +3,7 @@ import { queuedMessageHasWaitLine } from "@/lib/queued-message-wait";
 
 export const QUEUED_MESSAGES_COLLAPSED_HEIGHT = 44;
 const DRAWER_HEIGHT = 198;
-const DRAWER_CHROME_HEIGHT = 1 + 32 + 18 + 12 + 2;
+const DRAWER_CHROME_HEIGHT = 1 + 32 + 24 + 12 + 2;
 const DRAWER_LIST_PADDING = 8;
 const DRAWER_ROW_HEIGHT = 33;
 const DRAWER_SECOND_LINE_HEIGHT = 16;

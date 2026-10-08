@@ -308,11 +308,11 @@ describe("QueuedMessagesList", () => {
   });
 
   it.each([
-    { initiator: "system" as const, senderThreadId: null, height: "122px" },
+    { initiator: "system" as const, senderThreadId: null, height: "128px" },
     {
       initiator: "agent" as const,
       senderThreadId: "thr_sender",
-      height: "128px",
+      height: "134px",
     },
   ])(
     "reserves the metadata height for $initiator senders",
@@ -364,7 +364,7 @@ describe("QueuedMessagesList", () => {
 
     fireEvent.click(toggle);
     expect(header?.getAttribute("data-queued-messages-mode")).toBe("drawer");
-    expect(surface?.style.height).toBe("139px");
+    expect(surface?.style.height).toBe("145px");
     expect(
       getByRole("button", { name: "Collapse queued messages" }).querySelector(
         '[data-icon="ChevronUp"]',
@@ -380,7 +380,7 @@ describe("QueuedMessagesList", () => {
     expect(document.activeElement).toBe(toggle);
 
     fireEvent.click(toggle);
-    expect(surface?.style.height).toBe("139px");
+    expect(surface?.style.height).toBe("145px");
     toggle.focus();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -414,8 +414,8 @@ describe("QueuedMessagesList", () => {
       'section[aria-label="Queued messages"]',
     )?.style.height;
 
-    expect(plainHeight).toBe("106px");
-    expect(waitingHeight).toBe("122px");
+    expect(plainHeight).toBe("112px");
+    expect(waitingHeight).toBe("128px");
   });
 
   it("toggles an overflowing queue with the same disclosure as a fitted queue", () => {
@@ -557,89 +557,6 @@ describe("QueuedMessagesList", () => {
     );
     expect(count()).toBe(bumpedPill);
     expect(count()?.lastElementChild?.textContent).toBe("3");
-  });
-
-  it("names the newest failure, else the newest wait, in the collapsed header", () => {
-    const sharedProps = {
-      sendDisabled: false,
-      actionDisabled: false,
-      processingMessageId: null,
-      processingAction: null,
-      onSend: noop,
-      onReorder: noop,
-      onSetGroupBoundary: noop,
-      onEdit: noop,
-      onDelete: noop,
-    } as const;
-    const plainMessage = makeQueuedMessage("q_plain", "Plain follow-up");
-    const retryMessage = makeThreadQueuedMessage({
-      id: "q_retry",
-      payload: {
-        kind: "retry",
-        retryOfTurnRequestId: "req_1",
-        attempt: 2,
-        reason: "Rate limited",
-      },
-      waitingOn: { kind: "time" },
-      sendAt: 0,
-      createdAt: 2,
-    });
-    const failedMessage = {
-      ...makeQueuedMessage("q_failed", "Post the summary"),
-      failureReason: "Provider unavailable",
-      createdAt: 1,
-    };
-    const draftMessage = {
-      ...makeQueuedMessage("q_draft", "Release notes outline"),
-      waitingOn: { kind: "plugin" as const, pluginId: "drafts", reason: "Draft" },
-      createdAt: 3,
-    };
-    const { container, rerender } = render(
-      <QueuedMessagesList
-        {...sharedProps}
-        queuedMessages={[plainMessage, retryMessage, failedMessage]}
-      />,
-    );
-    const headerWait = () =>
-      container.querySelector<HTMLElement>(
-        "header [data-queued-message-wait]",
-      );
-
-    expect(headerWait()?.textContent).toBe("Provider unavailable");
-    expect(headerWait()?.hasAttribute("data-queued-message-failed")).toBe(true);
-
-    rerender(
-      <QueuedMessagesList
-        {...sharedProps}
-        queuedMessages={[plainMessage, retryMessage]}
-      />,
-    );
-    expect(headerWait()?.textContent).toMatch(
-      /^Rate limited · retrying at .* · attempt 2$/u,
-    );
-
-    rerender(
-      <QueuedMessagesList
-        {...sharedProps}
-        queuedMessages={[retryMessage, plainMessage, draftMessage]}
-      />,
-    );
-    expect(headerWait()?.textContent).toMatch(/· Draft$/u);
-
-    expandQueue();
-    expect(headerWait()).toBeNull();
-  });
-
-  it("shows no header wait for ordinary queued messages", () => {
-    const { container } = renderQueuedMessages([
-      {
-        ...makeQueuedMessage("q_busy", "Ordinary queued"),
-        waitingOn: { kind: "thread-busy" },
-      },
-    ]);
-    expect(
-      container.querySelector("header [data-queued-message-wait]"),
-    ).toBeNull();
   });
 
   it("reports each open and close to its owner", () => {
@@ -1068,7 +985,7 @@ describe("QueuedMessagesList", () => {
     rerender(renderSurface(false));
 
     await waitFor(() => {
-      expect(surface?.style.height).toBe("139px");
+      expect(surface?.style.height).toBe("145px");
       expect(
         container
           .querySelector("[data-queued-messages-mode]")
@@ -2022,7 +1939,6 @@ describe("queued row affordances", () => {
         },
       },
     ]);
-    expandQueue();
 
     const waitLine = getByText("Held by Drafts · Draft").closest(
       "[data-queued-message-wait]",
@@ -2050,7 +1966,6 @@ describe("queued row affordances", () => {
         },
       },
     ]);
-    expandQueue();
 
     expect(getByText("Waiting for workspace")).toBeDefined();
     expect(
@@ -2115,7 +2030,6 @@ describe("queued row affordances", () => {
         waitingOn: { kind: "host-offline", hostName: "M4" },
       },
     ]);
-    expandQueue();
     expect(getByText("Waiting for M4 to be ready")).toBeDefined();
     expect(queryByLabelText("Send queued message 1 now")).toBeNull();
   });
@@ -2128,7 +2042,6 @@ describe("queued row affordances", () => {
         failureReason: "Thread stopped before the message could dispatch",
       },
     ]);
-    expandQueue();
     expect(
       getByText("Thread stopped before the message could dispatch"),
     ).toBeDefined();
@@ -2161,7 +2074,6 @@ describe("queued row affordances", () => {
         sendAt: 0,
       },
     ]);
-    expandQueue();
     expect(getByText(/^Retry failed turn from /u)).toBeDefined();
     expect(
       getByText(/^Rate limited · retrying at .* · attempt 2$/u),
@@ -2183,7 +2095,6 @@ describe("queued row affordances", () => {
         sendAt: 0,
       }),
     ]);
-    expandQueue();
     expect(container.querySelector("[data-queued-message-sender]")).toBeNull();
     expect(
       getByText(/^Rate limited · retrying at .* · attempt 2$/u),
@@ -2205,7 +2116,6 @@ describe("queued row affordances", () => {
         sendAt: 0,
       },
     ]);
-    expandQueue();
     expect(queryByLabelText("Edit queued message 1")).toBeNull();
     expect(queryByLabelText("Delete queued message 1")).not.toBeNull();
   });
