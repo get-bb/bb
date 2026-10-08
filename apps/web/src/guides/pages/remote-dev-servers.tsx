@@ -6,9 +6,6 @@ import { RemoteServersConcept } from "../concepts";
 import {
   CommandBlock,
   FileBlock,
-  MorePath,
-  Note,
-  ProductShot,
   PromptBlock,
   Substeps,
 } from "../guide-blocks";
@@ -47,10 +44,6 @@ pnpm install
 free_port() { node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 printf 'WEB_PORT=%s\\nAPI_PORT=%s\\n' "$(free_port)" "$(free_port)" > .env.local`;
 
-const TEARDOWN_SCRIPT = `#!/usr/bin/env bash
-set -euo pipefail
-docker compose down`;
-
 export const REMOTE_DEV_SERVERS: Guide = {
   slug: "remote-dev-servers",
   title: "Run a dev server for every branch",
@@ -63,114 +56,106 @@ export const REMOTE_DEV_SERVERS: Guide = {
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
-      title: "A remote machine",
+      title: "A machine for your servers",
       icon: ServerStack01Icon,
-      body: (
-        <>
-          Any Linux or macOS computer you can SSH into, or Windows with Node.js
-          22.19+. No machine? Use a <a href="#modal">Modal sandbox</a>.
-        </>
-      ),
+      body: "Any Linux or macOS computer you can SSH into, or Windows with Node.js 22.19+. Your own computer works too.",
     },
     {
-      title: "bb connect",
+      title: "A getbb.app account",
       icon: CloudIcon,
-      body: (
-        <>
-          Sign in from <strong>Settings → bb connect</strong>, or run{" "}
-          <code>bb account login</code>. It's free.
-        </>
-      ),
+      body: "Free. It gives every shared port a private link that only you can open.",
     },
     {
       title: "A bb that stays on",
       icon: ComputerIcon,
-      body: "Remote machines connect to your bb server, so keep it running.",
+      body: "Machines connect to your bb server, so keep the computer running it awake.",
     },
   ],
   steps: [
     {
       id: "step-1",
-      title: "Add a remote machine",
-      lead: "bb installs a small service on the machine. It starts again after a reboot and updates itself.",
+      title: "Add a machine",
+      lead: "Run servers on a box with room for all of them, not on your laptop. bb keeps it connected through reboots and updates.",
+      body: (
+        <Substeps>
+          <li>
+            Open <strong>Settings → Machines</strong> and choose{" "}
+            <strong>Add a machine</strong>.
+          </li>
+          <li>
+            If bb asks how machines should reach it, sign in to bb connect, or
+            choose <strong>Manual</strong> and enter an address the machine can
+            reach.
+          </li>
+          <li>
+            Choose <strong>macOS or Linux</strong> or <strong>Windows</strong>,
+            choose <strong>Copy</strong>, and run the command on the machine
+            over SSH.
+          </li>
+          <li>Sign in to your agents on that machine once.</li>
+        </Substeps>
+      ),
+      shot: {
+        src: "/guides/remote-dev-servers/window-add-machine.png",
+        alt: "The Add a machine dialog in bb's Machines settings, with a macOS or Linux install command, a Copy button, and Waiting for the machine to connect",
+      },
+      options: [],
+      doneWhen: "the machine shows as Online in Settings → Machines.",
+    },
+    {
+      id: "step-2",
+      title: "Put your project on it",
+      lead: "Give the machine its own copy of the repo, and give every branch its own ports.",
       body: (
         <>
           <Substeps>
             <li>
-              Open <strong>Settings → Machines</strong> and choose{" "}
-              <strong>Add a machine</strong>.
+              Open <strong>Settings → Projects</strong> and choose your project.
             </li>
-            <li>Copy the installer and run it on the machine over SSH.</li>
-            <li>Sign in to your agents on that machine once.</li>
+            <li>
+              Under <strong>Checkouts</strong>, choose <strong>Set up</strong>{" "}
+              next to the new machine.
+            </li>
           </Substeps>
-          <ProductShot
-            src="/guides/remote-dev-servers/add-a-machine.png"
-            alt="The Add a machine dialog with the macOS or Linux installer command and a Copy button"
-          />
-          <MorePath id="modal" title="No machine? Use a Modal sandbox">
-            <p>
-              bb can run machines in your own Modal account. Install the{" "}
-              <a href="/marketplace/environment-modal-sandbox">
-                Modal Sandbox plugin
-              </a>{" "}
-              from <strong>Plugins</strong>, and add a Modal machine from{" "}
-              <strong>Settings → Machines</strong>.
-            </p>
-          </MorePath>
-        </>
-      ),
-      doneWhen: "the machine shows as connected in Settings → Machines.",
-    },
-    {
-      id: "step-2",
-      title: "Add your project",
-      lead: "Put the repo on the machine, and give every new worktree its own setup.",
-      body: (
-        <>
           <p>
-            Choose <strong>New project</strong>, pick the remote machine, and
-            browse to the repo. Already have the project? Add the machine in its
-            settings.
-          </p>
-          <ProductShot
-            src="/guides/remote-dev-servers/new-project-machine.png"
-            alt="The Add project dialog with its machine menu open and bb-worker-1 selected"
-          />
-          <p>
-            Commit a setup script at the repo root. bb runs it in every new
-            worktree, so each branch picks its own free ports:
+            Then commit a setup script at the repo root. bb runs it in every new
+            worktree, so each branch installs its dependencies and picks free
+            ports:
           </p>
           <FileBlock name=".bb-env-setup.sh" contents={SETUP_SCRIPT} />
-          <p>And a teardown script. bb runs it before it removes a worktree:</p>
-          <FileBlock name=".bb-env-teardown.sh" contents={TEARDOWN_SCRIPT} />
         </>
       ),
-      doneWhen: "the project lists a source on the remote machine.",
+      shot: {
+        src: "/guides/remote-dev-servers/window-checkouts.png",
+        alt: "A project's settings in bb, with a Checkouts section listing where the project lives on each machine",
+      },
+      options: [],
+      doneWhen: "Checkouts lists a folder on the new machine.",
     },
     {
       id: "step-3",
       title: "Start a thread per branch",
-      lead: "Each thread gets its own Git worktree on the machine, so servers never step on each other.",
+      lead: "Each thread gets its own worktree on the machine, so servers never step on each other.",
       body: (
-        <>
-          <Substeps>
-            <li>
-              Choose <strong>New thread</strong> and <strong>Worktree</strong>.
-              If the project is on more than one machine, pick the remote one.
-            </li>
-            <li>
-              In <strong>Branch from</strong>, pick the branch, and describe the
-              work.
-            </li>
-            <li>Repeat for each branch.</li>
-          </Substeps>
-          <ProductShot
-            src="/guides/remote-dev-servers/new-thread-worktree.png"
-            alt="A new bb thread with Worktree and Branch from picked, and a task to fix the checkout page and start the dev server"
-          />
-        </>
+        <Substeps>
+          <li>
+            Choose <strong>New thread</strong>, pick the project, and choose{" "}
+            <strong>Worktree</strong>. If the project is on more than one
+            machine, pick the new one.
+          </li>
+          <li>
+            In <strong>Branch from</strong>, pick the branch, and describe the
+            work.
+          </li>
+          <li>Repeat for each branch.</li>
+        </Substeps>
       ),
-      doneWhen: "each thread shows its own branch and worktree.",
+      shot: {
+        src: "/guides/remote-dev-servers/window-new-thread.png",
+        alt: "A new bb thread in acme-web with Worktree chosen and the Branch from list open, showing main and feature branches",
+      },
+      options: [],
+      doneWhen: "each branch has its own thread in the sidebar.",
     },
     {
       id: "step-4",
@@ -183,19 +168,21 @@ export const REMOTE_DEV_SERVERS: Guide = {
               In the thread's side panel, choose <strong>+</strong>, then{" "}
               <strong>Start terminal</strong>.
             </li>
-            <li>Start the server on the ports its setup picked:</li>
+            <li>Start the server on the ports the setup script picked:</li>
           </Substeps>
-          <ProductShot
-            src="/guides/remote-dev-servers/start-terminal.png"
-            alt="A thread's side panel with a Dev server tab, and a new tab listing Start terminal"
-          />
           <CommandBlock
             command={
               'set -a; . ./.env.local; set +a\npnpm dev --host 127.0.0.1 --port "$WEB_PORT"'
             }
           />
+          <p>Or ask the thread's agent to start it for you.</p>
         </>
       ),
+      shot: {
+        src: "/guides/remote-dev-servers/window-terminal.png",
+        alt: "A bb thread with its side panel open on a Dev server terminal, showing a server running on 127.0.0.1 port 3001",
+      },
+      options: [],
       doneWhen: (
         <>
           the terminal shows the server listening on <code>127.0.0.1</code> at
@@ -205,73 +192,148 @@ export const REMOTE_DEV_SERVERS: Guide = {
     },
     {
       id: "step-5",
-      title: "Share each port",
-      lead: "bb connect gives each port its own private link, and live reload works through it.",
+      title: "Open it from anywhere",
+      lead: "bb connect gives each port a private getbb.app link, and live reload works through it.",
       body: (
         <>
-          <p>Ask the thread's agent to share the port:</p>
+          <Substeps>
+            <li>
+              Open <strong>Settings → bb connect</strong> and choose{" "}
+              <strong>Sign in to your bb account</strong>, if you haven't.
+            </li>
+            <li>Ask the thread's agent to share its port:</li>
+          </Substeps>
           <PromptBlock
             name="Ask the agent"
             prompt="Share port 3001 on this machine with bb connect and give me the link."
           />
           <p>
             It replies with a link like{" "}
-            <code>https://bb-worker-1--3001.getbb.app</code>. Every shared port
-            is listed in <strong>Settings → bb connect</strong>, where you can
-            copy or stop sharing it when a branch is done.
+            <code>https://bb-worker-1--3001.getbb.app</code>. Every link is
+            listed under <strong>Shared ports</strong> in{" "}
+            <strong>Settings → bb connect</strong>, where you can copy it or
+            stop sharing when the branch is done.
           </p>
         </>
       ),
-      doneWhen: "every branch's port is listed in Settings → bb connect.",
+      shot: {
+        src: "/guides/remote-dev-servers/window-connect.png",
+        alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
+      },
+      options: [],
+      doneWhen: "each branch's link opens its app on your phone.",
     },
   ],
-  sections: [
+  troubleshooting: [
     {
-      id: "team",
-      title: "Share with your team",
-      body: (
-        <>
-          <p>
-            Teams usually run one bb on an always-on machine and share it.
-            Everyone sees the same projects, threads, terminals, and links.
-          </p>
-          <h3 className="gd-h3">Put bb on an always-on machine</h3>
-          <p>
-            Use a Linux VM or a desktop that stays on, and start bb there. Then
-            add your remote machines to it, as in step 1.
-          </p>
-          <CommandBlock command="npx bb-app@latest" />
-          <h3 className="gd-h3">Give your team access</h3>
-          <p>
-            Keep bb on your tailnet, and let your Tailscale ACLs decide who gets
-            in. Your agent can set it up:
-          </p>
-          <PromptBlock
-            name="Ask the agent"
-            prompt="Serve bb on this machine over HTTPS with Tailscale Serve, and set bb's app URL to the tailnet address."
-          />
-          <Note
-            title="Everyone with access can run commands on every machine."
-            warn
-          >
-            Share it only with people you trust.
-          </Note>
-        </>
+      question: "The link shows a connection error",
+      answer: (
+        <ol>
+          <li>
+            Open the thread's <strong>Dev server</strong> terminal and check
+            that the server is still running.
+          </li>
+          <li>
+            Start it on <code>127.0.0.1</code>, at the same port you shared. bb
+            connect can't reach a server bound to another address.
+          </li>
+          <li>Reload the link.</li>
+        </ol>
       ),
     },
-  ],
-  faqTitle: "Troubleshooting",
-  faq: [
     {
-      question: "Why does the link show a connection error?",
+      question: "Two branches fight over the same port",
+      answer: (
+        <ol>
+          <li>
+            Commit <code>.bb-env-setup.sh</code> from step 2, so each new
+            worktree picks its own free ports.
+          </li>
+          <li>
+            Start each server with the ports in its <code>.env.local</code>, not
+            a hard-coded one.
+          </li>
+          <li>Worktrees made before the script need a new thread.</li>
+        </ol>
+      ),
+    },
+    {
+      question: "The thread failed while setting up its worktree",
+      answer: (
+        <ol>
+          <li>
+            Open the thread and read the{" "}
+            <strong>.bb-env-setup.sh failed</strong> output.
+          </li>
+          <li>
+            Fix the script, commit it, and start a new thread. bb removes a
+            worktree whose setup fails.
+          </li>
+          <li>
+            Make optional steps non-fatal inside the script if the worktree
+            should open anyway.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "A new worktree is missing .env or other files",
+      answer: (
+        <ol>
+          <li>
+            List them in a <code>.worktreeinclude</code> file at the repo root,
+            one pattern per line.
+          </li>
+          <li>
+            Put the files in the project's checkout on that machine. bb copies
+            them from there into each new worktree.
+          </li>
+          <li>Start a new thread.</li>
+        </ol>
+      ),
+    },
+    {
+      question: "The machine shows as disconnected",
+      answer: (
+        <ol>
+          <li>Check that the machine is on and online.</li>
+          <li>
+            In <strong>Settings → Machines</strong>, open its menu and choose{" "}
+            <strong>Reconnect</strong>.
+          </li>
+          <li>
+            Run the command it shows on the machine. Its threads and worktrees
+            are kept.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "My app's sign-in redirects to localhost",
+      answer: (
+        <ol>
+          <li>
+            Set the share link, like{" "}
+            <code>https://bb-worker-1--3001.getbb.app</code>, as your app's base
+            URL.
+          </li>
+          <li>Add it as an allowed redirect URL in your auth provider.</li>
+          <li>Restart the dev server.</li>
+        </ol>
+      ),
+    },
+    {
+      question: "My app's cookies don't stick",
       answer: (
         <p>
-          The server isn't listening where bb connect looks. Check the dev
-          server's terminal tab, and start the server on <code>127.0.0.1</code>{" "}
-          at the port you shared.
+          bb connect drops cookies that set a <code>Domain</code> attribute or
+          are named <code>better-auth.*</code> or <code>bb-connect.*</code>. Use
+          host-only cookies with other names.
         </p>
       ),
     },
+  ],
+  faq: [
     {
       question: "Does live reload work through the link?",
       answer: (
@@ -282,38 +344,44 @@ export const REMOTE_DEV_SERVERS: Guide = {
       ),
     },
     {
-      question: "What if my app's sign-in redirects to localhost?",
+      question: "Who can open the link?",
       answer: (
         <p>
-          Set the share link, like{" "}
-          <code>https://bb-worker-1--3001.getbb.app</code>, as your app's base
-          URL and as an allowed redirect URL in your auth provider.
+          Only you, signed in to your getbb.app account. It isn't public, so
+          webhooks and other services can't call it.
         </p>
       ),
     },
     {
-      question: "Why don't my app's cookies stick?",
+      question: "Can my team share these servers?",
       answer: (
-        <p>
-          bb connect drops cookies that set a <code>Domain</code> attribute or
-          are named <code>better-auth.*</code> or <code>bb-connect.*</code>.
-          Other host-only cookies work.
-        </p>
+        <>
+          <p>
+            Yes. Run one bb on an always-on machine, like a Linux VM, with{" "}
+            <code>npx bb-app@latest</code>, and add your machines to it.
+            Everyone then sees the same projects, threads, and terminals. To let
+            your Tailscale ACLs decide who gets in, ask an agent on it:
+          </p>
+          <PromptBlock
+            name="Ask the agent"
+            prompt="Serve bb on this machine over HTTPS with Tailscale Serve, and set bb's app URL to the tailnet address."
+          />
+          <p>
+            Everyone with access can run commands on every machine, so share it
+            only with people you trust.
+          </p>
+        </>
       ),
     },
     {
-      question: "Can webhooks or other services call the link?",
-      answer: (
-        <p>No. It opens only for you, signed in to your getbb.app account.</p>
-      ),
-    },
-    {
-      question: "Why is a new worktree missing .env or other files?",
+      question: "Don't have a machine?",
       answer: (
         <p>
-          List them in a <code>.worktreeinclude</code> file at the repo root. bb
-          copies matching files from the project's checkout on that machine, so
-          put them there first.
+          bb can run machines in your own Modal account. Install the{" "}
+          <a href="/marketplace/environment-modal-sandbox">
+            Modal Sandbox plugin
+          </a>
+          , then add a Modal machine in <strong>Settings → Machines</strong>.
         </p>
       ),
     },
@@ -321,19 +389,30 @@ export const REMOTE_DEV_SERVERS: Guide = {
       question: "How do I keep a machine from running too many agents?",
       answer: (
         <p>
-          Use the <a href="/marketplace/concurrency-limit">Concurrency limit</a>{" "}
-          plugin. It holds new turns until a running thread finishes. Set a
-          limit for each machine in its settings.
+          Install the{" "}
+          <a href="/marketplace/concurrency-limit">Concurrency limit</a> plugin.
+          It holds new turns until a running thread finishes, with a limit for
+          each machine.
         </p>
       ),
     },
     {
-      question: "Can I run a server without an agent?",
+      question: "What happens to a server when I archive its thread?",
       answer: (
         <p>
-          Yes. Open the thread's side panel, choose <strong>+</strong>, then{" "}
-          <strong>Start terminal</strong>, and run the server yourself. The
-          agent doesn't have to do anything.
+          Five minutes later, bb removes the worktree and stops everything
+          running in it, including the dev server. The branch is kept. Commit a{" "}
+          <code>.bb-env-teardown.sh</code> to clean up anything outside the
+          worktree, like Docker containers.
+        </p>
+      ),
+    },
+    {
+      question: "What does it cost?",
+      answer: (
+        <p>
+          bb and bb connect are free. You pay for your machines and agents as
+          you do now.
         </p>
       ),
     },
