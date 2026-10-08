@@ -1,3 +1,4 @@
+import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection, HostRow } from "@bb/db";
@@ -209,6 +210,7 @@ export type PluginMentionResolveResult =
   | { ok: false; error: string };
 
 export interface PluginThreadEventEmitter {
+  emitEnvironmentRemoved(removal: EnvironmentRemoval): void;
   emitThreadEvents(threadId: string): void;
   emitTerminalInput(
     terminal: import("@bb/server-contract").TerminalSession,

@@ -21,8 +21,11 @@ at the kept cursor. Inserting never sends a message.
 
 The plugin loads the newest 1000 prompts, fetches only newer prompts on later
 searches, and loads older pages only when a search finds fewer than 30 matches.
-It fuzzy-ranks the loaded prompts in scope, returning up to 20 starred and 30
-recent results. History contains user prompts; core records them without agent-only input. Prompts stay searchable until the server restarts, even if their
+It fuzzy-matches the loaded prompts in scope, returning up to 20 starred and 30
+recent results. Without a query, starred prompts come first, then recent ones.
+A query returns one ranked list: prompts that start with the query, then
+fuzzy-match score, with starred and then newer prompts breaking ties. A starred
+prompt appears once, as its starred row. History contains user prompts; core records them without agent-only input. Prompts stay searchable until the server restarts, even if their
 thread is deleted.
 
 ## CLI and SDK
@@ -34,7 +37,7 @@ thread is deleted.
 
 Use `bb.sdk.plugins.callRpc({ pluginId: "bb--prompt-library", method, input })`:
 `search` takes `{ query, scope: "thread" | "project" | "global", projectId, threadId }`
-with nullable IDs; `star` takes `{ prompt: { text, mentions } }`; `unstar` and
+with nullable IDs and returns `{ prompts }`, each row with `kind: "starred" | "recent"`; `star` takes `{ prompt: { text, mentions } }`; `unstar` and
 `markUsed` take `{ id }`.
 
 The bundled plugin is disabled by default. Enable it in Settings → Plugins or

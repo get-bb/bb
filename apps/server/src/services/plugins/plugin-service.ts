@@ -1321,6 +1321,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     events: {
+      emitEnvironmentRemoved(removal) {
+        emitThreadEvent("experimental_environment.removed", () => ({
+          removal,
+        }));
+      },
       emitThreadEvents(threadId) {
         emitThreadEvent("experimental_thread.events", () => {
           const thread = getThread(deps.db, threadId);

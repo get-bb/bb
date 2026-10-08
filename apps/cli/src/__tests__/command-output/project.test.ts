@@ -20,6 +20,60 @@ describe("bb project command output", () => {
   const register: CommandRegistrar = (program) =>
     registerProjectCommands(program, () => "http://server");
 
+  it("lists recently used repos on the local machine and notes a partial scan", async () => {
+    resolveLocalHostIdMock.mockResolvedValue("host-local");
+    const get = vi.fn(async () => ({
+      repos: [
+        {
+          path: "/home/user/code/app",
+          name: "app",
+          lastActivityAt: "2026-10-06T10:00:00.000Z",
+          originUrl: "git@github.com:example/app.git",
+          projectId: "proj_app",
+        },
+        {
+          path: "/home/user/code/fresh",
+          name: "fresh",
+          lastActivityAt: "2026-10-01T10:00:00.000Z",
+          originUrl: null,
+          projectId: null,
+        },
+      ],
+      truncated: true,
+    }));
+    stubServerApi({ "v1.hosts.:id.discovered-repos.$get": get });
+
+    await runCommand(["project", "discover"], register);
+
+    expect(get).toHaveBeenCalledWith({ param: { id: "host-local" } });
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines.join("\n")).toMatch(
+      /app\s+\/home\/user\/code\/app\s+2026-10-06\s+proj_app/u,
+    );
+    expect(lines.join("\n")).toMatch(
+      /fresh\s+\/home\/user\/code\/fresh\s+2026-10-01\s+-/u,
+    );
+    expect(lines.at(-1)).toBe(
+      "The scan ran out of time, so the list may be partial.",
+    );
+  });
+
+  it("says so when no recently used repos are found", async () => {
+    resolveLocalHostIdMock.mockResolvedValue("host-local");
+    stubServerApi({
+      "v1.hosts.:id.discovered-repos.$get": vi.fn(async () => ({
+        repos: [],
+        truncated: false,
+      })),
+    });
+
+    await runCommand(["project", "discover"], register);
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "No recently used git repositories found",
+    ]);
+  });
+
   it("uploads binary bytes read on a remote CLI machine with explicit metadata", async () => {
     const clientDir = await mkdtemp(join(tmpdir(), "bb-cli-attachment-"));
     try {

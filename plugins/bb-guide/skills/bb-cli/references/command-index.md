@@ -16,6 +16,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb settings ai-services set`
 - `bb settings ai-services test`
 - `bb settings general`
+- `bb settings replay-onboarding`
 - `bb settings completed-turns`
 - `bb settings experiment`
 - `bb settings keyboard`
@@ -45,6 +46,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb project attachment upload`
 - `bb project attachment download`
 - `bb project list`
+- `bb project discover`
 - `bb project history`
 - `bb project reorder`
 - `bb project branches`

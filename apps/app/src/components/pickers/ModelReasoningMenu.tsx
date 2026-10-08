@@ -196,7 +196,7 @@ export function ModelReasoningMenu({
                 <div
                   className={cn(
                     "px-2 text-xs text-muted-foreground",
-                    isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                    "py-[0.3125rem] max-md:pointer-coarse:py-2",
                   )}
                 >
                   No models match your search
@@ -207,7 +207,7 @@ export function ModelReasoningMenu({
             <div
               className={cn(
                 "px-2 text-xs leading-relaxed text-muted-foreground",
-                isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
+                "pb-2 pt-1.5 max-md:pointer-coarse:pb-3 max-md:pointer-coarse:pt-2",
               )}
               title={
                 modelLoadError
@@ -262,7 +262,7 @@ export function ModelReasoningMenu({
                     aria-label={option.label}
                     className={cn(
                       "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
-                      isCompactViewport && "h-9 text-sm",
+                      "max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm",
                       LIST_HOVER_TRANSITION,
                     )}
                   >
@@ -333,7 +333,7 @@ export function ModelReasoningMenu({
                     title={option.description}
                     className={cn(
                       "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
-                      isCompactViewport && "h-9 text-sm",
+                      "max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm",
                       LIST_HOVER_TRANSITION,
                     )}
                   >
@@ -369,13 +369,11 @@ function MenuSectionLabel({
   children: ReactNode;
   className?: string;
 }) {
-  const isCompactViewport = useIsCompactViewport();
-
   return (
     <div
       className={cn(
         "sticky top-0 z-10 bg-background px-2 text-xs font-medium text-muted-foreground",
-        isCompactViewport ? "pb-1.5 pt-2" : "pb-[0.3125rem] pt-2",
+        "pb-[0.3125rem] pt-2 max-md:pointer-coarse:pb-1.5",
         className,
       )}
     >
@@ -396,7 +394,6 @@ function MoreModelsToggleRow({
   id?: string;
 }) {
   const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
   return (
     <button
       type="button"
@@ -408,7 +405,7 @@ function MoreModelsToggleRow({
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
         isActive && "bg-state-active",
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+        "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
       {...hoverProps}
     >
@@ -552,7 +549,6 @@ function MenuRowButton({
   role?: React.AriaRole;
 }) {
   const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
   const { base, tag } = splitModelLabelTag(label);
   return (
     <button
@@ -568,7 +564,7 @@ function MenuRowButton({
         MENU_ITEM_LAST_HOVERED_CLASS,
         isActive && "bg-state-active",
         disabled && "cursor-not-allowed opacity-60",
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+        "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
       {...hoverProps}
     >
@@ -608,7 +604,6 @@ function MenuActionButton({
   onClick: () => void;
 }) {
   const { hoverProps } = useMenuItemHover();
-  const isCompactViewport = useIsCompactViewport();
   return (
     <button
       type="button"
@@ -617,7 +612,7 @@ function MenuActionButton({
         "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-xs outline-none hover:bg-state-hover hover:text-foreground",
         LIST_HOVER_TRANSITION,
         MENU_ITEM_LAST_HOVERED_CLASS,
-        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+        "py-[0.3125rem] max-md:pointer-coarse:py-2",
       )}
       {...hoverProps}
     >

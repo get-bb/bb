@@ -2795,6 +2795,7 @@ describe("a provider-produced environment over its life", () => {
         emitThreadEvents: () => {},
         emitTerminalInput: () => {},
         emitHostDeleted: () => {},
+        emitEnvironmentRemoved: () => {},
         emitThreadCreated: () => {},
         emitThreadActive: () => {},
         emitThreadIdle: () => {},

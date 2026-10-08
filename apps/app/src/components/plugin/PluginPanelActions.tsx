@@ -26,7 +26,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 export interface PluginPanelActionEntry {
   id: string;

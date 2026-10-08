@@ -42,8 +42,10 @@ hover, left to right before its actions menu. Choose from `split`, `copyLink`, `
 `pin`, `move` (opens a section menu), `rename`, and `archive`; the default is `'["archive"]'` and `'[]'`
 leaves only the menu. For example,
 `bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
-row's actions menu has Customize row actions, which previews the row's three
-action slots; each slot picks an action or Hide, and filled slots drag to reorder.
+row's actions menu has Customize row actions, which turns that row's quick
+actions into three editable slots in place; each slot picks an action, a filled
+slot can Hide, and filled slots drag to reorder. Done, Escape, or a click
+elsewhere finishes.
 
 Organize → Rows → Provider icons toggles the icon before each thread title.
 `showProviderIcons` defaults to `true`; use

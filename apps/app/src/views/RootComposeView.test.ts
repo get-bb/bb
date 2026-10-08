@@ -20,6 +20,7 @@ import {
 import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
 import {
   buildRootComposeTerminalSessions,
+  isRootComposeTerminalSession,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   hasSingleUseRootComposeTargetState,
@@ -1144,6 +1145,30 @@ describe("buildRootComposeTerminalSessions", () => {
         },
       }),
     ).toEqual([matching]);
+  });
+});
+
+describe("isRootComposeTerminalSession", () => {
+  it("accepts only threadless terminals of the root environment", () => {
+    const target = { kind: "environment" as const, environmentId: "env_1" };
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_1" }),
+        target,
+      ),
+    ).toBe(true);
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_1", threadId: "thr_1" }),
+        target,
+      ),
+    ).toBe(false);
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_2" }),
+        target,
+      ),
+    ).toBe(false);
   });
 });
 

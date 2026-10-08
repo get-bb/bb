@@ -88,6 +88,22 @@ export function applyTerminalSessionUpsert({
   });
 }
 
+export function applyTerminalSessionMissing({
+  queryClient,
+  terminalId,
+}: {
+  queryClient: QueryClient;
+  terminalId: string;
+}): void {
+  queryClient.setQueriesData<TerminalListResponse>(
+    { queryKey: allTerminalsQueryKeyPrefix() },
+    (current) => removeTerminalSession(current, terminalId),
+  );
+  queryClient.invalidateQueries({
+    queryKey: allTerminalsQueryKeyPrefix(),
+  });
+}
+
 export function applyTerminalSessionClose({
   queryClient,
   session,

@@ -7,6 +7,7 @@ import {
   dropPluginEnabledFollowsDefaultColumn,
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
+  dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
@@ -436,6 +437,12 @@ const steerOnEnterDefaultMigrationPath = resolve(
   "drizzle",
   "0112_steer_on_enter_default.sql",
 );
+const stampOnboardingMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0140_stamp_onboarding_existing_installs.sql",
+);
 const retainedEventOutputsMigrationPath = resolve(
   __dirname,
   "..",
@@ -712,6 +719,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropIdleLifecycleIndexes(db);
   rewindThreadPruningWork(db);
   dropPluginEnabledFollowsDefaultColumn(db);
+  dropQueuedMessageEditHeldUntilColumn(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
   db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
@@ -833,6 +841,7 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
   rewindThreadPruningWork(db);
+  dropQueuedMessageEditHeldUntilColumn(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -1771,6 +1780,7 @@ describe("migrate", () => {
         steerActiveThreadOnEnter: true,
         confirmThreadArchive: true,
         showDiagnosticEvents: true,
+        keepHistoryAfterContextClear: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},
@@ -1781,6 +1791,8 @@ describe("migrate", () => {
         allowFastServiceTier: true,
         telemetryEnabled: true,
         managedBranchPrefix: "bb/",
+        onboardingCompletedAt: "2026-08-01T00:00:00.000Z",
+        setupChecklistVisible: false,
       });
       expect(
         db.$client
@@ -2085,6 +2097,93 @@ describe("migrate", () => {
           .get(),
       ).toEqual({ value: "true", updatedAt: 1234 });
       expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  const ONBOARDING_STAMP_FIXTURE = `
+    CREATE TABLE app_settings_values (
+      key text PRIMARY KEY NOT NULL,
+      value text NOT NULL,
+      updated_at integer NOT NULL
+    );
+    CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+    CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+    INSERT INTO projects (id, kind) VALUES ('proj_personal', 'personal');
+  `;
+
+  it.each([
+    {
+      name: "a store with a real project",
+      seed: "INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');",
+    },
+    {
+      name: "a store whose only work is a personal thread",
+      seed: "INSERT INTO threads (id) VALUES ('thread-1');",
+    },
+    {
+      name: "a store whose earlier setup guide never finished",
+      seed: `
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+        INSERT INTO app_settings_values (key, value, updated_at)
+        VALUES ('onboardingCompletedAt', 'null', 1234);
+      `,
+    },
+  ])("marks $name as already set up", ({ seed }) => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+      db.$client.exec(seed);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      const completedAt = getAppSettings(db).onboardingCompletedAt;
+      expect(completedAt).not.toBeNull();
+      expect(Number.isNaN(Date.parse(completedAt ?? ""))).toBe(false);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("leaves the setup guide pending for a store that only holds the seeded personal project", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], { count: number }>(
+            "SELECT count(*) AS count FROM app_settings_values WHERE key = 'onboardingCompletedAt'",
+          )
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(getAppSettings(db).onboardingCompletedAt).toBeNull();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("keeps the time an earlier setup guide was finished", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+      db.$client.exec(`
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+        INSERT INTO app_settings_values (key, value, updated_at)
+        VALUES ('onboardingCompletedAt', '"2026-08-01T00:00:00.000Z"', 1234);
+      `);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      expect(getAppSettings(db).onboardingCompletedAt).toBe(
+        "2026-08-01T00:00:00.000Z",
+      );
     } finally {
       closeConnection(db);
     }
@@ -3206,6 +3305,7 @@ describe("migrate", () => {
       migrate(db);
       dropIdleLifecycleIndexes(db);
       rewindThreadPruningWork(db);
+      dropQueuedMessageEditHeldUntilColumn(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
       db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();

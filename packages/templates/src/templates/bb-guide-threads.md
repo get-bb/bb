@@ -314,7 +314,9 @@ Messaging:
   `thread clear` keeps the BB thread, workspace, durable event history, and
   sticky execution settings. Its active timeline starts at one visible
   `Context cleared` boundary, and its next prompt starts a fresh provider
-  conversation in the same thread.
+  conversation in the same thread. With
+  `bb settings general keepHistoryAfterContextClear true`, earlier messages
+  stay visible above that boundary.
 
 Ownership:
 

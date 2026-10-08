@@ -7,6 +7,8 @@ export type SaveIndicator = "clean" | "dirty" | "saving" | "error";
 export interface FileToolbarProps {
   path: string;
   indicator: SaveIndicator;
+  saveDisabled: boolean;
+  onSave: () => void;
   isRefreshing: boolean;
   onRefresh: () => void;
   isFilesOpen: boolean;
@@ -16,6 +18,8 @@ export interface FileToolbarProps {
 export function FileToolbar({
   path,
   indicator,
+  saveDisabled,
+  onSave,
   isRefreshing,
   onRefresh,
   isFilesOpen,
@@ -38,6 +42,13 @@ export function FileToolbar({
         </ToolbarButton>
       </div>
       <SaveDot indicator={indicator} />
+      <ToolbarButton
+        label={indicator === "saving" ? "Saving…" : "Save"}
+        onClick={onSave}
+        disabled={saveDisabled}
+      >
+        <SaveIcon />
+      </ToolbarButton>
       <ToolbarButton
         label={isFilesOpen ? "Hide files" : "Show in files"}
         onClick={onToggleFiles}
@@ -150,6 +161,20 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-3.5" aria-hidden>
+      <path
+        d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h12l4 4v12a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8V3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

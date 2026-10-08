@@ -5,6 +5,7 @@
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
+bb.events.on("experimental_environment.removed", ({ removal }) => { ... });
 bb.events.on("experimental_host.deleted", ({ host }) => { ... });
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
@@ -20,25 +21,18 @@ bb.events.on("turn.failed", (event) => { ... });                           // id
 bb.events.on("message.cancelled", ({ entry }) => { ... });                 // row deleted before dispatch
 ```
 
-**Events are announcements core makes.** Something already happened, your
-handler is told, and whatever it returns is IGNORED. The surface that ASKS is
-`bb.experimental_hooks`, below, where core acts on your answer — the same split
-git draws between post-commit and pre-commit hooks.
+Events announce completed changes; handler return values are ignored.
+Use `bb.experimental_hooks` when core needs an answer before acting.
 
-Fourteen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
-fires after core commits a pending interaction row. The three `message.*`
-ones fire when a dispatch is queued behind a wait, when a queued row's waits
-all clear and it dispatches, or when the queued row is cancelled. Every listener sees every queued row, so a plugin
-that only wants its own filters on
+Fourteen events. The seven `thread.*` ones report thread lifecycle. `interaction.pending` fires
+when core commits a pending interaction. `message.queued` fires when dispatch
+waits, including when its wait changes; `message.dispatched` fires when all waits
+clear. Every listener receives every queued row. Filter plugin-owned waits with
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`message.queued` fires again when a row's wait is rewritten, because a row that
-moved from one wait to another is news to whoever was waiting on the old one.
 
-`message.cancelled` fires when the user removes a queued row before it ever
-dispatched — the only signal for that removal. A plugin holding external
-resources for a waiting message (a sandbox mid-provision via an environment
-provider, a reserved slot) releases them here; archive/delete of the whole
-thread fires the thread event instead.
+`message.cancelled` is the only notification when a queued row is removed before
+dispatch. Release external resources reserved for that message here. Archiving
+or deleting the whole thread fires its thread lifecycle event instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
@@ -91,12 +85,9 @@ fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
 
-Lifecycle events are broadcast to all loaded plugins regardless of sidebar
-visibility.
-Use `thread.*` events to react to lifecycle changes while your plugin is
-loaded. Events that occur while it is unloaded are not replayed. Register
-handlers first, then reconcile tracked threads once at startup to catch changes
-from a restart, reload, or disabled period. Make handlers idempotent if a live
+Lifecycle events reach all loaded plugins regardless of sidebar visibility.
+Events missed while unloaded are not replayed. Register handlers first, then
+reconcile tracked threads at startup after a restart, reload, or disabled period. Make handlers idempotent if a live
 event overlaps reconciliation. Avoid polling thread state to detect lifecycle
 changes.
 
@@ -498,3 +489,10 @@ compares stored paths in the database and does not contact hosts.
 Scoped discovery omits providers whose declared requirements are unmet without
 running Git inspection or plugin availability. Without a machine scope,
 discovery includes providers structurally eligible on any persistent machine.
+
+`experimental_environment.removed` carries `{ removal }` after successful
+provider removal is committed. The payload contains `environmentId`, `removedAt`,
+`hostId`, `path`, and `providerOwnedPath`, preserving the pre-removal machine and
+path. Notifications are ephemeral: reconcile external state on startup and
+reconnect, and periodically, to recover missed events. Provider success does not
+guarantee the checkout path was deleted.
