@@ -33,15 +33,6 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
-  "/guides/work-from-anywhere/bb-connect-settings.png": {
-    width: 1538,
-    height: 890,
-  },
-  "/guides/remote-dev-servers/new-thread-worktree.png": {
-    width: 1280,
-    height: 360,
-  },
-  "/guides/work-from-anywhere/keep-awake.png": { width: 1280, height: 840 },
   "/guides/run-an-agent-on-a-schedule/window-list.png": {
     width: 2048,
     height: 1280,
@@ -66,14 +57,13 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
-  "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
-  "/guides/remote-dev-servers/new-project-machine.png": {
-    width: 1024,
-    height: 1014,
+  "/guides/remote-dev-servers/window-add-machine.png": {
+    width: 2048,
+    height: 1280,
   },
-  "/guides/remote-dev-servers/start-terminal.png": {
-    width: 1120,
-    height: 686,
+  "/guides/remote-dev-servers/window-checkouts.png": {
+    width: 2048,
+    height: 1280,
   },
   "/guides/orchestrate-coding-agents/window-start.png": {
     width: 2048,
@@ -111,6 +101,28 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
+  "/guides/remote-dev-servers/window-new-thread.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/remote-dev-servers/window-terminal.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/remote-dev-servers/window-connect.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/work-from-anywhere/window-connect.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/work-from-anywhere/window-keep-awake.png": {
+    width: 2048,
+    height: 1280,
+  },
+  "/guides/work-from-anywhere/window-mobile.png": { width: 2048, height: 1280 },
+  "/guides/work-from-anywhere/window-phone.png": { width: 780, height: 1688 },
 };
 
 export function getImageSize(src: string): ImageSize | undefined {

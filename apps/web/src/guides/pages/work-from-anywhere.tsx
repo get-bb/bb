@@ -3,7 +3,7 @@ import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import UserAccountIcon from "@hugeicons/core-free-icons/UserAccountIcon";
 
 import { AnywhereConcept } from "../concepts";
-import { Note, ProductShot, Substeps } from "../guide-blocks";
+import { Substeps } from "../guide-blocks";
 import type { Guide } from "../guide-types";
 
 const AGENT_PROMPT = `Get this bb ready for me to use from my phone, and keep this computer awake while I'm away.
@@ -41,7 +41,7 @@ export const WORK_FROM_ANYWHERE: Guide = {
     {
       title: "A getbb.app account",
       icon: UserAccountIcon,
-      body: "Free. It gives your bb a private address.",
+      body: "Free. It gives your bb a private address only you can open.",
     },
     {
       title: "Your phone",
@@ -53,33 +53,35 @@ export const WORK_FROM_ANYWHERE: Guide = {
     {
       id: "step-1",
       title: "Turn on bb connect",
-      lead: "Your bb gets a private getbb.app address you can open from anywhere.",
+      lead: "Your bb gets a private getbb.app address you can open from any device.",
       body: (
-        <>
-          <Substeps>
-            <li>
-              Open <strong>Settings → Mobile</strong> and choose{" "}
-              <strong>Set up bb connect</strong>.
-            </li>
-            <li>Sign in to your getbb.app account and claim a handle.</li>
-          </Substeps>
-          <ProductShot
-            src="/guides/work-from-anywhere/bb-connect-settings.png"
-            alt="bb's Mobile apps settings, with a Set up bb connect button and the iOS TestFlight beta"
-          />
-        </>
+        <Substeps>
+          <li>
+            Open <strong>Settings → bb connect</strong> and choose{" "}
+            <strong>Sign in to your bb account</strong>.
+          </li>
+          <li>Approve the sign-in on getbb.app and claim a handle.</li>
+          <li>
+            Keep <strong>Remote access</strong> on.
+          </li>
+        </Substeps>
       ),
+      shot: {
+        src: "/guides/work-from-anywhere/window-connect.png",
+        alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
+      },
+      options: [],
       doneWhen: (
         <>
-          Settings shows bb connect as connected, with your{" "}
-          <code>https://&lt;handle&gt;.getbb.app</code> address.
+          the page shows your <code>https://&lt;handle&gt;.getbb.app</code>{" "}
+          address.
         </>
       ),
     },
     {
       id: "step-2",
       title: "Keep your computer awake",
-      lead: "Your agents keep working while you're away.",
+      lead: "Your agents keep working while you're away from the desk.",
       body: (
         <>
           <Substeps>
@@ -89,37 +91,44 @@ export const WORK_FROM_ANYWHERE: Guide = {
             </li>
             <li>
               Turn on <strong>Prevent idle sleep</strong>. Keep{" "}
-              <strong>All hosts</strong>, or choose the computers that run your
+              <strong>All hosts</strong>, or choose{" "}
+              <strong>Specific hosts</strong> for the computers that run your
               agents.
             </li>
           </Substeps>
-          <ProductShot
-            src="/guides/work-from-anywhere/keep-awake.png"
-            alt="Keep Awake in bb's settings, with Prevent idle sleep on for all hosts"
-          />
-          <Note title="Closing the lid still sleeps a laptop." warn>
-            For agents that never stop, run bb on a desktop or mini PC that
-            stays on.
-          </Note>
+          <p>
+            Closing a laptop's lid still puts it to sleep. For agents that never
+            stop, run bb on a desktop or mini PC that stays on.
+          </p>
         </>
       ),
+      shot: {
+        src: "/guides/work-from-anywhere/window-keep-awake.png",
+        alt: "Keep Awake in bb's settings, with Prevent idle sleep on for all hosts",
+      },
+      options: [],
       doneWhen:
         "Prevent idle sleep is on for the computer that runs your agents.",
     },
     {
       id: "step-3",
       title: "Open bb on your phone",
-      lead: "Pick up any thread where you left it.",
+      lead: "Pick up any thread where you left it, answer your agents, or start new work.",
       body: (
         <Substeps>
           <li>
-            Open your <code>https://&lt;handle&gt;.getbb.app</code> address on
-            your phone.
+            Open your <code>https://&lt;handle&gt;.getbb.app</code> address in
+            your phone's browser.
           </li>
           <li>Sign in with the same getbb.app account.</li>
           <li>Add it to your Home Screen.</li>
         </Substeps>
       ),
+      shot: {
+        src: "/guides/work-from-anywhere/window-phone.png",
+        alt: "bb at phone width, showing an agent's reply in a thread and an Ask a follow-up box",
+      },
+      options: [],
       doneWhen: "your threads load on your phone.",
     },
     {
@@ -127,70 +136,178 @@ export const WORK_FROM_ANYWHERE: Guide = {
       title: "Get notified",
       lead: "Know when an agent finishes or needs you, even with the app closed.",
       body: (
-        <>
-          <Substeps>
-            <li>
-              In <strong>Settings → Mobile</strong>, join the iOS TestFlight
-              beta or download the Android app.
-            </li>
-            <li>
-              On the same page, choose <strong>Add mobile device</strong>.
-            </li>
-            <li>
-              In the app, choose <strong>Connect with bb connect</strong> and
-              scan the code.
-            </li>
-          </Substeps>
-        </>
+        <Substeps>
+          <li>
+            Open <strong>Settings → Mobile</strong>, and choose{" "}
+            <strong>Join iOS TestFlight</strong> or{" "}
+            <strong>Download Android APK</strong> on your phone.
+          </li>
+          <li>
+            On the same page, choose <strong>Add mobile device</strong>. It
+            appears once bb connect is on.
+          </li>
+          <li>
+            In the app, choose <strong>Connect with bb connect</strong>, scan
+            the code, and allow notifications.
+          </li>
+        </Substeps>
       ),
+      shot: {
+        src: "/guides/work-from-anywhere/window-mobile.png",
+        alt: "bb's Mobile apps settings, with bb connect, a Join iOS TestFlight button, and the Android download",
+      },
+      options: [],
       doneWhen: "the app shows your threads and you've allowed notifications.",
     },
   ],
-  sections: [
+  troubleshooting: [
     {
-      id: "how-it-connects",
-      title: "How bb connects your devices",
-      body: (
-        <ul className="gd-list">
+      question: "My phone says disconnected while my computer is on",
+      answer: (
+        <ol>
           <li>
-            <strong>The server.</strong> One computer runs it, usually the first
-            one you set bb up on. It keeps your threads, settings, and history,
-            and everything else connects to it. While it's asleep or off,
-            nothing can reach bb.
+            Wait a moment. bb reconnects on its own while the server runs.
           </li>
           <li>
-            <strong>Machines.</strong> Every computer that runs agents runs a
-            small background program, the host daemon, that connects to the
-            server. The server's own computer is a machine too.
+            Check that the server's computer hasn't gone to sleep, and that{" "}
+            <strong>Prevent idle sleep</strong> is on for it.
           </li>
           <li>
-            <strong>Apps.</strong> The desktop app, the mobile app, and your
-            getbb.app address in any browser all open the same server. Your
-            agents run on machines, not in the app you're looking at.
+            On that computer, open <strong>Settings → bb connect</strong> and
+            check that <strong>Remote access</strong> is on.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "My agents stopped while I was away",
+      answer: (
+        <ol>
+          <li>
+            Check whether the computer slept. Keep Awake doesn't stop a closed
+            lid or a chosen Sleep.
+          </li>
+          <li>
+            If the server's computer slept, nothing could reach bb until it
+            woke. Open the thread and send a message to continue.
+          </li>
+          <li>
+            For agents that run all day, run bb on a computer that stays on and
+            add your laptop as a machine.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "I don't see Add mobile device",
+      answer: (
+        <ol>
+          <li>
+            Open <strong>Settings → bb connect</strong> and sign in to your bb
+            account.
+          </li>
+          <li>
+            Turn on <strong>Remote access</strong> and wait for your address to
+            show.
+          </li>
+          <li>
+            Go back to <strong>Settings → Mobile</strong>.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "A machine shows as disconnected",
+      answer: (
+        <ol>
+          <li>Check that its computer is on, awake, and online.</li>
+          <li>
+            In <strong>Settings → Machines</strong>, open its menu and choose{" "}
+            <strong>Reconnect</strong>.
+          </li>
+          <li>
+            Run the command it shows on that machine. Its threads and worktrees
+            are kept.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "A machine is stuck updating",
+      answer: (
+        <ol>
+          <li>Machines update themselves to match the server's version.</li>
+          <li>
+            If an update failed, open its menu in{" "}
+            <strong>Settings → Machines</strong> and choose{" "}
+            <strong>Retry update</strong>.
+          </li>
+          <li>
+            If it still fails, check the logs from the next question on that
+            machine.
+          </li>
+        </ol>
+      ),
+    },
+    {
+      question: "I need bb's logs",
+      answer: (
+        <ol>
+          <li>
+            In the desktop app, choose{" "}
+            <strong>View → Server &amp; Daemon Logs</strong>.
+          </li>
+          <li>
+            Otherwise, open <code>logs/server-stdio.log</code> and{" "}
+            <code>logs/host-daemon-stdio.log</code> in bb's data folder,{" "}
+            <code>~/.bb</code>.
+          </li>
+          <li>
+            On a machine you added, look in{" "}
+            <code>~/.bb-machines/&lt;server&gt;</code> instead.
+          </li>
+        </ol>
+      ),
+    },
+  ],
+  faq: [
+    {
+      question: "Do I need to install anything on my phone?",
+      answer: (
+        <p>
+          No. bb runs in your phone's browser. Add the iOS or Android app only
+          if you want notifications.
+        </p>
+      ),
+    },
+    {
+      question: "How do my devices connect?",
+      answer: (
+        <ul>
+          <li>
+            <strong>The server</strong> runs on one computer, usually the first
+            one you set bb up on. It keeps your threads, settings, and history.
+            While it's asleep or off, nothing can reach bb.
+          </li>
+          <li>
+            <strong>Machines</strong> are the computers that run agents. Each
+            one connects to the server. The server's own computer is a machine
+            too.
+          </li>
+          <li>
+            <strong>Apps</strong>, like the desktop app, the mobile app, and
+            your getbb.app address, all open the same server. Your agents run on
+            machines, not in the app you're looking at.
           </li>
         </ul>
       ),
     },
-  ],
-  faqTitle: "Troubleshooting FAQ",
-  faq: [
     {
       question: "Which of my computers is the server?",
       answer: (
         <p>
           Open <strong>Settings → Machines</strong>. The server's computer has a
-          Server badge.
-        </p>
-      ),
-    },
-    {
-      question: "What happens to my agents when my laptop sleeps?",
-      answer: (
-        <p>
-          If your laptop is the server, your phone and other machines can't
-          reach bb until it wakes, and their running agents may stop. If it's
-          only a machine, just its agents stop. Turn on Keep Awake, or set up bb
-          on a computer that stays on and add your laptop as a machine.
+          server badge.
         </p>
       ),
     },
@@ -198,11 +315,10 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "I set up bb on two computers. Why don't they share threads?",
       answer: (
         <p>
-          Each setup runs its own server with its own threads. To use one bb
-          everywhere, keep the server on the computer that stays on, and add the
-          other one from <strong>Settings → Machines</strong>. Its host daemon
-          then connects to that server, and new threads can run on either
-          computer.
+          Each setup runs its own server. To use one bb everywhere, keep the
+          server on the computer that stays on, and add the other one from{" "}
+          <strong>Settings → Machines</strong>. New threads can then run on
+          either computer.
         </p>
       ),
     },
@@ -210,64 +326,9 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "Does quitting the desktop app stop my agents?",
       answer: (
         <p>
-          On the server's computer, yes. Quitting the app stops its server and
-          host daemon, so agents, automations, and remote access stop until you
-          open it again. On a Mac, closing the window keeps bb running.
-        </p>
-      ),
-    },
-    {
-      question: "Why does my phone say disconnected when my computer is on?",
-      answer: (
-        <p>
-          The bb connect tunnel can drop for a moment, and bb reconnects on its
-          own while the server runs. If it stays disconnected, check that the
-          server's computer hasn't gone to sleep, and check{" "}
-          <strong>Settings → bb connect</strong> on it.
-        </p>
-      ),
-    },
-    {
-      question: "Why does a machine show as disconnected?",
-      answer: (
-        <p>
-          Its computer is off, asleep, or offline, or its access to the server
-          went stale. If it stays disconnected while it's on, choose{" "}
-          <strong>Reconnect machine</strong> for it in{" "}
-          <strong>Settings → Machines</strong>, and run the command it shows on
-          that machine. Its threads and worktrees are kept.
-        </p>
-      ),
-    },
-    {
-      question: "Why is a machine stuck updating?",
-      answer: (
-        <p>
-          Machines update themselves to match the server's version. If an update
-          failed, choose <strong>Retry update</strong> for it in{" "}
-          <strong>Settings → Machines</strong>.
-        </p>
-      ),
-    },
-    {
-      question: "Where are bb's logs?",
-      answer: (
-        <p>
-          In the desktop app, choose{" "}
-          <strong>View → Server &amp; Daemon Logs</strong>. Otherwise, open{" "}
-          <code>logs/server-stdio.log</code> and{" "}
-          <code>logs/host-daemon-stdio.log</code> in bb's data folder:{" "}
-          <code>~/.bb</code>, or <code>~/.bb-machines/&lt;server&gt;</code> on a
-          machine you added.
-        </p>
-      ),
-    },
-    {
-      question: "Do I need to install anything on my phone?",
-      answer: (
-        <p>
-          No. bb runs in your phone's browser. Add the iOS or Android app only
-          if you want notifications.
+          On the server's computer, yes. Agents, automations, and remote access
+          stop until you open it again. On a Mac, closing the window keeps bb
+          running.
         </p>
       ),
     },
@@ -285,9 +346,10 @@ export const WORK_FROM_ANYWHERE: Guide = {
       question: "Who can open my getbb.app address?",
       answer: (
         <p>
-          Only you, signed in to your getbb.app account, and machines you've
-          added. To shut it off, choose <strong>Disconnect</strong> on that bb
-          in your getbb.app dashboard.
+          Only you, signed in to your getbb.app account, and devices you've
+          paired. To shut it off, turn off <strong>Remote access</strong>, or
+          choose <strong>Disconnect</strong> on that bb in your getbb.app
+          dashboard.
         </p>
       ),
     },
