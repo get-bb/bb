@@ -35,11 +35,16 @@ const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 const PLUGINS_COPY_T3: SectionCopy = {
   title: "Customize everything with plugins",
   body: (
-    <p>
-      Plugins add panels to the sidebar, commands to the bb CLI, tools your
-      agents can call, and new agents. 300+ are already in the marketplace, and
-      bb still updates every week with nothing for you to rebase.
-    </p>
+    <>
+      <p>
+        Plugins add panels to the sidebar, commands to the bb CLI, tools your
+        agents can call, and new agents.
+      </p>
+      <p>
+        300+ are already in the marketplace, and bb still updates every week
+        with nothing for you to rebase.
+      </p>
+    </>
   ),
 };
 
