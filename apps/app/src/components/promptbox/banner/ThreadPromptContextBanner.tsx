@@ -116,6 +116,7 @@ interface ThreadPromptChildThreadItem {
 
 export interface ThreadPromptChildThreadsSection {
   items: readonly ThreadPromptChildThreadItem[];
+  waitingQuestion: string | null;
 }
 
 export interface ThreadPromptPullRequestSection {
@@ -698,6 +699,9 @@ function ActiveChildThreadsCard({
   if (items.length === 0) {
     return null;
   }
+  const collapsedQuestion = isExpanded
+    ? null
+    : childThreadsSection.waitingQuestion;
   return (
     <PromptStackCard
       ariaLabel="Child threads"
@@ -710,7 +714,11 @@ function ActiveChildThreadsCard({
         id={SECTION_IDS.childThreads.toggle}
         aria-expanded={isExpanded}
         aria-controls={SECTION_IDS.childThreads.body}
-        aria-label={`${items.length} active ${childThreadNoun(items.length)}`}
+        aria-label={
+          collapsedQuestion
+            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestion}`
+            : `${items.length} active ${childThreadNoun(items.length)}`
+        }
         onClick={focus.onTriggerClick}
         className={activityRowClass(
           "active",
@@ -742,14 +750,23 @@ function ActiveChildThreadsCard({
             aria-hidden="true"
           />
         )}
-        <span
-          className={activityTextClass(
-            "active",
-            "min-w-0 flex-1 truncate text-left",
-          )}
-        >
-          Active child threads
-        </span>
+        {collapsedQuestion ? (
+          <span
+            className="min-w-0 flex-1 truncate text-left font-medium text-foreground"
+            title={collapsedQuestion}
+          >
+            {collapsedQuestion}
+          </span>
+        ) : (
+          <span
+            className={activityTextClass(
+              "active",
+              "min-w-0 flex-1 truncate text-left",
+            )}
+          >
+            Active child threads
+          </span>
+        )}
         <PromptStackCountSlot count={items.length} prefix="" />
       </button>
       <AnimatedDisclosureBody
