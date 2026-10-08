@@ -129,7 +129,7 @@ function RunningThreadPrompt({
     <div
       role="dialog"
       aria-label="Notification prompt"
-      className="fixed right-4 bottom-24 z-50 flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+      className="fixed top-16 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
     >
       <Icon
         name="BellDot"
