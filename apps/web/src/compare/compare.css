@@ -1428,6 +1428,18 @@
     font-size: 26px;
   }
 
+  .cmp-providers {
+    gap: 12px;
+  }
+
+  .cmp-providers .plogo-more {
+    display: block;
+  }
+
+  .cmp-providers .pmore {
+    display: none;
+  }
+
   .cmp-feed {
     padding: 14px;
   }
