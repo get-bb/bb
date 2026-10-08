@@ -665,7 +665,7 @@ export function ThreadDetailPromptArea({
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
   const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
     threadId: thread.id,
-    queueIsEmpty: queuedMessagesQuery.data?.length === 0,
+    queuedMessages: queuedMessagesQuery.data ?? null,
   });
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
