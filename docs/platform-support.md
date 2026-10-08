@@ -46,17 +46,13 @@ The native Windows host is alpha. It runs from the Windows desktop installer or
 
 ## Mobile app
 
-[`apps/mobile`](../apps/mobile/README.md#architecture) is an Expo / React
-Native shell around the server's PWA in one WebView. Threads, projects,
-terminal, server settings and plugin frontends use the web app's responsive
-UI and HTTP + WebSocket contract. `@bb/mobile-bridge` connects the page to
-native capabilities. Pairing, saved servers, This device, appearance and
-notification settings have native screens. Agents, host daemons and plugin
-backends run on the server or its enrolled hosts, rather than on the phone.
+[`apps/mobile`](../apps/mobile/README.md) is an Expo / React Native shell
+around the server's PWA in one WebView, connected through `@bb/mobile-bridge`.
+Pairing, saved servers, device, appearance and notification settings are native;
+threads, projects, server settings and plugin frontends run in the page.
+Agents, host daemons and plugin backends run on the server or enrolled hosts.
 
 - Platforms: iOS (iPhone; iPad runs the phone layout) and Android alpha.
-  Android APK builds and Maestro smoke coverage are available; see the
-  [mobile README](../apps/mobile/README.md#android-local-apk-and-verification).
 - Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
   (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
   `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
@@ -67,24 +63,17 @@ backends run on the server or its enrolled hosts, rather than on the phone.
   `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
   seven-day rolling sessions that end when the device is revoked; see
   [multiple-devices.md](multiple-devices.md).
-- Distribution: iOS beta through TestFlight, with EAS project
-  `@bb-team/bb-app` and build/submission automation configured. Android alpha
-  APKs are available from the [Android testing release](https://github.com/get-bb/bb/releases/tag/android-testing);
-  the EAS Android workflow also supports production AAB builds and opt-in
-  draft submission to the internal Play track. Developer builds from source
-  remain available. See the [release setup](../apps/mobile/README.md#release-eas)
-  and [Android setup](../apps/mobile/README.md#android-production-setup).
-  No public App Store or Play release yet.
+- Distribution: iOS beta through TestFlight and Android alpha APKs from the
+  [Android testing release](https://github.com/get-bb/bb/releases/tag/android-testing).
+  EAS builds and developer builds from source are available; see the
+  [mobile README](../apps/mobile/README.md#release-eas). No public store release yet.
 - The built-in Push notifications plugin works on iOS and Android when the bb
   server can reach `exp.host`. The server needs no Apple or Google keys.
   Android builds need Firebase configuration and an FCM V1 credential in EAS;
   see the [Android setup](../apps/mobile/README.md#android-production-setup).
 
-Plugin nav panels, DOM settings pages, composer customization and other
-page-based plugin surfaces run inside the PWA. Their usability depends on
-the plugin's responsive UI and any host or desktop capabilities it requires.
-External links opened through the web app's `shellOpenExternal` helper go
-through the native bridge to the OS URL handler.
+Plugin nav panels, DOM settings pages and other web plugin surfaces render
+in the PWA; usability depends on their responsive UI and required capabilities.
 
 Device boundaries:
 
@@ -94,9 +83,8 @@ Device boundaries:
   features: phones have no host daemon. The remote path browser works.
 - Web CSS and plugin themes apply to the page; native shell screens use the
   native theme tokens and built-in palettes.
-- Desktop browser automation requires a desktop host. Other page features,
-  including KaTeX and Mermaid rendering, use the web app implementation;
-  touch layout and WebView/OS capabilities determine their mobile behavior.
+- Desktop browser automation requires a desktop host. Page features use the
+  web app implementation, subject to touch layout and WebView/OS capabilities.
 
 ## Support Boundaries
 

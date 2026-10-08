@@ -12,39 +12,9 @@ own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,
 reload the page, clear website data), push registration and notification
 taps, deep links, quick actions, share intents and the connection banner.
-The `Mobile E2E` GitHub workflow drives the shell flows.
-
-## Architecture
-
-The active server serves the PWA inside one shell WebView. There is no
-separate native thread list, composer, terminal, or plugin frontend:
-those surfaces use the web app's components and responsive layout. Plugin
-nav panels and settings pages render in that page too; the mobile shell
-does not exclude plugin frontends as a category. Agents, host daemons and
-plugin backends still run on the server or its enrolled hosts.
-
-- [`ProfileWebViewScreen`](src/screens/webview/ProfileWebViewScreen.tsx)
-  loads the selected profile's server and page path, handles load failures,
-  and reloads when authentication recovery requires it.
-- [`@bb/mobile-bridge`](../../packages/mobile-bridge/src) defines the
-  versioned handshake and messages. The shell injects the bridge before page
-  content loads; the page reports readiness and navigation, and the shell
-  provides safe-area and resume events and native capabilities.
-  [`useShellBridge`](src/screens/webview/useShellBridge.ts) handles messages
-  from the page.
-- [`RootNavigator`](src/screens/shell/RootNavigator.tsx) owns pairing,
-  saved servers, This device, appearance and notification screens.
-  [`shell-links.ts`](src/lib/shell/shell-links.ts) resolves incoming links
-  to a saved profile and page path or a native route. Server settings and
-  machine management use the web app.
-- The page's [`shellOpenExternal`](../app/src/lib/native-shell/native-shell.ts)
-  sends external URLs over the bridge to React Native `Linking.openURL`.
-  The WebView also intercepts navigation outside the active server and opens
-  supported external URLs through `Linking`.
-
-See [platform support](../../docs/platform-support.md#mobile-app) for
-distribution and device limitations. This section describes the current
-architecture; implementation milestone plans are not its reference.
+External links use the web app's `shellOpenExternal` helper and the native
+bridge to open through the OS URL handler. The `Mobile E2E` GitHub workflow
+drives the shell flows.
 
 ## Structure
 
