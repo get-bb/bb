@@ -179,6 +179,9 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Child threads" }),
+    );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
     expect(shownSource()).toBe("Child thr_c");
