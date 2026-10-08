@@ -64,6 +64,7 @@ function queue(
     reasoningLevel: "medium",
     permissionMode: "full",
     serviceTier: "default",
+    modelOptions: {},
     waitingOn: null,
     sendAt: null,
     payload: { kind: "inline" },

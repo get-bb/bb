@@ -55,6 +55,10 @@ function toModelPickerOption(
     ...(model.routeProviderId
       ? { routeProviderId: model.routeProviderId }
       : {}),
+    ...(model.isDefault ? { isDefault: true } : {}),
+    ...(model.experimental_supportedModelOptions
+      ? { supportedModelOptions: model.experimental_supportedModelOptions }
+      : {}),
   };
 }
 

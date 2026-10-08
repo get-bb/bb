@@ -160,6 +160,8 @@ import {
   type FollowUpExecutionSelection,
 } from "@bb/client-core";
 
+import { useModelOptionSelection } from "@/hooks/thread-creation-options/model-option-selection";
+
 const ignorePromptBannerFileClick = () => {};
 const ignoreToastedCreateThreadError = () => {};
 
@@ -720,6 +722,15 @@ export function ThreadDetailPromptArea({
     initialPermissionMode: defaultExecutionOptions?.permissionMode,
     initialEnvironmentSelectionValue: thread.environmentId ?? undefined,
   });
+  const modelOptionSelection = useModelOptionSelection({
+    scope: "thread",
+    provider:
+      selectedProviderId === thread.providerId
+        ? providers.find((provider) => provider.id === selectedProviderId)
+        : undefined,
+    initialValues: defaultExecutionOptions?.modelOptions,
+    resetKey: thread.id,
+  });
   const fallbackIdentity = modelFallback
     ? `${thread.id}:${modelFallback.sourceSeq}`
     : null;
@@ -1163,12 +1174,16 @@ export function ThreadDetailPromptArea({
       serviceTier,
       reasoningLevel,
       permissionMode,
+      ...(modelOptionSelection.requestValues === undefined
+        ? {}
+        : { modelOptions: modelOptionSelection.requestValues }),
       executionInputSources,
     };
   }, [
     effectiveSelectedModel,
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
+    modelOptionSelection.requestValues,
     permissionMode,
     reasoningLevel,
     serviceTier,
@@ -1628,6 +1643,11 @@ export function ThreadDetailPromptArea({
         supportByProvider: serviceTierSupportByProvider,
         options: serviceTierOptions,
       },
+      modelOptions: {
+        declarations: modelOptionSelection.declarations,
+        values: modelOptionSelection.values,
+        onChange: modelOptionSelection.setValues,
+      },
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
@@ -1655,6 +1675,9 @@ export function ThreadDetailPromptArea({
       modelLoadFailed,
       modelLoadError,
       modelOptions,
+      modelOptionSelection.declarations,
+      modelOptionSelection.setValues,
+      modelOptionSelection.values,
       moreModelOptions,
       providerOptions,
       reasoningLevel,
@@ -1686,6 +1709,7 @@ export function ThreadDetailPromptArea({
     if (!inlineEditingQueuedMessage) return null;
     return {
       ...compactExecutionConfig,
+      modelOptions: undefined,
       model: {
         ...compactExecutionConfig.model,
         active: { model: inlineEditingQueuedMessage.model },

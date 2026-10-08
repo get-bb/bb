@@ -3880,3 +3880,43 @@ Stabilization requires exercising reconnect/reload, concurrent deduplication, ro
 `hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).
 
 Stabilize after deciding whether depth, recency window, and limit should be caller options, and after exercising slow or network-mounted home directories and Windows hosts.
+
+## Provider model options (`experimental_modelOptions`)
+
+A provider declares picker choices with
+`experimental_modelOptions: [{ id, label, description?, values, defaultValue }]`
+on `bb.providers.register`. Each value is `{ id, label, description?,
+modelUnavailableReason? }`; there are at least two values with unique ids and
+`defaultValue` names one of them. A `model/list` entry narrows the values a
+model accepts with `experimental_supportedModelOptions: { [optionId]: valueIds }`;
+an entry without the option id accepts every value.
+
+The model picker shows an option only when some model explicitly lists a
+non-default value. Two values render as a switch, more as a segmented control.
+Models that reject the selected value are disabled with the value's
+`modelUnavailableReason`, and changing the value moves the selection to the
+current model when compatible, then the catalog default, then the first
+compatible model. The picker trigger names active non-default options.
+
+`experimental_modelOptions` on thread spawn, send, edit-message and
+queue-create requests, `NewThreadRequest.experimental_modelOptions`, and the
+CLI's repeatable `--model-option id=value` carry selections. The server
+resolves each declared option from the request, then the thread's last turn,
+then the project defaults, then `defaultValue`; explicit unknown ids or values
+are rejected with a 400 and client preferences fall back silently. Resolved
+values are recorded with turn requests (`execution.modelOptions`), queued rows
+(`ThreadQueuedMessage.experimental_modelOptions`) and project defaults, and
+reach `deriveProviderOptions` as `experimental_modelOptions`. Values cross the
+daemon wire only as the provider's own derived `providerOptions`; the model
+catalog field is a daemon wire change.
+
+The Codex provider is the first consumer: a `daybreak` switch derived from
+each model's `availableAccessPrograms`, sent as `cyberAccessProgram` on
+`turn/start`.
+
+Before stabilization, audit server-side validation of a value against the
+selected model (today the picker and the provider bridge enforce it), values
+on join-turn steers, editing a queued row's options, `ComposerSelection` and
+`experimental_ProviderModelPicker` support, a declared icon per option,
+behavior when a provider renames or removes an option, and whether the
+resolved-execution field should keep its unprefixed `modelOptions` name.

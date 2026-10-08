@@ -24,6 +24,7 @@ function providerOptions(
     throw new Error("expected Claude Code provider options");
   }
   return deriveProviderOptions({
+    experimental_modelOptions: {},
     threadId: "thread-1",
     projectId: "project-1",
     model: "claude-sonnet-5",

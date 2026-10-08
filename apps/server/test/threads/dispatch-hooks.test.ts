@@ -1116,6 +1116,7 @@ describe("message.dispatch grouped authors", () => {
             reasoningLevel: "medium",
             permissionMode: "auto",
             serviceTier: "default",
+            modelOptions: {},
             payload: { kind: "inline" },
             waitingOn: { kind: "thread-busy" },
             sendAt: null,

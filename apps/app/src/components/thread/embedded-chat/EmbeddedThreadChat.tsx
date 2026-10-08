@@ -22,6 +22,7 @@ import type {
   JsonValue,
 } from "@get-bb/plugin-sdk";
 import { readExecutionSelection } from "@/components/promptbox/composer-selection-settle";
+import { useModelOptionSelection } from "@/hooks/thread-creation-options/model-option-selection";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -280,7 +281,17 @@ function EmbeddedThreadChatWithComposer({
     serviceTierSupportByProvider,
     serviceTierOptions,
     isLoadingModels,
+    providers,
   } = threadCreationOptions;
+  const modelOptionSelection = useModelOptionSelection({
+    scope: "thread",
+    provider:
+      selectedProviderId === providerId
+        ? providers.find((provider) => provider.id === selectedProviderId)
+        : undefined,
+    initialValues: defaultExecutionOptions?.modelOptions,
+    resetKey: composer.executionResetKey,
+  });
   const selectedExecutionModel = activeModel?.model ?? selectedModel;
   const selectedExecutionServiceTier = supportsServiceTier
     ? serviceTier
@@ -303,12 +314,16 @@ function EmbeddedThreadChatWithComposer({
               : {}),
           }
         : {}),
+      ...(modelOptionSelection.requestValues === undefined
+        ? {}
+        : { experimental_modelOptions: modelOptionSelection.requestValues }),
       ...(effectivePermissionMode !== undefined
         ? { permissionMode: effectivePermissionMode }
         : {}),
     }),
     [
       effectivePermissionMode,
+      modelOptionSelection.requestValues,
       reasoningLevel,
       selectedExecutionModel,
       selectedExecutionServiceTier,
@@ -1027,6 +1042,11 @@ function EmbeddedThreadChatWithComposer({
         supportByProvider: serviceTierSupportByProvider,
         options: serviceTierOptions,
       },
+      modelOptions: {
+        declarations: modelOptionSelection.declarations,
+        values: modelOptionSelection.values,
+        onChange: modelOptionSelection.setValues,
+      },
       reasoning: {
         value: reasoningLevel,
         options: reasoningOptions,
@@ -1035,6 +1055,9 @@ function EmbeddedThreadChatWithComposer({
     }),
     [
       activeModel,
+      modelOptionSelection.declarations,
+      modelOptionSelection.setValues,
+      modelOptionSelection.values,
       executionOptionsRouting,
       hasMultipleProviders,
       isLoadingModels,
@@ -1061,6 +1084,7 @@ function EmbeddedThreadChatWithComposer({
       inlineEditingQueuedMessage
         ? {
             ...bottomExecutionConfig,
+            modelOptions: undefined,
             model: {
               ...bottomExecutionConfig.model,
               active: { model: inlineEditingQueuedMessage.model },

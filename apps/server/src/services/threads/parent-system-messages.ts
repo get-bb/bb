@@ -491,6 +491,7 @@ export async function queueParentSystemMessage(
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
     serviceTier: execution.serviceTier,
+    modelOptions: execution.modelOptions,
     waitingOn: host
       ? { kind: "host-offline", hostName: host.name }
       : { kind: hasPendingInteraction ? "interaction" : "thread-busy" },

@@ -32,6 +32,7 @@ interface ThreadExecutionSelection {
   reasoningLevel: ReasoningLevel;
   serviceTier: ServiceTier | undefined;
   supportsServiceTier: boolean;
+  modelOptions?: Readonly<Record<string, string>>;
   executionInputSources: ExistingThreadExecutionInputSources;
 }
 
@@ -42,6 +43,7 @@ interface SharedThreadExecutionRequestFields {
   permissionMode?: PermissionMode;
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
+  experimental_modelOptions?: Readonly<Record<string, string>>;
   executionInputSources?: ExistingThreadExecutionInputSources;
 }
 
@@ -321,6 +323,14 @@ function buildSharedThreadExecutionRequestFields(
       : {}),
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
-    executionInputSources: execution.executionInputSources,
+    ...(execution.modelOptions === undefined
+      ? { executionInputSources: execution.executionInputSources }
+      : {
+          experimental_modelOptions: execution.modelOptions,
+          executionInputSources: {
+            ...execution.executionInputSources,
+            modelOptions: "explicit",
+          },
+        }),
   };
 }

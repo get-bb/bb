@@ -34,6 +34,7 @@ const appServerPath = fileURLToPath(
 const execution = {
   model: "test-model",
   serviceTier: "default",
+  modelOptions: {},
   reasoningLevel: "medium",
   permissionMode: "full",
   source: "client/turn/requested",

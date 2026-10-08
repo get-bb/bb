@@ -9,6 +9,7 @@ import type {
   ProviderComposerAction,
   ProviderExtensionKinds,
   ProviderInfo,
+  ProviderModelOption,
   ProviderOptionDescriptor,
 } from "@bb/domain";
 import type {
@@ -71,6 +72,29 @@ function projectServiceTiers(
   return declaration.capabilities.supportsServiceTier
     ? [...DEFAULT_SERVICE_TIERS]
     : undefined;
+}
+
+function projectModelOptions(
+  declaration: PluginProviderDeclaration,
+): ProviderModelOption[] | undefined {
+  return declaration.experimental_modelOptions?.map((option) => ({
+    id: option.id,
+    label: option.label,
+    ...(option.description === undefined
+      ? {}
+      : { description: option.description }),
+    values: option.values.map((value) => ({
+      id: value.id,
+      label: value.label,
+      ...(value.description === undefined
+        ? {}
+        : { description: value.description }),
+      ...(value.modelUnavailableReason === undefined
+        ? {}
+        : { modelUnavailableReason: value.modelUnavailableReason }),
+    })),
+    defaultValue: option.defaultValue,
+  }));
 }
 
 function projectExtensionKinds(
@@ -154,6 +178,7 @@ export function buildPluginProviderRegistration(args: {
 
   const strings = declaration.strings;
   const serviceTiers = projectServiceTiers(declaration);
+  const modelOptions = projectModelOptions(declaration);
   const extensionKinds = projectExtensionKinds(args.pluginId, declaration);
 
   const info: ProviderInfo = {
@@ -206,6 +231,9 @@ export function buildPluginProviderRegistration(args: {
         }),
     reasoningLevels: projectReasoningLevels(declaration),
     ...(serviceTiers === undefined ? {} : { serviceTiers }),
+    ...(modelOptions === undefined
+      ? {}
+      : { experimental_modelOptions: modelOptions }),
     ...(extensionKinds === undefined ? {} : { extensionKinds }),
   };
 

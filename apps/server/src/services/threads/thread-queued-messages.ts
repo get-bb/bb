@@ -2,6 +2,7 @@ import {
   promptInputSchema,
   queuedMessageWaitingOnSchema,
   threadQueuedMessageSchema,
+  parseStoredModelOptionValues,
 } from "@bb/domain";
 import type {
   PermissionMode,
@@ -36,6 +37,7 @@ interface StoredQueuedThreadMessageRow {
   permissionMode: PermissionMode;
   sendAt: number | null;
   serviceTier: string;
+  modelOptionsJson: string;
   senderThreadId: string | null;
   requestedByInitiator: StartedOnBehalfOfInitiator | null;
   requestedByThreadId: string | null;
@@ -179,6 +181,9 @@ export function toThreadQueuedMessage(
     reasoningLevel: row.reasoningLevel,
     permissionMode: row.permissionMode,
     serviceTier: row.serviceTier,
+    experimental_modelOptions: parseStoredModelOptionValues(
+      row.modelOptionsJson,
+    ),
     groupWithNext: row.groupWithNext,
     sendAt: row.sendAt,
     waitingOn: parseStoredQueuedThreadMessageWaitingOn(row),

@@ -26,6 +26,7 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
 const RESOLVED: ResolvedThreadExecutionOptions = {
   model: "gpt-5.6-sol",
   serviceTier: "default",
+  modelOptions: {},
   reasoningLevel: "xhigh",
   permissionMode: "full",
   source: "client/turn/start",

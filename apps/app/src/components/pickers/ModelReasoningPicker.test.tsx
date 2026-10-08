@@ -10,6 +10,7 @@ import {
 import type {
   AvailableModel,
   ProviderInfo,
+  ProviderModelOption,
   ProviderOptionDescriptor,
   ReasoningLevel,
   ServiceTier,
@@ -181,6 +182,9 @@ function renderPicker({
   splitPane = false,
   muted = false,
   handoff,
+  modelOptionDeclarations,
+  modelOptionValues,
+  onModelOptionValuesChange,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -205,6 +209,9 @@ function renderPicker({
   splitPane?: boolean;
   muted?: boolean;
   handoff?: ModelReasoningPickerHandoff;
+  modelOptionDeclarations?: readonly ProviderModelOption[];
+  modelOptionValues?: Record<string, string>;
+  onModelOptionValuesChange?: (values: Record<string, string>) => void;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -249,6 +256,9 @@ function renderPicker({
         muted={muted}
         modal={false}
         handoff={handoff}
+        modelOptionDeclarations={modelOptionDeclarations}
+        modelOptionValues={modelOptionValues}
+        onModelOptionValuesChange={onModelOptionValuesChange}
       />
       <button type="button">Composer action</button>
     </div>
@@ -1437,5 +1447,153 @@ describe("ModelReasoningPicker service tiers", () => {
       await screen.findByRole("switch", { name: "Turbo mode" }),
     ).toBeTruthy();
     expect(screen.queryByRole("radiogroup", { name: "Speed" })).toBeNull();
+  });
+});
+
+describe("ModelReasoningPicker model options", () => {
+  beforeAll(() => ModelReasoningMenu.preload());
+
+  const daybreak: ProviderModelOption = {
+    id: "daybreak",
+    label: "Daybreak",
+    description: "Broader cybersecurity capabilities",
+    values: [
+      {
+        id: "off",
+        label: "Off",
+        modelUnavailableReason: "Turn on Daybreak to use this model",
+      },
+      {
+        id: "on",
+        label: "On",
+        modelUnavailableReason: "Turn off Daybreak to use this model",
+      },
+    ],
+    defaultValue: "off",
+  };
+  const daybreakModels: readonly ModelPickerOption[] = [
+    {
+      value: "gpt-6-astra",
+      label: "GPT-6-Astra",
+      isDefault: true,
+      supportedModelOptions: { daybreak: ["off"] },
+    },
+    {
+      value: "gpt-6-sol",
+      label: "GPT-6-Sol",
+      supportedModelOptions: { daybreak: ["off", "on"] },
+    },
+  ];
+
+  function openPicker(): void {
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Provider, model and reasoning/ }),
+    );
+  }
+
+  function modelRow(label: string): HTMLElement {
+    const trigger = screen.getByRole("button", {
+      name: /^Provider, model and reasoning/,
+    });
+    const row = screen
+      .getAllByText(label)
+      .map((element) => element.closest("button"))
+      .find((button) => button !== null && button !== trigger);
+    if (row == null) throw new Error(`No row for ${label}`);
+    return row;
+  }
+
+  it("turns the option on and moves an incompatible model to a compatible one", () => {
+    const onModelChange = vi.fn();
+    const onModelOptionValuesChange = vi.fn();
+    renderPicker({
+      modelOptions: daybreakModels,
+      modelValue: "gpt-6-astra",
+      onModelChange,
+      modelOptionDeclarations: [daybreak],
+      modelOptionValues: { daybreak: "off" },
+      onModelOptionValuesChange,
+    });
+    openPicker();
+
+    const toggle = screen.getByRole("switch", { name: "Daybreak" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+
+    expect(onModelChange).toHaveBeenCalledExactlyOnceWith("gpt-6-sol");
+    expect(onModelOptionValuesChange).toHaveBeenCalledExactlyOnceWith({
+      daybreak: "on",
+    });
+  });
+
+  it("keeps a compatible model when the option changes", () => {
+    const onModelChange = vi.fn();
+    const onModelOptionValuesChange = vi.fn();
+    renderPicker({
+      modelOptions: daybreakModels,
+      modelValue: "gpt-6-sol",
+      onModelChange,
+      modelOptionDeclarations: [daybreak],
+      modelOptionValues: { daybreak: "on" },
+      onModelOptionValuesChange,
+    });
+    openPicker();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Daybreak" }));
+
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(onModelOptionValuesChange).toHaveBeenCalledExactlyOnceWith({
+      daybreak: "off",
+    });
+  });
+
+  it("greys out models that reject the selected value and ignores clicks on them", () => {
+    const onModelChange = vi.fn();
+    renderPicker({
+      modelOptions: daybreakModels,
+      modelValue: "gpt-6-sol",
+      onModelChange,
+      modelOptionDeclarations: [daybreak],
+      modelOptionValues: { daybreak: "on" },
+      onModelOptionValuesChange: vi.fn(),
+    });
+    openPicker();
+
+    const astra = modelRow("6-Astra");
+    expect(astra.getAttribute("aria-disabled")).toBe("true");
+    expect(astra.getAttribute("title")).toBe(
+      "Turn off Daybreak to use this model",
+    );
+    fireEvent.click(astra);
+    expect(onModelChange).not.toHaveBeenCalled();
+    expect(modelRow("6-Sol").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("names an active option on the trigger", () => {
+    renderPicker({
+      modelOptions: daybreakModels,
+      modelValue: "gpt-6-sol",
+      modelOptionDeclarations: [daybreak],
+      modelOptionValues: { daybreak: "on" },
+      onModelOptionValuesChange: vi.fn(),
+    });
+
+    expect(
+      screen.getByRole("button", { name: /^Provider, model and reasoning/ })
+        .textContent,
+    ).toContain("Daybreak");
+  });
+
+  it("hides the option when no model accepts a non-default value", () => {
+    renderPicker({
+      modelOptions: [daybreakModels[0]!],
+      modelValue: "gpt-6-astra",
+      modelOptionDeclarations: [daybreak],
+      modelOptionValues: { daybreak: "off" },
+      onModelOptionValuesChange: vi.fn(),
+    });
+    openPicker();
+
+    expect(screen.queryByRole("switch", { name: "Daybreak" })).toBeNull();
   });
 });

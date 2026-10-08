@@ -397,6 +397,7 @@ describe("prompt history service", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      modelOptions: {},
       waitingOn: null,
       sendAt: null,
       payload: { kind: "inline" },

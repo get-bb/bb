@@ -99,6 +99,7 @@ describe("public thread default routes", () => {
         providerId: "codex",
         model: "gpt-5-mini",
         serviceTier: "fast",
+        modelOptions: { daybreak: "off" },
         reasoningLevel: "high",
         permissionMode: "accept-edits",
       });
@@ -228,6 +229,7 @@ describe("public thread default routes", () => {
         providerId: "codex",
         model: "gpt-5",
         serviceTier: "fast",
+        modelOptions: {},
         reasoningLevel: "high",
         permissionMode: "accept-edits",
       });
@@ -302,6 +304,7 @@ describe("public thread default routes", () => {
         providerId: "codex",
         model: "gpt-5",
         serviceTier: "fast",
+        modelOptions: {},
         reasoningLevel: "high",
         permissionMode: "accept-edits",
       });
@@ -669,6 +672,7 @@ describe("public thread default routes", () => {
         providerId: thread.providerId,
         model: "gpt-5",
         serviceTier: "default",
+        modelOptions: {},
         reasoningLevel: "medium",
         permissionMode: "full",
       });
@@ -714,6 +718,7 @@ describe("public thread default routes", () => {
         providerId: "codex",
         model: "gpt-5",
         serviceTier: "default",
+        modelOptions: {},
         reasoningLevel: "medium",
         permissionMode: "full",
       });

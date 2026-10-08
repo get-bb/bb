@@ -47,6 +47,8 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
+    --model-option <id=value>      Provider model option, such as daybreak=on (repeatable;
+                                   see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
@@ -275,6 +277,7 @@ Messaging:
     --mode <mode>                          Message mode: steer (default), queue, or auto
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
+    --model-option <id=value>              Provider model option override, such as daybreak=on (repeatable)
     --plan                                 Send the message as the provider's /plan action
     --send-at <when>                       Dispatch at an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                          CLI-local absolute path, file: URL, or uploaded file path

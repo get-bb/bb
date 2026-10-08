@@ -173,6 +173,7 @@ describe("context clear dispatch races", () => {
             reasoningLevel: "medium",
             permissionMode: "full",
             serviceTier: "default",
+            modelOptions: {},
             waitingOn: { kind: "thread-busy" },
             sendAt: null,
             payload: { kind: "inline" },

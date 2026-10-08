@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { jsonObjectSchema } from "./json-value.js";
+import { modelOptionValuesSchema } from "./model-options.js";
 
 export const reasoningLevelValues = [
   "none",
@@ -468,6 +469,7 @@ export type CallerExecutionInputSource = z.infer<
 const threadExecutionOptionsSchema = z.object({
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
+  modelOptions: modelOptionValuesSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeSchema.optional(),
   source: threadExecutionSourceSchema.optional(),
@@ -481,6 +483,7 @@ export const resolvedThreadExecutionOptionsSchema =
   threadExecutionOptionsSchema.extend({
     model: z.string().min(1),
     serviceTier: serviceTierSchema,
+    modelOptions: modelOptionValuesSchema.default(() => ({})),
     reasoningLevel: reasoningLevelSchema,
     permissionMode: permissionModeSchema,
     source: threadExecutionSourceSchema,
@@ -551,6 +554,7 @@ export const projectExecutionDefaultsSchema = z.object({
   providerId: z.string().min(1),
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
+  modelOptions: modelOptionValuesSchema.default(() => ({})),
   reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,
 });

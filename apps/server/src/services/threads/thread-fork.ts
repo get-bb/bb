@@ -99,6 +99,9 @@ export async function createThreadForkFromRequest(
       ...(sourceExecution?.serviceTier
         ? { serviceTier: sourceExecution.serviceTier }
         : {}),
+      ...(sourceExecution?.modelOptions
+        ? { experimental_modelOptions: sourceExecution.modelOptions }
+        : {}),
       projectId: sourceThread.projectId,
       providerId: sourceThread.providerId,
       ...(request.sourceSeqEnd === undefined

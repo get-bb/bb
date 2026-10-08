@@ -43,6 +43,7 @@ describe("project reads during provider startup", () => {
           reasoningLevel: "medium" as const,
           permissionMode: "auto" as const,
           serviceTier: "default" as const,
+          modelOptions: {},
         };
         for (const phase of ["starting", "unavailable"] as const) {
           if (phase === "unavailable") {

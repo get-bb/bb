@@ -290,6 +290,7 @@ describe("ProjectDetailSettingsView", () => {
       providerId: "codex",
       model: "gpt-6-astra",
       serviceTier: "default",
+      modelOptions: {},
       reasoningLevel: "medium",
       permissionMode: "auto",
     };

@@ -7,9 +7,59 @@ import {
   type ReasoningLevel,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import {
+  DAYBREAK_MODEL_OPTION_ID,
+  DAYBREAK_OFF,
+  DAYBREAK_ON,
+} from "./daybreak.js";
 
 const CODEX_FAST_SERVICE_TIER = "priority";
 const BB_FAST_SERVICE_TIER = "fast";
+
+const DAYBREAK_ALIAS_MODELS: ReadonlySet<string> = new Set([
+  "gpt-daybreak-blue-latest",
+  "gpt-daybreak-red-latest",
+]);
+
+export type CodexDaybreakProgram = "daybreakBlue" | "daybreakRed";
+
+export function parseCyberAccessPrograms(raw: unknown): string[] | null {
+  if (raw == null || typeof raw !== "object") {
+    return null;
+  }
+  const programs = (raw as { availableAccessPrograms?: unknown })
+    .availableAccessPrograms;
+  if (programs == null || typeof programs !== "object") {
+    return null;
+  }
+  const cyber = (programs as { cyber?: unknown }).cyber;
+  return Array.isArray(cyber)
+    ? cyber.filter((program): program is string => typeof program === "string")
+    : null;
+}
+
+export function codexDaybreakProgram(
+  cyber: readonly string[] | null,
+): CodexDaybreakProgram | null {
+  if (cyber?.includes("daybreakBlue")) {
+    return "daybreakBlue";
+  }
+  if (cyber?.includes("daybreakRed")) {
+    return "daybreakRed";
+  }
+  return null;
+}
+
+function daybreakOptionValues(cyber: readonly string[] | null): string[] {
+  const values: string[] = [];
+  if (cyber === null || cyber.length === 0 || cyber.includes("standard")) {
+    values.push(DAYBREAK_OFF);
+  }
+  if (codexDaybreakProgram(cyber) !== null) {
+    values.push(DAYBREAK_ON);
+  }
+  return values;
+}
 
 const DEFAULT_REASONING_EFFORTS: readonly ModelReasoningEffort[] =
   reasoningEffortsForLevels(["low", "medium", "high", "xhigh"]);
@@ -160,6 +210,11 @@ function toAvailableModel(
     supportedReasoningEfforts: efforts,
     defaultReasoningEffort,
     supportedServiceTiers: parseSupportedServiceTiers(raw),
+    experimental_supportedModelOptions: {
+      [DAYBREAK_MODEL_OPTION_ID]: daybreakOptionValues(
+        parseCyberAccessPrograms(raw),
+      ),
+    },
     isDefault: raw.isDefault === true,
   };
 }
@@ -188,4 +243,19 @@ export function parseModelsResponse(result: unknown): AvailableModel[] {
   }
 
   return models;
+}
+
+export function hideDaybreakAliasModels(
+  models: readonly AvailableModel[],
+): AvailableModel[] {
+  const switchable = models.some(
+    (model) =>
+      !DAYBREAK_ALIAS_MODELS.has(model.model) &&
+      model.experimental_supportedModelOptions?.[
+        DAYBREAK_MODEL_OPTION_ID
+      ]?.includes(DAYBREAK_ON) === true,
+  );
+  return switchable
+    ? models.filter((model) => !DAYBREAK_ALIAS_MODELS.has(model.model))
+    : [...models];
 }

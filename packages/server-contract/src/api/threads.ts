@@ -19,6 +19,7 @@ import {
   reasoningLevelSchema,
   rawThreadIdSchema,
   serviceTierSchema,
+  modelOptionValuesSchema,
   startedOnBehalfOfSchema,
   threadCreateOriginSchema,
   threadOriginKindSchema,
@@ -68,6 +69,7 @@ export const createExecutionInputSourcesSchema = z
     providerId: executionInputFieldSourceSchema.optional(),
     model: executionInputFieldSourceSchema.optional(),
     serviceTier: executionInputFieldSourceSchema.optional(),
+    modelOptions: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
   })
@@ -80,6 +82,7 @@ export const existingThreadExecutionInputSourcesSchema = z
   .object({
     model: executionInputFieldSourceSchema.optional(),
     serviceTier: executionInputFieldSourceSchema.optional(),
+    modelOptions: executionInputFieldSourceSchema.optional(),
     reasoningLevel: executionInputFieldSourceSchema.optional(),
     permissionMode: executionInputFieldSourceSchema.optional(),
   })
@@ -101,6 +104,7 @@ export const createThreadRequestSchema = z
     input: z.array(promptInputSchema),
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
+    experimental_modelOptions: modelOptionValuesSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
     permissionMode: permissionModeInputSchema.optional(),
     executionInputSources: createExecutionInputSourcesSchema.optional(),
@@ -236,6 +240,7 @@ const sendMessageRequestFieldsSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
+  experimental_modelOptions: modelOptionValuesSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeInputSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
@@ -366,6 +371,7 @@ export const createQueuedMessageRequestSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
+  experimental_modelOptions: modelOptionValuesSchema.optional(),
   reasoningLevel: reasoningLevelSchema.optional(),
   permissionMode: permissionModeInputSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),

@@ -7,6 +7,8 @@ import {
   type PermissionMode,
   type PromptInput,
   serviceTierSchema,
+  modelOptionIdSchema,
+  type ModelOptionValues,
   type ServiceTier,
 } from "@bb/domain";
 import {
@@ -24,6 +26,8 @@ export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
 
 export const SERVICE_TIER_HELP =
   "Service tier id the provider lists for the model, such as default or fast (see `bb provider models`)";
+export const MODEL_OPTION_HELP =
+  "Provider model option as <id>=<value>, such as daybreak=on (repeatable; see `bb provider models`)";
 export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
 export const PLAN_HELP =
@@ -177,6 +181,31 @@ export function parseServiceTier(
   throw new Error(
     `Invalid service tier '${value}'. Expected a tier id the provider lists, such as default or fast.`,
   );
+}
+
+export function parseModelOptions(
+  values: readonly string[] | undefined,
+): ModelOptionValues | undefined {
+  if (values === undefined || values.length === 0) return undefined;
+  const parsed: Record<string, string> = {};
+  for (const value of values) {
+    const separator = value.indexOf("=");
+    const optionId = separator === -1 ? "" : value.slice(0, separator);
+    const valueId = separator === -1 ? "" : value.slice(separator + 1);
+    if (
+      !modelOptionIdSchema.safeParse(optionId).success ||
+      !modelOptionIdSchema.safeParse(valueId).success
+    ) {
+      throw new Error(
+        `Invalid model option '${value}'. Expected <id>=<value>, such as daybreak=on.`,
+      );
+    }
+    if (Object.hasOwn(parsed, optionId)) {
+      throw new Error(`Model option '${optionId}' is given more than once.`);
+    }
+    parsed[optionId] = valueId;
+  }
+  return parsed;
 }
 
 export function parsePermissionMode(

@@ -1,0 +1,2 @@
+ALTER TABLE `project_execution_defaults` ADD `model_options_json` text DEFAULT '{}' NOT NULL;--> statement-breakpoint
+ALTER TABLE `queued_thread_messages` ADD `model_options_json` text DEFAULT '{}' NOT NULL;

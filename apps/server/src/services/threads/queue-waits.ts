@@ -132,6 +132,7 @@ export function recordQueuedMessageWait(
           reasoningLevel: args.message.execution.reasoningLevel,
           permissionMode: args.message.execution.permissionMode,
           serviceTier: args.message.execution.serviceTier,
+          modelOptions: args.message.execution.modelOptions,
           waitingOn: args.waitingOn,
           sendAt: args.sendAt,
           payload: args.message.payload,

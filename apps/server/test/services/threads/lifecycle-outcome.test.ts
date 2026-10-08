@@ -81,6 +81,7 @@ function seedOpenPlanTurnWithGoal(db: DbConnection, threadId: string): void {
         permissionMode: "workspace-write",
         source: "client/turn/requested",
         serviceTier: "default",
+        modelOptions: {},
       },
     },
   });

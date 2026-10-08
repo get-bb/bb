@@ -73,6 +73,11 @@
       "source": "./src/prompt-attachment-limits.ts",
       "types": "./src/prompt-attachment-limits.ts",
       "default": "./src/prompt-attachment-limits.ts"
+    },
+    "./model-options": {
+      "source": "./src/model-options.ts",
+      "types": "./src/model-options.ts",
+      "default": "./src/model-options.ts"
     }
   },
   "types": "./src/index.ts",

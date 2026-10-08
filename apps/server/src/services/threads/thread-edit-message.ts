@@ -92,6 +92,7 @@ function requestFingerprint(payload: EditMessageRequest): string {
         reasoningLevel: payload.reasoningLevel,
         senderThreadId: payload.senderThreadId,
         serviceTier: payload.serviceTier,
+        modelOptions: payload.experimental_modelOptions,
       }),
     )
     .digest("hex");

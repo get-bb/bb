@@ -117,6 +117,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderFallbackModel",
   "PluginProviderMaintenance",
   "PluginProviderModelCatalogScope",
+  "PluginProviderModelOptionDeclaration",
+  "PluginProviderModelOptionValueDeclaration",
   "PluginProviderNativeRootEntry",
   "PluginProviderNativeRoots",
   "PluginProviderOptionDescriptor",

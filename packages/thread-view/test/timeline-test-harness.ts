@@ -543,6 +543,7 @@ function withExplicitApprovalStatus(row: ThreadEventRow): ThreadEventRow {
 const defaultExecution: ResolvedThreadExecutionOptions = {
   model: "gpt-5",
   serviceTier: "default",
+  modelOptions: {},
   reasoningLevel: "medium",
   permissionMode: "full",
   source: "client/turn/requested",

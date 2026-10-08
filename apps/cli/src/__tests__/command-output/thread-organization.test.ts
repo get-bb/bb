@@ -27,6 +27,7 @@ function queuedMessage(
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
+    experimental_modelOptions: {},
     groupWithNext: false,
     sendAt: null,
     waitingOn: null,

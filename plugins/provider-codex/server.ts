@@ -3,6 +3,11 @@ import { registerUsageSource } from "./src/usage-source.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { codexExtensionKinds } from "./src/extension-kinds.js";
 import { CODEX_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
+import {
+  DAYBREAK_MODEL_OPTION,
+  DAYBREAK_MODEL_OPTION_ID,
+  DAYBREAK_ON,
+} from "./src/daybreak.js";
 
 export default function plugin(bb: BbPluginApi) {
   registerUsageSource(bb);
@@ -74,11 +79,15 @@ export default function plugin(bb: BbPluginApi) {
       { id: "fast", label: "Fast" },
       { id: "ultrafast", label: "Ultrafast" },
     ],
+    experimental_modelOptions: [DAYBREAK_MODEL_OPTION],
     composerActions: ["plan", "goal"],
     deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
+        daybreak:
+          context.experimental_modelOptions[DAYBREAK_MODEL_OPTION_ID] ===
+          DAYBREAK_ON,
       };
     },
     extensionKinds: codexExtensionKinds,

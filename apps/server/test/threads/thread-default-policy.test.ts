@@ -67,6 +67,7 @@ function makeDefaults(
     providerId: "codex",
     reasoningLevel: "medium",
     serviceTier: "default",
+    modelOptions: {},
     ...overrides,
   };
 }

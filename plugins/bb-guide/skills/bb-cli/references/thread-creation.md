@@ -15,6 +15,9 @@
   `--reasoning-level`, `--service-tier`, and `--permission-mode`. A service
   tier is a provider-defined id (`default`, `fast`, Codex `ultrafast`);
   `bb provider models <provider-id>` lists the tiers each model accepts.
+  `--model-option <id>=<value>` (repeatable) sets a provider-declared model
+  option such as Codex `daybreak=on`; `bb provider models` lists the values
+  each model accepts, and an omitted option keeps the thread's previous value.
 - List plugin-provisioned environment choices with `bb environment providers`. Add `--project <id>` and optionally `--machine <id>` to omit providers whose declared requirements are unmet. Without a machine, the project listing includes providers structurally eligible on any persistent machine. Git inspection and plugin availability run only for the selected provider and machine during thread creation. `--json` includes each provider's `description` and `icon`, its `requires` facts and its `inputs` JSON Schema or null.
   Pass the selected ID to `--environment-provider`. Add
   `--environment-inputs <json>` only when the provider's schema does not accept

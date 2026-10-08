@@ -2298,6 +2298,7 @@ describe("public thread data routes", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "fast",
+        modelOptions: { daybreak: "off" },
         source: "client/turn/requested",
       });
     });
@@ -2460,6 +2461,7 @@ describe("public thread data routes", () => {
         reasoningLevel: "high",
         permissionMode: "accept-edits",
         serviceTier: "fast",
+        modelOptions: { daybreak: "off" },
         source: "client/turn/requested",
       });
     });
@@ -2513,6 +2515,7 @@ describe("public thread data routes", () => {
         reasoningLevel: "high",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
         source: "client/turn/requested",
       });
     });

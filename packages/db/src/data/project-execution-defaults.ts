@@ -1,9 +1,11 @@
 import { eq, inArray } from "drizzle-orm";
-import type {
-  ProjectExecutionDefaults,
-  PermissionMode,
-  ReasoningLevel,
-  ServiceTier,
+import {
+  parseStoredModelOptionValues,
+  serializeModelOptionValues,
+  type ProjectExecutionDefaults,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
 } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { projectExecutionDefaults } from "../schema.js";
@@ -22,6 +24,22 @@ export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionD
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
   serviceTier: ServiceTier;
+  modelOptions: Readonly<Record<string, string>>;
+}
+
+function toProjectExecutionDefaults(row: {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+  permissionMode: PermissionMode;
+  serviceTier: ServiceTier;
+  modelOptionsJson: string;
+}): ProjectExecutionDefaults {
+  const { modelOptionsJson, ...defaults } = row;
+  return {
+    ...defaults,
+    modelOptions: parseStoredModelOptionValues(modelOptionsJson),
+  };
 }
 
 export function getProjectExecutionDefaults(
@@ -35,12 +53,13 @@ export function getProjectExecutionDefaults(
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
       serviceTier: projectExecutionDefaults.serviceTier,
+      modelOptionsJson: projectExecutionDefaults.modelOptionsJson,
     })
     .from(projectExecutionDefaults)
     .where(eq(projectExecutionDefaults.projectId, args.projectId))
     .get();
 
-  return row ?? null;
+  return row ? toProjectExecutionDefaults(row) : null;
 }
 
 export function listProjectExecutionDefaultsByProjectIds(
@@ -60,6 +79,7 @@ export function listProjectExecutionDefaultsByProjectIds(
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
       serviceTier: projectExecutionDefaults.serviceTier,
+      modelOptionsJson: projectExecutionDefaults.modelOptionsJson,
     })
     .from(projectExecutionDefaults)
     .where(inArray(projectExecutionDefaults.projectId, [...args.projectIds]))
@@ -67,7 +87,7 @@ export function listProjectExecutionDefaultsByProjectIds(
 
   for (const row of rows) {
     const { projectId, ...defaults } = row;
-    byProjectId.set(projectId, defaults);
+    byProjectId.set(projectId, toProjectExecutionDefaults(defaults));
   }
   return byProjectId;
 }
@@ -86,6 +106,7 @@ export function upsertProjectExecutionDefaults(
       reasoningLevel: args.reasoningLevel,
       permissionMode: args.permissionMode,
       serviceTier: args.serviceTier,
+      modelOptionsJson: serializeModelOptionValues(args.modelOptions),
       updatedAt,
     })
     .onConflictDoUpdate({
@@ -96,6 +117,7 @@ export function upsertProjectExecutionDefaults(
         reasoningLevel: args.reasoningLevel,
         permissionMode: args.permissionMode,
         serviceTier: args.serviceTier,
+        modelOptionsJson: serializeModelOptionValues(args.modelOptions),
         updatedAt,
       },
     })
@@ -105,8 +127,9 @@ export function upsertProjectExecutionDefaults(
       reasoningLevel: projectExecutionDefaults.reasoningLevel,
       permissionMode: projectExecutionDefaults.permissionMode,
       serviceTier: projectExecutionDefaults.serviceTier,
+      modelOptionsJson: projectExecutionDefaults.modelOptionsJson,
     })
     .get();
 
-  return row;
+  return toProjectExecutionDefaults(row);
 }

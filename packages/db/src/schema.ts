@@ -180,6 +180,7 @@ export const projectExecutionDefaults = sqliteTable(
     providerId: text("provider_id").notNull(),
     model: text("model").notNull(),
     serviceTier: text("service_tier").$type<ServiceTier>().notNull(),
+    modelOptionsJson: text("model_options_json").notNull().default("{}"),
     reasoningLevel: text("reasoning_level").$type<ReasoningLevel>().notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     updatedAt: integer("updated_at").notNull(),
@@ -1016,6 +1017,7 @@ export const queuedThreadMessages = sqliteTable(
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     serviceTier: text("service_tier").notNull(),
+    modelOptionsJson: text("model_options_json").notNull().default("{}"),
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),

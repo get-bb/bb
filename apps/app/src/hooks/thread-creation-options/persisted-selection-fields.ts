@@ -2,7 +2,12 @@ import { atom, useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
-import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import {
+  modelOptionValuesSchema,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
+} from "@bb/domain";
 import { createTabScopedStorage } from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
@@ -13,6 +18,7 @@ const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const MACHINE_STORAGE_KEY = "bb.promptbox.machine";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
+const MODEL_OPTIONS_STORAGE_KEY = "bb.promptbox.model-options";
 const PROVIDER_SELECTION_STORAGE_VERSION = "1";
 
 export type StoredServiceTier = "" | ServiceTier;
@@ -128,6 +134,30 @@ const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   ),
   { getOnInit: true },
 );
+const modelOptionValuesStorage = createTabScopedStorage<Record<
+  string,
+  string
+> | null>({
+  parse: (value, initialValue) => {
+    if (value === null || value === "") return initialValue;
+    try {
+      const parsed = modelOptionValuesSchema.safeParse(JSON.parse(value));
+      return parsed.success ? parsed.data : initialValue;
+    } catch {
+      return initialValue;
+    }
+  },
+  serialize: (value) => (value === null ? "" : JSON.stringify(value)),
+});
+const modelOptionValuesAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<Record<string, string> | null>(
+    getProviderSelectionStorageKey(MODEL_OPTIONS_STORAGE_KEY, providerId),
+    null,
+    modelOptionValuesStorage,
+    { getOnInit: true },
+  ),
+);
+const emptyModelOptionValuesAtom = atom<Record<string, string> | null>(null);
 const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
   atomWithStorage<StoredReasoningLevel>(
     getProviderSelectionStorageKey(REASONING_STORAGE_KEY, providerId),
@@ -222,6 +252,23 @@ export function usePromptBoxServiceTierPreference(): PersistedServiceTierSelecti
   const [value, setAtomValue] = useAtom(serviceTierAtom);
   const setValue = useCallback(
     (nextValue: StoredServiceTier) => {
+      setAtomValue(nextValue);
+    },
+    [setAtomValue],
+  );
+  return { setValue, value };
+}
+
+export function usePromptBoxModelOptionsPreference(providerId: string): {
+  value: Record<string, string> | null;
+  setValue: (value: Record<string, string>) => void;
+} {
+  const selectionAtom = providerId
+    ? modelOptionValuesAtomFamily(providerId)
+    : emptyModelOptionValuesAtom;
+  const [value, setAtomValue] = useAtom(selectionAtom);
+  const setValue = useCallback(
+    (nextValue: Record<string, string>) => {
       setAtomValue(nextValue);
     },
     [setAtomValue],

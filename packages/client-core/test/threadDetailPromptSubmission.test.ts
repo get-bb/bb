@@ -126,6 +126,37 @@ describe("threadDetailPromptSubmission", () => {
     });
   });
 
+  it("sends changed model options as an explicit choice", () => {
+    expect(
+      buildAutoFollowUpRequest({
+        execution: {
+          model: "gpt-6-sol",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          supportsServiceTier: true,
+          modelOptions: { daybreak: "on" },
+          executionInputSources: { model: "client-preference" },
+        },
+        input: textInput,
+        threadId: "thread-1",
+      }),
+    ).toEqual({
+      id: "thread-1",
+      input: textInput,
+      mode: "queue-if-active",
+      model: "gpt-6-sol",
+      permissionMode: "full",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      experimental_modelOptions: { daybreak: "on" },
+      executionInputSources: {
+        model: "client-preference",
+        modelOptions: "explicit",
+      },
+    });
+  });
+
   it("omits execution overrides when building auto follow-up requests without concrete defaults", () => {
     expect(
       buildAutoFollowUpRequest({

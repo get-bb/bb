@@ -157,11 +157,10 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface ExperimentalVoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to
@@ -3140,6 +3139,13 @@ export interface NewThreadRequest {
   permissionMode: PermissionMode;
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;
+  /**
+   * The selected value of each picker option the provider declares
+   * (`experimental_modelOptions` on its registration), keyed by option id.
+   * Omitted when the provider declares none. Forward it to `threads.spawn`
+   * unchanged.
+   */
+  experimental_modelOptions?: Readonly<Record<string, string>>;
   /**
    * Per-field provenance (caller-explicit vs. default) for the execution
    * options above, forwarded to `spawn` so the server records what the user

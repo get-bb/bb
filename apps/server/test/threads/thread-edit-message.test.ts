@@ -1122,6 +1122,7 @@ describe("editThreadMessage", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        modelOptions: {},
         waitingOn: { kind: "time" },
         sendAt: Date.now() + 60_000,
         payload: {

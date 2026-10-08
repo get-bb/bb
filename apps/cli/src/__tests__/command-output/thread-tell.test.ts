@@ -261,6 +261,34 @@ describe("bb thread tell command output", () => {
     });
   });
 
+  it("bb thread tell forwards repeated model options", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "tell",
+        "thread-model-options",
+        "hello",
+        "--model-option",
+        "daybreak=on",
+        "--model-option",
+        "verbosity=low",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-model-options" },
+      json: {
+        input: [{ type: "text", text: "hello", mentions: [] }],
+        mode: "steer-if-active",
+        experimental_modelOptions: { daybreak: "on", verbosity: "low" },
+      },
+    });
+  });
+
   it("bb thread tell --plan sends the composer's /plan command mention", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

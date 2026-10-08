@@ -223,6 +223,8 @@ Read the installed declarations for exact current signatures.
 - `PluginProviderIconRegistration`
 - `PluginProviderMaintenance`
 - `PluginProviderModelCatalogScope`
+- `PluginProviderModelOptionDeclaration`
+- `PluginProviderModelOptionValueDeclaration`
 - `PluginProviderNativeRootEntry`
 - `PluginProviderNativeRoots`
 - `PluginProviderOptionDescriptor`

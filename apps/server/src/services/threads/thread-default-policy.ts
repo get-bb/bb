@@ -243,6 +243,7 @@ export function buildProviderThreadExecutionDefaults(
       preferredPermissionMode: DEFAULT_PERMISSION_MODE,
     }),
     serviceTier: DEFAULT_SERVICE_TIER,
+    modelOptions: {},
   };
 }
 

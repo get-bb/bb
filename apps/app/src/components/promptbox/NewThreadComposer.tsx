@@ -99,6 +99,7 @@ import {
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import { usePromptBoxMachinePreference } from "@/hooks/thread-creation-options/persisted-selection-fields";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
+import { useModelOptionSelection } from "@/hooks/thread-creation-options/model-option-selection";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
@@ -904,8 +905,18 @@ export function NewThreadComposer({
     supportsPermissionModeSelection,
     supportsServiceTier,
     clearReuseEnvironment,
+    providers,
   } = creationOptions;
   const selectedThreadModel = activeModel?.model ?? selectedModel;
+  const modelOptionSelection = useModelOptionSelection({
+    scope: selectionScope === "new-thread" ? "new-thread" : "thread",
+    provider: providers.find((provider) => provider.id === selectedProviderId),
+    initialValues:
+      projectDefaults?.providerId === selectedProviderId
+        ? projectDefaults.modelOptions
+        : undefined,
+    resetKey: `${projectId}\0${seedSignature}`,
+  });
   const providerIds = useMemo(
     () => providerOptions.map((option) => option.value),
     [providerOptions],
@@ -1631,6 +1642,9 @@ export function NewThreadComposer({
       const sources: CreateExecutionInputSources = {
         ...executionInputSources,
         ...seededExecutionInputSources,
+        ...(modelOptionSelection.requestValues === undefined
+          ? {}
+          : { modelOptions: "client-preference" as const }),
       };
       const request: NewThreadComposerSubmission = {
         projectId,
@@ -1639,6 +1653,9 @@ export function NewThreadComposer({
         reasoningLevel,
         permissionMode,
         ...(supportsServiceTier && serviceTier ? { serviceTier } : {}),
+        ...(modelOptionSelection.requestValues === undefined
+          ? {}
+          : { experimental_modelOptions: modelOptionSelection.requestValues }),
         executionInputSources: resolveSubmittedExecutionSources(
           submissionEnvironment,
           sources,
@@ -1671,6 +1688,7 @@ export function NewThreadComposer({
     [
       clearReuseEnvironment,
       executionInputSources,
+      modelOptionSelection.requestValues,
       onSubmit,
       permissionMode,
       projectDefaultsUnavailable,
@@ -2078,6 +2096,11 @@ export function NewThreadComposer({
               supportByProvider: serviceTierSupportByProvider,
               options: serviceTierOptions,
             },
+            modelOptions: {
+              declarations: modelOptionSelection.declarations,
+              values: modelOptionSelection.values,
+              onChange: modelOptionSelection.setValues,
+            },
             reasoning: {
               value: reasoningLevel,
               options: reasoningOptions,
@@ -2119,6 +2142,9 @@ export function NewThreadComposer({
       modelLoadError,
       modelLoadFailed,
       modelOptions,
+      modelOptionSelection.declarations,
+      modelOptionSelection.setValues,
+      modelOptionSelection.values,
       moreModelOptions,
       permissionMode,
       permissionModeOptions,

@@ -217,6 +217,7 @@ describe("the requested queue drain", () => {
         reasoningLevel: "medium",
         permissionMode: "auto",
         serviceTier: "default",
+        modelOptions: {},
         senderThreadId: null,
         waitingOn: { kind: "host-offline", hostName: "Test Host" },
         sendAt: null,
@@ -290,6 +291,7 @@ describe("the requested queue drain", () => {
         reasoningLevel: "medium",
         permissionMode: "auto",
         serviceTier: "default",
+        modelOptions: {},
         senderThreadId: null,
         waitingOn: null,
         sendAt: null,
@@ -402,6 +404,7 @@ describe("the requested queue drain", () => {
       seedQueuedMessage(harness.deps, {
         threadId: thread.id,
         content: textInput("scheduled tail"),
+        modelOptions: { daybreak: "off" },
         waitingOn: { kind: "time" },
         sendAt: Date.now() + 1_000,
       });

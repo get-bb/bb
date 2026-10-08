@@ -254,6 +254,7 @@ export async function createQueuedMessageForThread(
           reasoningLevel: execution.reasoningLevel,
           permissionMode: execution.permissionMode,
           serviceTier: execution.serviceTier,
+          modelOptions: execution.modelOptions,
           // An explicit "queue this" is a message waiting for the running turn
           // to end, which is exactly `thread-busy`. Naming it rather than
           // leaving the wait null keeps every row on one vocabulary, and the
@@ -334,6 +335,7 @@ function sendQueuedMessagePayload(
     permissionMode: queuedMessage.permissionMode,
     reasoningLevel: queuedMessage.reasoningLevel,
     serviceTier: queuedMessage.serviceTier,
+    experimental_modelOptions: queuedMessage.experimental_modelOptions,
     ...(senderThreadId !== null ? { senderThreadId } : {}),
   };
 }

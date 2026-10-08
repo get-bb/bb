@@ -81,7 +81,8 @@ bb.providers.register({
                                  // model/list answer travels
   env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
   deriveProviderOptions(ctx) {   // called on every command
-    // ctx: { threadId, projectId, model, permissionMode, promptMode?, settings }
+    // ctx: { threadId, projectId, model, permissionMode, promptMode?,
+    //        experimental_modelOptions, settings }
     return {};                   // opaque JSON handed to this plugin's bridge
   },
 })
@@ -95,6 +96,21 @@ description; an empty array hides the tier picker for that model, and an entry
 without the field accepts every declared tier. The server rejects an explicit
 tier the declaration does not list and passes the chosen id to the bridge as
 `serviceTier`.
+
+A provider can add its own choices to the model picker with
+`experimental_modelOptions: [{ id, label, description?, values, defaultValue }]`,
+where each value is `{ id, label, description?, modelUnavailableReason? }`. A
+`model/list` entry narrows the values a model accepts with
+`experimental_supportedModelOptions: { [optionId]: valueIds }`; an entry
+without the option id accepts every value. The picker shows an option only
+when some model lists a non-default value, renders two values as a switch,
+disables models that reject the selected value with that value's
+`modelUnavailableReason`, and moves the selection to a compatible model when
+the value changes. The server resolves each option from the request, the
+thread's last turn and the project defaults, and hands the resolved values to
+`deriveProviderOptions` as `ctx.experimental_modelOptions`; the bridge sees
+them only through the provider options the plugin derives. The Codex
+provider's Daybreak switch is the reference consumer.
 
 bb keeps each machine's last successful `model/list` answer per
 `models.scope` across daemon reconnects and server restarts, serves it

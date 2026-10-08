@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelOptionValuesSchema } from "./model-options.js";
 import { threadCreateOriginSchema } from "./thread-create-origin.js";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
@@ -353,6 +354,7 @@ export const threadQueuedMessageSchema = z.object({
   reasoningLevel: reasoningLevelSchema,
   permissionMode: permissionModeSchema,
   serviceTier: serviceTierSchema,
+  experimental_modelOptions: modelOptionValuesSchema,
   groupWithNext: z.boolean(),
   /**
    * Epoch ms this row is scheduled to attempt dispatch, or null when it is

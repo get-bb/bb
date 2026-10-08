@@ -321,6 +321,7 @@ export function makeQueueEntry(
     reasoningLevel: "medium",
     permissionMode: "auto",
     serviceTier: "default",
+    experimental_modelOptions: {},
     groupWithNext: false,
     sendAt: null,
     waitingOn: {
