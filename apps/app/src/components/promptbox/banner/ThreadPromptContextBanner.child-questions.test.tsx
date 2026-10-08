@@ -147,7 +147,7 @@ function openForm() {
 }
 
 function shownSource(): string | null {
-  return screen.getByRole("link", { name: /^From / }).textContent;
+  return screen.getByRole("link", { name: /^Child thr_/ }).textContent;
 }
 
 function press(name: "Previous question" | "Next question") {
@@ -167,7 +167,10 @@ describe("ThreadPromptContextBanner child questions", () => {
     rerender(bannerElement(section([newest, middle, oldest]), false));
 
     expect(screen.getByText("Active child threads")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Child thr_b/ })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /Child thr_b/ }).textContent,
+    ).toBe("Child thr_b: Which size?");
+    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
     expect(openForm()).toBe(null);
   });
 
@@ -178,10 +181,15 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
-    expect(shownSource()).toBe("From Child thr_c");
-    expect(screen.getByText("2 of 3")).toBeTruthy();
+    expect(shownSource()).toBe("Child thr_c");
+    expect(screen.getByText("2 of 3 waiting")).toBeTruthy();
     expect(screen.getAllByText("Which shape?").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBe(null);
+    expect(screen.queryByRole("button", { name: "Close question" })).toBe(
+      null,
+    );
     expect(screen.queryByRole("button", { name: "Submit answer" })).toBe(null);
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
@@ -193,12 +201,14 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
     expect(openForm()).toBe(null);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /needs input: Which size\?/ }),
-    );
+    const header = screen.getByRole("button", {
+      name: "4 active child threads, needs input: Child thr_b: Which size?",
+    });
+    expect(header.textContent).toContain("Child thr_b: Which size?");
+    fireEvent.click(header);
 
-    expect(shownSource()).toBe("From Child thr_b");
-    expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect(shownSource()).toBe("Child thr_b");
+    expect(screen.getByText("1 of 3 waiting")).toBeTruthy();
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -206,16 +216,16 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     press("Next question");
-    expect(shownSource()).toBe("From Child thr_c");
+    expect(shownSource()).toBe("Child thr_c");
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Next question" }),
     );
     press("Next question");
     press("Next question");
-    expect(shownSource()).toBe("From Child thr_b");
+    expect(shownSource()).toBe("Child thr_b");
     press("Previous question");
-    expect(shownSource()).toBe("From Child thr_a");
-    expect(screen.getByText("3 of 3")).toBeTruthy();
+    expect(shownSource()).toBe("Child thr_a");
+    expect(screen.getByText("3 of 3 waiting")).toBeTruthy();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Previous question" }),
     );
@@ -225,15 +235,31 @@ describe("ThreadPromptContextBanner child questions", () => {
     render(bannerElement(section([newest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
-    expect(shownSource()).toBe("From Child thr_b");
+    expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
+    expect(screen.queryByText(/waiting$/)).toBe(null);
   });
 
-  it("returns to the row list when the question is closed", () => {
+  it("returns to the row list from the back button and focuses that row", () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Child threads" }));
+
+    expect(openForm()).toBe(null);
+    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Child thr_c/ }),
+    );
+  });
+
+  it("returns to the row list on Escape", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Close question" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Submit" }), {
+      key: "Escape",
+    });
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
@@ -244,7 +270,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     rerender(bannerElement(section([middle])));
-    expect(shownSource()).toBe("From Child thr_c");
+    expect(shownSource()).toBe("Child thr_c");
 
     rerender(bannerElement(section([])));
     expect(openForm()).toBe(null);

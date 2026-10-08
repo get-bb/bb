@@ -39,6 +39,7 @@ import {
   activityTextClass,
 } from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
@@ -484,7 +485,16 @@ function ChildThreadsBody({
                 aria-label="Working"
               />
             )}
-            <ThreadTitle title={item.title} tooltip className="flex-1" />
+            {pending ? (
+              <ChildQuestionSummary
+                childTitle={<ThreadTitle title={item.title} tooltip />}
+                question={formatPendingInteractionSummary({
+                  interaction: pending.interaction,
+                })}
+              />
+            ) : (
+              <ThreadTitle title={item.title} tooltip className="flex-1" />
+            )}
           </>
         );
         return (
@@ -492,6 +502,7 @@ function ChildThreadsBody({
             {pending ? (
               <button
                 type="button"
+                data-child-question-row={item.id}
                 onClick={() => onOpenQuestion(pending.interaction.id)}
                 className={CHILD_THREAD_ROW_CLASS}
               >
@@ -509,25 +520,74 @@ function ChildThreadsBody({
   );
 }
 
+function ChildQuestionSummary({
+  childTitle,
+  question,
+}: {
+  childTitle: ReactNode;
+  question: string;
+}) {
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline">
+      <span className="min-w-0 max-w-[70%] shrink-0 truncate text-foreground">
+        {childTitle}
+      </span>
+      <span className="shrink-0 whitespace-pre text-foreground">: </span>
+      <span
+        title={question}
+        className="min-w-0 flex-1 truncate text-muted-foreground"
+      >
+        {question}
+      </span>
+    </span>
+  );
+}
+
 function ChildQuestionBody({
   current,
   index,
   total,
   onStep,
-  onClose,
+  onBack,
 }: {
   current: ChildThreadPendingAttention;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
-  onClose: () => void;
+  onBack: () => void;
 }) {
   const position = `${index + 1} of ${total}`;
   return (
-    <div className="px-3 pb-2 pt-1">
-      <div className="flex min-w-0 items-center gap-1 text-xs">
+    <div
+      className="px-3 pb-2 pt-1"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          onBack();
+        }
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-2 text-xs">
+        <button
+          type="button"
+          onClick={onBack}
+          className="-ml-1.5 flex h-6 shrink-0 items-center gap-0.5 rounded-md pl-0.5 pr-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
+          Child threads
+        </button>
+        <NavLink
+          to={current.href}
+          className="min-w-0 truncate text-subtle-foreground no-underline hover:underline"
+        >
+          {current.childTitle}
+        </NavLink>
         {total > 1 ? (
-          <div className="-ml-1.5 flex shrink-0 items-center">
+          <div className="-mr-1.5 ml-auto flex shrink-0 items-center">
+            <span className="mr-1 tabular-nums text-subtle-foreground">
+              {`${position} waiting`}
+            </span>
             <button
               type="button"
               aria-label="Previous question"
@@ -536,9 +596,6 @@ function ChildQuestionBody({
             >
               <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
             </button>
-            <span className="tabular-nums text-subtle-foreground">
-              {position}
-            </span>
             <button
               type="button"
               aria-label="Next question"
@@ -549,20 +606,6 @@ function ChildQuestionBody({
             </button>
           </div>
         ) : null}
-        <NavLink
-          to={current.href}
-          className="min-w-0 truncate text-subtle-foreground no-underline hover:underline"
-        >
-          From {current.childTitle}
-        </NavLink>
-        <button
-          type="button"
-          aria-label="Close question"
-          onClick={onClose}
-          className={cn(CHILD_QUESTION_STEP_BUTTON_CLASS, "-mr-1.5 ml-auto")}
-        >
-          <Icon name="X" className="size-3.5" aria-hidden="true" />
-        </button>
       </div>
       <span aria-live="polite" className="sr-only">
         {total > 1 ? `Question ${position}` : ""}
@@ -803,6 +846,17 @@ function ActiveChildThreadsCard({
     interactionId: string;
     index: number;
   } | null>(null);
+  const returnFocusChildId = useRef<string | null>(null);
+  useEffect(() => {
+    const childId = returnFocusChildId.current;
+    if (openQuestion !== null || childId === null) {
+      return;
+    }
+    returnFocusChildId.current = null;
+    document
+      .querySelector<HTMLElement>(`[data-child-question-row="${childId}"]`)
+      ?.focus();
+  }, [openQuestion]);
   const items = childThreadsSection.items;
   const pendingInteractions = childThreadsSection.pendingInteractions;
   const matchedIndex = openQuestion
@@ -850,6 +904,17 @@ function ActiveChildThreadsCard({
   const collapsedQuestion = isExpanded
     ? null
     : childThreadsSection.waitingQuestion;
+  const collapsedQuestionChildTitle = collapsedQuestion
+    ? (pendingInteractions[0]?.childTitle ?? null)
+    : null;
+  const collapsedQuestionLabel =
+    collapsedQuestion && collapsedQuestionChildTitle
+      ? `${collapsedQuestionChildTitle}: ${collapsedQuestion}`
+      : collapsedQuestion;
+  const backToChildThreads = () => {
+    returnFocusChildId.current = currentQuestion?.childThreadId ?? null;
+    setOpenQuestion(null);
+  };
   return (
     <PromptStackCard
       ariaLabel="Child threads"
@@ -864,7 +929,7 @@ function ActiveChildThreadsCard({
         aria-controls={SECTION_IDS.childThreads.body}
         aria-label={
           collapsedQuestion
-            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestion}`
+            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestionLabel}`
             : `${items.length} active ${childThreadNoun(items.length)}`
         }
         onClick={() => {
@@ -904,7 +969,14 @@ function ActiveChildThreadsCard({
             aria-hidden="true"
           />
         )}
-        {collapsedQuestion ? (
+        {collapsedQuestion && collapsedQuestionChildTitle ? (
+          <span className="flex min-w-0 flex-1 text-left">
+            <ChildQuestionSummary
+              childTitle={collapsedQuestionChildTitle}
+              question={collapsedQuestion}
+            />
+          </span>
+        ) : collapsedQuestion ? (
           <span
             className="min-w-0 flex-1 truncate text-left text-foreground"
             title={collapsedQuestion}
@@ -938,7 +1010,7 @@ function ActiveChildThreadsCard({
             index={questionIndex}
             total={pendingInteractions.length}
             onStep={stepQuestion}
-            onClose={() => setOpenQuestion(null)}
+            onBack={backToChildThreads}
           />
         ) : (
           <ChildThreadsBody
