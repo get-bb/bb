@@ -4150,7 +4150,11 @@ describe("Account Pool plugin", () => {
         const stillUnavailable = await send();
         expect(stillUnavailable.status).toBe(429);
         expect(stillUnavailable.headers.get("retry-after")).toBe("60");
-        await stillUnavailable.text();
+        const unavailableBody = await stillUnavailable.json();
+        expect(unavailableBody.error.message).toContain(
+          "2027-01-15T08:02:00.000Z",
+        );
+        expect(unavailableBody.error.message).toContain("60 seconds");
         expect(attempts).toHaveLength(7);
 
         now += 60_000;
