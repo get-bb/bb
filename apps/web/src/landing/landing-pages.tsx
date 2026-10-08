@@ -1,18 +1,5 @@
-import { useInitAnalytics } from "./analytics";
-import {
-  InstallOptions,
-  ProviderChips,
-  useScrollReveal,
-} from "./landing-visuals";
-import { pageMeta, siteHeadLinks } from "./page-head";
-import { SiteFooter, SiteNav } from "./site-chrome";
-import {
-  brandProse,
-  Closer,
-  FaqSection,
-  faqJsonLd,
-  Highlight,
-} from "../compare/compare-page";
+import type { LandingPage } from "./landing-template";
+import { textOnly } from "./landing-template";
 import {
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -23,7 +10,6 @@ import {
   faqFree,
   faqPhone,
 } from "../compare/compare-content";
-import { PLUGINS_COPY, pluginsSection } from "../compare/compare-sections";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -34,15 +20,6 @@ import type {
   CompareFaqGroup,
   CompareHighlight,
 } from "../compare/comparisons";
-import compareCss from "../compare/compare.css?url";
-
-export type LandingVariant = "phone" | "codex-review" | "parallel";
-
-export const LANDING_PAGE_PATHS: Record<LandingVariant, string> = {
-  phone: "/claude-code-mobile",
-  "codex-review": "/claude-code-and-codex",
-  parallel: "/claude-code-parallel-agents",
-};
 
 const PHONE_SECTION: CompareHighlight = {
   title: "Step away. Reply from your phone.",
@@ -171,27 +148,17 @@ const START_WITH_PLANS_FAQ: CompareFaqGroup = {
   items: [FAQ_GET_STARTED, FAQ_SUBSCRIPTIONS, faqFree(""), FAQ_PRIVACY],
 };
 
-type VariantContent = {
-  title: string;
-  description: string;
-  headline: string;
-  sub: string;
-  closer: string;
-  lead: CompareHighlight;
-  sections: CompareHighlight[];
-  faq: CompareFaqGroup[];
-};
-
-const VARIANTS: Record<LandingVariant, VariantContent> = {
-  phone: {
+export const LANDING_PAGES: LandingPage[] = [
+  {
+    slug: "claude-code-mobile",
     title: "Claude Code Mobile: See Which Agent Needs You — bb",
     description:
       "See which of your Claude Code, Codex, and other agents needs you, across all your machines, and reply from any phone browser. Free and open source.",
     headline: "Claude Code on your phone. See which agent needs you.",
     sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
     closer: "Know which agent needs you",
-    lead: PHONE_SECTION,
-    sections: [CODEX_SECTION, PARALLEL_SECTION],
+    heroVisual: <AnywhereVisual />,
+    sections: [textOnly(PHONE_SECTION), CODEX_SECTION, PARALLEL_SECTION],
     faq: [
       PHONE_FAQ,
       {
@@ -201,15 +168,16 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       START_WITH_PLANS_FAQ,
     ],
   },
-  "codex-review": {
+  {
+    slug: "claude-code-and-codex",
     title: "Use Claude Code and Codex Together — bb",
     description:
       "Have Codex review Claude Code’s work with no copy-paste between them. Both run in one free, open-source app, on the subscriptions you already have.",
     headline: "Have Codex review Claude Code’s work",
     sub: "No copy-paste between them. Both run in one app on the subscriptions you already have. Free and open source.",
     closer: "Let your agents check each other’s work",
-    lead: CODEX_SECTION,
-    sections: [PARALLEL_SECTION, PHONE_SECTION],
+    heroVisual: <AgentSplit />,
+    sections: [textOnly(CODEX_SECTION), PARALLEL_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Claude Code and Codex",
@@ -219,15 +187,16 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       PHONE_FAQ,
     ],
   },
-  parallel: {
+  {
+    slug: "claude-code-parallel-agents",
     title: "Run Claude Code Agents in Parallel — bb",
     description:
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
     headline: "Run your own software factory of coding agents",
     sub: "Run Claude Code, Codex, and more in parallel. One list shows which are running, waiting on you, or done. Free and open source.",
     closer: "Put your software factory to work",
-    lead: PARALLEL_SECTION,
-    sections: [CODEX_SECTION, PHONE_SECTION],
+    heroVisual: <FleetVisual />,
+    sections: [textOnly(PARALLEL_SECTION), CODEX_SECTION, PHONE_SECTION],
     faq: [
       {
         title: "Running several agents",
@@ -237,59 +206,8 @@ const VARIANTS: Record<LandingVariant, VariantContent> = {
       PHONE_FAQ,
     ],
   },
-};
+];
 
-const CLOSER_BODY =
-  "Free and open source, on your own machines. Bring the agents you already use.";
-
-export function agentLandingHead(variant: LandingVariant) {
-  const content = VARIANTS[variant];
-  const path = LANDING_PAGE_PATHS[variant];
-  return {
-    meta: pageMeta(content.title, content.description, path),
-    links: [
-      ...siteHeadLinks(compareCss),
-      { rel: "canonical", href: `https://getbb.app${path}` },
-    ],
-    scripts: [
-      { type: "application/ld+json", children: faqJsonLd(content.faq) },
-    ],
-  };
-}
-
-export function AgentLandingPage({ variant }: { variant: LandingVariant }) {
-  useInitAnalytics();
-  useScrollReveal();
-  const content = VARIANTS[variant];
-
-  return (
-    <div className="wrap cmp-page">
-      <SiteNav />
-
-      <header className="hero cmp-hero">
-        <div className="providers cmp-hero-providers">
-          <span className="label">Works with</span>
-          <ProviderChips />
-        </div>
-        <h1>{brandProse(content.headline)}</h1>
-        <p className="sub">{brandProse(content.sub)}</p>
-        <InstallOptions placement="hero" />
-        <div className="cmp-hero-visual">{content.lead.visual}</div>
-      </header>
-
-      {[
-        { ...content.lead, visual: null, wide: true },
-        ...content.sections,
-        pluginsSection(PLUGINS_COPY),
-      ].map((highlight) => (
-        <Highlight key={highlight.title} highlight={highlight} />
-      ))}
-
-      <FaqSection title="Common questions" faq={content.faq} />
-
-      <Closer closer={{ title: content.closer, body: CLOSER_BODY }} />
-
-      <SiteFooter current={LANDING_PAGE_PATHS[variant]} />
-    </div>
-  );
+export function getLandingPage(slug: string): LandingPage | undefined {
+  return LANDING_PAGES.find((page) => page.slug === slug);
 }

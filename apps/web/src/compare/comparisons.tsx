@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import supersetIcon from "../assets/competitors/superset.png";
 import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
@@ -34,7 +34,7 @@ import {
   PRICING_COPY,
   pricingSection,
 } from "./compare-sections";
-import type { BrandLogo } from "./compare-visuals";
+import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
 import { BB_VS_CURSOR } from "./cursor";
 import { BB_VS_T3_CODE } from "./t3-code";
@@ -85,7 +85,7 @@ export type Comparison = {
   competitor: { name: string; logo: BrandLogo };
   headline: string;
   sub: string;
-  heroVisual: ReactNode | null;
+  heroVisual: ReactElement;
   tailored: CompareHighlight;
   sections: CompareHighlight[];
   tableNote: string | null;
@@ -105,7 +105,7 @@ const BB_VS_SUPERSET: Comparison = {
   competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
   sub: "Get Claude Code, Codex, or any agent working together on the same task, and check in from your phone.",
-  heroVisual: null,
+  heroVisual: <FleetVisual />,
   tailored: pricingSection(PRICING_COPY, {
     plan: "Superset Pro",
     logo: SUPERSET_LOGO,

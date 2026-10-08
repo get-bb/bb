@@ -9,6 +9,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
 } from "react";
 
@@ -105,18 +106,34 @@ export function faqJsonLd(faq: CompareFaqGroup[]): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
-export function compareHead(comparison: Comparison) {
+export function templatePageHead({
+  path,
+  title,
+  description,
+  faq,
+}: {
+  path: string;
+  title: string;
+  description: string;
+  faq: CompareFaqGroup[];
+}) {
   return {
-    meta: pageMeta(
-      comparison.title,
-      comparison.description,
-      `/compare/${comparison.slug}`,
-    ),
-    links: siteHeadLinks(compareCss),
-    scripts: [
-      { type: "application/ld+json", children: faqJsonLd(comparison.faq) },
+    meta: pageMeta(title, description, path),
+    links: [
+      ...siteHeadLinks(compareCss),
+      { rel: "canonical", href: `https://getbb.app${path}` },
     ],
+    scripts: [{ type: "application/ld+json", children: faqJsonLd(faq) }],
   };
+}
+
+export function compareHead(comparison: Comparison) {
+  return templatePageHead({
+    path: `/compare/${comparison.slug}`,
+    title: comparison.title,
+    description: comparison.description,
+    faq: comparison.faq,
+  });
 }
 
 const MARKS: Record<
@@ -331,6 +348,28 @@ export function Closer({ closer }: { closer: Comparison["closer"] }) {
   );
 }
 
+export function PageHero({
+  top,
+  headline,
+  sub,
+  visual,
+}: {
+  top: ReactNode;
+  headline: string;
+  sub: string;
+  visual: ReactElement;
+}) {
+  return (
+    <header className="hero cmp-hero">
+      {top}
+      <h1>{brandProse(headline)}</h1>
+      <p className="sub">{brandProse(sub)}</p>
+      <InstallOptions placement="hero" />
+      <div className="cmp-hero-visual">{visual}</div>
+    </header>
+  );
+}
+
 export function ComparePage({ comparison }: { comparison: Comparison }) {
   useInitAnalytics();
   useScrollReveal();
@@ -340,25 +379,24 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
     <div className="wrap cmp-page">
       <SiteNav />
 
-      <header className="hero cmp-hero">
-        <div className="cmp-logos">
-          <span className="cmp-logo-item">
-            <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
-            bb
-          </span>
-          <span className="cmp-vs">vs</span>
-          <span className="cmp-logo-item">
-            <BrandMark logo={competitor.logo} className="cmp-logo" />
-            {competitor.name}
-          </span>
-        </div>
-        <h1>{brandProse(comparison.headline)}</h1>
-        <p className="sub">{brandProse(comparison.sub)}</p>
-        <InstallOptions placement="hero" />
-        {comparison.heroVisual ? (
-          <div className="cmp-hero-visual">{comparison.heroVisual}</div>
-        ) : null}
-      </header>
+      <PageHero
+        top={
+          <div className="cmp-logos">
+            <span className="cmp-logo-item">
+              <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
+              bb
+            </span>
+            <span className="cmp-vs">vs</span>
+            <span className="cmp-logo-item">
+              <BrandMark logo={competitor.logo} className="cmp-logo" />
+              {competitor.name}
+            </span>
+          </div>
+        }
+        headline={comparison.headline}
+        sub={comparison.sub}
+        visual={comparison.heroVisual}
+      />
 
       {[comparison.tailored, ...comparison.sections].map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
