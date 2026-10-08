@@ -203,6 +203,7 @@ export function Overview() {
                   hasPendingInteraction: true,
                 },
               ],
+              pendingInteractions: [],
               waitingQuestion: "Install workspace tools?",
             }}
             pullRequestSection={null}

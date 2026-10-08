@@ -52,7 +52,6 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
@@ -839,7 +838,6 @@ interface RenderPromptAreaOptions {
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
-  childPendingInteractions?: readonly ChildThreadPendingAttention[];
   environmentGoneStatus?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["environmentGoneStatus"];
@@ -856,7 +854,6 @@ function buildPromptAreaElement({
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
-  childPendingInteractions = [],
   environmentGoneStatus = null,
   queuedMessageCount = 0,
   sentMessageEdit,
@@ -871,7 +868,6 @@ function buildPromptAreaElement({
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
         canUseGitUi={false}
-        childPendingInteractions={childPendingInteractions}
         childThreadsSection={null}
         composerFocusRequestNonce={0}
         contextBannerMergeBase={null}
@@ -1901,21 +1897,6 @@ describe("ThreadDetailPromptArea", () => {
     expect(
       screen.queryByRole("button", { name: "Collapse 2 workflows" }),
     ).toBeNull();
-  });
-
-  it("shows a child permission prompt on the parent composer", () => {
-    renderPromptArea({
-      childPendingInteractions: [
-        {
-          childThreadId: "thr_child",
-          childTitle: "Install workspace tools",
-          href: "/threads/thr_child",
-          interactions: [makePendingInteraction()],
-        },
-      ],
-    });
-
-    expect(screen.getByText("Pending interaction")).toBeTruthy();
   });
 
   it("keeps Goal above a pending interaction", () => {

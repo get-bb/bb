@@ -44,7 +44,6 @@ import type {
   ExperimentalComposerSelection,
   ExperimentalComposerSubmitOptions,
 } from "@get-bb/plugin-sdk";
-import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   readExecutionSelection,
   resolveComposerSelectionDeadline,
@@ -219,7 +218,6 @@ interface ThreadDetailPromptAreaProps {
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   parentThreadSection: ThreadPromptParentThreadSection | null;
-  childPendingInteractions: readonly ChildThreadPendingAttention[];
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
@@ -434,7 +432,6 @@ export function ThreadDetailPromptArea({
   activeWorkflows,
   activeBackgroundCommands,
   parentThreadSection,
-  childPendingInteractions,
   childThreadsSection,
   pullRequest,
   sendMessage,
@@ -2108,22 +2105,9 @@ export function ThreadDetailPromptArea({
     thread.id,
     inlineTypeaheadConfig,
   ]);
-  const childPendingInteractionBanners = useMemo(
-    () =>
-      childPendingInteractions.map((item) => (
-        <ThreadPendingInteractionBanners
-          key={item.childThreadId}
-          interactions={item.interactions}
-          sourceThread={{ href: item.href, title: item.childTitle }}
-          threadId={item.childThreadId}
-        />
-      )),
-    [childPendingInteractions],
-  );
   const promptStack = useMemo(
     () => (
       <>
-        {childPendingInteractionBanners}
         <ThreadWorkflowStack
           workflows={activeWorkflows}
           isStackExpanded={isWorkflowStackExpanded}
@@ -2240,7 +2224,6 @@ export function ThreadDetailPromptArea({
       queueExpanded,
       setQueueExpanded,
       canUseGitUi,
-      childPendingInteractionBanners,
       contextBannerMergeBase,
       environmentHostId,
       expandedBannerSection,
@@ -2310,7 +2293,6 @@ export function ThreadDetailPromptArea({
   const pendingInteractionStack = useMemo(
     () => (
       <>
-        {childPendingInteractionBanners}
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
       </>
@@ -2319,7 +2301,6 @@ export function ThreadDetailPromptArea({
       activeGoalCard,
       activePromptMode,
       activePromptModeCard,
-      childPendingInteractionBanners,
       goal,
     ],
   );

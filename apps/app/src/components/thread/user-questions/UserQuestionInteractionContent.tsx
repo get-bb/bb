@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
 import { QuestionForm } from "@bb/shared-ui/question-form";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { PendingInteractionPresentationContext } from "../pending-interactions/PendingInteractionShell";
 
 interface UserQuestionAnswerFormProps {
   interactionId: string;
@@ -30,6 +31,7 @@ export function UserQuestionAnswerForm({
   const resolvePendingInteraction =
     useResolveThreadPendingInteraction(threadId);
   const stopThread = useStopThread();
+  const presentation = useContext(PendingInteractionPresentationContext);
   const disabled = resolvePendingInteraction.isPending || isResolving;
   const error = resolvePendingInteraction.error
     ? getMutationErrorMessage({
@@ -42,6 +44,7 @@ export function UserQuestionAnswerForm({
     <div>
       <QuestionForm
         key={interactionId}
+        density={presentation === "inline" ? "compact" : "default"}
         draftKey={`${threadId}:${interactionId}`}
         questions={normalizedQuestions}
         disabled={disabled}
