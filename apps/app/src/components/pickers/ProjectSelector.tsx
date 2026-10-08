@@ -222,7 +222,7 @@ export function ProjectSelector({
             {projects.length > 0 ? (
               <CommandGroup
                 heading="Project"
-                className="flex min-h-0 flex-col [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
+                className="flex min-h-0 flex-col md:pb-0 [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
               >
                 <div
                   ref={composedListRef}
