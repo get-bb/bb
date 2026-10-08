@@ -88,14 +88,14 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
             <strong>Opus 5.5</strong>, and choose <strong>Worktree</strong>.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong>, and describe
-            your task below it.
+            Paste the prompt from <strong>Copy for agent</strong>, and fill in
+            your task at the top.
           </li>
         </Substeps>
       ),
       shot: {
         src: "/guides/claude-code-and-codex-together/window-start.png",
-        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, ending with the task: add per-user rate limiting to the upload endpoint, with a test.",
+        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test.",
       },
       options: [],
     },

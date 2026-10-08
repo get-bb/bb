@@ -2,12 +2,12 @@ import type { GuideFaq, GuideShot } from "../guide-types";
 
 export const NESTED_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-nested.png",
-  alt: "bb with the Claude Code thread Rate limit uploads open. It says it's starting the Codex reviewer, then shows each review finishing. In the sidebar, the Codex thread Review: upload rate limiting is nested under it.",
+  alt: "bb with the Claude Code thread Rate limit uploads open. Its tests pass, it commits, the Codex review finishes, and it reports what Codex found. In the sidebar, the Codex thread Review upload rate limiting is nested under it.",
 };
 
 export const SPLIT_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-split.png",
-  alt: "bb split into two panes: the Claude Code thread asks for a second review on the left, and the Codex reviewer on the right receives the message and confirms the serious issue is fixed",
+  alt: "bb split into two panes. On the left, the Claude Code thread caps the rate limiter's memory and sums up Codex's second review. On the right, the Codex reviewer gets its message, finds no serious issues, and flags one minor one.",
 };
 
 export const TALK_SHOT: GuideShot = {
