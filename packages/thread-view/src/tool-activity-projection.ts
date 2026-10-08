@@ -1008,7 +1008,17 @@ export function onExecBegin(
   }
 
   const historyMatch = findExecMessageInHistoryCells(state, call.callId);
-  if (existingRunning && historyMatch) {
+  const reopensDelegation =
+    historyMatch !== null &&
+    !existingRunning &&
+    historyMatch.call.kind === "delegation" &&
+    call.kind === "delegation";
+  if (reopensDelegation) {
+    historyMatch.call.status = "pending";
+    historyMatch.call.completedAt = null;
+    state.toolActivity.finalizedExecCallIds.delete(call.callId);
+  }
+  if (historyMatch && (existingRunning || reopensDelegation)) {
     mergeExecutionSummary(historyMatch.call, call);
     historyMatch.cell.sourceSeqEnd = Math.max(
       historyMatch.cell.sourceSeqEnd,
