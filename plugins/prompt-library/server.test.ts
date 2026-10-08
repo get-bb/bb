@@ -324,7 +324,7 @@ describe("prompt library server", () => {
     expect(result.prompts.map((row) => row.id)).toEqual(["h3", "h2"]);
   });
 
-  it("ranks a search as one list by prefix, match quality, starred, then recency", async () => {
+  it("ranks a search as one list by prefix, then match quality, then relevance", async () => {
     const { call } = await setup([
       entry("h1", 1, "deploy the preview"),
       entry("h2", 2, "delete old preview logs yearly"),
@@ -350,7 +350,7 @@ describe("prompt library server", () => {
     ]);
   });
 
-  it("loads older pages only when the loaded ones have too few matches", async () => {
+  it("searches all history, beyond the newest page", async () => {
     const { call, list } = await setup([
       entry("old", 1, "migrate the billing tables"),
       ...Array.from({ length: 1200 }, (_, index) =>
@@ -369,8 +369,8 @@ describe("prompt library server", () => {
     expect(list).toHaveBeenCalledTimes(2);
   });
 
-  it("loads only the newest page while it yields enough results", async () => {
-    const { call, list } = await setup(
+  it("lists the 30 newest prompts without a query", async () => {
+    const { call } = await setup(
       Array.from({ length: 1200 }, (_, index) =>
         entry(`h${index}`, index, `prompt number ${index}`),
       ),
@@ -382,7 +382,52 @@ describe("prompt library server", () => {
 
     expect(result.prompts).toHaveLength(30);
     expect(result.prompts[0]?.id).toBe("h1199");
-    expect(list).toHaveBeenCalledOnce();
+  });
+
+  it("finds a word typed with one typo and highlights it", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "please deploy the docs"),
+      entry("h2", 2, "unrelated prompt"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "dpeloy" })) as {
+      prompts: { id: string; snippet: { highlights: number[][] } }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([[7, 13]]);
+  });
+
+  it("ranks an exact word above newer partial matches", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "write a test first"),
+      entry("h2", 2, "run the tests"),
+      entry("h3", 3, "update the attestation"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "test" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1", "h2", "h3"]);
+  });
+
+  it("weighs how often a word appears against how old the prompt is", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 9, 8);
+    vi.setSystemTime(now);
+    const day = 86_400_000;
+    const { call } = await setup([
+      entry("old", now - 30 * day, "we should ship ship ship it"),
+      entry("new", now, "can you ship it"),
+      entry("day", now - day, "time to ship the ship"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "ship" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["day", "new", "old"]);
   });
 
   it("adds new prompts on later searches and keeps prompts core no longer returns", async () => {

@@ -2,42 +2,53 @@ import type { PromptSnippet } from "./contract.js";
 
 const SNIPPET_LENGTH = 160;
 const SNIPPET_LEAD = 32;
+const WORD = /[\p{L}\p{N}]+/gu;
+const OPENING_LENGTH = 200;
+const TYPO_MIN_LENGTH = 4;
+const BM25_K1 = 1.2;
+const BM25_B = 0.75;
+const RECENCY_HALF_LIFE_MS = 7 * 86_400_000;
 
-export interface RankedMatch<T> {
+type MatchKind = "exact" | "prefix" | "typo" | "substring" | "abbreviation";
+
+const MATCH_WEIGHTS: Record<MatchKind, number> = {
+  exact: 1,
+  prefix: 0.7,
+  typo: 0.5,
+  substring: 0.4,
+  abbreviation: 0.3,
+};
+
+export interface SearchDocument<T> {
   item: T;
-  positions: readonly number[];
+  text: string;
+  time: number;
+}
+
+export interface SearchMatch<T> {
+  item: T;
   prefix: boolean;
+  quality: number;
   score: number;
+  time: number;
 }
-
-export function compareRank(
-  left: RankedMatch<unknown>,
-  right: RankedMatch<unknown>,
-): number {
-  return Number(right.prefix) - Number(left.prefix) || right.score - left.score;
-}
-
-function startsWithQuery(text: string, prefix: string): boolean {
-  return text
-    .trimStart()
-    .replace(/\s+/gu, " ")
-    .toLowerCase()
-    .startsWith(prefix);
-}
-
-export function queryTerms(query: string): string[] {
-  return query.trim().split(/\s+/u).filter(Boolean);
-}
-
-const WORD_START_SCORE = 3;
-const SUBSTRING_SCORE = 2;
-const ABBREVIATION_SCORE = 1;
-const WORD_CHAR = /[\p{L}\p{N}]/u;
-const TOKEN = /\S+/gu;
 
 interface TermMatch {
-  score: number;
-  positions: number[];
+  weight: number;
+  frequency: number;
+}
+
+interface IndexedDocument<T> {
+  item: T;
+  time: number;
+  length: number;
+  opening: string;
+}
+
+interface AnalyzedText {
+  length: number;
+  opening: string;
+  counts: Map<string, number>;
 }
 
 function foldCase(text: string): string {
@@ -49,118 +60,264 @@ function foldCase(text: string): string {
   }).join("");
 }
 
-function isWordStart(token: string, index: number): boolean {
-  return index === 0 || !WORD_CHAR.test(token[index - 1]!);
+function normalizeOpening(text: string): string {
+  return foldCase(text.trimStart().slice(0, OPENING_LENGTH)).replace(
+    /\s+/gu,
+    " ",
+  );
 }
 
-function range(start: number, length: number): number[] {
-  return Array.from({ length }, (_, index) => start + index);
+export function queryTerms(query: string): string[] {
+  return [...new Set(foldCase(query).match(WORD) ?? [])];
 }
 
-function abbreviationPositions(
-  token: string,
-  start: number,
-  term: string,
-): number[] | null {
-  const positions = [start];
-  let cursor = start + 1;
+function analyze(text: string): AnalyzedText {
+  const counts = new Map<string, number>();
+  let length = 0;
+  for (const [word] of foldCase(text).matchAll(WORD)) {
+    length += 1;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return { length, opening: normalizeOpening(text), counts };
+}
+
+function abbreviationPositions(word: string, term: string): number[] | null {
+  if (word[0] !== term[0]) return null;
+  const positions = [0];
   for (const char of term.slice(1)) {
-    const found = token.indexOf(char, cursor);
+    const found = word.indexOf(char, positions.at(-1)! + 1);
     if (found === -1) return null;
     positions.push(found);
-    cursor = found + 1;
   }
   return positions;
 }
 
-function matchToken(token: string, term: string): TermMatch | null {
-  if (token.length < term.length) return null;
-  let substring: TermMatch | null = null;
-  for (
-    let found = token.indexOf(term);
-    found !== -1;
-    found = token.indexOf(term, found + 1)
+function withinOneEdit(left: string, right: string): boolean {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let same = 0;
+  while (
+    same < left.length &&
+    same < right.length &&
+    left[same] === right[same]
   ) {
-    const positions = range(found, term.length);
-    if (isWordStart(token, found)) {
-      return { score: WORD_START_SCORE, positions };
-    }
-    substring ??= { score: SUBSTRING_SCORE, positions };
+    same += 1;
   }
-  if (substring !== null) return substring;
-  for (
-    let start = token.indexOf(term[0]!);
-    start !== -1;
-    start = token.indexOf(term[0]!, start + 1)
-  ) {
-    if (!isWordStart(token, start)) continue;
-    const positions = abbreviationPositions(token, start, term);
-    if (positions !== null) return { score: ABBREVIATION_SCORE, positions };
+  if (left.length !== right.length) {
+    const [shorter, longer] =
+      left.length < right.length ? [left, right] : [right, left];
+    return shorter.slice(same) === longer.slice(same + 1);
+  }
+  return (
+    left.slice(same + 1) === right.slice(same + 1) ||
+    (left[same] === right[same + 1] &&
+      left[same + 1] === right[same] &&
+      left.slice(same + 2) === right.slice(same + 2))
+  );
+}
+
+function matchKind(word: string, term: string): MatchKind | null {
+  if (word === term) return "exact";
+  if (word.startsWith(term)) return "prefix";
+  if (term.length >= TYPO_MIN_LENGTH && withinOneEdit(word, term)) {
+    return "typo";
+  }
+  if (word.includes(term)) return "substring";
+  if (term.length >= 2 && abbreviationPositions(word, term) !== null) {
+    return "abbreviation";
   }
   return null;
 }
 
-function matchTerm(folded: string, term: string): TermMatch | null {
+function bestTermMatch(
+  counts: ReadonlyMap<string, number>,
+  term: string,
+): TermMatch | null {
   let best: TermMatch | null = null;
-  for (const token of folded.matchAll(TOKEN)) {
-    const match = matchToken(token[0], term);
-    if (match === null || (best !== null && match.score <= best.score)) {
-      continue;
+  for (const [word, count] of counts) {
+    const kind = matchKind(word, term);
+    if (kind === null) continue;
+    const weight = MATCH_WEIGHTS[kind];
+    if (best === null || weight > best.weight) {
+      best = { weight, frequency: count };
+    } else if (weight === best.weight) {
+      best.frequency += count;
     }
-    best = {
-      score: match.score,
-      positions: match.positions.map((position) => token.index + position),
-    };
-    if (best.score === WORD_START_SCORE) break;
   }
   return best;
 }
 
-function matchTerms(text: string, terms: readonly string[]): TermMatch | null {
-  const folded = foldCase(text);
-  let score = 0;
-  const positions = new Set<number>();
-  for (const term of terms) {
-    const match = matchTerm(folded, term);
-    if (match === null) return null;
-    score += match.score;
-    for (const position of match.positions) positions.add(position);
+export function compareMatches(
+  left: SearchMatch<unknown>,
+  right: SearchMatch<unknown>,
+): number {
+  return (
+    Number(right.prefix) - Number(left.prefix) ||
+    right.quality - left.quality ||
+    right.score - left.score ||
+    right.time - left.time
+  );
+}
+
+export function createSearchIndex<T>() {
+  const documents: IndexedDocument<T>[] = [];
+  const postings = new Map<string, { document: number; count: number }[]>();
+  let totalLength = 0;
+
+  function termMatches(term: string): Map<number, TermMatch> {
+    const matches = new Map<number, TermMatch>();
+    for (const [word, list] of postings) {
+      if (word.length < term.length - 1) continue;
+      const kind = matchKind(word, term);
+      if (kind === null) continue;
+      const weight = MATCH_WEIGHTS[kind];
+      for (const { document, count } of list) {
+        const existing = matches.get(document);
+        if (existing === undefined || weight > existing.weight) {
+          matches.set(document, { weight, frequency: count });
+        } else if (weight === existing.weight) {
+          existing.frequency += count;
+        }
+      }
+    }
+    return matches;
   }
+
   return {
-    score,
-    positions: [...positions].sort((left, right) => left - right),
+    add(document: SearchDocument<T>): void {
+      const { length, opening, counts } = analyze(document.text);
+      const index = documents.length;
+      for (const [word, count] of counts) {
+        const list = postings.get(word);
+        if (list === undefined) postings.set(word, [{ document: index, count }]);
+        else list.push({ document: index, count });
+      }
+      totalLength += length;
+      documents.push({ item: document.item, time: document.time, length, opening });
+    },
+
+    search(
+      query: string,
+      extras: readonly SearchDocument<T>[],
+      now: number,
+    ): SearchMatch<T>[] {
+      const terms = queryTerms(query);
+      if (terms.length === 0) return [];
+      const opening = normalizeOpening(query);
+      const indexed = terms.map(termMatches);
+      const analyzedExtras = extras.map((extra) => {
+        const analyzed = analyze(extra.text);
+        return {
+          extra,
+          analyzed,
+          matches: terms.map((term) => bestTermMatch(analyzed.counts, term)),
+        };
+      });
+      const count = documents.length + extras.length;
+      const averageLength =
+        (totalLength +
+          analyzedExtras.reduce((sum, entry) => sum + entry.analyzed.length, 0)) /
+        Math.max(1, count);
+      const inverseFrequency = terms.map((_, termIndex) => {
+        const frequency =
+          indexed[termIndex]!.size +
+          analyzedExtras.filter((entry) => entry.matches[termIndex] !== null)
+            .length;
+        return Math.log(1 + (count - frequency + 0.5) / (frequency + 0.5));
+      });
+
+      function scored(
+        item: T,
+        time: number,
+        length: number,
+        documentOpening: string,
+        matches: readonly TermMatch[],
+      ): SearchMatch<T> {
+        const norm =
+          BM25_K1 * (1 - BM25_B + (BM25_B * length) / averageLength);
+        let quality = 0;
+        let relevance = 0;
+        matches.forEach(({ weight, frequency }, termIndex) => {
+          quality += weight;
+          relevance +=
+            weight *
+            inverseFrequency[termIndex]! *
+            ((frequency * (BM25_K1 + 1)) / (frequency + norm));
+        });
+        const age = Math.max(0, now - time);
+        return {
+          item,
+          prefix: documentOpening.startsWith(opening),
+          quality,
+          score: relevance * 0.5 ** (age / RECENCY_HALF_LIFE_MS),
+          time,
+        };
+      }
+
+      const results: SearchMatch<T>[] = [];
+      const narrowest = indexed.reduce((left, right) =>
+        right.size < left.size ? right : left,
+      );
+      for (const index of narrowest.keys()) {
+        const matches = indexed.map((termMatch) => termMatch.get(index));
+        if (matches.some((match) => match === undefined)) continue;
+        const document = documents[index]!;
+        results.push(
+          scored(
+            document.item,
+            document.time,
+            document.length,
+            document.opening,
+            matches as TermMatch[],
+          ),
+        );
+      }
+      for (const { extra, analyzed, matches } of analyzedExtras) {
+        if (matches.some((match) => match === null)) continue;
+        results.push(
+          scored(
+            extra.item,
+            extra.time,
+            analyzed.length,
+            analyzed.opening,
+            matches as TermMatch[],
+          ),
+        );
+      }
+      return results.sort(compareMatches);
+    },
   };
 }
 
-export function rankByQuery<T>(
-  items: readonly T[],
-  query: string,
-  getText: (item: T) => string,
-): RankedMatch<T>[] {
-  const terms = queryTerms(query);
-  if (terms.length === 0) {
-    return items.map((item) => ({
-      item,
-      positions: [],
-      prefix: false,
-      score: 0,
-    }));
+function wordPositions(word: string, term: string, kind: MatchKind): number[] {
+  const range = (start: number, length: number) =>
+    Array.from({ length }, (_, offset) => start + offset);
+  if (kind === "exact" || kind === "prefix") return range(0, term.length);
+  if (kind === "substring") return range(word.indexOf(term), term.length);
+  if (kind === "abbreviation") return abbreviationPositions(word, term)!;
+  return range(0, word.length);
+}
+
+export function matchPositions(text: string, query: string): number[] {
+  const words = [...foldCase(text).matchAll(WORD)];
+  const positions = new Set<number>();
+  for (const term of queryTerms(query)) {
+    let best: { start: number; word: string; kind: MatchKind } | null = null;
+    for (const { 0: word, index: start } of words) {
+      const kind = matchKind(word, term);
+      if (
+        kind !== null &&
+        (best === null || MATCH_WEIGHTS[kind] > MATCH_WEIGHTS[best.kind])
+      ) {
+        best = { start, word, kind };
+        if (kind === "exact") break;
+      }
+    }
+    if (best === null) continue;
+    for (const position of wordPositions(best.word, term, best.kind)) {
+      positions.add(best.start + position);
+    }
   }
-  const foldedTerms = terms.map(foldCase);
-  const prefix = foldedTerms.join(" ");
-  const ranked: RankedMatch<T>[] = [];
-  for (const item of items) {
-    const text = getText(item);
-    const match = matchTerms(text, foldedTerms);
-    if (match === null) continue;
-    ranked.push({
-      item,
-      positions: match.positions,
-      prefix: startsWithQuery(text, prefix),
-      score: match.score,
-    });
-  }
-  return ranked.sort(compareRank);
+  return [...positions].sort((left, right) => left - right);
 }
 
 export function buildSnippet(

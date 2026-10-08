@@ -19,14 +19,17 @@ History attachments are retained when restoring into an empty composer.
 Starred prompts omit attachments. A nonempty composer receives text and mentions
 at the kept cursor. Inserting never sends a message.
 
-The plugin loads the newest 1000 prompts, fetches only newer prompts on later
-searches, and loads older pages only when a search finds fewer than 30 matches.
-Each query word, ignoring case, must appear inside a single word of the prompt,
-either as text or as an abbreviation that starts at the word's first letter
-(`tmln` finds `timeline`); letters are never matched across words. It searches
-the loaded prompts in scope, returning up to 20 starred and 30 recent results. Without a query, starred prompts come first, then recent ones.
-A query returns one ranked list: prompts that start with the query, then
-matches at the start of a word, inside a word, and abbreviations, with starred and then newer prompts breaking ties. A starred
+The first search loads and indexes all prompt history; later searches fetch only
+newer prompts. Each query word, ignoring case, must match a single word of the
+prompt: exactly, as its start, with one typo (words of four or more letters),
+inside it, or as an abbreviation that starts at its first letter (`tmln` finds
+`timeline`). Letters are never matched across words. Results include up to 20
+starred and 30 recent prompts in scope. Without a query, starred prompts come
+first, then recent ones. A query returns one ranked list: prompts that start
+with the query first, then by match type in that order, then by relevance
+(rarer words, repeated words, and shorter prompts score higher) decayed by age
+with a seven-day half-life; a starred prompt's age counts from its last use.
+A starred
 prompt appears once, as its starred row. History contains user prompts; core records them without agent-only input. Prompts stay searchable until the server restarts, even if their
 thread is deleted.
 

@@ -13,10 +13,9 @@ import {
 import { createHistoryCache, type HistoryCandidate } from "./history-cache.js";
 import {
   buildSnippet,
-  compareRank,
+  createSearchIndex,
+  matchPositions,
   queryTerms,
-  rankByQuery,
-  type RankedMatch,
 } from "./ranking.js";
 import {
   createStarredPromptStore,
@@ -26,6 +25,10 @@ import {
 
 const STARRED_RESULT_LIMIT = 20;
 const RECENT_RESULT_LIMIT = 30;
+
+type SearchItem =
+  | { kind: "starred"; prompt: StarredPrompt }
+  | { kind: "recent"; candidate: HistoryCandidate };
 
 const JSON_OPTION = {
   type: "boolean",
@@ -41,6 +44,23 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
     bb.sdk.experimental_promptHistory.list(args),
   );
 
+  const index = createSearchIndex<SearchItem>();
+  let indexedCount = 0;
+
+  async function loadHistory(): Promise<readonly HistoryCandidate[]> {
+    const candidates = await historyCache.refresh();
+    const unindexed = candidates.length - indexedCount;
+    for (const candidate of candidates.slice(0, unindexed)) {
+      index.add({
+        item: { kind: "recent", candidate },
+        text: candidate.prompt.text,
+        time: candidate.createdAt,
+      });
+    }
+    indexedCount = candidates.length;
+    return candidates;
+  }
+
   function inScope(candidate: HistoryCandidate, input: SearchPromptsInput) {
     if (input.scope === "thread") return candidate.threadId === input.threadId;
     if (input.scope === "project") {
@@ -49,38 +69,64 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
     return true;
   }
 
-  function rankHistory(
-    loaded: readonly HistoryCandidate[],
-    input: SearchPromptsInput,
-    excludedTexts: ReadonlySet<string>,
-  ) {
-    const seen = new Set<string>(excludedTexts);
-    const candidates: HistoryCandidate[] = [];
-    for (const candidate of loaded) {
-      const text = candidate.prompt.text;
-      if (!inScope(candidate, input)) continue;
-      if (text.trim().length === 0 || seen.has(text)) continue;
-      seen.add(text);
-      candidates.push(candidate);
-    }
-    return rankByQuery(candidates, input.query, (item) => item.prompt.text);
+  function historySearchable(input: SearchPromptsInput): boolean {
+    if (input.scope === "thread") return input.threadId !== null;
+    if (input.scope === "project") return input.projectId !== null;
+    return true;
   }
 
-  async function searchHistory(
+  function orderedItems(
     input: SearchPromptsInput,
-    excludedTexts: ReadonlySet<string>,
-  ) {
-    if (input.scope === "thread" && input.threadId === null) return [];
-    if (input.scope === "project" && input.projectId === null) return [];
-    let loaded: readonly HistoryCandidate[] | null =
-      await historyCache.refresh();
-    let ranked = rankHistory(loaded, input, excludedTexts);
-    while (ranked.length < RECENT_RESULT_LIMIT) {
-      loaded = await historyCache.loadOlder();
-      if (loaded === null) break;
-      ranked = rankHistory(loaded, input, excludedTexts);
+    starredPrompts: readonly StarredPrompt[],
+    history: readonly HistoryCandidate[],
+  ): SearchItem[] {
+    const searching = queryTerms(input.query).length > 0;
+    const items: SearchItem[] = searching
+      ? index
+          .search(
+            input.query,
+            starredPrompts.map((prompt) => ({
+              item: { kind: "starred", prompt },
+              text: prompt.prompt.text,
+              time: prompt.lastUsedAt ?? prompt.createdAt,
+            })),
+            Date.now(),
+          )
+          .map((match) => match.item)
+      : [
+          ...starredPrompts.map((prompt): SearchItem => ({
+            kind: "starred",
+            prompt,
+          })),
+          ...history.map((candidate): SearchItem => ({
+            kind: "recent",
+            candidate,
+          })),
+        ];
+    const seenTexts = new Set(
+      searching ? starredPrompts.map((prompt) => prompt.prompt.text) : [],
+    );
+    const includeHistory = historySearchable(input);
+    let starredCount = 0;
+    let recentCount = 0;
+    const ordered: SearchItem[] = [];
+    for (const item of items) {
+      if (item.kind === "starred") {
+        if (starredCount === STARRED_RESULT_LIMIT) continue;
+        starredCount += 1;
+        ordered.push(item);
+        continue;
+      }
+      const { candidate } = item;
+      const text = candidate.prompt.text;
+      if (!includeHistory || recentCount === RECENT_RESULT_LIMIT) continue;
+      if (!inScope(candidate, input)) continue;
+      if (text.trim().length === 0 || seenTexts.has(text)) continue;
+      seenTexts.add(text);
+      recentCount += 1;
+      ordered.push(item);
     }
-    return ranked.slice(0, RECENT_RESULT_LIMIT);
+    return ordered;
   }
 
   async function projectNames(
@@ -95,65 +141,51 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
     );
   }
 
-  function starredRow(
-    prompt: StarredPrompt,
-    positions: readonly number[],
-  ): PromptRow {
-    return {
-      kind: "starred",
-      id: prompt.id,
-      prompt: prompt.prompt,
-      snippet: buildSnippet(prompt.prompt.text, positions),
-      createdAt: prompt.createdAt,
-      lastUsedAt: prompt.lastUsedAt,
-    };
+  function snippet(text: string, query: string) {
+    return buildSnippet(text, matchPositions(text, query));
   }
 
   async function search(input: SearchPromptsInput) {
-    const searching = queryTerms(input.query).length > 0;
     const starredPrompts = store.list();
     const starredIdsByText = new Map(
       starredPrompts.map((prompt) => [prompt.prompt.text, prompt.id]),
     );
-    const starred = rankByQuery(
-      starredPrompts,
-      input.query,
-      (prompt) => prompt.prompt.text,
-    )
-      .slice(0, STARRED_RESULT_LIMIT)
-      .map((match) => ({
-        ...match,
-        row: starredRow(match.item, match.positions),
-      }));
-    const history = await searchHistory(
-      input,
-      searching ? new Set(starredIdsByText.keys()) : new Set(),
-    );
+    const history = historySearchable(input) ? await loadHistory() : [];
+    const items = orderedItems(input, starredPrompts, history);
     const names = await projectNames(
-      new Set(history.map((match) => match.item.projectId)),
+      new Set(
+        items.flatMap((item) =>
+          item.kind === "recent" ? [item.candidate.projectId] : [],
+        ),
+      ),
     );
-    const recent = history.map((match) => {
-      const { item, positions } = match;
-      const text = item.prompt.text;
-      const row: PromptRow = {
+    const prompts = items.map((item): PromptRow => {
+      if (item.kind === "starred") {
+        const { prompt } = item;
+        return {
+          kind: "starred",
+          id: prompt.id,
+          prompt: prompt.prompt,
+          snippet: snippet(prompt.prompt.text, input.query),
+          createdAt: prompt.createdAt,
+          lastUsedAt: prompt.lastUsedAt,
+        };
+      }
+      const { candidate } = item;
+      const text = candidate.prompt.text;
+      return {
         kind: "recent",
-        id: item.id,
-        prompt: item.prompt,
-        snippet: buildSnippet(text, positions),
-        createdAt: item.createdAt,
-        projectId: item.projectId,
-        projectName: names.get(item.projectId) ?? null,
-        threadId: item.threadId,
+        id: candidate.id,
+        prompt: candidate.prompt,
+        snippet: snippet(text, input.query),
+        createdAt: candidate.createdAt,
+        projectId: candidate.projectId,
+        projectName: names.get(candidate.projectId) ?? null,
+        threadId: candidate.threadId,
         starredId: starredIdsByText.get(text) ?? null,
       };
-      return { ...match, row };
     });
-    const matches: (RankedMatch<unknown> & { row: PromptRow })[] = [
-      ...starred,
-      ...recent,
-    ];
-    if (searching) matches.sort(compareRank);
-    return { prompts: matches.map((match) => match.row) };
+    return { prompts };
   }
 
   function star(prompt: ComposerDraft): StarredPrompt {
@@ -181,14 +213,14 @@ export default function promptLibraryPlugin(bb: BbPluginApi): void {
       name: "prompts",
       summary: "Search previous prompts and manage starred prompts",
       description:
-        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prefix matches first, then by match quality, with starred and then newer prompts breaking ties. Previous prompts come from bb's prompt history.",
+        "Without a query, starred prompts appear before recent ones in the composer's Prompts… picker (Ctrl+R). A query ranks both in one list: prompts that start with the query first, then by match type (exact, word start, typo, inside a word, abbreviation), then by relevance decayed by age. Previous prompts come from bb's prompt history.",
       commands: {
         search: cliCommand({
           summary: "Search starred and previous prompts",
           positionals: [
             {
               name: "query",
-              description: "Words that must each appear in a prompt word, as text or an abbreviation; omit to list the most recent",
+              description: "Words that must each match a prompt word exactly, as its start, with one typo, inside it, or as an abbreviation; omit to list the most recent",
               variadic: true,
             },
           ],
