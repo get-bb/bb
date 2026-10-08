@@ -18,32 +18,34 @@ const AGENT_PROMPT = withIntake(
     { label: "Machine", hint: "the remote machine to run them on" },
     { label: "Dev server command", hint: "e.g. pnpm dev" },
   ],
-  `Run a dev server for each branch I name on a remote bb machine, and share each one at its own getbb.app link.
+  `Run a dev server for each branch on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
 
-1. Find or add the machine: run \`bb machine list\`. If the machine I named isn't there, run \`bb machine create --provider manual\` and run the one-time command it prints on that machine over SSH.
-   Check: \`bb machine list\` shows the machine as connected. If you can't reach it over SSH, stop and send me the command to run there.
+1. Find or add the machine. Run \`bb machine list\`. If the machine isn't there, add it without blocking this thread: bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual", then read the one-time install command from bb terminal output <terminal-id> and run it on that machine over SSH.
+   Check: \`bb machine list\` shows the machine as connected. If you can't reach it over SSH, stop and send me the install command to run there.
 
-2. Add the project to the machine, unless it already has a source there:
+2. Put the project on the machine, unless it already has a source there:
    bb project source add "$BB_PROJECT_ID" --clone --machine <machine>
-   Then check that the repo has a committed \`.bb-env-setup.sh\` that installs dependencies and writes free ports to \`.env.local\`. If it doesn't, write one from the guide, show it to me, and commit it once I agree.
    Check: \`bb project show "$BB_PROJECT_ID"\` lists a source on the machine.
 
 3. For each branch, start a worktree thread on that machine:
    bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch origin/<branch> --title "<branch>" --prompt "You run the dev server for <branch>. Reply ready."
    Check: each spawn returns a thread ID. If a thread fails to start its agent, stop and ask me to sign in to that agent on the machine.
 
-4. Start each thread's dev server in a bb terminal, on the ports in its \`.env.local\`, listening on 127.0.0.1:
-   bb terminal create --thread <thread-id> --title "Dev server" --command "set -a; . ./.env.local; set +a; <dev command with its port and host flags>"
+4. Give each branch its own ports. In each branch's worktree, if there's no \`.env.local\`, pick two free ports and write WEB_PORT and API_PORT to \`.env.local\` there. Don't commit it. (A committed \`.bb-env-setup.sh\` that does this only runs for branches that already contain it.)
+   Check: every worktree's \`.env.local\` has different ports.
+
+5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using the Dev server command line:
+   bb terminal create --thread <thread-id> --title "Dev server" --command 'set -a; . ./.env.local; set +a; <dev server command> --host 127.0.0.1 --port "$WEB_PORT"'
    Check: \`bb terminal output <terminal-id>\` shows the server listening on 127.0.0.1 at that port.
 
-5. Share each port:
+6. Share each WEB_PORT. Run \`bb connect status\` first; if remote access is off, stop and ask me to turn on bb connect in Settings. Then:
    bb connect expose <port> --host <machine>
    Check: \`bb connect shares --host <machine>\` lists every port.
 
-Reply with a table of branch, port, and link. Don't open firewall ports, send localhost links, or share ports I didn't ask for.`,
+Reply with a table of branch, port, and link.`,
 );
 
 const SETUP_SCRIPT = `#!/usr/bin/env bash

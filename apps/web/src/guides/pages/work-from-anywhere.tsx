@@ -13,21 +13,24 @@ const AGENT_PROMPT = withIntake(
     { label: "Notifications", hint: "yes or no" },
     { label: "Keep this computer awake", hint: "yes or no" },
   ],
-  `Get this bb ready for me to use from my phone, and keep this computer awake while I'm away.
+  `Get this bb ready for me to use from my phone.
 Guide: https://getbb.app/guides/work-from-anywhere
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't change any other settings.
 
 1. Check the account: run \`bb account status\`.
-   Check: it shows a signed-in getbb.app account. If not, run \`bb account login\`, send me the link and code it prints, and stop until I approve it.
+   Check: it shows a signed-in getbb.app account. If not, run \`bb account login\`, send me the link and code it prints, and ask me to approve it and claim a handle, then tell you "done". Then run \`bb account status\` again.
 
 2. Check remote access: run \`bb connect status\`.
    Check: it shows connected and an https://<handle>.getbb.app address. If remote access is off, run \`bb connect on\` and check again.
 
-3. Keep this computer awake: run \`bb keep-awake enable\`, then \`bb keep-awake status\`.
+3. Only if "Keep this computer awake" is yes: run \`bb keep-awake enable\`, then \`bb keep-awake status\`.
    Check: it shows Keep Awake enabled. If the command isn't found, run \`bb plugin enable keep-awake\` and try again.
 
-Reply with my getbb.app address and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep. Don't change any other settings.`,
+4. Only if Notifications is yes: tell me to open Settings → Mobile in bb on this computer, install the app for my phone (TestFlight for iPhone, the Android download for Android), choose Add mobile device, and scan the code with the app. Wait until I say "done", then run \`bb push-notifications list\`.
+   Check: my phone shows up in the list.
+
+Reply with my getbb.app address and these steps: open it on my phone, sign in with the same getbb.app account, and add it to my Home Screen. Say whether Keep Awake is on, and remind me that closing a laptop's lid still puts it to sleep.`,
 );
 
 export const WORK_FROM_ANYWHERE: Guide = {

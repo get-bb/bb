@@ -16,30 +16,37 @@ import {
 
 const AGENT_PROMPT = withIntake(
   [{ label: "Task", hint: "what to build or fix" }],
-  `Build the task I describe, have a Codex child thread review it, talk it through with the reviewer, and stop after two review rounds.
+  `Build the task, have Codex review it in its own thread, talk it through with Codex, and stop after two review rounds.
 Guide: https://getbb.app/guides/claude-code-and-codex-together
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw.
+You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
 
-1. Build the task on this thread's branch and commit your work.
+If you aren't Claude Code, tell me to paste this into a Claude Code thread instead, and stop.
+
+1. Get a branch. If you're on the repo's default branch, create a new branch first. Run \`BASE=$(git rev-parse HEAD)\` and keep the value.
+   Check: \`git branch --show-current\` isn't the default branch.
+
+2. Build the task and commit your work.
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
-2. Start a Codex child thread to review it, in this worktree:
-   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider codex --title "Review: <task>" --prompt "Review the latest commits on this branch read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
-   Check: the spawn returns a thread ID. If Codex fails to start, stop and ask me to sign in with \`codex login\`.
+3. Start Codex as the reviewer in its own thread, in this worktree:
+   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider codex --title "Review: <task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
+   Check: the spawn returns a thread ID. If Codex fails to start, stop and ask me to sign in to Codex on this computer.
 
-3. Wait for the review and read it:
+4. Wait for the review and read it:
    bb thread wait <codex-thread-id>
    bb thread output <codex-thread-id>
    Check: the output lists issues or says there are none.
 
-4. If a finding is unclear, ask the reviewer: bb thread tell <codex-thread-id> "<your question>". Fix every serious issue and commit. Then ask for one more pass:
-   bb thread tell <codex-thread-id> "I fixed the serious issues in the latest commit. Review the branch again, read-only."
-   Check: \`bb thread wait\` and \`bb thread output\` return a second review.
+5. If the review found no serious issues, skip to step 6. Otherwise:
+   - If a finding is unclear, ask: bb thread tell <codex-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Questions don't count as review rounds.
+   - Fix every serious issue and commit.
+   - Ask for one more pass: bb thread tell <codex-thread-id> "I fixed the serious issues in the latest commit. Review git diff <BASE>..HEAD again, read-only."
+   Check: bb thread wait and bb thread output return the second review.
 
-5. Stop after the second review, even if issues remain. If the first review found nothing serious, stop after it. Leave the Codex thread open so I can read it; don't archive it.
+6. Stop after the second review, even if issues remain. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what each review found, what you fixed, and what's left for me. Don't push, open a PR, or merge unless I ask.`,
+Reply with what you built, what each review found, what you fixed, and what's left for me.`,
 );
 
 export const CLAUDE_CODE_AND_CODEX: Guide = {

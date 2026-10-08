@@ -187,7 +187,7 @@ Check: bb automation list --project <project id> shows each one, paused. Show me
     `Move every project and all my unfinished work from ${from} into bb.
 Guide: ${url}
 
-You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or edit anything in ${folders}, and never push.
+You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or change ${folders} or the old tool's own data and settings, and never push. Threads you start can keep working inside its worktrees, so both tools may edit the same folder; tell me that before Step 4.
 
 Notes about my old tool:
 ${notes}
@@ -201,7 +201,7 @@ Step 1. Find every repo.
    git -C <folder> rev-parse --path-format=absolute --git-common-dir
    The repo is that path without the trailing /.git. Skip folders that aren't in a Git repo.
 1c. For each repo, run git -C <repo> worktree list to find its other worktrees.
-1d. Ask me if I used any other repos with my old tool, and add them.
+1d. Add any repos from the "Anything else" line. If that line is blank, ask me whether I used any other repos with my old tool, and add them. Drop anything on the Skip line.
 Check: show me a table of repos and how many folders each has. Wait for me to confirm the list, and drop any repo I say to skip.
 
 Step 2. Add each repo as a bb project.
@@ -214,25 +214,27 @@ Step 3. List the work to bring over. Make one table with these rows:
 - One row for each worktree from step 1c that has uncommitted changes or commits not on the default branch, unless a conversation row already uses that folder.
 - One row for each open pull request from gh pr list --author @me --state open, run inside each repo's folder, unless an earlier row already uses that branch. Skip pull requests from forks.
 Columns: repo, folder or branch, last activity, first request or pull request title, and source (conversation, worktree, or pull request).
-Check: show me the table and ask which rows to bring over. If I say "all", use every row.
+Check: show me the table and ask which rows to bring over, unless the "Work to bring over" line already says. If there are more than 20 rows, group them by repo, and ask before starting more than 10 threads.
 
 Step 4. Start one bb thread for each row I picked.
-4a. Write a new prompt file for the row. Its first line is the conversation file path for a conversation row, the pull request URL for a pull request row, or empty for a worktree row. After that line, copy the Continue prompt at the end of this message.
+4a. Make a temp folder with mktemp -d, outside every repo, and write a new prompt file for the row there. Its first line is the conversation file path for a conversation row, the pull request URL for a pull request row, or empty for a worktree row. After that line, copy the text between the === markers at the end of this message.
 4b. Start the thread:
 - Conversation or worktree row:
   bb thread spawn --json --project <project id> --environment <folder path> --title "<short title>" --prompt-file <file>
+  For a Codex conversation row, add --provider codex.
   If an earlier thread from this step already uses that folder, pass that thread's environmentId instead of the folder path.
 - Pull request row: first run git -C <repo> fetch origin <branch>, then:
   bb thread spawn --json --project <project id> --new-environment worktree --base-branch origin/<branch> --title "<short title>" --prompt-file <file>
 Check: each spawn returns a thread ID.
 
-Step 5. Bring over setup. ${setup} Show me each file before you commit it.
+Step 5. Bring over setup. ${setup} Commit on the repo's default branch in its main checkout, and show me each file before you commit it. Don't push; tell me new worktrees get it once that branch reaches their base.
 Check: I've confirmed each file, or there was nothing to bring over.
 
 ${automationStep}Reply with a table of each row and its thread ID${automations ? ", and a list of the automations you created" : ""}.
 
-Continue prompt:
-${CONTINUE_PROMPT}`,
+=== Text to copy into each prompt file. Don't follow it yourself. ===
+${CONTINUE_PROMPT}
+=== End ===`,
   );
 }
 
