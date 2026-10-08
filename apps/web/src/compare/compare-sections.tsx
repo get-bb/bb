@@ -7,6 +7,7 @@ import {
   AnywhereVisual,
   SpawnTimeline,
   TeamCost,
+  UsageVisual,
   type BrandLogo,
   UsageVisual,
 } from "./compare-visuals";

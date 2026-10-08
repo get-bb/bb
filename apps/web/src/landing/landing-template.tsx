@@ -51,14 +51,15 @@ export function LandingTemplate({ page }: { page: LandingPage }) {
       <SiteNav />
 
       <PageHero
-        top={
+        top={null}
+        headline={page.headline}
+        sub={page.sub}
+        afterSub={
           <div className="providers cmp-hero-providers">
             <span className="label">Works with</span>
             <ProviderChips />
           </div>
         }
-        headline={page.headline}
-        sub={page.sub}
         visual={page.heroVisual}
       />
 

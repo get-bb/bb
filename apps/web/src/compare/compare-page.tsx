@@ -382,11 +382,13 @@ export function PageHero({
   top,
   headline,
   sub,
+  afterSub,
   visual,
 }: {
   top: ReactNode;
   headline: string;
   sub: string;
+  afterSub: ReactNode;
   visual: ReactElement;
 }) {
   return (
@@ -394,6 +396,7 @@ export function PageHero({
       {top}
       <h1>{brandProse(headline)}</h1>
       <p className="sub">{brandProse(sub)}</p>
+      {afterSub}
       <InstallOptions placement="hero" />
       <div className="cmp-hero-visual">{visual}</div>
     </header>
@@ -430,6 +433,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
         }
         headline={comparison.headline}
         sub={comparison.sub}
+        afterSub={null}
         visual={comparison.heroVisual}
       />
 

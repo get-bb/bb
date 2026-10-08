@@ -16,6 +16,8 @@ import {
 import {
   ANYWHERE_COPY,
   anywhereSection,
+  LIMITS_COPY,
+  limitsSection,
   SPAWN_COPY,
   spawnSection,
 } from "../compare/compare-sections";
@@ -57,14 +59,12 @@ const CODEX_SECTION: CompareHighlight = {
   body: (
     <>
       <p>
-        Have one agent check another’s work before it reaches you. Ask Claude
-        Code for a Codex review of its branch: Codex sends its findings back,
-        and Claude Code fixes them, with no copy-paste between tools.
+        Have one agent check another’s work. Claude Code asks Codex for a
+        review, then fixes what it finds, with no copy-paste.
       </p>
       <p>
-        Each agent runs in its own thread on its own subscription, so you can
-        read exactly what one sent the other and step in at any point. Any pair
-        of agents works the same way.
+        Each runs in its own thread on its own subscription, so you can see what
+        they send each other and step in anytime.
       </p>
     </>
   ),
@@ -123,6 +123,17 @@ const FAQ_STAY_ON: CompareFaq = {
   ),
 };
 
+const FAQ_WHO_NEEDS_YOU: CompareFaq = {
+  question: "How do I know which agent needs me?",
+  answer: (
+    <p>
+      bb’s thread list marks every agent as running, waiting on you, or done,
+      across all your machines. When one needs an answer or an approval, the bb
+      mobile app sends a push notification, and you can reply from any browser.
+    </p>
+  ),
+};
+
 const FAQ_LIMIT_RESET: CompareFaq = {
   question: "What happens when an agent hits a usage limit?",
   answer: (
@@ -167,7 +178,13 @@ export const LANDING_PAGES: LandingPage[] = [
     sub: "Claude Code, Codex, and your other agents in one list, marked running, waiting on you, or done. Reply from any phone browser. Free and open source.",
     closer: "Know which agent needs you",
     heroVisual: <AnywhereVisual />,
-    sections: [textOnly(PHONE_SECTION), CODEX_SECTION, PARALLEL_SECTION],
+    sections: [
+      textOnly(PHONE_SECTION),
+      { ...anywhereSection(ANYWHERE_COPY), visual: <FleetVisual /> },
+      PARALLEL_SECTION,
+      limitsSection(LIMITS_COPY),
+      CODEX_SECTION,
+    ],
     faq: [
       PHONE_FAQ,
       {
@@ -188,7 +205,9 @@ export const LANDING_PAGES: LandingPage[] = [
     heroVisual: <AgentSplit />,
     sections: [
       textOnly(CODEX_SECTION),
+      spawnSection(SPAWN_COPY),
       PARALLEL_SECTION,
+      limitsSection(LIMITS_COPY),
       anywhereSection(ANYWHERE_COPY),
     ],
     faq: [
@@ -212,13 +231,15 @@ export const LANDING_PAGES: LandingPage[] = [
     sections: [
       PARALLEL_SECTION,
       spawnSection(SPAWN_COPY),
-      CODEX_SECTION,
       anywhereSection(ANYWHERE_COPY),
+      limitsSection(LIMITS_COPY),
+      CODEX_SECTION,
     ],
     faq: [
       {
         title: "Running a software factory",
         items: [
+          FAQ_WHO_NEEDS_YOU,
           FAQ_PARALLEL,
           faqTalk(null),
           FAQ_CODEX_TOGETHER,

@@ -59,7 +59,7 @@
 }
 
 .cmp-hero .cmp-hero-providers {
-  margin: 0 0 22px;
+  margin: 22px 0 0;
 }
 
 .cmp-hero-visual .cmp-anywhere {
@@ -2682,4 +2682,102 @@
   width: 14px;
   height: 14px;
   color: color-mix(in oklch, var(--ok) 70%, var(--subtle));
+}
+
+.cmp-usage {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 36px 52px;
+  column-gap: 10px;
+  row-gap: 6px;
+  width: 100%;
+  max-width: 420px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--shade) 10%, transparent);
+  text-align: left;
+}
+
+.cmp-usage-head {
+  grid-column: 1 / -1;
+  font-size: var(--text-label-small);
+  color: var(--subtle);
+}
+
+.cmp-usage-account {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  row-gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.cmp-usage-title {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cmp-usage-ic {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--ink-strong);
+}
+
+.cmp-usage-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.cmp-usage-plan {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+  font-size: var(--text-label-small);
+  line-height: 1.2;
+  color: var(--subtle);
+}
+
+.cmp-usage-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font-size: 12.5px;
+}
+
+.cmp-usage-label {
+  color: var(--subtle);
+}
+
+.cmp-usage-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.cmp-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink-strong);
+}
+
+.cmp-usage-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.cmp-usage-reset {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--subtle);
 }
