@@ -2,8 +2,10 @@ import { replaceMachineEnvironment } from "../../src/services/machines/environme
 import * as gitCredentials from "../../src/services/machines/git-credentials.js";
 import {
   createTerminalSession,
+  getAppSettings,
   getTerminalSession,
   listTerminalSessions,
+  setAppSettings,
   updateTerminalSession,
   updateTerminalSessions,
 } from "@bb/db";
@@ -434,6 +436,10 @@ describe("public terminal routes", () => {
       for (const primary of [true, false]) {
         const fixture = await createTerminalRouteFixture();
         harnesses.push(fixture.harness);
+        setAppSettings(fixture.harness.db, {
+          ...getAppSettings(fixture.harness.db),
+          machineGitCredentialsEnabled: true,
+        });
         if (primary) seedPrimaryHost(fixture.harness.deps, fixture.host.id);
         else {
           const primaryHost = seedHost(fixture.harness.deps, {
