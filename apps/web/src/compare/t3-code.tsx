@@ -157,7 +157,8 @@ export const BB_VS_T3_CODE: Comparison = {
               on your machine, in <code>~/.t3/worktrees</code>, so a bb agent
               can add your repos and open each unfinished worktree as a thread.
               Your CLAUDE.md, skills, MCP servers, and agent sign-ins come
-              along, and T3 Code keeps working while you try bb.
+              along, and T3 Code keeps working while you try bb.{" "}
+              <a href="/guides/switch-to-bb?from=t3-code">Copy the prompt</a>.
             </p>
           ),
         },

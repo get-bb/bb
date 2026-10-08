@@ -271,6 +271,61 @@ body {
   color: var(--heading);
 }
 
+.nav-sub {
+  position: relative;
+}
+
+.nav-links .nav-sub-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: var(--dim);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-sub-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nav-links .nav-sub-trigger:hover,
+.nav-links .nav-sub.open > .nav-sub-trigger {
+  background: var(--surface);
+  color: var(--heading);
+}
+
+.nav-sub-trigger:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.nav-sub-panel {
+  position: absolute;
+  top: -6px;
+  left: calc(100% + 12px);
+  display: none;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 12%, transparent);
+}
+
+.nav-sub.open > .nav-sub-panel {
+  display: flex;
+}
+
 .nav-icon-button {
   display: inline-grid;
   place-items: center;
@@ -2953,7 +3008,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 .footer {
   display: grid;
-  grid-template-columns: 0.65fr 0.95fr 1.1fr 1.2fr 0.7fr;
+  grid-template-columns: 0.65fr 0.9fr 1.6fr 1.1fr 1.1fr 0.7fr;
   gap: 32px;
   padding: 56px 0 64px;
   border-top: 1px solid var(--border-soft);
@@ -3182,11 +3237,61 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 500px) {
+  .nav-links .nav-wide {
+    display: none;
+  }
+}
+
 /* Give the remaining utility links a little more room on narrow phones. */
 @media (max-width: 430px) {
   .nav-links {
     gap: 12px;
     font-size: 13px;
+  }
+
+  .nav-menu {
+    position: static;
+  }
+
+  .nav-menu-panel {
+    right: 0;
+    left: auto;
+    max-width: 100%;
+  }
+
+  .nav-links .nav-menu-panel a {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 760px) {
+  .nav-menu-panel:has(> .nav-sub.open) > :not(.nav-sub.open) {
+    display: none;
+  }
+
+  .nav-sub-panel {
+    position: static;
+    min-width: 0;
+    padding: 4px 0 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .nav-links .nav-sub.open > .nav-sub-trigger {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 8px 8px 0 0;
+    background: none;
+    font-weight: 600;
+    color: var(--heading);
+  }
+
+  .nav-sub.open > .nav-sub-trigger svg {
+    transform: rotate(180deg);
   }
 }
 

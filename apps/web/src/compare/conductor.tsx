@@ -196,7 +196,8 @@ export const BB_VS_CONDUCTOR: Comparison = {
               so a bb agent can add the repo and open each unfinished workspace
               or branch as a thread. Your CLAUDE.md, skills, MCP servers, slash
               commands, and agent sign-ins come along, and Conductor keeps
-              working while you try bb.
+              working while you try bb.{" "}
+              <a href="/guides/switch-to-bb?from=conductor">Copy the prompt</a>.
             </p>
           ),
         },

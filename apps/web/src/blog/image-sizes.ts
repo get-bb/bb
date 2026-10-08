@@ -33,6 +33,56 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 1200,
     height: 900,
   },
+  "/guides/claude-code-and-codex-together/subthread-sidebar.png": {
+    width: 670,
+    height: 216,
+  },
+  "/guides/claude-code-and-codex-together/split-view.png": {
+    width: 2880,
+    height: 1800,
+  },
+  "/guides/claude-code-and-codex-together/talk-it-through.png": {
+    width: 2251,
+    height: 820,
+  },
+  "/guides/work-from-anywhere/bb-connect-settings.png": {
+    width: 1538,
+    height: 890,
+  },
+  "/guides/run-an-agent-on-a-schedule/automations-list.png": {
+    width: 1920,
+    height: 1040,
+  },
+  "/guides/run-an-agent-on-a-schedule/new-automation.png": {
+    width: 1520,
+    height: 410,
+  },
+  "/guides/run-an-agent-on-a-schedule/automation-detail.png": {
+    width: 1280,
+    height: 1040,
+  },
+  "/guides/run-an-agent-on-a-schedule/script-runs.png": {
+    width: 1280,
+    height: 1240,
+  },
+  "/guides/orchestrate-coding-agents/new-thread.png": {
+    width: 1280,
+    height: 420,
+  },
+  "/guides/remote-dev-servers/new-thread-worktree.png": {
+    width: 1280,
+    height: 360,
+  },
+  "/guides/work-from-anywhere/keep-awake.png": { width: 1280, height: 840 },
+  "/guides/remote-dev-servers/add-a-machine.png": { width: 1024, height: 650 },
+  "/guides/remote-dev-servers/new-project-machine.png": {
+    width: 1024,
+    height: 1014,
+  },
+  "/guides/remote-dev-servers/start-terminal.png": {
+    width: 1120,
+    height: 686,
+  },
 };
 
 export function getImageSize(src: string): ImageSize | undefined {

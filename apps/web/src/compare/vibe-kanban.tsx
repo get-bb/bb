@@ -126,7 +126,11 @@ export const BB_VS_VIBE_KANBAN: Comparison = {
               Yes. Ask bb to do it. Your branches and worktrees are plain Git on
               your machine, so a bb agent can add the repo and open each
               worktree as a thread. If you exported your Vibe Kanban issues, it
-              can turn each one into a task on your board.
+              can turn each one into a task on your board.{" "}
+              <a href="/guides/switch-to-bb?from=vibe-kanban">
+                Copy the prompt
+              </a>
+              .
             </p>
           ),
         },

@@ -218,7 +218,8 @@ export const FAQ_CODEX_TOGETHER: CompareFaq = {
       then fix what it finds.” It starts Codex in the same worktree, waits, and
       applies the fixes. Codex shows up as its own thread, so you can read the
       exact prompt Claude sent, watch it work, and message it mid-run. Any other
-      pair works the same way, like Cursor and OpenCode.
+      pair works the same way, like Cursor and OpenCode.{" "}
+      <a href="/guides/claude-code-and-codex-together">See how</a>.
     </p>
   ),
 };
@@ -272,7 +273,7 @@ export function faqPhone(contrast: ReactNode): CompareFaq {
         Yes, for free. Use the bb mobile app, a public beta on iPhone through
         TestFlight (Apple’s beta testing app) and in alpha on Android, or open
         bb in any browser through bb Connect, bb’s free remote access.{" "}
-        {contrast}
+        {contrast} <a href="/guides/work-from-anywhere">Set it up</a>.
       </p>
     ),
   };
@@ -327,8 +328,9 @@ export function faqTeam(contrast: ReactNode): CompareFaq {
       <p>
         Yes, free at any team size{contrast}. Teams can share one bb on an
         always-on machine, so everyone sees the same projects and threads, or
-        each person can run their own and share work through Git as usual. bb
-        doesn’t offer team plans, SSO, or a support SLA.
+        each person can run their own and share work through Git as usual.{" "}
+        <a href="/guides/remote-dev-servers#team">See how</a>. bb doesn’t offer
+        team plans, SSO, or a support SLA.
       </p>
     ),
   };

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { GUIDE_MENU } from "./content-links";
 import { SiteFooter, SiteNav } from "./site-chrome";
 
 describe("site navigation", () => {
@@ -10,7 +11,10 @@ describe("site navigation", () => {
     const links = [...navLinks.matchAll(/<a [^>]*>/gu)].map(
       (match) => match[0],
     );
-    expect(links).toHaveLength(7);
+    const guideLinks = GUIDE_MENU.flatMap((item) =>
+      "links" in item ? item.links : [item],
+    );
+    expect(links).toHaveLength(7 + guideLinks.length);
     expect(html).toMatch(
       /<details class="nav-menu"><summary class="nav-current">Plugins/,
     );
@@ -27,7 +31,6 @@ describe("site navigation", () => {
     expect(html).toContain("Download for macOS");
     expect(html).not.toContain(">GitHub<");
     expect(html).not.toContain("Theme");
-    expect(html).not.toContain("<button");
   });
 
   it("marks Building plugins current inside the Plugins menu", () => {
@@ -41,7 +44,9 @@ describe("site navigation", () => {
 
   it("marks Changelog current on the changelog route", () => {
     const html = renderToStaticMarkup(<SiteNav current="changelog" />);
-    expect(html).toContain('class="nav-current" href="/changelog">Changelog');
+    expect(html).toContain(
+      'class="nav-current nav-wide" href="/changelog">Changelog',
+    );
     expect(html).toContain("<summary>Plugins");
     const footer = renderToStaticMarkup(<SiteFooter />);
     expect(footer).toContain('href="/changelog">Changelog');
@@ -52,7 +57,13 @@ describe("site navigation", () => {
     const footer = renderToStaticMarkup(
       <SiteFooter current="/compare/superset-alternative" />,
     );
-    for (const title of ["Product", "Compare", "Use cases", "Community"]) {
+    for (const title of [
+      "Product",
+      "Guides",
+      "Compare",
+      "Use cases",
+      "Community",
+    ]) {
       expect(footer).toContain(`<h2 class="footer-title">${title}</h2>`);
     }
     expect(footer).toContain(
