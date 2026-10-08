@@ -2846,6 +2846,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   text-align: center;
 }
 
+.closer h2,
+.closer p {
+  text-wrap: balance;
+}
+
 .closer p {
   color: var(--dim);
   margin-top: 12px;
