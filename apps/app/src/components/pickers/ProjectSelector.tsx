@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Button } from "@bb/shared-ui/button";
 import {
   Command,
@@ -17,6 +18,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useScrollOverflowState } from "../thread/timeline/useScrollOverflowState";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
@@ -72,6 +74,12 @@ export function ProjectSelector({
   const commandRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  const { scrollRef, belowOverflow } = useScrollOverflowState<HTMLDivElement>({
+    enabled: listElement !== null,
+    measureOverflow: true,
+  });
+  const composedListRef = useComposedRefs(listRef, scrollRef, setListElement);
   useLayoutEffect(() => {
     const items =
       commandRef.current?.querySelectorAll<HTMLElement>("[cmdk-item]");
@@ -217,8 +225,12 @@ export function ProjectSelector({
                 className="flex min-h-0 flex-col [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
               >
                 <div
-                  ref={listRef}
-                  className="min-h-0 overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]"
+                  ref={composedListRef}
+                  className={cn(
+                    "min-h-0 overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
+                    belowOverflow &&
+                      "md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_1rem),transparent)]",
+                  )}
                 >
                   {filteredProjects.map((project) => (
                     <CommandItem
