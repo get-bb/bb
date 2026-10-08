@@ -27,6 +27,7 @@ import {
   usePluginSidebarFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import { SidebarNotificationsPrompt } from "./SidebarNotificationsPrompt";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
@@ -265,6 +266,7 @@ export function AppSidebar({
             onNavigate={closeOnMobile}
           />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
+          <SidebarNotificationsPrompt />
         </SidebarMenu>
       </SidebarFooter>
       <SidebarResizeHandle

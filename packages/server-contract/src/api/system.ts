@@ -216,7 +216,7 @@ export const setupChecklistItemIdSchema = z.enum([
 ]);
 export type SetupChecklistItemId = z.infer<typeof setupChecklistItemIdSchema>;
 const notificationPromptTelemetryPropertiesSchema = z
-  .object({ surface: z.enum(["checklist", "thread"]) })
+  .object({ surface: z.enum(["checklist", "sidebar"]) })
   .strict();
 const checklistCountSchema = z.number().int().min(0).max(10);
 

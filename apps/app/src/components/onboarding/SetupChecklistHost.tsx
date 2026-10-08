@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useSetAtom } from "jotai";
 import {
   setupChecklistItemIdSchema,
@@ -17,7 +17,10 @@ import {
   useSystemConfig,
   useSystemProviderStates,
 } from "@/hooks/queries/system-queries";
-import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
+import {
+  requestNotificationPermission,
+  useNotificationPermission,
+} from "@/hooks/useNotificationPermission";
 import {
   ONBOARDING_PLUGINS,
   PUSH_NOTIFICATIONS_PLUGIN_ID,
@@ -38,46 +41,6 @@ export interface SetupChecklistItem {
 }
 
 const COMPLETED_ITEMS_STORAGE_KEY = "bb.setupChecklist.completedItems";
-
-type NotificationPermissionState = NotificationPermission | "unsupported";
-
-function readNotificationPermission(): NotificationPermissionState {
-  return typeof Notification === "undefined" ||
-    !window.isSecureContext ||
-    isInsideNativeShell()
-    ? "unsupported"
-    : Notification.permission;
-}
-
-function useNotificationPermission() {
-  const [permission, setPermission] = useState(readNotificationPermission);
-  useEffect(() => {
-    const refresh = () => setPermission(readNotificationPermission());
-    window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, []);
-  const request = useCallback(() => {
-    void Notification.requestPermission()
-      .then((result) => {
-        setPermission(result);
-        recordTelemetryEvent({
-          name:
-            result === "granted"
-              ? "notification_prompt_accepted"
-              : result === "denied"
-                ? "notification_prompt_denied"
-                : "notification_prompt_dismissed",
-          properties: { surface: "checklist" },
-        });
-      })
-      .catch(() => setPermission(readNotificationPermission()));
-  }, []);
-  return { permission, request };
-}
 
 function readCompletedItems(): Set<string> | null {
   try {
@@ -173,7 +136,7 @@ export function useSetupChecklist({
   const navigationQuery = useSidebarNavigation({ enabled: visible });
   const pluginsQuery = usePluginList({ enabled: visible });
   const hostsQuery = useHosts({ enabled: visible });
-  const notifications = useNotificationPermission();
+  const notificationPermission = useNotificationPermission();
 
   const states = statesQuery.data?.providers;
   const agentReady = hasReadyAgent(states);
@@ -208,8 +171,8 @@ export function useSetupChecklist({
   const devicesDone = connect.status === "on" || machineCount > 1;
   const showNotifications =
     pushNotificationsEnabled &&
-    (notifications.permission === "default" ||
-      notifications.permission === "granted");
+    (notificationPermission === "default" ||
+      notificationPermission === "granted");
 
   const allItems: SetupChecklistItem[] | null =
     !visible ||
@@ -279,10 +242,10 @@ export function useSetupChecklist({
                   id: "notifications" as const,
                   title: "Turn on notifications",
                   detail:
-                    notifications.permission === "granted"
+                    notificationPermission === "granted"
                       ? "On for this device"
                       : "Know when an agent finishes or needs your answer",
-                  done: notifications.permission === "granted",
+                  done: notificationPermission === "granted",
                   optional: true,
                   actionLabel: "Turn on",
                 },
@@ -306,7 +269,7 @@ export function useSetupChecklist({
         onStartThread();
         return;
       case "notifications":
-        notifications.request();
+        void requestNotificationPermission("checklist");
         return;
       default:
         setReopenStep(id);
