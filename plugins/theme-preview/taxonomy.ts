@@ -9,7 +9,7 @@ export const AREA_TITLES: Record<AreaId, string> = {
 
 export const MOCK_VIEWS = [
   { id: "thread", label: "Thread", exercises: "sidebar row states + scoped overrides, held-open table-of-contents popover, bubbles on surface-recessed, seam/hairline borders, diff washes, file/timeline accents, metadata panel, verification badges, composer ring, primary send" },
-  { id: "new", label: "New thread", exercises: "empty welcome hierarchy, action-row hover and focus, muted supporting copy" },
+  { id: "new", label: "New thread", exercises: "empty home composer on canvas, composer ring, muted placeholder copy" },
   { id: "split", label: "Split", exercises: "pane seam, focused and inactive panes, background scrim, two distinct transcripts" },
   { id: "settings", label: "Settings", exercises: "settings navigation selection, appearance section card, responsive label and description hierarchy, outline controls, active theme and mode, switch" },
 ] as const;

@@ -57,7 +57,9 @@ function thread(status: PluginSidebarThread["status"]): PluginSidebarThread {
 
 function renderPrompt(
   status: PluginSidebarThread["status"],
-  recordTelemetryEvent = vi.fn(async () => ({ ok: true as const })),
+  recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
+    ok: true as const,
+  })),
 ) {
   const overlay = app.appOverlays.find((entry) => entry.id === "prompt");
   if (overlay === undefined) throw new Error("missing prompt overlay");
@@ -123,7 +125,9 @@ describe("running thread notification prompt", () => {
     const requestPermission = vi.fn(async () => "granted");
     vi.stubGlobal("Notification", { permission: "default", requestPermission });
     vi.stubGlobal("isSecureContext", true);
-    const recordTelemetryEvent = vi.fn(async () => ({ ok: true as const }));
+    const recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
+      ok: true as const,
+    }));
 
     const view = renderPrompt("active", recordTelemetryEvent);
 
@@ -184,7 +188,9 @@ describe("running thread notification prompt", () => {
       requestPermission: vi.fn(),
     });
     vi.stubGlobal("isSecureContext", true);
-    const recordTelemetryEvent = vi.fn(async () => ({ ok: true as const }));
+    const recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
+      ok: true as const,
+    }));
 
     const view = renderPrompt("active", recordTelemetryEvent);
 

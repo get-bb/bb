@@ -18,11 +18,7 @@ import {
   useSystemProviderStates,
 } from "@/hooks/queries/system-queries";
 import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
-import {
-  NoAgentNotice,
-  SetupChecklist,
-  type SetupChecklistItem,
-} from "./SetupChecklistViews";
+import { SetupChecklist, type SetupChecklistItem } from "./SetupChecklistViews";
 import {
   ONBOARDING_PLUGINS,
   PUSH_NOTIFICATIONS_PLUGIN_ID,
@@ -344,17 +340,14 @@ export function SetupChecklistCard({
 }: {
   checklist: SetupChecklistState;
 }) {
-  if (checklist.items !== null) {
-    return (
-      <SetupChecklist
-        items={checklist.items}
-        onAction={checklist.act}
-        onDismiss={checklist.dismiss}
-      />
-    );
-  }
-  if (!checklist.agentMissing) return null;
-  return <NoAgentNotice onSetUp={() => checklist.act("agent")} />;
+  if (checklist.items === null) return null;
+  return (
+    <SetupChecklist
+      items={checklist.items}
+      onAction={checklist.act}
+      onDismiss={checklist.dismiss}
+    />
+  );
 }
 
 export function hasSetupChecklistBanner(

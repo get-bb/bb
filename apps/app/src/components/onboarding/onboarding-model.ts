@@ -31,6 +31,9 @@ export const ONBOARDING_PLUGINS: readonly {
   { entryId: "ask-user-question", pluginId: "ask-user-question" },
 ];
 
+export const FIRST_THREAD_PROMPT =
+  "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads and projects.";
+
 export const CONNECT_PLUGIN_ID = "connect";
 export const PUSH_NOTIFICATIONS_PLUGIN_ID = "push-notifications";
 

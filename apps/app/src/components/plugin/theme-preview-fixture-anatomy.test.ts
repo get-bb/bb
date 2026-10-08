@@ -179,17 +179,10 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   ],
   new: [
     {
-      file: "apps/app/src/views/RootComposeEmptyWelcome.tsx",
-      mustContain: [
-        'title="New thread"',
-        'description="Start a new conversation"',
-        'title="Automatically import my projects"',
-        'title="New project"',
-        'title="Learn what bb can do"',
-        "hover:bg-state-hover",
-      ],
+      file: "apps/app/src/components/promptbox/NewThreadPromptBox.tsx",
+      mustContain: ['"Ask anything.'],
       because:
-        "The New thread projection uses BB's current empty-welcome actions, hierarchy, and hover state.",
+        "The New thread projection is BB's empty home: the new-thread composer and its placeholder, with no separate welcome page.",
     },
   ],
   split: [
