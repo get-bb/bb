@@ -72,6 +72,7 @@ import {
   getSettingsProjectRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
+import { useBeforeUnloadGuard } from "./lib/terminal-close-guard";
 import { WindowFindHost } from "./components/layout/WindowFindHost";
 import { DesktopZoomIndicator } from "./components/layout/DesktopZoomIndicator";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
@@ -463,6 +464,7 @@ export function App() {
   useFaviconColorSync();
   usePluginFrontendBoot();
   useRememberPluginNavPanelChrome();
+  useBeforeUnloadGuard();
 
   return (
     <QuickCreateProjectProvider>
