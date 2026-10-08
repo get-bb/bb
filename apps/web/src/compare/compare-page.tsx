@@ -431,7 +431,7 @@ export function ComparePage({ comparison }: { comparison: Comparison }) {
       {withPluginsSlot(
         comparison.heroVisual,
         [comparison.tailored, ...comparison.sections],
-        comparison.pluginsCopy ?? PLUGINS_COPY,
+        PLUGINS_COPY,
       ).map((highlight) => (
         <Highlight key={highlight.title} highlight={highlight} />
       ))}

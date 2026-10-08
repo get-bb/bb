@@ -31,7 +31,6 @@ import {
   anywhereSection,
   PRICING_COPY,
   pricingSection,
-  type SectionCopy,
 } from "./compare-sections";
 import { FleetVisual, type BrandLogo } from "./compare-visuals";
 import { BB_VS_CONDUCTOR } from "./conductor";
@@ -87,7 +86,6 @@ export type Comparison = {
   heroVisual: ReactElement;
   tailored: CompareHighlight;
   sections: CompareHighlight[];
-  pluginsCopy?: SectionCopy;
   tableNote: string | null;
   table: CompareGroup[];
   faqTitle: string;
