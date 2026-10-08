@@ -1,3 +1,5 @@
+import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
+import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
@@ -246,10 +248,80 @@ export function switchToBb(variant: string | null): Guide {
     },
     handoffNote: `Paste it into a new bb thread. It finds your repos and unfinished work, and checks with you before it starts any threads. ${keepsWorking}`,
     agentPrompt: switchPrompt(tool),
-    needs: [],
+    needs: [
+      {
+        title: "bb on the same computer",
+        icon: ComputerIcon,
+        body: `The computer where ${oldTool} keeps your repos and worktrees.`,
+      },
+      {
+        title: "Your agents signed in",
+        icon: AiMagicIcon,
+        body: "Claude Code, Codex, or the agents you already use there.",
+      },
+    ],
     steps: [],
-    sections: [],
-    faqTitle: "FAQ",
+    troubleshooting: [
+      {
+        question: "The prompt missed some of my work",
+        answer: (
+          <ol>
+            <li>Tell the agent where the repo or worktree is.</li>
+            <li>
+              It adds the repo as a project and opens the work as a thread.
+            </li>
+            <li>
+              Work your agents never touched, like a repo you only edited by
+              hand, won't show up on its own, so name it when the prompt asks.
+            </li>
+          </ol>
+        ),
+      },
+      {
+        question: "A new worktree's setup failed",
+        answer: (
+          <ol>
+            <li>
+              Ask the agent in that thread to run <code>.bb-env-setup.sh</code>{" "}
+              and fix what fails.
+            </li>
+            <li>
+              Check that every untracked file the setup needs, like{" "}
+              <code>.env</code>, is listed in <code>.worktreeinclude</code>.
+            </li>
+            <li>Start a new thread to check that the next worktree sets up.</li>
+          </ol>
+        ),
+      },
+      {
+        question: "A thread couldn't read its old conversation",
+        answer: (
+          <ol>
+            <li>
+              Conversations are read from where Claude Code and Codex keep them
+              on this computer. If they were deleted or ran elsewhere, there's
+              nothing to read.
+            </li>
+            <li>
+              The thread then picks up from its branch or pull request. Tell it
+              what was left to do.
+            </li>
+          </ol>
+        ),
+      },
+      {
+        question: "A thread fails right away",
+        answer: (
+          <ol>
+            <li>Its agent probably isn't signed in on this computer.</li>
+            <li>
+              Sign in to that agent once, then choose <strong>Retry</strong> in
+              the thread.
+            </li>
+          </ol>
+        ),
+      },
+    ],
     faq: [
       {
         question: `Will bb change anything in ${tool ? tool.name : "my old tool"}?`,
@@ -314,29 +386,6 @@ export function switchToBb(variant: string | null): Guide {
             No. You pick which work to bring over, and {oldTool} keeps working
             alongside bb. Run the prompt again later to bring over more; it
             skips repos that are already bb projects.
-          </p>
-        ),
-      },
-      {
-        question: "What if the prompt misses some of my work?",
-        answer: (
-          <p>
-            Tell the agent where the repo or worktree is, and it adds it. Work
-            your agents never touched, like a repo you only edited by hand,
-            won't show up on its own, so name it when the prompt asks about
-            other repos.
-          </p>
-        ),
-      },
-      {
-        question: "What if a new worktree's setup fails?",
-        answer: (
-          <p>
-            Ask the agent in that thread to run <code>.bb-env-setup.sh</code>{" "}
-            and fix what fails. Then check that every untracked file the setup
-            needs, like <code>.env</code>, is listed in{" "}
-            <code>.worktreeinclude</code>, so bb copies it into each new
-            worktree.
           </p>
         ),
       },
