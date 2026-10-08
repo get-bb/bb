@@ -25,6 +25,7 @@ import {
   AgentSplit,
   AnywhereVisual,
   FleetVisual,
+  ReviewVisual,
   WorktreesVisual,
 } from "../compare/compare-visuals";
 import type {
@@ -201,7 +202,7 @@ export const LANDING_PAGES: LandingPage[] = [
     closer: "Let your agents check each other’s work",
     heroVisual: <AgentSplit />,
     sections: [
-      textOnly(CODEX_SECTION),
+      { ...CODEX_SECTION, wide: false, visual: <ReviewVisual /> },
       spawnSection(SPAWN_COPY),
       PARALLEL_SECTION,
       limitsSection(LIMITS_COPY),

@@ -1247,3 +1247,59 @@ export function UsageVisual() {
     </div>
   );
 }
+
+const REVIEW_FINDINGS = [
+  {
+    id: "forwarded",
+    text: (
+      <>
+        Limiter keys on the socket IP, not{" "}
+        <span className="cmp-review-term">X-Forwarded-For</span>
+      </>
+    ),
+  },
+  {
+    id: "retry-after",
+    text: (
+      <>
+        429 responses have no{" "}
+        <span className="cmp-review-term">Retry-After</span> header
+      </>
+    ),
+  },
+];
+
+export function ReviewVisual() {
+  return (
+    <div
+      className="cmp-review"
+      role="img"
+      aria-label="Codex reviews Claude Code's branch and sends back two findings, and Claude Code fixes both with the tests passing"
+    >
+      <span className="cmp-review-head">
+        <OpenAiIcon className="cmp-review-agent" />
+        <span className="cmp-review-who">
+          <span className="cmp-review-title">Review the rate limiter</span>
+          <span className="cmp-review-sub">Codex · sent to Claude Code</span>
+        </span>
+      </span>
+      <ul className="cmp-review-list">
+        {REVIEW_FINDINGS.map((finding) => (
+          <li key={finding.id} className="cmp-review-row">
+            <HugeiconsIcon
+              icon={CheckmarkCircle02Icon}
+              className="cmp-review-done"
+            />
+            <span>{finding.text}</span>
+          </li>
+        ))}
+      </ul>
+      <span className="cmp-review-foot">
+        <ClaudeIcon className="cmp-review-agent" />
+        <span>
+          Claude Code fixed both. <code>pnpm test</code> passes.
+        </span>
+      </span>
+    </div>
+  );
+}
