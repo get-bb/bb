@@ -75,6 +75,10 @@ export const GUIDE_MENU: (ContentGroup | ContentLink)[] = [
   SWITCH_GUIDE,
 ];
 
+export const GUIDE_FOOTER_LINKS: ContentLink[] = GUIDE_MENU.flatMap((item) =>
+  "links" in item ? item.links : [item],
+);
+
 export const COMPARE_LINKS: ContentLink[] = [
   { label: "bb vs Conductor", href: "/compare/conductor-alternatives" },
   { label: "bb vs Cursor", href: "/compare/cursor-alternative" },

@@ -14,7 +14,7 @@ import {
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   COMPARE_LINKS,
-  GUIDE_LINKS,
+  GUIDE_FOOTER_LINKS,
   GUIDE_MENU,
   LANDING_LINKS,
   type ContentLink,
@@ -308,7 +308,7 @@ export function SiteFooter({ current }: { current?: string }) {
         </li>
       </FooterColumn>
       <FooterColumn title="Guides">
-        <FooterLinks links={GUIDE_LINKS} current={current} />
+        <FooterLinks links={GUIDE_FOOTER_LINKS} current={current} />
       </FooterColumn>
       <FooterColumn title="Compare">
         <FooterLinks links={COMPARE_LINKS} current={current} />
