@@ -58,7 +58,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
   slug: "remote-dev-servers",
   title: "Run a dev server for every branch",
   description:
-    "Every agent's branch gets its own dev server and port, reloading as the agent codes. Open any of them from your phone at a private link, no VPN needed.",
+    "Every agent's branch gets its own dev server and port, reloading as the agent codes. Open any of them from your phone at a private link only you can open.",
   concept: <RemoteServersConcept />,
   picker: null,
   handoffNote:
