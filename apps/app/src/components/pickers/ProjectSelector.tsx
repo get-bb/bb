@@ -227,7 +227,7 @@ export function ProjectSelector({
                 <div
                   ref={composedListRef}
                   className={cn(
-                    "min-h-0 max-h-[calc(4.5*2.25rem)] overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
+                    "min-h-0 max-h-[calc(4.5*2.25rem+0.5rem)] overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
                     belowOverflow &&
                       "[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
                   )}
