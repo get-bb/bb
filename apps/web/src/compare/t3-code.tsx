@@ -37,7 +37,7 @@ const AGENTS_SECTION = agentsSection({
 });
 
 const PLUGINS_COPY_T3: SectionCopy = {
-  title: "Your changes, without a fork to maintain",
+  title: "The features you want, without a fork to maintain",
   body: (
     <p>
       Plugins add panels to the sidebar, commands to the bb CLI, tools your
