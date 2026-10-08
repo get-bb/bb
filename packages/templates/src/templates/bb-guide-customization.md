@@ -109,12 +109,19 @@ The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.
 
-The sidebar navigation rows (New thread, Search, Plugins, Skills, plugin
-panels) are drawn by the Navigation builtin plugin. Their order and
-visibility are `bb settings ui` keys (`sidebar.pluginPanelOrder`,
-`sidebar.visiblePluginPanels`), shared by any navigation plugin chosen with
-`sidebar.navigationProvider`. `sidebar.headerProvider` picks a plugin that
-draws controls beside the sidebar toggle; it defaults to `__builtin__`.
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. Rail order and visibility are `bb settings ui` keys
+(`sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`). In the macOS
+desktop app, wide windows add a title bar holding the window controls, Back
+and Forward, and the sidebar toggle; it shares the rail's background, and the
+sidebar and page sit in a card below it. On narrow windows and phones the rail
+sits inside the drawer: Home, Plugins, Skills, and Settings swap the list
+beside it and leave the drawer open, and a plugin page closes it.
 
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
@@ -224,18 +231,6 @@ the same per-provider switch.
 
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-off `navigationRail` experiment keeps a vertical rail of
-destinations on the left edge of the sidebar on every screen. Home returns to
-the last thread, Settings sits at the bottom, and New thread moves into the
-sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
-and leaves the rail in place. In the macOS desktop app the rail and a title
-bar across the top of the window share one background; the title bar holds
-the window controls, Back and Forward, and the sidebar toggle, and the
-sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
-itself, so the Navigation and Header choices under Settings → Appearance are
-not used; they apply again when the experiment is turned off. Narrow windows
-and phones keep the regular drawer.
 Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns. Opening the editor is
@@ -485,7 +480,7 @@ Right-click an action and choose Hide to move it into the More menu. Hidden
 shortcuts remain actionable; hiding an open disclosure closes it. The More menu
 appears only when hidden actions are available and links back to customization.
 `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are string lists. Keys are
-`builtin:settings`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
+`builtin:mobile`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
 Preferences survive plugin reloads and temporarily unavailable plugins; new items
 are visible by default. Example:
 

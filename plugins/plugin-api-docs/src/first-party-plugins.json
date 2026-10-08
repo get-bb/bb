@@ -70,11 +70,6 @@
     "icon": "Brain"
   },
   {
-    "id": "navigation",
-    "name": "Navigation",
-    "icon": "PanelLeft"
-  },
-  {
     "id": "environment-modal-sandbox",
     "name": "Modal Sandbox [Experimental]",
     "icon": null

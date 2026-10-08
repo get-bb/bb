@@ -13,11 +13,6 @@ import {
   useSystemProviderStates,
 } from "@/hooks/queries/system-queries";
 import {
-  NoAgentNotice,
-  SetupChecklist,
-  type SetupChecklistItem,
-} from "./SetupChecklistViews";
-import {
   ONBOARDING_PLUGINS,
   connectAccessUrl,
   hasNoUsableAgent,
@@ -25,6 +20,14 @@ import {
   type OnboardingStepId,
 } from "./onboarding-model";
 import { onboardingReopenStepAtom } from "./onboarding-state";
+
+export interface SetupChecklistItem {
+  id: OnboardingStepId;
+  title: string;
+  detail: string;
+  done: boolean;
+  actionLabel: string;
+}
 
 interface SetupChecklistState {
   items: SetupChecklistItem[] | null;
@@ -147,28 +150,6 @@ export function useSetupChecklist(): SetupChecklistState {
     open,
     dismiss,
   };
-}
-
-export function SetupChecklistCard({
-  checklist,
-}: {
-  checklist: SetupChecklistState;
-}) {
-  if (!checklist.agentMissing && checklist.items === null) return null;
-  return (
-    <div className="flex w-full flex-col items-center gap-4">
-      {checklist.agentMissing ? (
-        <NoAgentNotice onSetUp={() => checklist.open("agent")} />
-      ) : null}
-      {checklist.items === null ? null : (
-        <SetupChecklist
-          items={checklist.items}
-          onOpen={checklist.open}
-          onDismiss={checklist.dismiss}
-        />
-      )}
-    </div>
-  );
 }
 
 export function hasSetupChecklistBanner(

@@ -183,15 +183,6 @@ export const experimental_useSidebarThreadPullRequest = runtimeFunction(
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",
 );
-export const experimental_useSidebarNavigation = runtimeFunction(
-  "experimental_useSidebarNavigation",
-);
-export const experimental_useSidebarNavigationSplit = runtimeFunction(
-  "experimental_useSidebarNavigationSplit",
-);
-export const experimental_SidebarNavigationIcon = runtimeComponent(
-  "experimental_SidebarNavigationIcon",
-);
 export const useSidebarThreadDraft = runtimeFunction("useSidebarThreadDraft");
 export const useSidebarThreadDraftIds = runtimeFunction(
   "useSidebarThreadDraftIds",

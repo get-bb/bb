@@ -121,7 +121,6 @@
     "bb-plugin-automations": "workspace:*",
     "bb-plugin-bb-guide": "workspace:*",
     "bb-plugin-environment-modal-sandbox": "workspace:*",
-    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-secrets": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",

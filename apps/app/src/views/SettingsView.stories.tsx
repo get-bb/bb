@@ -253,7 +253,6 @@ function AppearanceSettingsStory() {
       customThemes={["Monochrome Lab", "Low Contrast"]}
       pluginThemes={[]}
       faviconColor={state.appearance.faviconColor}
-      navigationRail={false}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }

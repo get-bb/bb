@@ -231,20 +231,6 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
-      slots.experimentalSidebarNavigations,
-      "sidebar-navigation",
-      "Can replace the sidebar navigation controls; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
-    ),
-    ...namedSlotItems(
-      pluginId,
-      slots.experimentalSidebarHeaders,
-      "sidebar-header",
-      "Can add controls beside the sidebar toggle; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
-    ),
-    ...namedSlotItems(
-      pluginId,
       slots.sourceCodeRenderers,
       "source-code-renderer",
       "Replaces how source code is displayed everywhere in the app.",
