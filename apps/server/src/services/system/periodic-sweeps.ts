@@ -85,6 +85,7 @@ type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
+const DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES = 256;
 const COMPLETED_EVENT_OUTPUT_MIGRATION_MAX_ADVANCES_PER_SWEEP = 64;
 const RETAINED_EVENT_OUTPUT_EXPIRY_MAX_ADVANCES_PER_SWEEP = 256;
 const RETAINED_EVENT_OUTPUT_EXPIRY_BATCH_SIZE = 1;
@@ -173,9 +174,39 @@ export async function runPeriodicSweepJobs(
   }
 }
 
-export function runDatabaseMaintenanceSweep(
+async function runChunkedIncrementalVacuum(
+  db: DatabaseMaintenanceSweepDeps["db"],
+): Promise<ReturnType<typeof runIncrementalVacuum>> {
+  let first: ReturnType<typeof runIncrementalVacuum> | null = null;
+  let last: ReturnType<typeof runIncrementalVacuum> | null = null;
+  for (
+    let vacuumedPages = 0;
+    vacuumedPages < DATABASE_INCREMENTAL_VACUUM_MAX_PAGES;
+    vacuumedPages += DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES
+  ) {
+    if (last !== null) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    last = runIncrementalVacuum(db, {
+      maxPages: Math.min(
+        DATABASE_INCREMENTAL_VACUUM_CHUNK_PAGES,
+        DATABASE_INCREMENTAL_VACUUM_MAX_PAGES - vacuumedPages,
+      ),
+    });
+    first ??= last;
+    if (last.after.freelistCount === 0) {
+      break;
+    }
+  }
+  if (first === null || last === null) {
+    throw new Error("Incremental vacuum ran no chunks");
+  }
+  return { before: first.before, after: last.after };
+}
+
+export async function runDatabaseMaintenanceSweep(
   deps: DatabaseMaintenanceSweepDeps,
-): void {
+): Promise<void> {
   const deferredLegacyTables = listDeferredLegacyTables(deps.db);
   if (deferredLegacyTables.length > 0) {
     const activity = getDatabaseMaintenanceActivity(deps.db);
@@ -219,9 +250,7 @@ export function runDatabaseMaintenanceSweep(
       return;
     }
     try {
-      const result = runIncrementalVacuum(deps.db, {
-        maxPages: DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
-      });
+      const result = await runChunkedIncrementalVacuum(deps.db);
       deps.logger.info({ result }, "Incremental database vacuum completed");
     } catch (error) {
       deps.logger.warn({ err: error }, "Incremental database vacuum failed");
