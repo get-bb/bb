@@ -1654,7 +1654,7 @@ export function QueuedMessagesList({
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={sortableIds} strategy={sortingStrategy}>
-              <ul ref={listRef} className="group/queue py-1">
+              <ul ref={listRef} className="group/queue pt-1">
                 {queueItems}
               </ul>
             </SortableContext>
