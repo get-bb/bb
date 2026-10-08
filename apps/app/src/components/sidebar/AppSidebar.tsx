@@ -30,6 +30,7 @@ import {
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
+import { SidebarWhatsNew } from "./SidebarWhatsNew";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
@@ -285,6 +286,10 @@ export function AppSidebar({
             item={pluginSidebarFooter.activeItem}
             onDismiss={pluginSidebarFooter.dismiss}
           />
+        )}
+        {isFooterCustomizing ||
+        pluginSidebarFooter.activeItem !== null ? null : (
+          <SidebarWhatsNew onNavigate={closeOnMobile} />
         )}
         <SidebarMenu
           className={cn(

@@ -1473,8 +1473,11 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
 Settings → Updates always shows a What's new section with the installed
-release's notes, releases skipped since the page was last opened on this
-client, and the notes for an available update.
+release's notes, releases skipped since this client last saw What's new, and
+the notes for an available update. Until this client sees the installed
+release, a What's new card sits above the sidebar footer; opening it goes to
+that section, and opening it, dismissing it, or visiting the section hides it
+until the next release. The card is hidden while the sidebar is collapsed.
 The default-off `navigationRail` experiment keeps a vertical rail of
 destinations on the left edge of the sidebar on every screen. Home returns to
 the last thread, Settings sits at the bottom, and New thread moves into the

@@ -3,6 +3,7 @@ import {
   parseChangelog,
   type ChangelogEntry,
 } from "../../../../../changelog-parser";
+import { compareChangelogVersions } from "./whats-new-seen";
 export { RELEASE_META } from "../../../../../changelog-metadata";
 export type {
   ReleaseHero,
@@ -10,6 +11,11 @@ export type {
 } from "../../../../../changelog-metadata";
 export type { ChangelogBlock } from "../../../../../changelog-parser";
 export type { ChangelogEntry } from "../../../../../changelog-parser";
+export {
+  compareChangelogVersions,
+  recordWhatsNewVersion,
+  type WhatsNewVersionStorage,
+} from "./whats-new-seen";
 
 const CHANGELOG_URL = "https://getbb.app/changelog";
 const LATEST_CHANGELOG_SOURCE_URL =
@@ -19,27 +25,6 @@ export const CHANGELOG_ENTRIES = parseChangelog(changelogSource);
 
 export function changelogUrl(version: string): string {
   return `${CHANGELOG_URL}#${version.replaceAll(".", "-")}`;
-}
-
-function versionParts(version: string): number[] | null {
-  const match = /^v?(\d+(?:\.\d+)*)/.exec(version);
-  return match?.[1] === undefined ? null : match[1].split(".").map(Number);
-}
-
-export function compareChangelogVersions(left: string, right: string): number {
-  const leftParts = versionParts(left);
-  const rightParts = versionParts(right);
-  if (leftParts === null || rightParts === null) {
-    return left === right ? 0 : left < right ? -1 : 1;
-  }
-  const partCount = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < partCount; index += 1) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-  return 0;
 }
 
 export interface WhatsNewReleases {
@@ -82,36 +67,6 @@ export function selectWhatsNewReleases({
     ),
     updatedFrom: previousVersion,
   };
-}
-
-export interface WhatsNewVersionStorage {
-  getItem: (key: string, initialValue: string) => string;
-  setItem: (key: string, value: string) => void;
-}
-
-const SEEN_VERSION_STORAGE_KEY = "bb.settings.updates.whats-new-seen-version";
-const PREVIOUS_VERSION_STORAGE_KEY =
-  "bb.settings.updates.whats-new-previous-version";
-
-export function recordWhatsNewVersion(
-  storage: WhatsNewVersionStorage,
-  version: string,
-): string | null {
-  const seen = storage.getItem(SEEN_VERSION_STORAGE_KEY, "");
-  if (seen.length > 0 && compareChangelogVersions(seen, version) < 0) {
-    storage.setItem(PREVIOUS_VERSION_STORAGE_KEY, seen);
-    storage.setItem(SEEN_VERSION_STORAGE_KEY, version);
-    return seen;
-  }
-  if (seen.length === 0) {
-    storage.setItem(SEEN_VERSION_STORAGE_KEY, version);
-    return null;
-  }
-  if (seen !== version) {
-    return null;
-  }
-  const previous = storage.getItem(PREVIOUS_VERSION_STORAGE_KEY, "");
-  return previous.length === 0 ? null : previous;
 }
 
 export async function fetchChangelogEntries(

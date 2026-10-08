@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
@@ -23,9 +23,12 @@ import {
   type ReleaseMeta,
   type WhatsNewReleases,
 } from "./changelog-preview";
+import {
+  notifyWhatsNewSeenVersionChanged,
+  WHATS_NEW_SECTION_ID,
+} from "./whats-new-seen";
 
 const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
-export const WHATS_NEW_SECTION_ID = "whats-new";
 
 const INLINE_COMPONENTS: Components = {
   p: ({ children }) => <>{children}</>,
@@ -290,6 +293,9 @@ export function WhatsNewSection({
       ? null
       : recordWhatsNewVersion(rawStringLocalStorage, seen.current.version);
   });
+  useEffect(() => {
+    notifyWhatsNewSeenVersionChanged();
+  }, []);
   const available = useAvailableRelease(availableVersion);
   const releases = selectWhatsNewReleases({
     entries: CHANGELOG_ENTRIES,
