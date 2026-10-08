@@ -50,8 +50,10 @@ export const SPAWN_COPY: SectionCopy = {
   title: "Let one agent orchestrate the rest",
   body: (
     <p>
-      Any agent can start subagents from any provider and message them as they
-      work, so one task becomes a multi-agent team.
+      Any agent can start new threads with any provider, hand each one part of
+      the job, and message them as they work. When a thread finishes, the agent
+      that started it hears back on its own, so one task becomes a multi-agent
+      team.
     </p>
   ),
 };

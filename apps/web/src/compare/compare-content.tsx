@@ -102,7 +102,7 @@ export const FAQ_GET_STARTED: CompareFaq = {
 };
 
 export const FAQ_CUSTOMIZE: CompareFaq = {
-  question: "Can I customize bb with plugins or scripts?",
+  question: "Can I customize bb with plugins?",
   answer: (
     <p>
       Yes. bb works out of the box, with worktrees, diff review, automations,
