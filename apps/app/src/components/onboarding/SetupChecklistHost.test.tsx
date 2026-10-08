@@ -134,6 +134,9 @@ function Harness() {
       <span data-testid="has-banner">
         {String(hasSetupChecklistBanner(checklist))}
       </span>
+      <span data-testid="setup-complete">
+        {String(checklist.setupComplete)}
+      </span>
       <SetupChecklistCard checklist={checklist} />
       <SetupChecklistBanner checklist={checklist} />
     </>
@@ -336,5 +339,84 @@ describe("setup checklist", () => {
       expect.objectContaining({ setupChecklistVisible: false }),
     );
     expect(telemetryEvents("setup_checklist_dismissed")).toEqual([]);
+  });
+});
+
+describe("setup state for home-screen sections", () => {
+  function setupComplete(): string | null {
+    return screen.getByTestId("setup-complete").textContent;
+  }
+
+  it("is not complete while the checklist leads the empty home", () => {
+    arrange({ agentStatuses: ["ready"] });
+
+    renderHarness();
+
+    expect(screen.getAllByText("Finish setting up bb").length).toBeGreaterThan(
+      0,
+    );
+    expect(setupComplete()).toBe("false");
+  });
+
+  it("is not complete while the setup banner shows above the composer", () => {
+    arrange({ agentStatuses: ["ready"], projectCount: 2 });
+
+    renderHarness();
+
+    expect(screen.getByTestId("has-banner").textContent).toBe("true");
+    expect(setupComplete()).toBe("false");
+  });
+
+  it("is not complete while setup state loads or before onboarding finishes", () => {
+    arrange({ agentStatuses: ["ready"] });
+    mocks.useSystemProviderStates.mockReturnValue({ data: undefined });
+    renderHarness();
+    expect(setupComplete()).toBe("false");
+    cleanup();
+
+    arrange({ settings: { onboardingCompletedAt: null } });
+    renderHarness();
+    expect(setupComplete()).toBe("false");
+  });
+
+  it("is complete once the checklist is dismissed", () => {
+    arrange({ agentStatuses: ["ready"], projectCount: 1 });
+    const view = render(
+      <Provider store={createStore()}>
+        <Harness />
+      </Provider>,
+    );
+    expect(setupComplete()).toBe("false");
+
+    fireEvent.click(
+      screen.getAllByLabelText("Dismiss setup checklist")[0] as HTMLElement,
+    );
+    arrange({
+      agentStatuses: ["ready"],
+      projectCount: 1,
+      settings: { setupChecklistVisible: false },
+    });
+    view.rerender(
+      <Provider store={createStore()}>
+        <Harness />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("has-banner").textContent).toBe("false");
+    expect(setupComplete()).toBe("true");
+  });
+
+  it("is complete as soon as every item is done", () => {
+    arrange({
+      agentStatuses: ["ready"],
+      projectCount: 1,
+      threadCount: 1,
+      enabledPluginIds: ["workflows"],
+      connectOn: true,
+    });
+
+    renderHarness();
+
+    expect(setupComplete()).toBe("true");
   });
 });

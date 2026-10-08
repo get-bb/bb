@@ -2086,8 +2086,12 @@ through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordT
 `onboarding_step_skipped` (per first-run step), `onboarding_finished` (completed
 or skipped), `setup_checklist_item_completed`, `setup_checklist_dismissed`, and
 `notification_prompt_shown`, `notification_prompt_accepted`,
-`notification_prompt_dismissed`, and `notification_prompt_denied`. That route
-accepts only those events and their fixed, non-identifying properties.
+`notification_prompt_dismissed`, and `notification_prompt_denied`, plus
+`tip_shown` (once per tip per visit to the New thread page) and `tip_used` (on
+click) from the bundled Tips plugin, each with the built-in tip id, its position
+in the feed (1-3), and its action type (`prompt`, `open-page`, `run-command`,
+`open-plugin`, or `learn-more`). That route accepts only those events and their
+fixed, non-identifying properties.
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference

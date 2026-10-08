@@ -1550,6 +1550,7 @@ function RootComposeSurface({
                     : ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
                 }
                 isCompactHomeLayout={isCompactHomeLayout}
+                setupComplete={setupChecklist.setupComplete}
                 compactScrollContent={
                   showEmptyWelcome ? null : (
                     <RootComposeMobileRecents

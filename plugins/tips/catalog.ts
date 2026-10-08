@@ -1,4 +1,10 @@
-import type { TipAction, TipClient, TipTone, TipView } from "./contract.js";
+import type {
+  TipAction,
+  TipClient,
+  TipId,
+  TipTone,
+  TipView,
+} from "./contract.js";
 
 export const ACCOUNT_POOL_PLUGIN_ID = "account-pool";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
@@ -110,8 +116,8 @@ function usesAutomationsHere(signals: TipSignals): boolean {
 type TipDefaults = "held" | "perVersion" | "retireWhen" | "boost";
 
 function tip(
-  definition: Omit<TipDefinition, TipDefaults> &
-    Partial<Pick<TipDefinition, TipDefaults>>,
+  definition: Omit<TipDefinition, TipDefaults | "id"> &
+    Partial<Pick<TipDefinition, TipDefaults>> & { id: TipId },
 ): TipDefinition {
   return {
     held: false,

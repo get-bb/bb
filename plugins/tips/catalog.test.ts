@@ -7,7 +7,7 @@ import {
   renderTip,
   type TipSignals,
 } from "./catalog.js";
-import { tipActionSchema, tipViewSchema } from "./contract.js";
+import { TIP_IDS, tipActionSchema, tipViewSchema } from "./contract.js";
 import { compareVersions } from "./engine.js";
 import { ILLUSTRATION_IDS } from "./illustrations.js";
 
@@ -51,9 +51,10 @@ const FIXTURES: readonly TipSignals[] = [
 ];
 
 describe("tip catalog", () => {
-  it("gives every tip a unique id", () => {
+  it("gives every tip a unique id from TIP_IDS, and every id a tip", () => {
     const ids = TIP_CATALOG.map((definition) => definition.id);
     expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort()).toEqual([...TIP_IDS].sort());
   });
 
   it("keeps every title and body short, plain, and one sentence", () => {

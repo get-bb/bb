@@ -219,6 +219,36 @@ const notificationPromptTelemetryPropertiesSchema = z
   .object({ surface: z.enum(["checklist", "thread"]) })
   .strict();
 const checklistCountSchema = z.number().int().min(0).max(10);
+export const TIP_TELEMETRY_IDS = [
+  "whats-new",
+  "account-pool",
+  "subthreads",
+  "set-up-for-me",
+  "phone",
+  "browser-automation",
+  "build-plugin",
+  "open-threads-that-need-me",
+  "morning-digest",
+  "decision-buttons",
+  "automations",
+  "queue-or-steer",
+  "thread-search",
+  "command-palette",
+  "provider-usage",
+] as const;
+const tipTelemetryPropertiesSchema = z
+  .object({
+    tip_id: z.enum(TIP_TELEMETRY_IDS),
+    position: z.number().int().min(1).max(3),
+    action: z.enum([
+      "prompt",
+      "open-page",
+      "run-command",
+      "open-plugin",
+      "learn-more",
+    ]),
+  })
+  .strict();
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
@@ -306,6 +336,18 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .object({
       name: z.literal("notification_prompt_denied"),
       properties: notificationPromptTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("tip_shown"),
+      properties: tipTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("tip_used"),
+      properties: tipTelemetryPropertiesSchema,
     })
     .strict(),
 ]);

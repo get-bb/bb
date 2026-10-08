@@ -51,6 +51,14 @@ import type {
 export interface PluginHomepageSectionProps {
   /** Project in view on the compose surface; null when none is selected. */
   projectId: string | null;
+  /**
+   * True once bb's setup checklist is finished or dismissed, so neither the
+   * checklist nor its setup banner shows on this home. False before onboarding
+   * finishes, while setup is unfinished, and while setup state loads.
+   * Undefined on hosts older than plugin SDK 0.6.33. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_setupComplete?: boolean;
 }
 
 /**

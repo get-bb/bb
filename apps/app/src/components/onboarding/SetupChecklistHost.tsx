@@ -144,6 +144,7 @@ interface UseSetupChecklistArgs {
 interface SetupChecklistState {
   items: SetupChecklistItem[] | null;
   agentMissing: boolean;
+  setupComplete: boolean;
   act: (id: SetupChecklistItemId) => void;
   dismiss: () => void;
 }
@@ -328,6 +329,7 @@ export function useSetupChecklist({
   return {
     items: everythingDone ? null : allItems,
     agentMissing,
+    setupComplete: onboarded && (!visible || everythingDone),
     act,
     dismiss,
   };

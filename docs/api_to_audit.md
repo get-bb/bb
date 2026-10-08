@@ -3905,6 +3905,25 @@ announced to screen readers, whether owners in different plugins should compete
 by recency or by an explicit priority, and how it behaves in compact layouts
 that show their own placeholder.
 
+## Setup state for home-screen sections (`PluginHomepageSectionProps.experimental_setupComplete`)
+
+Every `homepageSection` component receives `experimental_setupComplete`. It is
+true once bb's setup checklist is finished or dismissed, so neither the
+checklist on the empty home nor the setup banner above the composer shows. It is
+false before onboarding finishes, while any checklist item is open, and while
+the checklist's data loads, so a section never appears beside setup and then
+jumps. Core computes it once in `useSetupChecklist`
+(`apps/app/src/components/onboarding/SetupChecklistHost.tsx`), the same state
+`RootComposeView` uses to render the checklist card and the setup banner, and
+passes it through `RootComposeSecondaryContent` to `PluginHomepageSections`.
+It is optional because hosts older than SDK 0.6.33 leave it undefined. First consumer: the bundled
+Tips plugin, which renders nothing and makes no calls until it is true.
+
+Before stabilization, decide whether setup state belongs in a general
+onboarding hook available to every slot rather than one slot's props, whether
+sections need the individual checklist items, and how it should read on hosts
+with no setup checklist (mobile, remote web).
+
 ## `PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`
 
 Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.

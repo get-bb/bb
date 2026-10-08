@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { TIP_TELEMETRY_IDS } from "@bb/server-contract";
 import { BUILTIN_PLUGINS } from "../../../src/services/plugins/builtin-registry.js";
 
 const catalogModuleSchema = z.object({
@@ -41,5 +42,14 @@ describe("Tips catalog targets", () => {
         expect(builtinIds.has(settingsPlugin[1] ?? ""), tip.id).toBe(true);
       }
     }
+  });
+
+  it("allows telemetry for exactly the tips in the catalog", async () => {
+    const { TIP_CATALOG } = catalogModuleSchema.parse(
+      await import(pathToFileURL(catalogPath).href),
+    );
+    expect([...TIP_TELEMETRY_IDS].sort()).toEqual(
+      TIP_CATALOG.map((tip) => tip.id).sort(),
+    );
   });
 });

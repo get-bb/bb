@@ -14,27 +14,28 @@ oldest. The engine works through every eligible tip, highest `boost` and
 `priority` first, before it repeats any. A clicked tip is left out of the next
 visit and comes back only after the rest of the library has been shown. A tip
 retires for good when `retireWhen` turns true or the person dismisses it.
-Held and expired tips never show.
+Held and expired tips never show. No tips show until bb's setup checklist is
+finished or dismissed.
 
 ## Fields
 
-| Field                 | Rule                                                                                                                             |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                  | Unique, kebab-case. Never rename one; storage keys use it.                                                                       |
-| `title`               | Up to 45 characters. Sentence case, no trailing period.                                                                          |
-| `body`                | One sentence, up to 110 characters.                                                                                              |
-| `illustration`        | Key in `ILLUSTRATIONS`. Usually the tip id.                                                                                      |
-| `tone`                | `blue`, `green`, `amber`, `orange`, or `rose`. Colors the illustration's one accent.                                             |
-| `action`              | One of the action types below.                                                                                                   |
-| `source`              | `{ kind: "changelog" \| "blog" \| "guide" \| "feature", ref, version? }`: where the tip comes from.                              |
-| `addedAt`             | bb version the tip ships in.                                                                                                     |
-| `reviewedAt`          | bb version the copy and eligibility were last checked against. Never later than `CATALOG_REVIEWED_THROUGH`.                      |
-| `expiresAt`           | Optional bb version from which the tip stops showing. Must be later than `CATALOG_REVIEWED_THROUGH`, so an expired tip fails CI. |
-| `held`                | Optional. `true` keeps a finished tip out of every feed.                                                                         |
-| `priority`            | Ordering inside the library.                                                                                                     |
-| `eligible(signals)`   | When the tip fits this person right now.                                                                                         |
-| `retireWhen(signals)` | When the person already uses the feature. Retirement is permanent.                                                               |
-| `boost(signals)`      | Optional. Pushes a tip ahead when context makes it urgent.                                                                       |
+| Field                 | Rule                                                                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                  | Unique, kebab-case, listed in `TIP_IDS` (`contract.ts`) and `TIP_TELEMETRY_IDS` (`packages/server-contract/src/api/system.ts`). Never rename one; storage keys and telemetry use it. |
+| `title`               | Up to 45 characters. Sentence case, no trailing period.                                                                                                                              |
+| `body`                | One sentence, up to 110 characters.                                                                                                                                                  |
+| `illustration`        | Key in `ILLUSTRATIONS`. Usually the tip id.                                                                                                                                          |
+| `tone`                | `blue`, `green`, `amber`, `orange`, or `rose`. Colors the illustration's one accent.                                                                                                 |
+| `action`              | One of the action types below.                                                                                                                                                       |
+| `source`              | `{ kind: "changelog" \| "blog" \| "guide" \| "feature", ref, version? }`: where the tip comes from.                                                                                  |
+| `addedAt`             | bb version the tip ships in.                                                                                                                                                         |
+| `reviewedAt`          | bb version the copy and eligibility were last checked against. Never later than `CATALOG_REVIEWED_THROUGH`.                                                                          |
+| `expiresAt`           | Optional bb version from which the tip stops showing. Must be later than `CATALOG_REVIEWED_THROUGH`, so an expired tip fails CI.                                                     |
+| `held`                | Optional. `true` keeps a finished tip out of every feed.                                                                                                                             |
+| `priority`            | Ordering inside the library.                                                                                                                                                         |
+| `eligible(signals)`   | When the tip fits this person right now.                                                                                                                                             |
+| `retireWhen(signals)` | When the person already uses the feature. Retirement is permanent.                                                                                                                   |
+| `boost(signals)`      | Optional. Pushes a tip ahead when context makes it urgent.                                                                                                                           |
 
 Bump `CATALOG_REVIEWED_THROUGH` when you review the whole catalog against a
 release.

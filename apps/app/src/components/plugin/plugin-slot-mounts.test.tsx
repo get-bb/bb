@@ -148,7 +148,7 @@ describe("PluginHomepageSections", () => {
     );
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginHomepageSections />
+        <PluginHomepageSections setupComplete />
       </MemoryRouter>,
     );
     expect(screen.getByText("plugin broken crashed")).toBeDefined();
@@ -173,13 +173,39 @@ describe("PluginHomepageSections", () => {
     );
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginHomepageSections />
+        <PluginHomepageSections setupComplete />
       </MemoryRouter>,
     );
     expect(
       screen.getAllByRole("heading").map((heading) => heading.textContent),
     ).toEqual(["Titled"]);
     expect(screen.getAllByText("untitled section body")).toHaveLength(2);
+  });
+
+  it("tells sections whether bb setup is complete", () => {
+    function Setup({
+      experimental_setupComplete,
+    }: {
+      experimental_setupComplete?: boolean;
+    }) {
+      return <div>setup complete: {String(experimental_setupComplete)}</div>;
+    }
+    setPluginSlotRegistrations(
+      "setup",
+      registrationSet({ homepageSections: [{ id: "a", component: Setup }] }),
+    );
+    const view = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginHomepageSections setupComplete={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("setup complete: false")).toBeDefined();
+    view.rerender(
+      <MemoryRouter initialEntries={["/"]}>
+        <PluginHomepageSections setupComplete />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("setup complete: true")).toBeDefined();
   });
 });
 

@@ -13,6 +13,7 @@ import {
   useComposer,
   useRealtime,
   useRpc,
+  useSdk,
   useSettings,
   type PluginHomepageSectionProps,
 } from "@get-bb/plugin-sdk/app";
@@ -20,6 +21,7 @@ import { detectTipClient, readTipClientEnvironment } from "./client.js";
 import { runTipAction } from "./actions.js";
 import type { TipView, tipsRpcContract } from "./contract.js";
 import { TipsGallery, TipsHiddenNotice } from "./gallery.js";
+import { recordTipEvent } from "./telemetry.js";
 
 const TIPS_CHANGED_CHANNEL = "tips-changed";
 const COMPACT_LAYOUT_QUERY = "(max-width: 767px)";
@@ -68,11 +70,14 @@ function promptOf(tip: TipView | undefined): string | null {
 function TipsGallerySection({
   projectId,
   client,
+  reportedShown,
 }: {
   projectId: string | null;
   client: ReturnType<typeof detectTipClient>;
+  reportedShown: Set<string>;
 }) {
   const rpc = useRpc<typeof tipsRpcContract>();
+  const sdk = useSdk();
   const navigate = useBbNavigate();
   const composer = useComposer();
   const settings = useSettings();
@@ -111,6 +116,16 @@ function TipsGallerySection({
     };
   }, [client, enabled, projectId, revision, rpc]);
 
+  const showing = enabled && !dismissed && tips.length > 0;
+  useEffect(() => {
+    if (!showing) return;
+    tips.forEach((tip, index) => {
+      if (reportedShown.has(tip.id)) return;
+      reportedShown.add(tip.id);
+      recordTipEvent(sdk, "tip_shown", tip, index);
+    });
+  }, [reportedShown, sdk, showing, tips]);
+
   const preview = promptOf(tips.find((tip) => tip.id === previewId));
   useEffect(() => {
     composer.experimental_setPlaceholderPreview(
@@ -135,9 +150,15 @@ function TipsGallerySection({
         setFilledId(tip.id);
       }
       setNotice(result.announcement);
+      recordTipEvent(
+        sdk,
+        "tip_used",
+        tip,
+        tips.findIndex((shown) => shown.id === tip.id),
+      );
       void rpc.call("act", { id: tip.id }).catch(() => {});
     },
-    [composer, navigate, rpc],
+    [composer, navigate, rpc, sdk, tips],
   );
 
   const turnOff = useCallback(() => {
@@ -152,7 +173,7 @@ function TipsGallerySection({
   }, [rpc]);
 
   if (dismissed) return <TipsHiddenNotice onUndo={undo} />;
-  if (!enabled || tips.length === 0) return null;
+  if (!showing) return null;
   return (
     <TipsGallery
       tips={tips}
@@ -165,18 +186,26 @@ function TipsGallerySection({
   );
 }
 
-function TipsHomepageSection({ projectId }: PluginHomepageSectionProps) {
+function TipsHomepageSection({
+  projectId,
+  experimental_setupComplete,
+}: PluginHomepageSectionProps) {
   const client = useMemo(() => detectTipClient(readTipClientEnvironment()), []);
   const onPhone =
     client.surface === "mobile-app" || client.surface === "mobile-web";
   const compact = useCompactLayout();
   const [measure, width] = useElementWidth();
+  const [reportedShown] = useState(() => new Set<string>());
   const fits = width >= MIN_GALLERY_WIDTH;
-  if (onPhone) return null;
+  if (onPhone || experimental_setupComplete !== true) return null;
   return (
     <div ref={measure} data-tips-section="">
       {!compact && fits ? (
-        <TipsGallerySection projectId={projectId} client={client} />
+        <TipsGallerySection
+          projectId={projectId}
+          client={client}
+          reportedShown={reportedShown}
+        />
       ) : null}
     </div>
   );

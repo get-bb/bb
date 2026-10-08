@@ -98,20 +98,33 @@ function renderTips(
     runAppCommand?: (commandId: string) => boolean;
     openUrl?: (url: string) => boolean;
     settings?: Record<string, boolean>;
+    setupComplete?: boolean;
   } = {},
 ) {
+  const { setupComplete = true, ...behavior } = options;
   return renderSlot(
     section(),
-    { projectId: "proj_1" },
+    { projectId: "proj_1", experimental_setupComplete: setupComplete },
     {
       rpc: {
         current: () => ({ tips }),
         setEnabled: () => ({ ok: true }),
         act: () => ({ ok: true }),
       },
-      ...options,
+      sdk: {
+        system: { experimental_recordTelemetryEvent: () => ({ ok: true }) },
+      },
+      ...behavior,
     },
   );
+}
+
+function telemetry(slot: ReturnType<typeof renderTips>): unknown[] {
+  return slot.inspection.sdkCalls
+    .filter(
+      (call) => call.method === "system.experimental_recordTelemetryEvent",
+    )
+    .map((call) => call.args[0]);
 }
 
 function methods(slot: ReturnType<typeof renderTips>): string[] {
@@ -181,6 +194,62 @@ describe("Tips homepage section", () => {
     await Promise.resolve();
     expect(methods(slot)).toEqual([]);
     expect(slot.queryByRole("region", { name: "Tips" })).toBeNull();
+  });
+
+  it("renders nothing and asks for nothing until bb setup is complete", async () => {
+    const slot = renderTips(undefined, { setupComplete: false });
+    await Promise.resolve();
+    expect(methods(slot)).toEqual([]);
+    expect(telemetry(slot)).toEqual([]);
+    expect(slot.container.textContent).toBe("");
+    const Section = section().component;
+    slot.lifecycle.rerender(
+      <Section projectId="proj_1" experimental_setupComplete />,
+    );
+    expect(await slot.findByText("Run work in parallel")).toBeTruthy();
+    expect(methods(slot)).toEqual(["current"]);
+  });
+
+  it("records each tip shown once per visit with its position and action", async () => {
+    const slot = renderTips();
+    await slot.findByText("Run work in parallel");
+    await slot.behavior.emitRealtime("tips-changed", {});
+    await waitFor(() => expect(methods(slot)).toEqual(["current", "current"]));
+    expect(telemetry(slot)).toEqual([
+      {
+        name: "tip_shown",
+        properties: { tip_id: "subthreads", position: 1, action: "prompt" },
+      },
+      {
+        name: "tip_shown",
+        properties: { tip_id: "phone", position: 2, action: "open-page" },
+      },
+      {
+        name: "tip_shown",
+        properties: {
+          tip_id: "command-palette",
+          position: 3,
+          action: "run-command",
+        },
+      },
+    ]);
+  });
+
+  it("records a used tip with its position and action", async () => {
+    const slot = renderTips(undefined, { openAppRoute: () => true });
+    await slot.findByText("Run work in parallel");
+    fireEvent.click(tile(slot, "phone"));
+    expect(telemetry(slot)).toContainEqual({
+      name: "tip_used",
+      properties: { tip_id: "phone", position: 2, action: "open-page" },
+    });
+  });
+
+  it("records nothing for a tip id outside the catalog", async () => {
+    const slot = renderTips([{ ...PROMPT_TIP, id: "someone-elses-tip" }]);
+    await slot.findByText("Run work in parallel");
+    fireEvent.click(tile(slot, "someone-elses-tip"));
+    expect(telemetry(slot)).toEqual([]);
   });
 
   it("asks for nothing while tips are turned off", async () => {

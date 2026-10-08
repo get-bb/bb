@@ -607,10 +607,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Show shortcuts, pinned work, or recent activity before any thread exists",
           "Span the full width below the composer on desktop",
+          "Wait until bb's setup checklist is finished or dismissed before showing anything",
         ],
         apiSymbols: [
           "PluginHomepageSectionRegistration",
           "PluginHomepageSectionProps",
+          "PluginHomepageSectionProps.experimental_setupComplete",
         ],
         firstParty: ["Tips"],
       },

@@ -9,6 +9,26 @@ export const tipClientSchema = z
   .strict();
 export type TipClient = z.infer<typeof tipClientSchema>;
 
+export const TIP_IDS = [
+  "whats-new",
+  "account-pool",
+  "subthreads",
+  "set-up-for-me",
+  "phone",
+  "browser-automation",
+  "build-plugin",
+  "open-threads-that-need-me",
+  "morning-digest",
+  "decision-buttons",
+  "automations",
+  "queue-or-steer",
+  "thread-search",
+  "command-palette",
+  "provider-usage",
+] as const;
+export const tipIdSchema = z.enum(TIP_IDS);
+export type TipId = z.infer<typeof tipIdSchema>;
+
 export const TIP_COMMAND_IDS = [
   "palette.open",
   "thread.search",

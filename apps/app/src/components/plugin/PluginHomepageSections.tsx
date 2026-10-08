@@ -6,16 +6,27 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { PluginSlotMount } from "./PluginSlotMount";
 
-export function PluginHomepageSections() {
+export function PluginHomepageSections({
+  setupComplete,
+}: {
+  setupComplete: boolean;
+}) {
   const { homepageSections } = usePluginSlots();
   if (homepageSections.length === 0) return null;
-  return <PluginHomepageSectionList sections={homepageSections} />;
+  return (
+    <PluginHomepageSectionList
+      sections={homepageSections}
+      setupComplete={setupComplete}
+    />
+  );
 }
 
 function PluginHomepageSectionList({
   sections,
+  setupComplete,
 }: {
   sections: readonly PluginHomepageSectionSlot[];
+  setupComplete: boolean;
 }) {
   const { projectId } = useRouteState();
   return (
@@ -36,7 +47,10 @@ function PluginHomepageSectionList({
             slotKind="homepageSection"
             slotId={section.id}
           >
-            <section.component projectId={projectId ?? null} />
+            <section.component
+              projectId={projectId ?? null}
+              experimental_setupComplete={setupComplete}
+            />
           </PluginSlotMount>
         </section>
       ))}
