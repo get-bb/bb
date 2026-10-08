@@ -222,14 +222,14 @@ export function ProjectSelector({
             {projects.length > 0 ? (
               <CommandGroup
                 heading="Project"
-                className="flex min-h-0 flex-col md:pb-0 [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
+                className="flex min-h-0 flex-col pb-0 [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
               >
                 <div
                   ref={composedListRef}
                   className={cn(
-                    "min-h-0 overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
+                    "min-h-0 max-h-[calc(4.5*2.25rem)] overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
                     belowOverflow &&
-                      "md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
+                      "[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
                   )}
                 >
                   {filteredProjects.map((project) => (
