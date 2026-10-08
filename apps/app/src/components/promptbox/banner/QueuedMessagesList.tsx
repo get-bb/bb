@@ -647,7 +647,7 @@ function QueuedMessageWaitLine({
       ? null
       : formatQueuedMessageCountdown(countdownInstant - now);
   return (
-    <div
+    <span
       data-queued-message-wait=""
       data-queued-message-failed={failed ? "" : undefined}
       className={cn(
@@ -669,7 +669,32 @@ function QueuedMessageWaitLine({
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
-    </div>
+    </span>
+  );
+}
+
+function QueuedMessagesHeaderWait({
+  queuedMessages,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+}) {
+  const newestFirst = [...queuedMessages].sort(
+    (first, second) => second.createdAt - first.createdAt,
+  );
+  const attentionMessage =
+    newestFirst.find((queuedMessage) => queuedMessage.failureReason !== null) ??
+    newestFirst.find(queuedMessageHasWaitLine);
+  const pluginDisplayName = usePluginDisplayName(
+    attentionMessage?.waitingOn?.kind === "plugin"
+      ? attentionMessage.waitingOn.pluginId
+      : "",
+  );
+  if (!attentionMessage) return null;
+  return (
+    <QueuedMessageWaitLine
+      pluginDisplayName={pluginDisplayName}
+      queuedMessage={attentionMessage}
+    />
   );
 }
 
@@ -1599,6 +1624,9 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
+          {isExpanded ? null : (
+            <QueuedMessagesHeaderWait queuedMessages={queuedMessages} />
+          )}
           <QueuedMessagesCountPill
             arrivals={arrivals}
             count={queuedMessages.length}
