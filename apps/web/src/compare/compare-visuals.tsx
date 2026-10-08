@@ -518,7 +518,7 @@ const FLEET: {
   },
   {
     name: "Phone",
-    os: "All threads",
+    os: "iOS & Android",
     icon: <HugeiconsIcon icon={SmartPhone01Icon} className="cmp-fleet-os-ic" />,
     threads: [
       { title: "Nightly test sweep", agent: ClaudeIcon, status: "running" },
