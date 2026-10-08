@@ -3147,19 +3147,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: flex-start;
   }
 
-  .install-actions {
-    width: 100%;
-    max-width: 420px;
-    margin-inline: auto;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .btn-install {
-    width: 100%;
-    justify-content: center;
-  }
-
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
   .nav-links .btn {
@@ -3172,6 +3159,21 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .nav-links a:not(.btn) {
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 600px) {
+  .install-actions {
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-install {
+    width: 100%;
+    justify-content: center;
   }
 }
 
