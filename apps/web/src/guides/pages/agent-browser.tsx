@@ -59,7 +59,7 @@ export const PLUGINS_STEP: GuideStep = {
   ),
   shot: {
     src: "/guides/agent-browser/window-plugins.png",
-    alt: "bb's Installed plugins page with Agent Annotations switched on, and Browser Automation open beside it, switched on",
+    alt: "Browser Automation in bb's plugin catalog, made by BB Official, with an Install button",
   },
   options: [],
 };
@@ -271,6 +271,10 @@ export const AGENT_BROWSER: Guide = {
   steps: [
     PLUGINS_STEP,
     {
+      ...SIGN_INS_STEP,
+      lead: "Skip this if your app has no login. Otherwise, your agent can work in a Browser tab with your sign-ins.",
+    },
+    {
       id: "check",
       title: "Ask your agent to try its change",
       lead: "Give it a flow to exercise and the screen sizes you care about.",
@@ -296,21 +300,18 @@ export const AGENT_BROWSER: Guide = {
           title: "See the screenshots",
           body: (
             <p>
-              Ask for them in the thread, like “show me the phone screenshots,
-              before and after.” Here, the agent found the search box and Total
-              column cut off on a phone, fixed the CSS, and posted both.
+              Ask for them in the thread, like “show me the phone screenshots
+              before and after, side by side.” Here, the agent found the search
+              box and Total column cut off on a phone, fixed the CSS, and posted
+              both.
             </p>
           ),
           shot: {
             src: "/guides/agent-browser/window-screenshots.png",
-            alt: "The agent's before screenshot in a bb thread: the Orders page on a phone with the search box and Total column cut off",
+            alt: "The agent's phone screenshots side by side in a bb thread: before, the search box and Total column are cut off; after, both fit",
           },
         },
       ],
-    },
-    {
-      ...SIGN_INS_STEP,
-      lead: "For pages behind a login, your agent can work in a Browser tab with your sign-ins.",
     },
     {
       id: "annotate",
@@ -327,9 +328,8 @@ export const AGENT_BROWSER: Guide = {
             the element.
           </li>
           <li>
-            Under <strong>What should change?</strong>, write your note and
-            choose <strong>Add to prompt</strong>. Add as many as you like, then
-            send.
+            In the box, write your note and choose{" "}
+            <strong>Add to prompt</strong>. Add as many as you like, then send.
           </li>
         </Substeps>
       ),
