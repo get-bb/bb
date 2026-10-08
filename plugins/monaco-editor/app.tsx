@@ -6,6 +6,7 @@ import {
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
 import type * as MonacoNs from "monaco-editor";
+import { Icon } from "@bb/shared-ui/icon";
 import type { rpcContract } from "./server.js";
 import { CLAIMED_EXTENSIONS, languageForPath } from "./lib/languages.js";
 import {
@@ -437,11 +438,18 @@ function Notice({
         tone="warning"
         compact
         focusRef={conflictNoticeRef}
-        label="File changed on disk"
+        label="File changed on disk. Your edits weren’t saved."
       >
-        <span className="flex-1 leading-6 whitespace-nowrap">
-          File changed on disk
-        </span>
+        <div className="flex min-w-0 max-w-full flex-auto items-start gap-2">
+          <Icon
+            name="AlertTriangle"
+            className="mt-1 size-4 shrink-0 text-warning-text"
+            aria-hidden
+          />
+          <span className="min-w-0 leading-6">
+            File changed on disk. Your edits weren’t saved.
+          </span>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           <NoticeAction
             onClick={onReload}
@@ -461,7 +469,7 @@ function Notice({
   }
   if (pendingOpen !== null) {
     return (
-      <NoticeRow tone="warning">
+      <NoticeRow tone="neutral">
         Open {pendingOpen.split("/").at(-1)} and discard your unsaved changes?
         <NoticeAction onClick={onOpenConfirm}>Discard and open</NoticeAction>
         <NoticeAction onClick={onOpenCancel}>Cancel</NoticeAction>
@@ -470,7 +478,7 @@ function Notice({
   }
   if (pendingDiscard) {
     return (
-      <NoticeRow tone="warning">
+      <NoticeRow tone="neutral">
         Reload from disk and discard your unsaved changes?
         <NoticeAction onClick={onDiscardConfirm}>Discard</NoticeAction>
         <NoticeAction onClick={onDiscardCancel}>Cancel</NoticeAction>
@@ -491,7 +499,7 @@ function NoticeRow({
   label,
 }: {
   children: React.ReactNode;
-  tone: "error" | "warning";
+  tone: "error" | "warning" | "neutral";
   compact?: boolean;
   focusRef?: React.Ref<HTMLDivElement>;
   label?: string;
@@ -509,7 +517,9 @@ function NoticeRow({
           : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
-          : "bg-surface-recessed text-foreground",
+          : tone === "warning"
+            ? "bg-warning/10 text-foreground"
+            : "bg-surface-recessed text-foreground",
       )}
     >
       {children}

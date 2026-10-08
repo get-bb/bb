@@ -138,7 +138,9 @@ it("overwrites the conflicted version and requires confirmation for a newer conf
   act(() => editor.addCommand.mock.calls[0]![1]());
   expect(write).toHaveBeenCalledOnce();
   expect(document.activeElement).toBe(
-    screen.getByRole("status", { name: "File changed on disk" }),
+    screen.getByRole("status", {
+      name: "File changed on disk. Your edits weren’t saved.",
+    }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save my edits" }));
   await screen.findByRole("button", { name: "Save my edits" });
