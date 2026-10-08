@@ -27,6 +27,8 @@ import {
   SPAWN_COPY,
   spawnSection,
   type SectionCopy,
+  LIMITS_COPY,
+  limitsSection,
 } from "./compare-sections";
 import { AgentSplit, type BrandLogo } from "./compare-visuals";
 
@@ -60,7 +62,11 @@ export const BB_VS_T3_CODE: Comparison = {
   sub: "Add what you need from the plugin marketplace, or have your agent build it and share it with your team. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: pluginsSection(PLUGINS_COPY_T3),
-  sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
+  sections: [
+    spawnSection(SPAWN_COPY),
+    limitsSection(LIMITS_COPY),
+    anywhereSection(ANYWHERE_COPY),
+  ],
   tableNote: null,
   table: [
     {

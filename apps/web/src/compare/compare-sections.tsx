@@ -8,6 +8,7 @@ import {
   SpawnTimeline,
   TeamCost,
   type BrandLogo,
+  UsageVisual,
 } from "./compare-visuals";
 
 export type SectionCopy = {
@@ -64,6 +65,19 @@ export const ANYWHERE_COPY: SectionCopy = {
         after you close your laptop.
       </p>
       <p>Check in from the mobile app or any browser.</p>
+    </>
+  ),
+};
+
+export const LIMITS_COPY: SectionCopy = {
+  title: "Don’t lose work to usage limits",
+  body: (
+    <>
+      <p>See each agent’s plan and when its limits reset.</p>
+      <p>
+        When an agent hits a limit, bb picks the work back up once it resets,
+        with no message to resend.
+      </p>
     </>
   ),
 };
@@ -143,6 +157,15 @@ export function anywhereSection(copy: SectionCopy): CompareHighlight {
     title: copy.title,
     wide: false,
     visual: <AnywhereVisual />,
+    body: copy.body,
+  };
+}
+
+export function limitsSection(copy: SectionCopy): CompareHighlight {
+  return {
+    title: copy.title,
+    wide: false,
+    visual: <UsageVisual />,
     body: copy.body,
   };
 }
