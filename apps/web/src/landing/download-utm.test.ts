@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  addMissingUtmParams,
+  addSavedUtmParams,
   pickUtmParams,
   readSavedUtm,
-  rememberFirstTouchUtm,
+  rememberLatestUtm,
 } from "./download-utm";
 
 function memoryStorage() {
@@ -25,38 +25,43 @@ describe("pickUtmParams", () => {
   });
 });
 
-describe("addMissingUtmParams", () => {
+describe("addSavedUtmParams", () => {
   it("appends saved utm params after the existing placement", () => {
     expect(
-      addMissingUtmParams(
+      addSavedUtmParams(
         "?placement=hero",
         new URLSearchParams("utm_source=google&utm_campaign=x"),
       ),
     ).toBe("?placement=hero&utm_source=google&utm_campaign=x");
   });
 
-  it("keeps params already on the link over saved ones", () => {
+  it("never mixes saved params into a link that already has utm params", () => {
     expect(
-      addMissingUtmParams(
-        "?utm_source=bing&utm_medium=",
+      addSavedUtmParams(
+        "?utm_source=bing",
         new URLSearchParams("utm_source=google&utm_medium=cpc"),
       ),
-    ).toBe("?utm_source=bing&utm_medium=cpc");
+    ).toBe("?utm_source=bing");
   });
 
-  it("leaves a link without saved params unchanged", () => {
-    expect(addMissingUtmParams("", new URLSearchParams())).toBe("");
+  it("leaves a link unchanged when nothing is saved", () => {
+    expect(addSavedUtmParams("?placement=nav", new URLSearchParams())).toBe(
+      "?placement=nav",
+    );
   });
 });
 
-describe("rememberFirstTouchUtm", () => {
-  it("keeps the first landing's utm params for the session", () => {
+describe("rememberLatestUtm", () => {
+  it("keeps the most recent landing's full utm set for the session", () => {
     const storage = memoryStorage();
-    rememberFirstTouchUtm(storage, "?category=ai");
-    rememberFirstTouchUtm(storage, "?utm_source=google&utm_campaign=x");
-    rememberFirstTouchUtm(storage, "?utm_source=newsletter");
+    rememberLatestUtm(storage, "?utm_source=newsletter&utm_campaign=launch");
+    rememberLatestUtm(
+      storage,
+      "?utm_source=google&utm_medium=cpc&utm_campaign=brand",
+    );
+    rememberLatestUtm(storage, "?category=ai");
     expect(readSavedUtm(storage).toString()).toBe(
-      "utm_source=google&utm_campaign=x",
+      "utm_source=google&utm_medium=cpc&utm_campaign=brand",
     );
   });
 });

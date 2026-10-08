@@ -18,26 +18,23 @@ export function pickUtmParams(search: string): URLSearchParams {
   return utm;
 }
 
-export function addMissingUtmParams(
+export function addSavedUtmParams(
   search: string,
   saved: URLSearchParams,
 ): string {
+  if (pickUtmParams(search).toString() || !saved.toString()) {
+    return search;
+  }
   const params = new URLSearchParams(search);
   for (const [name, value] of saved) {
-    if (!params.get(name)) {
-      params.set(name, value);
-    }
+    params.set(name, value);
   }
-  const merged = params.toString();
-  return merged ? `?${merged}` : "";
+  return `?${params.toString()}`;
 }
 
-export function rememberFirstTouchUtm(
-  storage: UtmStorage,
-  search: string,
-): void {
+export function rememberLatestUtm(storage: UtmStorage, search: string): void {
   const utm = pickUtmParams(search).toString();
-  if (utm && storage.getItem(SAVED_UTM_KEY) === null) {
+  if (utm) {
     storage.setItem(SAVED_UTM_KEY, utm);
   }
 }
@@ -50,7 +47,7 @@ export function carryUtmToDownloadLinks(): () => void {
   let storage: UtmStorage;
   try {
     storage = window.sessionStorage;
-    rememberFirstTouchUtm(storage, window.location.search);
+    rememberLatestUtm(storage, window.location.search);
   } catch {
     return () => {};
   }
@@ -67,7 +64,7 @@ export function carryUtmToDownloadLinks(): () => void {
     ) {
       return;
     }
-    const search = addMissingUtmParams(link.search, readSavedUtm(storage));
+    const search = addSavedUtmParams(link.search, readSavedUtm(storage));
     if (search !== link.search) {
       link.search = search;
     }
