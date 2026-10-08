@@ -78,8 +78,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-connect.png",
-        alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
+        src: "/guides/work-from-anywhere/window-connect-signed-in.png",
+        alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
       },
       options: [],
     },
@@ -155,8 +155,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-mobile.png",
-        alt: "bb's Mobile apps settings, with bb connect, a Join iOS TestFlight button, and the Android download",
+        src: "/guides/work-from-anywhere/window-mobile-signed-in.png",
+        alt: "bb's Mobile apps settings, with bb connect ready at bb-demo.getbb.app, an Add mobile device button, and the iOS TestFlight and Android downloads",
       },
       options: [],
     },

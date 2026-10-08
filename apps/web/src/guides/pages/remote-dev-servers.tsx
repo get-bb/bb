@@ -214,8 +214,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
           />
           <p>
             It replies with a link like{" "}
-            <code>https://bb-worker-1--3001.getbb.app</code>. Every link is
-            listed under <strong>Shared ports</strong> in{" "}
+            <code>https://my-server--3001.getbb.app</code>. Every link is listed
+            under <strong>Shared ports</strong> in{" "}
             <strong>Settings → bb connect</strong>, where you can copy it or
             stop sharing when the branch is done. Open each link on your phone
             to check its branch.
@@ -223,8 +223,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-connect.png",
-        alt: "bb connect in bb's settings, with Remote access on and a Sign in to your bb account button",
+        src: "/guides/remote-dev-servers/window-connect-signed-in.png",
+        alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
       },
       options: [],
     },
@@ -319,7 +319,7 @@ export const REMOTE_DEV_SERVERS: Guide = {
         <ol>
           <li>
             Set the share link, like{" "}
-            <code>https://bb-worker-1--3001.getbb.app</code>, as your app's base
+            <code>https://my-server--3001.getbb.app</code>, as your app's base
             URL.
           </li>
           <li>Add it as an allowed redirect URL in your auth provider.</li>

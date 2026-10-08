@@ -122,11 +122,11 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
-  "/guides/remote-dev-servers/window-connect.png": {
+  "/guides/remote-dev-servers/window-connect-signed-in.png": {
     width: 2048,
     height: 1280,
   },
-  "/guides/work-from-anywhere/window-connect.png": {
+  "/guides/work-from-anywhere/window-connect-signed-in.png": {
     width: 2048,
     height: 1280,
   },
@@ -134,7 +134,10 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
-  "/guides/work-from-anywhere/window-mobile.png": { width: 2048, height: 1280 },
+  "/guides/work-from-anywhere/window-mobile-signed-in.png": {
+    width: 2048,
+    height: 1280,
+  },
   "/guides/work-from-anywhere/window-phone.png": { width: 780, height: 1688 },
   "/guides/remote-dev-servers/window-add-machine.png": {
     width: 2048,
