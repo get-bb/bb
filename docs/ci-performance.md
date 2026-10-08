@@ -489,3 +489,10 @@ The storage-retention wide-tree fixture retains twenty directories and two
 hundred files, but creates and accounts for independent directories concurrently
 instead of performing every filesystem operation serially. No timeout or
 assertion was relaxed.
+
+The SDK version check also hit its five-minute timeout twice while fetching all
+branches and tags for PR #5220. PR runs now fetch two levels of history and point
+the comparison ref at the tested merge's first parent. A fresh shallow fetch of
+the actual PR merge verified that Git resolves that parent as the merge base and
+that the existing SDK check runs successfully. Non-PR checkout behavior remains
+unchanged.
