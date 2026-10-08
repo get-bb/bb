@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
+export const SECONDARY_PANEL_TAB_DRAG_DISTANCE_PX = 8;
+
 export interface MarketplacePluginDetailPanelTab {
   id: string;
   kind: "marketplace-plugin-detail";
