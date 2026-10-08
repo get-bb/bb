@@ -52,8 +52,8 @@ export const SPAWN_COPY: SectionCopy = {
   title: "Let one agent orchestrate the rest",
   body: (
     <p>
-      Give one agent a big task. It splits the work across Claude Code, Codex,
-      Cursor, and others, and they message each other as they go.
+      Any agent can start other agents and message them as they work, whether
+      that’s Claude Code, Codex, Cursor, or another provider.
     </p>
   ),
 };
