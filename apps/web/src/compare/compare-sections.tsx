@@ -73,11 +73,11 @@ export const LIMITS_COPY: SectionCopy = {
   title: "Don’t lose work to usage limits",
   body: (
     <>
+      <p>If an agent hits a usage limit, bb keeps your work moving.</p>
       <p>
-        When an agent hits a usage limit, bb picks the work back up as soon as
-        the limit lifts, so it keeps going without you.
+        Spread work across the accounts you already have, and schedule it around
+        your limits.
       </p>
-      <p>See at a glance which agent has room left for the next big task.</p>
     </>
   ),
 };
