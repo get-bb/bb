@@ -29,14 +29,14 @@ import {
   SPAWN_COPY,
   spawnSection,
 } from "./compare-sections";
-import { AgentSplit, PlansVisual, type BrandLogo } from "./compare-visuals";
+import { AgentSplit, UsageVisual, type BrandLogo } from "./compare-visuals";
 
 const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
 
 const PLANS_SECTION = {
   title: "Every agent on its own subscription",
   wide: false,
-  visual: <PlansVisual />,
+  visual: <UsageVisual />,
   body: (
     <>
       <p>Each agent runs on the plan you already pay for.</p>

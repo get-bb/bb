@@ -2487,10 +2487,11 @@
   }
 }
 
-.cmp-plans {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.cmp-usage {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 36px 52px;
+  column-gap: 10px;
+  row-gap: 6px;
   width: 100%;
   max-width: 420px;
   padding: 18px;
@@ -2501,54 +2502,85 @@
   text-align: left;
 }
 
-.cmp-plans-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.cmp-usage-head {
+  grid-column: 1 / -1;
+  font-size: var(--text-label-small);
+  color: var(--subtle);
 }
 
-.cmp-plans-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.cmp-plans-ic {
+.cmp-usage-account {
   display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--ink-strong);
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  row-gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
 }
 
-.cmp-plans-agent {
+.cmp-usage-title {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cmp-usage-ic {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  color: var(--ink-strong);
 }
 
-.cmp-plans-who {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-
-.cmp-plans-name {
+.cmp-usage-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--heading-sub);
 }
 
-.cmp-plans-plan {
+.cmp-usage-plan {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-recessed);
+  font-size: var(--text-label-small);
+  line-height: 1.2;
+  color: var(--subtle);
+}
+
+.cmp-usage-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
   font-size: 12.5px;
+}
+
+.cmp-usage-label {
+  color: var(--subtle);
+}
+
+.cmp-usage-bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.cmp-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ink-strong);
+}
+
+.cmp-usage-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.cmp-usage-reset {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   color: var(--subtle);
 }
