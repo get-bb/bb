@@ -30,6 +30,7 @@ export async function resolveWorkspaceProjectSkills(
     command: {
       type: "host.read_skill_files",
       path: skillsRootPath,
+      rootPath: args.workspacePath,
       limit: MAX_PROJECT_SKILLS,
       maxFileBytes: MAX_PROJECT_SKILL_FILE_BYTES,
     },

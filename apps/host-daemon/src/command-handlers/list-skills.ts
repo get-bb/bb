@@ -22,6 +22,7 @@ import {
   resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
+import { isPathWithinDirectory } from "@bb/process-utils";
 import { isFsErrorWithCode } from "../fs-errors.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
@@ -169,6 +170,9 @@ export async function readHostSkillFiles(
   if (!path.isAbsolute(command.path)) {
     throw new CommandDispatchError("invalid_path", "Path must be absolute");
   }
+  if (!path.isAbsolute(command.rootPath)) {
+    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
+  }
   let rootPath: string;
   try {
     rootPath = await resolveNonSymlinkDirectoryPath({
@@ -180,6 +184,13 @@ export async function readHostSkillFiles(
       return { skills: [], truncated: false };
     }
     throw error;
+  }
+  const realReadRootPath = await fs.realpath(command.rootPath);
+  if (!isPathWithinDirectory(realReadRootPath, rootPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      `Path "${command.path}" escapes read root`,
+    );
   }
   const directoryNames = (await fs.readdir(rootPath, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))

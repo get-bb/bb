@@ -789,6 +789,7 @@ describe("readHostSkillFiles", () => {
     const result = await readHostSkillFiles({
       type: "host.read_skill_files",
       path: skillsRoot,
+      rootPath: tempRoot,
       limit: 10,
       maxFileBytes: reviewContent.length,
     });
@@ -818,6 +819,7 @@ describe("readHostSkillFiles", () => {
     const result = await readHostSkillFiles({
       type: "host.read_skill_files",
       path: skillsRoot,
+      rootPath: tempRoot,
       limit: 1,
       maxFileBytes: 1024,
     });
@@ -831,6 +833,7 @@ describe("readHostSkillFiles", () => {
       readHostSkillFiles({
         type: "host.read_skill_files",
         path: path.join(tempRoot, "missing"),
+        rootPath: tempRoot,
         limit: 10,
         maxFileBytes: 1024,
       }),
@@ -845,6 +848,25 @@ describe("readHostSkillFiles", () => {
       readHostSkillFiles({
         type: "host.read_skill_files",
         path: path.join(tempRoot, "linked-skills"),
+        rootPath: tempRoot,
+        limit: 10,
+        maxFileBytes: 1024,
+      }),
+    ).rejects.toBeInstanceOf(CommandDispatchError);
+  });
+
+  it("rejects a skills root whose parent symlinks outside the read root", async () => {
+    const workspace = path.join(tempRoot, "workspace");
+    const outside = path.join(tempRoot, "outside-bb");
+    await writeSkill(path.join(outside, "skills", "leak", "SKILL.md"), "leak");
+    await mkdir(workspace, { recursive: true });
+    await symlink(outside, path.join(workspace, ".bb"));
+
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(workspace, ".bb", "skills"),
+        rootPath: workspace,
         limit: 10,
         maxFileBytes: 1024,
       }),

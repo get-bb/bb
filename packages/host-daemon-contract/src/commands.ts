@@ -750,6 +750,7 @@ const hostReadSkillFilesCommandSchema = z
   .object({
     type: z.literal("host.read_skill_files"),
     path: z.string().min(1),
+    rootPath: z.string().min(1),
     limit: z.number().int().positive(),
     maxFileBytes: z.number().int().positive(),
   })
