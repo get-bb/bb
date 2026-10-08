@@ -50,8 +50,7 @@ export const SPAWN_COPY: SectionCopy = {
   body: (
     <p>
       Give one agent a big task. It splits the work across Claude Code, Codex,
-      Cursor, and others running side by side, and they message each other as
-      they go. You come back to finished work, not notes to pass between tools.
+      Cursor, and others, and they message each other as they go.
     </p>
   ),
 };

@@ -40,14 +40,12 @@ const PLANS_SECTION = {
   body: (
     <>
       <p>
-        Claude Code runs on your Claude subscription, Codex on your ChatGPT
-        subscription, and Cursor’s agent on your Cursor plan, with nothing
-        billed in between. Each agent works the way its own team built it, and
-        you pick the right one for each task.
+        Claude Code uses your Claude subscription, Codex your ChatGPT one, and
+        Cursor’s agent your Cursor plan. Pick the right agent for each task.
       </p>
       <p>
         When an agent hits a usage limit, bb picks the work back up once the
-        limit resets. bb itself is free.
+        limit resets.
       </p>
     </>
   ),
@@ -61,7 +59,7 @@ export const BB_VS_CURSOR: Comparison = {
     "bb is a free, open-source Cursor alternative. Run Claude Code and Codex directly on your Claude and ChatGPT subscriptions, next to Cursor’s agent, and change anything with plugins.",
   competitor: { name: "Cursor", logo: CURSOR_LOGO },
   headline: "The Cursor alternative for your Claude and ChatGPT subscriptions",
-  sub: "Run Claude Code and Codex on the subscriptions you already have, not at API rates. Cursor’s agent works too. Free and open source.",
+  sub: "Run Claude Code and Codex on the subscriptions you already have. Cursor’s agent works too. Free and open source.",
   heroVisual: <AgentSplit />,
   tailored: PLANS_SECTION,
   sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
@@ -73,11 +71,11 @@ export const BB_VS_CURSOR: Comparison = {
         {
           feature: "Use your Claude or ChatGPT subscription",
           bb: cell("yes", "Claude Code and Codex, signed in as usual"),
-          competitor: cell("no", "API rates through Cursor usage or your keys"),
+          competitor: cell("no"),
         },
         {
           feature: "Claude Code and Codex agents",
-          bb: cell("yes", "Side by side with Cursor’s agent"),
+          bb: cell("yes"),
           competitor: cell("partial", "As editor extensions"),
         },
         {
@@ -89,7 +87,7 @@ export const BB_VS_CURSOR: Comparison = {
         },
         {
           ...BB_ROWS.accountSwitch,
-          competitor: cell("no", "On-demand billing instead"),
+          competitor: cell("no"),
         },
       ],
     },
@@ -117,11 +115,11 @@ export const BB_VS_CURSOR: Comparison = {
         {
           ...BB_ROWS.cloud,
           feature: "Cloud agents",
-          competitor: cell("yes", "Hosted VMs at API rates", true),
+          competitor: cell("yes", "Hosted VMs", true),
         },
         {
           ...BB_ROWS.mobile,
-          competitor: cell("yes", "iPhone and iPad, web on Android"),
+          competitor: cell("partial", "iPhone and iPad only"),
         },
         {
           ...BB_ROWS.automations,
@@ -134,8 +132,8 @@ export const BB_VS_CURSOR: Comparison = {
       rows: [
         {
           feature: "Parallel agents in Git worktrees",
-          bb: cell("yes", "Setup runs for you"),
-          competitor: cell("yes", "Agents window"),
+          bb: cell("yes"),
+          competitor: cell("yes"),
         },
         { ...BB_ROWS.diffReview, competitor: cell("yes") },
         {
@@ -147,7 +145,7 @@ export const BB_VS_CURSOR: Comparison = {
         },
         {
           feature: "Code editor",
-          bb: cell("partial", "File Editor plugin, no Tab completion"),
+          bb: cell("partial", "Via plugins, no Tab completion"),
           competitor: cell("yes", "Full editor with Tab"),
         },
       ],

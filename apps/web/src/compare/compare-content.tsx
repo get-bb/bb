@@ -54,7 +54,7 @@ export const BB_ROWS = {
   },
   accountSwitch: {
     feature: "Switch accounts at usage limits",
-    bb: cell("yes", "Account Pooler, experimental"),
+    bb: cell("yes"),
   },
   marketplace: {
     feature: "Plugin marketplace",
@@ -74,10 +74,7 @@ export const BB_ROWS = {
     feature: "Git worktrees",
     bb: cell("yes", "Setup and teardown scripts"),
   },
-  diffReview: {
-    feature: "Diff review and merge",
-    bb: cell("yes", "Line comments to the agent, checks, merge"),
-  },
+  diffReview: { feature: "Diff review and merge", bb: cell("yes") },
   rewind: {
     feature: "Go back to an earlier point",
     bb: cell("yes", "Edit a message or fork from it"),
