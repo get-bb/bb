@@ -432,13 +432,13 @@ function Notice({
           onClick={onReload}
           title="Discard your edits and load the latest saved file"
         >
-          Overwrite my edits
+          Discard my edits
         </NoticeAction>
         <NoticeAction
           onClick={onOverwrite}
           title="Replace the saved file with your edits"
         >
-          Keep my edits
+          Save my edits
         </NoticeAction>
       </NoticeRow>
     );
