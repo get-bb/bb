@@ -256,7 +256,7 @@ export function PluginPanelRightPanelHost({
     string | null
   >(null);
   const [isPluginDetailPanelOpen, setIsPluginDetailPanelOpen] = useState(false);
-  const [isPluginDetailFullPage, setIsPluginDetailFullPage] = useState(false);
+  const [isPanelFullPage, setIsPanelFullPage] = useState(false);
   const [pluginDetailTabMetadata, setPluginDetailTabMetadata] = useState<
     Record<string, PluginDetailTabMetadata>
   >({});
@@ -407,7 +407,7 @@ export function PluginPanelRightPanelHost({
   const selectPersistedPanelTab = useCallback(() => {
     setActivePluginDetailId(null);
     setIsPluginDetailPanelOpen(false);
-    setIsPluginDetailFullPage(false);
+    setIsPanelFullPage(false);
   }, []);
   const openPluginDetail = useCallback(
     (nextPluginId: string) => {
@@ -534,7 +534,7 @@ export function PluginPanelRightPanelHost({
   );
   const hidePanel = useCallback(() => {
     setIsPluginDetailPanelOpen(false);
-    setIsPluginDetailFullPage(false);
+    setIsPanelFullPage(false);
     if (isCompactViewport) {
       closeCompactDrawer();
       return;
@@ -639,7 +639,7 @@ export function PluginPanelRightPanelHost({
       setActivePluginDetailId((current) =>
         current === closingPluginId ? nextActivePluginId : current,
       );
-      setIsPluginDetailFullPage(false);
+      setIsPanelFullPage(false);
       if (
         nextActivePluginId === null &&
         fixedViewTabs.length === 0 &&
@@ -1085,15 +1085,10 @@ export function PluginPanelRightPanelHost({
         drawerLabel="Right panel"
         drawerFallback={null}
         mainPanelId={`plugin-panel-main-${panelHostId}`}
-        collapse={
-          activePluginDetailId === null
-            ? undefined
-            : {
-                active: isPluginDetailFullPage,
-                onToggle: () =>
-                  setIsPluginDetailFullPage((current) => !current),
-              }
-        }
+        collapse={{
+          active: isPanelFullPage,
+          onToggle: () => setIsPanelFullPage((current) => !current),
+        }}
         main={children}
         composerHost={null}
         renderPanel={renderPanel}

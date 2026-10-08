@@ -354,6 +354,8 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
     onClose,
     onOpenNewTab,
     renderBrowserDeck,
+    isConversationCollapsed,
+    onToggleConversationCollapse,
     showConversationCollapseControl,
     splitPanelStateId,
   }: {
@@ -388,6 +390,8 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
       pane: { isFocused: boolean; onFocusPane: () => void },
     ) => ReactNode;
     showConversationCollapseControl?: boolean;
+    isConversationCollapsed: boolean;
+    onToggleConversationCollapse: () => void;
     splitPanelStateId?: string;
   }) => {
     const pane = { isFocused: true, onFocusPane: () => undefined };
@@ -445,6 +449,16 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", () => ({
           Add tab
         </button>
         <button type="button" aria-label="Hide right panel" onClick={onClose} />
+        {showConversationCollapseControl || splitPanelStateId !== undefined ? (
+          <button
+            type="button"
+            aria-label={
+              isConversationCollapsed ? "Restore split" : "Maximize pane"
+            }
+            aria-pressed={isConversationCollapsed}
+            onClick={onToggleConversationCollapse}
+          />
+        ) : null}
         {activeFixedTab?.renderContent?.(pane)}
         {activeRenderableTab?.tab.kind === "browser"
           ? null
@@ -827,6 +841,38 @@ describe("PluginPanelRightPanelHost", () => {
     expect(
       await screen.findByRole("button", { name: "Show right panel" }),
     ).toBeTruthy();
+  });
+
+  it("maximizes and restores an ordinary plugin page panel and resets on close", async () => {
+    renderHost();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    );
+    expect(await screen.findByTestId("plugin-page-new-tab")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Maximize pane" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Restore split" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Restore split" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Maximize pane" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Maximize pane" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide right panel" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show right panel" }),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Maximize pane" })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("opens plugin detail links in a header-controlled tab without leaving the plugin page", async () => {
