@@ -41,7 +41,7 @@ const IMAGE_SIZES: Record<string, ImageSize> = {
     width: 2048,
     height: 1280,
   },
-  "/guides/run-an-agent-on-a-schedule/window-detail.png": {
+  "/guides/run-an-agent-on-a-schedule/window-detail-paused.png": {
     width: 2048,
     height: 1280,
   },

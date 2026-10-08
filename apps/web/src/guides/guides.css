@@ -1753,3 +1753,17 @@
     display: none;
   }
 }
+
+@media (max-width: 640px) {
+  .gd-shot-frame {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .gd-shot-frame::-webkit-scrollbar {
+    display: none;
+  }
+  .gd-shot-frame img {
+    width: 720px;
+    max-width: none;
+  }
+}

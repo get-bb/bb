@@ -88,7 +88,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
             Choose <strong>Automations</strong> in the sidebar.
           </li>
           <li>
-            Choose <strong>New automation</strong>, or start from a template in{" "}
+            Choose <strong>New automation</strong>. A new thread opens with the
+            sentence started for you. Or start from a template in{" "}
             <strong>Browse</strong>.
           </li>
         </Substeps>
@@ -102,7 +103,7 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
     {
       id: "step-2",
       title: "Describe the job",
-      lead: "Finish the sentence: what to do, when, and where the results go. Your agent sets it up.",
+      lead: "Finish the sentence with what to do, when, and where the results go, then send it. Your agent sets it up.",
       body: (
         <p>
           Reports land in one thread, so you can follow what changed. For jobs
@@ -167,8 +168,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-detail.png",
-        alt: "The Morning issue triage automation in bb, with its schedule, prompt, model, an on/off switch, and a Run now button under Runs",
+        src: "/guides/run-an-agent-on-a-schedule/window-detail-paused.png",
+        alt: "The Morning issue triage automation in bb, paused, with its schedule, prompt, model, and a Run now button under Runs",
       },
       options: [],
     },
