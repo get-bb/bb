@@ -1640,8 +1640,8 @@ needs neither.
 
 The builtin Ask User Question plugin keeps an unanswered question card open for
 30 minutes by default. When it expires, the agent receives a timeout result and
-the card closes. Choose `1 hour`, `4 hours`, `24 hours`, or `7 days` under the
-plugin settings, or configure it from the CLI:
+the card closes. Choose `1 hour`, `4 hours`, `8 hours`, `24 hours`, `3 days`, or
+`7 days` under the plugin settings, or configure it from the CLI:
 
 ```bash
 bb plugin config ask-user-question set questionTimeout "24 hours"
