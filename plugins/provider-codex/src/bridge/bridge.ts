@@ -64,7 +64,7 @@ import {
   codexDaybreakProgram,
   parseCyberAccessPrograms,
   parseModelsResponse,
-  splitDaybreakAliasModels,
+  hideDaybreakAliasModels,
   type CodexDaybreakProgram,
 } from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
@@ -1556,7 +1556,10 @@ async function handleModelList(id: string | number): Promise<void> {
         model.isDefault = model.model === configuredModel;
       }
     }
-    sendResult(id, splitDaybreakAliasModels(models));
+    sendResult(id, {
+      models: hideDaybreakAliasModels(models),
+      selectedOnlyModels: [],
+    });
   } catch (error) {
     if (connection !== null) {
       retireModelListConnection(connection);

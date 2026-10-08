@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   codexDaybreakProgram,
   parseModelsResponse,
-  splitDaybreakAliasModels,
+  hideDaybreakAliasModels,
 } from "./models.js";
 
 describe("parseModelsResponse", () => {
@@ -301,17 +301,10 @@ describe("Daybreak model options", () => {
     expect(codexDaybreakProgram(null)).toBeNull();
   });
 
-  it("moves the Daybreak alias models to selected-only once the switch can replace them", () => {
-    const split = splitDaybreakAliasModels(models);
-    expect(split.models.map((model) => model.model)).toEqual([
-      "gpt-6-astra",
-      "gpt-6-sol",
-      "gpt-cyber-red",
-      "gpt-legacy",
-    ]);
-    expect(split.selectedOnlyModels.map((model) => model.model)).toEqual([
-      "gpt-daybreak-blue-latest",
-    ]);
+  it("hides the Daybreak alias models once another model offers the switch", () => {
+    expect(hideDaybreakAliasModels(models).map((model) => model.model)).toEqual(
+      ["gpt-6-astra", "gpt-6-sol", "gpt-cyber-red", "gpt-legacy"],
+    );
   });
 
   it("keeps the aliases listed when no other model offers Daybreak", () => {
@@ -321,9 +314,6 @@ describe("Daybreak model options", () => {
         catalogEntry("gpt-daybreak-blue-latest", ["daybreakBlue"]),
       ],
     });
-    expect(splitDaybreakAliasModels(aliasOnly)).toEqual({
-      models: aliasOnly,
-      selectedOnlyModels: [],
-    });
+    expect(hideDaybreakAliasModels(aliasOnly)).toEqual(aliasOnly);
   });
 });

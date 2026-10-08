@@ -26,8 +26,9 @@ advertised as supported" and was omitted.
 Daybreak is the `daybreak` model option (`off` or `on`). `bb provider models
 codex` lists, per model, the values Codex's catalog allows for the signed-in
 account (`experimental_supportedModelOptions` in `--json`); models without
-Daybreak accept only `off`, and the Daybreak alias models accept only `on`
-and are listed only as selected-only once another model offers Daybreak. Pass
+Daybreak accept only `off`, and the Daybreak alias models (`gpt-daybreak-*-latest`) are
+hidden once another model offers Daybreak; a thread already on one keeps
+running because Codex accepts unlisted model ids. Pass
 `--model-option daybreak=on` to `bb thread spawn` or `bb thread tell`; later
 turns keep the thread's value until it changes. With Daybreak on, bb requests
 the model's Daybreak program (Daybreak Blue before Red) on each turn and

@@ -245,10 +245,9 @@ export function parseModelsResponse(result: unknown): AvailableModel[] {
   return models;
 }
 
-export function splitDaybreakAliasModels(models: readonly AvailableModel[]): {
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-} {
+export function hideDaybreakAliasModels(
+  models: readonly AvailableModel[],
+): AvailableModel[] {
   const switchable = models.some(
     (model) =>
       !DAYBREAK_ALIAS_MODELS.has(model.model) &&
@@ -256,13 +255,7 @@ export function splitDaybreakAliasModels(models: readonly AvailableModel[]): {
         DAYBREAK_MODEL_OPTION_ID
       ]?.includes(DAYBREAK_ON) === true,
   );
-  if (!switchable) {
-    return { models: [...models], selectedOnlyModels: [] };
-  }
-  return {
-    models: models.filter((model) => !DAYBREAK_ALIAS_MODELS.has(model.model)),
-    selectedOnlyModels: models.filter((model) =>
-      DAYBREAK_ALIAS_MODELS.has(model.model),
-    ),
-  };
+  return switchable
+    ? models.filter((model) => !DAYBREAK_ALIAS_MODELS.has(model.model))
+    : [...models];
 }
