@@ -229,7 +229,7 @@ export function ProjectSelector({
                   className={cn(
                     "min-h-0 overflow-y-auto overscroll-contain md:max-h-[calc(7.5*1.625rem)]",
                     belowOverflow &&
-                      "md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_1rem),transparent)]",
+                      "md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
                   )}
                 >
                   {filteredProjects.map((project) => (
