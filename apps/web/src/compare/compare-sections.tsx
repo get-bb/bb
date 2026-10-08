@@ -24,7 +24,7 @@ export type CompetitorPlan = {
 };
 
 export const PRICING_COPY: SectionCopy = {
-  title: "Free for your whole team",
+  title: "Run more agents, $0 more",
   body: (
     <>
       <p>
@@ -73,10 +73,10 @@ export const LIMITS_COPY: SectionCopy = {
   title: "Don’t lose work to usage limits",
   body: (
     <>
-      <p>See each agent’s plan and when its limits reset.</p>
+      <p>See each agent’s usage and when its limits reset.</p>
       <p>
-        When an agent hits a limit, bb picks the work back up once it resets,
-        with no message to resend.
+        When an agent hits a usage limit, bb picks the work back up once it with
+        no message to resend.
       </p>
     </>
   ),
