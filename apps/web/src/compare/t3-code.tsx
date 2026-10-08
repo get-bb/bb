@@ -20,22 +20,17 @@ import {
   faqUsageLimit,
   price,
 } from "./compare-content";
-import { CustomizeBuild } from "../landing/landing-visuals";
-import { agentsSection, type SectionCopy } from "./compare-sections";
-import type { BrandLogo } from "./compare-visuals";
+import {
+  ANYWHERE_COPY,
+  anywhereSection,
+  pluginsSection,
+  SPAWN_COPY,
+  spawnSection,
+  type SectionCopy,
+} from "./compare-sections";
+import { AgentSplit, type BrandLogo } from "./compare-visuals";
 
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
-
-const AGENTS_SECTION = agentsSection({
-  title: "Every agent, in threads you can talk to",
-  body: (
-    <p>
-      Claude Code, Codex, Cursor, OpenCode, and more run side by side. When one
-      agent starts another, the new one is a full thread you can open and
-      message mid-run, from any device.
-    </p>
-  ),
-});
 
 const PLUGINS_COPY_T3: SectionCopy = {
   title: "The features you want, without a fork to maintain",
@@ -55,11 +50,10 @@ export const BB_VS_T3_CODE: Comparison = {
     "bb is a free, open-source T3 Code alternative you can change without forking. Add panels, commands, and agents from the plugin marketplace, or have your agent build them.",
   competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
   headline: "The T3 Code alternative you can change without forking",
-  sub: "Add a panel, a command, or an agent from the plugin marketplace, or have your agent build one. It works everywhere you use bb, including your phone. Free and open source.",
-  heroVisual: <CustomizeBuild />,
-  tailored: AGENTS_SECTION,
-  sections: [],
-  pluginsCopy: PLUGINS_COPY_T3,
+  sub: "Add what you need from the plugin marketplace, or have your agent build it. Free and open source.",
+  heroVisual: <AgentSplit />,
+  tailored: pluginsSection(PLUGINS_COPY_T3),
+  sections: [spawnSection(SPAWN_COPY), anywhereSection(ANYWHERE_COPY)],
   tableNote: null,
   table: [
     {
