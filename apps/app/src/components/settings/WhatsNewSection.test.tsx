@@ -57,7 +57,7 @@ Six is ready.
 
 vi.mock("./changelog-preview", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./changelog-preview")>();
-  const { parseChangelog } = await import("../../../../../changelog-parser");
+  const { parseChangelog } = await import("@bb/domain/changelog");
   return {
     ...actual,
     CHANGELOG_ENTRIES: parseChangelog(fixtures.changelog),

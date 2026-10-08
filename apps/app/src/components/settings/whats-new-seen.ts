@@ -1,32 +1,14 @@
 import { useSyncExternalStore } from "react";
+import { compareChangelogVersions } from "@bb/domain/changelog";
 import { rawStringLocalStorage } from "@/lib/browser-storage";
+
+export { compareChangelogVersions };
 
 export const WHATS_NEW_SECTION_ID = "whats-new";
 
 const SEEN_VERSION_STORAGE_KEY = "bb.settings.updates.whats-new-seen-version";
 const PREVIOUS_VERSION_STORAGE_KEY =
   "bb.settings.updates.whats-new-previous-version";
-
-function versionParts(version: string): number[] | null {
-  const match = /^v?(\d+(?:\.\d+)*)/.exec(version);
-  return match?.[1] === undefined ? null : match[1].split(".").map(Number);
-}
-
-export function compareChangelogVersions(left: string, right: string): number {
-  const leftParts = versionParts(left);
-  const rightParts = versionParts(right);
-  if (leftParts === null || rightParts === null) {
-    return left === right ? 0 : left < right ? -1 : 1;
-  }
-  const partCount = Math.max(leftParts.length, rightParts.length);
-  for (let index = 0; index < partCount; index += 1) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-    if (difference !== 0) {
-      return difference;
-    }
-  }
-  return 0;
-}
 
 export interface WhatsNewVersionStorage {
   getItem: (key: string, initialValue: string) => string;
@@ -59,8 +41,7 @@ export function isWhatsNewVersionUnseen(
   version: string,
 ): boolean {
   return (
-    seenVersion.length === 0 ||
-    compareChangelogVersions(seenVersion, version) < 0
+    seenVersion.length > 0 && compareChangelogVersions(seenVersion, version) < 0
   );
 }
 
@@ -95,6 +76,13 @@ export function notifyWhatsNewSeenVersionChanged(): void {
   for (const listener of seenVersionListeners) {
     listener();
   }
+}
+
+export function recordWhatsNewBaseline(version: string): void {
+  if (readSeenVersion().length > 0) {
+    return;
+  }
+  markWhatsNewVersionSeen(version);
 }
 
 export function markWhatsNewVersionSeen(version: string): void {

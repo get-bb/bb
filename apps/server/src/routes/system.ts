@@ -73,6 +73,11 @@ import {
   setProviderEnabled,
 } from "../services/system/provider-management.js";
 import { getProviderStates } from "../services/system/provider-states.js";
+import {
+  bundledReleaseEntries,
+  fetchPublishedReleaseEntries,
+  getReleaseNotes,
+} from "../services/system/release-notes.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
   listCustomThemeNames,
@@ -688,6 +693,18 @@ export function registerSystemRoutes(
     context.json(
       await deps.appVersion.getSystemVersion({
         forceRefresh: query.force === "true",
+      }),
+    ),
+  );
+
+  get(routes.releaseNotes, async (context, query) =>
+    context.json(
+      await getReleaseNotes({
+        installedVersion: deps.config.appVersion,
+        version: query.version,
+        since: query.since,
+        entries: bundledReleaseEntries(),
+        fetchPublished: fetchPublishedReleaseEntries,
       }),
     ),
   );

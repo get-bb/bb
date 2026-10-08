@@ -1,17 +1,17 @@
 import changelogSource from "../../../../../CHANGELOG.md?raw";
 import {
+  compareChangelogVersions,
   parseChangelog,
   type ChangelogEntry,
-} from "../../../../../changelog-parser";
-import { compareChangelogVersions } from "./whats-new-seen";
-export { RELEASE_META } from "../../../../../changelog-metadata";
+} from "@bb/domain/changelog";
+export { RELEASE_META } from "@bb/domain/changelog";
 export type {
+  ChangelogBlock,
+  ChangelogEntry,
   ReleaseHero,
   ReleaseMeta,
   ReleaseVisualId,
-} from "../../../../../changelog-metadata";
-export type { ChangelogBlock } from "../../../../../changelog-parser";
-export type { ChangelogEntry } from "../../../../../changelog-parser";
+} from "@bb/domain/changelog";
 export {
   compareChangelogVersions,
   recordWhatsNewVersion,

@@ -225,10 +225,14 @@ the same per-provider switch.
 Settings → Updates always shows a What's new section below the update rows:
 a one-line summary of the installed release with its full notes behind Show
 all changes, releases skipped since this client last saw What's new, and the
-notes for an available update. Until this client sees the installed
-release, a What's new card sits above the sidebar footer; opening it goes to
-that section, and opening it, dismissing it, or visiting the section hides it
-until the next release. The card is hidden while the sidebar is collapsed.
+notes for an available update. After an update, until this client sees the
+installed release, a What's new card sits above the sidebar footer; opening it
+goes to that section, and opening it, dismissing it, or visiting the section
+hides it until the next release. A client with no seen record (a new install
+or a new browser) records its installed release as seen and shows no card
+until the next update. The card is hidden while the sidebar is collapsed.
+`bb whats-new` prints the same release notes in the terminal (`--version <v>`,
+`--since <v>`, `--json`) and never marks a release seen.
 The default-off `navigationRail` experiment keeps a vertical rail of
 destinations on the left edge of the sidebar on every screen. Home returns to
 the last thread, Settings sits at the bottom, and New thread moves into the

@@ -50,7 +50,7 @@ vi.mock("@/components/settings/changelog-preview", async (importOriginal) => {
     await importOriginal<
       typeof import("@/components/settings/changelog-preview")
     >();
-  const { parseChangelog } = await import("../../../../../changelog-parser");
+  const { parseChangelog } = await import("@bb/domain/changelog");
   return {
     ...actual,
     CHANGELOG_ENTRIES: parseChangelog(fixtures.changelog),
@@ -148,7 +148,40 @@ afterEach(() => {
 });
 
 describe("SidebarWhatsNew", () => {
-  it("announces the installed release this client has not seen", async () => {
+  it("treats a brand-new client's installed release as seen", async () => {
+    renderWidget();
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0"),
+    );
+    await act(async () => {});
+    expect(widget()).toBeNull();
+    expect(window.localStorage.getItem(PREVIOUS_KEY)).toBeNull();
+  });
+
+  it("announces the first update after a brand-new client's baseline", async () => {
+    versionMock.mockResolvedValue(version("0.4.0"));
+    renderWidget();
+    await waitFor(() =>
+      expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.4.0"),
+    );
+    await act(async () => {});
+    expect(widget()).toBeNull();
+    cleanup();
+
+    versionMock.mockResolvedValue(version("0.5.0"));
+    renderWidget();
+
+    const card = await screen.findByTestId("sidebar-whats-new");
+    expect(card.textContent).toContain("What’s new · v0.5.0");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss what's new in bb 0.5.0" }),
+    );
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
+    expect(window.localStorage.getItem(PREVIOUS_KEY)).toBe("0.4.0");
+  });
+
+  it("announces the installed release to a client that saw an older one", async () => {
     window.localStorage.setItem(SEEN_KEY, "0.4.0");
     renderWidget();
 
@@ -194,6 +227,7 @@ describe("SidebarWhatsNew", () => {
   });
 
   it("opens What's new in Settings → Updates and marks the release seen", async () => {
+    window.localStorage.setItem(SEEN_KEY, "0.4.0");
     renderWidget();
 
     fireEvent.click(
@@ -268,6 +302,7 @@ describe("SidebarWhatsNew", () => {
   });
 
   it("stays hidden while the sidebar is collapsed", async () => {
+    window.localStorage.setItem(SEEN_KEY, "0.4.0");
     renderWidget({ open: false });
 
     await waitFor(() => expect(versionMock).toHaveBeenCalled());

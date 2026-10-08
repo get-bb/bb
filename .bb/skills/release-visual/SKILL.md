@@ -1,15 +1,15 @@
 ---
 name: release-visual
-description: "Draw the small release visual for a new bb release and register it in release metadata, so the sidebar What's new card and Settings → Updates show it. Use when preparing release notes or when a release in changelog-metadata.ts has no visual."
+description: "Draw the small release visual for a new bb release and register it in release metadata, so the sidebar What's new card and Settings → Updates show it. Use when preparing release notes or when a release in RELEASE_META has no visual."
 ---
 
 # Draw a release visual
 
-Each release in `RELEASE_META` (`changelog-metadata.ts`) names one drawing in
-`visual`. The sidebar What's new card and Settings → Updates → What's new show
-it at 40px. Drawings live in
-`apps/app/src/components/release-art/release-visuals.tsx` and are composed from
-the parts in `release-art-kit.tsx`. CI fails when the newest changelog release
+Each release in `RELEASE_META` (`packages/domain/src/changelog-metadata.ts`)
+names one drawing in `visual`. The sidebar What's new card and Settings →
+Updates → What's new show it at 40px. Drawings live in
+`apps/app/src/components/release-art/release-visuals.tsx` and are composed
+from the parts in `release-art-kit.tsx`. CI fails when the newest changelog release
 has no visual, a visual id has no drawing, or a drawing is unused.
 
 ## Steps

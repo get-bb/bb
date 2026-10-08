@@ -247,10 +247,15 @@ so they carry over between navigation plugins.
   summary of the installed release with its full notes behind Show all
   changes, any releases skipped since this client last saw What's new, and an
   available update's notes.
-- Until this client sees the installed release, a What's new card sits above
-  the sidebar footer. Opening it goes to that section; opening it, dismissing
-  it, or visiting the section hides it until the next release. It is hidden
-  while the sidebar is collapsed.
+- After an update, until this client sees the installed release, a What's new
+  card sits above the sidebar footer. Opening it goes to that section; opening
+  it, dismissing it, or visiting the section hides it until the next release.
+  It is hidden while the sidebar is collapsed.
+- A client with no seen record (a new install or a new browser) records its
+  installed release as seen and shows no card until the next update.
+- To read release notes from a terminal, use `bb whats-new` (installed
+  release), `bb whats-new --version <v>`, or `bb whats-new --since <v>` (newest
+  first); add `--json` for structured notes. It never marks a release seen.
 
 ## Navigation rail
 

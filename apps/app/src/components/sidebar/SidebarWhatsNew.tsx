@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import {
   isWhatsNewVersionUnseen,
+  recordWhatsNewBaseline,
   useWhatsNewSeenVersion,
 } from "@/components/settings/whats-new-seen";
 import { useSidebar } from "@/components/ui/sidebar.js";
@@ -26,6 +28,11 @@ export function SidebarWhatsNew({ onNavigate }: { onNavigate?: () => void }) {
   const { isCompactViewport, open } = useSidebar();
   const installedVersion = useSystemVersion().data?.currentVersion ?? null;
   const seenVersion = useWhatsNewSeenVersion();
+  useEffect(() => {
+    if (installedVersion !== null && seenVersion.length === 0) {
+      recordWhatsNewBaseline(installedVersion);
+    }
+  }, [installedVersion, seenVersion]);
   if (
     (!isCompactViewport && !open) ||
     installedVersion === null ||

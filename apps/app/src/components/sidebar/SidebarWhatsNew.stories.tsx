@@ -19,13 +19,15 @@ export default { title: "sidebar/What's new" };
 
 const SEEN_KEY = "bb.settings.updates.whats-new-seen-version";
 
-function resetSeenVersion() {
-  window.localStorage.removeItem(SEEN_KEY);
+const OLDER_SEEN_VERSION = "0.38.0";
+
+function simulateUpdate() {
+  window.localStorage.setItem(SEEN_KEY, OLDER_SEEN_VERSION);
   notifyWhatsNewSeenVersionChanged();
 }
 
 export function AboveTheFooter() {
-  useState(resetSeenVersion);
+  useState(simulateUpdate);
   const { pathname } = useLocation();
   return (
     <SettingsStoryFixtures>
@@ -45,12 +47,14 @@ export function AboveTheFooter() {
               <SidebarTrigger />
               <h1 className="text-lg font-semibold">What&rsquo;s new</h1>
               <p className="max-w-lg text-sm text-muted-foreground">
-                The card sits above the sidebar footer until this client sees
-                the installed release. Dismiss it or open it, then reset to show
-                it again. Collapse the sidebar to hide it.
+                After an update, the card sits above the sidebar footer until
+                this client sees the installed release. A brand-new client
+                records its installed release as seen and shows no card. Dismiss
+                it or open it, then simulate an update to show it again.
+                Collapse the sidebar to hide it.
               </p>
-              <Button variant="outline" onClick={resetSeenVersion}>
-                Reset seen release
+              <Button variant="outline" onClick={simulateUpdate}>
+                Simulate an update from {OLDER_SEEN_VERSION}
               </Button>
             </main>
           </SidebarInset>

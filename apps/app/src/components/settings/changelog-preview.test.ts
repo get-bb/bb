@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChangelog } from "../../../../../changelog-parser";
+import { parseChangelog } from "@bb/domain/changelog";
 import {
   CHANGELOG_ENTRIES,
   changelogUrl,

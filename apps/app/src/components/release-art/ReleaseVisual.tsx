@@ -1,5 +1,5 @@
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { ReleaseVisualId } from "../../../../../changelog-metadata";
+import type { ReleaseVisualId } from "@bb/domain/changelog";
 import { GRID, INK } from "./release-art-kit";
 import { RELEASE_VISUALS, TONE_COLOR } from "./release-visuals";
 

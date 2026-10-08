@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ReleaseVisualId } from "../../../../../changelog-metadata";
+import type { ReleaseVisualId } from "@bb/domain/changelog";
 import {
   Branch,
   CANVAS,

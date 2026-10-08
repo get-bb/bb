@@ -10,12 +10,15 @@ import {
   machineEnvironmentReplaceSchema,
   setAiServiceSelectionRequestSchema,
   systemProviderEnabledRequestSchema,
+  systemReleaseNotesQuerySchema,
   testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
   type SetAiServiceSelectionRequest,
   type SystemAiServicesResponse,
   type SystemProviderCatalogEntry,
   type SystemProviderEnabledRequest,
+  type SystemReleaseNotesQuery,
+  type SystemReleaseNotesResponse,
   type TestAiServiceRequest,
   type TestAiServiceResponse,
 } from "./api/system.js";
@@ -2046,6 +2049,14 @@ export const publicApiRoutes = {
         systemVersionQuerySchema,
       ),
       response: jsonResponse<SystemVersionResponse>(),
+    }),
+    releaseNotes: defineRoute({
+      path: "/system/release-notes",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, SystemReleaseNotesQuery>(
+        systemReleaseNotesQuerySchema,
+      ),
+      response: jsonResponse<SystemReleaseNotesResponse>(),
     }),
     appUpdate: defineRoute({
       path: "/system/app-update",

@@ -9,6 +9,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./changelog": {
+      "source": "./src/changelog.ts",
+      "types": "./src/changelog.ts",
+      "default": "./src/changelog.ts"
+    },
     "./thread-status": {
       "source": "./src/thread-status.ts",
       "types": "./src/thread-status.ts",
