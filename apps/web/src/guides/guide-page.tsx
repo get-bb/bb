@@ -7,7 +7,9 @@ import { useState } from "react";
 
 import blogCss from "../blog/blog.css?url";
 import compareCss from "../compare/compare.css?url";
-import { useInitAnalytics } from "../landing/analytics";
+import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
+import { DesktopDownloadButton, DownloadLink } from "../landing/cta";
+import { useDesktopPlatform } from "../landing/desktop-platform";
 import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
@@ -51,14 +53,28 @@ function CopyForAgent({
   prompt,
   label,
   className,
+  guide,
+  placement,
 }: {
   prompt: string;
   label: string;
   className: string;
+  guide: string;
+  placement: "hero" | "handoff";
 }) {
   const { copied, copy } = useCopy(prompt, PROMPT_COPIED);
   return (
-    <button type="button" className={`btn gd-copy ${className}`} onClick={copy}>
+    <button
+      type="button"
+      className={`btn gd-copy ${className}`}
+      onClick={() => {
+        copy();
+        trackLandingEvent({
+          name: "guide_prompt_copied",
+          properties: { guide, placement },
+        });
+      }}
+    >
       <HugeiconsIcon
         icon={copied ? Tick02Icon : Copy01Icon}
         className="gd-ic"
@@ -121,6 +137,7 @@ function GuidePickerField({
 }
 
 function GuideHero({ guide }: { guide: Guide }) {
+  const platform = useDesktopPlatform();
   return (
     <header className="hero cmp-hero gd-hero">
       <h1>{brandProse(guide.title)}</h1>
@@ -136,13 +153,14 @@ function GuideHero({ guide }: { guide: Guide }) {
           prompt={guide.agentPrompt}
           label="Copy for agent"
           className="btn-primary"
+          guide={guide.slug}
+          placement="hero"
         />
-        <a
+        <DesktopDownloadButton
+          placement="hero"
+          platform={platform}
           className="btn btn-ghost"
-          href={guide.steps.length > 0 ? "#before" : "#handoff"}
-        >
-          {guide.steps.length > 0 ? "See the steps" : "See the prompt"}
-        </a>
+        />
       </div>
       {guide.picker ? null : guide.concept}
     </header>
@@ -177,6 +195,8 @@ function AgentHandoff({ guide }: { guide: Guide }) {
           prompt={guide.agentPrompt}
           label="Copy"
           className="btn-primary btn-sm"
+          guide={guide.slug}
+          placement="handoff"
         />
       </div>
       <div className={open ? "gd-prompt open" : "gd-prompt"}>
@@ -214,6 +234,19 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
         </div>
       ))}
     </section>
+  );
+}
+
+function InstallNote() {
+  const platform = useDesktopPlatform();
+  return (
+    <p className="gd-install">
+      New to bb?{" "}
+      <DownloadLink placement="local" platform={platform}>
+        Download it
+      </DownloadLink>
+      , or run <code>npx bb-app@latest</code>.
+    </p>
   );
 }
 
@@ -266,6 +299,7 @@ export function GuidePage({ guide }: { guide: Guide }) {
         <div className="gd-main">
           <section id="before">
             <h2 className="gd-h2">Before you start</h2>
+            <InstallNote />
             <div className="gd-needs">
               {guide.needs.map((need) => (
                 <div key={need.title} className="gd-need">

@@ -563,6 +563,11 @@
   text-underline-offset: 3px;
 }
 
+.gd-install {
+  margin-top: 10px;
+  color: var(--dim);
+}
+
 .gd-needs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
