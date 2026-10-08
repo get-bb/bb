@@ -48,6 +48,7 @@ import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutConte
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
+import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
 import type {
   MarketplacePluginDetailPanelTab,
   SecondaryPanelPaneRenderContext,
@@ -265,6 +266,15 @@ function ThreadSecondaryPanelContent({
     () => tabs.filter((tab) => tab.isHidden !== true),
     [tabs],
   );
+  const [filePreviewScrollPositions] = useState(
+    () => new Map<string, { scrollTop: number }>(),
+  );
+  useLayoutEffect(() => {
+    const openTabIds = new Set(tabs.map((tab) => tab.tab.id));
+    for (const tabId of filePreviewScrollPositions.keys()) {
+      if (!openTabIds.has(tabId)) filePreviewScrollPositions.delete(tabId);
+    }
+  }, [tabs, filePreviewScrollPositions]);
   const activeRenderableTab =
     tabs.find((tab) => tab.tab.id === activeTab?.id) ??
     (activeTab === null && fixedTabs.length === 0 ? visibleTabs[0] : undefined);
@@ -751,6 +761,18 @@ function ThreadSecondaryPanelContent({
         : activeSurfaceTab.renderContent(paneRenderContext);
     const surfaceContentFillsRegion =
       activeSurfaceTab?.contentFillsRegion === true;
+    const filePreviewScrollPosition =
+      activeSurfaceModel === null || isBrowserSurfaceActive
+        ? null
+        : (filePreviewScrollPositions.get(activeSurfaceModel.id) ?? {
+            scrollTop: 0,
+          });
+    if (activeSurfaceModel !== null && filePreviewScrollPosition !== null) {
+      filePreviewScrollPositions.set(
+        activeSurfaceModel.id,
+        filePreviewScrollPosition,
+      );
+    }
     const fixedSurfaceContent =
       activeSurfaceFixedTab?.renderContent?.(paneRenderContext);
     const fixedSurfaceContentFillsRegion =
@@ -875,11 +897,15 @@ function ThreadSecondaryPanelContent({
                   : ""
               }
             >
-              {surfaceContent ?? (
-                <EmptyStatePanel className="mx-4 rounded-lg">
-                  No file preview content provided.
-                </EmptyStatePanel>
-              )}
+              <FilePreviewScrollPositionContext.Provider
+                value={filePreviewScrollPosition}
+              >
+                {surfaceContent ?? (
+                  <EmptyStatePanel className="mx-4 rounded-lg">
+                    No file preview content provided.
+                  </EmptyStatePanel>
+                )}
+              </FilePreviewScrollPositionContext.Provider>
             </div>
           ) : activeSurfaceFixedTab !== undefined &&
             fixedSurfaceContent !== undefined ? (
