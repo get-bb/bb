@@ -17,6 +17,7 @@ const editor = vi.hoisted(() => ({
   onDidFocusEditorWidget: vi.fn(),
   onDidChangeModelContent: vi.fn<(listener: () => void) => void>(),
   getValue: vi.fn(() => "Edited on a phone"),
+  setValue: vi.fn<(content: string) => void>(),
   addCommand: vi.fn<(keybinding: number, handler: () => void) => void>(),
   updateOptions: vi.fn(),
   dispose: vi.fn(),
@@ -73,7 +74,14 @@ const range = (startLineNumber: number, endLineNumber = startLineNumber) => ({
   endLineNumber,
 });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  editor.getValue.mockReturnValue("Edited on a phone");
+  editor.setValue.mockImplementation((content) => {
+    editor.getValue.mockReturnValue(content);
+    editor.onDidChangeModelContent.mock.calls.at(-1)?.[0]();
+  });
+});
 afterEach(cleanup);
 
 it("saves edits with the toolbar button and prevents duplicate pending saves", async () => {
@@ -168,6 +176,108 @@ it("overwrites the conflicted version and requires confirmation for a newer conf
     content: "Edited on a phone",
     expectedSha256: "saved",
   });
+});
+
+it("undoes keeping the disk version without writing and restores conflict protection", async () => {
+  const diskFile = { ...file, content: "Updated on disk", sha256: "disk" };
+  const read = vi.fn().mockReturnValueOnce(file).mockReturnValue(diskFile);
+  const write = vi
+    .fn()
+    .mockResolvedValueOnce({ outcome: "conflict", currentSha256: "external" })
+    .mockResolvedValue({ outcome: "conflict", currentSha256: "newer" });
+  renderSlot(registration, base, {
+    rpc: {
+      assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
+      read,
+      write,
+    },
+  });
+  await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Keep disk version" }),
+  );
+  const undo = await screen.findByRole("button", { name: "Undo" });
+  expect(editor.getValue()).toBe("Updated on disk");
+  expect(document.activeElement).toBe(
+    screen.getByRole("status", { name: "Disk version loaded." }),
+  );
+  fireEvent.click(undo);
+  expect(editor.getValue()).toBe("Edited on a phone");
+  expect(editor.focus).toHaveBeenCalledOnce();
+  expect(write).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(write).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("button", { name: "Save my edits" }));
+  await screen.findByRole("button", { name: "Save my edits" });
+  expect(write).toHaveBeenLastCalledWith({
+    path: base.path,
+    source: base.source,
+    content: "Edited on a phone",
+    expectedSha256: "disk",
+  });
+});
+
+it.each(["edit", "file"])(
+  "retires the discarded draft after a new %s",
+  async (action) => {
+    const slot = renderSlot(registration, base, {
+      rpc: {
+        assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
+        read: () => file,
+        write: () => ({ outcome: "conflict", currentSha256: "external" }),
+      },
+    });
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Keep disk version" }),
+    );
+    await screen.findByRole("button", { name: "Undo" });
+    if (action === "edit") {
+      act(() => {
+        editor.getValue.mockReturnValue("New edits to the disk version");
+        editor.onDidChangeModelContent.mock.calls.at(-1)![0]();
+      });
+      expect(editor.getValue()).toBe("New edits to the disk version");
+    } else {
+      slot.lifecycle.rerender(<Component {...base} path="other.ts" />);
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    }
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  },
+);
+
+it("does not offer an old file's draft when its disk reload finishes after navigation", async () => {
+  let finishRead = (_value: typeof file) => {};
+  const pendingRead = new Promise<typeof file>((resolve) => {
+    finishRead = resolve;
+  });
+  const read = vi
+    .fn()
+    .mockReturnValueOnce(file)
+    .mockReturnValueOnce(pendingRead)
+    .mockReturnValue(file);
+  const nextEditor = { ...editor, setValue: vi.fn<(content: string) => void>() };
+  create.mockReturnValueOnce(editor).mockReturnValueOnce(nextEditor);
+  const slot = renderSlot(registration, base, {
+    rpc: {
+      assets: () => ({ baseUrl: "/assets", expiresAtMs: 99999 }),
+      read,
+      write: () => ({ outcome: "conflict", currentSha256: "external" }),
+    },
+  });
+  await waitFor(() => expect(create).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Keep disk version" }),
+  );
+  slot.lifecycle.rerender(<Component {...base} path="other.ts" />);
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+  await act(async () => finishRead(file));
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(editor.setValue).not.toHaveBeenCalled();
+  expect(nextEditor.setValue).not.toHaveBeenCalled();
 });
 
 it.each([range(80), range(120, 124)])(

@@ -29,6 +29,7 @@ import {
 
 type SaveState =
   | { kind: "clean" }
+  | { kind: "reloaded"; discardedContent: string }
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "error"; message: string }
@@ -157,19 +158,39 @@ function MonacoFileOpener({
     setIsRefreshing(true);
     try {
       const file = await rpc.call("read", { path: activePath, source });
-      if (file.kind !== "text") return;
+      if (file.kind !== "text" || editorRef.current !== editor) return;
+      const discardedContent =
+        saveStateRef.current.kind === "conflict" ? editor.getValue() : null;
       sha256Ref.current = file.sha256;
       editor.setValue(file.content);
-      setSaveState({ kind: "clean" });
+      setSaveState(
+        discardedContent === null
+          ? { kind: "clean" }
+          : { kind: "reloaded", discardedContent },
+      );
     } catch (error) {
+      if (editorRef.current !== editor) return;
       setSaveState({
         kind: "error",
         message: error instanceof Error ? error.message : "Reload failed",
       });
     } finally {
-      setIsRefreshing(false);
+      if (editorRef.current === editor) setIsRefreshing(false);
     }
   }, [activePath, rpc, setSaveState, source]);
+
+  const undoReload = useCallback(() => {
+    const current = saveStateRef.current;
+    const editor = editorRef.current;
+    if (current.kind !== "reloaded" || !editor) return;
+    editor.setValue(current.discardedContent);
+    setSaveState({ kind: "conflict", currentSha256: sha256Ref.current });
+    editor.focus();
+  }, [setSaveState]);
+
+  useEffect(() => {
+    if (saveState.kind === "reloaded") conflictNoticeRef.current?.focus();
+  }, [saveState.kind]);
 
   const treeRequestedRef = useRef(false);
   useEffect(() => {
@@ -235,6 +256,10 @@ function MonacoFileOpener({
   useEffect(() => {
     let disposed = false;
     setStatus({ kind: "loading" });
+    setIsRefreshing(false);
+    if (saveStateRef.current.kind === "reloaded") {
+      setSaveState({ kind: "clean" });
+    }
 
     void (async () => {
       try {
@@ -288,7 +313,10 @@ function MonacoFileOpener({
         setStatus({ kind: "ready" });
 
         editor.onDidChangeModelContent(() => {
-          if (saveStateRef.current.kind === "clean") {
+          if (
+            saveStateRef.current.kind === "clean" ||
+            saveStateRef.current.kind === "reloaded"
+          ) {
             setSaveState({ kind: "dirty" });
           }
         });
@@ -363,6 +391,7 @@ function MonacoFileOpener({
       />
       <Notice
         conflictNoticeRef={conflictNoticeRef}
+        isRefreshing={isRefreshing}
         onDiscardCancel={() => setPendingDiscard(false)}
         onDiscardConfirm={() => {
           setPendingDiscard(false);
@@ -376,6 +405,7 @@ function MonacoFileOpener({
         }}
         onOverwrite={() => void overwrite()}
         onReload={() => void reloadFromDisk()}
+        onUndoReload={undoReload}
         pendingDiscard={pendingDiscard}
         pendingOpen={pendingOpen}
         saveState={saveState}
@@ -406,24 +436,28 @@ function indicatorFor(
 
 function Notice({
   conflictNoticeRef,
+  isRefreshing,
   onDiscardCancel,
   onDiscardConfirm,
   onOpenCancel,
   onOpenConfirm,
   onOverwrite,
   onReload,
+  onUndoReload,
   pendingDiscard,
   pendingOpen,
   saveState,
   status,
 }: {
   conflictNoticeRef: React.RefObject<HTMLDivElement | null>;
+  isRefreshing: boolean;
   onDiscardCancel: () => void;
   onDiscardConfirm: () => void;
   onOpenCancel: () => void;
   onOpenConfirm: () => void;
   onOverwrite: () => void;
   onReload: () => void;
+  onUndoReload: () => void;
   pendingDiscard: boolean;
   pendingOpen: string | null;
   saveState: SaveState;
@@ -453,12 +487,14 @@ function Notice({
           </div>
           <div className="flex shrink-0 items-center gap-6">
             <NoticeAction
+              disabled={isRefreshing}
               onClick={onReload}
               title="Discard your edits and load the latest saved file"
             >
               Keep disk version
             </NoticeAction>
             <NoticeAction
+              disabled={isRefreshing}
               onClick={onOverwrite}
               title="Replace the saved file with your edits"
             >
@@ -489,6 +525,23 @@ function Notice({
   }
   if (saveState.kind === "error") {
     return <NoticeRow tone="error">{saveState.message}</NoticeRow>;
+  }
+  if (saveState.kind === "reloaded") {
+    return (
+      <NoticeRow
+        tone="neutral"
+        compact
+        focusRef={conflictNoticeRef}
+        label="Disk version loaded."
+      >
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-6 @min-[32rem]/file-conflict:justify-start">
+          <span>Disk version loaded.</span>
+          <NoticeAction disabled={isRefreshing} onClick={onUndoReload}>
+            Undo
+          </NoticeAction>
+        </div>
+      </NoticeRow>
+    );
   }
   return null;
 }
@@ -531,19 +584,22 @@ function NoticeRow({
 
 function NoticeAction({
   children,
+  disabled,
   onClick,
   title,
 }: {
   children: React.ReactNode;
+  disabled?: boolean;
   onClick: () => void;
   title?: string;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       title={title}
-      className="cursor-pointer rounded-sm font-medium underline underline-offset-2 hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+      className="cursor-pointer rounded-sm font-medium underline underline-offset-2 hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
     >
       {children}
     </button>
