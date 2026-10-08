@@ -223,7 +223,6 @@ function PlanReviewRequestBanner({
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
-      initiallyExpanded
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"
@@ -293,7 +292,6 @@ function ApprovalPendingInteractionBanner({
     <PendingInteractionShell
       label="Approval needed"
       title={view.title}
-      initiallyExpanded
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
@@ -325,7 +323,6 @@ function ThreadUserQuestionPendingInteractionBanner({
       label={
         questions.length === 1 ? "Question" : `${questions.length} questions`
       }
-      initiallyExpanded
       sourceThread={sourceThread}
       testId="user-question-banner"
     >
