@@ -884,7 +884,9 @@ function NewTabResults({
         </div>
       ) : null}
 
-      {hasQuery ? searchMessage : null}
+      {hasQuery && searchMessage ? (
+        <div className={cn(sections.length > 0 && "mt-3")}>{searchMessage}</div>
+      ) : null}
 
       {recent.emptyHintVisible ? (
         <section className={cn(hasRecentSectionPredecessor && "mt-3")}>
