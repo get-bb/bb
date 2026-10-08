@@ -37,7 +37,7 @@ const AWAY_SECTION = anywhereSection({
         Put bb on a desktop or server that stays on, and your agents keep going
         after you close your laptop.
       </p>
-      <p>Check in from the mobile app or any browser. It’s all free.</p>
+      <p>Check in from the mobile app or any browser.</p>
     </>
   ),
 });
