@@ -326,7 +326,7 @@ async function readCredentials(): Promise<ClaudeCredentials | null> {
 
 const claudeApiKeySettingsSchema = z.object({
   env: z.record(z.string(), z.unknown()).nullish().catch(null),
-  apiKeyHelper: z.unknown(),
+  apiKeyHelper: z.unknown().optional(),
 });
 
 function nonEmptyString(value: unknown): boolean {
