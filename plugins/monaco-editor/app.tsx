@@ -436,7 +436,7 @@ function Notice({
           onClick={onOverwrite}
           title="Replace the saved file with your draft"
         >
-          Save my draft
+          Keep my changes
         </NoticeAction>
       </NoticeRow>
     );
