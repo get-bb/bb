@@ -1,35 +1,77 @@
 import { useCallback, useEffect } from "react";
 import { atom, useAtom } from "jotai";
+import type { ThreadQueuedMessage } from "@bb/domain";
 
-export const queuedMessagesCollapsedThreadIdsAtom = atom<ReadonlySet<string>>(
-  new Set<string>(),
-);
+export const queuedMessagesCollapsedQueuesAtom = atom<
+  ReadonlyMap<string, ReadonlySet<string>>
+>(new Map<string, ReadonlySet<string>>());
+
+function sharesQueuedMessage(
+  queuedMessages: readonly ThreadQueuedMessage[],
+  seenIds: ReadonlySet<string>,
+): boolean {
+  return queuedMessages.some((queuedMessage) => seenIds.has(queuedMessage.id));
+}
 
 export function useQueuedMessagesExpanded({
   threadId,
-  queueIsEmpty,
+  queuedMessages,
 }: {
   threadId: string;
-  queueIsEmpty: boolean;
+  queuedMessages: readonly ThreadQueuedMessage[] | null;
 }): readonly [boolean, (expanded: boolean) => void] {
-  const [collapsedThreadIds, setCollapsedThreadIds] = useAtom(
-    queuedMessagesCollapsedThreadIdsAtom,
+  const [collapsedQueues, setCollapsedQueues] = useAtom(
+    queuedMessagesCollapsedQueuesAtom,
   );
   const setExpanded = useCallback(
     (expanded: boolean) => {
-      setCollapsedThreadIds((current) => {
-        const collapsed = !expanded;
-        if (current.has(threadId) === collapsed) return current;
-        const next = new Set(current);
-        if (expanded) next.delete(threadId);
-        else next.add(threadId);
+      setCollapsedQueues((current) => {
+        if (expanded === !current.has(threadId)) return current;
+        const next = new Map(current);
+        if (expanded) {
+          next.delete(threadId);
+        } else {
+          next.set(
+            threadId,
+            new Set(
+              (queuedMessages ?? []).map((queuedMessage) => queuedMessage.id),
+            ),
+          );
+        }
         return next;
       });
     },
-    [setCollapsedThreadIds, threadId],
+    [queuedMessages, setCollapsedQueues, threadId],
   );
   useEffect(() => {
-    if (queueIsEmpty) setExpanded(true);
-  }, [queueIsEmpty, setExpanded]);
-  return [!collapsedThreadIds.has(threadId), setExpanded];
+    if (queuedMessages === null) return;
+    setCollapsedQueues((current) => {
+      const seenIds = current.get(threadId);
+      if (seenIds === undefined) return current;
+      if (!sharesQueuedMessage(queuedMessages, seenIds)) {
+        const next = new Map(current);
+        next.delete(threadId);
+        return next;
+      }
+      if (
+        queuedMessages.every((queuedMessage) => seenIds.has(queuedMessage.id))
+      ) {
+        return current;
+      }
+      const next = new Map(current);
+      next.set(
+        threadId,
+        new Set([
+          ...seenIds,
+          ...queuedMessages.map((queuedMessage) => queuedMessage.id),
+        ]),
+      );
+      return next;
+    });
+  }, [queuedMessages, setCollapsedQueues, threadId]);
+  const seenIds = collapsedQueues.get(threadId);
+  const expanded =
+    seenIds === undefined ||
+    (queuedMessages !== null && !sharesQueuedMessage(queuedMessages, seenIds));
+  return [expanded, setExpanded];
 }
