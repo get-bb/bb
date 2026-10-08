@@ -438,7 +438,7 @@ function Notice({
         tone="warning"
         compact
         focusRef={conflictNoticeRef}
-        label="Files changed on disk, edits weren't saved."
+        label="File changed on disk, edits not saved."
       >
         <Icon
           name="AlertTriangle"
@@ -447,7 +447,7 @@ function Notice({
         />
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
           <span className="min-w-0 max-w-full flex-auto leading-6">
-            Files changed on disk, edits weren't saved.
+            File changed on disk, edits not saved.
           </span>
           <div className="flex shrink-0 items-center gap-2">
             <NoticeAction

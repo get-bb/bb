@@ -139,7 +139,7 @@ it("overwrites the conflicted version and requires confirmation for a newer conf
   expect(write).toHaveBeenCalledOnce();
   expect(document.activeElement).toBe(
     screen.getByRole("status", {
-      name: "Files changed on disk, edits weren't saved.",
+      name: "File changed on disk, edits not saved.",
     }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save my edits" }));
