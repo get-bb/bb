@@ -49,7 +49,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
     "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and keep working from anywhere.",
   competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
-  sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
+  sub: "Run Claude Code, Codex, or any agent on your Mac (Linux in alpha), with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
   tailored: anywhereSection(ANYWHERE_COPY),
   sections: [
