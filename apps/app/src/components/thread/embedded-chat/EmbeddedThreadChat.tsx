@@ -319,7 +319,7 @@ function EmbeddedThreadChatWithComposer({
   const [isTurnSubmitting, setIsTurnSubmitting] = useState(false);
   const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
     threadId,
-    queueIsEmpty: queuedMessagesData?.length === 0,
+    queuedMessages: queuedMessagesData ?? null,
   });
   const isMountedRef = useRef(false);
   useEffect(() => {
