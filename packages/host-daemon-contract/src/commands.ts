@@ -753,6 +753,7 @@ const hostReadSkillFilesCommandSchema = z
     rootPath: z.string().min(1),
     limit: z.number().int().positive(),
     maxFileBytes: z.number().int().positive(),
+    maxTotalBytes: z.number().int().positive(),
   })
   .strict();
 

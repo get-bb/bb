@@ -792,6 +792,7 @@ describe("readHostSkillFiles", () => {
       rootPath: tempRoot,
       limit: 10,
       maxFileBytes: reviewContent.length,
+      maxTotalBytes: 1_000_000,
     });
 
     expect(result).toEqual({
@@ -811,6 +812,33 @@ describe("readHostSkillFiles", () => {
     });
   });
 
+  it("withholds content once the total byte budget is spent", async () => {
+    const skillsRoot = path.join(tempRoot, "budget-skills");
+    for (const name of ["a", "b", "c"]) {
+      await mkdir(path.join(skillsRoot, name), { recursive: true });
+      await writeFile(
+        path.join(skillsRoot, name, "SKILL.md"),
+        name.repeat(10),
+        "utf8",
+      );
+    }
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 10,
+      maxTotalBytes: 25,
+    });
+
+    expect(result.skills).toEqual([
+      { directoryName: "a", sizeBytes: 10, content: "a".repeat(10) },
+      { directoryName: "b", sizeBytes: 10, content: "b".repeat(10) },
+      { directoryName: "c", sizeBytes: 10, content: null },
+    ]);
+  });
+
   it("reports truncation past the directory limit", async () => {
     const skillsRoot = path.join(tempRoot, "skills");
     await writeSkill(path.join(skillsRoot, "a", "SKILL.md"), "a");
@@ -822,6 +850,7 @@ describe("readHostSkillFiles", () => {
       rootPath: tempRoot,
       limit: 1,
       maxFileBytes: 1024,
+      maxTotalBytes: 1_000_000,
     });
 
     expect(result.skills.map((skill) => skill.directoryName)).toEqual(["a"]);
@@ -836,6 +865,7 @@ describe("readHostSkillFiles", () => {
         rootPath: tempRoot,
         limit: 10,
         maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
       }),
     ).resolves.toEqual({ skills: [], truncated: false });
 
@@ -851,6 +881,7 @@ describe("readHostSkillFiles", () => {
         rootPath: tempRoot,
         limit: 10,
         maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
       }),
     ).rejects.toBeInstanceOf(CommandDispatchError);
   });
@@ -869,6 +900,7 @@ describe("readHostSkillFiles", () => {
         rootPath: workspace,
         limit: 10,
         maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
       }),
     ).rejects.toBeInstanceOf(CommandDispatchError);
   });

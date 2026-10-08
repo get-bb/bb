@@ -9,6 +9,7 @@ import {
 
 const MAX_PROJECT_SKILLS = 1_000;
 const MAX_PROJECT_SKILL_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_PROJECT_SKILLS_TOTAL_BYTES = 32 * 1024 * 1024;
 
 interface ResolveWorkspaceProjectSkillsArgs {
   hostId: string;
@@ -33,6 +34,7 @@ export async function resolveWorkspaceProjectSkills(
       rootPath: args.workspacePath,
       limit: MAX_PROJECT_SKILLS,
       maxFileBytes: MAX_PROJECT_SKILL_FILE_BYTES,
+      maxTotalBytes: MAX_PROJECT_SKILLS_TOTAL_BYTES,
     },
   });
   if (result.truncated) {
@@ -52,7 +54,10 @@ export async function resolveWorkspaceProjectSkills(
       deps.logger.warn(
         {
           candidatePath,
-          reason: `SKILL.md exceeds ${MAX_PROJECT_SKILL_FILE_BYTES} bytes`,
+          reason:
+            skill.sizeBytes > MAX_PROJECT_SKILL_FILE_BYTES
+              ? `SKILL.md exceeds ${MAX_PROJECT_SKILL_FILE_BYTES} bytes`
+              : `Project skills exceed ${MAX_PROJECT_SKILLS_TOTAL_BYTES} bytes in total`,
           sourceType: "project",
         },
         "Skipping invalid injected skill",

@@ -129,39 +129,59 @@ export async function listHostSkills(
   return { skills };
 }
 
-async function readSkillFile(args: {
+interface SkillFileCandidate {
   directoryName: string;
-  maxFileBytes: number;
-  rootPath: string;
-}): Promise<SkillFile | null> {
-  const filePath = path.join(
-    args.rootPath,
-    args.directoryName,
-    SKILL_FILE_NAME,
-  );
+  filePath: string;
+  sizeBytes: number;
+}
+
+async function statSkillFileCandidate(
+  rootPath: string,
+  directoryName: string,
+): Promise<SkillFileCandidate | null> {
+  const filePath = path.join(rootPath, directoryName, SKILL_FILE_NAME);
   try {
     const stat = await fs.lstat(filePath);
-    if (!stat.isFile()) {
-      return null;
-    }
-    if (stat.size > args.maxFileBytes) {
-      return {
-        directoryName: args.directoryName,
-        sizeBytes: stat.size,
-        content: null,
-      };
-    }
-    return {
-      directoryName: args.directoryName,
-      sizeBytes: stat.size,
-      content: await fs.readFile(filePath, "utf8"),
-    };
+    return stat.isFile()
+      ? { directoryName, filePath, sizeBytes: stat.size }
+      : null;
   } catch (error) {
     if (isFsErrorWithCode(error, "ENOENT")) {
       return null;
     }
     throw error;
   }
+}
+
+async function readSkillFileCandidate(
+  candidate: SkillFileCandidate,
+  withinBudget: boolean,
+): Promise<SkillFile | null> {
+  const unread = {
+    directoryName: candidate.directoryName,
+    sizeBytes: candidate.sizeBytes,
+    content: null,
+  };
+  if (!withinBudget) {
+    return unread;
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await fs.readFile(candidate.filePath);
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+  if (bytes.length > candidate.sizeBytes) {
+    return { ...unread, sizeBytes: bytes.length };
+  }
+  return {
+    directoryName: candidate.directoryName,
+    sizeBytes: bytes.length,
+    content: bytes.toString("utf8"),
+  };
 }
 
 export async function readHostSkillFiles(
@@ -198,23 +218,29 @@ export async function readHostSkillFiles(
     .sort((left, right) => left.localeCompare(right));
   const skills: SkillFile[] = [];
   const limited = directoryNames.slice(0, command.limit);
+  let remainingBytes = command.maxTotalBytes;
   for (
     let offset = 0;
     offset < limited.length;
     offset += SKILL_FILE_READ_CONCURRENCY
   ) {
-    const batch = await Promise.all(
+    const candidates = await Promise.all(
       limited
         .slice(offset, offset + SKILL_FILE_READ_CONCURRENCY)
         .map((directoryName) =>
-          readSkillFile({
-            directoryName,
-            maxFileBytes: command.maxFileBytes,
-            rootPath,
-          }),
+          statSkillFileCandidate(rootPath, directoryName),
         ),
     );
-    for (const skill of batch) {
+    const reads: Array<Promise<SkillFile | null>> = [];
+    for (const candidate of candidates) {
+      if (candidate === null) continue;
+      const fits =
+        candidate.sizeBytes <= command.maxFileBytes &&
+        candidate.sizeBytes <= remainingBytes;
+      if (fits) remainingBytes -= candidate.sizeBytes;
+      reads.push(readSkillFileCandidate(candidate, fits));
+    }
+    for (const skill of await Promise.all(reads)) {
       if (skill !== null) skills.push(skill);
     }
   }
