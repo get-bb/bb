@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
   toProviderCommandSuggestion,
@@ -132,10 +131,8 @@ export function useCommandSuggestions(
     { enabled: isActive },
   );
   const queryClient = useQueryClient();
-  const isPointerCoarse = usePointerCoarse();
   const shouldPrefetchCatalog =
     args.composerFocused === true &&
-    isPointerCoarse &&
     args.projectId !== undefined &&
     args.providerId !== undefined &&
     args.skillsTriggers.length > 0;

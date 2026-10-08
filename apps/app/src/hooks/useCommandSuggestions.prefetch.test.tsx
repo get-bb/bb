@@ -2,7 +2,6 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { useCommandSuggestions } from "./useCommandSuggestions";
@@ -18,19 +17,6 @@ vi.mock("@/lib/sdk", () => ({
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useProjectDetailRealtimeSubscription: vi.fn(),
 }));
-
-function mockPointer(coarse: boolean) {
-  vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-    matches: coarse && query === POINTER_COARSE_QUERY,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  }));
-}
 
 const BASE_ARGS = {
   projectId: "project-1",
@@ -53,8 +39,7 @@ afterEach(() => {
 });
 
 describe("useCommandSuggestions catalog prefetch", () => {
-  it("warms the command catalog when a coarse-pointer composer gains focus", async () => {
-    mockPointer(true);
+  it("warms the command catalog when the composer gains focus", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
     const { result, rerender } = renderHook(
@@ -78,20 +63,8 @@ describe("useCommandSuggestions catalog prefetch", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("does not add a request for fine-pointer composers, which autofocus on mount", () => {
-    mockPointer(false);
-    const { wrapper } = createQueryClientTestHarness();
-
-    renderHook(
-      () => useCommandSuggestions({ ...BASE_ARGS, composerFocused: true }),
-      { wrapper },
-    );
-
-    expect(sdk.projects.commands).not.toHaveBeenCalled();
-  });
 
   it("still fetches on the first trigger without any focus signal", async () => {
-    mockPointer(true);
     const { wrapper } = createQueryClientTestHarness();
 
     renderHook(
@@ -110,7 +83,6 @@ describe("useCommandSuggestions catalog prefetch", () => {
   });
 
   it("offers only skills for the explicit dollar trigger", async () => {
-    mockPointer(false);
     vi.mocked(sdk.projects.commands).mockResolvedValue({
       commands: [
         {
