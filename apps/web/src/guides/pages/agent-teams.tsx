@@ -15,7 +15,7 @@ export const TALK_SHOT: GuideShot = {
   alt: "The Claude Code thread after it asked Codex whether a memory leak needed fixing before merge. It relays Codex's answer: a real leak, but fine as a follow-up, with how to fix it later.",
 };
 
-export const TEAM_TROUBLESHOOTING: GuideFaq[] = [
+export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
   {
     question: "My agent didn't bring in a reviewer",
     answer: (
