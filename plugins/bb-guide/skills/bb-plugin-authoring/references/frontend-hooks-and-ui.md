@@ -153,6 +153,15 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   approximate the palette by reading bb's CSS variables: `--canvas` / `--ink`
   carry the app chrome, not the syntax colors, and a custom palette that
   declares its own code theme would not follow.
+- `experimental_copyToClipboard({ text, html? })` → `Promise<boolean>` — writes
+  the system clipboard through the same writer bb's own copy actions use. A
+  plain function, not a hook: call it from components, content scripts, and
+  command callbacks alike. bb Desktop writes through the native clipboard, so
+  copies work without window focus or a secure origin; browsers use the
+  Clipboard API, then the copy command. Pass `html` to add a rich-text
+  representation next to the plain text. Resolves true once the clipboard holds
+  the content and false when every path failed; it never rejects. Show your own
+  success or failure feedback. Never call `navigator.clipboard` directly.
 
 ```tsx
 const composer = useComposer();

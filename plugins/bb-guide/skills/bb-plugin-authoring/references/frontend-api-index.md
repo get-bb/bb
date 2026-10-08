@@ -73,6 +73,7 @@ Read the installed SDK declarations for the exact current signatures.
   `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
+- `experimental_copyToClipboard`
 
 ## Type exports
 
@@ -175,6 +176,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
+- `ExperimentalClipboardContent`
 - `PluginSidebarThreadActions`
 - `PluginSidebarThreadDraftState`
 - `PluginSidebarThreadRowStatus`
