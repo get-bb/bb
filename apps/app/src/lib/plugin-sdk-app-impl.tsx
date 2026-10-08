@@ -63,6 +63,7 @@ import {
 import { SidebarNavigationIcon } from "@/components/sidebar/SidebarNavigationModel";
 import { useAppNavigationHost } from "./app-navigation-host";
 import { useCodeTheme } from "./plugin-code-theme";
+import { copyToClipboard } from "./clipboard";
 
 export const pluginSdkAppImplementation = {
   definePluginApp,
@@ -112,6 +113,7 @@ export const pluginSdkAppImplementation = {
   useSdk,
   experimental_useProviders: useProviders,
   experimental_useCodeTheme: useCodeTheme,
+  experimental_copyToClipboard: copyToClipboard,
 } satisfies PluginSdkApp;
 
 function PluginMarkdown({

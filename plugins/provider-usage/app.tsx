@@ -70,6 +70,7 @@ let storeSnapshot: UsageStoreSnapshot = {
   isRefreshing: false,
 };
 let activeRefreshCount = 0;
+let queuedRefresh: Promise<void> = Promise.resolve();
 let lastMachineId: string | null = null;
 let lastProviderIdByMachine = new Map<string, string>();
 
@@ -112,26 +113,26 @@ function refreshUsage({
   force,
   machineIds,
   maxAgeMs,
-  providerId = null,
+  providerIds,
   signal,
 }: {
   pluginId: string;
   force: boolean;
   machineIds: string[] | null;
   maxAgeMs: number;
-  providerId?: string | null;
+  providerIds: string[];
   signal?: AbortSignal;
 }): Promise<void> {
   activeRefreshCount += 1;
   updateStore({ ...storeSnapshot, error: null, isRefreshing: true });
-  return (async () => {
+  queuedRefresh = queuedRefresh.then(async () => {
     try {
       const response = await fetch(
         `/api/v1/plugins/${encodeURIComponent(pluginId)}/rpc/getUsage`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ force, machineIds, maxAgeMs, providerId }),
+          body: JSON.stringify({ force, machineIds, maxAgeMs, providerIds }),
           signal:
             signal === undefined
               ? AbortSignal.timeout(60_000)
@@ -167,7 +168,8 @@ function refreshUsage({
         updateStore({ ...storeSnapshot, isRefreshing: false });
       }
     }
-  })();
+  });
+  return queuedRefresh;
 }
 
 function formatResetCountdown(resetsAt: string | null): string | null {
@@ -644,15 +646,13 @@ export function ProviderUsageStatusContent({
     if (activeMachineId === null || refreshProviderKey === "") return;
     const refresh = () => {
       if (document.visibilityState === "hidden") return;
-      for (const providerId of refreshProviderKey.split("\n")) {
-        void refreshUsage({
-          pluginId,
-          force: false,
-          machineIds: [activeMachineId],
-          providerId,
-          maxAgeMs: CARD_MAX_AGE_MS,
-        });
-      }
+      void refreshUsage({
+        pluginId,
+        force: false,
+        machineIds: [activeMachineId],
+        providerIds: refreshProviderKey.split("\n"),
+        maxAgeMs: CARD_MAX_AGE_MS,
+      });
     };
     refresh();
     const timer = window.setInterval(refresh, CARD_MAX_AGE_MS);
@@ -690,17 +690,13 @@ export function ProviderUsageStatusContent({
   );
 
   const reload = () => {
-    for (const providerId of refreshProviderIds.length === 0
-      ? [null]
-      : refreshProviderIds) {
-      void refreshUsage({
-        pluginId,
-        force: true,
-        machineIds: activeMachineId === null ? null : [activeMachineId],
-        maxAgeMs: 0,
-        providerId,
-      });
-    }
+    void refreshUsage({
+      pluginId,
+      force: true,
+      machineIds: activeMachineId === null ? null : [activeMachineId],
+      maxAgeMs: 0,
+      providerIds: refreshProviderIds,
+    });
   };
 
   const handleTabKeyDown = (
@@ -971,6 +967,7 @@ export default definePluginApp((app) => {
           force: false,
           machineIds,
           maxAgeMs,
+          providerIds: [],
           signal,
         });
       };

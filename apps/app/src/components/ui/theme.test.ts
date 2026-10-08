@@ -134,6 +134,17 @@ describe("theme.css neutral ramp", () => {
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
 
+  it("backs accent-tinted sticky sidebar rows with an opaque sidebar layer", () => {
+    const rule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-accent-row:is\([^{]+\)\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain(
+      "linear-gradient(var(--sidebar-accent), var(--sidebar-accent))",
+    );
+    expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
+  });
+
   it("caps the scrollport strip above pinned sidebar rows", () => {
     const rule = css
       .replace(/\s+/g, " ")
@@ -208,12 +219,6 @@ describe("theme.css neutral ramp", () => {
     expect(
       stickyRule?.match(/var\(--bb-sidebar-open-in-split-background\)/g),
     ).toHaveLength(2);
-
-    const interactiveRule = css.match(
-      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row:is\([^{]+\)\s*\{([^}]*)\}/s,
-    )?.[1];
-    expect(interactiveRule).toContain("background-image: linear-gradient(");
-    expect(interactiveRule?.match(/var\(--sidebar-accent\)/g)).toHaveLength(2);
   });
 
   for (const mode of MODES) {

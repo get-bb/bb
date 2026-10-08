@@ -498,6 +498,34 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
+const STORY_NOW = Date.UTC(2026, 9, 8, 15, 0);
+
+const queuedMessagesWithReasons: readonly ThreadQueuedMessage[] = [
+  {
+    ...makeStoryQueuedMessage("q_failed", "Summarize the diff for the team."),
+    failureReason: "Workspace cleanup is pending. Try again shortly.",
+    createdAt: STORY_NOW - 30 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage(
+      "q_plain",
+      "Also run the tests when you're done.",
+    ),
+    createdAt: STORY_NOW - 20 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_scheduled", "Post the summary to the team."),
+    waitingOn: { kind: "time" },
+    sendAt: STORY_NOW + 2 * 60 * 60_000,
+    createdAt: STORY_NOW - 10 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_draft", "Draft: release notes outline."),
+    waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+    createdAt: STORY_NOW - 5 * 60_000,
+  },
+];
+
 type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
@@ -559,6 +587,7 @@ function Row({
   readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
+  const [queueExpanded, setQueueExpanded] = useState(true);
   const [mentionRanges, setMentionRanges] =
     useState<PromptTextMention[]>(initialMentions);
   const [storyQueuedMessages, setStoryQueuedMessages] = useState(
@@ -706,6 +735,8 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        expanded={queueExpanded}
+        onExpandedChange={setQueueExpanded}
         onDelete={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),
@@ -895,6 +926,16 @@ export function Overview() {
           submitMode={{ kind: "queue", onStop: noop }}
           threadRuntimeDisplayStatus="active"
           queuedMessages={queuedMessages.slice(0, 2)}
+        />
+      </StoryRow>
+      <StoryRow
+        label="queue with reasons"
+        hint="collapse the queue: the header names the failed send, which outranks the newer draft; delete it to see the newest reason (the draft). Open it to check the caret row and the gap above it; the count pill sits on the composer caret's axis"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessagesWithReasons}
         />
       </StoryRow>
       <StoryRow

@@ -25,6 +25,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   definePluginApp,
+  experimental_copyToClipboard,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -681,17 +682,16 @@ function useCopyToClipboard(text: string, selectFallback: () => void) {
   }, [text]);
 
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopyState("copied");
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
-      },
-      () => {
+    void experimental_copyToClipboard({ text }).then((copied) => {
+      if (!copied) {
         selectFallback();
         setCopyState("manual");
-      },
-    );
+        return;
+      }
+      setCopyState("copied");
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+    });
   }, [text, selectFallback]);
 
   return { copyState, copy };

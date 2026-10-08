@@ -2035,6 +2035,43 @@ while a palette switch resolves, so a consumer never paints an unthemed frame.
 4. **Consumer count.** One consumer today. Confirm a second engine (CodeMirror,
    xterm) needs the same payload before the prefix drops.
 
+## `app.experimental_copyToClipboard` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** `experimental_copyToClipboard({ text, html? })` writes the
+system clipboard through `copyToClipboard`, the function bb's own copy
+actions call. It is a plain function, not a hook, so components, content
+scripts, setup code, and command callbacks all call it the same way. bb
+Desktop writes through Electron's main-process clipboard, so a copy works
+without document focus, transient activation, or a secure origin; a Desktop
+build without the bridge, or a rejected bridge write, falls through to the
+browser path: the Clipboard API (`write` with a plain and HTML item when
+`html` is set, otherwise `writeText`), then `execCommand("copy")` with the
+content set on the copy event. The promise resolves true only once some path
+wrote the content, so a copy command that reports success without writing is
+a failure. It never rejects. Callers own their toasts and fallback UI. Thread
+list, Plugin Guide, GitHub, Docs, File Editor, bb connect, Account Pooler, and
+Storage retention copy through it.
+
+The test harness replaces it with a fake clipboard. Writes are recorded in
+the most recently rendered slot's `inspection.experimental_clipboardWrites`,
+and resolve with that slot's `experimental_copyToClipboard` render option, or
+true when it is omitted or no slot has rendered.
+
+**Audit before stabilizing.**
+
+1. **Content shape.** Only plain text and HTML are supported. bb's message
+   copy also writes an image, through its own path with Android and browser
+   variants. Decide whether images belong in this contract or stay core-only.
+2. **Harness scoping.** The clipboard is global, so the harness routes writes
+   to the most recently rendered slot. Confirm that is enough for tests that
+   render several slots, and decide whether content-script tests need their
+   own capture.
+3. **Desktop bridge failures.** A rejected bridge write falls through to the
+   browser paths, which can then fail for the reasons the bridge avoids.
+   Confirm on Linux Wayland and X11 that the bridge write lands.
+4. **Feedback.** Every caller pairs the result with a toast or a manual-copy
+   fallback. Decide whether a shared toast helper belongs in the SDK.
+
 ## `app.experimental_usePluginId` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** Returns the id of the plugin that owns the calling component,

@@ -156,6 +156,7 @@ Read the installed declarations for exact current signatures.
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `PluginCodeThemeTokenRule`
+- `ExperimentalClipboardContent`
 - `PluginAppCommands`
 - `PluginCommandContext`
 - `PluginCommandShortcut`

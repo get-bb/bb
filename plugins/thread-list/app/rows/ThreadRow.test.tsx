@@ -679,21 +679,16 @@ describe("ThreadRow", () => {
   });
 
   it("copies the canonical thread URL built from the href", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    renderThreadRow({
+    const slot = renderThreadRow({
       thread: createThread({ href: "/projects/proj_test/threads/thr_test" }),
     });
     openActionsMenu();
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Copy thread link" }),
     );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/projects/proj_test/threads/thr_test`,
-      ),
-    );
-    vi.unstubAllGlobals();
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: `${window.location.origin}/projects/proj_test/threads/thr_test` },
+    ]);
   });
 
   it("moves the thread to another section through the sdk", async () => {

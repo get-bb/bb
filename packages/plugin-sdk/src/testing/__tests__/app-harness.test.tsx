@@ -39,6 +39,7 @@ const {
   experimental_useSidebarNavigation,
   experimental_useSidebarNavigationSplit,
   experimental_SidebarNavigationIcon: SidebarNavigationIcon,
+  experimental_copyToClipboard,
 } = await import("../../app.js");
 
 function SdkProbe() {
@@ -797,6 +798,54 @@ describe("loadPluginApp", () => {
       "second:dispose",
       "first:dispose",
     ]);
+  });
+
+  it("routes clipboard writes to the content scripts or slot that mounted last", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "copier",
+          async mount() {
+            await experimental_copyToClipboard({
+              text: "plain",
+              html: "<b>rich</b>",
+            });
+          },
+        });
+        builder.slots.navPanel({
+          id: "panel",
+          title: "Panel",
+          icon: "Folder",
+          path: "panel",
+          component: () => <p>panel</p>,
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "demo",
+      experimental_copyToClipboard: async () => false,
+    });
+    expect(mounted.inspection.experimental_clipboardWrites).toEqual([
+      { text: "plain", html: "<b>rich</b>" },
+    ]);
+    await expect(
+      experimental_copyToClipboard({ text: "later" }),
+    ).resolves.toBe(false);
+
+    const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
+    await expect(
+      experimental_copyToClipboard({ text: "from a command" }),
+    ).resolves.toBe(true);
+
+    expect(mounted.inspection.experimental_clipboardWrites).toEqual([
+      { text: "plain", html: "<b>rich</b>" },
+      { text: "later" },
+    ]);
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: "from a command" },
+    ]);
+    await mounted.lifecycle.dispose();
   });
 
   it("models current-host thread-row statuses, validation, and lifecycle cleanup", async () => {

@@ -1,7 +1,5 @@
 import {
-  getAppSettings,
   getStoredProviderModelCatalog,
-  setAppSettings,
   updateHost,
 } from "@bb/db";
 import type { JsonValue, ProviderFork } from "@bb/domain";
@@ -686,10 +684,6 @@ describe("provider model catalog store", () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, {
         id: "host-catalog-machine-environment",
-      });
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        machineGitCredentialsEnabled: false,
       });
       const held = createDeferredPromise<HostRpcHandlerResult>();
       let saved = false;

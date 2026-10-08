@@ -1,4 +1,5 @@
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 import {
   useCallback,
@@ -9,7 +10,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { defaultAppSettings, type PromptInput } from "@bb/domain";
+import {
+  defaultAppSettings,
+  type PromptInput,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { SendMessageDelivery } from "@bb/server-contract";
 import type {
   ComposerSelection,
@@ -189,6 +194,8 @@ function EmbeddedThreadChatHostedFooter({
   );
 }
 
+const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
+
 function EmbeddedThreadChatWithComposer({
   threadId,
   projectId,
@@ -227,7 +234,8 @@ function EmbeddedThreadChatWithComposer({
     markThreadRead,
     thread: threadQuery.data,
   });
-  const { data: queuedMessages = [] } = useThreadQueuedMessages(threadId);
+  const { data: queuedMessagesData } = useThreadQueuedMessages(threadId);
+  const queuedMessages = queuedMessagesData ?? EMPTY_QUEUED_MESSAGES;
 
   const executionOptionsQuery = useThreadDefaultExecutionOptions(
     composer.executionDefaultsThreadId,
@@ -309,6 +317,10 @@ function EmbeddedThreadChatWithComposer({
   const [composerFocusNonce, setComposerFocusNonce] = useState(0);
   const [inlineComposerFocusNonce, setInlineComposerFocusNonce] = useState(0);
   const [isTurnSubmitting, setIsTurnSubmitting] = useState(false);
+  const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
+    threadId,
+    queuedMessages: queuedMessagesData ?? null,
+  });
   const isMountedRef = useRef(false);
   useEffect(() => {
     isMountedRef.current = true;
@@ -1184,11 +1196,15 @@ function EmbeddedThreadChatWithComposer({
           onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
           onEdit={beginEditQueuedMessage}
           onDelete={handleDeleteQueuedMessage}
+          expanded={queueExpanded}
+          onExpandedChange={setQueueExpanded}
         />
       ) : null,
     [
       beginEditQueuedMessage,
       handleDeleteQueuedMessage,
+      queueExpanded,
+      setQueueExpanded,
       handleReorderQueuedMessage,
       handleSendQueuedMessage,
       handleSetQueuedMessageGroupBoundary,

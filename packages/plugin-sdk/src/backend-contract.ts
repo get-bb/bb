@@ -970,7 +970,7 @@ export interface PluginInteractionRequest {
   rendererId: string;
   title: string;
   payload: JsonValue;
-  /** Defaults to ten minutes; capped at one hour. */
+  /** Defaults to ten minutes; capped at seven days. */
   timeoutMs?: number;
   /**
    * How the form reads as a timeline row while it waits and once it settles,

@@ -44,6 +44,14 @@ export const WINDOWS_DOWNLOAD_URL =
 
 export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
 
+export const UTM_PARAM_NAMES = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+] as const;
+
 export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,

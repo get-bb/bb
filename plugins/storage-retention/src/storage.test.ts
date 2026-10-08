@@ -127,9 +127,6 @@ it("clears different threads concurrently, excludes overlapping maintenance and 
     ).rejects.toThrow("already running");
     pending.get("thr_one")!.resolve();
     await first;
-    await expect(
-      host.harness.callRpc("scanHost", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     expect(
       hostStorageResponseSchema
         .parse(await host.harness.callRpc("host", { hostId: "host_test" }))
@@ -696,9 +693,6 @@ it("deletes only large files from archived threads on scanned online machines, k
     await expect(
       host.harness.callRpc("startClearLargeFiles", { hostId: "host_test" }),
     ).rejects.toThrow("already running");
-    await expect(
-      host.harness.callRpc("scanHost", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     pendingCleanup!.reject(new Error("host disconnected"));
     await expect
       .poll(
@@ -919,7 +913,102 @@ it("rejects traversal and symlinks without deleting their targets", async () => 
   }
 });
 
-it("fails a scan visibly and releases its host lock so it can be retried", async () => {
+it("keeps cleanup available during a scan and leaves cleared storage out of its result", async () => {
+  const threads = [
+    makeThreadResponse({ id: "thr_old", status: "idle", archivedAt: 1 }),
+    makeThreadResponse({ id: "thr_live", status: "idle" }),
+  ];
+  let gate: Promise<void> | null = null;
+  let release = () => {};
+  const host = createFakePluginHost({
+    pluginId: "storage-retention",
+    experimental_hostEntry: true,
+    experimental_callHostRpc: async (call) => {
+      if (call.method === "homeDirectory") return "/missing-home";
+      if (call.method === "capacity")
+        return { totalBytes: 10000, freeBytes: 5000 };
+      if (call.method === "measure") {
+        await gate;
+        return {
+          targets: [
+            {
+              outcome: "measured",
+              path: "/storage",
+              sizeBytes: 2000,
+              children: threads.map((thread) => ({
+                name: thread.id,
+                sizeBytes: 1000,
+              })),
+            },
+          ],
+          largeFiles: [{ path: "/storage/thr_old/dump.db", sizeBytes: 600 }],
+        };
+      }
+      if (call.method === "discardLargeFiles")
+        return { removed: [{ name: "thr_old", sizeBytes: 600, count: 1 }] };
+      if (call.method === "discard")
+        return {
+          removed: hostStorageContract.discard.input.parse(call.input).names,
+        };
+      throw new Error("Unexpected host method");
+    },
+    sdk: {
+      projects: { list: async () => [] },
+      hosts: {
+        get: async () => ({
+          ...makeHostResponse({ id: "host_test", status: "connected" }),
+          threadStorageRootPath: "/storage",
+        }),
+      },
+      threads: {
+        list: async () => threads,
+        get: async ({ threadId }) =>
+          threads.find((thread) => thread.id === threadId)!,
+        storageLocation: async () => ({
+          hostId: "host_test",
+          storageRootPath: "/storage/thr_live",
+        }),
+      },
+      environments: { list: async () => [] },
+    },
+  });
+  const status = async () =>
+    hostStorageResponseSchema.parse(
+      await host.harness.callRpc("host", { hostId: "host_test" }),
+    );
+  try {
+    plugin(host.bb);
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    await expect
+      .poll(async () => (await status()).report?.threadsWithStorageCount)
+      .toBe(2);
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await host.harness.callRpc("scanHost", { hostId: "host_test" });
+    expect((await status()).scan.state).toBe("scanning");
+    await host.harness.callRpc("startClearLargeFiles", {
+      hostId: "host_test",
+    });
+    await expect
+      .poll(async () => (await status()).largeFileCleanup)
+      .toEqual({ state: "completed", clearedFiles: 1, clearedBytes: 600 });
+    await host.harness.callRpc("clearThread", { threadId: "thr_live" });
+    expect((await status()).scan.state).toBe("scanning");
+    release();
+    await expect.poll(async () => (await status()).scan.state).toBe("idle");
+    expect((await status()).report).toMatchObject({
+      threadsWithStorageCount: 1,
+      archivedLargeFiles: { threadCount: 0, fileCount: 0, bytes: 0 },
+      largestThreads: [{ threadId: "thr_old", sizeBytes: 400 }],
+    });
+  } finally {
+    release();
+    await host.harness.dispose();
+  }
+});
+
+it("fails a scan visibly so it can be retried", async () => {
   let root: string | null = null;
   let fail = true;
   let release!: () => void;
@@ -965,9 +1054,6 @@ it("fails a scan visibly and releases its host lock so it can be retried", async
       });
     root = "/unused";
     await host.harness.callRpc("scanHost", { hostId: "host_test" });
-    await expect(
-      host.harness.callRpc("removeOrphans", { hostId: "host_test" }),
-    ).rejects.toThrow("already running");
     release();
     await expect
       .poll(
@@ -1904,9 +1990,10 @@ it("automatically removes missing-checkout data only when enabled and online, re
       )
       .toBe(2);
     await recreateMissing();
-    await emitRemoval();
+    const removal = emitRemoval();
     inspectionGate = null;
     openGate();
+    await removal;
     await expectCleaned();
     await recreateMissing();
     for (const subscription of subscriptions)

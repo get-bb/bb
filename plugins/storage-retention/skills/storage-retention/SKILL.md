@@ -58,13 +58,13 @@ plugin scans online persistent machines hourly and removes missing-checkout
 missing-checkout data is eligible too; retention previews count threads, not
 these folders. The host rechecks checkout absence before removal, stops servers
 working inside missing checkouts, and preserves entries whose source exists or
-cannot be identified. An environment-removal event re-measures only that machine's `~/.bb-dev`, after any running scan or cleanup there finishes. Startup,
+cannot be identified. An environment-removal event re-measures only that machine's `~/.bb-dev`, after any running cleanup there finishes. Startup,
 machine reconnect, and hourly scans recover missed events from filesystem state.
 Offline/busy machines and failed cleanup retry on later
 hourly scans. Disabling the setting prevents cleanup after subsequent scans.
 
 Scans run in the background; rerun usage to read completion, progress, or failure.
-`--rescan` without `--machine` scans every online machine that is not already busy.
+`--rescan` without `--machine` scans every online machine that is not already scanning.
 A completed report includes `disk` (total and free bytes of the volume holding thread storage).
 Reports include `projectWorktrees`: counts of distinct managed worktree paths per project on the selected machine, including zero-count projects with a local source there; destroyed and removed environments are excluded, and `cleanupPendingCount` is a subset of the worktree count. Counts reflect current environment records, not filesystem measurements.
 Scans also measure `~/.bb-dev` on that machine. `developerStorage` is null when absent; otherwise it contains the path, total allocated bytes, and immediate folder/file sizes. Each entry includes `sourcePath`, `sourcePathState` (exists, missing, or unknown), and `threads` linked through host environment paths or a managed checkout’s thread ID. Matches cover threads known to this BB instance, including archived and hidden threads. Sources are recovered from saved launch metadata or hash-verified known/conventional checkout paths; unresolved sources remain null. Missing checkouts are cleanup candidates, not proof their development data is disposable. The UI offers missing-checkout, other-instance and unidentified-source filters. The developer section initially shows the five largest entries, grouped into linked threads, other development instances and unidentified sources, each group with its own Show N more control inside the card. Paths are hidden from rows and available through the three-dot menu’s Copy source checkout path and Copy dev data path actions. When `developerStorage` is present, the machine list totals thread and development storage with a per-kind split, and the machine page's first card adds a BB development row (instance count and size) to its category table under one total; the entry list stays in its own section.
@@ -79,13 +79,13 @@ The page uses `startClearLargeFiles({hostId})` to start background cleanup and
 returns immediately; pass null for all scanned online machines. Read
 `largeFileCleanup` in usage/host reports for running, completed (file and byte
 totals), or failed status. The synchronous CLI command and `clearLargeFiles` RPC
-still wait for completion. Duplicate bulk jobs and overlapping scans are rejected.
+still wait for completion. Duplicate bulk jobs are rejected; rescanning a machine that is already scanning returns the running scan.
 Conversation history is never affected. The Storage page suggests it once archived threads hold 1 GB
 or more of large files.
 Clear-archived-files removes whole storage folders, including small files, from archived, stopped, unpinned threads found in the last scan on the selected machine. Conversations and uploaded attachments are kept.
 The page starts this with `startClearArchivedFiles({hostId})`, which returns immediately. Read `archivedFileCleanup` in usage/host reports for running, completed, or failed status with cleared thread and byte totals. Progress is reported after each batch; failed jobs can be retried for the remaining files. The CLI and `clearArchivedFiles` RPC still wait for completion. Cleanup is exclusive per machine; opening a confirmation does not block other actions.
 Clear-thread, clear-archived-files and remove-orphans first stop processes whose working directory is inside each removed thread folder, matching worktree removal, so dev servers started there don't outlive their files.
-Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Different threads can clear concurrently; duplicate clears for one thread are rejected. Scans and bulk cleanup remain exclusive per machine. Reports are cached
+Clear-thread requires a stopped thread and an online machine. When the thread no longer has an environment, a completed scan must identify its storage on exactly one machine. Different threads can clear concurrently; duplicate clears for one thread are rejected. Bulk cleanup stays exclusive per machine. Every cleanup action stays available during a scan, and a finished scan leaves out entries cleared while it ran. Reports are cached
 snapshots; rescan to see external filesystem changes.
 
 Plugin RPC methods: `state(null)`, `preview({archiveAfterDays, deleteAfterDays, deleteStorageOnArchive, deleteDevDataOnCheckoutRemoval})`,

@@ -37,6 +37,7 @@ import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-s
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
 import {
+  experimental_copyToClipboard,
   experimental_useSidebarThreadActions,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
@@ -45,7 +46,6 @@ import {
   ActionMenuSeparator,
 } from "../ui/action-menu-items.js";
 import { CompactLongPressMenu } from "../ui/compact-long-press-menu.js";
-import { copyToClipboardWithToast } from "../ui/clipboard.js";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import {
   THREAD_ROW_ACTION_IDS,
@@ -411,9 +411,11 @@ function threadRowActionModel(
       return {
         ...THREAD_ROW_ACTIONS.copyLink,
         run: () => {
-          void copyToClipboardWithToast(getThreadUrl(thread), {
-            successMessage: "Thread link copied",
-            errorMessage: "Failed to copy thread link",
+          void experimental_copyToClipboard({
+            text: getThreadUrl(thread),
+          }).then((copied) => {
+            if (copied) toast.success("Thread link copied");
+            else toast.error("Failed to copy thread link");
           });
         },
       };

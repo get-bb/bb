@@ -1,24 +1,12 @@
-import type { ReactNode } from "react";
-import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import {
-  NewTabActions,
-  type OpenBrowserHandler,
-  type StartTerminalHandler,
-} from "./NewTabActions";
+import { useNewTabActions, type UseNewTabActionsArgs } from "./NewTabActions";
 import {
   NewTabFileSearch,
   type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
 
-type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
+type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "actions">;
 
-interface NewTabPageProps extends NewTabPageFileSearchProps {
-  onOpenBrowser?: OpenBrowserHandler;
-  onStartTerminal?: StartTerminalHandler;
-  pluginActions?: readonly PluginPanelActionEntry[];
-  startTerminalDisabled?: boolean;
-  startTerminalTrailing?: ReactNode;
-}
+type NewTabPageProps = NewTabPageFileSearchProps & UseNewTabActionsArgs;
 
 export function NewTabPage({
   autoFocus,
@@ -37,6 +25,14 @@ export function NewTabPage({
   startTerminalDisabled,
   startTerminalTrailing,
 }: NewTabPageProps) {
+  const actions = useNewTabActions({
+    onOpenBrowser,
+    onStartTerminal,
+    pluginActions,
+    startTerminalDisabled,
+    startTerminalTrailing,
+  });
+
   return (
     <div
       data-panel-new-tab-page=""
@@ -48,15 +44,7 @@ export function NewTabPage({
         hostId={hostId}
         currentThreadId={currentThreadId}
         autoFocus={autoFocus}
-        idleActions={
-          <NewTabActions
-            onOpenBrowser={onOpenBrowser}
-            onStartTerminal={onStartTerminal}
-            pluginActions={pluginActions}
-            startTerminalDisabled={startTerminalDisabled}
-            startTerminalTrailing={startTerminalTrailing}
-          />
-        }
+        actions={actions}
         initialQuery={initialQuery}
         onAutoFocusHandled={onAutoFocusHandled}
         onSelect={onSelect}

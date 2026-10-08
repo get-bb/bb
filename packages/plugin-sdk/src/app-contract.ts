@@ -1367,6 +1367,16 @@ export interface PluginCodeThemeState {
 }
 
 /**
+ * What {@link PluginSdkApp.experimental_copyToClipboard} writes: plain text,
+ * plus an HTML representation for paste targets that accept rich text.
+ * Without `html`, only plain text is written.
+ */
+export interface ExperimentalClipboardContent {
+  text: string;
+  html?: string;
+}
+
+/**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
@@ -3659,6 +3669,19 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_useCodeTheme(): PluginCodeThemeState;
+  /**
+   * Writes content to the system clipboard through bb's own clipboard writer,
+   * the one bb's copy actions use. A plain function, callable from
+   * components, content scripts, and command callbacks. bb Desktop writes
+   * through the native clipboard, so copies work without window focus or a
+   * secure origin; browsers use the Clipboard API, then the copy command.
+   * Resolves true once the clipboard holds the content and false when every
+   * write path failed; it never rejects. Callers own their success and
+   * failure feedback. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_copyToClipboard(
+    content: ExperimentalClipboardContent,
+  ): Promise<boolean>;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

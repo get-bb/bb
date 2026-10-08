@@ -465,7 +465,7 @@ cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
 scans, including existing data. The machine rechecks absence before deletion,
 stops servers working inside removed checkouts, and keeps existing or unresolved
 sources. Offline/busy machines and failed cleanup retry on later scans. Thread
-retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running scan or cleanup there to finish. Startup and
+retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running cleanup there to finish. Startup and
 periodic scans recover missed events by checking the filesystem; no removal
 history is stored in the core database.
 
@@ -480,7 +480,7 @@ archive/delete APIs, accepting changes between inspection and mutation.
 
 Storage reads use cached reports and never trigger disk scans. Start a background
 scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
-scan every online machine; rerun usage to see its status and results. The plugin coordinates its scans and cleanup per machine. The existing
+scan every online machine; rerun usage to see its status and results. Bulk cleanup runs one job at a time per machine; scans run alongside cleanup, and a finished scan leaves out anything cleared while it ran. The existing
 bounded idle orphan sweep remains independent of the plugin.
 `bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
 `bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
@@ -1644,6 +1644,20 @@ every other. `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary;
 login, such as a CI runner. Mint the token with `claude setup-token`, which is
 long-lived where the credentials from `/login` are not. A logged-in machine
 needs neither.
+
+### Ask User Question plugin
+
+The builtin Ask User Question plugin keeps an unanswered question card open for
+30 minutes by default. When it expires, the agent receives a timeout result and
+the card closes. Choose `1 hour`, `4 hours`, `8 hours`, `24 hours`, `3 days`, or
+`7 days` under the plugin settings, or configure it from the CLI:
+
+```bash
+bb plugin config ask-user-question set questionTimeout "24 hours"
+```
+
+The setting applies to questions asked after it changes. A server restart still
+closes every open card.
 
 ### Provider retry plugin
 
