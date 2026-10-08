@@ -109,12 +109,12 @@ type SwitchFrom =
 
 const SWITCH_FROM: SwitchFrom[] = [
   {
-    id: "claude-code",
+    id: "claude",
     name: "Claude Code",
     glyph: ClaudeIcon,
     tone: "gd-switch-glyph-claude",
   },
-  { id: "codex", name: "Codex", glyph: OpenAiIcon, tone: "" },
+  { id: "codex-app", name: "Codex", glyph: OpenAiIcon, tone: "" },
   { id: "conductor", name: "Conductor", src: conductorIcon },
   { id: "cursor", name: "Cursor", src: cursorIcon },
   { id: "superset", name: "Superset", src: supersetIcon },

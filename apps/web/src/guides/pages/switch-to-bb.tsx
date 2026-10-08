@@ -30,7 +30,7 @@ export type SwitchTool = {
 
 export const SWITCH_TOOLS: SwitchTool[] = [
   {
-    id: "claude-code",
+    id: "claude",
     name: "Claude Code",
     where:
       "Claude Code: its conversations are the ones in ~/.claude/projects/ from step 1a. Some ran in a repo's main checkout and some in worktrees.",
@@ -41,7 +41,7 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       "If I scheduled Claude Code tasks or routines, ask me to paste each one's name, schedule, repo, and prompt.",
   },
   {
-    id: "codex",
+    id: "codex-app",
     name: "Codex",
     where:
       "Codex: its conversations, from the CLI and the Codex app, are the files in ~/.codex/sessions/ from step 1a. Codex cloud tasks only show up in step 3 if I opened pull requests from them.",
