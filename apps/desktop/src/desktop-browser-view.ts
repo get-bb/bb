@@ -456,7 +456,15 @@ export function createDesktopBrowserViewManager(
       if (frame.detached) continue;
       frame
         .executeJavaScript(
-          'document.querySelectorAll("video, audio").forEach((media) => media.pause())',
+          `(() => {
+            const roots = [document];
+            for (const root of roots) {
+              root.querySelectorAll("video, audio").forEach((media) => media.pause());
+              for (const element of root.querySelectorAll("*")) {
+                if (element.shadowRoot) roots.push(element.shadowRoot);
+              }
+            }
+          })()`,
         )
         .catch(() => {});
     }

@@ -1782,10 +1782,9 @@ describe("DesktopBrowserViewManager", () => {
       hostWindow,
       request: { tabId: "browser:shadow-media", visible: false },
     });
+    const contents = requireFakeView(0).webContents;
     const code =
-      requireFakeView(
-        0,
-      ).webContents.mainFrame.framesInSubtree[0]?.executeJavaScript.mock.calls.at(
+      contents.mainFrame.framesInSubtree[0]?.executeJavaScript.mock.calls.at(
         -1,
       )?.[0];
     expect(code).toBeDefined();
