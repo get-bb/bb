@@ -479,7 +479,7 @@ export function QuestionForm({
         } catch {}
       }}
     >
-      Cancel
+      {density === "compact" ? "Decline" : "Cancel"}
     </Button>
   );
   const backButton = !isFirst ? (

@@ -914,7 +914,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="answer child questions in the banner"
-        hint="click the collapsed question or a needs-input row; ‹ 1 of 3 › steps through waiting questions"
+        hint="rows read child: question; open one from a row or the collapsed header, ‹ Child threads or Esc returns, ‹ › steps through waiting questions"
       >
         <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
