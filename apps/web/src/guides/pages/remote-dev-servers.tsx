@@ -358,6 +358,16 @@ export const REMOTE_DEV_SERVERS: Guide = {
       ),
     },
     {
+      question: "Does it work with my company VPN or Tailscale?",
+      answer: (
+        <p>
+          Yes. Your machines connect out to bb, so you don't open any ports. If
+          your work keeps dev servers on a private network, skip the shared
+          links and open each server over your VPN or tailnet instead.
+        </p>
+      ),
+    },
+    {
       question: "Can my team share these servers?",
       answer: (
         <>
