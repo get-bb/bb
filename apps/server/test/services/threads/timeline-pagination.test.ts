@@ -284,7 +284,7 @@ describe("paginateTimelineRows", () => {
     ]);
   });
 
-  it("reports rows a content cut omitted from the oldest returned group", () => {
+  it("does not invalidate history for content-cut rows included in older updates", () => {
     const output = (
       id: string,
       seq: number,
@@ -319,7 +319,11 @@ describe("paginateTimelineRows", () => {
       start: 2,
       total: 4,
     });
-    expect(page.olderRowsSourceSeqEnd).toBe(30);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
+    expect(page.olderRowUpdates?.map((row) => row.id)).toEqual([
+      "thread-1:user-seed:1",
+      "thread-1:running-item",
+    ]);
     expect(page.olderCursor).toEqual({
       anchorId: "timeline-window:1",
       anchorSeq: 1,
@@ -349,8 +353,59 @@ describe("paginateTimelineRows", () => {
       anchorId: "timeline-window:10",
       anchorSeq: 10,
     });
-    expect(page.olderRowsSourceSeqEnd).toBe(33);
+    expect(page.olderRowsSourceSeqEnd).toBeNull();
   });
+
+  it.each([
+    { maxLeaves: 1, maxBytes: 1_000_000, omittedEnd: null },
+    { maxLeaves: 2, maxBytes: 1_000_000, omittedEnd: 30 },
+    { maxLeaves: 1, maxBytes: 300, omittedEnd: 31 },
+  ])(
+    "reports only unreturned nested changes with $maxLeaves leaves and $maxBytes bytes",
+    ({ maxLeaves, maxBytes, omittedEnd }) => {
+      const nested: TimelineTurnRow = {
+        id: "thread-1:turn:nested",
+        kind: "turn",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        sourceSeqStart: 2,
+        sourceSeqEnd: 31,
+        startedAt: 2,
+        createdAt: 31,
+        status: "pending",
+        summaryCount: 1,
+        completedAt: null,
+        children: [
+          { ...assistantRow(3), sourceSeqEnd: 30 },
+          { ...assistantRow(4), sourceSeqEnd: 31 },
+        ],
+      };
+      const tail = assistantRow(5);
+      const page = paginateTimelineRows({
+        knownHasOlderSegments: false,
+        maxLeaves,
+        maxBytes,
+        ownedSequenceStart: 1,
+        ownedSequenceEnd: 32,
+        page: { kind: "latest", segmentLimit: 20 },
+        rows: [nested, tail],
+      });
+
+      expect(page.olderRowsSourceSeqEnd).toBe(omittedEnd);
+      if (maxLeaves === 2) {
+        expect(page.rows).toEqual([
+          { ...nested, children: [nested.children![1]] },
+          tail,
+        ]);
+        expect(page.olderRowUpdates).toBeUndefined();
+      } else {
+        expect(page.rows).toEqual([tail]);
+        expect(page.olderRowUpdates).toEqual(
+          maxBytes === 300 ? undefined : [nested],
+        );
+      }
+    },
+  );
 
   it("reports owned groups a budget cut left out of the page", () => {
     const page = paginateTimelineRows({

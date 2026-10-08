@@ -10,6 +10,7 @@ import {
 import {
   definePluginApp,
   experimental_Icon as PluginIcon,
+  experimental_copyToClipboard,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -439,8 +440,8 @@ function StoragePage({
   const rowActionRunning = Object.values(rowActions).some(
     (action) => action.state === "running",
   );
-  const locked = busy || scanning || offline || rowActionRunning;
-  const rowDisabled = busy || scanning || offline;
+  const locked = busy || offline || rowActionRunning;
+  const rowDisabled = busy || offline;
   function devInstancesCleanup(target: string, count: number, size: number) {
     return {
       key: "dev-instances",
@@ -479,10 +480,7 @@ function StoragePage({
   const scannable = hosts.filter(
     (host) =>
       machines[host.hostId]?.status === "connected" &&
-      host.scan.state !== "scanning" &&
-      host.largeFileCleanup.state !== "running" &&
-      host.archivedFileCleanup.state !== "running" &&
-      host.maintenance.state !== "running",
+      host.scan.state !== "scanning",
   );
   const archivedLargeFiles = hosts.reduce<LargeFileTotals>(
     (totals, host) =>
@@ -651,7 +649,7 @@ function StoragePage({
                 variant="outline"
                 size="sm"
                 className="shrink-0"
-                disabled={locked || !detail}
+                disabled={actionBusy || scanning || offline || !detail}
                 onClick={() =>
                   void perform(() => rpc.call("scanHost", { hostId }))
                 }
@@ -1169,12 +1167,7 @@ function StoragePage({
                     host={host}
                     machine={machines[host.hostId]}
                     server={host.hostId === primaryHostId}
-                    busy={
-                      actionBusy ||
-                      host.largeFileCleanup.state === "running" ||
-                      host.archivedFileCleanup.state === "running" ||
-                      host.maintenance.state === "running"
-                    }
+                    busy={actionBusy}
                     onOpen={() =>
                       navigate.toPluginPanel(PANEL, { subPath: host.hostId })
                     }
@@ -1876,10 +1869,9 @@ function DeveloperStorage({
       return next;
     });
   const copyPath = async (value: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
+    if (await experimental_copyToClipboard({ text: value })) {
       setCopyStatus({ text: `${label} copied`, failed: false });
-    } catch {
+    } else {
       setCopyStatus({
         text: `Could not copy ${label.toLowerCase()}`,
         failed: true,

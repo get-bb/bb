@@ -1,4 +1,5 @@
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import {
@@ -662,6 +663,10 @@ export function ThreadDetailPromptArea({
     setWorkflowStackExpandedThreadId(null);
   }
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
+  const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
+    threadId: thread.id,
+    queuedMessages: queuedMessagesQuery.data ?? null,
+  });
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -2200,7 +2205,10 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : queuedMessagesPending ? (
-          <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
+          <QueuedMessagesPendingCard
+            expanded={queueExpanded}
+            queuedMessageCount={queuedMessageCount}
+          />
         ) : (
           <LazyQueuedMessagesList
             attachedToComposer={true}
@@ -2222,11 +2230,15 @@ export function ThreadDetailPromptArea({
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
+            expanded={queueExpanded}
+            onExpandedChange={setQueueExpanded}
           />
         )}
       </>
     ),
     [
+      queueExpanded,
+      setQueueExpanded,
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,

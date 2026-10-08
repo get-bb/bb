@@ -1,9 +1,16 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { projects, environmentVariables, upsertHost, updateHost } from "@bb/db";
+import {
+  environmentVariables,
+  getAppSettings,
+  projects,
+  setAppSettings,
+  updateHost,
+  upsertHost,
+} from "@bb/db";
 import { createBbSdk } from "@bb/sdk/core";
 import { createHttpTransport } from "@bb/sdk/node";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedPrimaryHost } from "../helpers/seed.js";
 import { resolveHostEnvironment } from "../../src/services/hosts/host-environment.js";
@@ -23,6 +30,10 @@ describe("machine environment settings", () => {
       ]);
     try {
       await withTestHarness(async (harness) => {
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          machineGitCredentialsEnabled: true,
+        });
         const sdk = createBbSdk({
           transport: createHttpTransport({
             baseUrl: "http://localhost",
@@ -150,10 +161,6 @@ describe("machine environment settings", () => {
 });
 
 it("isolates projects on a shared machine and restores global values after removal", async () => {
-  const resolver = vi
-    .spyOn(gitCredentials, "resolveGitCredentials")
-    .mockResolvedValue([]);
-  onTestFinished(() => resolver.mockRestore());
   await withTestHarness(async (harness) => {
     const sdk = createBbSdk({
       transport: createHttpTransport({

@@ -47,6 +47,48 @@ const cachedScanSchema = z.object({
   ),
 });
 type Scan = z.infer<typeof cachedScanSchema>;
+type Removal = {
+  entries: Set<string>;
+  largeFiles: Set<string>;
+  developer: Set<string>;
+};
+function withoutRemoved(scan: Scan, removal: Removal): Scan {
+  const largeBytes = new Map(
+    scan.largeFiles.map((entry) => [entry.name, entry.sizeBytes]),
+  );
+  const developer = scan.developerStorage;
+  const developerBytes = (developer?.entries ?? [])
+    .filter((entry) => removal.developer.has(entry.name))
+    .reduce((total, entry) => total + entry.sizeBytes, 0);
+  return {
+    ...scan,
+    entries: scan.entries
+      .filter((entry) => !removal.entries.has(entry.name))
+      .map((entry) =>
+        removal.largeFiles.has(entry.name)
+          ? {
+              ...entry,
+              sizeBytes: Math.max(
+                0,
+                entry.sizeBytes - (largeBytes.get(entry.name) ?? 0),
+              ),
+            }
+          : entry,
+      ),
+    largeFiles: scan.largeFiles.filter(
+      (entry) =>
+        !removal.entries.has(entry.name) &&
+        !removal.largeFiles.has(entry.name),
+    ),
+    developerStorage: developer && {
+      ...developer,
+      sizeBytes: Math.max(0, developer.sizeBytes - developerBytes),
+      entries: developer.entries.filter(
+        (entry) => !removal.developer.has(entry.name),
+      ),
+    },
+  };
+}
 const clearableArchived = (
   thread: Pick<Thread, "archivedAt" | "pinnedAt" | "status">,
 ) =>
@@ -101,6 +143,20 @@ export function createStorage(
       "INSERT INTO scans (host_id, result_json) VALUES (?, ?) ON CONFLICT(host_id) DO UPDATE SET result_json = excluded.result_json",
     ).run(hostId, JSON.stringify(scan));
     changed();
+  }
+  const scanRemovals = new Map<string, Removal>();
+  function forget(hostId: string, removed: Partial<Removal>) {
+    const removal = {
+      entries: removed.entries ?? new Set<string>(),
+      largeFiles: removed.largeFiles ?? new Set<string>(),
+      developer: removed.developer ?? new Set<string>(),
+    };
+    const pending = scanRemovals.get(hostId);
+    if (pending)
+      for (const key of ["entries", "largeFiles", "developer"] as const)
+        for (const name of removal[key]) pending[key].add(name);
+    const cached = read(hostId);
+    if (cached) store(hostId, withoutRemoved(cached, removal));
   }
   async function requireHost(hostId: string, online = false) {
     lifecycle.signal.throwIfAborted();
@@ -487,7 +543,12 @@ export function createStorage(
   async function scanHost({ hostId }: { hostId: string }) {
     await requireHost(hostId, true);
     if (scans.get(hostId)?.state === "scanning") return host({ hostId });
-    const release = acquire(hostId);
+    const removal: Removal = {
+      entries: new Set(),
+      largeFiles: new Set(),
+      developer: new Set(),
+    };
+    scanRemovals.set(hostId, removal);
     scans.set(hostId, { state: "scanning", startedAt: Date.now() });
     changed();
     const job = (async () => {
@@ -563,7 +624,7 @@ export function createStorage(
           projects,
         );
         scans.delete(hostId);
-        store(hostId, {
+        const scan: Scan = {
           scannedAt: Date.now(),
           developerStorage,
           disk,
@@ -590,7 +651,8 @@ export function createStorage(
                 ]
               : [];
           }),
-        });
+        };
+        store(hostId, withoutRemoved(scan, removal));
         completed = true;
       } catch (error) {
         if (!lifecycle.signal.aborted) {
@@ -602,8 +664,8 @@ export function createStorage(
           changed();
         }
       } finally {
-        if (completed) pendingDevelopmentCleanups.add(hostId);
-        release();
+        if (scanRemovals.get(hostId) === removal) scanRemovals.delete(hostId);
+        if (completed) void cleanDevelopmentStorage(hostId);
       }
     })();
     jobs.add(job);
@@ -613,7 +675,6 @@ export function createStorage(
   async function discard(
     hostId: string,
     rootPath: string,
-    cached: Scan,
     entries: Scan["entries"],
     progress: ((count: number, bytes: number) => void) | null = null,
     eligibility: "archived" | "orphan" = "orphan",
@@ -640,15 +701,12 @@ export function createStorage(
         },
         { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
       );
-      const names = new Set(batch.map((entry) => entry.name));
-      cached.entries = cached.entries.filter((entry) => !names.has(entry.name));
-      cached.largeFiles = cached.largeFiles.filter(
-        (entry) => !names.has(entry.name),
-      );
+      forget(hostId, {
+        entries: new Set(batch.map((entry) => entry.name)),
+      });
       count += batch.length;
       bytes += batch.reduce((total, entry) => total + entry.sizeBytes, 0);
       progress?.(count, bytes);
-      store(hostId, cached);
     }
     return { count, bytes };
   }
@@ -670,13 +728,12 @@ export function createStorage(
       const removed = await discard(
         hostId,
         rootPath,
-        cached,
         cached.entries.filter((entry) => !ids.has(entry.name)),
       );
       return {
         removedCount: removed.count,
         removedBytes: removed.bytes,
-        report: await report(hostId, cached, readReportContext),
+        report: await report(hostId, read(hostId) ?? cached, readReportContext),
       };
     } finally {
       release();
@@ -720,20 +777,9 @@ export function createStorage(
           },
           { hostId, timeoutMs: 30 * 60_000, signal: lifecycle.signal },
         );
-        const freed = new Map(
-          removed.map((entry) => [entry.name, entry.sizeBytes]),
-        );
-        cached.entries = cached.entries.map((entry) => ({
-          ...entry,
-          sizeBytes: Math.max(
-            0,
-            entry.sizeBytes - (freed.get(entry.name) ?? 0),
-          ),
-        }));
-        cached.largeFiles = cached.largeFiles.filter(
-          (entry) => !freed.has(entry.name),
-        );
-        store(hostId, cached);
+        forget(hostId, {
+          largeFiles: new Set(removed.map((entry) => entry.name)),
+        });
         for (const entry of removed) {
           fileCount += entry.count;
           bytes += entry.sizeBytes;
@@ -814,7 +860,6 @@ export function createStorage(
       const removed = await discard(
         hostId,
         rootPath,
-        cached,
         cached.entries.filter((entry) => eligible.has(entry.name)),
         progress,
         "archived",
@@ -893,18 +938,7 @@ export function createStorage(
         const bytes = developer.entries
           .filter((entry) => removed.has(entry.name))
           .reduce((total, entry) => total + entry.sizeBytes, 0);
-        const current = read(hostId);
-        if (current?.developerStorage) {
-          current.developerStorage.entries =
-            current.developerStorage.entries.filter(
-              (entry) => !removed.has(entry.name),
-            );
-          current.developerStorage.sizeBytes = Math.max(
-            0,
-            current.developerStorage.sizeBytes - bytes,
-          );
-          store(hostId, current);
-        }
+        forget(hostId, { developer: removed });
         removedCount += removed.size;
         removedBytes += bytes;
         stoppedProcessCount += result.stoppedProcessCount;
@@ -1091,7 +1125,6 @@ export function createStorage(
     for (const machine of machines)
       if (
         machine.status === "connected" &&
-        !busy.has(machine.id) &&
         scans.get(machine.id)?.state !== "scanning"
       )
         await scanHost({ hostId: machine.id });
@@ -1149,16 +1182,7 @@ export function createStorage(
         { rootPath, names: [threadId], recreate: true },
         { hostId, signal: lifecycle.signal },
       );
-      const cached = read(hostId);
-      if (cached) {
-        cached.entries = cached.entries.filter(
-          (entry) => entry.name !== threadId,
-        );
-        cached.largeFiles = cached.largeFiles.filter(
-          (entry) => entry.name !== threadId,
-        );
-        store(hostId, cached);
-      }
+      forget(hostId, { entries: new Set([threadId]) });
       return { ok: true as const };
     } finally {
       release();

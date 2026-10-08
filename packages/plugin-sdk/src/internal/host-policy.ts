@@ -9,6 +9,7 @@ import {
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import {
   PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
+  PLUGIN_INTERACTION_MAX_TIMEOUT_MS,
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
 } from "@bb/domain/plugin-interaction-limits";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
@@ -3296,9 +3297,11 @@ export function normalizeInteractionRequest(
   if (
     !Number.isInteger(timeoutMs) ||
     timeoutMs <= 0 ||
-    timeoutMs > 60 * 60 * 1000
+    timeoutMs > PLUGIN_INTERACTION_MAX_TIMEOUT_MS
   ) {
-    throw new Error("ui.requestInput timeoutMs must be between 1 and 3600000");
+    throw new Error(
+      `ui.requestInput timeoutMs must be between 1 and ${PLUGIN_INTERACTION_MAX_TIMEOUT_MS}`,
+    );
   }
   if (
     request.describeSubmission !== undefined &&

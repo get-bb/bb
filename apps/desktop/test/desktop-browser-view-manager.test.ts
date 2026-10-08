@@ -164,6 +164,7 @@ interface FakeWebContentsEventMap {
   "did-start-loading": FakeVoidWebContentsListener;
   "did-stop-loading": FakeVoidWebContentsListener;
   "did-finish-load": FakeVoidWebContentsListener;
+  "media-started-playing": FakeVoidWebContentsListener;
   "did-navigate": FakeDidNavigateListener;
   "did-navigate-in-page": FakeDidNavigateInPageListener;
   "did-start-navigation": FakeVoidWebContentsListener;
@@ -356,6 +357,32 @@ const electronMock = vi.hoisted(() => {
 
   class FakeWebContents {
     public readonly debugger = new FakeDebugger();
+    public audioMuted = false;
+    public readonly mainFrame = {
+      framesInSubtree: [
+        {
+          detached: false,
+          executeJavaScript: vi
+            .fn<(code: string) => Promise<unknown>>()
+            .mockResolvedValue(null),
+        },
+        {
+          detached: false,
+          executeJavaScript: vi
+            .fn<(code: string) => Promise<unknown>>()
+            .mockResolvedValue(null),
+        },
+      ],
+    };
+
+    setAudioMuted(muted: boolean): void {
+      this.audioMuted = muted;
+    }
+
+    emitMediaStartedPlaying(): void {
+      for (const listener of this.listeners["media-started-playing"])
+        listener();
+    }
     private backgroundThrottling = true;
     getBackgroundThrottling(): boolean {
       return this.backgroundThrottling;
@@ -387,6 +414,7 @@ const electronMock = vi.hoisted(() => {
       "did-start-loading": [],
       "did-stop-loading": [],
       "did-finish-load": [],
+      "media-started-playing": [],
       "did-navigate": [],
       "did-navigate-in-page": [],
       "did-start-navigation": [],
@@ -1738,6 +1766,124 @@ describe("DesktopBrowserCdpAdapter", () => {
 });
 
 describe("DesktopBrowserViewManager", () => {
+  it("pauses media inside nested open shadow roots when hidden", async () => {
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 1,
+      contentBounds: { width: 1000, height: 800 },
+    });
+    const manager = createDesktopBrowserViewManager();
+    attachBrowserTab({
+      hostWindow,
+      manager,
+      tabId: "browser:shadow-media",
+      url: "https://example.com/video",
+    });
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:shadow-media", visible: false },
+    });
+    const contents = requireFakeView(0).webContents;
+    const code =
+      contents.mainFrame.framesInSubtree[0]?.executeJavaScript.mock.calls.at(
+        -1,
+      )?.[0];
+    expect(code).toBeDefined();
+    const pause = vi.fn();
+    const nestedHost = {
+      shadowRoot: { querySelectorAll: () => [{ pause }] },
+    };
+    const host = {
+      shadowRoot: {
+        querySelectorAll: (selector: string) =>
+          selector === "*" ? [nestedHost] : [],
+      },
+    };
+    await runInNewContext(code ?? "", {
+      document: {
+        querySelectorAll: (selector: string) =>
+          selector === "*" ? [host] : [],
+      },
+    });
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
+  it("keeps newly created hidden tabs silent, including autoplay after loading", () => {
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 1,
+      contentBounds: { width: 1000, height: 800 },
+    });
+    const manager = createDesktopBrowserViewManager();
+    manager.createTab({
+      hostWindow,
+      tabId: "browser:media",
+      threadId: "thread-1",
+      url: "https://example.com/video",
+      viewport: { width: 800, height: 600 },
+    });
+    const contents = requireFakeView(0).webContents;
+    expect(contents.audioMuted).toBe(true);
+    for (const frame of contents.mainFrame.framesInSubtree)
+      frame.executeJavaScript.mockClear();
+    contents.emitDidFinishLoad();
+    contents.emitMediaStartedPlaying();
+    for (const frame of contents.mainFrame.framesInSubtree) {
+      expect(frame.executeJavaScript).toHaveBeenCalled();
+    }
+    expect(contents.audioMuted).toBe(true);
+  });
+
+  it.each(["setVisible", "setVisibleWithoutFocus"] as const)(
+    "%s pauses hidden media in every frame without resuming it on reveal",
+    async (method) => {
+      const hostWindow = new FakeHostWindow({
+        webContentsId: 1,
+        contentBounds: { width: 1000, height: 800 },
+      });
+      const manager = createDesktopBrowserViewManager();
+      attachBrowserTab({
+        hostWindow,
+        manager,
+        tabId: "browser:media",
+        url: "https://example.com/video",
+      });
+      const contents = requireFakeView(0).webContents;
+      expect(contents.audioMuted).toBe(false);
+      for (const frame of contents.mainFrame.framesInSubtree)
+        frame.executeJavaScript.mockClear();
+      manager[method]({
+        hostWindow,
+        request: { tabId: "browser:media", visible: false },
+      });
+      expect(contents.audioMuted).toBe(true);
+      for (const frame of contents.mainFrame.framesInSubtree) {
+        const code = frame.executeJavaScript.mock.calls.at(-1)?.[0];
+        expect(code).toBeDefined();
+        const pause = vi.fn();
+        await runInNewContext(code ?? "", {
+          document: { querySelectorAll: () => [{ pause }] },
+        });
+        expect(pause).toHaveBeenCalledOnce();
+        frame.executeJavaScript.mockClear();
+      }
+      manager[method]({
+        hostWindow,
+        request: { tabId: "browser:media", visible: true },
+      });
+      expect(contents.audioMuted).toBe(false);
+      contents.emitMediaStartedPlaying();
+      for (const frame of contents.mainFrame.framesInSubtree) {
+        expect(frame.executeJavaScript).not.toHaveBeenCalled();
+      }
+      manager.beginWindowResize(hostWindow);
+      await settlePendingCaptures(requireFakeView(0));
+      expect(contents.audioMuted).toBe(false);
+      for (const frame of contents.mainFrame.framesInSubtree) {
+        expect(frame.executeJavaScript).not.toHaveBeenCalled();
+      }
+      manager.endWindowResize(hostWindow);
+    },
+  );
+
   it.each(["local", "enrolled"])(
     "preserves same-server reconnect tabs but clears them before a different server registration (%s daemon)",
     async (daemon) => {

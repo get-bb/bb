@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 
 export type SaveIndicator = "clean" | "dirty" | "saving" | "error";
@@ -101,15 +102,16 @@ function CopyablePath({ path }: { path: string }) {
   );
 
   const copy = useCallback(() => {
-    void navigator.clipboard
-      .writeText(path)
-      .then(() => {
-        setCopied(true);
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), 1500);
-        toast.success("File path copied");
-      })
-      .catch(() => toast.error("Failed to copy file path"));
+    void experimental_copyToClipboard({ text: path }).then((copiedPath) => {
+      if (!copiedPath) {
+        toast.error("Failed to copy file path");
+        return;
+      }
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+      toast.success("File path copied");
+    });
   }, [path]);
 
   return (

@@ -33,8 +33,9 @@ online machines. `bb storage usage` exposes `largeFileCleanup` status. The
 `clearLargeFiles` RPC and `bb storage clear-large-files` continue to wait for
 completion and return deleted file/byte totals.
 
-Cached reports are snapshots; rescan to see external filesystem changes. Plugin
-scans and bulk cleanup run exclusively per machine. Different stopped threads
+Cached reports are snapshots; rescan to see external filesystem changes. Bulk
+cleanup runs exclusively per machine. Scans run alongside cleanup; a finished
+scan leaves out entries cleared while it ran. Different stopped threads
 can clear concurrently, while duplicate clears for one thread are rejected.
 The UI starts a clear immediately, shows row progress and error toasts,
 and keeps other thread actions available. Settings save immediately without
@@ -54,7 +55,7 @@ existing and unidentified sources. Both are available through `bb storage retent
 
 Development cleanup reconciles filesystem state on plugin startup, machine
 reconnect, and hourly. `experimental_environment.removed` re-measures only the
-removing machine's `~/.bb-dev`, queued behind any scan or cleanup already
+removing machine's `~/.bb-dev`, queued behind any cleanup already
 running there; missed events need no replay or removal-history tables.
 Offline/busy machines and failed cleanup retry on subsequent scans. Provider
 removal success does not prove the path was deleted; the host always checks

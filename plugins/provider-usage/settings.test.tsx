@@ -66,23 +66,17 @@ it("fetches all providers only in the selected source and keeps grouped accounts
   expect(slot.queryByText("local@example.com")).toBeNull();
   expect(slot.getAllByText(/Resets in/)).toHaveLength(3);
   expect(slot.rpcCalls.map((call) => call.input)).toEqual([
-    { force: false, machineIds: null, providerId: null, maxAgeMs: 60_000 },
+    { force: false, machineIds: null, providerIds: [], maxAgeMs: 60_000 },
     {
       force: false,
       machineIds: ["source:pool"],
-      providerId: "codex",
-      maxAgeMs: 60_000,
-    },
-    {
-      force: false,
-      machineIds: ["source:pool"],
-      providerId: "claude-code",
+      providerIds: ["codex", "claude-code"],
       maxAgeMs: 60_000,
     },
   ]);
   fireEvent.click(slot.getByLabelText("Reload usage data"));
-  await waitFor(() => expect(slot.rpcCalls).toHaveLength(6));
-  expect(slot.rpcCalls[4]?.input).toMatchObject({
+  await waitFor(() => expect(slot.rpcCalls).toHaveLength(4));
+  expect(slot.rpcCalls[3]?.input).toMatchObject({
     force: true,
     machineIds: ["source:pool"],
   });
@@ -103,7 +97,7 @@ it("uses machine usage when the pool is disabled", async () => {
   await waitFor(() => expect(slot.rpcCalls).toHaveLength(2));
   expect(slot.rpcCalls[1]?.input).toMatchObject({
     machineIds: ["host"],
-    providerId: "codex",
+    providerIds: ["codex"],
   });
 });
 

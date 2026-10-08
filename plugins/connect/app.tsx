@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_copyToClipboard,
   UrlLink as UrlLink,
   useRealtime,
   useRealtimeConnectionState,
@@ -334,17 +335,16 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
   }, []);
 
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(url).then(
-      () => {
-        setCopyState("copied");
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
-      },
-      () => {
+    void experimental_copyToClipboard({ text: url }).then((copied) => {
+      if (!copied) {
         selectUrl();
         setCopyState("manual");
-      },
-    );
+        return;
+      }
+      setCopyState("copied");
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+    });
   }, [url, selectUrl]);
 
   return (
@@ -395,14 +395,12 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
     [],
   );
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true);
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
+    void experimental_copyToClipboard({ text }).then((written) => {
+      if (!written) return;
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
   }, [text]);
   return (
     <Button

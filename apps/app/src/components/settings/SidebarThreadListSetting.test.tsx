@@ -11,8 +11,9 @@ import { threadListProviderAtom } from "@/components/sidebar/threadListProvider"
 import { SidebarThreadListSetting } from "./SidebarThreadListSetting";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
 });
@@ -58,15 +59,16 @@ describe("SidebarThreadListSetting", () => {
 
     fireEvent.pointerDown(trigger, { button: 0 });
     expect(
-      (await screen.findByRole("menuitem", { name: /Automatic/u }))
-        .textContent,
+      (await screen.findByRole("menuitem", { name: /Automatic/u })).textContent,
     ).toContain("Chooses Inbox (zen).");
     const options = screen
       .getAllByRole("menuitem")
       .map((item) => item.textContent ?? "");
     expect(options[1]).toContain("InboxFrom the zen plugin.");
     expect(options[2]).toContain("Thread list (built-in)BB default.");
-    fireEvent.click(screen.getByRole("menuitem", { name: /^Thread list \(built-in\)/u }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /^Thread list \(built-in\)/u }),
+    );
 
     expect(store.get(threadListProviderAtom)).toBe("thread-list/thread-list");
   });

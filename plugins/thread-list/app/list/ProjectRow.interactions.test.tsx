@@ -558,7 +558,7 @@ describe("ProjectRow interactions", () => {
     expect(projectGroup?.hasAttribute("data-sidebar-section-id")).toBe(false);
   });
 
-  it("aligns a nested environment group with its parent guide", () => {
+  it("indents a nested environment group one level below its parent", () => {
     const environment = makeSidebarEnvironment({
       id: "env_nested",
       name: "Nested workspace",
@@ -598,12 +598,12 @@ describe("ProjectRow interactions", () => {
     expect(
       container.querySelector('[data-sidebar-thread-id="thr_parent"]'),
     ).not.toBeNull();
-    expect(header?.style.paddingLeft).toBe("8px");
-    expect(guide?.style.left).toBe("16px");
+    expect(header?.style.paddingLeft).toBe("32px");
+    expect(guide?.style.left).toBe("40px");
     expect(
       child?.closest<HTMLElement>(".bb-sidebar-hover-actions-row")?.style
         .paddingLeft,
-    ).toBe("32px");
+    ).toBe("56px");
   });
 
   it("shows generic runtime activity before a named workflow rollup", () => {
