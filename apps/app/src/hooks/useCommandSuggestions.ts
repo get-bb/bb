@@ -25,6 +25,7 @@ interface UseCommandSuggestionsArgs {
 }
 
 const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
+const COMMAND_CATALOG_PREFETCH_DELAY_MS = 400;
 
 interface UseCommandSuggestionsResult {
   triggers: readonly PromptMentionCommandTrigger[];
@@ -144,16 +145,19 @@ export function useCommandSuggestions(
     if (!shouldPrefetchCatalog) {
       return;
     }
-    void queryClient.prefetchQuery({
-      ...projectCommandsQueryOptions({
-        projectId: prefetchProjectId,
-        providerId: prefetchProviderId,
-        environmentId: prefetchEnvironmentId,
-        hostId: prefetchHostId,
-      }),
-      retry: false,
-      staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
-    });
+    const timer = setTimeout(() => {
+      void queryClient.prefetchQuery({
+        ...projectCommandsQueryOptions({
+          projectId: prefetchProjectId,
+          providerId: prefetchProviderId,
+          environmentId: prefetchEnvironmentId,
+          hostId: prefetchHostId,
+        }),
+        retry: false,
+        staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
+      });
+    }, COMMAND_CATALOG_PREFETCH_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [
     prefetchEnvironmentId,
     prefetchHostId,
