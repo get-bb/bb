@@ -337,9 +337,12 @@ export const BB_VS_CONDUCTOR: Comparison = {
           question: "Does bb have multiplayer?",
           answer: (
             <p>
-              Yes, free. Run bb on an always-on machine and share it with your
-              team. Everyone sees the same projects, threads, terminals, and
-              links, and can jump into any thread.
+              Yes, as one shared bb, free at any team size. Teams usually run
+              one bb on an always-on machine and share it, so everyone sees the
+              same projects, threads, terminals, and links, and can jump into
+              any thread. Keep it on your tailnet and let your Tailscale ACLs
+              decide who gets in, since everyone with access can run commands on
+              every machine.
             </p>
           ),
         },
