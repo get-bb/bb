@@ -425,10 +425,7 @@ function Notice({
   if (saveState.kind === "conflict") {
     return (
       <NoticeRow tone="warning" compact>
-        <span>
-          This file changed elsewhere. Replace your edits with the saved file, or
-          keep your edits.
-        </span>
+        <span>File changed on disk</span>
         <div className="flex flex-wrap items-center gap-x-3">
           <NoticeAction
             onClick={onReload}
