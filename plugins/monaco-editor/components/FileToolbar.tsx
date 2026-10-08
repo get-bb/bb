@@ -8,6 +8,7 @@ export interface FileToolbarProps {
   path: string;
   indicator: SaveIndicator;
   saveDisabled: boolean;
+  saveConflict: boolean;
   onSave: () => void;
   isRefreshing: boolean;
   onRefresh: () => void;
@@ -19,6 +20,7 @@ export function FileToolbar({
   path,
   indicator,
   saveDisabled,
+  saveConflict,
   onSave,
   isRefreshing,
   onRefresh,
@@ -46,6 +48,9 @@ export function FileToolbar({
         label={indicator === "saving" ? "Saving…" : "Save"}
         onClick={onSave}
         disabled={saveDisabled}
+        unavailableReason={
+          saveConflict ? "Resolve the file conflict below" : undefined
+        }
       >
         <SaveIcon />
       </ToolbarButton>
@@ -134,26 +139,32 @@ function ToolbarButton({
   label,
   onClick,
   disabled,
+  unavailableReason,
   pressed,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  unavailableReason?: string;
   pressed?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={unavailableReason ? undefined : onClick}
       disabled={disabled}
-      title={label}
+      title={unavailableReason ?? label}
       aria-label={label}
+      aria-disabled={unavailableReason ? true : undefined}
+      aria-description={unavailableReason}
       {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
       className={cn(
-        "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md",
-        "transition-colors hover:bg-state-hover hover:text-foreground",
+        "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+        unavailableReason
+          ? "cursor-default opacity-50"
+          : "cursor-pointer hover:bg-state-hover hover:text-foreground",
         "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
         "disabled:pointer-events-none disabled:opacity-50",
         pressed ? "bg-state-hover text-foreground" : "text-muted-foreground",

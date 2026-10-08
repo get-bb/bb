@@ -17,7 +17,7 @@ const editor = vi.hoisted(() => ({
   onDidFocusEditorWidget: vi.fn(),
   onDidChangeModelContent: vi.fn<(listener: () => void) => void>(),
   getValue: vi.fn(() => "Edited on a phone"),
-  addCommand: vi.fn(),
+  addCommand: vi.fn<(keybinding: number, handler: () => void) => void>(),
   updateOptions: vi.fn(),
   dispose: vi.fn(),
 }));
@@ -128,7 +128,19 @@ it("overwrites the conflicted version and requires confirmation for a newer conf
   });
   await waitFor(() => expect(create).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Save my edits" }));
+  await screen.findByRole("button", { name: "Save my edits" });
+  const saveButton = screen.getByRole("button", { name: "Save" });
+  expect(saveButton.getAttribute("aria-disabled")).toBe("true");
+  expect(saveButton.getAttribute("aria-description")).toBe(
+    "Resolve the file conflict below",
+  );
+  fireEvent.click(saveButton);
+  act(() => editor.addCommand.mock.calls[0]![1]());
+  expect(write).toHaveBeenCalledOnce();
+  expect(document.activeElement).toBe(
+    screen.getByRole("status", { name: "File changed on disk" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save my edits" }));
   await screen.findByRole("button", { name: "Save my edits" });
   expect(write).toHaveBeenNthCalledWith(2, {
     path: base.path,

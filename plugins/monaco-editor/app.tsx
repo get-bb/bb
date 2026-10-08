@@ -65,6 +65,7 @@ function MonacoFileOpener({
   const codeThemeRef = useRef(codeTheme);
   codeThemeRef.current = codeTheme;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const conflictNoticeRef = useRef<HTMLDivElement | null>(null);
   const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
 
@@ -139,6 +140,10 @@ function MonacoFileOpener({
 
   const save = useCallback(async () => {
     if (saveStateRef.current.kind === "saving") return;
+    if (saveStateRef.current.kind === "conflict") {
+      conflictNoticeRef.current?.focus();
+      return;
+    }
     await writeEditorContent(sha256Ref.current);
   }, [writeEditorContent]);
 
@@ -345,6 +350,7 @@ function MonacoFileOpener({
       <FileToolbar
         path={activePath}
         indicator={indicatorFor(saveState, status)}
+        saveConflict={saveState.kind === "conflict"}
         saveDisabled={
           status.kind !== "ready" || isRefreshing || saveState.kind === "saving"
         }
@@ -355,6 +361,7 @@ function MonacoFileOpener({
         onToggleFiles={() => setIsFilesOpen((open) => !open)}
       />
       <Notice
+        conflictNoticeRef={conflictNoticeRef}
         onDiscardCancel={() => setPendingDiscard(false)}
         onDiscardConfirm={() => {
           setPendingDiscard(false);
@@ -397,6 +404,7 @@ function indicatorFor(
 }
 
 function Notice({
+  conflictNoticeRef,
   onDiscardCancel,
   onDiscardConfirm,
   onOpenCancel,
@@ -408,6 +416,7 @@ function Notice({
   saveState,
   status,
 }: {
+  conflictNoticeRef: React.RefObject<HTMLDivElement | null>;
   onDiscardCancel: () => void;
   onDiscardConfirm: () => void;
   onOpenCancel: () => void;
@@ -424,22 +433,29 @@ function Notice({
   }
   if (saveState.kind === "conflict") {
     return (
-      <NoticeRow tone="warning" compact>
-        <span className="min-w-0 flex-1 truncate" title="File changed on disk">
+      <NoticeRow
+        tone="warning"
+        compact
+        focusRef={conflictNoticeRef}
+        label="File changed on disk"
+      >
+        <span className="flex-1 leading-6 whitespace-nowrap">
           File changed on disk
         </span>
-        <NoticeAction
-          onClick={onReload}
-          title="Discard your edits and load the latest saved file"
-        >
-          Discard my edits
-        </NoticeAction>
-        <NoticeAction
-          onClick={onOverwrite}
-          title="Replace the saved file with your edits"
-        >
-          Save my edits
-        </NoticeAction>
+        <div className="flex shrink-0 items-center gap-2">
+          <NoticeAction
+            onClick={onReload}
+            title="Discard your edits and load the latest saved file"
+          >
+            Discard my edits
+          </NoticeAction>
+          <NoticeAction
+            onClick={onOverwrite}
+            title="Replace the saved file with your edits"
+          >
+            Save my edits
+          </NoticeAction>
+        </div>
       </NoticeRow>
     );
   }
@@ -471,18 +487,25 @@ function NoticeRow({
   children,
   tone,
   compact = false,
+  focusRef,
+  label,
 }: {
   children: React.ReactNode;
   tone: "error" | "warning";
   compact?: boolean;
+  focusRef?: React.Ref<HTMLDivElement>;
+  label?: string;
 }) {
   return (
     <div
+      ref={focusRef}
       role="status"
+      aria-label={label}
+      tabIndex={focusRef ? -1 : undefined}
       className={cn(
         "flex shrink-0 items-center gap-2 px-4 text-xs",
         compact
-          ? "py-0.5 [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          ? "flex-wrap gap-y-0 py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
           : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
