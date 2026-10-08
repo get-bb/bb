@@ -207,7 +207,7 @@ export const LANDING_PAGES: LandingPage[] = [
       "Run Claude Code, Codex, and other agents in parallel, each in its own Git worktree, and always know which one needs you. Free and open source.",
     headline: "Build a software factory of coding agents",
     sub: "Run Claude Code, Codex, and more in parallel, let them hand work to each other, and script every step with plugins and the bb CLI.",
-    closer: "Put your software factory to work",
+    closer: "Start building your software factory",
     heroVisual: <FleetVisual />,
     sections: [
       PARALLEL_SECTION,
