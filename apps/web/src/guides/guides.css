@@ -142,14 +142,6 @@
   height: 34px;
 }
 
-.gd-switch .gd-switch-dim {
-  opacity: 0.35;
-}
-
-.gd-switch .gd-switch-dim:hover {
-  opacity: 0.75;
-}
-
 .gd-pick {
   display: flex;
   flex-direction: column;
@@ -222,6 +214,18 @@
   transform: translateY(-50%);
   pointer-events: none;
   color: var(--subtle);
+}
+
+.gd-switch-other {
+  display: block;
+  width: fit-content;
+  margin: 14px auto 0;
+  font-size: 14px;
+  color: var(--dim);
+  text-align: center;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
 }
 
 .gd-switch-arrow {

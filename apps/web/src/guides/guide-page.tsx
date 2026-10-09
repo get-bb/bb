@@ -31,7 +31,7 @@ export function loadGuide(slug: string, variant: string | null) {
   if (!guide) {
     throw notFound();
   }
-  return { slug, variant: guide.picker ? guide.picker.selected : null };
+  return { slug, variant };
 }
 
 export function guideHead(guide: Guide | undefined) {
