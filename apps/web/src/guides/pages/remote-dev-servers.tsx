@@ -33,16 +33,17 @@ const AGENT_PROMPT = withIntake(
   `Run a dev server for each branch on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
 
-If a step fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
+If a step fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for. Leave work in progress alone: don't stash, reset, or switch branches in any folder.
 
 1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it.
-2. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --path <checkout> --machine <machine>\` for my existing checkout, or \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\` if there isn't one.
-3. For each branch, start a thread on the machine that starts its own server, all at once:
+2. Each server runs from what's committed on its branch. If a branch I named has uncommitted or unpushed changes, here or in my checkout, tell me and ask whether to commit and push them first or skip that branch.
+3. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --path <checkout> --machine <machine>\` for my existing checkout, or \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\` if there isn't one.
+4. For each branch, start a thread on the machine that starts its own server, all at once:
    bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if there's no remote> --title "<branch>" --prompt "Install dependencies if they're missing, then start this branch's dev server. Pick a free port, save it as WEB_PORT in .env.local (don't commit it), and run <dev server command> with HOST=127.0.0.1 and PORT set to that port in a bb terminal titled Dev server. Reply with the port once it's listening on 127.0.0.1, or with the error."
-4. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
-5. Share each port with \`bb connect expose <port> --host <machine>\`, and check that \`bb connect shares --host <machine>\` lists them all.
+5. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
+6. Share each port with \`bb connect expose <port> --host <machine>\`, and check that \`bb connect shares --host <machine>\` lists them all.
 
-Reply with a table of branch, port, and link.`,
+Reply with a table of branch, port, and link. Then offer to save these steps as a bb skill in .bb/skills/preview-branches/SKILL.md, with my machine and dev server command filled in, so next time I can just ask to preview branches.`,
 );
 
 const SETUP_SCRIPT = `#!/usr/bin/env bash
@@ -70,7 +71,7 @@ export const guide: Guide = {
     {
       id: "step-1",
       title: "Add your dev box",
-      lead: "Run servers on a dev box, a remote machine you already develop on, with room for all of them. bb keeps it connected through reboots and updates.",
+      lead: "Run servers on a dev box, a remote machine you already develop on. bb keeps it connected through reboots and updates.",
       body: (
         <Substeps>
           <li>
@@ -377,6 +378,16 @@ export const guide: Guide = {
         <p>
           Yes. Agents work in their own worktrees, so your checkout, editor, and
           terminals stay as they are.
+        </p>
+      ),
+    },
+    {
+      question: "My dev boxes are created on demand. Does this work?",
+      answer: (
+        <p>
+          bb adds a machine once and keeps it. A box that's deleted and
+          recreated has to be added again. For machines made fresh for each
+          thread, use a machine provider plugin, like Modal Sandbox below.
         </p>
       ),
     },
