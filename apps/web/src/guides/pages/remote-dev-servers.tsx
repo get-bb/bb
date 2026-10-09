@@ -35,7 +35,7 @@ Guide: https://getbb.app/guides/remote-dev-servers
 
 If a step fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for. Leave work in progress alone: don't stash, reset, or switch branches in any folder.
 
-1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it. If the machine is a container dev environment without systemd, like Codespaces, Coder, Ona, or Cloud Workstations, tell me to raise its idle timeout and to add \`curl -sSL <my bb address>/install.sh | sh -s -- --start --host-id <machine-id>\` to its startup script, so bb comes back when it restarts.
+1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it. If the machine is a container dev environment without systemd, like Codespaces, Coder, Ona, Cloud Workstations, or an in-house container, tell me to raise its idle timeout and to add \`curl -sSL <my bb address>/install.sh | sh -s -- --start --host-id <machine-id>\` to its startup script, so bb comes back when it restarts.
 2. Each server runs from what's committed on its branch. If a branch I named has uncommitted or unpushed changes, here or in my checkout, tell me and ask whether to commit and push them first or skip that branch.
 3. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --path <checkout> --machine <machine>\` for my existing checkout, or \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\` if there isn't one.
 4. For each branch, start a thread on the machine that starts its own server, all at once:
@@ -383,12 +383,13 @@ export const guide: Guide = {
     },
     {
       question:
-        "Does this work with Codespaces, Coder, Ona, or Cloud Workstations?",
+        "Does this work with Codespaces, Coder, or another cloud dev environment?",
       answer: (
         <ol>
           <li>
-            Yes. Raise the box's idle timeout first. These stop a box when you
-            stop typing, even while agents are working.
+            Yes, including Ona, Google Cloud Workstations, Microsoft Dev Box,
+            and in-house dev boxes. Raise the box's idle timeout first. Most
+            stop a box when you stop typing, even while agents are working.
           </li>
           <li>
             Restart bb when the box starts. Containers don't keep bb running
