@@ -88,6 +88,7 @@ vi.mock("@/hooks/queries/thread-queries", async (importOriginal) => {
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
+  useThreadTimelineRealtimeSubscription: vi.fn(),
 }));
 
 vi.mock("@/hooks/useServerConnectionState", () => ({

@@ -77,6 +77,18 @@ export const environmentChangeKindSchema = z.enum(ENVIRONMENT_CHANGE_KINDS);
 export const hostChangeKindSchema = z.enum(HOST_CHANGE_KINDS);
 export const systemChangeKindSchema = z.enum(SYSTEM_CHANGE_KINDS);
 
+export const threadTimelineSubscriptionTargetSchema = z
+  .object({
+    kind: z.literal("thread-timeline"),
+    threadId: z.string().min(1),
+    segmentLimit: z.number().int().positive().nullable(),
+    deferContent: z.boolean(),
+  })
+  .strict();
+export type ThreadTimelineSubscriptionTarget = z.infer<
+  typeof threadTimelineSubscriptionTargetSchema
+>;
+
 export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -84,6 +96,7 @@ export const realtimeSubscriptionTargetSchema = z.discriminatedUnion("kind", [
       threadId: z.string().min(1),
     })
     .strict(),
+  threadTimelineSubscriptionTargetSchema,
   z
     .object({
       kind: z.literal("thread-list"),
@@ -174,6 +187,8 @@ export function realtimeSubscriptionTargetKey(
   switch (target.kind) {
     case "thread-detail":
       return `thread-detail:${target.threadId}`;
+    case "thread-timeline":
+      return `thread-timeline:${target.threadId}:${target.segmentLimit ?? "default"}:${target.deferContent ? "deferred" : "inline"}`;
     case "thread-list":
       return "thread-list";
     case "project-detail":

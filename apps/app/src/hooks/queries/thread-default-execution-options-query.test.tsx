@@ -21,6 +21,7 @@ vi.mock("@/lib/sdk", () => ({
 
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
+  useThreadTimelineRealtimeSubscription: vi.fn(),
 }));
 
 const RESOLVED: ResolvedThreadExecutionOptions = {

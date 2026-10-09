@@ -37,7 +37,6 @@ import {
 import {
   archivedThreadsQueryOptions,
   childThreadsFallbackQueryOptions,
-  COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
   resolveSidebarDerivedThreadList,
   selectChildThreads,
@@ -60,6 +59,7 @@ import {
 } from "../cache-owners/thread-open-cache-owner";
 import { removeThreadScopedQueries } from "../cache-owners/mutation-cache-effects";
 import { listSidebarNavigationThreads } from "../cache-owners/query-cache";
+import { COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT } from "../cache-owners/thread-timeline-push-owner";
 import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,

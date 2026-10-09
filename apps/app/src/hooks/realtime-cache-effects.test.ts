@@ -867,7 +867,7 @@ describe("createRealtimeCacheEffects", () => {
     { cachedSequence: 2, isBehind: false },
     { cachedSequence: 3, isBehind: false },
   ])(
-    "compares unviewed timeline sequence $cachedSequence with the notified sequence without refetching",
+    "compares unviewed timeline sequence $cachedSequence with the notified sequence and leaves the viewed one to pushes",
     async ({ cachedSequence, isBehind }) => {
       vi.useFakeTimers();
       const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -927,9 +927,8 @@ describe("createRealtimeCacheEffects", () => {
           JSON.stringify(filters?.queryKey) ===
           JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
       );
-      expect(viewedInvalidations).toHaveLength(1);
-      expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
-      expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+      expect(viewedInvalidations).toHaveLength(0);
+      expect(viewedTimelineQueryFn).not.toHaveBeenCalled();
 
       invalidateSpy.mockRestore();
       unsubscribeViewed();
@@ -973,7 +972,7 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(50);
 
-    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+    expect(timelineQueryFn).not.toHaveBeenCalled();
     expect(outlineQueryFn).not.toHaveBeenCalled();
 
     effects.handleChanged({
@@ -988,7 +987,7 @@ describe("createRealtimeCacheEffects", () => {
     });
     await vi.advanceTimersByTimeAsync(50);
 
-    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+    expect(timelineQueryFn).not.toHaveBeenCalled();
     expect(outlineQueryFn).toHaveBeenCalledTimes(1);
 
     unsubscribeOutline();
@@ -1860,17 +1859,14 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("does not cancel active timeline refetches for repeated event invalidations", async () => {
+  it("leaves an active timeline read to pushed deltas through a stream and its completion", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
     const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
       signals.push(signal);
-      return new Promise((resolve) => {
-        resolveFetches.push(resolve);
-      });
+      return new Promise(() => {});
     });
     const timelineObserver = new QueryObserver(queryClient, {
       queryKey: timelineKey,
@@ -1879,125 +1875,24 @@ describe("createRealtimeCacheEffects", () => {
     });
     const unsubscribeTimeline = timelineObserver.subscribe(() => {});
     await vi.advanceTimersByTimeAsync(0);
-    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
 
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { eventTypes: ["system/error"], projectId: "project-1" },
-      changes: ["events-appended"],
-    });
-    await vi.advanceTimersByTimeAsync(50);
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: {
-        eventTypes: ["item/completed"],
-        projectId: "project-1",
-        timelineSequence: 2,
-      },
-      changes: ["events-appended"],
-    });
-    await vi.advanceTimersByTimeAsync(50);
-
-    expect(signals[0]?.aborted).toBe(false);
-    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
-
-    resolveFetches[0]?.({
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(200);
-
-    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
-    expect(signals[0]?.aborted).toBe(false);
-    resolveFetches[1]?.({
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-
-    unsubscribeTimeline();
-    effects.dispose();
-  });
-
-  it("supersedes an in-flight timeline read when a turn completes", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const timelineKey = threadTimelineQueryKey("thr_1");
-    const signals: AbortSignal[] = [];
-    const resolveFetches: Array<(value: unknown) => void> = [];
-    const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
-      signals.push(signal);
-      return new Promise((resolve) => {
-        resolveFetches.push(resolve);
+    for (const eventTypes of [
+      ["item/agentMessage/delta"],
+      ["system/error"],
+      ["turn/completed"],
+    ] as const) {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { eventTypes, projectId: "project-1" },
+        changes: ["events-appended"],
       });
-    });
-    const timelineObserver = new QueryObserver(queryClient, {
-      queryKey: timelineKey,
-      queryFn: timelineQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeTimeline = timelineObserver.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1_500);
+    }
+
     expect(timelineQueryFn).toHaveBeenCalledTimes(1);
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { eventTypes: ["item/agentMessage/delta"] },
-      changes: ["events-appended"],
-    });
-    await vi.advanceTimersByTimeAsync(50);
     expect(signals[0]?.aborted).toBe(false);
-
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      metadata: { eventTypes: ["turn/completed"] },
-      changes: ["events-appended"],
-    });
-    effects.handleChanged({
-      type: "changed",
-      entity: "thread",
-      id: "thr_1",
-      changes: ["status-changed"],
-    });
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(signals[0]?.aborted).toBe(true);
-    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
-
-    resolveFetches[1]?.({
-      rows: [],
-      timelinePage: {
-        kind: "latest",
-        topLevelLimit: 100,
-        returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
-        olderCursor: null,
-      },
-    });
-    await vi.advanceTimersByTimeAsync(1_500);
-
-    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
 
     unsubscribeTimeline();
     effects.dispose();

@@ -10,6 +10,7 @@ import {
   pluginMetadataSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
+  threadTimelineSubscriptionTargetSchema,
   permissionModeInputSchema,
   promptInputSchema,
   clientTurnRequestIdSchema,
@@ -1186,6 +1187,25 @@ export const threadTimelineResponseSchema = z.object({
 export type ThreadTimelineResponse = z.infer<
   typeof threadTimelineResponseSchema
 >;
+
+export const threadTimelineSignalSchema = z
+  .object({
+    type: z.literal("thread-timeline"),
+    target: threadTimelineSubscriptionTargetSchema,
+    afterSequence: z.number().int().nonnegative().nullable(),
+    timeline: threadTimelineResponseSchema,
+  })
+  .strict();
+export type ThreadTimelineSignal = z.infer<typeof threadTimelineSignalSchema>;
+
+export const threadTimelineSignalLenientSchema = z.object({
+  type: z.literal("thread-timeline"),
+  target: threadTimelineSubscriptionTargetSchema,
+  afterSequence: z.number().int().nonnegative().nullable(),
+  timeline: z.custom<ThreadTimelineResponse>(
+    (value) => typeof value === "object" && value !== null,
+  ),
+});
 
 export const threadConversationOutlineAttachmentSummarySchema = z
   .object({

@@ -328,3 +328,33 @@ export function observeTurnTraceEventBatch(batch: TurnTraceEventBatch): void {
     }
   }
 }
+
+export function observeTimelinePushTrace(
+  deps: Pick<AppDeps, "config" | "db" | "logger">,
+  push: {
+    builtAt: number;
+    bytes: number;
+    maxSeq: number;
+    sentAt: number;
+    startedAt: number;
+    threadId: string;
+    withDelta: boolean;
+  },
+): void {
+  if (!isTurnTraceEnabled(deps)) {
+    return;
+  }
+  deps.logger.info(
+    {
+      timelinePushTrace: {
+        threadId: push.threadId,
+        maxSeq: push.maxSeq,
+        withDelta: push.withDelta,
+        bytes: push.bytes,
+        buildMs: roundDurationMs(push.builtAt - push.startedAt),
+        sentAt: epochMs(push.sentAt),
+      },
+    },
+    "Timeline push trace",
+  );
+}

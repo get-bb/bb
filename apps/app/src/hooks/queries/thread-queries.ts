@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
+import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
   PromptHistoryResponse,
@@ -40,6 +40,7 @@ import { sdk } from "@/lib/sdk";
 import {
   useThreadDetailRealtimeSubscription,
   useThreadListRealtimeSubscription,
+  useThreadTimelineRealtimeSubscription,
 } from "@/hooks/useRealtimeSubscription";
 import {
   getCachedSidebarNavigationThreads,
@@ -97,6 +98,10 @@ import {
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
 import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline-unseen-events";
+import {
+  COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
+  resolveThreadTimelineSegmentLimit,
+} from "../cache-owners/thread-timeline-push-owner";
 import { markStreamTrace } from "@/lib/stream-trace";
 import {
   THREAD_OPEN_CACHE_GC_MS,
@@ -1060,14 +1065,6 @@ interface FetchThreadTimelineArgs {
   threadId: string;
 }
 
-export const COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT = 8;
-
-function resolveThreadTimelineSegmentLimit(): number | undefined {
-  return getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY)
-    ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
-    : undefined;
-}
-
 async function fetchThreadTimeline({
   queryClient,
   signal,
@@ -1090,9 +1087,12 @@ async function fetchThreadTimeline({
       ? { afterSequence: String(previous.maxSeq) }
       : {}),
   });
-  const timeline = await mergeThreadTimelineDelta(previous, response, () =>
+  const merged = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
+  const pushed = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
+  const timeline =
+    pushed !== undefined && pushed.maxSeq > merged.maxSeq ? pushed : merged;
   clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
   markStreamTrace("bb:timeline-applied", {
     threadId,
@@ -1143,7 +1143,15 @@ export function useThreadTimeline(
 ) {
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
+  const compactViewport = useMediaQuery(COMPACT_VIEWPORT_QUERY);
   useThreadDetailRealtimeSubscription(id, { enabled });
+  useThreadTimelineRealtimeSubscription(id, {
+    deferContent: true,
+    enabled,
+    segmentLimit: compactViewport
+      ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
+      : null,
+  });
   useEffect(() => {
     if (enabled) {
       touchThreadOpenCache(queryClient, id);

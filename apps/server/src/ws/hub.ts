@@ -11,6 +11,7 @@ import {
   type ThreadChangeKind,
   type ThreadChangeMetadata,
   type ThreadEventType,
+  type ThreadTimelineSubscriptionTarget,
 } from "@bb/domain";
 import type { DbNotifier } from "@bb/db";
 import type {
@@ -26,6 +27,7 @@ import {
   terminalServerMessageSchema,
   threadOpenSignalSchema,
   threadPaneActionSignalSchema,
+  type ThreadTimelineSignal,
   type ThreadPaneAction,
   type ThreadOpenFile,
   type ThreadOpenSplit,
@@ -221,6 +223,10 @@ export class HostOnlineRpcUnavailableError extends Error {
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
+  private readonly threadTimelineTargetsByKey = new Map<
+    string,
+    ThreadTimelineSubscriptionTarget
+  >();
   private readonly daemonSessions = new Map<
     string,
     {
@@ -302,6 +308,7 @@ export class NotificationHub implements DbNotifier {
       sockets.delete(socket);
       if (sockets.size === 0) {
         this.clientSocketsByKey.delete(key);
+        this.threadTimelineTargetsByKey.delete(key);
       }
     }
 
@@ -527,6 +534,12 @@ export class NotificationHub implements DbNotifier {
     const sockets = this.clientSocketsByKey.get(key) ?? new Set<HubSocket>();
     sockets.add(socket);
     this.clientSocketsByKey.set(key, sockets);
+    if (
+      target.kind === "thread-timeline" &&
+      !this.threadTimelineTargetsByKey.has(key)
+    ) {
+      this.threadTimelineTargetsByKey.set(key, { ...target });
+    }
   }
 
   unsubscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
@@ -540,7 +553,30 @@ export class NotificationHub implements DbNotifier {
     sockets.delete(socket);
     if (sockets.size === 0) {
       this.clientSocketsByKey.delete(key);
+      this.threadTimelineTargetsByKey.delete(key);
     }
+  }
+
+  listThreadTimelineTargets(
+    threadId: string,
+  ): ThreadTimelineSubscriptionTarget[] {
+    const targets: ThreadTimelineSubscriptionTarget[] = [];
+    for (const target of this.threadTimelineTargetsByKey.values()) {
+      if (target.threadId === threadId) {
+        targets.push(target);
+      }
+    }
+    return targets;
+  }
+
+  sendThreadTimelineSignal(signal: ThreadTimelineSignal): number {
+    const sockets = this.clientSocketsByKey.get(subscriptionKey(signal.target));
+    if (!sockets) {
+      return 0;
+    }
+    const payload = JSON.stringify(signal);
+    this.notifyClientsByKeySet(sockets, payload);
+    return payload.length;
   }
 
   recordDaemonSessionPlatform(sessionId: string, platform: HostPlatform): void {
