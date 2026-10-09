@@ -149,15 +149,17 @@ export function guideVariant(variant: string | null): Guide {
     title: tool ? `Switch from ${tool.name} to bb` : meta.title,
     description: `Pick up where ${oldTool} left off. Open the task where it was, and your agent reads the old conversation, tells you where things stand, and keeps going.`,
     concept: <SwitchConcept selected={tool ? tool.id : null} />,
-    picker: {
-      label: "Switching from",
-      placeholder: "Any tool",
-      selected: tool ? tool.id : "",
-      options: [
-        { id: "", label: "Any tool" },
-        ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
-      ],
-    },
+    picker: tool
+      ? null
+      : {
+          label: "Switching from",
+          placeholder: "Pick your tool",
+          selected: "",
+          options: [
+            { id: "", label: "Pick your tool" },
+            ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
+          ],
+        },
     agentPrompt: switchPrompt(tool),
     requirement: `bb on the computer where ${oldTool} keeps your work`,
     steps: [
