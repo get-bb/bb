@@ -36,7 +36,7 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 4. Wait for the review and read it:
    bb thread wait <reviewer-thread-id>
    bb thread output <reviewer-thread-id>
-   Check: the output lists issues or says there are none.
+   Check: the output lists issues or says there are none. If bb later tells you the reviewer completed, just repeat your final report.
 
 5. Fix every serious issue and commit. If a finding is unclear, ask first: bb thread tell <reviewer-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Don't ask for a second review.
    Check: \`git status\` is clean and each serious issue has a fix.
