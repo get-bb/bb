@@ -537,6 +537,57 @@ export const threadPluginMetadataQuerySchema = z
 export type ThreadPluginMetadataQuery = z.infer<
   typeof threadPluginMetadataQuerySchema
 >;
+export const PLUGIN_THREAD_METADATA_LIST_MAX_IDS = 200;
+
+export const pluginThreadMetadataListRequestSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(PLUGIN_THREAD_METADATA_LIST_MAX_IDS),
+  })
+  .strict();
+export type PluginThreadMetadataListRequest = z.infer<
+  typeof pluginThreadMetadataListRequestSchema
+>;
+export const pluginThreadMetadataListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), metadata: pluginMetadataSchema })
+        .strict(),
+    ),
+  })
+  .strict();
+export type PluginThreadMetadataListResponse = z.infer<
+  typeof pluginThreadMetadataListResponseSchema
+>;
+export const THREAD_ANCESTORS_LIST_MAX_IDS = 200;
+
+export const threadAncestorsListRequestSchema = z
+  .object({
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(THREAD_ANCESTORS_LIST_MAX_IDS),
+  })
+  .strict();
+export type ThreadAncestorsListRequest = z.infer<
+  typeof threadAncestorsListRequestSchema
+>;
+export const threadAncestorsListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), ancestorIds: z.array(z.string()) })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ThreadAncestorsListResponse = z.infer<
+  typeof threadAncestorsListResponseSchema
+>;
 export const updateThreadPluginMetadataRequestSchema = z
   .object({
     pluginId: pluginIdSchema,

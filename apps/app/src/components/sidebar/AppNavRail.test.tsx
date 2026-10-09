@@ -102,7 +102,11 @@ function RailHarness() {
 
 function renderRail(
   initialPath: string,
-  options: { visibleKeys?: string[]; isCompactViewport?: boolean } = {},
+  options: {
+    visibleKeys?: string[];
+    isCompactViewport?: boolean;
+    isFramed?: boolean;
+  } = {},
 ) {
   const store = createStore();
   if (options.visibleKeys) {
@@ -116,7 +120,7 @@ function renderRail(
           isCompactViewport={options.isCompactViewport ?? false}
         >
           <TooltipProvider>
-            <SidebarProvider>
+            <SidebarProvider framed={options.isFramed ?? false}>
               <RailHarness />
             </SidebarProvider>
           </TooltipProvider>
@@ -200,6 +204,25 @@ describe("AppNavRail", () => {
       "Settings",
     ]);
     expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
+  it("rests Settings on the window card's bottom edge in the framed shell, and keeps its own bottom padding otherwise", () => {
+    const framed = renderRail(THREAD_PATH, { isFramed: true });
+    const framedNav = screen.getByRole("navigation", {
+      name: "Primary navigation",
+    });
+    expect(framedNav.lastElementChild).toBe(
+      screen.getByRole("button", { name: /^Settings/ }),
+    );
+    expect(framedNav.classList.contains("pb-2.5")).toBe(false);
+    framed.unmount();
+
+    renderRail(THREAD_PATH);
+    expect(
+      screen
+        .getByRole("navigation", { name: "Primary navigation" })
+        .classList.contains("pb-2.5"),
+    ).toBe(true);
   });
 
   it("moves the highlight from Home to a plugin panel and to Settings as the route changes", () => {
@@ -476,6 +499,40 @@ describe("AppNavRail", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(wrapper.style.transform).toBe(openedAt);
+  });
+
+  it("opens the More menu at the top of the rail instead of beside the More button", async () => {
+    renderRail(THREAD_PATH);
+    vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 40, 28, 28),
+    );
+    vi.spyOn(railButton("More"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 200, 28, 28),
+    );
+
+    const viewport = [
+      vi
+        .spyOn(document.documentElement, "clientWidth", "get")
+        .mockReturnValue(1280),
+      vi
+        .spyOn(document.documentElement, "clientHeight", "get")
+        .mockReturnValue(800),
+    ];
+
+    try {
+      fireEvent.keyDown(railButton("More"), { key: "Enter" });
+      const menu = await screen.findByTestId("nav-rail-more-menu");
+      const wrapper = menu.closest<HTMLElement>(
+        "[data-radix-popper-content-wrapper]",
+      );
+      if (!wrapper) throw new Error("Expected the menu position wrapper");
+
+      await waitFor(() =>
+        expect(wrapper.style.transform).toBe("translate(52px, 40px)"),
+      );
+    } finally {
+      for (const spy of viewport) spy.mockRestore();
+    }
   });
 
   it("drops the header New thread button when the user hid New thread", () => {

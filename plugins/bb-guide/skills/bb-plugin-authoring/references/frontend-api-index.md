@@ -182,6 +182,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadActionChoices`
 - `PluginThreadActionRunInput`
 - `PluginThreadAction`
+- `PluginThreadActionDataInput` — what a registration's `useData` receives (`threadIds`)
 - `PluginThreadActionItemInput` — what a registration's `item` receives
 - `PluginThreadActionRegistration` — the registration accepted by
   `app.slots.experimental_threadAction`

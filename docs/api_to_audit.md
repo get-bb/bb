@@ -1163,6 +1163,76 @@ the server, so no client older than this field is served.
    should tolerate unknown fields so a hint degrades to the one-line input on
    an older client instead of failing the whole settings view.
 
+## `bb.sdk.threads.experimental_listPluginMetadata`
+
+**What it does.** `POST /threads/plugin-metadata` with
+`{ pluginId, threadIds }` (1–200 ids) returns `{ threads: { threadId,
+metadata }[] }` for each requested thread that holds that plugin's metadata
+namespace, archived and deleted threads included, in one
+`WHERE plugin_id = ? AND thread_id IN (…)` query on the
+`thread_plugin_metadata` primary key. Threads without a namespace are omitted;
+corrupt namespaces are omitted and logged without their content, like the
+single-thread read. The core SDK takes `{ pluginId, threadIds, signal? }`; the
+plugin-bound SDKs (backend `bb.sdk`, app `useSdk()`, and the fake host) default
+`pluginId` to the calling plugin, like `getPluginMetadata` and
+`updatePluginMetadata`. The route trusts its `pluginId` like the single-thread
+routes, because app requests carry no plugin identity. First caller: push-notifications'
+`threadNotifications.list`, which the Notifications thread action calls with
+the ids it has not cached yet.
+
+**Audit before stabilizing.**
+
+1. **Route binding.** Any caller can read any plugin's namespace, as with
+   the single-thread metadata routes. Decide whether plugin requests should
+   carry an identity the routes can enforce.
+2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
+   attributes layer replaces per-registration reads.
+
+## `bb.sdk.threads.experimental_listAncestors`
+
+**What it does.** `POST /threads/ancestors` with `{ threadIds }` (1–200 ids)
+returns `{ threads: { threadId, ancestorIds }[] }`: each requested thread that
+exists, once, with its ancestors' ids from the parent up to the root (empty
+for a root thread). Archived and deleted threads are included; unknown ids
+are omitted. One recursive query follows `parent_thread_id` by primary key,
+so the cost is one indexed lookup per level, and core's depth limit keeps
+that to a few. Available unchanged on the core SDK and the plugin-bound SDKs.
+First caller: push-notifications, which reads each thread's ancestors and
+then their levels with `threads.experimental_listPluginMetadata`, so a
+parent's limit always follows the current tree, including a thread nested
+under a new parent or released when its parent is archived.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers also need each ancestor's thread
+   (title, status) rather than only ids, and whether descendants belong in
+   the same API.
+2. **Batch size.** 200 ids per request; callers chunk, like
+   `experimental_listPluginMetadata`.
+
+## `PluginSettingDescriptor.experimental_optionLabels`
+
+**What it does.** A `type: "select"` setting descriptor field
+(`bb.settings.define`): a record from option value to display label. The
+settings form shows the label in the picker and as the current value; an
+option without a label shows its value, as before. Stored values, defaults,
+`settings.get()` and `bb plugin config <id> set <key> <value>` keep using the
+option values, so a plugin can rename a label without migrating stored data.
+A label keyed by something that is not one of `options` is refused at define
+time. The field travels in the settings view (`GET /plugins/:id/settings`)
+like `experimental_multiline`. First consumer: push-notifications'
+`defaultLevel` and `childLevel` (`all` shows as "All activity").
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide between this parallel record and `options` accepting
+   `{ value, label, description? }` objects; the object form keeps labels
+   beside their values and makes per-option descriptions possible, but every
+   reader of `options` (host policy, server contract, CLI, settings form) has
+   to handle both forms.
+2. **CLI.** `bb plugin config <id>` still lists raw option values, which is
+   what `set` accepts; decide whether it should also print labels.
+
 ## `bb.server.experimental_dataDir`
 
 **Kept experimental (2026-08-22).** A bare data-directory path does not
@@ -2970,15 +3040,36 @@ surface pays one subscription and one pure `item` call per registration; a
 throw from `useData` drops that registration, a throw from `item` drops it for
 that thread, and `run` errors are logged and contained.
 
+`useData` receives `{ threadIds }`: every thread some surface currently
+evaluates actions for (`experimental_useThreadActions` callers, so sidebar
+rows on screen, the open thread's header, and open menus), reference-counted
+in the registry, sorted and deduplicated. A change is published once the set
+has been quiet for 32 ms, at most 100 ms after the first change, so rows that
+mount a frame apart during a scroll step arrive in one change. A surface
+counts only while it is visible: the app sidebar wraps the thread list in
+`ThreadActionSurfaceVisibility`, visible when its body is shown and the
+sidebar (or the compact drawer) is open, so a hidden sidebar on a settings
+route contributes no ids even if a plugin list mounts rows. It lives in
+its own store read only by the collectors, so a change re-renders one
+collector per registration, never the rows. Registrations without per-thread
+state ignore it. This is the recommended pattern for per-thread data until an
+attributes layer lands: keep an id-keyed cache, fetch only the ids not in it
+in one batch, apply realtime updates per id, and fetch nothing for an empty
+list.
+
 Placement is static: a registration carries `group` and `order?`, and the
 host keeps registrations sorted by `group` (string compare), then `order`
 (unset sorts last), then registration order, so menus (with a separator
 between groups) and the quick-action picker share one order. An evaluated
-action is `{ label, icon, variant?, disabled?, choices?, run }`. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
+action is `{ label, detail?, icon, variant?, disabled?, choices?, run }`;
+`detail` is a muted second line under the label (and follows the label in a
+quick-action tooltip), such as a choice list's current value. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
 `2_organize`, `3_settings`, `4_lifecycle`); any other string forms its own
 group. `choices` is data (heading, hint, items): a submenu on desktop, a drawer
 step with Back at compact width, a popover from a row quick-action button; the
-picked id reaches `run` as `value`. `run` also receives `requestRename`, the
+picked id reaches `run` as `value`. `heading` (default: the label) titles the
+drawer step and the popover; desktop submenus show none because their trigger
+names them. `hint` is a footnote below the choices. `run` also receives `requestRename`, the
 surface's own rename editor or bb's dialog.
 
 bb's own actions are registrations of the same shape under the reserved
@@ -2987,6 +3078,17 @@ environment, Copy thread link, Mark read/unread, Pin/Unpin, Rename,
 Archive/Unarchive, and Delete. The
 thread-list plugin registers Move to section (`thread-list/move`) because the
 destinations depend on its organization and section-order preferences. The
+push-notifications plugin registers Notifications
+(`push-notifications/notifications`) in `3_settings`: its `useData` keeps an
+id-keyed cache of levels, fetches the `threadIds` it has not loaded in
+`threadNotifications.list` batches of up to 200 (built on
+`threads.experimental_listAncestors` and
+`threads.experimental_listPluginMetadata`, so a parent's limit is read from
+the current tree), applies its `threadNotifications` realtime channel, and
+refetches after a reconnect; `item` resolves the level
+with the plugin's shared resolver, shows it as `detail` with a per-level icon
+(declared `push-notifications/ringing` and `push-notifications/off`, built-in
+`BellDot`), and `choices` sets it. The
 header menu, mobile recents, and both sidebar row menus render the host
 components; the row's hover quick actions read `experimental_useThreadActions`
 with `keys`; the thread archive keyboard command runs `bb--core/archive`.
@@ -3016,9 +3118,10 @@ menu surface against the same registrations.
 
 **Audit before stabilizing.**
 
-1. **Per-thread data.** `useData` has no visible-id batching; a plugin with
-   per-thread state loads its whole map once. Decide whether the host should
-   pass visible thread ids before a plugin needs paging.
+1. **Per-thread data.** `threadIds` makes each registration fetch and cache
+   per-thread state itself. Decide whether a host attributes layer should
+   batch those reads across registrations, and whether `useData` should move
+   onto `experimental_useRpcQuery`.
 2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.

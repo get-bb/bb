@@ -195,6 +195,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: [
           "PluginThreadActionRegistration",
+          "PluginThreadActionDataInput",
           "PluginThreadActionItemInput",
           "PluginThreadActionTarget",
           "PluginThreadAction",
@@ -207,7 +208,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_ThreadActionsContextMenu",
           "experimental_THREAD_ACTION_GROUPS",
         ],
-        firstParty: ["Thread list"],
+        firstParty: ["Push notifications", "Thread list"],
         experimental: true,
       },
       {
@@ -1295,6 +1296,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Keep plugin data with the thread it belongs to, hidden from the model",
           "Seed it when spawning or forking a thread",
           "Read it when configuring that thread's agent",
+          "Read it for many threads at once, along with each thread's ancestors",
         ],
         apiSymbols: [
           "PluginBbSdk",
@@ -1302,7 +1304,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ReadonlyJsonValue",
           "BbPluginApi",
         ],
-        firstParty: ["Workflows"],
+        firstParty: ["Push notifications", "Workflows"],
       },
       {
         id: "desktop-browsers",

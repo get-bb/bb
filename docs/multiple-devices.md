@@ -135,7 +135,14 @@ bb push-notifications list
 bb push-notifications add --token <expo-push-token> --platform ios --label <device-name>
 bb push-notifications remove <id>
 bb push-notifications status
+bb push-notifications thread <thread> [--level inherit|all|input-only|muted]
 ```
+
+`thread` prints a thread's resolved notification level and where it comes from;
+with `--level` it sets the thread's own level. A thread uses its own level,
+else the `childLevel` setting if it has a parent (default `input-only`), else
+`defaultLevel` (default `all`). A thread's level also limits its child
+threads: every ancestor's own level caps the result.
 
 Turn delivery off with `bb plugin disable push-notifications`. The plugin keeps
 registrations in its private storage. Enable the plugin to resume delivery.

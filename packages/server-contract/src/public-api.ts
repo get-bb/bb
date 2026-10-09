@@ -257,6 +257,10 @@ import type {
   QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  PluginThreadMetadataListRequest,
+  PluginThreadMetadataListResponse,
+  ThreadAncestorsListRequest,
+  ThreadAncestorsListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -317,6 +321,8 @@ import {
   createThreadRequestSchema,
   forkThreadRequestSchema,
   updateThreadPluginMetadataRequestSchema,
+  pluginThreadMetadataListRequestSchema,
+  threadAncestorsListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -1372,7 +1378,33 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadResponse>(),
     }),
+    /**
+     * Each of `threadIds` (1–200) that exists, with its ancestors' ids from
+     * the parent up to the root; archived and deleted threads included.
+     * Unknown ids are omitted.
+     */
+    ancestors: defineRoute({
+      path: "/threads/ancestors",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadAncestorsListRequest>(
+        threadAncestorsListRequestSchema,
+      ),
+      response: jsonResponse<ThreadAncestorsListResponse>(),
+    }),
     pluginMetadata: {
+      /**
+       * `pluginId`'s metadata for each of `threadIds` (1–200) that has any,
+       * archived and deleted threads included. Threads without a namespace
+       * and corrupt records are omitted.
+       */
+      list: defineRoute({
+        path: "/threads/plugin-metadata",
+        method: "post",
+        request: jsonRequest<EmptyInput, PluginThreadMetadataListRequest>(
+          pluginThreadMetadataListRequestSchema,
+        ),
+        response: jsonResponse<PluginThreadMetadataListResponse>(),
+      }),
       get: defineRoute({
         path: "/threads/:id/plugin-metadata",
         method: "get",

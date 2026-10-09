@@ -392,6 +392,9 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
       ...pluginSettingBaseSchema,
       type: z.literal("select"),
       options: z.array(z.string().min(1)).min(1),
+      experimental_optionLabels: z
+        .record(z.string().min(1), z.string().min(1))
+        .optional(),
       default: z.string().optional(),
     })
     .strict(),

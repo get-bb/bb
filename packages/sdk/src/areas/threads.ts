@@ -43,6 +43,8 @@ import type {
   ThreadPendingInteractionsResponse,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  PluginThreadMetadataListResponse,
+  ThreadAncestorsListResponse,
   ThreadPluginMetadataResponse,
   ThreadSearchResponse,
   ThreadStorageFileListResponse,
@@ -172,6 +174,8 @@ export interface ThreadOutputResponse {
 }
 export type ThreadMutationResult = ThreadResponse;
 export type ThreadPluginMetadataResult = ThreadPluginMetadataResponse;
+export type PluginThreadMetadataListResult = PluginThreadMetadataListResponse;
+export type ThreadAncestorsListResult = ThreadAncestorsListResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -216,7 +220,8 @@ export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
 export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
 export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
-export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions | null;
+export type ThreadDefaultExecutionOptionsResult =
+  ResolvedThreadExecutionOptions | null;
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
@@ -258,6 +263,15 @@ export interface ThreadPluginMetadataArgs {
   pluginId: string;
   signal?: AbortSignal;
   threadId: string;
+}
+export interface PluginThreadMetadataListArgs {
+  pluginId: string;
+  threadIds: readonly string[];
+  signal?: AbortSignal;
+}
+export interface ThreadAncestorsListArgs {
+  threadIds: readonly string[];
+  signal?: AbortSignal;
 }
 export interface ThreadPluginMetadataUpdateArgs {
   threadId: string;
@@ -594,6 +608,24 @@ export interface ThreadsArea {
   getPluginMetadata(
     args: ThreadPluginMetadataArgs,
   ): Promise<ThreadPluginMetadataResult>;
+  /**
+   * `pluginId`'s metadata for each of `threadIds` (1–200 per request) that
+   * has any, as `{ threadId, metadata }` rows; archived and deleted threads
+   * included.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listPluginMetadata(
+    args: PluginThreadMetadataListArgs,
+  ): Promise<PluginThreadMetadataListResult>;
+  /**
+   * Each of `threadIds` (1–200 per request) that exists, with `ancestorIds`
+   * from its parent up to the root (empty for a root thread); archived and
+   * deleted threads included, unknown ids omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listAncestors(
+    args: ThreadAncestorsListArgs,
+  ): Promise<ThreadAncestorsListResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1225,6 +1257,24 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    async experimental_listAncestors(input) {
+      return transport.readJson(
+        transport.api.v1.threads.ancestors.$post(
+          { json: { threadIds: [...input.threadIds] } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listPluginMetadata(input) {
+      return transport.readJson(
+        transport.api.v1.threads["plugin-metadata"].$post(
+          {
+            json: { pluginId: input.pluginId, threadIds: [...input.threadIds] },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async getPluginMetadata(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["plugin-metadata"].$get(

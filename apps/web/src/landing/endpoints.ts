@@ -56,16 +56,69 @@ export async function handleDownload(
   waitUntil: (promise: Promise<void>) => void,
 ): Promise<Response> {
   const requestUrl = new URL(request.url);
-  waitUntil(
-    trackDownloadClick({
-      platform,
-      postHogKey: env.LANDING_POSTHOG_KEY,
-      request,
-      requestUrl,
-    }),
-  );
-  const location = await resolveDownloadUrl(platform);
-  return redirectResponse(location);
+  const range = request.headers.get("range");
+  if (isFirstByteRequest(range)) {
+    waitUntil(
+      trackDownloadClick({
+        platform,
+        postHogKey: env.LANDING_POSTHOG_KEY,
+        request,
+        requestUrl,
+      }),
+    );
+  }
+  const asset = await resolveInstallerAsset(platform);
+  if (!asset) {
+    return redirectResponse(DOWNLOAD_FALLBACK_URL);
+  }
+  return streamInstaller(asset, range);
+}
+
+type InstallerAsset = {
+  name: string;
+  url: string;
+};
+
+function isFirstByteRequest(range: string | null): boolean {
+  return range === null || /^bytes=0-/.test(range.trim());
+}
+
+async function streamInstaller(
+  asset: InstallerAsset,
+  range: string | null,
+): Promise<Response> {
+  let upstream: Response;
+  try {
+    upstream = await fetch(
+      asset.url,
+      range === null ? undefined : { headers: { range } },
+    );
+  } catch {
+    return redirectResponse(DOWNLOAD_FALLBACK_URL);
+  }
+  if ((upstream.status !== 200 && upstream.status !== 206) || !upstream.body) {
+    return redirectResponse(DOWNLOAD_FALLBACK_URL);
+  }
+
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename="${asset.name}"`,
+    "Content-Type": "application/octet-stream",
+    "X-Content-Type-Options": "nosniff",
+  });
+  for (const name of [
+    "content-length",
+    "content-range",
+    "etag",
+    "last-modified",
+  ]) {
+    const value = upstream.headers.get(name);
+    if (value) {
+      headers.set(name, value);
+    }
+  }
+  return new Response(upstream.body, { headers, status: upstream.status });
 }
 
 function jsonResponse(body: object, status: number): Response {
@@ -153,14 +206,16 @@ function redirectResponse(location: string): Response {
   });
 }
 
-async function resolveDownloadUrl(platform: DesktopPlatform): Promise<string> {
+async function resolveInstallerAsset(
+  platform: DesktopPlatform,
+): Promise<InstallerAsset | null> {
   const download = DESKTOP_DOWNLOADS[platform];
   try {
     const response = await fetch(download.versionFeedUrl, {
       headers: { accept: "application/json" },
     });
     if (!response.ok) {
-      return DOWNLOAD_FALLBACK_URL;
+      return null;
     }
 
     const assetName = findInstallerAssetName(
@@ -168,12 +223,15 @@ async function resolveDownloadUrl(platform: DesktopPlatform): Promise<string> {
       download.installerExtension,
     );
     if (!assetName) {
-      return DOWNLOAD_FALLBACK_URL;
+      return null;
     }
 
-    return `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/${encodeURIComponent(assetName)}`;
+    return {
+      name: assetName,
+      url: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/${encodeURIComponent(assetName)}`,
+    };
   } catch {
-    return DOWNLOAD_FALLBACK_URL;
+    return null;
   }
 }
 
@@ -203,8 +261,7 @@ function isInstallerAssetName(
   return (
     value.length > installerExtension.length &&
     value.endsWith(installerExtension) &&
-    !value.includes("/") &&
-    !value.includes("\\")
+    /^[A-Za-z0-9._-]+$/.test(value)
   );
 }
 

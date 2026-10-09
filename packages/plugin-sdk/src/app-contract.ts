@@ -23,6 +23,8 @@ import type {
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
+  PluginThreadMetadataListArgs,
+  PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataResult,
   ThreadPluginMetadataUpdateArgs,
@@ -1187,11 +1189,16 @@ export interface ExperimentalClipboardContent {
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata"
+  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
   ): Promise<ThreadPluginMetadataResult>;
+  experimental_listPluginMetadata(
+    args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+      pluginId?: string;
+    },
+  ): Promise<PluginThreadMetadataListResult>;
   updatePluginMetadata(
     args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
       pluginId?: string;
@@ -1396,8 +1403,12 @@ export interface PluginThreadActionChoice {
  * button. `run` receives the picked choice's `id` as `value`.
  */
 export interface PluginThreadActionChoices {
+  /**
+   * Title of the drawer step and the quick-action popover; defaults to the
+   * action's label. Desktop submenus show none: their trigger names them.
+   */
   heading?: string;
-  /** Secondary text under the heading, e.g. where the current value comes from. */
+  /** Footnote below the choices, e.g. why the current value differs from the pick. */
   hint?: string;
   items: readonly PluginThreadActionChoice[];
 }
@@ -1417,6 +1428,11 @@ export interface PluginThreadActionRunInput {
 /** One evaluated thread action: what a registration shows for one thread. */
 export interface PluginThreadAction {
   label: string;
+  /**
+   * Short secondary text on a muted second line under the label, e.g. the
+   * current value of a choice list.
+   */
+  detail?: string;
   icon: BbIconName;
   variant?: "default" | "destructive";
   disabled?: boolean;
@@ -1426,6 +1442,19 @@ export interface PluginThreadAction {
    * or async) are contained and logged; they never break the menu.
    */
   run(input: PluginThreadActionRunInput): void | Promise<void>;
+}
+
+/** What a registration's `useData` receives. */
+export interface PluginThreadActionDataInput {
+  /**
+   * Every thread a visible surface currently shows actions for (sidebar rows
+   * on screen, the open thread's header, open menus); a hidden sidebar
+   * contributes none. Sorted, deduplicated, and published once the set has
+   * been quiet for 32 ms (at most 100 ms after the first change), so rows
+   * that mount a frame apart arrive together. Load per-thread state for these
+   * ids, fetching only ids not loaded yet.
+   */
+  threadIds: readonly string[];
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
@@ -1451,8 +1480,9 @@ export interface PluginThreadActionItemInput<Data> {
  * Delete, …) are registrations of this same shape.
  *
  * `useData` is a React hook the host calls once for the whole app, never per
- * thread or per menu; read app-wide state there (preferences, a batched
- * per-thread map, a realtime channel). `item` is pure and synchronous: it
+ * thread or per menu; read app-wide state there (preferences, a realtime
+ * channel, per-thread state for the `threadIds` it receives, fetched in one
+ * batch for the ids not loaded yet). `item` is pure and synchronous: it
  * derives the action for one thread from that thread and `data`, closing over
  * everything `run` needs, or returns null to hide it. A throw from either
  * drops only this registration.
@@ -1473,7 +1503,7 @@ export interface PluginThreadActionRegistration<Data = undefined> {
    */
   group: string;
   order?: number;
-  useData?(): Data;
+  useData?(input: PluginThreadActionDataInput): Data;
   item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
 }
 

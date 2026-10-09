@@ -350,7 +350,10 @@ windows must stay open; browser permission is requested in the plugin settings.
   bb push-notifications remove <id>
   bb push-notifications status
   bb push-notifications test <web|desktop>
+  bb push-notifications thread <thread> [--level inherit|all|input-only|muted]
   bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
+  bb plugin config push-notifications set defaultLevel <all|input-only|muted>
+  bb plugin config push-notifications set childLevel <inherit|all|input-only|muted>
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
@@ -361,6 +364,12 @@ config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
 The three channel switches default to true and apply immediately across this
 server. `test` broadcasts to all connected clients of the selected type with
 permission; OS notification settings still control whether a banner appears.
+`thread` prints a thread's resolved notification level and its source; with
+`--level` it sets the thread's own level. A thread uses its own level, else
+`childLevel` if it has a parent (default `input-only`; `inherit` follows
+`defaultLevel`), else `defaultLevel` (default `all`). A thread's level also
+limits its child threads: every ancestor's own level caps the result. `all` notifies on finished turns too, `input-only` keeps
+questions, approvals, and errors only, and `muted` sends nothing.
 
 Host files and voice transcription
 

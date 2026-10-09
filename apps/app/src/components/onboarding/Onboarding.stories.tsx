@@ -300,6 +300,7 @@ function AgentFrame({
   signInVariant = "guided",
   onSignIn = noop,
   onInstall = noop,
+  onViewInstallLog = noop,
   onCancelSignIn = noop,
   onRecheck = noop,
   ...chrome
@@ -310,6 +311,7 @@ function AgentFrame({
   signInVariant?: SignInVariant;
   onSignIn?: (id: string) => void;
   onInstall?: (id: string) => void;
+  onViewInstallLog?: (id: string) => void;
   onCancelSignIn?: (id: string) => void;
   onRecheck?: () => void;
 }) {
@@ -336,6 +338,7 @@ function AgentFrame({
         agents={loading ? null : buildAgents(states, signInVariant)}
         onSignIn={onSignIn}
         onInstall={onInstall}
+        onViewInstallLog={onViewInstallLog}
         onCancelSignIn={onCancelSignIn}
         onRecheck={onRecheck}
       />
@@ -870,7 +873,7 @@ export function Step1AgentStates() {
       </Captioned>
       <Captioned
         label="Installing, failed, update needed, unknown"
-        hint="Install and Update reuse the provider CLI install action. Unknown health never blocks or nags."
+        hint="Install and Update reuse the provider CLI install action. A failed install offers its log. Unknown health never blocks or nags."
       >
         <StoryWindow>
           <AgentFrame
@@ -878,7 +881,7 @@ export function Step1AgentStates() {
               "claude-code": { status: "installing" },
               codex: {
                 status: "installFailed",
-                message: "Install failed. Check the log, then retry.",
+                message: "Install failed",
                 canInstall: true,
               },
               pi: {

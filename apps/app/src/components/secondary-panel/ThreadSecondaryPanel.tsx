@@ -45,6 +45,7 @@ import {
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
+import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
@@ -428,6 +429,8 @@ function ThreadSecondaryPanelContent({
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
   const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
   const collapsedPanelTrafficLightReserveClassName =
     resolveCollapsedPanelTrafficLightReserveClassName({
       isConversationCollapsed,
@@ -856,7 +859,9 @@ function ThreadSecondaryPanelContent({
                   : null}
                 {renderRemoveSplitButton(onRemoveSplit)}
                 {showOuterControls &&
-                (renderAsDrawer || inlinePanelToggle === "button")
+                (renderAsDrawer ||
+                  (inlinePanelToggle === "button" &&
+                    !titleBarHostsRightPanelToggle))
                   ? renderHidePanelButton()
                   : null}
               </div>

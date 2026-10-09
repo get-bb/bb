@@ -55,6 +55,7 @@ import {
 } from "@/components/dialogs/ProjectMachineSetupDialog";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import type {
   SecondaryPanelPaneRenderContext,
@@ -1374,7 +1375,10 @@ function RootComposeSurface({
     },
     [openWorkspaceFile],
   );
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
   const showPinnedToggle =
+    !titleBarHostsRightPanelToggle &&
     (paneContext?.secondaryPanelHost ?? null) === null &&
     (!isSecondaryPanelOpen || isCompactViewport);
   const rootPanelToggle = showPinnedToggle ? (
@@ -1507,6 +1511,7 @@ function RootComposeSurface({
     <PluginDetailPanelContext.Provider value={pluginDetails}>
       <RootComposePanelCommandHandlers
         isFocused={isFocusedPane}
+        isOpen={isSecondaryPanelOpen}
         onClose={handleCloseWindowRequest}
         onToggle={handleToggleSecondaryPanel}
       />
