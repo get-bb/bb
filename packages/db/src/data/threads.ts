@@ -1984,6 +1984,39 @@ export function deleteThread(
   return true;
 }
 
+export function listThreadAncestors(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): Array<{ threadId: string; ancestorIds: string[] }> {
+  if (threadIds.length === 0) return [];
+  const rows = db.all<{ id: string; parentId: string | null }>(sql`
+    WITH RECURSIVE chain(id, parent_id) AS (
+      SELECT id, parent_thread_id FROM threads WHERE ${inArray(threads.id, [...threadIds])}
+      UNION
+      SELECT t.id, t.parent_thread_id FROM threads t JOIN chain c ON t.id = c.parent_id
+    )
+    SELECT id, parent_id AS parentId FROM chain
+  `);
+  const parentById = new Map(rows.map((row) => [row.id, row.parentId]));
+  const result: Array<{ threadId: string; ancestorIds: string[] }> = [];
+  for (const threadId of new Set(threadIds)) {
+    if (!parentById.has(threadId)) continue;
+    const ancestorIds: string[] = [];
+    let parentId = parentById.get(threadId) ?? null;
+    while (
+      parentId !== null &&
+      parentById.has(parentId) &&
+      parentId !== threadId &&
+      !ancestorIds.includes(parentId)
+    ) {
+      ancestorIds.push(parentId);
+      parentId = parentById.get(parentId) ?? null;
+    }
+    result.push({ threadId, ancestorIds });
+  }
+  return result;
+}
+
 function lifecycleThreadTreeIds(seed: SQL): SQL {
   return sql`(WITH RECURSIVE owned(id) AS (
     ${seed} UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id

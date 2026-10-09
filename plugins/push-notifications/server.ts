@@ -470,15 +470,6 @@ export function createPushNotificationsPlugin(
     bb.events.on("thread.failed", (payload) => {
       sender.onThreadFailed(payload);
     });
-    bb.events.on("thread.created", async ({ thread }) => {
-      try {
-        await preferences.onThreadCreated(thread);
-      } catch (error) {
-        bb.log.warn(
-          `Could not store inherited notification level for thread ${thread.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    });
     bb.background.service("push-sender", {
       async start(signal) {
         await sender.start();

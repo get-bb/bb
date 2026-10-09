@@ -259,6 +259,8 @@ import type {
   ThreadResponse,
   PluginThreadMetadataListRequest,
   PluginThreadMetadataListResponse,
+  ThreadAncestorsListRequest,
+  ThreadAncestorsListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -320,6 +322,7 @@ import {
   forkThreadRequestSchema,
   updateThreadPluginMetadataRequestSchema,
   pluginThreadMetadataListRequestSchema,
+  threadAncestorsListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -1374,6 +1377,19 @@ export const publicApiRoutes = {
         updateThreadRequestSchema,
       ),
       response: jsonResponse<ThreadResponse>(),
+    }),
+    /**
+     * Each of `threadIds` (1–200) that exists, with its ancestors' ids from
+     * the parent up to the root; archived and deleted threads included.
+     * Unknown ids are omitted.
+     */
+    ancestors: defineRoute({
+      path: "/threads/ancestors",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadAncestorsListRequest>(
+        threadAncestorsListRequestSchema,
+      ),
+      response: jsonResponse<ThreadAncestorsListResponse>(),
     }),
     pluginMetadata: {
       /**

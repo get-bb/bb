@@ -11,8 +11,8 @@ import {
   THREAD_NOTIFICATIONS_CHANNEL,
 } from "./contract.js";
 import {
-  parseStoredThreadNotifications,
-  type StoredThreadNotifications,
+  parseStoredNotificationLevel,
+  type NotificationLevel,
 } from "./preferences.js";
 import { createPushNotificationsPlugin } from "./server.js";
 import type { ExpoPushMessage, PushSenderFetch } from "./sender.js";
@@ -115,10 +115,18 @@ async function setup(options: SetupOptions = {}) {
           if (!thread) throw new Error("Thread not found");
           return thread;
         },
-        list: async (args) =>
-          [...threads.values()].filter(
-            (thread) => thread.parentThreadId === args?.parentThreadId,
-          ),
+        experimental_listAncestors: async ({ threadIds }) => ({
+          threads: [...new Set(threadIds)].flatMap((threadId) => {
+            if (!threads.has(threadId)) return [];
+            const ancestorIds: string[] = [];
+            let parentId = threads.get(threadId)?.parentThreadId ?? null;
+            while (parentId !== null && threads.has(parentId)) {
+              ancestorIds.push(parentId);
+              parentId = threads.get(parentId)?.parentThreadId ?? null;
+            }
+            return [{ threadId, ancestorIds }];
+          }),
+        }),
         getPluginMetadata: async ({ threadId }) => {
           if (!threads.has(threadId)) throw new Error("Thread not found");
           return metadata.get(threadId) ?? {};
@@ -182,10 +190,14 @@ async function setup(options: SetupOptions = {}) {
     await fake.harness.lifecycle.dispose();
   }
 
-  function storedNotifications(
-    threadId: string,
-  ): StoredThreadNotifications | null {
-    return parseStoredThreadNotifications(metadata.get(threadId) ?? {});
+  function storedLevel(threadId: string): NotificationLevel | null {
+    return parseStoredNotificationLevel(metadata.get(threadId) ?? {});
+  }
+
+  function moveThread(threadId: string, parentThreadId: string | null) {
+    const thread = threads.get(threadId);
+    if (!thread) throw new Error("Thread not found");
+    threads.set(threadId, { ...thread, parentThreadId });
   }
 
   async function setLevel(threadId: string, level: string) {
@@ -231,7 +243,8 @@ async function setup(options: SetupOptions = {}) {
     listLevels,
     setLevel,
     setThread,
-    storedNotifications,
+    storedLevel,
+    moveThread,
     threads,
   };
 }
@@ -858,7 +871,7 @@ describe("thread notification levels", () => {
     }
   });
 
-  it("stores the quietest ancestor cap and clears rows that hold nothing", async () => {
+  it("stores only each thread's own level and resolves limits from the current tree", async () => {
     const host = await setup();
     try {
       const root = host.setThread({ id: "root" });
@@ -870,26 +883,22 @@ describe("thread notification levels", () => {
       const other = host.setThread({ id: "other" });
 
       await host.setLevel(root.id, "muted");
-      const rootMuted = { level: "muted", threadId: root.id };
-      expect(host.storedNotifications(child.id)).toEqual({
+      expect(host.storedLevel(root.id)).toBe("muted");
+      expect(host.storedLevel(child.id)).toBeNull();
+      expect(host.storedLevel(grandchild.id)).toBeNull();
+      expect(host.storedLevel(other.id)).toBeNull();
+      await expect(host.getLevel(grandchild.id)).resolves.toEqual({
         own: "inherit",
-        ancestorCap: rootMuted,
+        effective: "muted",
+        source: "ancestor",
       });
-      expect(host.storedNotifications(grandchild.id)).toEqual({
-        own: "inherit",
-        ancestorCap: rootMuted,
-      });
-      expect(host.storedNotifications(other.id)).toBeNull();
 
       await host.setLevel(child.id, "all");
+      expect(host.storedLevel(child.id)).toBe("all");
       await expect(host.getLevel(child.id)).resolves.toEqual({
         own: "all",
         effective: "muted",
         source: "parent",
-      });
-      expect(host.storedNotifications(grandchild.id)).toEqual({
-        own: "inherit",
-        ancestorCap: rootMuted,
       });
       await expect(host.getLevel(grandchild.id)).resolves.toEqual({
         own: "inherit",
@@ -898,15 +907,7 @@ describe("thread notification levels", () => {
       });
 
       await host.setLevel(root.id, "inherit");
-      expect(host.storedNotifications(root.id)).toBeNull();
-      expect(host.storedNotifications(child.id)).toEqual({
-        own: "all",
-        ancestorCap: null,
-      });
-      expect(host.storedNotifications(grandchild.id)).toEqual({
-        own: "inherit",
-        ancestorCap: { level: "all", threadId: child.id },
-      });
+      expect(host.storedLevel(root.id)).toBeNull();
       await expect(host.getLevel(child.id)).resolves.toEqual({
         own: "all",
         effective: "all",
@@ -919,8 +920,7 @@ describe("thread notification levels", () => {
       });
 
       await host.setLevel(child.id, "inherit");
-      expect(host.storedNotifications(child.id)).toBeNull();
-      expect(host.storedNotifications(grandchild.id)).toBeNull();
+      expect(host.storedLevel(child.id)).toBeNull();
 
       await host.harness.behavior.setSettings({ defaultLevel: "muted" });
       await expect(host.getLevel(root.id)).resolves.toEqual({
@@ -938,29 +938,87 @@ describe("thread notification levels", () => {
       await expect(host.getLevel("missing")).rejects.toThrow(
         "Thread not found",
       );
+      await expect(host.setLevel("missing", "muted")).rejects.toThrow(
+        "Thread not found",
+      );
     } finally {
       await host.cleanup();
     }
   });
 
-  it("lists stored rows in one call and publishes every write", async () => {
+  it("follows a thread nested under a new parent or released from an archived one", async () => {
+    const host = await setup();
+    try {
+      const muted = host.setThread({ id: "muted" });
+      const loud = host.setThread({ id: "loud" });
+      const worker = host.setThread({ id: "worker", parentThreadId: muted.id });
+      const subWorker = host.setThread({
+        id: "sub-worker",
+        parentThreadId: worker.id,
+        status: "active",
+      });
+      await host.setLevel(muted.id, "muted");
+      await host.setLevel(loud.id, "all");
+      await expect(host.getLevel(subWorker.id)).resolves.toMatchObject({
+        effective: "muted",
+        source: "ancestor",
+      });
+
+      host.moveThread(worker.id, loud.id);
+      await expect(host.getLevel(subWorker.id)).resolves.toEqual({
+        own: "inherit",
+        effective: "input-only",
+        source: "child-default",
+      });
+      const question = pendingQuestion(subWorker.id, "Ship it?");
+      host.interactions.set(subWorker.id, [question]);
+      await host.harness.behavior.emitThreadEvent("interaction.pending", {
+        thread: host.threads.get(subWorker.id)!,
+        interaction: question,
+      });
+      await waitForCoalesce();
+      expect(host.clientSignals().map((signal) => signal.payload)).toEqual([
+        expect.objectContaining({ threadId: subWorker.id, body: "Ship it?" }),
+      ]);
+
+      host.moveThread(worker.id, muted.id);
+      await expect(host.getLevel(subWorker.id)).resolves.toMatchObject({
+        effective: "muted",
+        source: "ancestor",
+      });
+      host.moveThread(worker.id, null);
+      await expect(host.getLevel(worker.id)).resolves.toEqual({
+        own: "inherit",
+        effective: "all",
+        source: "global",
+      });
+      await expect(host.getLevel(subWorker.id)).resolves.toEqual({
+        own: "inherit",
+        effective: "input-only",
+        source: "child-default",
+      });
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("lists resolved levels in one call and publishes the written thread", async () => {
     const host = await setup();
     try {
       const root = host.setThread({ id: "root" });
-      const child = host.setThread({ id: "child", parentThreadId: root.id });
+      host.setThread({ id: "child", parentThreadId: root.id });
       host.setThread({ id: "other" });
 
       await host.setLevel(root.id, "muted");
-      const inherited = {
-        own: "inherit",
-        ancestorCap: { level: "muted", threadId: root.id },
-      };
       await expect(
         host.listLevels(["root", "child", "other"]),
       ).resolves.toEqual({
         threads: {
           root: { own: "muted", ancestorCap: null },
-          child: inherited,
+          child: {
+            own: "inherit",
+            ancestorCap: { level: "muted", threadId: root.id },
+          },
         },
       });
       expect(host.levelUpdates()).toEqual([
@@ -968,41 +1026,15 @@ describe("thread notification levels", () => {
           threadId: root.id,
           notifications: { own: "muted", ancestorCap: null },
         },
-        { threadId: child.id, notifications: inherited },
       ]);
-
-      const created = host.setThread({
-        id: "created",
-        parentThreadId: child.id,
-      });
-      await host.harness.behavior.emitThreadEvent("thread.created", {
-        thread: created,
-      });
-      expect(host.storedNotifications(created.id)).toEqual(inherited);
-      expect(host.levelUpdates().at(-1)).toEqual({
-        threadId: created.id,
-        notifications: inherited,
-      });
-
-      const plain = host.setThread({ id: "plain" });
-      const plainChild = host.setThread({
-        id: "plain-child",
-        parentThreadId: plain.id,
-      });
-      await host.harness.behavior.emitThreadEvent("thread.created", {
-        thread: plainChild,
-      });
-      expect(host.storedNotifications(plainChild.id)).toBeNull();
-      expect(host.levelUpdates()).toHaveLength(3);
 
       await host.setLevel(root.id, "inherit");
-      expect(host.levelUpdates().slice(3)).toEqual([
-        { threadId: root.id, notifications: null },
-        { threadId: child.id, notifications: null },
-        { threadId: created.id, notifications: null },
-      ]);
+      expect(host.levelUpdates().at(-1)).toEqual({
+        threadId: root.id,
+        notifications: null,
+      });
       await expect(
-        host.listLevels(["root", "child", "created"]),
+        host.listLevels(["root", "child", "other"]),
       ).resolves.toEqual({ threads: {} });
     } finally {
       await host.cleanup();
@@ -1056,9 +1088,6 @@ describe("thread notification levels", () => {
       ).resolves.toMatchObject({
         exitCode: 0,
         stdout: "Notifications for child: muted (limited by parent)",
-      });
-      await host.harness.behavior.emitThreadEvent("thread.created", {
-        thread: grandchild,
       });
       await expect(
         host.harness.behavior.runCli(["thread", grandchild.id]),
@@ -1145,9 +1174,6 @@ describe("thread notification levels", () => {
         parentThreadId: quiet.id,
         status: "active",
       });
-      await host.harness.behavior.emitThreadEvent("thread.created", {
-        thread: inheritedQuiet,
-      });
       const inheritedQuestion = pendingQuestion(inheritedQuiet.id, "Merge?");
       host.interactions.set(inheritedQuiet.id, [inheritedQuestion]);
       await host.harness.behavior.emitThreadEvent("interaction.pending", {
@@ -1190,9 +1216,6 @@ describe("thread notification levels", () => {
       const chosenWorker = host.setThread({
         id: "chosen-worker",
         parentThreadId: chosen.id,
-      });
-      await host.harness.behavior.emitThreadEvent("thread.created", {
-        thread: chosenWorker,
       });
       for (const thread of [plain, chosen, chosenWorker]) {
         await host.harness.behavior.emitThreadEvent("thread.idle", {

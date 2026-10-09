@@ -23,12 +23,12 @@ import {
   type NotificationDefaults,
   type NotificationLevel,
   type OwnNotificationLevel,
-  type StoredThreadNotifications,
+  type ThreadNotificationInputs,
   type ThreadNotifications,
 } from "./preferences.js";
 
 export interface ThreadNotificationsData {
-  levels: ReadonlyMap<string, StoredThreadNotifications>;
+  levels: ReadonlyMap<string, ThreadNotificationInputs>;
   defaults: NotificationDefaults | null;
   setLevel(threadId: string, level: OwnNotificationLevel): Promise<void>;
 }
@@ -55,18 +55,18 @@ function chunk(ids: readonly string[]): string[][] {
 }
 
 function cachedLevel(
-  stored: StoredThreadNotifications,
-): StoredThreadNotifications | null {
+  stored: ThreadNotificationInputs,
+): ThreadNotificationInputs | null {
   return stored.own === "inherit" && stored.ancestorCap === null
     ? null
     : stored;
 }
 
 function withLevel(
-  levels: ReadonlyMap<string, StoredThreadNotifications>,
+  levels: ReadonlyMap<string, ThreadNotificationInputs>,
   threadId: string,
-  stored: StoredThreadNotifications | null,
-): ReadonlyMap<string, StoredThreadNotifications> {
+  stored: ThreadNotificationInputs | null,
+): ReadonlyMap<string, ThreadNotificationInputs> {
   const next = new Map(levels);
   if (stored === null) next.delete(threadId);
   else next.set(threadId, stored);
@@ -83,7 +83,7 @@ function useThreadNotificationsData({
   const latestThreadIds = useRef(threadIds);
   const requested = useRef(new Set<string>());
   const [levels, setLevels] = useState<
-    ReadonlyMap<string, StoredThreadNotifications>
+    ReadonlyMap<string, ThreadNotificationInputs>
   >(() => new Map());
 
   const fetchLevels = useCallback(

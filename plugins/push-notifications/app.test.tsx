@@ -8,7 +8,7 @@ import type {
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pushNotificationsRpcContract } from "./contract.js";
-import type { StoredThreadNotifications } from "./preferences.js";
+import type { ThreadNotificationInputs } from "./preferences.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
@@ -99,7 +99,7 @@ function Probe({
 }
 
 function renderNotifications(
-  stored: Record<string, StoredThreadNotifications>,
+  stored: Record<string, ThreadNotificationInputs>,
   threadIds: readonly string[],
 ) {
   let itemFor: ItemFor | null = null;
@@ -161,7 +161,7 @@ function renderNotifications(
       view.inspection.rpcCalls
         .filter((call) => call.method === "threadNotifications.list")
         .map((call) => call.input),
-    restore(next: Record<string, StoredThreadNotifications>) {
+    restore(next: Record<string, ThreadNotificationInputs>) {
       current = next;
     },
   };

@@ -1188,6 +1188,28 @@ the ids it has not cached yet.
 2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
    attributes layer replaces per-registration reads.
 
+## `bb.sdk.threads.experimental_listAncestors`
+
+**What it does.** `POST /threads/ancestors` with `{ threadIds }` (1–200 ids)
+returns `{ threads: { threadId, ancestorIds }[] }`: each requested thread that
+exists, once, with its ancestors' ids from the parent up to the root (empty
+for a root thread). Archived and deleted threads are included; unknown ids
+are omitted. One recursive query follows `parent_thread_id` by primary key,
+so the cost is one indexed lookup per level, and core's depth limit keeps
+that to a few. Available unchanged on the core SDK and the plugin-bound SDKs.
+First caller: push-notifications, which reads each thread's ancestors and
+then their levels with `threads.experimental_listPluginMetadata`, so a
+parent's limit always follows the current tree, including a thread nested
+under a new parent or released when its parent is archived.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers also need each ancestor's thread
+   (title, status) rather than only ids, and whether descendants belong in
+   the same API.
+2. **Batch size.** 200 ids per request; callers chunk, like
+   `experimental_listPluginMetadata`.
+
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
 **What it does.** A `type: "select"` setting descriptor field
@@ -3058,10 +3080,12 @@ thread-list plugin registers Move to section (`thread-list/move`) because the
 destinations depend on its organization and section-order preferences. The
 push-notifications plugin registers Notifications
 (`push-notifications/notifications`) in `3_settings`: its `useData` keeps an
-id-keyed cache of stored levels, fetches the `threadIds` it has not loaded in
+id-keyed cache of levels, fetches the `threadIds` it has not loaded in
 `threadNotifications.list` batches of up to 200 (built on
-`threads.experimental_listPluginMetadata`), applies its `threadNotifications`
-realtime channel, and refetches after a reconnect; `item` resolves the level
+`threads.experimental_listAncestors` and
+`threads.experimental_listPluginMetadata`, so a parent's limit is read from
+the current tree), applies its `threadNotifications` realtime channel, and
+refetches after a reconnect; `item` resolves the level
 with the plugin's shared resolver, shows it as `detail` with a per-level icon
 (declared `push-notifications/ringing` and `push-notifications/off`, built-in
 `BellDot`), and `choices` sets it. The

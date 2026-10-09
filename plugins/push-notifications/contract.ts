@@ -2,7 +2,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   ownNotificationLevelSchema,
-  storedThreadNotificationsSchema,
+  threadNotificationInputsSchema,
 } from "./preferences.js";
 
 export const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
@@ -57,7 +57,7 @@ export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
 export const threadNotificationsUpdateSchema = z
   .object({
     threadId: z.string().min(1),
-    notifications: storedThreadNotificationsSchema.nullable(),
+    notifications: threadNotificationInputsSchema.nullable(),
   })
   .strict();
 export type ThreadNotificationsUpdate = z.infer<
@@ -97,7 +97,7 @@ export const pushNotificationsRpcContract = defineRpcContract({
       .strict(),
     output: z
       .object({
-        threads: z.record(z.string(), storedThreadNotificationsSchema),
+        threads: z.record(z.string(), threadNotificationInputsSchema),
       })
       .strict(),
   },
@@ -108,7 +108,7 @@ export const pushNotificationsRpcContract = defineRpcContract({
         level: ownNotificationLevelSchema,
       })
       .strict(),
-    output: storedThreadNotificationsSchema,
+    output: threadNotificationInputsSchema,
   },
 });
 

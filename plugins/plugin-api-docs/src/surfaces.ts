@@ -1296,7 +1296,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Keep plugin data with the thread it belongs to, hidden from the model",
           "Seed it when spawning or forking a thread",
           "Read it when configuring that thread's agent",
-          "List every live thread holding your data in one call",
+          "Read it for many threads at once, along with each thread's ancestors",
         ],
         apiSymbols: [
           "PluginBbSdk",
