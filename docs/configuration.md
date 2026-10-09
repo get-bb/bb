@@ -800,8 +800,9 @@ adapter)", which is off by default. Turn it on in Settings → Plugins or with
 so existing threads keep working, and only one of the two ACP plugins runs at
 a time: turning the new one on turns "ACP providers" off, turning it off
 turns "ACP providers" back on, and the `customAgents` list follows the switch
-in both directions. The new adapter adds agent options and live slash
-commands in the composer, agent questions as question cards, sign-in
+in both directions. The new adapter adds agent options in the model picker
+(the agent's mode stays in the composer footer), live slash commands in the
+composer, agent questions as question cards, sign-in
 guidance, and the official ACP registry: its settings page lists the
 registry's agents with an Add button, and `bb acp registry`, `bb acp add
 <agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding

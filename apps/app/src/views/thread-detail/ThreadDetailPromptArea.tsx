@@ -78,7 +78,13 @@ import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/Thre
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
-import { SessionOptionsMenu } from "@/components/pickers/SessionOptionsMenu";
+import {
+  buildSessionOptionMenuSections,
+  sessionOptionViewSelections,
+  SessionOptionsMenu,
+  splitSessionOptionsByPlacement,
+  type SessionOptionChoices,
+} from "@/components/pickers/SessionOptionsMenu";
 import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
 import type {
   WorkspaceChangedFileSelection,
@@ -183,6 +189,7 @@ export interface ThreadDetailSentMessageEdit {
 }
 
 const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
+const NO_SESSION_OPTION_SELECTIONS: SessionOptionChoices = {};
 const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
 
@@ -683,6 +690,40 @@ export function ThreadDetailPromptArea({
     () => promptHistoryEntriesToDrafts(promptHistoryEntries),
     [promptHistoryEntries],
   );
+  const [handoffSourceSelection, setHandoffSourceSelection] = useState<{
+    threadId: string;
+    execution: ModelReasoningPickerHandoffSelection;
+    serviceTier: ServiceTier | undefined;
+    permissionMode: PermissionMode;
+    overriddenFallbackIdentity: string | null;
+  } | null>(null);
+  const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
+  const sessionOptionChoices = useThreadSessionOptionChoices({
+    threadId: thread.id,
+    options: sessionOptions,
+  });
+  const placedSessionOptions = useMemo(
+    () => splitSessionOptionsByPlacement(sessionOptions ?? []),
+    [sessionOptions],
+  );
+  const liveSessionOptionSelections = useMemo(
+    () =>
+      isHandoffSelection
+        ? NO_SESSION_OPTION_SELECTIONS
+        : sessionOptionViewSelections(
+            sessionOptions ?? [],
+            sessionOptionChoices.choices,
+          ),
+    [isHandoffSelection, sessionOptionChoices.choices, sessionOptions],
+  );
+  const pickerSessionOptionSections = useMemo(
+    () =>
+      buildSessionOptionMenuSections(
+        placedSessionOptions.picker,
+        sessionOptionChoices.choices,
+      ),
+    [placedSessionOptions.picker, sessionOptionChoices.choices],
+  );
   const {
     executionOptionsRouting,
     selectedProviderId,
@@ -720,6 +761,7 @@ export function ThreadDetailPromptArea({
     environmentHostId,
     scope: "component-local",
     resetKey: thread.id,
+    sessionOptionSelections: liveSessionOptionSelections,
     initialProviderId: thread.providerId,
     initialModel:
       modelFallback?.fallbackModel ?? defaultExecutionOptions?.model,
@@ -734,18 +776,6 @@ export function ThreadDetailPromptArea({
   const [overriddenFallbackIdentity, setOverriddenFallbackIdentity] = useState<
     string | null
   >(null);
-  const [handoffSourceSelection, setHandoffSourceSelection] = useState<{
-    threadId: string;
-    execution: ModelReasoningPickerHandoffSelection;
-    serviceTier: ServiceTier | undefined;
-    permissionMode: PermissionMode;
-    overriddenFallbackIdentity: string | null;
-  } | null>(null);
-  const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
-  const sessionOptionChoices = useThreadSessionOptionChoices({
-    threadId: thread.id,
-    options: sessionOptions,
-  });
   const isFallbackModelActive =
     !isHandoffSelection &&
     selectedProviderId === thread.providerId &&
@@ -1655,8 +1685,18 @@ export function ThreadDetailPromptArea({
         onExit: exitHandoff,
         onSelect: handleHandoffSelect,
       },
+      ...(isHandoffSelection || pickerSessionOptionSections.length === 0
+        ? {}
+        : {
+            agentOptions: {
+              sections: pickerSessionOptionSections,
+              onChange: sessionOptionChoices.choose,
+            },
+          }),
     }),
     [
+      pickerSessionOptionSections,
+      sessionOptionChoices.choose,
       effectiveSelectedModel,
       executionOptionsRouting,
       hasMultipleProviders,
@@ -2338,9 +2378,9 @@ export function ThreadDetailPromptArea({
   );
 
   const sessionOptionsControl =
-    isHandoffSelection || sessionOptions === null ? null : (
+    isHandoffSelection || placedSessionOptions.footer.length === 0 ? null : (
       <SessionOptionsMenu
-        options={sessionOptions}
+        options={placedSessionOptions.footer}
         choices={sessionOptionChoices.choices}
         onChange={sessionOptionChoices.choose}
       />

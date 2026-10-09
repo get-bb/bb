@@ -318,7 +318,8 @@ range is what gates a bridge: every bridge in this repo reports
   `bb/session-options` carries `{ options: [...] }`, the provider's per-session
   settings other than the model and reasoning level (each a `select` with
   `value` and `values`, or a `boolean`), with an optional `category` hint such
-  as `mode`; the composer's agent options menu and `bb thread options` read it.
+  as `mode`; the model picker and `bb thread options` read it, and the `mode`
+  option shows in the composer footer instead of the picker.
   Latest snapshot wins; a bridge re-emits the whole list when it changes and
   stays silent when it has not. A third kind, `bb/session-option-selections`,
   is written only by the server and refused from a bridge: it holds the
@@ -327,9 +328,10 @@ range is what gates a bridge: every bridge in this repo reports
   carry `sessionOptions`, the same option shape as `bb/session-options`, with
   `value` as the provider's default. A `select` lists only the values that
   model supports; a `boolean` with `fixed: true` says the model runs only with
-  that value. bb shows the union across models in the new-thread composer,
-  disables a model the current choices rule out, and sends the choices as
-  `sessionOptions` on the thread's first commands.
+  that value. bb shows the union across models in the new-thread composer's
+  model picker, disables a model the current choices rule out, moves the
+  selection to a model that fits when the selected one does not, and sends the
+  choices as `sessionOptions` on the thread's first commands.
 - **`sessionOptions` execution option**: `{ [optionId]: string | boolean }` on
   `thread/start` and `turn/start`. Before the bridge has published any
   `bb/session-options` state for the thread it carries every choice made at

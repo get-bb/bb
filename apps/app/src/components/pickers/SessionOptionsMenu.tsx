@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import type { ThreadSessionOption } from "@bb/domain";
 import type { ThreadTimelineSessionOption } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -78,6 +79,85 @@ export function buildSessionOptionMenuSections(
         items.find((item) => item.selected)?.label ?? String(effective),
       items,
     };
+  });
+}
+
+export function sessionOptionViewSelections(
+  options: readonly ThreadTimelineSessionOption[],
+  choices: SessionOptionChoices,
+): Record<string, SessionOptionChoice> {
+  const selections: Record<string, SessionOptionChoice> = {};
+  for (const option of options) {
+    selections[option.id] =
+      (Object.hasOwn(choices, option.id) ? choices[option.id] : undefined) ??
+      option.pendingValue ??
+      option.value;
+  }
+  return selections;
+}
+
+export function splitSessionOptionsByPlacement(
+  options: readonly ThreadTimelineSessionOption[],
+): {
+  footer: ThreadTimelineSessionOption[];
+  picker: ThreadTimelineSessionOption[];
+} {
+  return {
+    footer: options.filter(
+      (option) => option.category === SESSION_OPTION_MODE_CATEGORY,
+    ),
+    picker: options.filter(
+      (option) => option.category !== SESSION_OPTION_MODE_CATEGORY,
+    ),
+  };
+}
+
+export function declaredSessionOptionViews(
+  declared: readonly ThreadSessionOption[],
+  selections: SessionOptionChoices,
+  activeModelOptions: readonly ThreadSessionOption[],
+): ThreadTimelineSessionOption[] {
+  return declared.map((option) => {
+    const active = activeModelOptions.find(
+      (candidate) => candidate.id === option.id,
+    );
+    const base = {
+      id: option.id,
+      label: option.label,
+      description: option.description ?? null,
+      category: option.category ?? null,
+      pendingValue: null,
+    };
+    const selected = Object.hasOwn(selections, option.id)
+      ? selections[option.id]
+      : undefined;
+    return option.type === "boolean"
+      ? {
+          ...base,
+          type: "boolean",
+          value:
+            typeof selected === "boolean"
+              ? selected
+              : active?.type === "boolean"
+                ? active.value
+                : option.value,
+        }
+      : {
+          ...base,
+          type: "select",
+          value:
+            typeof selected === "string"
+              ? selected
+              : active?.type === "select"
+                ? active.value
+                : option.value,
+          values: option.values.map((value) => ({
+            id: value.id,
+            label: value.label,
+            description: value.description ?? null,
+            group: value.group ?? null,
+          })),
+        };
   });
 }
 

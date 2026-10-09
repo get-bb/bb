@@ -2451,7 +2451,8 @@ counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
 with @-mentions and expand, `+` attachments, provider/model/reasoning picker,
 voice, submit, and the row beneath with project, environment, "Branch from:",
 and permission mode — and calls `onSubmit` with a `NewThreadRequest`
-carrying every resolved selection.
+carrying every resolved selection, including `sessionOptions` when the user
+changed an agent option the provider declares.
 
 The composer deliberately does **not** create the thread. The plugin does,
 through `bb.sdk.threads.spawn`, which auto-fills `origin: "plugin"` and

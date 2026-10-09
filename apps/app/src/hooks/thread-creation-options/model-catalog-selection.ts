@@ -1,7 +1,13 @@
 import {
+  collectDeclaredSessionOptions,
+  describeSessionOptionConflict,
+  effectiveSessionOptionSelections,
+  modelSessionOptionConflict,
   reconcileReasoningLevel,
   type AvailableModel,
   type ReasoningLevel,
+  type SessionOptionSelections,
+  type ThreadSessionOption,
 } from "@bb/domain";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
@@ -15,6 +21,7 @@ interface ResolveModelCatalogSelectionArgs {
   selectedOnlyModels: readonly AvailableModel[];
   selectedModel: string;
   preferredReasoningLevel?: ReasoningLevel;
+  sessionOptionSelections?: SessionOptionSelections;
   provider: ReasoningLabelSource | undefined;
   catalogIsVerified: boolean;
   formatModelLabel: (displayName: string) => string;
@@ -27,6 +34,8 @@ interface ResolvedModelCatalogSelection {
   moreModelOptions: ModelPickerOption[];
   reasoningLevel: ReasoningLevel;
   reasoningOptions: PickerOption<ReasoningLevel>[];
+  declaredSessionOptions: ThreadSessionOption[];
+  sessionOptionSelections: SessionOptionSelections;
   isUnavailableModelRecovery: boolean;
 }
 
@@ -49,13 +58,21 @@ export function resolveModelReasoningLevel(
 function toModelPickerOption(
   model: AvailableModel,
   formatModelLabel: (displayName: string) => string,
+  sessionOptionSelections: SessionOptionSelections,
 ): ModelPickerOption {
+  const conflict = modelSessionOptionConflict(model, sessionOptionSelections);
   return {
     value: model.model,
     label: formatModelLabel(model.displayName || model.model),
     ...(model.routeProviderId
       ? { routeProviderId: model.routeProviderId }
       : {}),
+    ...(conflict === null
+      ? {}
+      : {
+          disabled: true,
+          disabledReason: describeSessionOptionConflict(conflict),
+        }),
   };
 }
 
@@ -64,11 +81,17 @@ export function resolveModelCatalogSelection({
   selectedOnlyModels,
   selectedModel: rawSelectedModel,
   preferredReasoningLevel,
+  sessionOptionSelections: requestedSessionOptionSelections,
   provider,
   catalogIsVerified,
   formatModelLabel,
 }: ResolveModelCatalogSelectionArgs): ResolvedModelCatalogSelection {
   const fullCatalog = [...models, ...selectedOnlyModels];
+  const declaredSessionOptions = collectDeclaredSessionOptions(fullCatalog);
+  const sessionOptionSelections = effectiveSessionOptionSelections(
+    declaredSessionOptions,
+    requestedSessionOptionSelections ?? {},
+  );
   const selectedModelSelection = (() => {
     if (!rawSelectedModel) return rawSelectedModel;
     if (fullCatalog.some((model) => model.model === rawSelectedModel)) {
@@ -93,7 +116,7 @@ export function resolveModelCatalogSelection({
     }
   }
 
-  const selectedModel = (() => {
+  const catalogSelectedModel = (() => {
     if (!catalogIsVerified && selectedModelSelection) {
       return selectedModelSelection;
     }
@@ -108,6 +131,26 @@ export function resolveModelCatalogSelection({
     return (
       availableModels.find((model) => model.isDefault)?.model ??
       availableModels[0].model
+    );
+  })();
+
+  const selectedModel = (() => {
+    const chosen = availableModels.find(
+      (model) => model.model === catalogSelectedModel,
+    );
+    if (
+      chosen === undefined ||
+      modelSessionOptionConflict(chosen, sessionOptionSelections) === null
+    ) {
+      return catalogSelectedModel;
+    }
+    const compatible = availableModels.filter(
+      (model) =>
+        modelSessionOptionConflict(model, sessionOptionSelections) === null,
+    );
+    return (
+      (compatible.find((model) => model.isDefault) ?? compatible[0])?.model ??
+      catalogSelectedModel
     );
   })();
 
@@ -137,19 +180,23 @@ export function resolveModelCatalogSelection({
     selectedModel,
     activeModel,
     modelOptions: availableModels.map((model) =>
-      toModelPickerOption(model, formatModelLabel),
+      toModelPickerOption(model, formatModelLabel, sessionOptionSelections),
     ),
     moreModelOptions: selectedOnlyModels
       .filter(
         (model) =>
           !availableModels.some((active) => active.model === model.model),
       )
-      .map((model) => toModelPickerOption(model, formatModelLabel)),
+      .map((model) =>
+        toModelPickerOption(model, formatModelLabel, sessionOptionSelections),
+      ),
     reasoningLevel,
     reasoningOptions,
+    declaredSessionOptions,
+    sessionOptionSelections,
     isUnavailableModelRecovery:
       catalogIsVerified &&
       rawSelectedModel.length > 0 &&
-      selectedModel !== rawSelectedModel,
+      catalogSelectedModel !== rawSelectedModel,
   };
 }

@@ -255,7 +255,8 @@ snapshot wins per kind, same schema and emitter rules as extension items.
 Two state kinds are bb's own and open to every provider: `bb/provider-commands`
 (the provider's live slash commands for the thread) and `bb/session-options`
 (its per-session settings other than the model and reasoning level). A user
-picks a value in the composer's agent options menu or with
+picks a value in the model picker (the `mode` option sits in the composer
+footer) or with
 `bb thread options --set`; the server holds the choice, sends it as
 `sessionOptions` with the next turn, and drops it once the bridge publishes
 that value.

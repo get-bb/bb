@@ -15,6 +15,9 @@ import type {
   ProviderOptionDescriptor,
   ReasoningLevel,
   ServiceTier,
+  SessionOptionSelections,
+  SessionOptionValue,
+  ThreadSessionOption,
 } from "@bb/domain";
 import type {
   CreateExecutionInputSources,
@@ -57,6 +60,7 @@ import {
   usePromptBoxPermissionModePreference,
   usePromptBoxProviderPreference,
   usePromptBoxReasoningLevelPreference,
+  usePromptBoxSessionOptionsPreference,
   usePromptBoxServiceTierPreference,
   useSetPromptBoxProviderModelReasoningPreference,
 } from "./thread-creation-options/persisted-selection-fields";
@@ -82,6 +86,7 @@ import {
 export { formatModelLabel };
 
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
+const NO_SESSION_OPTION_SELECTIONS: SessionOptionSelections = {};
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 const EMPTY_SERVICE_TIER_OPTIONS: readonly ProviderOptionDescriptor[] = [];
 
@@ -139,6 +144,9 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelCatalogIsVerified: boolean;
   modelCatalogIsSettled: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
+  declaredSessionOptions: ThreadSessionOption[];
+  sessionOptionSelections: SessionOptionSelections;
+  setSessionOption: (optionId: string, value: SessionOptionValue) => void;
   permissionModeOptions: PickerOption<PermissionMode>[];
   supportsPermissionModeSelection: boolean;
   permissionModeIsVerified: boolean;
@@ -236,6 +244,7 @@ export function useThreadCreationOptions(
     resolveProviderRouting,
     resetKey,
     scope = "new-thread",
+    sessionOptionSelections: sessionOptionSelectionsOverride,
   } = options ?? {};
   const { setValue: setStoredProviderId, value: storedProviderId } =
     usePromptBoxProviderPreference();
@@ -456,6 +465,24 @@ export function useThreadCreationOptions(
     usePromptBoxModelPreference(effectiveProviderId);
   const { setValue: setStoredReasoningLevel, value: storedReasoningLevel } =
     usePromptBoxReasoningLevelPreference(effectiveProviderId);
+  const {
+    setValue: setStoredSessionOptions,
+    value: storedSessionOptionSelections,
+  } = usePromptBoxSessionOptionsPreference(effectiveProviderId);
+  const [localSessionOptions, setLocalSessionOptions] = useState<{
+    key: string;
+    selections: SessionOptionSelections;
+  }>({ key: "", selections: NO_SESSION_OPTION_SELECTIONS });
+  const localSessionOptionsKey = `${String(resetKey ?? "")}:${effectiveProviderId}`;
+  const localSessionOptionSelections =
+    localSessionOptions.key === localSessionOptionsKey
+      ? localSessionOptions.selections
+      : NO_SESSION_OPTION_SELECTIONS;
+  const requestedSessionOptionSelections =
+    sessionOptionSelectionsOverride ??
+    (usesStoredCreateSelections
+      ? storedSessionOptionSelections
+      : localSessionOptionSelections);
   const effectiveProviderMatchesInitialProvider =
     effectiveProviderId.length > 0 &&
     effectiveProviderId === renderedThreadSelections.selectedProviderId;
@@ -573,6 +600,8 @@ export function useThreadCreationOptions(
     moreModelOptions,
     reasoningLevel,
     reasoningOptions,
+    declaredSessionOptions,
+    sessionOptionSelections,
     isUnavailableModelRecovery,
   } = useMemo(
     () =>
@@ -582,6 +611,7 @@ export function useThreadCreationOptions(
           executionOptionsQuery.data?.selectedOnlyModels ?? [],
         selectedModel: rawSelectedModel,
         preferredReasoningLevel,
+        sessionOptionSelections: requestedSessionOptionSelections,
         provider: selectedProviderInfo,
         catalogIsVerified: modelCatalogIsVerified,
         formatModelLabel,
@@ -592,7 +622,30 @@ export function useThreadCreationOptions(
       modelCatalogIsVerified,
       preferredReasoningLevel,
       rawSelectedModel,
+      requestedSessionOptionSelections,
       selectedProviderInfo,
+    ],
+  );
+  const setSessionOption = useCallback(
+    (optionId: string, value: SessionOptionValue) => {
+      if (usesStoredCreateSelections) {
+        setStoredSessionOptions({
+          ...storedSessionOptionSelections,
+          [optionId]: value,
+        });
+        return;
+      }
+      setLocalSessionOptions({
+        key: localSessionOptionsKey,
+        selections: { ...localSessionOptionSelections, [optionId]: value },
+      });
+    },
+    [
+      localSessionOptionSelections,
+      localSessionOptionsKey,
+      setStoredSessionOptions,
+      storedSessionOptionSelections,
+      usesStoredCreateSelections,
     ],
   );
   const serviceTierOptions = useMemo(
@@ -982,6 +1035,9 @@ export function useThreadCreationOptions(
     modelCatalogIsVerified,
     modelCatalogIsSettled,
     reasoningOptions,
+    declaredSessionOptions,
+    sessionOptionSelections,
+    setSessionOption,
     permissionModeOptions,
     supportsPermissionModeSelection,
     permissionModeIsVerified,

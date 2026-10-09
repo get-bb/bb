@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ThreadSessionOption } from "@bb/domain";
 import type { ThreadTimelineSessionOption } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SessionOptionsMenu,
   buildSessionOptionMenuSections,
+  declaredSessionOptionViews,
+  sessionOptionViewSelections,
   sessionOptionsTriggerLabel,
+  splitSessionOptionsByPlacement,
 } from "./SessionOptionsMenu";
 
 const mode: ThreadTimelineSessionOption = {
@@ -35,6 +39,73 @@ const web: ThreadTimelineSessionOption = {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("session option placement", () => {
+  it("keeps only the mode option in the footer", () => {
+    const placed = splitSessionOptionsByPlacement([web, mode]);
+    expect(placed.footer.map((option) => option.id)).toEqual(["mode"]);
+    expect(placed.picker.map((option) => option.id)).toEqual(["web"]);
+  });
+
+  it("reads the value each option will have on the next turn", () => {
+    expect(
+      sessionOptionViewSelections([{ ...mode, pendingValue: "plan" }, web], {
+        web: true,
+      }),
+    ).toEqual({ mode: "plan", web: true });
+  });
+});
+
+describe("declared session option views", () => {
+  const declaredDaybreak: ThreadSessionOption = {
+    type: "boolean",
+    id: "daybreak",
+    label: "Daybreak",
+    value: false,
+  };
+  const declaredDepth: ThreadSessionOption = {
+    type: "select",
+    id: "depth",
+    label: "Search depth",
+    value: "shallow",
+    values: [
+      { id: "shallow", label: "Shallow" },
+      { id: "deep", label: "Deep" },
+    ],
+  };
+
+  it("shows what the user chose before the thread exists", () => {
+    expect(
+      declaredSessionOptionViews(
+        [declaredDaybreak, declaredDepth],
+        { daybreak: true, depth: "deep" },
+        [],
+      ).map((option) => [option.id, option.value, option.pendingValue]),
+    ).toEqual([
+      ["daybreak", true, null],
+      ["depth", "deep", null],
+    ]);
+  });
+
+  it("shows the selected model's own value for an option the user has not touched", () => {
+    expect(
+      declaredSessionOptionViews([declaredDaybreak, declaredDepth], {}, [
+        { ...declaredDaybreak, value: true, fixed: true },
+        { ...declaredDepth, value: "deep" },
+      ]).map((option) => [option.id, option.value]),
+    ).toEqual([
+      ["daybreak", true],
+      ["depth", "deep"],
+    ]);
+  });
+
+  it("ignores a stored choice of the wrong kind", () => {
+    expect(
+      declaredSessionOptionViews([declaredDaybreak], { daybreak: "yes" }, [])[0]
+        ?.value,
+    ).toBe(false);
+  });
 });
 
 describe("session option menu sections", () => {
