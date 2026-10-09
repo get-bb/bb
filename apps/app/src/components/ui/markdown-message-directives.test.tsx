@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   afterEach,
   beforeEach,
@@ -635,24 +636,26 @@ describe("ConversationMessageContent assistant directives", () => {
       }),
     ]);
     render(
-      <MemoryRouter>
-        <RouteNavigationProvider>
-          <MessageDirectiveRegistryProvider registry={registry}>
-            <ConversationMessageContent
-              role="assistant"
-              attachments={null}
-              id="msg_a"
-              threadId="thr_a"
-              turnId="turn_a"
-              showActions={false}
-              text={'::inline-vis{file="plan.md"}'}
-              timestamp={0}
-              projectId="proj_a"
-              onOpenPluginPanel={onOpenPluginPanel}
-            />
-          </MessageDirectiveRegistryProvider>
-        </RouteNavigationProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <RouteNavigationProvider>
+            <MessageDirectiveRegistryProvider registry={registry}>
+              <ConversationMessageContent
+                role="assistant"
+                attachments={null}
+                id="msg_a"
+                threadId="thr_a"
+                turnId="turn_a"
+                showActions={false}
+                text={'::inline-vis{file="plan.md"}'}
+                timestamp={0}
+                projectId="proj_a"
+                onOpenPluginPanel={onOpenPluginPanel}
+              />
+            </MessageDirectiveRegistryProvider>
+          </RouteNavigationProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Open thread panel" }));

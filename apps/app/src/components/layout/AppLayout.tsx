@@ -64,7 +64,6 @@ import {
 } from "@/components/plugin/PluginPanelHeader";
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { ThreadActionsHost } from "@/components/thread/ThreadActionsHost";
 import {
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
@@ -818,7 +817,6 @@ export function AppLayout({ children }: AppLayoutProps) {
       <ProjectActionsProvider>
         <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
           <ThreadActionsProvider>
-            <ThreadActionsHost />
             <SidebarStateBridge framed={usesDesktopChrome}>
               {backToAppRoutePath !== null && !isSidebarResizing ? (
                 <BackToAppCommandHandler routePath={backToAppRoutePath} />

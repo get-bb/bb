@@ -53,6 +53,9 @@ import { getThreadReadToggleAction } from "@bb/client-core";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
+import { lookupCachedThread } from "@/lib/plugin-sidebar-hooks";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 
 export interface ThreadActionsContextValue {
   archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
@@ -579,8 +582,18 @@ export function ThreadActionsProvider({
     ],
   );
 
+  const requestRenameById = (threadId: string) => {
+    const thread = lookupCachedThread(queryClient, threadId);
+    if (thread === null) return;
+    window.setTimeout(() => requestRename(thread), 0);
+  };
+
   return (
     <ThreadActionsContext.Provider value={value}>
+      <ThreadActionCollectors
+        coreRegistrations={CORE_THREAD_ACTIONS}
+        requestRename={requestRenameById}
+      />
       {children}
       <ThreadRenameDialog
         target={renameDialog.target}

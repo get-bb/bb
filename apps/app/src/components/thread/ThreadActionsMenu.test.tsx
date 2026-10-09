@@ -1,518 +1,503 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
-import type { PluginThreadActionRegistration } from "@get-bb/plugin-sdk";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  sidebarHiddenGroupsAtom,
-  sidebarManualSectionOrderAtom,
-  sidebarOrganizationModeAtom,
-} from "@/components/sidebar/sidebarCollapsedAtoms";
+  experimental_THREAD_ACTION_GROUPS,
+  type PluginThreadActionRegistration,
+  type PluginThreadActionsInlineItem,
+} from "@get-bb/plugin-sdk";
+import type { ThreadListEntry } from "@bb/domain";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
-import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
-import { ThreadActionsMenu } from "./ThreadActionsMenu";
+import { getThreadRoutePath } from "@/lib/route-paths";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import {
-  AppThreadSectionMoveProvider,
-  ThreadSectionMoveProvider,
-} from "./ThreadSectionMoveProvider";
+  ThreadActionCollectors,
+  resetThreadActionRegistryForTest,
+} from "@/lib/thread-actions/thread-action-registry";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  ThreadActionsContextMenu,
+  ThreadActionsMenu,
+} from "./ThreadActionsMenu";
 
-const moveThreadToSection = vi.hoisted(() => vi.fn());
-const copyToClipboardWithToast = vi.hoisted(() => vi.fn());
-const getPluginMetadata = vi.hoisted(() =>
-  vi.fn(async () => ({ level: "muted" })),
-);
-const threadActions = vi.hoisted(() => ({
+const hostActions = vi.hoisted(() => ({
   requestArchive: vi.fn(),
   requestDelete: vi.fn(),
-  requestRename: vi.fn(),
-  togglePin: vi.fn(),
-  toggleRead: vi.fn(),
-  unarchiveThread: vi.fn(),
 }));
-const sidebarActions = vi.hoisted(() => ({
-  open: vi.fn(),
-  openNewThread: vi.fn(),
-  setPinned: vi.fn(async () => undefined),
-  setRead: vi.fn(async () => undefined),
-  rename: vi.fn(async () => undefined),
-  archive: vi.fn(),
-  requestDelete: vi.fn(),
+const sdkThreads = vi.hoisted(() => ({
+  pin: vi.fn(),
+  unpin: vi.fn(),
+  markRead: vi.fn(),
+  markUnread: vi.fn(),
+  unarchive: vi.fn(),
+  update: vi.fn(),
 }));
-const split = vi.hoisted(() => ({ available: true }));
+const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
 
-vi.mock("@/lib/clipboard", () => ({
-  copyToClipboardWithToast,
-}));
-
-vi.mock("@/lib/sdk", () => ({
-  sdk: { threads: { getPluginMetadata } },
-}));
-
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useMoveThreadToSection: () => moveThreadToSection,
-}));
-
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
+vi.mock("@/lib/clipboard", () => ({ copyToClipboardWithToast }));
 vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => threadActions,
+  useThreadActions: () => hostActions,
 }));
 
-vi.mock("@/lib/plugin-sidebar-hooks", () => ({
-  useSidebarThreadActions: () => sidebarActions,
-  useResolveSidebarThread: () => (id: string) => (id === thread.id ? thread : null),
-}));
-
-vi.mock("@/lib/plugin-sidebar-split", () => ({
-  useSidebarThreadSplit: () => ({
-    isAvailable: split.available,
-    splitProps: {},
-    layout: null,
+const moveRun = vi.fn();
+const moveAction: PluginThreadActionRegistration = {
+  id: "move",
+  title: "Move to section",
+  icon: "SectionMove",
+  item: ({ thread }) =>
+    thread.parentThreadId !== null || thread.archivedAt !== null
+      ? null
+      : {
+          label: "Move to section",
+          icon: "SectionMove",
+          group: experimental_THREAD_ACTION_GROUPS.organize,
+          order: 50,
+          choices: {
+            items: [
+              { id: "sec_planning", label: "Planning", selected: true },
+              { id: "sec_building", label: "Building" },
+            ],
+          },
+          run: moveRun,
+        },
+};
+const pluginGroupRun = vi.fn();
+const pluginGroupAction: PluginThreadActionRegistration = {
+  id: "notify",
+  title: "Notifications",
+  icon: "Notification",
+  item: () => ({
+    label: "Notifications",
+    icon: "Notification",
+    group: "5_plugin",
+    run: pluginGroupRun,
   }),
-}));
+};
 
-const destinations = [
-  { label: "Planning", sectionId: "sec_planning" },
-  { label: "Building", sectionId: "sec_building" },
-  { label: "Threads", sectionId: null },
-] as const;
-const thread = makeThreadListEntry({
-  id: "thread-1",
-  pinnedAt: null,
+const baseThread = makeThreadListEntry({
+  id: "thr_target",
+  projectId: "proj_a",
   sectionId: "sec_planning",
-  title: "Move me",
-  lastReadAt: 1,
-  latestAttentionAt: 10,
+  pinnedAt: null,
+  archivedAt: null,
+  parentThreadId: null,
+  lastReadAt: 10,
+  latestAttentionAt: 5,
+  environmentId: "env_a",
+  environmentPath: "/repo",
 });
 
-function renderWide(children: ReactNode, withMoveProvider = true) {
-  const content = withMoveProvider ? (
-    <ThreadSectionMoveProvider destinations={destinations}>
-      {children}
-    </ThreadSectionMoveProvider>
-  ) : (
-    children
+interface SurfaceOptions {
+  thread: ThreadListEntry;
+  inline?: readonly PluginThreadActionsInlineItem[];
+  requestRename?: (threadId: string) => void;
+}
+
+interface Surface {
+  name: string;
+  compact: boolean;
+  render(options: SurfaceOptions): ReactElement;
+  open(): Promise<void>;
+}
+
+const SURFACES: readonly Surface[] = [
+  {
+    name: "desktop dropdown",
+    compact: false,
+    render: ({ thread, inline, requestRename }) => (
+      <ThreadActionsMenu
+        thread={threadListEntryActionTarget(thread)}
+        trigger={<button type="button">Thread actions</button>}
+        inline={inline}
+        requestRename={requestRename}
+      />
+    ),
+    open: async () => {
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Thread actions" }),
+        { button: 0 },
+      );
+    },
+  },
+  {
+    name: "desktop context menu",
+    compact: false,
+    render: ({ thread, inline, requestRename }) => (
+      <ThreadActionsContextMenu
+        thread={threadListEntryActionTarget(thread)}
+        inline={inline}
+        requestRename={requestRename}
+      >
+        <div>Row</div>
+      </ThreadActionsContextMenu>
+    ),
+    open: async () => {
+      fireEvent.contextMenu(screen.getByText("Row"));
+    },
+  },
+  {
+    name: "compact drawer",
+    compact: true,
+    render: ({ thread, inline, requestRename }) => (
+      <ThreadActionsMenu
+        thread={threadListEntryActionTarget(thread)}
+        trigger={<button type="button">Thread actions</button>}
+        inline={inline}
+        requestRename={requestRename}
+      />
+    ),
+    open: async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    },
+  },
+  {
+    name: "compact long press",
+    compact: true,
+    render: ({ thread, inline, requestRename }) => (
+      <ThreadActionsContextMenu
+        thread={threadListEntryActionTarget(thread)}
+        inline={inline}
+        requestRename={requestRename}
+      >
+        <div>Row</div>
+      </ThreadActionsContextMenu>
+    ),
+    open: async () => {
+      fireEvent.contextMenu(screen.getByText("Row"));
+    },
+  },
+];
+
+const defaultRequestRename = vi.fn();
+
+function renderSurface(surface: Surface, options: SurfaceOptions, route = "/") {
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
+  setPluginSlotRegistrations(
+    "fixture",
+    makePluginRegistrationSet({
+      threadActions: [moveAction, pluginGroupAction],
+    }),
   );
   return render(
-    <QueryClientProvider client={new QueryClient()}>
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        {content}
-      </CompactViewportOverrideProvider>
+    <QueryClientProvider client={queryClient}>
+      <Provider store={createStore()}>
+        <MemoryRouter initialEntries={[route]}>
+          <CompactViewportOverrideProvider isCompactViewport={surface.compact}>
+            <ThreadActionCollectors
+              coreRegistrations={CORE_THREAD_ACTIONS}
+              requestRename={defaultRequestRename}
+            />
+            {surface.render(options)}
+          </CompactViewportOverrideProvider>
+        </MemoryRouter>
+      </Provider>
     </QueryClientProvider>,
   );
 }
 
-function renderCompact(children: ReactNode) {
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
-      <CompactViewportOverrideProvider isCompactViewport>
-        <ThreadSectionMoveProvider destinations={destinations}>
-          {children}
-        </ThreadSectionMoveProvider>
-      </CompactViewportOverrideProvider>
-    </QueryClientProvider>,
-  );
-}
-
-function openWide() {
-  fireEvent.pointerDown(screen.getByRole("button", { name: "Thread actions" }), {
-    button: 0,
+async function openMenu(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const menu = screen.queryByRole("menu") ?? screen.queryByRole("dialog");
+    if (menu?.querySelector('[role="menuitem"]') == null) {
+      throw new Error("no open menu");
+    }
+    return menu;
   });
 }
 
-async function openSubmenu(name: string) {
-  const trigger = await screen.findByRole("menuitem", { name });
-  fireEvent.keyDown(trigger, { key: "ArrowRight" });
+async function menuRows(): Promise<string[]> {
+  const menu = await openMenu();
+  return Array.from(
+    menu.querySelectorAll('[role="menuitem"], [role="separator"]'),
+  )
+    .filter(
+      (element) =>
+        element.parentElement?.closest('[role="menu"], [role="dialog"]') ===
+        menu,
+    )
+    .map((element) =>
+      element.getAttribute("role") === "separator"
+        ? "---"
+        : (element.textContent?.trim() ?? ""),
+    );
 }
 
-function menuRows(): string[] {
-  return Array.from(screen.getByRole("menu").children).map((element) =>
-    element.getAttribute("role") === "separator"
-      ? "---"
-      : (element.textContent?.trim() ?? ""),
-  );
-}
-
-function registerThreadActions(
-  pluginId: string,
-  registrations: PluginThreadActionRegistration[],
-) {
-  setPluginSlotRegistrations(
-    pluginId,
-    makePluginRegistrationSet({ threadActions: registrations }),
-  );
+async function choose(surface: Surface, actionLabel: string, choice: string) {
+  const trigger = await screen.findByRole("menuitem", { name: actionLabel });
+  if (surface.compact) fireEvent.click(trigger);
+  else fireEvent.keyDown(trigger, { key: "ArrowRight" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: choice }));
 }
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  split.available = true;
-  moveThreadToSection.mockReset();
-  copyToClipboardWithToast.mockReset();
-  getPluginMetadata.mockClear();
-  for (const action of Object.values(threadActions)) action.mockReset();
-  for (const action of Object.values(sidebarActions)) action.mockClear();
-  vi.restoreAllMocks();
+  resetThreadActionRegistryForTest();
+  vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
-describe("ThreadActionsMenu", () => {
-  it.each([false, true])(
-    "offers environment reuse only in compact menus: compact=%s",
-    async (compact) => {
-      const menu = (
-        <ThreadActionsMenu
-          thread={thread}
-          environment={{ id: "env_1", path: "/repo" }}
-        />
-      );
-      if (compact) renderCompact(menu);
-      else renderWide(menu);
-      const trigger = screen.getByRole("button", { name: "Thread actions" });
-      if (compact) fireEvent.click(trigger);
-      else fireEvent.pointerDown(trigger, { button: 0 });
-      if (!compact) {
-        expect(
-          screen.queryByRole("menuitem", { name: "New thread in environment" }),
-        ).toBeNull();
-        return;
-      }
-      fireEvent.click(
-        await screen.findByRole("menuitem", {
-          name: "New thread in environment",
-        }),
-      );
-      expect(sidebarActions.openNewThread).toHaveBeenCalledWith({
-        projectId: thread.projectId,
-        environmentId: "env_1",
-        experimental_placement: { sectionId: "sec_planning", pinned: false },
-        focusPrompt: true,
-      });
+const CUSTOMIZE: PluginThreadActionsInlineItem = {
+  key: "surface/customize",
+  action: {
+    label: "Customize row actions",
+    icon: "FilterHorizontal",
+    group: experimental_THREAD_ACTION_GROUPS.settings,
+    run: vi.fn(),
+  },
+};
+
+describe.each(SURFACES)("thread actions on the $name", (surface) => {
+  it.each([
+    {
+      state: "a top-level thread",
+      thread: baseThread,
+      route: "/",
+      desktop: [
+        "Open in split",
+        "---",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "---",
+        "Customize row actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "New thread in environment",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "Customize row actions",
+        "Archive",
+        "Delete",
+        "Notifications",
+      ],
+    },
+    {
+      state: "an archived, pinned, unread child thread",
+      thread: makeThreadListEntry({
+        ...baseThread,
+        archivedAt: 20,
+        pinnedAt: 3,
+        parentThreadId: "thr_parent",
+        lastReadAt: 1,
+        latestAttentionAt: 5,
+        environmentPath: null,
+      }),
+      route: "/",
+      desktop: [
+        "Open in split",
+        "---",
+        "Copy thread link",
+        "Mark read",
+        "Unpin",
+        "Rename",
+        "---",
+        "Customize row actions",
+        "---",
+        "Unarchive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "Copy thread link",
+        "Mark read",
+        "Unpin",
+        "Rename",
+        "Customize row actions",
+        "Unarchive",
+        "Delete",
+        "Notifications",
+      ],
+    },
+    {
+      state: "the thread already in view",
+      thread: baseThread,
+      route: getThreadRoutePath({
+        projectId: baseThread.projectId,
+        threadId: baseThread.id,
+      }),
+      desktop: [
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "---",
+        "Customize row actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "New thread in environment",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "Customize row actions",
+        "Archive",
+        "Delete",
+        "Notifications",
+      ],
+    },
+  ])(
+    "lists the items for $state",
+    async ({ thread, route, desktop, compact }) => {
+      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, route);
+      await surface.open();
+      expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
     },
   );
 
-  it("never offers Open in split for the thread already in view", () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    expect(screen.queryByRole("menuitem", { name: "Open in split" })).toBeNull();
-    expect(menuRows()).toEqual([
-      "Copy thread link",
-      "Mark read",
-      "Pin",
-      "Move to section",
-      "Rename",
-      "---",
-      "Archive",
-      "Delete",
-    ]);
-  });
-
-  it("opens the rename dialog from the menu", async () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
-
-    await waitFor(() => {
-      expect(threadActions.requestRename).toHaveBeenCalledWith(thread);
+  it("runs each action's effect", async () => {
+    sdkThreads.pin.mockResolvedValue({ ...baseThread, pinnedAt: 9 });
+    sdkThreads.markUnread.mockResolvedValue({
+      ...baseThread,
+      lastReadAt: null,
     });
-  });
+    const requestRename = vi.fn();
+    renderSurface(surface, { thread: baseThread, requestRename });
 
-  it("routes read, pin, archive, and delete through the host actions", async () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark read" }));
-    expect(sidebarActions.setRead).toHaveBeenCalledWith(thread.id, true);
-    openWide();
+    await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
-    expect(sidebarActions.setPinned).toHaveBeenCalledWith(thread.id, true);
-    openWide();
+    await waitFor(() =>
+      expect(sdkThreads.pin).toHaveBeenCalledWith({ threadId: baseThread.id }),
+    );
+
+    await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Mark unread" }),
+    );
+    await waitFor(() =>
+      expect(sdkThreads.markUnread).toHaveBeenCalledWith({
+        threadId: baseThread.id,
+      }),
+    );
+
+    await surface.open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    expect(requestRename).toHaveBeenCalledWith(baseThread.id);
+    expect(defaultRequestRename).not.toHaveBeenCalled();
+
+    await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() =>
-      expect(sidebarActions.archive).toHaveBeenCalledWith(thread.id),
+      expect(hostActions.requestArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ id: baseThread.id }),
+      ),
     );
-    openWide();
+
+    await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
-      expect(sidebarActions.requestDelete).toHaveBeenCalledWith(thread.id),
+      expect(hostActions.requestDelete).toHaveBeenCalledWith(
+        expect.objectContaining({ id: baseThread.id }),
+      ),
     );
-  });
 
-  it("unarchives an archived thread through the host mutation and hides Move", () => {
-    const archived = makeThreadListEntry({ ...thread, archivedAt: 5 });
-    renderWide(<ThreadActionsMenu thread={archived} />);
-    openWide();
-    expect(screen.queryByRole("menuitem", { name: "Move to section" })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Unarchive" }));
-    expect(threadActions.unarchiveThread).toHaveBeenCalledWith(thread);
-  });
+    await surface.open();
+    await choose(surface, "Move to section", "Building");
+    expect(moveRun).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "sec_building" }),
+    );
 
-  it("copies the canonical thread URL from every menu instance", () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy thread link" }));
-
+    await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Copy thread link" }),
+    );
     expect(copyToClipboardWithToast).toHaveBeenCalledWith(
-      `${window.location.origin}/projects/${thread.projectId}/threads/${thread.id}`,
+      `${window.location.origin}/projects/proj_a/threads/thr_target`,
       {
         successMessage: "Thread link copied",
         errorMessage: "Failed to copy thread link",
       },
     );
   });
-});
 
-describe("ThreadActionsMenu plugin actions", () => {
-  it("slots plugin actions into their groups after core, with separators between groups", async () => {
-    registerThreadActions("notes", [
-      {
-        id: "flag",
-        title: "Flag",
-        resolve: () => ({ label: "Flag thread", icon: "Flag", group: "lifecycle", run() {} }),
-      },
-      {
-        id: "star",
-        title: "Star",
-        resolve: () => ({ label: "Star thread", icon: "Star", group: "organize", run() {} }),
-      },
-    ]);
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    await screen.findByRole("menuitem", { name: "Star thread" });
-    expect(menuRows()).toEqual([
-      "Copy thread link",
-      "Mark read",
-      "Pin",
-      "Move to section",
-      "Rename",
-      "Star thread",
-      "---",
-      "Archive",
-      "Delete",
-      "Flag thread",
-    ]);
+  it("falls back to bb's rename dialog when the surface has no editor", async () => {
+    renderSurface(surface, { thread: baseThread });
+    await surface.open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    expect(defaultRequestRename).toHaveBeenCalledWith(baseThread.id);
   });
 
-  it("drops only the row whose resolve throws", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    registerThreadActions("notes", [
-      {
-        id: "broken",
-        title: "Broken",
-        resolve: () => {
-          throw new Error("boom");
-        },
-      },
-      {
-        id: "star",
-        title: "Star",
-        resolve: () => ({ label: "Star thread", icon: "Star", group: "organize", run() {} }),
-      },
-    ]);
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    expect(await screen.findByRole("menuitem", { name: "Star thread" })).not.toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Rename" })).not.toBeNull();
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('thread action "broken" failed to resolve'),
-      expect.any(Error),
-    );
-  });
-
-  it("renders choices as a submenu and selects by id, with the plugin's metadata resolved", async () => {
-    const select = vi.fn();
-    const seen: unknown[] = [];
-    registerThreadActions("notifications", [
-      {
-        id: "notifications",
-        title: "Notifications",
-        resolve: ({ metadata }) => {
-          seen.push(metadata);
-          return {
-            label: "Notifications",
-            icon: "Bell",
-            group: "organize",
-            choices: {
-              heading: "Notifications",
-              hint: "Inherited from parent",
-              items: [
-                { id: "all", label: "All activity" },
-                { id: "muted", label: "Muted", selected: metadata?.level === "muted" },
-              ],
-              select,
+  it("drops a registration whose item throws and keeps the rest", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    setPluginSlotRegistrations(
+      "broken",
+      makePluginRegistrationSet({
+        threadActions: [
+          {
+            id: "boom",
+            title: "Boom",
+            icon: "Zap",
+            item: () => {
+              throw new Error("boom");
             },
-          };
-        },
-      },
-    ]);
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    await waitFor(() => expect(seen).toContainEqual({ level: "muted" }));
-    expect(getPluginMetadata).toHaveBeenCalledWith(
-      expect.objectContaining({ pluginId: "notifications", threadId: thread.id }),
-    );
-    await openSubmenu("Notifications");
-    const muted = await screen.findByRole("menuitem", { name: "Muted" });
-    expect(muted.getAttribute("aria-current")).toBe("true");
-    expect(screen.getByText("Inherited from parent")).not.toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "All activity" }));
-    expect(select).toHaveBeenCalledWith("all");
-  });
-
-  it("shows choices as a drawer step with Back on compact", async () => {
-    const select = vi.fn();
-    registerThreadActions("notifications", [
-      {
-        id: "notifications",
-        title: "Notifications",
-        resolve: () => ({
-          label: "Notifications",
-          icon: "Bell",
-          group: "organize",
-          choices: {
-            items: [{ id: "all", label: "All activity" }],
-            select,
           },
-        }),
-      },
-    ]);
-    renderCompact(<ThreadActionsMenu thread={thread} />);
-    const trigger = screen.getByRole("button", { name: "Thread actions" });
-    fireEvent.click(trigger);
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Notifications" }));
-    expect(await screen.findByRole("menuitem", { name: "All activity" })).not.toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
-    expect(await screen.findByRole("menuitem", { name: "Rename" })).not.toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Notifications" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "All activity" }));
-    expect(select).toHaveBeenCalledWith("all");
+        ],
+      }),
+    );
+    renderSurface(surface, { thread: baseThread });
+    await surface.open();
+    const menu = await openMenu();
+    expect(within(menu).getByRole("menuitem", { name: "Pin" })).not.toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Boom" })).toBeNull();
+    expect(error).toHaveBeenCalled();
   });
 });
 
-describe("ThreadActionsMenu section moves", () => {
-  it("keeps hidden sections selectable without restoring them to the list", async () => {
-    const store = createStore();
-    const hidden = ["section:sec_planning", "section:sec_building"];
-    const order = [
-      "section:sec_building",
-      "pinned",
-      "threads",
-      "section:sec_planning",
-    ];
-    store.set(sidebarOrganizationModeAtom, "chronological");
-    store.set(sidebarHiddenGroupsAtom, hidden);
-    store.set(sidebarManualSectionOrderAtom, order);
-    const unfiledThread = makeThreadListEntry({
-      ...thread,
-      parentThreadId: null,
-      sectionId: null,
+describe("thread action run containment", () => {
+  it("contains a rejected run so the menu keeps working", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    pluginGroupRun.mockRejectedValueOnce(new Error("nope"));
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(surface, { thread: baseThread });
+    await surface.open();
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Notifications" }),
+      );
     });
-    renderWide(
-      <Provider store={store}>
-        <AppThreadSectionMoveProvider
-          sections={[
-            { id: "sec_planning", name: "Planning" },
-            { id: "sec_building", name: "Building" },
-          ]}
-        >
-          <ThreadActionsMenu thread={unfiledThread} />
-        </AppThreadSectionMoveProvider>
-      </Provider>,
-      false,
-    );
-
-    openWide();
-    await openSubmenu("Move to section");
-    const building = await screen.findByRole("menuitem", { name: "Building" });
-    expect(screen.getByRole("menuitem", { name: "Planning" })).not.toBeNull();
-    fireEvent.click(building);
-
-    expect(moveThreadToSection).toHaveBeenCalledWith({
-      thread: expect.objectContaining({ id: thread.id, sectionId: null, pinnedAt: null }),
-      sectionId: "sec_building",
-    });
-    expect(store.get(sidebarHiddenGroupsAtom)).toEqual(hidden);
-    expect(store.get(sidebarManualSectionOrderAtom)).toEqual(order);
-  });
-
-  it("moves from the overflow menu and indicates the current section", async () => {
-    renderWide(<ThreadActionsMenu thread={thread} />);
-    openWide();
-    await openSubmenu("Move to section");
-    const building = await screen.findByRole("menuitem", { name: "Building" });
-    const current = screen.getByRole("menuitem", { name: "Planning" });
-    expect(current.getAttribute("aria-current")).toBe("true");
-    expect(current.getAttribute("aria-disabled")).toBe("true");
-
-    fireEvent.click(building);
-    expect(moveThreadToSection).toHaveBeenCalledWith({
-      thread: expect.objectContaining({ id: thread.id, sectionId: "sec_planning" }),
-      sectionId: "sec_building",
-    });
-  });
-
-  it("does not add section controls outside Manual organization", () => {
-    renderWide(<ThreadActionsMenu thread={thread} />, false);
-    openWide();
-    expect(
-      screen.queryByRole("menuitem", { name: "Move to section" }),
-    ).toBeNull();
-  });
-
-  it("does not offer section moves for nested child threads", () => {
-    const childThread = makeThreadListEntry({
-      ...thread,
-      id: "thread-child",
-      parentThreadId: thread.id,
-    });
-    renderWide(<ThreadActionsMenu thread={childThread} />);
-    openWide();
-    expect(
-      screen.queryByRole("menuitem", { name: "Move to section" }),
-    ).toBeNull();
-  });
-
-  it("supports Back and resets the compact overflow menu after a move", async () => {
-    renderCompact(<ThreadActionsMenu thread={thread} />);
-
-    const trigger = screen.getByRole("button", { name: "Thread actions" });
-    fireEvent.click(trigger);
-    const moveToSection = await screen.findByRole("menuitem", {
-      name: "Move to section",
-    });
-    expect(
-      moveToSection.querySelector('[data-icon="SectionMove"]'),
-    ).not.toBeNull();
-    fireEvent.click(moveToSection);
-
-    expect(await screen.findByText("Move to section")).not.toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Building" })).not.toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
-    expect(
-      await screen.findByRole("menuitem", { name: "Rename" }),
-    ).not.toBeNull();
-
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Building" }));
-
-    fireEvent.click(trigger);
-    expect(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-    ).not.toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Back" })).toBeNull();
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    await surface.open();
+    expect(await screen.findByRole("menuitem", { name: "Pin" })).not.toBeNull();
   });
 });

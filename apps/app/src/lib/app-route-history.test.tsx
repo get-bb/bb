@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   cleanup,
@@ -192,8 +193,9 @@ async function expectSidebarButtonState(
 ) {
   await waitFor(() => {
     expect(
-      screen.getByRole("button", { name: label }).getAttribute("aria-disabled") ===
-        "true",
+      screen
+        .getByRole("button", { name: label })
+        .getAttribute("aria-disabled") === "true",
     ).toBe(disabled);
   });
 }
@@ -284,9 +286,11 @@ describe("useRouteStateHistoryNavigation", () => {
 
   it("redirects remounted automation edit routes without duplicate history entries", async () => {
     render(
-      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
-        <RemountablePluginNavigationHarness />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
+          <RemountablePluginNavigationHarness />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);

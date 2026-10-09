@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import type { ThreadListEntry } from "@bb/domain";
+import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { ThreadActionsProvider } from "./ThreadActionsProvider";
 import { ThreadActionsMenu } from "./ThreadActionsMenu";
 
@@ -15,6 +17,19 @@ function Stage({ children }: { children: ReactNode }) {
         {children}
       </div>
     </ThreadActionsProvider>
+  );
+}
+
+function Menu({ thread }: { thread: ThreadListEntry }) {
+  return (
+    <ThreadActionsMenu
+      thread={threadListEntryActionTarget(thread)}
+      trigger={
+        <button type="button" aria-label="Thread actions">
+          ...
+        </button>
+      }
+    />
   );
 }
 
@@ -42,7 +57,7 @@ export function Overview() {
         hint="Mark unread · Pin — Rename — Archive · Delete"
       >
         <Stage>
-          <ThreadActionsMenu thread={readThread} />
+          <Menu thread={readThread} />
         </Stage>
       </StoryRow>
       <StoryRow
@@ -50,12 +65,12 @@ export function Overview() {
         hint="read toggle flips to Mark read; Pin flips to Unpin"
       >
         <Stage>
-          <ThreadActionsMenu thread={unreadPinnedThread} />
+          <Menu thread={unreadPinnedThread} />
         </Stage>
       </StoryRow>
       <StoryRow label="archived" hint="Archive flips to Unarchive">
         <Stage>
-          <ThreadActionsMenu thread={archivedThread} />
+          <Menu thread={archivedThread} />
         </Stage>
       </StoryRow>
     </StoryCard>
