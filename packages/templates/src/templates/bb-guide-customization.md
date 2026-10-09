@@ -217,9 +217,7 @@ and `null` clears a preference that can be unset.
 `bb settings replay-onboarding` clears `onboardingCompletedAt`, so the first-run
 setup guide (connect an agent, add projects, pick plugins, set up devices) shows
 again in every open client. Settings → General → Setup guide has the same
-button. `setupChecklistVisible` controls the "Finish setting up bb" checklist
-on the home screen; the guide turns it on when steps are left undone, and
-dismissing the checklist turns it off.
+button.
 
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final

@@ -414,8 +414,7 @@ A new install opens a first-run setup guide (connect an agent, add projects,
 pick plugins, set up devices). `onboardingCompletedAt` in general settings
 records when it was finished or skipped; `bb settings replay-onboarding`, or
 Settings → General → Setup guide, clears it so the guide shows again.
-`setupChecklistVisible` controls the "Finish setting up bb" home-screen
-checklist. The projects step lists what `bb project discover` and
+The projects step lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
