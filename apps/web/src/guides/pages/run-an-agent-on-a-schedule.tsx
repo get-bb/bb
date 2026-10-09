@@ -1,9 +1,9 @@
 import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
+import { withQuestions } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 
-const AGENT_PROMPT = withIntake(
+const AGENT_PROMPT = withQuestions(
   [
     {
       label: "Job",
@@ -19,20 +19,17 @@ const AGENT_PROMPT = withIntake(
   `Set up a bb automation for this project and test it once.
 Guide: https://getbb.app/guides/run-an-agent-on-a-schedule
 
-Run each Check. If one fails, stop and tell me the command and the error. Default Job: morning issue triage on weekdays at 9am, with reports in one thread. Ask for my timezone; don't guess it.
+Default Job: morning issue triage on weekdays at 9am, with reports in one thread. Ask for my timezone. Pass --project $BB_PROJECT_ID to every bb automation command. If a step fails, stop and tell me the error.
 
-1. Read \`bb automation create --help\`. Make sure the Automations plugin is on (\`bb plugin list\`, then \`bb plugin install automations\` or \`bb plugin enable automations\`). For an agent job, pick a signed-in provider and a model from \`bb provider models <provider> --json\`. If \`bb keep-awake status\` is off, tell me a run due while the computer sleeps starts when it wakes.
-2. If \`bb automation list --project $BB_PROJECT_ID\` already has this job, reuse it and skip to step 4.
-3. Create it paused: \`bb automation create --project $BB_PROJECT_ID --name '<name>' --disabled\`, one schedule (\`--cron '<expression>' --timezone <IANA zone>\` or \`--at <ISO time with offset>\`), and:
-   - Agent job: \`--prompt '<prompt>' --provider <provider> --model <model> --permission-mode auto\`. Triage reads issues without changing them and posts dated findings with links. For code changes, add \`--new-environment worktree\` and put "Don't push or open pull requests" in the prompt. For reports in one thread, first run \`bb thread spawn --json --project $BB_PROJECT_ID --title '<name>' --prompt 'Scheduled reports go here. Reply ready.'\` and pass \`--target-thread <its ID>\`.
-   - Script job: \`--script-file <path> --working-directory project\`. The script gets $BB_CLI and $BB_PROJECT_ID, starts an agent with \`"$BB_CLI" thread spawn\` only when there's work, and prints nothing otherwise, which counts as a skipped run.
-   Check: \`bb automation show <id> --project $BB_PROJECT_ID\` matches the job, schedule, and timezone.
-4. Test it: \`bb automation run <id> --project $BB_PROJECT_ID\`, find the run in \`bb automation runs <id> --project $BB_PROJECT_ID --json\`, then read the agent's thread (\`bb thread wait\`, \`bb thread output\`) or the script's output (\`--output <run-id>\`).
-   Check: the output does the job. If it doesn't, leave it paused and tell me why.
-5. Turn it on: \`bb automation resume <id> --project $BB_PROJECT_ID\`. For a one-time job, ask me first, since the test already did it.
-6. If Notifications is yes, turn on whichever channel is off with \`bb plugin config push-notifications set <webEnabled|desktopEnabled|mobileEnabled> true\`, send \`bb push-notifications test web\` or \`desktop\`, and ask me to confirm it arrived.
+1. Read \`bb automation create --help\`. Turn on the Automations plugin if \`bb plugin list\` shows it's off. For an agent job, pick a model from \`bb provider models <provider> --json\`.
+2. If \`bb automation list\` already has this job, reuse it and skip to step 4.
+3. Create it paused: \`bb automation create --name '<name>' --disabled\` with \`--cron '<expression>' --timezone <IANA zone>\` or \`--at <ISO time>\`, plus either:
+   - Agent: \`--prompt '<prompt>' --provider <provider> --model <model> --permission-mode auto\`. For reports in one thread, start that thread with \`bb thread spawn\` and add \`--target-thread <its ID>\`. For code changes, add \`--new-environment worktree\` and tell it not to push.
+   - Script: \`--script-file <path>\`. It starts an agent with \`"$BB_CLI" thread spawn\` only when there's work, and prints nothing otherwise.
+4. Test it with \`bb automation run <id>\`, then read the run's thread or output. If it doesn't do the job, leave it paused and tell me why.
+5. Turn it on with \`bb automation resume <id>\`, asking me first for a one-time job. If Notifications is yes, send \`bb push-notifications test web\` and ask me to confirm it arrived.
 
-Reply with the automation ID, schedule, next run, where results go, and what the test produced.`,
+Reply with the automation ID, schedule, next run, and what the test produced.`,
 );
 
 export const meta: GuideMeta = {

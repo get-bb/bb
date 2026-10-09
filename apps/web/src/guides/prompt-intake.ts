@@ -16,15 +16,17 @@ const BB_SETUP = [
   "- If a command needs --thread, start one: `bb thread spawn --json --project <ID> --environment <repo path> --prompt 'Hold a browser session. Reply ready.'`.",
 ].join("\n");
 
-export function withIntake(fields: IntakeField[], prompt: string): string {
+export function withQuestions(fields: IntakeField[], prompt: string): string {
   const questions = fields.map((field) => `- ${field.label} (${field.hint})`);
   return [
     "Ask me about each of these, one at a time, with a suggested default:",
     ...questions,
     AFTER_QUESTIONS,
     "",
-    BB_SETUP,
-    "",
     prompt,
   ].join("\n");
+}
+
+export function withIntake(fields: IntakeField[], prompt: string): string {
+  return withQuestions(fields, `${BB_SETUP}\n\n${prompt}`);
 }
