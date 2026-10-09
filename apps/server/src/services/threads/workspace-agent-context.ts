@@ -1,3 +1,4 @@
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../routes/path-list-policy.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -20,7 +21,11 @@ export interface WorkspaceAgentContext {
 
 export async function readWorkspaceAgentContext(
   deps: LoggedWorkSessionDeps,
-  args: { hostId: string; workspacePath: string },
+  args: {
+    hostId: string;
+    workspacePath: string;
+    includeAgentInstructions: boolean;
+  },
 ): Promise<WorkspaceAgentContext> {
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.hostId,
@@ -28,6 +33,13 @@ export async function readWorkspaceAgentContext(
     command: {
       type: "host.read_workspace_agent_context",
       rootPath: args.workspacePath,
+      includeAgentInstructions: args.includeAgentInstructions,
+      projectSkillRead: {
+        limit: 1_000,
+        maxFileBytes: 10 * 1024 * 1024,
+        maxContentBytes: 32 * 1024 * 1024,
+        excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
+      },
       sharedSkillRoots: sharedSkillNativeRoots(deps),
     },
   });
@@ -48,11 +60,14 @@ export async function readWorkspaceAgentContext(
       skillsRootPath,
       skill.directoryName,
     );
-    if (skill.kind === "oversized") {
+    if (skill.kind !== "file") {
       deps.logger.warn(
         {
           candidatePath,
-          reason: `SKILL.md is ${skill.sizeBytes} bytes, over the project skill size limit`,
+          reason:
+            skill.kind === "oversized"
+              ? `SKILL.md is ${skill.sizeBytes} bytes, over the project skill size limit`
+              : "SKILL.md exceeds the remaining project skill encoded-content budget",
           sourceType: "project",
         },
         "Skipping invalid injected skill",

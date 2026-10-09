@@ -1466,9 +1466,16 @@ describe("thread runtime config", () => {
           sourceRootPath: path.posix.dirname(skillFilePath),
           skillFilePath,
         });
-        expect(responder.requests.map(({ command }) => command)).toEqual([
+        expect(responder.requests.map(({ command }) => command)).toMatchObject([
           {
             type: "host.read_workspace_agent_context",
+            includeAgentInstructions: true,
+            projectSkillRead: {
+              limit: 1_000,
+              maxFileBytes: 10 * 1024 * 1024,
+              maxContentBytes: 32 * 1024 * 1024,
+              excludeNames: expect.arrayContaining(["venv", "node_modules"]),
+            },
             rootPath: workspacePath,
             sharedSkillRoots: normalizeProviderNativeRoots({
               user: [".agents/skills"],

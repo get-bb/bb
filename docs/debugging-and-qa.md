@@ -848,3 +848,23 @@ and other server-initiated dispatches are not traced.
 4. Repeat with a small control workload. Expected long polls can generate
    slow-request records without blocking the event loop; require corroborating
    loop delay, stage timings or sampled execution before calling them stalls.
+
+### Workspace context read limits
+
+The server supplies `host.read_workspace_agent_context` with project skill
+read policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
+`SKILL.md`, and 32 MiB total JSON-encoded content strings. The aggregate budget
+allows several large skills in one catalog while bounding retained content.
+It is a pragmatic starting policy, not a measured catalog-size requirement or
+a transport ceiling. JSON quotes and escapes count toward this budget;
+directory metadata, shared skill discovery, and workspace instructions do not.
+The daemon reads files sequentially with bounded buffers. Oversized files and
+files exceeding the remaining budget are skipped with server warnings; smaller
+later files can still fit. Enumeration remains sorted and reports count
+truncation separately. Only exact-case `SKILL.md` files are eligible, and
+symlinked skill directories/files and roots escaping the workspace are rejected
+or skipped before their contents are read.
+
+Command lookup sets `includeAgentInstructions: false`, so an invalid
+`.bb/AGENTS.md` cannot break the command catalog. Turn preparation sets it to
+`true` and continues to report instruction-read errors.

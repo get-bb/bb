@@ -135,6 +135,7 @@ export async function resolveThreadRuntimeCommandConfig(
   }
 
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
+    includeAgentInstructions: true,
     hostId: args.environment.hostId,
     workspacePath,
   });

@@ -767,6 +767,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : readWorkspaceAgentContext(deps, {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
+            includeAgentInstructions: false,
           });
     const [result, workspaceSkills] = await Promise.all([
       listProviderCommands(),

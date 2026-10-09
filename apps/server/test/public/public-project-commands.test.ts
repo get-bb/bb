@@ -208,7 +208,8 @@ describe("public project command typeahead route", () => {
           description: "Review code from one shared source.",
           argumentHint: null,
         });
-        expect(stub.skillRequests[0]?.command).toEqual({
+        expect(stub.skillRequests[0]?.command).toMatchObject({
+          includeAgentInstructions: false,
           type: "host.read_workspace_agent_context",
           rootPath: "/tmp/shared-skills",
           sharedSkillRoots: {

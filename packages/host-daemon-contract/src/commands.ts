@@ -750,12 +750,27 @@ const hostListSkillsCommandSchema = z
 const hostReadWorkspaceAgentContextCommandSchema = z
   .object({
     type: z.literal("host.read_workspace_agent_context"),
+    includeAgentInstructions: z.boolean(),
+    projectSkillRead: z
+      .object({
+        limit: z.number().int().positive(),
+        maxFileBytes: z.number().int().positive(),
+        maxContentBytes: z.number().int().positive(),
+        excludeNames: z.array(z.string()),
+      })
+      .strict(),
     rootPath: z.string().min(1),
     sharedSkillRoots: providerNativeRootsSchema,
   })
   .strict();
 
 const workspaceProjectSkillFileSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("budget-exceeded"),
+      directoryName: z.string().min(1),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("file"),
