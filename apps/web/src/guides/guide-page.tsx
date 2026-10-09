@@ -8,7 +8,7 @@ import { useState } from "react";
 import blogCss from "../blog/blog.css?url";
 import compareCss from "../compare/compare.css?url";
 import { trackLandingEvent, useInitAnalytics } from "../landing/analytics";
-import { DesktopDownloadButton, DownloadLink } from "../landing/cta";
+import { DesktopDownloadButton } from "../landing/cta";
 import { useDesktopPlatform } from "../landing/desktop-platform";
 import { InstallOptions } from "../landing/landing-visuals";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
@@ -175,6 +175,11 @@ function GuideHero({ guide }: { guide: Guide }) {
           className="btn btn-ghost"
         />
       </div>
+      {guide.requirement ? (
+        <p className="gd-requirement">
+          You'll need {brandProse(guide.requirement)}.
+        </p>
+      ) : null}
       {guide.picker ? null : guide.concept}
     </header>
   );
@@ -247,19 +252,6 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
   );
 }
 
-function InstallNote() {
-  const platform = useDesktopPlatform();
-  return (
-    <p className="gd-install">
-      New to bb?{" "}
-      <DownloadLink placement="local" platform={platform}>
-        Download it
-      </DownloadLink>
-      , or run <code>npx bb-app@latest</code>.
-    </p>
-  );
-}
-
 function FaqList({ items }: { items: GuideFaq[] }) {
   return (
     <div className="cmp-faq-list">
@@ -310,22 +302,6 @@ export function GuidePage({ guide }: { guide: Guide }) {
           </section>
 
           <div className="gd-main">
-            <section id="before">
-              <h2 className="gd-h2">Before you start</h2>
-              <InstallNote />
-              <div className="gd-needs">
-                {guide.needs.map((need) => (
-                  <div key={need.title} className="gd-need">
-                    <div className="gd-need-title">
-                      <HugeiconsIcon icon={need.icon} className="gd-ic" />
-                      <span>{brandProse(need.title)}</span>
-                    </div>
-                    <p>{brandProse(need.body)}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             {guide.steps.map((step, index) => (
               <StepSection key={step.id} step={step} number={index + 1} />
             ))}

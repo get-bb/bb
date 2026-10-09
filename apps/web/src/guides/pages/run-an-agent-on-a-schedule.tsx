@@ -1,7 +1,3 @@
-import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-
 import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
@@ -64,23 +60,7 @@ export const guide: Guide = {
   concept: <ScheduleConcept />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "bb on a computer that stays on",
-      icon: ComputerIcon,
-      body: "Automations run while bb is running and the computer is awake.",
-    },
-    {
-      title: "An agent you're signed in to",
-      icon: AiMagicIcon,
-      body: "Claude Code, Codex, or another agent. Scripts don't need one.",
-    },
-    {
-      title: "A project",
-      icon: GitBranchIcon,
-      body: "The repo the job reads or changes, added to bb.",
-    },
-  ],
+  requirement: "bb running on a computer that's awake when runs are due",
   steps: [
     {
       id: "step-1",

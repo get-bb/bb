@@ -1,5 +1,3 @@
-import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
@@ -267,18 +265,7 @@ export function guideVariant(variant: string | null): Guide {
       ],
     },
     agentPrompt: switchPrompt(tool),
-    needs: [
-      {
-        title: "bb on the same computer",
-        icon: ComputerIcon,
-        body: `The computer where ${oldTool} keeps your repos and worktrees.`,
-      },
-      {
-        title: "Your agents signed in",
-        icon: AiMagicIcon,
-        body: "Claude Code, Codex, or the agents you already use there.",
-      },
-    ],
+    requirement: `bb on the computer where ${oldTool} keeps your work`,
     steps: [],
     troubleshooting: [
       {

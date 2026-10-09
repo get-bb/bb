@@ -1,7 +1,3 @@
-import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-
 import { AgentSplit } from "../../compare/compare-visuals";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
@@ -63,23 +59,7 @@ export const guide: Guide = {
   concept: <AgentSplit />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "bb on your computer",
-      icon: ComputerIcon,
-      body: "A Mac with Apple Silicon, Windows, or Linux (alpha).",
-    },
-    {
-      title: "Claude Code and Codex",
-      icon: AiMagicIcon,
-      body: "Each signed in once on your computer. bb runs the CLIs you already use.",
-    },
-    {
-      title: "A Git repo",
-      icon: GitBranchIcon,
-      body: "Each task gets its own worktree, so your checkout stays as it is.",
-    },
-  ],
+  requirement: "Claude Code and Codex, each signed in once",
   steps: [
     {
       id: "step-1",

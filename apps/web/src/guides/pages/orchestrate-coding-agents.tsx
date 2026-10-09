@@ -1,7 +1,3 @@
-import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
-
 import { SpawnTimeline } from "../../compare/compare-visuals";
 import { CopyPromptButton, PromptBlock, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
@@ -67,23 +63,7 @@ export const guide: Guide = {
   concept: <SpawnTimeline />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "bb on your computer",
-      icon: ComputerIcon,
-      body: "A Mac with Apple Silicon, Windows, or Linux (alpha).",
-    },
-    {
-      title: "Two or more agents",
-      icon: AiMagicIcon,
-      body: "Claude Code, Codex, Cursor, Pi, or others, each signed in once. bb runs the CLIs you already use.",
-    },
-    {
-      title: "A Git repo",
-      icon: GitBranchIcon,
-      body: "Each task gets its own worktree, so your checkout stays as it is.",
-    },
-  ],
+  requirement: "two or more agents signed in, like Claude Code and Codex",
   steps: [
     {
       id: "step-1",

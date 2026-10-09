@@ -607,39 +607,11 @@
   text-underline-offset: 3px;
 }
 
-.gd-install {
-  margin-top: 10px;
-  color: var(--dim);
-}
-
-.gd-needs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 22px;
-}
-
-.gd-need {
-  padding: 18px;
-  border: 1px solid var(--border-soft);
-  border-radius: 12px;
-  background: var(--bg);
-}
-
-.gd-need-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.gd-requirement {
+  margin-top: 14px;
   font-size: 15px;
-  font-weight: 600;
-  color: var(--heading-sub);
-}
-
-.gd-need p {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 1.55;
   color: var(--dim);
+  text-align: center;
 }
 
 .gd-main {
@@ -963,7 +935,6 @@
 }
 
 .gd-main p a,
-.gd-need a,
 .gd-note a,
 .gd-more-body a,
 .gd-main li a {
@@ -1001,23 +972,6 @@
   .gd-plan-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 36px;
-  }
-  .gd-needs {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(240px, 78%);
-    margin-inline: -28px;
-    padding: 0 28px 4px;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: 28px;
-    scrollbar-width: none;
-  }
-  .gd-needs::-webkit-scrollbar {
-    display: none;
-  }
-  .gd-need {
-    scroll-snap-align: start;
   }
 }
 
