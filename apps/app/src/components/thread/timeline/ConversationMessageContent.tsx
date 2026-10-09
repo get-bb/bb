@@ -1,4 +1,10 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type {
   TimelineConversationAttachments,
   TimelineRowBase,
@@ -73,6 +79,7 @@ import {
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { buildMarkdownMessageLinkRouting } from "@/components/ui/markdown-message-link-routing";
+import { markStreamTrace } from "@/lib/stream-trace";
 
 interface ConversationMessageContentBaseProps {
   attachments: TimelineConversationAttachments | null;
@@ -513,6 +520,15 @@ function AssistantConversationMessage({
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
+  useLayoutEffect(() => {
+    if (streaming) {
+      markStreamTrace("bb:stream-row-commit", {
+        rowId: id,
+        threadId: threadId ?? null,
+        textLength: text.length,
+      });
+    }
+  }, [id, streaming, text, threadId]);
   const { split: streamingSplit, liveMarkdown } = useMemo(
     () => resolveStreamingMarkdown(text, streaming),
     [streaming, text],

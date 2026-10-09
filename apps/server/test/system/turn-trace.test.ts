@@ -71,11 +71,14 @@ async function postEvents(
   expect(response.status).toBe(200);
 }
 
-function spyOnTurnTraceLogs(harness: TestAppHarness): () => unknown[] {
+function spyOnTraceLogs(
+  harness: TestAppHarness,
+  message: "Stream trace" | "Turn trace",
+): () => unknown[] {
   const info = vi.spyOn(harness.deps.logger, "info");
   return () =>
     info.mock.calls
-      .filter((call) => call[1] === "Turn trace")
+      .filter((call) => call[1] === message)
       .map((call) => call[0]);
 }
 
@@ -104,7 +107,8 @@ describe("turn trace", () => {
       { performanceDiagnosticsAvailable: true },
       async (harness) => {
         setExperiments(harness.db, { performanceDiagnostics: true });
-        const turnTraceLogs = spyOnTurnTraceLogs(harness);
+        const turnTraceLogs = spyOnTraceLogs(harness, "Turn trace");
+        const streamTraceLogs = spyOnTraceLogs(harness, "Stream trace");
         const { sessionId, thread } = seedIdleThread(harness);
 
         await sendFollowUp(harness, thread);
@@ -173,6 +177,19 @@ describe("turn trace", () => {
             ]),
           },
         });
+        expect(streamTraceLogs()).toEqual([
+          {
+            streamTrace: {
+              threadId: thread.id,
+              receivedAt: expect.any(Number),
+              committedAt: expect.any(Number),
+              notifiedAt: expect.any(Number),
+              events: 1,
+              textChars: 2,
+              textEvents: 1,
+            },
+          },
+        ]);
       },
     );
   });
@@ -181,7 +198,8 @@ describe("turn trace", () => {
     await withTestHarness(
       { performanceDiagnosticsAvailable: true },
       async (harness) => {
-        const turnTraceLogs = spyOnTurnTraceLogs(harness);
+        const turnTraceLogs = spyOnTraceLogs(harness, "Turn trace");
+        const streamTraceLogs = spyOnTraceLogs(harness, "Stream trace");
         const { sessionId, thread } = seedIdleThread(harness);
 
         await sendFollowUp(harness, thread);
@@ -216,6 +234,7 @@ describe("turn trace", () => {
         ]);
 
         expect(turnTraceLogs()).toEqual([]);
+        expect(streamTraceLogs()).toEqual([]);
       },
     );
   });

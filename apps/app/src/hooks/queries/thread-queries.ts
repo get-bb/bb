@@ -97,6 +97,7 @@ import {
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
 import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache-owner";
 import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline-unseen-events";
+import { markStreamTrace } from "@/lib/stream-trace";
 import {
   THREAD_OPEN_CACHE_GC_MS,
   touchThreadOpenCache,
@@ -1093,6 +1094,11 @@ async function fetchThreadTimeline({
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
   clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
+  markStreamTrace("bb:timeline-applied", {
+    threadId,
+    maxSeq: timeline.maxSeq,
+    source: response.delta === undefined ? "fetch" : "fetch-delta",
+  });
   return timeline;
 }
 

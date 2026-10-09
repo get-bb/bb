@@ -836,6 +836,24 @@ spent on the network. `outcome` is `output`, `not-sent` (queued or refused),
 send on the thread, or `no-output` after two minutes. Queue drains, retries,
 and other server-initiated dispatches are not traced.
 
+### Stream traces
+
+While both gates are on, every ingested daemon event batch that carries agent
+message, reasoning, or plan text writes one `Stream trace` info line per thread.
+`streamTrace.receivedAt`, `committedAt`, and `notifiedAt` are epoch
+milliseconds; `events`, `textEvents`, and `textChars` size the batch. The
+intervals between consecutive lines for a thread are the chunk cadence the
+server sees. The host daemon logs `Posted daemon event batch` at debug level
+(`BB_LOG_LEVEL=debug`) for every POST: `eventBatch.events`, `textChars`,
+`oldestQueuedMs` (how long the oldest event waited), `sincePreviousPostMs`,
+`postMs`, and `postedAt`. In the browser, the same gates add
+`performance.mark` entries: `bb:timeline-applied` (`threadId`, `maxSeq`,
+`source`) when timeline data is applied, and `bb:stream-row-commit` (`rowId`,
+`threadId`, `textLength`) when a streaming assistant row commits. Read them with
+`performance.getEntriesByType("mark")`. Streaming assistant text is revealed a
+complete line at a time, so row commits follow line completion, not every
+applied chunk.
+
 ### Diagnose a captured stall
 
 1. Record the affected request path and approximate UTC time. Find its

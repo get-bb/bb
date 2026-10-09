@@ -40,6 +40,11 @@ export interface EventSink {
   dispose(): Promise<void>;
 }
 
+interface QueuedEvent {
+  envelope: HostDaemonEventEnvelope;
+  queuedAt: number;
+}
+
 interface RejectedEventSummary {
   eventIndex: number;
   reason: HostDaemonRejectedEvent["reason"];
@@ -108,7 +113,8 @@ function summarizeRejectedEvents(
 
 export function createEventSink(options: CreateEventSinkOptions): EventSink {
   const now = options.now ?? (() => Date.now());
-  const queue: HostDaemonEventEnvelope[] = [];
+  const queue: QueuedEvent[] = [];
+  let lastPostAt: number | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushPromise: Promise<void> | null = null;
   let disposed = false;
@@ -165,12 +171,47 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
     }, delayMs);
   }
 
-  async function deliverBatch(
-    batch: readonly HostDaemonEventEnvelope[],
-  ): Promise<number> {
+  function logPostedBatch(
+    batch: readonly QueuedEvent[],
+    postedAt: number,
+  ): void {
+    let textChars = 0;
+    let oldestQueuedAt = postedAt;
+    for (const { envelope, queuedAt } of batch) {
+      oldestQueuedAt = Math.min(oldestQueuedAt, queuedAt);
+      if (
+        envelope.event.type === "item/agentMessage/delta" ||
+        envelope.event.type === "item/reasoning/summaryTextDelta" ||
+        envelope.event.type === "item/reasoning/textDelta" ||
+        envelope.event.type === "item/plan/delta"
+      ) {
+        textChars += envelope.event.delta.length;
+      }
+    }
+    options.logger.debug(
+      {
+        eventBatch: {
+          events: batch.length,
+          textChars,
+          oldestQueuedMs: postedAt - oldestQueuedAt,
+          sincePreviousPostMs:
+            lastPostAt === null ? null : postedAt - lastPostAt,
+          postMs: now() - postedAt,
+          postedAt,
+        },
+      },
+      "Posted daemon event batch",
+    );
+    lastPostAt = postedAt;
+  }
+
+  async function deliverBatch(batch: readonly QueuedEvent[]): Promise<number> {
     let response: EventPostResult;
+    const postedAt = now();
     try {
-      response = await options.postEvents([...batch]);
+      response = await options.postEvents(
+        batch.map((queued) => queued.envelope),
+      );
     } catch (error) {
       const normalized = normalizeCaughtError(error);
       if (!isPermanentPostRejection(normalized)) {
@@ -186,8 +227,8 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
         options.logger.error(
           {
             ...runtimeErrorLogFields(normalized),
-            eventType: offending.event.type,
-            threadId: offending.threadId,
+            eventType: offending.envelope.event.type,
+            threadId: offending.envelope.threadId,
           },
           "Dropped a daemon event the server will never accept",
         );
@@ -204,6 +245,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       return midpoint + (await deliverBatch(batch.slice(midpoint)));
     }
 
+    logPostedBatch(batch, postedAt);
     if (response.rejectedEvents.length > 0) {
       options.logger.warn(
         {
@@ -260,8 +302,8 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
         backedUpSinceMs = now();
       }
       queue.push({
-        threadId: input.threadId,
-        event: input.event,
+        envelope: { threadId: input.threadId, event: input.event },
+        queuedAt: now(),
       });
       maybeLogQueuePressure();
       scheduleFlush(
@@ -272,7 +314,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
     },
     flush,
     listUndeliveredThreadIds(): string[] {
-      return [...new Set(queue.map((envelope) => envelope.threadId))];
+      return [...new Set(queue.map((queued) => queued.envelope.threadId))];
     },
     async dispose(): Promise<void> {
       disposed = true;
