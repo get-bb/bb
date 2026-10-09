@@ -374,7 +374,13 @@ function isReusableEnvironment(environment: Environment): boolean {
   return environment.status === "ready" && environment.path !== null;
 }
 
-const COPY_ICON_RESERVED_WIDTH = 18;
+function measureCopyIconWidth(container: HTMLElement): number {
+  const label = container.querySelector("button");
+  const icon = label?.querySelector("svg");
+  if (!label || !icon) return 0;
+  const gap = Number.parseFloat(getComputedStyle(label).columnGap);
+  return icon.getBoundingClientRect().width + (Number.isNaN(gap) ? 0 : gap);
+}
 
 export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   if (!environment?.path) return null;
@@ -384,7 +390,7 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
 function WorkspacePathValue({ path }: { path: string }) {
   const { containerRef, fitted } = useFittedPathMiddle<HTMLDivElement>(
     formatHomePathForDisplay(path),
-    COPY_ICON_RESERVED_WIDTH,
+    measureCopyIconWidth,
   );
 
   return (

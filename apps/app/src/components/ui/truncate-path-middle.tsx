@@ -81,7 +81,7 @@ function measureTextWidth(text: string, element: HTMLElement): number {
 
 export function useFittedPathMiddle<T extends HTMLElement>(
   path: string,
-  reservedWidth: number,
+  measureReservedWidth: (container: T) => number,
 ) {
   const containerRef = useRef<T>(null);
   const [fitted, setFitted] = useState(path);
@@ -89,19 +89,28 @@ export function useFittedPathMiddle<T extends HTMLElement>(
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const fit = () =>
+    let disposed = false;
+    const fit = () => {
+      if (disposed) return;
       setFitted(
         fitPathMiddle(
           path,
-          container.getBoundingClientRect().width - reservedWidth - 0.5,
+          container.getBoundingClientRect().width -
+            measureReservedWidth(container) -
+            0.5,
           (text) => measureTextWidth(text, container),
         ),
       );
+    };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(container);
-    return () => observer.disconnect();
-  }, [path, reservedWidth]);
+    void document.fonts?.ready?.then(fit);
+    return () => {
+      disposed = true;
+      observer.disconnect();
+    };
+  }, [path, measureReservedWidth]);
 
   return { containerRef, fitted };
 }
