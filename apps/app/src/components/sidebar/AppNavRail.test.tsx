@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import {
@@ -22,7 +22,12 @@ import {
 } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  useCloseMobileSidebar,
+} from "@/components/ui/sidebar";
+import { AppLayoutSidebar } from "@/components/layout/AppLayoutSidebar";
 import {
   pluginNavPanelOrderAtom,
   pluginNavVisiblePanelKeysAtom,
@@ -44,6 +49,7 @@ import {
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
+import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { AppNavRail, NavRailNewThreadButton } from "./AppNavRail";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
@@ -63,6 +69,46 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 
+vi.mock("@/views/useMobileRecentsThreadReveal", () => ({
+  useMobileRecentsThreadReveal: () => {},
+}));
+
+vi.mock("@/components/sidebar/AppSidebar", () => ({
+  AppSidebar: ({
+    renderRail,
+  }: {
+    renderRail: (customize: {
+      isOpen: boolean;
+      onOpenChange: () => void;
+    }) => ReactNode;
+  }) => renderRail({ isOpen: false, onOpenChange: () => {} }),
+}));
+
+vi.mock("@/components/settings/SettingsSidebar", () => ({
+  SettingsSidebar: () => null,
+}));
+vi.mock("@/components/tools/ResourceSidebar", () => ({
+  ResourceSidebar: () => null,
+}));
+
+vi.mock("@/hooks/useUpdateInventory", () => ({
+  useUpdateInventory: () => ({
+    appUpdateAvailable: true,
+    desktopUpdateReady: false,
+    machines: [],
+    isLoading: false,
+  }),
+}));
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemProviders: () => ({ data: [] }),
+}));
+vi.mock("@/hooks/useMachineAttention", () => ({
+  useMachineAttention: () => ({ label: null }),
+}));
+vi.mock("@/components/provider-cli/provider-cli-install", () => ({
+  useProviderCliInstallRunner: () => ({ runningJobKey: null }),
+}));
+
 const THREAD_PATH = getThreadRoutePath({
   projectId: "proj_one",
   threadId: "thr_one",
@@ -77,7 +123,8 @@ const ALL_KEYS = [
 const DOCS_PATH = getPluginPanelRoutePath({ pluginId: "garden", path: "docs" });
 const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
-function RailHarness() {
+function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
+  const closeMobileSidebar = useCloseMobileSidebar();
   const location = useLocation();
   const isSettings = location.pathname.startsWith(SETTINGS_ROUTE_PATH);
   const isAppMode = !isSettings && !isPluginsRoutePath(location.pathname);
@@ -88,12 +135,25 @@ function RailHarness() {
       onNewChat={mocks.onNewChat}
       splitEnabled={false}
     >
-      <AppNavRail
-        isAppMode={isAppMode}
-        isSettingsActive={isSettings}
-        settingsRoutePath={SETTINGS_ROUTE_PATH}
-        customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
-      />
+      {useLayout ? (
+        <>
+          <AppLayoutSidebar
+            mode={isSettings ? "settings" : "app"}
+            onResizeMouseDown={() => {}}
+            isResizing={false}
+            settingsRoutePath={SETTINGS_ROUTE_PATH}
+          />
+          <SidebarTrigger />
+          <SidebarUpdatesBadge onNavigate={closeMobileSidebar} />
+        </>
+      ) : (
+        <AppNavRail
+          isAppMode={isAppMode}
+          isSettingsActive={isSettings}
+          settingsRoutePath={SETTINGS_ROUTE_PATH}
+          customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
+        />
+      )}
       <NavRailNewThreadButton />
       <output data-testid="pathname">{location.pathname}</output>
     </SidebarNavigationModelProvider>
@@ -106,6 +166,7 @@ function renderRail(
     visibleKeys?: string[];
     isCompactViewport?: boolean;
     isFramed?: boolean;
+    useLayout?: boolean;
   } = {},
 ) {
   const store = createStore();
@@ -121,7 +182,7 @@ function renderRail(
         >
           <TooltipProvider>
             <SidebarProvider framed={options.isFramed ?? false}>
-              <RailHarness />
+              <RailHarness useLayout={options.useLayout} />
             </SidebarProvider>
           </TooltipProvider>
         </CompactViewportOverrideProvider>
@@ -186,6 +247,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   resetPluginFrontendBootStateForTest();
   resetPluginSlotStoreForTest();
   window.localStorage.clear();
@@ -328,6 +390,24 @@ describe("AppNavRail", () => {
 
     fireEvent.click(railButton("Docs"));
     fireEvent.click(railButton("Settings"));
+    fireEvent.click(railButton("Home"));
+
+    expect(pathname()).toBe(THREAD_PATH);
+    expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
+  it("returns Home to the last thread after settings navigation closes the compact sidebar", () => {
+    vi.useFakeTimers();
+    renderRail(THREAD_PATH, { isCompactViewport: true, useLayout: true });
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    act(() => vi.advanceTimersByTime(250));
+
+    fireEvent.click(screen.getByRole("link", { name: "bb update available" }));
+    expect(pathname()).toBe(`${SETTINGS_ROUTE_PATH}/updates`);
+    act(() => vi.advanceTimersByTime(250));
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    act(() => vi.advanceTimersByTime(250));
     fireEvent.click(railButton("Home"));
 
     expect(pathname()).toBe(THREAD_PATH);

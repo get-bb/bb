@@ -192,7 +192,8 @@ describe("AppLayoutSidebar", () => {
     );
 
     expect(getMobilePanel()).toBe(panel);
-    expect(rail.dataset.appMode).toBe("true");
+    expect(rail.dataset.appMode).toBe("false");
+    expect(rail.dataset.settingsActive).toBe("true");
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(getShelfRevealTranslate()).toBe("0px");
