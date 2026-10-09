@@ -2,6 +2,7 @@
 
 import type { ComponentProps, ReactNode } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -13,6 +14,7 @@ import {
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
 import { panelGroupState } from "@/test/react-resizable-panels-stub";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 
 type RootComposeSecondaryContentProps = ComponentProps<
   typeof RootComposeSecondaryContent
@@ -37,11 +39,6 @@ function setMacosDesktopChrome(): void {
 function clearDesktopChrome(): void {
   delete (window as unknown as TestDesktopWindow).bbDesktop;
 }
-
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 40,
-}));
 
 vi.mock(
   "react-resizable-panels",
@@ -151,28 +148,11 @@ function withPaneContext(
 
 function renderRootCompose(args: RenderRootComposeArgs) {
   let renderArgs = args;
-  const content = (
-    <CompactViewportOverrideProvider
-      isCompactViewport={renderArgs.isCompactViewport}
-    >
-      <RootComposeSecondaryContent
-        compactScrollContent={null}
-        isCompactHomeLayout={false}
-        isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
-        onToggleSecondaryPanel={() => undefined}
-        secondaryPanel={createSecondaryPanel(renderArgs.isSecondaryPanelOpen)}
-      >
-        <div data-testid="root-compose-content" />
-      </RootComposeSecondaryContent>
-    </CompactViewportOverrideProvider>
-  );
-  const view = render(withPaneContext(content, renderArgs.isTopRow));
-
-  return {
-    ...view,
-    rerenderWith(nextArgs: Partial<RenderRootComposeArgs>) {
-      renderArgs = { ...renderArgs, ...nextArgs };
-      const nextContent = (
+  const store = createStore();
+  store.set(secondaryPanelWidthPercentAtom, 40);
+  const renderContent = () =>
+    withPaneContext(
+      <Provider store={store}>
         <CompactViewportOverrideProvider
           isCompactViewport={renderArgs.isCompactViewport}
         >
@@ -188,8 +168,16 @@ function renderRootCompose(args: RenderRootComposeArgs) {
             <div data-testid="root-compose-content" />
           </RootComposeSecondaryContent>
         </CompactViewportOverrideProvider>
-      );
-      view.rerender(withPaneContext(nextContent, renderArgs.isTopRow));
+      </Provider>,
+      renderArgs.isTopRow,
+    );
+  const view = render(renderContent());
+
+  return {
+    ...view,
+    rerenderWith(nextArgs: Partial<RenderRootComposeArgs>) {
+      renderArgs = { ...renderArgs, ...nextArgs };
+      view.rerender(renderContent());
     },
   };
 }
