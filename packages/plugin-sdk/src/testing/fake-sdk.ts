@@ -118,12 +118,8 @@ function normalizeCallArgs(
     case "threads.fork":
       return withThreadAttribution(pluginId, args);
     case "threads.getPluginMetadata":
-      return withPluginMetadataTarget(pluginId, args, false);
     case "threads.experimental_listPluginMetadata":
-      return [
-        { ...(typeof args[0] === "object" ? args[0] : {}), pluginId },
-        ...args.slice(1),
-      ];
+      return withPluginMetadataTarget(pluginId, args, false);
     case "threads.updatePluginMetadata":
       return withPluginMetadataTarget(pluginId, args, true);
     default:

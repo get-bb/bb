@@ -1173,20 +1173,18 @@ namespace, archived and deleted threads included, in one
 `thread_plugin_metadata` primary key. Threads without a namespace are omitted;
 corrupt namespaces are omitted and logged without their content, like the
 single-thread read. The core SDK takes `{ pluginId, threadIds, signal? }`; the
-plugin-bound SDKs (backend `bb.sdk`, app `useSdk()`, and the fake host) take
-`{ threadIds, signal? }` and always read the calling plugin's own namespace,
-overriding any `pluginId` passed at runtime, unlike `getPluginMetadata` and
-`updatePluginMetadata`, which accept another plugin's id. The route itself
-trusts its `pluginId` like the single-thread routes, because app requests
-carry no plugin identity. First caller: push-notifications'
+plugin-bound SDKs (backend `bb.sdk`, app `useSdk()`, and the fake host) default
+`pluginId` to the calling plugin, like `getPluginMetadata` and
+`updatePluginMetadata`. The route trusts its `pluginId` like the single-thread
+routes, because app requests carry no plugin identity. First caller: push-notifications'
 `threadNotifications.list`, which the Notifications thread action calls with
 the ids it has not cached yet.
 
 **Audit before stabilizing.**
 
-1. **Route binding.** Only the bound SDKs restrict the namespace. Decide
-   whether plugin requests should carry an identity the route can enforce,
-   for this and the single-thread metadata routes.
+1. **Route binding.** Any caller can read any plugin's namespace, as with
+   the single-thread metadata routes. Decide whether plugin requests should
+   carry an identity the routes can enforce.
 2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
    attributes layer replaces per-registration reads.
 

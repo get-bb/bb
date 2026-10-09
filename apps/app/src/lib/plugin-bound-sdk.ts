@@ -386,11 +386,13 @@ export function bindSdkToPlugin(
         });
       },
       experimental_listPluginMetadata(
-        args: Omit<PluginThreadMetadataListArgs, "pluginId">,
+        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+          pluginId?: string;
+        },
       ) {
         return sdk.threads.experimental_listPluginMetadata({
           ...args,
-          pluginId,
+          pluginId: args.pluginId ?? pluginId,
         });
       },
       updatePluginMetadata(

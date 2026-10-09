@@ -1184,9 +1184,7 @@ export interface ExperimentalClipboardContent {
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
- * origin, the plugin-metadata calls default `pluginId`, and
- * `experimental_listPluginMetadata` reads only the calling plugin's metadata.
- * The same
+ * origin, and the plugin-metadata calls default `pluginId`. The same
  * narrowing the backend `bb.sdk` applies.
  */
 export type PluginBoundThreadsArea = Omit<
@@ -1197,7 +1195,9 @@ export type PluginBoundThreadsArea = Omit<
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
   ): Promise<ThreadPluginMetadataResult>;
   experimental_listPluginMetadata(
-    args: Omit<PluginThreadMetadataListArgs, "pluginId">,
+    args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+      pluginId?: string;
+    },
   ): Promise<PluginThreadMetadataListResult>;
   updatePluginMetadata(
     args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
