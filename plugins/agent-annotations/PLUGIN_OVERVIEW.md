@@ -8,7 +8,7 @@ Point at what you mean instead of describing where it is. In a Browser tab in th
 
 ## How to use it
 
-1. Turn on Agent Annotations in **Settings → Installed plugins**.
+1. In **Plugins**, open Agent Annotations and turn on its switch.
 2. Open your app in a Browser tab in the desktop app, or ask your agent to open it.
 3. Choose **Annotate elements**, click the element, write your note, and choose **Add to prompt**. Then send the message.
 
