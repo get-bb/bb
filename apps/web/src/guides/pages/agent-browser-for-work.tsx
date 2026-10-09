@@ -56,8 +56,6 @@ export const guide: Guide = {
     "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch.",
   concept: <BrowserConcept scene="work" />,
   picker: null,
-  handoffNote:
-    "Your agent asks what you need, then works in a browser and reports back with sources.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

@@ -266,7 +266,6 @@ export function guideVariant(variant: string | null): Guide {
         ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
       ],
     },
-    handoffNote: `Paste it into a new bb thread. Your agent asks what to bring over. ${keepsWorking}`,
     agentPrompt: switchPrompt(tool),
     needs: [
       {

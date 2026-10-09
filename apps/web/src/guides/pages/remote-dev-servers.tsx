@@ -68,8 +68,6 @@ export const guide: Guide = {
     "Every agent's branch gets its own dev server and port, reloading as the agent codes. Open any of them from your phone at a private link only you can open.",
   concept: <RemoteServersConcept />,
   picker: null,
-  handoffNote:
-    "Your agent asks which branches to run, then starts a dev server for each.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

@@ -65,7 +65,6 @@ export interface Guide extends GuideMeta {
   description: string;
   concept: ReactNode;
   picker: GuidePicker | null;
-  handoffNote: string;
   agentPrompt: string;
   needs: [GuideNeed, ...GuideNeed[]];
   steps: GuideStep[];

@@ -63,8 +63,6 @@ export const guide: Guide = {
     "Wake up to triaged issues, test results, or a dependency update. Run an agent once or on repeat, or have a script run first before an agent.",
   concept: <ScheduleConcept />,
   picker: null,
-  handoffNote:
-    "Your agent asks what to run and when, then sets it up and tests one run.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
