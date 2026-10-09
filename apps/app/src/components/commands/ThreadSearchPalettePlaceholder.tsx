@@ -1,7 +1,10 @@
 import { useId, type ReactNode } from "react";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
-import { PaletteShell } from "./PaletteShell";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { PaletteModeChip } from "./PaletteModeChip";
+import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
 
 export const THREAD_SEARCH_INPUT = {
   label: "Search threads",
@@ -38,29 +41,43 @@ export function ThreadSearchPalettePlaceholder({
   const listId = useId();
   const isCompact = useIsCompactViewport();
   return (
-    <PaletteShell
-      inputDescription="Use Escape to return to commands."
-      inputLabel={THREAD_SEARCH_INPUT.label}
-      listId={listId}
-      listLabel="Threads"
-      modeChip={threadSearchModeChip(onExit, isCompact)}
-      inputAccessory={<span aria-hidden className="w-8 shrink-0" />}
-      onInputChange={onQueryChange}
-      onInputKeyDown={(event) => {
-        if (event.nativeEvent.isComposing) return;
-        if (
-          event.key === "Escape" ||
-          (event.key === "Backspace" && query.length === 0)
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          onExit();
-        }
-      }}
-      placeholder={THREAD_SEARCH_INPUT.placeholder}
-      value={query}
-    >
-      <ListLoadingPlaceholder label="Loading threads" />
-    </PaletteShell>
+    <TooltipProvider>
+      <PaletteInputBand>
+        <PaletteModeChip {...threadSearchModeChip(onExit, isCompact)} />
+        <input
+          autoFocus
+          role="combobox"
+          aria-expanded
+          aria-controls={listId}
+          aria-label={THREAD_SEARCH_INPUT.label}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
+          onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (
+              event.key === "Escape" ||
+              (event.key === "Backspace" && query.length === 0)
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              onExit();
+            }
+          }}
+          placeholder={THREAD_SEARCH_INPUT.placeholder}
+          value={query}
+        />
+        <span aria-hidden className="w-8 shrink-0" />
+      </PaletteInputBand>
+      <div
+        className="min-h-0 overflow-hidden rounded-b-[inherit] bg-background p-1"
+        id={listId}
+        role="listbox"
+        aria-label="Threads"
+      >
+        <ListLoadingPlaceholder label="Loading threads" />
+      </div>
+    </TooltipProvider>
   );
 }
