@@ -1226,6 +1226,31 @@ const threadStopResultSchema = z
   })
   .strict();
 const emptyCommandResultSchema = z.object({});
+const turnSubmitTraceSpanNameSchema = z.enum([
+  "lanes.entered",
+  "skills.staged",
+  "runtime.ready",
+  "input.staged",
+  "bridge.turnStarted",
+  "events.flushed",
+]);
+export type TurnSubmitTraceSpanName = z.infer<
+  typeof turnSubmitTraceSpanNameSchema
+>;
+const turnSubmitTraceSchema = z
+  .object({
+    spans: z.array(
+      z
+        .object({
+          name: turnSubmitTraceSpanNameSchema,
+          atMs: z.number().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type TurnSubmitTrace = z.infer<typeof turnSubmitTraceSchema>;
+const turnSubmitResultSchema = z.object({ trace: turnSubmitTraceSchema });
 const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
 const projectInspectResultSchema = projectPathResultSchema
   .extend({ gitRemoteUrl: z.string().min(1).nullable() })
@@ -1473,7 +1498,7 @@ export const hostDaemonCommandRegistry = {
   "turn.submit": defineHostDaemonCommandDescriptor({
     type: "turn.submit",
     schema: turnSubmitCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: turnSubmitResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

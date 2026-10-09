@@ -797,6 +797,27 @@ cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
 
+### Turn traces
+
+While both gates are on, every message sent through the send API also writes
+one `Turn trace` info line once its first streamed output is stored and
+broadcast. `turnTrace.spans` holds milliseconds since the server received the
+send: `dispatch.checkpoint.done`, `runtimeConfig.*` (runtime configuration
+assembly, including the daemon reads it waits on), `command.sent`,
+`send.responded`, `command.settled`, and `firstOutput.batchReceived`,
+`firstOutput.committed`, `firstOutput.notified` for the first event batch that
+carries an agent message, reasoning, or plan delta. `turnTrace.rpcs` lists every
+daemon RPC the send awaited with its start offset and duration.
+`turnTrace.daemon.spans` are the daemon's own offsets from receiving
+`turn.submit`: `lanes.entered`, `skills.staged`, `runtime.ready`,
+`input.staged`, `bridge.turnStarted`, and `events.flushed`. Server and daemon
+offsets use different clocks, so compare durations rather than offsets:
+`command.settled - command.sent - daemon events.flushed` is the round trip
+spent on the network. `outcome` is `output`, `not-sent` (queued or refused),
+`command-failed`, `completed-without-output`, `superseded` by a newer traced
+send on the thread, or `no-output` after two minutes. Queue drains, retries,
+and other server-initiated dispatches are not traced.
+
 ### Diagnose a captured stall
 
 1. Record the affected request path and approximate UTC time. Find its

@@ -38,6 +38,7 @@ import {
   readWorkspaceAgentInstructions,
 } from "./workspace-agent-instructions.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
+import { markTurnTraceSpan } from "../system/turn-trace.js";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, stop work in the current turn; future turns will run in the updated environment.";
@@ -120,6 +121,7 @@ export async function resolveThreadRuntimeCommandConfig(
   deps: LoggedWorkSessionDeps,
   args: ResolveThreadRuntimeCommandConfigArgs,
 ): Promise<ResolvedThreadRuntimeCommandConfig> {
+  markTurnTraceSpan("runtimeConfig.started");
   const workspacePath = requireWorkspacePath(args.environment);
   const project = getProject(deps.db, args.thread.projectId);
   if (!project) {
@@ -149,6 +151,7 @@ export async function resolveThreadRuntimeCommandConfig(
         workspacePath,
       }),
     ]);
+  markTurnTraceSpan("runtimeConfig.workspaceRead");
   const pluginSkillRoots = getPluginSkillRootContributions();
   const skillIdsByPlugin = discoverPluginSkillIds(deps.logger, {
     pluginSkillRoots,
@@ -194,6 +197,7 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
+  markTurnTraceSpan("runtimeConfig.pluginConfig");
   const contributedEnv = mergeHostAndProviderEnvironment(
     await resolveHostEnvironment(deps, {
       hostId: host.id,
@@ -208,6 +212,7 @@ export async function resolveThreadRuntimeCommandConfig(
       },
     }),
   );
+  markTurnTraceSpan("runtimeConfig.env");
   const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
@@ -285,6 +290,7 @@ export async function resolveThreadRuntimeCommandConfig(
     hostId: args.environment.hostId,
     threadId: args.thread.id,
   });
+  markTurnTraceSpan("runtimeConfig.built");
   return {
     contributedEnv,
     dynamicTools,

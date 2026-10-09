@@ -66,6 +66,9 @@ function registerSuccessfulTurnResponder(
           errorMessage: `Path does not exist: ${command.path}`,
         };
       }
+      if (command.type === "turn.submit") {
+        return { ok: true, result: { trace: { spans: [] } } };
+      }
       return { ok: true, result: {} };
     },
   });
