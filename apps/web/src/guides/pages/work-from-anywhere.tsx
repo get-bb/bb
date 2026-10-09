@@ -5,7 +5,7 @@ import UserAccountIcon from "@hugeicons/core-free-icons/UserAccountIcon";
 import { AnywhereConcept } from "../concepts";
 import { Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -33,9 +33,15 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 Reply with my getbb.app address and these steps: open it on my phone, sign in with the same getbb.app account, and add it to my Home Screen. Say whether Keep Awake is on, and remind me that closing a laptop's lid still puts it to sleep.`,
 );
 
-export const WORK_FROM_ANYWHERE: Guide = {
+export const meta: GuideMeta = {
   slug: "work-from-anywhere",
   title: "Keep working from anywhere",
+  nav: { group: "Remote & mobile", label: "Work from anywhere", order: 6 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from your phone or any browser.",
   concept: <AnywhereConcept />,
@@ -80,6 +86,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
       shot: {
         src: "/guides/work-from-anywhere/window-connect-signed-in.png",
         alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -110,6 +118,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
       shot: {
         src: "/guides/work-from-anywhere/window-keep-awake.png",
         alt: "Keep Awake in bb's settings, with Prevent idle sleep on for all hosts",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -130,6 +140,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
       shot: {
         src: "/guides/work-from-anywhere/window-phone.png",
         alt: "bb at phone width, showing an agent's reply in a thread and an Ask a follow-up box",
+        width: 780,
+        height: 1688,
       },
       options: [],
     },
@@ -157,6 +169,8 @@ export const WORK_FROM_ANYWHERE: Guide = {
       shot: {
         src: "/guides/work-from-anywhere/window-mobile-signed-in.png",
         alt: "bb's Mobile apps settings, with bb connect ready at bb-demo.getbb.app, an Add mobile device button, and the iOS TestFlight and Android downloads",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

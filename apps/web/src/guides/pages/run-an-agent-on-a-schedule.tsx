@@ -5,7 +5,7 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import { ScheduleConcept } from "../concepts";
 import { Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -50,9 +50,15 @@ You're in a bb thread, so the bb CLI is on your PATH. Do every step yourself, wi
 Reply with the automation ID, schedule and timezone, next run, where results go, and what the test run produced.`,
 );
 
-export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
+export const meta: GuideMeta = {
   slug: "run-an-agent-on-a-schedule",
   title: "Run an agent on a schedule",
+  nav: { group: "Automate", label: "Schedule agents", order: 2 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Wake up to triaged issues, test results, or a dependency update. Run an agent once or on repeat, or have a script check first and wake it only when there's work.",
   concept: <ScheduleConcept />,
@@ -97,6 +103,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
       shot: {
         src: "/guides/run-an-agent-on-a-schedule/window-list.png",
         alt: "The Automations page in bb, listing five automations with their project, schedule, next run, and an on/off switch",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -114,6 +122,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
       shot: {
         src: "/guides/run-an-agent-on-a-schedule/window-compose.png",
         alt: "The bb message box with: Create a new bb automation to read new and updated GitHub issues every weekday at 9am Pacific. Group bugs and requests, flag regressions, and post a dated summary to one thread. Create it paused so I can test it.",
+        width: 2048,
+        height: 1280,
       },
       options: [
         {
@@ -130,6 +140,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
           shot: {
             src: "/guides/run-an-agent-on-a-schedule/window-script.png",
             alt: "A CI failure check automation in bb that runs a script every 15 minutes. One run found a failed CI run and started a Codex thread; two runs found nothing and were skipped.",
+            width: 2048,
+            height: 1280,
           },
         },
         {
@@ -145,6 +157,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
           shot: {
             src: "/guides/run-an-agent-on-a-schedule/window-once.png",
             alt: "A one-time automation in bb, Draft release notes, scheduled for tomorrow at 9:00 AM, with its prompt and a Run now button",
+            width: 2048,
+            height: 1280,
           },
         },
       ],
@@ -170,6 +184,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
       shot: {
         src: "/guides/run-an-agent-on-a-schedule/window-detail-paused.png",
         alt: "The Morning issue triage automation in bb, paused, with its schedule, prompt, model, and a Run now button under Runs",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -199,6 +215,8 @@ export const RUN_AN_AGENT_ON_A_SCHEDULE: Guide = {
       shot: {
         src: "/guides/run-an-agent-on-a-schedule/window-notify.png",
         alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

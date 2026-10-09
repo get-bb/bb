@@ -5,7 +5,7 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideFaq, GuideStep } from "../guide-types";
+import type { Guide, GuideMeta, GuideFaq, GuideStep } from "../guide-types";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -60,6 +60,8 @@ export const PLUGINS_STEP: GuideStep = {
   shot: {
     src: "/guides/agent-browser/window-plugins.png",
     alt: "Browser Automation in bb's plugin catalog, made by BB Official, with an Install button",
+    width: 2048,
+    height: 1280,
   },
   options: [],
 };
@@ -86,6 +88,8 @@ export const SIGN_INS_STEP: GuideStep = {
   shot: {
     src: "/guides/agent-browser/window-sign-ins.png",
     alt: "bb's Browser settings listing Google Chrome (running, quit to import), Chromium with an Import button, and Safari needing Full Disk Access",
+    width: 2048,
+    height: 1280,
   },
   options: [],
 };
@@ -241,9 +245,15 @@ export const BROWSER_FAQ: GuideFaq[] = [
   },
 ];
 
-export const AGENT_BROWSER: Guide = {
+export const meta: GuideMeta = {
   slug: "agent-browser",
   title: "Let your coding agent use a browser",
+  nav: { group: "Automate", label: "Test web apps", order: 3 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Have your coding agent open your app, click through its change, and show you screenshots. Then point at what to change instead of describing it.",
   concept: <BrowserConcept scene="code" />,
@@ -294,6 +304,8 @@ export const AGENT_BROWSER: Guide = {
       shot: {
         src: "/guides/agent-browser/window-check.png",
         alt: "A bb thread asking the agent to try new order filters, with a live preview of the Acme Store Orders page in the agent's browser",
+        width: 2048,
+        height: 1280,
       },
       options: [
         {
@@ -309,6 +321,8 @@ export const AGENT_BROWSER: Guide = {
           shot: {
             src: "/guides/agent-browser/window-screenshots.png",
             alt: "The agent's phone screenshots side by side in a bb thread: before, the search box and Total column are cut off; after, both fit",
+            width: 2048,
+            height: 1280,
           },
         },
       ],
@@ -336,6 +350,8 @@ export const AGENT_BROWSER: Guide = {
       shot: {
         src: "/guides/agent-browser/window-annotate.png",
         alt: "A Browser tab in bb with the All filter selected for annotation, and the note: Use our brand blue for the selected filter, like Export CSV",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

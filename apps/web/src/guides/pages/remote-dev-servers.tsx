@@ -10,7 +10,7 @@ import {
   Substeps,
 } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -31,15 +31,15 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
    Check: \`bb project show "$BB_PROJECT_ID"\` lists a source on the machine.
 
 3. For each branch, start a worktree thread on that machine:
-   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch origin/<branch> --title "<branch>" --prompt "You run the dev server for <branch>. Reply ready."
+   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if the repo has no remote> --title "<branch>" --prompt "You run the dev server for <branch>. Reply ready."
    Check: each spawn returns a thread ID. If a thread fails to start its agent, stop and ask me to sign in to that agent on the machine.
 
 4. Give each branch its own ports. In each branch's worktree, if there's no \`.env.local\`, pick two free ports and write WEB_PORT and API_PORT to \`.env.local\` there. Don't commit it. (A committed \`.bb-env-setup.sh\` that does this only runs for branches that already contain it.)
    Check: every worktree's \`.env.local\` has different ports.
 
-5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using the Dev server command line:
-   bb terminal create --thread <thread-id> --title "Dev server" --command 'set -a; . ./.env.local; set +a; <dev server command> --host 127.0.0.1 --port "$WEB_PORT"'
-   Check: \`bb terminal output <terminal-id>\` shows the server listening on 127.0.0.1 at that port.
+5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using the Dev server command line. Pass the host and port as environment variables, since many dev commands ignore extra flags (npm scripts need \`--\` before flags):
+   bb terminal create --thread <thread-id> --title "Dev server" --command 'set -a; . ./.env.local; set +a; HOST=127.0.0.1 PORT="$WEB_PORT" <dev server command>'
+   Check: \`bb terminal output <terminal-id>\` shows the server listening on 127.0.0.1 at that port, not on all interfaces. If it isn't, stop and ask me before changing the app's code.
 
 6. Share each WEB_PORT. Run \`bb connect status\` first; if remote access is off, stop and ask me to turn on bb connect in Settings. Then:
    bb connect expose <port> --host <machine>
@@ -54,9 +54,15 @@ pnpm install
 free_port() { node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 printf 'WEB_PORT=%s\\nAPI_PORT=%s\\n' "$(free_port)" "$(free_port)" > .env.local`;
 
-export const REMOTE_DEV_SERVERS: Guide = {
+export const meta: GuideMeta = {
   slug: "remote-dev-servers",
   title: "Run a dev server for every branch",
+  nav: { group: "Remote & mobile", label: "Run dev servers", order: 5 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Every agent's branch gets its own dev server and port, reloading as the agent codes. Open any of them from your phone at a private link only you can open.",
   concept: <RemoteServersConcept />,
@@ -112,6 +118,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
       shot: {
         src: "/guides/remote-dev-servers/window-add-machine.png",
         alt: "The Add a machine dialog in bb's Machines settings, with a macOS or Linux install command, a Copy button, and Waiting for the machine to connect",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -141,6 +149,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
       shot: {
         src: "/guides/remote-dev-servers/window-checkouts.png",
         alt: "A project's settings in bb, with a Checkouts section listing where the project lives on each machine",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -165,6 +175,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
       shot: {
         src: "/guides/remote-dev-servers/window-new-thread.png",
         alt: "A new bb thread in acme-web with Worktree chosen and the Branch from list open, showing main and feature branches",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -192,6 +204,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
       shot: {
         src: "/guides/remote-dev-servers/window-terminal.png",
         alt: "A bb thread with its side panel open on a Dev server terminal, showing a server running on 127.0.0.1 port 3001",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -225,6 +239,8 @@ export const REMOTE_DEV_SERVERS: Guide = {
       shot: {
         src: "/guides/remote-dev-servers/window-connect-signed-in.png",
         alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

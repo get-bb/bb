@@ -5,7 +5,7 @@ export interface IntakeField {
 
 const FOR_AGENT = [
   "--- For the agent ---",
-  "Read the lines above first. Treat a line as blank if it still has only its [bracketed hint]. For each blank line, interview me: ask one short question at a time, suggest a sensible default, and wait for my answer. Then restate the plan in three bullets and wait for my go.",
+  "Read the lines above first. Treat a line as blank if it still has only its [bracketed hint]. For each blank line, interview me: ask one short question at a time, suggest a sensible default, and wait for my answer. If no line is blank, skip the questions. Either way, restate the plan in three bullets and wait for my go before step 1.",
   "Use my answers exactly. If an answer conflicts with a step below, my answer wins, and skip any step an answer turns off.",
   "When you wait on a thread or a run, a timeout isn't a failure: wait again, up to three times.",
 ].join("\n");

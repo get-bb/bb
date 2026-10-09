@@ -4,6 +4,23 @@ import type { ReactNode } from "react";
 export interface GuideShot {
   src: string;
   alt: string;
+  width: number;
+  height: number;
+}
+
+export type GuideNavGroup = "Automate" | "Remote & mobile";
+
+export interface GuideNav {
+  group: GuideNavGroup | null;
+  label: string;
+  order: number;
+}
+
+export interface GuideMeta {
+  slug: string;
+  title: string;
+  nav: GuideNav | null;
+  canonical: string | null;
 }
 
 export interface GuideStepOption {
@@ -44,9 +61,7 @@ export interface GuidePicker {
   options: GuidePickerOption[];
 }
 
-export interface Guide {
-  slug: string;
-  title: string;
+export interface Guide extends GuideMeta {
   description: string;
   concept: ReactNode;
   picker: GuidePicker | null;

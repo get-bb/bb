@@ -232,12 +232,12 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
       </div>
       <p className="gd-lead">{brandProse(step.lead)}</p>
       {brandProse(step.body)}
-      <ProductShot src={step.shot.src} alt={step.shot.alt} />
+      <ProductShot shot={step.shot} />
       {step.options.map((option) => (
         <div key={option.title} className="gd-option">
           <h3 className="gd-h3">{brandProse(option.title)}</h3>
           {brandProse(option.body)}
-          <ProductShot src={option.shot.src} alt={option.shot.alt} />
+          <ProductShot shot={option.shot} />
         </div>
       ))}
     </section>

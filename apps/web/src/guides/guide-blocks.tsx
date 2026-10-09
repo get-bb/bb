@@ -14,9 +14,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { getImageSize } from "../blog/image-sizes";
 import { LightboxImage } from "../blog/lightbox";
 import { brandProse } from "../compare/compare-page";
+import type { GuideShot } from "./guide-types";
 import { copyPlainText } from "../lib/copy-plain-text";
 
 export const PROMPT_COPIED = "Prompt copied. Paste it into a bb thread.";
@@ -190,18 +190,25 @@ export function Note({
   );
 }
 
-export function ProductShot({ src, alt }: { src: string; alt: string }) {
-  const size = getImageSize(src);
+export function ProductShot({ shot }: { shot: GuideShot }) {
   return (
     <figure className="gd-shot">
       <div
         className="gd-shot-frame"
-        style={size ? { maxWidth: `${size.width / 2}px` } : undefined}
+        style={{ maxWidth: `${shot.width / 2}px` }}
       >
-        <LightboxImage src={src} alt={alt} />
+        <LightboxImage
+          src={shot.src}
+          alt={shot.alt}
+          size={{ width: shot.width, height: shot.height }}
+        />
       </div>
     </figure>
   );
+}
+
+export function BulletList({ children }: { children: ReactNode }) {
+  return <ul className="gd-list">{brandProse(children)}</ul>;
 }
 
 export function MorePath({

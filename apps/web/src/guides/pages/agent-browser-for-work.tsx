@@ -3,9 +3,9 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 
 import { BrowserConcept } from "../concepts";
-import { PromptBlock, Substeps } from "../guide-blocks";
+import { BulletList, PromptBlock, Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 import {
   BROWSER_FAQ,
   BROWSER_TROUBLESHOOTING,
@@ -42,9 +42,15 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
    Check: reply with the result in the format from Bring back (a table with a source per row if it's blank), a source link for each fact, screenshots of anything I should look at, and what you couldn't do.`,
 );
 
-export const AGENT_BROWSER_FOR_WORK: Guide = {
+export const meta: GuideMeta = {
   slug: "agent-browser-for-work",
   title: "Get research and reports from any site",
+  nav: { group: "Automate", label: "Automate browser tasks", order: 4 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch. Every fact links to the page it came from.",
   concept: <BrowserConcept scene="work" />,
@@ -90,7 +96,7 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
             prompt="Compare the cheapest paid plans of Linear, Trello, and Asana from their pricing pages: the plan name and its price per user per month, billed yearly. Work in a Browser tab here so I can watch. Put the result in a table and link each price to the page it came from."
           />
           <p>Jobs that work well:</p>
-          <ul className="gd-list">
+          <BulletList>
             <li>
               <strong>Research.</strong> Compare plans, pricing, or reviews
               across sites.
@@ -108,12 +114,14 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
               <a href="/guides/run-an-agent-on-a-schedule">automation</a> and
               have the report ready each morning.
             </li>
-          </ul>
+          </BulletList>
         </>
       ),
       shot: {
         src: "/guides/agent-browser-for-work/window-ask.png",
         alt: "A bb thread with a table of the cheapest paid plans of Linear, Trello, and Asana, each price linked to its pricing page, next to Asana's pricing page in a Browser tab",
+        width: 2048,
+        height: 1280,
       },
       options: [
         {
@@ -128,6 +136,8 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
           shot: {
             src: "/guides/agent-browser-for-work/window-take-over.png",
             alt: "The agent reading Trello's pricing page in a bb Browser tab, under a bar that says Browser Automation is controlling this tab, with Stop and Take over",
+            width: 2048,
+            height: 1280,
           },
         },
       ],
@@ -155,6 +165,8 @@ export const AGENT_BROWSER_FOR_WORK: Guide = {
       shot: {
         src: "/guides/agent-browser-for-work/window-annotate.png",
         alt: "Asana's pricing page in a bb Browser tab with the Starter price selected, and the note: Add each plan's monthly price as a second column.",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

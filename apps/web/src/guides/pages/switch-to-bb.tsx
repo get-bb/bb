@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 
 const GUIDE_URL = "https://getbb.app/guides/switch-to-bb";
 const ALL_TOOLS =
@@ -187,7 +187,7 @@ Check: bb automation list --project <project id> shows each one, paused. Show me
     `Move every project and all my unfinished work from ${from} into bb.
 Guide: ${url}
 
-You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or change ${folders} or the old tool's own data and settings, and never push. Threads you start can keep working inside its worktrees, so both tools may edit the same folder; tell me that before Step 4.
+You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or change ${folders} or the old tool's own data and settings, and never push. Threads you start can keep working inside its worktrees, so both tools may edit the same folder.
 
 Notes about my old tool:
 ${notes}
@@ -196,7 +196,7 @@ Step 1. Find every repo.
 1a. List every folder where an agent worked:
 - Claude Code: each subfolder of ~/.claude/projects/ holds conversations. Each .jsonl file directly inside that subfolder is one conversation; ignore .jsonl files in deeper folders, like subagents/. Get the folder path from the "cwd" field on the first line of the file that has one.
 - Codex: every .jsonl file under ~/.codex/sessions/, in any subfolder, is one conversation. Its first line has "type": "session_meta"; get the folder path from payload.cwd on that line.
-- Skip bb's own work: skip any Codex conversation whose payload.originator is "bb", and skip any folder under ~/.bb/.
+- Skip bb's own work: skip any Codex conversation whose payload.originator is "bb", and skip any folder under a ~/.bb or ~/.bb-* folder.
 1b. Skip folders that no longer exist. For each other folder, run:
    git -C <folder> rev-parse --path-format=absolute --git-common-dir
    The repo is that path without the trailing /.git. Skip folders that aren't in a Git repo.
@@ -217,7 +217,7 @@ Columns: repo, folder or branch, last activity, first request or pull request ti
 Check: show me the table and ask which rows to bring over, unless the "Work to bring over" line already says. If there are more than 20 rows, group them by repo, and ask before starting more than 10 threads.
 
 Step 4. Start one bb thread for each row I picked.
-4a. Make a temp folder with mktemp -d, outside every repo, and write a new prompt file for the row there. Its first line is the conversation file path for a conversation row, the pull request URL for a pull request row, or empty for a worktree row. After that line, copy the text between the === markers at the end of this message.
+4a. First, tell me the threads may share the old tool's folders, and wait for my OK. Then make a temp folder with mktemp -d, outside every repo, and write a new prompt file for the row there. Its first line is the conversation file path for a conversation row, the pull request URL for a pull request row, or empty for a worktree row. After that line, copy the text between the === markers at the end of this message.
 4b. Start the thread:
 - Conversation or worktree row:
   bb thread spawn --json --project <project id> --environment <folder path> --title "<short title>" --prompt-file <file>
@@ -238,15 +238,22 @@ ${CONTINUE_PROMPT}
   );
 }
 
-export function switchToBb(variant: string | null): Guide {
+export const meta: GuideMeta = {
+  slug: "switch-to-bb",
+  title: "Switch to bb",
+  nav: { group: null, label: "Switch to bb", order: 7 },
+  canonical: null,
+};
+
+export function guideVariant(variant: string | null): Guide {
   const tool = switchTool(variant);
   const oldTool = tool ? tool.name : "your old tool";
   const keepsWorking = tool
     ? tool.keepsWorking
     : "Your old tool keeps working while you try bb.";
   return {
-    slug: "switch-to-bb",
-    title: tool ? `Switch from ${tool.name} to bb` : "Switch to bb",
+    ...meta,
+    title: tool ? `Switch from ${tool.name} to bb` : meta.title,
     description:
       "Paste one prompt into bb, and your agent brings over every project and all your unfinished work.",
     concept: <SwitchConcept selected={tool ? tool.id : null} />,
@@ -410,4 +417,4 @@ export function switchToBb(variant: string | null): Guide {
   };
 }
 
-export const SWITCH_TO_BB: Guide = switchToBb(null);
+export const guide: Guide = guideVariant(null);

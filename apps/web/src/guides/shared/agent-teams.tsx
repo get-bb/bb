@@ -3,16 +3,22 @@ import type { GuideFaq, GuideShot } from "../guide-types";
 export const NESTED_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-nested.png",
   alt: "bb with the Claude Code thread Rate limit uploads open. Its tests pass, it commits, the Codex review finishes, and it reports what Codex found. In the sidebar, the Codex thread Review upload rate limiting is nested under it.",
+  width: 2048,
+  height: 1280,
 };
 
 export const SPLIT_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-split.png",
   alt: "bb split into two panes. On the left, the Claude Code thread caps the rate limiter's memory and sums up Codex's second review. On the right, the Codex reviewer gets its message, finds no serious issues, and flags one minor one.",
+  width: 2048,
+  height: 1280,
 };
 
 export const TALK_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-talk.png",
   alt: "The Claude Code thread after it asked Codex whether a memory leak needed fixing before merge. It relays Codex's answer: a real leak, but fine as a follow-up, with how to fix it later.",
+  width: 2048,
+  height: 1280,
 };
 
 export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [

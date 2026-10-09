@@ -5,14 +5,14 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import { AgentSplit } from "../../compare/compare-visuals";
 import { Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 import {
   NESTED_SHOT,
   SPLIT_SHOT,
   TALK_SHOT,
   TEAM_FAQ,
   TEAM_TROUBLESHOOTING,
-} from "./agent-teams";
+} from "../shared/agent-teams";
 
 const AGENT_PROMPT = withIntake(
   [{ label: "Task", hint: "what to build or fix" }],
@@ -30,7 +30,7 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
 3. Start Codex as the reviewer in its own thread, in this worktree:
-   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider codex --title "Review: <task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
+   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider codex --title "<task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
    Check: the spawn returns a thread ID. If Codex fails to start, stop and ask me to sign in to Codex on this computer.
 
 4. Wait for the review and read it:
@@ -49,9 +49,15 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
 Reply with what you built, what each review found, what you fixed, and what's left for me.`,
 );
 
-export const CLAUDE_CODE_AND_CODEX: Guide = {
+export const meta: GuideMeta = {
   slug: "claude-code-and-codex-together",
   title: "Use Claude Code and Codex together",
+  nav: null,
+  canonical: "/claude-code-and-codex",
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
   concept: <AgentSplit />,
@@ -96,6 +102,8 @@ export const CLAUDE_CODE_AND_CODEX: Guide = {
       shot: {
         src: "/guides/claude-code-and-codex-together/window-start.png",
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test.",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },

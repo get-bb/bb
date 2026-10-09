@@ -5,14 +5,14 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import { SpawnTimeline } from "../../compare/compare-visuals";
 import { PromptBlock, Substeps } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
 import {
   NESTED_SHOT,
   SPLIT_SHOT,
   TALK_SHOT,
   TEAM_FAQ,
   TEAM_TROUBLESHOOTING,
-} from "./agent-teams";
+} from "../shared/agent-teams";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -34,7 +34,7 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
 3. Start the reviewer in its own thread, in this worktree. Use the Reviewer line; if it's blank, use Codex if you're Claude Code, and Claude Code otherwise. Get provider IDs from bb provider list.
-   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider <provider-id> --title "Review: <task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
+   bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider <provider-id> --title "<task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
    Check: the spawn returns a thread ID. If the reviewer fails to start, stop and ask me to sign in to that agent on this computer.
 
 4. Wait for the review and read it:
@@ -53,9 +53,15 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 Reply with what you built, what each review found, what you fixed, and what's left for me.`,
 );
 
-export const ORCHESTRATE_CODING_AGENTS: Guide = {
+export const meta: GuideMeta = {
   slug: "orchestrate-coding-agents",
   title: "Orchestrate your coding agents",
+  nav: { group: null, label: "Orchestrate agents", order: 1 },
+  canonical: null,
+};
+
+export const guide: Guide = {
+  ...meta,
   description:
     "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
   concept: <SpawnTimeline />,
@@ -100,6 +106,8 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       shot: {
         src: "/guides/orchestrate-coding-agents/window-start.png",
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test, and Codex as the reviewer.",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -176,6 +184,8 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       shot: {
         src: "/guides/orchestrate-coding-agents/window-manager.png",
         alt: "The Issue triage thread in bb. After a correction that anything broken by a deploy is P0, the agent says it saved the issue-triage skill with the correction as a rule, and will update it each time it's corrected.",
+        width: 2048,
+        height: 1280,
       },
       options: [
         {
@@ -191,6 +201,8 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
           shot: {
             src: "/guides/orchestrate-coding-agents/window-drag.png",
             alt: "The Fix emoji filenames thread being dragged onto Issue triage in the bb sidebar, with Issue triage outlined as the drop target. The Issue triage thread is open on its report for three new issues: one P0, one P1, and one P2, each with an owner.",
+            width: 2048,
+            height: 1280,
           },
         },
       ],
@@ -219,6 +231,8 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       shot: {
         src: "/guides/orchestrate-coding-agents/window-automation.png",
         alt: "The Weekday issue triage automation in bb: 9AM Mon-Fri in acme-web, posting to an existing thread with the prompt “Run your issue-triage skill on this morning's new issues,” and one successful run",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
@@ -248,6 +262,8 @@ export const ORCHESTRATE_CODING_AGENTS: Guide = {
       shot: {
         src: "/guides/orchestrate-coding-agents/window-workflows.png",
         alt: "bb's Installed plugins settings filtered to Workflows, with its switch on",
+        width: 2048,
+        height: 1280,
       },
       options: [],
     },
