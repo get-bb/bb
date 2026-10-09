@@ -42,6 +42,10 @@
     "category": "thread-content",
     "screenshots": []
   },
+  "mcp-apps": {
+    "category": "thread-content",
+    "screenshots": []
+  },
   "monaco-editor": {
     "category": "file-viewers-and-editors",
     "screenshots": []

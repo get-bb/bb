@@ -105,6 +105,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "mcp-apps",
+    pluginId: "bb--mcp-apps",
+    defaultEnabled: false,
+  },
+  {
     name: "monaco-editor",
     pluginId: "monaco-editor",
     defaultEnabled: false,

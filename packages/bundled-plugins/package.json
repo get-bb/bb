@@ -25,6 +25,7 @@
     "bb-plugin-environment-project-checkout": "workspace:*",
     "bb-plugin-github": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
+    "bb-plugin-bb--mcp-apps": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",
     "bb-plugin-memory": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
