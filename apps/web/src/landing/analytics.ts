@@ -1,5 +1,6 @@
 import type { PostHog } from "posthog-js";
 import { useEffect } from "react";
+import { initAdsConversion } from "./google-ads";
 import type { CtaPlacement } from "./site";
 
 type LandingEvent =
@@ -48,6 +49,7 @@ export function initAnalytics(): void {
   if (loading || typeof window === "undefined") {
     return;
   }
+  initAdsConversion();
   const key = import.meta.env.VITE_POSTHOG_KEY;
   if (!key) {
     return;

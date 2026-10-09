@@ -9,7 +9,7 @@ const PAGE_TITLE = "Privacy — bb";
 const PAGE_DESCRIPTION =
   "What bb collects, what stays on your own machines, and what bb connect can see.";
 
-const LAST_UPDATED = "October 1, 2026";
+const LAST_UPDATED = "October 8, 2026";
 const CONTACT_EMAIL = "sawyer@terragonlabs.com";
 
 export const Route = createFileRoute("/privacy")({
@@ -29,7 +29,7 @@ function PrivacyRoute() {
 
       <article className="post article">
         <div className="post-body">
-          <time className="date-pill" dateTime="2026-10-01">
+          <time className="date-pill" dateTime="2026-10-08">
             Last updated {LAST_UPDATED}
           </time>
           <h1>Privacy</h1>
@@ -199,10 +199,36 @@ function PrivacyRoute() {
             unsubscribe link.
           </p>
 
+          <h3 id="google-ads">Google Ads</h3>
+
+          <p>
+            If you reach this site from one of our Google ads, the pages load
+            Google&rsquo;s ad tag. It records one thing: a click on a download
+            link, so we can see which ads lead to downloads. It does not record
+            page views, and ad personalization is off. Google receives the ad
+            click ID from the link you followed, your IP address, and browser
+            details, and may set a cookie to connect the download to the ad.
+            Visitors who did not arrive from an ad never load it.
+          </p>
+
+          <p>
+            Visitors outside the United States, Canada, Australia, and New
+            Zealand are asked first, and the tag does not load unless they
+            allow it. To change your answer, clear this site&rsquo;s data in
+            your browser. See{" "}
+            <a href="https://policies.google.com/privacy">
+              Google&rsquo;s privacy policy
+            </a>{" "}
+            for how Google handles this data.
+          </p>
+
           <h2>What we do not do</h2>
           <ul>
             <li>We do not sell your data.</li>
-            <li>We do not share it with advertisers.</li>
+            <li>
+              We do not share it with advertisers, apart from the Google Ads
+              download count described above.
+            </li>
             <li>
               We do not read, store, or train on your prompts, your code, or
               your agent conversations.

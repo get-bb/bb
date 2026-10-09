@@ -1,6 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { AdsConsentPrompt } from "../landing/ads-consent";
 import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
@@ -76,6 +77,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <AdsConsentPrompt />
         <Scripts />
       </body>
     </html>

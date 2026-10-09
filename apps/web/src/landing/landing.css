@@ -844,6 +844,41 @@ body {
   width: 100%;
 }
 
+.ads-consent {
+  position: fixed;
+  inset-inline: 16px;
+  bottom: 16px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  margin-inline: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14.5px;
+  line-height: 1.5;
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 12%, transparent);
+}
+
+.ads-consent p {
+  margin: 0;
+}
+
+.ads-consent a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.ads-consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .company-proof-rows:hover .company-proof-track {
     animation-play-state: paused;

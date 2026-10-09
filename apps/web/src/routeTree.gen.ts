@@ -27,6 +27,7 @@ import { Route as DownloadLinuxRouteImport } from "./routes/download.linux";
 import { Route as CompareSlugRouteImport } from "./routes/compare.$slug";
 import { Route as BlogSlugRouteImport } from "./routes/blog_.$slug";
 import { Route as ApiSubscribeRouteImport } from "./routes/api.subscribe";
+import { Route as ApiAdsConsentRouteImport } from "./routes/api.ads-consent";
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from "./routes/[.]well-known.assetlinks[.]json";
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from "./routes/[.]well-known.apple-app-site-association";
 import { Route as MarketplaceAuthorGithubRouteImport } from "./routes/marketplace_.author.$github";
@@ -134,6 +135,11 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: "/api/subscribe",
   getParentRoute: () => rootRouteImport,
 } as any);
+const ApiAdsConsentRoute = ApiAdsConsentRouteImport.update({
+  id: "/api/ads-consent",
+  path: "/api/ads-consent",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const DotwellKnownAssetlinksDotjsonRoute =
   DotwellKnownAssetlinksDotjsonRouteImport.update({
     id: "/.well-known/assetlinks.json",
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/api/ads-consent": typeof ApiAdsConsentRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -269,6 +276,7 @@ export interface FileRoutesByTo {
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/api/ads-consent": typeof ApiAdsConsentRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   "/sitemap.xml": typeof SitemapDotxmlRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
+  "/api/ads-consent": typeof ApiAdsConsentRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
   "/blog_/$slug": typeof BlogSlugRoute;
   "/compare/$slug": typeof CompareSlugRoute;
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/api/ads-consent"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -380,6 +390,7 @@ export interface FileRouteTypes {
     | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/api/ads-consent"
     | "/api/subscribe"
     | "/blog/$slug"
     | "/compare/$slug"
@@ -416,6 +427,7 @@ export interface FileRouteTypes {
     | "/sitemap.xml"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
+    | "/api/ads-consent"
     | "/api/subscribe"
     | "/blog_/$slug"
     | "/compare/$slug"
@@ -453,6 +465,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
+  ApiAdsConsentRoute: typeof ApiAdsConsentRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
   BlogSlugRoute: typeof BlogSlugRoute;
   CompareSlugRoute: typeof CompareSlugRoute;
@@ -602,6 +615,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ApiSubscribeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/api/ads-consent": {
+      id: "/api/ads-consent";
+      path: "/api/ads-consent";
+      fullPath: "/api/ads-consent";
+      preLoaderRoute: typeof ApiAdsConsentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/.well-known/assetlinks.json": {
       id: "/.well-known/assetlinks.json";
       path: "/.well-known/assetlinks.json";
@@ -746,6 +766,7 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
+  ApiAdsConsentRoute: ApiAdsConsentRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
   CompareSlugRoute: CompareSlugRoute,
