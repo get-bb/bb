@@ -373,11 +373,10 @@ describe("useSectionThreadDnd project drop targets", () => {
       { id: "other", name: "Other project" },
       { id: "empty", name: "Empty project" },
     ],
-  ).map(
-    (item): ProjectThreadItem =>
-      item.kind === "section"
-        ? { ...item, group: { ...item.group, key: `project:${item.group.id}` } }
-        : item,
+  ).map((item): ProjectThreadItem =>
+    item.kind === "section"
+      ? { ...item, group: { ...item.group, key: `project:${item.group.id}` } }
+      : item,
   );
 
   it.each(["project:other", "foreign", "project:empty", "threads"])(

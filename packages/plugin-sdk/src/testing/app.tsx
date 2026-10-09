@@ -1121,9 +1121,7 @@ function TestDiff({
   );
 }
 
-type TestClipboard = (
-  content: ExperimentalClipboardContent,
-) => Promise<boolean>;
+type TestClipboard = (content: ExperimentalClipboardContent) => Promise<boolean>;
 
 let activeClipboard: TestClipboard | null = null;
 

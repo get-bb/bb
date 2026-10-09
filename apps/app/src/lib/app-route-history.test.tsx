@@ -193,9 +193,8 @@ async function expectSidebarButtonState(
 ) {
   await waitFor(() => {
     expect(
-      screen
-        .getByRole("button", { name: label })
-        .getAttribute("aria-disabled") === "true",
+      screen.getByRole("button", { name: label }).getAttribute("aria-disabled") ===
+        "true",
     ).toBe(disabled);
   });
 }

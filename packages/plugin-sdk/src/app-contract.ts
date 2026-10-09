@@ -157,10 +157,11 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps extends Omit<
-  ComponentPropsWithRef<"textarea">,
-  "value" | "defaultValue" | "onChange" | "children"
-> {
+export interface ExperimentalVoiceInputTextareaProps
+  extends Omit<
+    ComponentPropsWithRef<"textarea">,
+    "value" | "defaultValue" | "onChange" | "children"
+  > {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to

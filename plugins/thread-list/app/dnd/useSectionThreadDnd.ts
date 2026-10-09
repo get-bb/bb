@@ -1080,7 +1080,9 @@ export function useSectionThreadDnd({
       const nestedCollisions = allowedCollisions.filter(({ id }) =>
         typeof id === "string" ? !topLevelSectionIds.has(id) : true,
       );
-      return nestedCollisions.length > 0 ? nestedCollisions : allowedCollisions;
+      return nestedCollisions.length > 0
+        ? nestedCollisions
+        : allowedCollisions;
     },
     [
       getNestBandFraction,
@@ -1111,7 +1113,9 @@ export function useSectionThreadDnd({
     useState<SectionThreadReorderTarget | null>(null);
   const [pendingDropDecision, setPendingDropDecision] =
     useState<SectionThreadDropDecision | null>(null);
-  const pendingDropDecisionRef = useRef<SectionThreadDropDecision | null>(null);
+  const pendingDropDecisionRef = useRef<SectionThreadDropDecision | null>(
+    null,
+  );
   const draggingThreadRef = useRef(false);
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellTargetKeyRef = useRef<string | null>(null);
