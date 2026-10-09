@@ -5,11 +5,13 @@ import type { BrowserFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import {
+  LazyAttachmentFilePreviewTabContent,
   LazyBrowserTabDeck,
   LazyThreadSecondaryPanel,
 } from "./lazySecondaryPanelComponents";
 
 vi.mock("./ThreadSecondaryPanel", () => new Promise(() => {}));
+vi.mock("./ThreadSecondaryPanelTabContent", () => new Promise(() => {}));
 vi.mock("./BrowserTabDeck", () => {
   throw new Error("chunk request failed");
 });
@@ -72,6 +74,23 @@ describe("LazyThreadSecondaryPanel", () => {
     expect(
       screen.getByTestId("thread-secondary-panel-placeholder").className,
     ).not.toContain("border-l");
+  });
+});
+
+describe("LazyAttachmentFilePreviewTabContent", () => {
+  it("shows the attachment name rather than the storage path while loading", () => {
+    render(
+      <LazyAttachmentFilePreviewTabContent
+        isPanelOpen={true}
+        name="notes.txt"
+        path="/Attachments/turn-1/notes.txt"
+        projectId="proj-1"
+      />,
+    );
+
+    const loading = screen.getByRole("status", { name: "Loading file preview" });
+    expect(loading.textContent).toContain("notes.txt");
+    expect(loading.textContent).not.toContain("/Attachments/");
   });
 });
 

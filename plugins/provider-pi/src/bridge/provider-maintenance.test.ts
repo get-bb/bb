@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { describePiVersionProbeFailure } from "./provider-maintenance.js";
 
 describe("describePiVersionProbeFailure", () => {
-  it("names execFile's own timeout with the 15 s budget", () => {
+  it("names the probe timeout with the 15 s budget", () => {
     expect(
       describePiVersionProbeFailure(
         Object.assign(new Error("spawn timeout"), {

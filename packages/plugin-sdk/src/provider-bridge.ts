@@ -266,6 +266,13 @@ export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/process-utils";
 
 /**
+ * Runs a CLI with buffered stdout/stderr, resolving Windows npm `.cmd` shims.
+ * Bounds output with `maxBuffer` and stops descendants on timeout or abort.
+ * Throws errors carrying `code`, `signal`, `killed`, `stdout` and `stderr`.
+ */
+export { execPortableFile as experimental_execPortableFile } from "@bb/process-utils";
+
+/**
  * Ends a child started with `experimental_spawnPortableProcess`. On Windows it
  * terminates the child's whole process tree, because an npm `.cmd` shim makes
  * the child a `cmd.exe` wrapper and Windows delivers no signals; elsewhere it

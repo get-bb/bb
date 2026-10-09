@@ -84,6 +84,8 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `experimental_compareVersions`
 - `experimental_defineProviderBridge`
 - `experimental_downloadedInstallerCommand`
+- `experimental_execPortableFile` — run a provider CLI with bounded buffered output;
+  resolves Windows npm `.cmd` shims and stops descendants on timeout or abort
 - `experimental_fileReadPresentation`
 - `experimental_formatCommand`
 - `experimental_installationVerification`

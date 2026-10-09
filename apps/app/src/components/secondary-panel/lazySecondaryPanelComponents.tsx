@@ -284,7 +284,7 @@ export const LazyAttachmentFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.AttachmentFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
+  loading: ({ name }) => <FilePreviewLoading path={name} copyPath={null} />,
   tier: "intent",
 });
 
