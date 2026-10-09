@@ -1487,6 +1487,32 @@ describe("ModelReasoningPicker service tiers", () => {
     expect(onAgentOptionChange).toHaveBeenLastCalledWith("depth", "shallow");
   });
 
+  it("lets a long ladder of provider-named reasoning levels wrap inside the picker", () => {
+    renderPicker({
+      pickerReasoningOptions: [
+        "off",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ].map((level) => ({ value: level, label: `Thinking: ${level}` })),
+      reasoningValue: "medium",
+      serviceTierOptions: [fast, ultrafast],
+      serviceTierValue: "default",
+    });
+    openPicker();
+
+    for (const name of ["Reasoning", "Speed"]) {
+      const group = screen.getByRole("radiogroup", { name });
+      expect(group.classList.contains("flex-wrap")).toBe(true);
+    }
+    expect(screen.getAllByRole("radio", { name: /^Thinking: / })).toHaveLength(
+      7,
+    );
+  });
+
   it("shows no agent options when the provider reports none", () => {
     renderPicker();
     openPicker();

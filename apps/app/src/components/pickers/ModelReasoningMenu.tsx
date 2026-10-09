@@ -263,7 +263,7 @@ export function ModelReasoningMenu({
                   if (option) onReasoningSelect(option.value);
                 }}
                 disabled={selectionBlocked}
-                className="flex gap-1"
+                className="flex flex-wrap gap-1"
               >
                 {reasoningOptions.map((option) => (
                   <ToggleGroupItem
@@ -331,7 +331,7 @@ export function ModelReasoningMenu({
                     onServiceTierChange(value);
                   }
                 }}
-                className="flex gap-1"
+                className="flex flex-wrap gap-1"
               >
                 {[
                   { id: DEFAULT_SERVICE_TIER, label: "Default" },
