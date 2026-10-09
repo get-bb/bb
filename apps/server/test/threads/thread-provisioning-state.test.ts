@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  createConnection,
   createEnvironment,
   createProject,
   createThread,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { getThreadProvisionContext } from "../../src/services/threads/thread-startup-store.js";
 import { requestThreadProvision } from "../../src/services/threads/thread-provisioning.js";
 import { NotificationHub } from "../../src/ws/hub.js";
@@ -15,8 +14,7 @@ import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js"
 import { textInput } from "../helpers/prompt-input.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

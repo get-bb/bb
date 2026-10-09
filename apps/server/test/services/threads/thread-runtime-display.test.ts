@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   appendStoredThreadEvent,
   closeSession,
-  createConnection,
   createEnvironment,
   createProject,
   createQueuedThreadMessage,
@@ -12,7 +11,6 @@ import {
   hostDaemonSessions,
   listQueuedThreadMessages,
   listThreadsWithPendingInteractionState,
-  migrate,
   noopNotifier,
   openSession,
   setQueuedThreadMessageFailureReason,
@@ -20,6 +18,7 @@ import {
   type DbConnection,
   type ThreadWithPendingInteractionState,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   formatClientTurnRequestIdSuffix,
   threadScope,
@@ -126,8 +125,7 @@ function turnRequestData({
 }
 
 function setup(): SetupResult {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const hub = new NotificationHub();
   const host = upsertHost(db, noopNotifier, {
     id: "host-runtime-display",

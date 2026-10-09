@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { authApiKeys, authUsers } from "@bb/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initDb } from "../src/db.js";
+import { createMigratedConnection } from "@bb/db/testing";
 import { createMachineAuthService } from "../src/services/machine-auth.js";
 
 const tempDirs: string[] = [];
@@ -24,7 +24,7 @@ async function makeTempDir(): Promise<string> {
 
 async function createMachineAuthHarness() {
   const dataDir = await makeTempDir();
-  const db = initDb(":memory:");
+  const db = createMigratedConnection();
   const machineAuth = await createMachineAuthService({
     dataDir,
     db,

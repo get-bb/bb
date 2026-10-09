@@ -1,10 +1,6 @@
 import type { PromptInput } from "@bb/domain";
-import {
-  createConnection,
-  getProjectAttachment,
-  migrate,
-  projects,
-} from "@bb/db";
+import { getProjectAttachment, projects, type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { beforeEach } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,10 +14,9 @@ import {
 } from "./attachments.js";
 
 const tempDirs: string[] = [];
-let db: ReturnType<typeof createConnection>;
+let db: DbConnection;
 beforeEach(() => {
-  db = createConnection(":memory:");
-  migrate(db);
+  db = createMigratedConnection();
   for (const id of ["proj_test", "proj_source", "proj_target"])
     db.insert(projects)
       .values({
