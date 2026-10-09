@@ -128,6 +128,29 @@ describe("marketing download", () => {
     expect(response.headers.get("Location")).toBe(DOWNLOAD_FALLBACK_URL);
   });
 
+  it("serves the Windows installer from the Windows feed", async () => {
+    const fetchMock = stubReleaseFetch(
+      ["bb-0.45.0-x64.exe", "bb-0.45.0-x64.exe.blockmap"],
+      () => new Response("exe-bytes"),
+    );
+
+    const response = await handleDownload(
+      "windows",
+      new Request("https://getbb.app/download/windows?placement=hero"),
+      {},
+      vi.fn(),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      DESKTOP_DOWNLOADS.windows.versionFeedUrl,
+      { headers: { accept: "application/json" } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="bb-0.45.0-x64.exe"',
+    );
+  });
+
   it("never serves a macOS installer for a Linux request", async () => {
     stubReleaseFetch(["bb-0.42.1-arm64.dmg"], () => new Response("dmg"));
 

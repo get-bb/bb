@@ -6,7 +6,7 @@ export const DOWNLOAD_FALLBACK_URL =
 export const DOWNLOAD_RELEASE_ASSET_BASE_URL =
   "https://github.com/get-bb/bb/releases/download/desktop-latest";
 
-export type DesktopPlatform = "macos" | "linux";
+export type DesktopPlatform = "macos" | "linux" | "windows";
 
 export const DEFAULT_DESKTOP_PLATFORM: DesktopPlatform = "macos";
 
@@ -36,11 +36,18 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-linux.json`,
     redirectPath: "/download/linux",
   },
+  windows: {
+    label: "Windows (Alpha)",
+    buttonLabel: "Download for Windows",
+    note: "x64, alpha",
+    installerExtension: ".exe",
+    versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,
+    redirectPath: "/download/windows",
+  },
 };
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
-export const WINDOWS_DOWNLOAD_URL =
-  "https://github.com/get-bb/bb/releases/latest";
+export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 
 export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
 
