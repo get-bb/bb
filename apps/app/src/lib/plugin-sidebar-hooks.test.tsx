@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
 import { getDefaultStore } from "jotai";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -24,14 +22,6 @@ import {
 } from "./plugin-thread-row-status";
 import { useEnvironmentProviders } from "./plugin-sdk-hooks";
 import { SidebarThreadShortcutKeysContext } from "@/components/sidebar/sidebarThreadShortcuts";
-
-function withQueryClient({ children }: { children: ReactNode }) {
-  return (
-    <QueryClientProvider client={new QueryClient()}>
-      {children}
-    </QueryClientProvider>
-  );
-}
 
 const actions = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -341,9 +331,7 @@ describe("useSidebarThreadActions", () => {
           resolveMutation = resolve;
         }),
       );
-      const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+      const { result } = renderHook(() => useSidebarThreadActions());
 
       let settled = false;
       const request = result.current.setPinned(thread.id, pinned).then(() => {
@@ -364,9 +352,7 @@ describe("useSidebarThreadActions", () => {
 
   it("opens a project composer without a legacy route transition", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
@@ -386,9 +372,7 @@ describe("useSidebarThreadActions", () => {
 
   it("opens a section without changing the selected project", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
@@ -409,9 +393,7 @@ describe("useSidebarThreadActions", () => {
 
   it("reuses an environment the way bb's environment header does", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
@@ -430,9 +412,7 @@ describe("useSidebarThreadActions", () => {
 
   it("passes a machine selection to the root composer", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.openNewThread({
@@ -453,9 +433,7 @@ describe("useSidebarThreadActions", () => {
 
   it("preserves explicit pinned placement over the legacy section", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
     act(() =>
       result.current.openNewThread({
         sectionId: "sec_old",
@@ -472,9 +450,7 @@ describe("useSidebarThreadActions", () => {
 
   it("clears placement when opening global new thread", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
     act(() => {
       result.current.openNewThread();
     });
@@ -489,9 +465,7 @@ describe("useSidebarThreadActions", () => {
     const store = getDefaultStore();
     const collapsedAtom = getThreadConversationCollapsedAtom("thr_1");
     store.set(collapsedAtom, true);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
 
     act(() => {
       result.current.open("thr_1");
@@ -505,9 +479,7 @@ describe("useSidebarThreadActions", () => {
 
   it("ignores open for an unknown thread", () => {
     state.data = payload([]);
-    const { result } = renderHook(() => useSidebarThreadActions(), {
-      wrapper: withQueryClient,
-    });
+    const { result } = renderHook(() => useSidebarThreadActions());
     act(() => {
       result.current.open("thr_missing");
     });

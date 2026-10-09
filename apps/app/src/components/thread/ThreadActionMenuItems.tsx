@@ -1,4 +1,9 @@
-import type { PluginThreadActionItem } from "@get-bb/plugin-sdk";
+import type {
+  PluginBoundThreadAction,
+  PluginThreadActionsInlineItem,
+  PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk";
+import { Fragment } from "react";
 import {
   ContextMenuItem,
   ContextMenuLabel,
@@ -7,64 +12,78 @@ import {
   ContextMenuSubTrigger,
 } from "@bb/shared-ui/context-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { ActionMenuItem } from "@/components/ui/action-menu-items";
+  ActionMenuItem,
+  ActionMenuSeparator,
+} from "@/components/ui/action-menu-items";
+import {
+  bindThreadAction,
+  useDefaultRequestRename,
+  useThreadActionEntries,
+} from "@/lib/thread-actions/thread-action-registry";
 
 export type ThreadActionMenuSurface = "context" | "dropdown";
 
-const GROUP_ORDER = ["open", "organize", "lifecycle"] as const;
+export interface ThreadActionMenuEntry {
+  key: string;
+  action: PluginBoundThreadAction;
+}
+
 const CHOICES_CONTENT_CLASS =
   "max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto";
 
-export function groupThreadActionItems(
-  items: readonly PluginThreadActionItem[],
-): PluginThreadActionItem[][] {
-  return GROUP_ORDER.map((group) =>
-    items.filter((item) => item.action.group === group),
-  ).filter((group) => group.length > 0);
+export function groupThreadActionMenuEntries(
+  entries: readonly ThreadActionMenuEntry[],
+  inline: readonly ThreadActionMenuEntry[],
+): ThreadActionMenuEntry[][] {
+  const groups = new Map<string, ThreadActionMenuEntry[]>();
+  for (const entry of [...entries, ...inline]) {
+    const group = groups.get(entry.action.group);
+    if (group === undefined) groups.set(entry.action.group, [entry]);
+    else group.push(entry);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([, group]) => group);
 }
 
-export function runThreadAction(
-  item: PluginThreadActionItem,
-  run: () => void | Promise<void>,
-): void {
-  const describe = () => `thread action "${item.key}" failed`;
-  try {
-    const result = run();
-    if (result instanceof Promise) {
-      result.catch((error: unknown) => console.error(describe(), error));
-    }
-  } catch (error) {
-    console.error(describe(), error);
-  }
+export function useThreadActionMenuGroups({
+  thread,
+  inline = [],
+  requestRename,
+}: {
+  thread: PluginThreadActionTarget;
+  inline?: readonly PluginThreadActionsInlineItem[];
+  requestRename?: (threadId: string) => void;
+}): ThreadActionMenuEntry[][] {
+  const defaultRequestRename = useDefaultRequestRename();
+  const rename = requestRename ?? defaultRequestRename;
+  const entries = useThreadActionEntries(thread, { requestRename: rename });
+  return groupThreadActionMenuEntries(
+    entries,
+    inline.map((item) => ({
+      key: item.key,
+      action: bindThreadAction(item.key, item.action, rename),
+    })),
+  );
 }
 
 function ThreadActionChoiceRows({
-  item,
+  entry,
   surface,
 }: {
-  item: PluginThreadActionItem;
+  entry: ThreadActionMenuEntry;
   surface: ThreadActionMenuSurface;
 }) {
-  const choices = item.action.choices;
+  const choices = entry.action.choices;
   if (choices === undefined) return null;
   const Item = surface === "context" ? ContextMenuItem : DropdownMenuItem;
   return choices.items.map((choice) => (
@@ -74,7 +93,7 @@ function ThreadActionChoiceRows({
       className="flex items-center justify-between gap-3"
       disabled={choice.disabled}
       onSelect={() => {
-        runThreadAction(item, () => choices.select(choice.id));
+        void entry.action.run(choice.id);
       }}
     >
       {choice.icon !== undefined ? (
@@ -89,19 +108,18 @@ function ThreadActionChoiceRows({
 }
 
 function ThreadActionChoicesHeading({
-  item,
+  entry,
   surface,
 }: {
-  item: PluginThreadActionItem;
+  entry: ThreadActionMenuEntry;
   surface: ThreadActionMenuSurface;
 }) {
-  const choices = item.action.choices;
+  const choices = entry.action.choices;
   if (choices === undefined) return null;
-  const heading = choices.heading ?? item.action.label;
   const Label = surface === "context" ? ContextMenuLabel : DropdownMenuLabel;
   return (
     <>
-      <Label>{heading}</Label>
+      <Label>{choices.heading ?? entry.action.label}</Label>
       {choices.hint !== undefined ? (
         <div className="px-2 pb-1 text-xs text-muted-foreground">
           {choices.hint}
@@ -111,79 +129,88 @@ function ThreadActionChoicesHeading({
   );
 }
 
-export function ThreadActionMenuRows({
-  items,
+export function ThreadActionChoices({
+  entry,
+}: {
+  entry: ThreadActionMenuEntry;
+}) {
+  return (
+    <>
+      <ThreadActionChoicesHeading entry={entry} surface="dropdown" />
+      <ThreadActionChoiceRows entry={entry} surface="dropdown" />
+    </>
+  );
+}
+
+function ThreadActionMenuRow({
+  entry,
   surface,
   isDrawer,
   onOpenDrawerStep,
 }: {
-  items: readonly PluginThreadActionItem[];
+  entry: ThreadActionMenuEntry;
   surface: ThreadActionMenuSurface;
   isDrawer: boolean;
-  onOpenDrawerStep?: (key: string) => void;
+  onOpenDrawerStep: (key: string) => void;
 }) {
-  return items.map((item) => {
-    const { action } = item;
-    if (action.choices === undefined) {
-      return (
-        <ActionMenuItem
-          key={item.key}
-          surface={surface}
-          icon={action.icon}
-          variant={action.variant}
-          disabled={action.disabled}
-          onSelect={() => {
-            runThreadAction(item, () => action.run?.());
-          }}
-        >
-          {action.label}
-        </ActionMenuItem>
-      );
-    }
-    if (isDrawer) {
-      return (
-        <DropdownMenuItem
-          key={item.key}
-          disabled={action.disabled}
-          onSelect={(event) => {
-            event.preventDefault();
-            onOpenDrawerStep?.(item.key);
-          }}
-        >
-          <Icon name={action.icon} aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">{action.label}</span>
-          <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
-        </DropdownMenuItem>
-      );
-    }
-    const Sub = surface === "context" ? ContextMenuSub : DropdownMenuSub;
-    const SubTrigger =
-      surface === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
-    const SubContent =
-      surface === "context" ? ContextMenuSubContent : DropdownMenuSubContent;
+  const { action } = entry;
+  if (action.choices === undefined) {
     return (
-      <Sub key={item.key}>
-        <SubTrigger disabled={action.disabled}>
-          <Icon name={action.icon} aria-hidden="true" />
-          {action.label}
-        </SubTrigger>
-        <SubContent className={CHOICES_CONTENT_CLASS}>
-          {action.choices.heading !== undefined ||
-          action.choices.hint !== undefined ? (
-            <ThreadActionChoicesHeading item={item} surface={surface} />
-          ) : null}
-          <ThreadActionChoiceRows item={item} surface={surface} />
-        </SubContent>
-      </Sub>
+      <ActionMenuItem
+        surface={surface}
+        icon={action.icon}
+        variant={action.variant}
+        disabled={action.disabled}
+        onSelect={() => {
+          void action.run();
+        }}
+      >
+        {action.label}
+      </ActionMenuItem>
     );
-  });
+  }
+  if (isDrawer) {
+    return (
+      <DropdownMenuItem
+        disabled={action.disabled}
+        onSelect={(event) => {
+          event.preventDefault();
+          onOpenDrawerStep(entry.key);
+        }}
+      >
+        <Icon name={action.icon} aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{action.label}</span>
+        <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
+      </DropdownMenuItem>
+    );
+  }
+  const Sub = surface === "context" ? ContextMenuSub : DropdownMenuSub;
+  const SubTrigger =
+    surface === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger;
+  const SubContent =
+    surface === "context" ? ContextMenuSubContent : DropdownMenuSubContent;
+  return (
+    <Sub>
+      <SubTrigger disabled={action.disabled}>
+        <Icon name={action.icon} aria-hidden="true" />
+        {action.label}
+      </SubTrigger>
+      <SubContent className={CHOICES_CONTENT_CLASS}>
+        {action.choices.heading !== undefined ||
+        action.choices.hint !== undefined ? (
+          <ThreadActionChoicesHeading entry={entry} surface={surface} />
+        ) : null}
+        <ThreadActionChoiceRows entry={entry} surface={surface} />
+      </SubContent>
+    </Sub>
+  );
 }
 
-export function ThreadActionDrawerStep({
-  item,
+function ThreadActionDrawerStep({
+  entry,
   onBack,
 }: {
-  item: PluginThreadActionItem;
+  entry: ThreadActionMenuEntry;
   onBack: () => void;
 }) {
   return (
@@ -198,84 +225,50 @@ export function ThreadActionDrawerStep({
         Back
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <ThreadActionChoicesHeading item={item} surface="dropdown" />
-      <ThreadActionChoiceRows item={item} surface="dropdown" />
+      <ThreadActionChoices entry={entry} />
     </>
   );
 }
 
-export function ThreadActionButton({
-  item,
-  className,
-  onMenuOpenChange,
+export function ThreadActionMenuRows({
+  groups,
+  surface,
+  isDrawer,
+  drawerStep,
+  onDrawerStepChange,
 }: {
-  item: PluginThreadActionItem;
-  className?: string;
-  onMenuOpenChange?: (open: boolean) => void;
+  groups: readonly ThreadActionMenuEntry[][];
+  surface: ThreadActionMenuSurface;
+  isDrawer: boolean;
+  drawerStep: string | null;
+  onDrawerStepChange: (key: string | null) => void;
 }) {
-  const { action } = item;
-  if (action.choices === undefined) {
+  const stepEntry =
+    isDrawer && drawerStep !== null
+      ? groups.flat().find((entry) => entry.key === drawerStep)
+      : undefined;
+  if (stepEntry !== undefined && stepEntry.action.choices !== undefined) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn("rounded-md p-0", className)}
-            aria-label={action.label}
-            disabled={action.disabled}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              runThreadAction(item, () => action.run?.());
-            }}
-          >
-            <Icon name={action.icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{action.label}</TooltipContent>
-      </Tooltip>
+      <ThreadActionDrawerStep
+        entry={stepEntry}
+        onBack={() => onDrawerStepChange(null)}
+      />
     );
   }
-  return (
-    <DropdownMenu onOpenChange={onMenuOpenChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "rounded-md p-0",
-                "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-                className,
-              )}
-              aria-label={action.label}
-              disabled={action.disabled}
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              <Icon
-                name={action.icon}
-                className={COARSE_POINTER_ICON_SIZE_CLASS}
-              />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{action.label}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent
-        side="right"
-        align="start"
-        sideOffset={8}
-        className={CHOICES_CONTENT_CLASS}
-      >
-        <ThreadActionChoicesHeading item={item} surface="dropdown" />
-        <ThreadActionChoiceRows item={item} surface="dropdown" />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  return groups.map((group, index) => (
+    <Fragment key={group[0]?.action.group ?? index}>
+      {index > 0 && !isDrawer ? (
+        <ActionMenuSeparator surface={surface} />
+      ) : null}
+      {group.map((entry) => (
+        <ThreadActionMenuRow
+          key={entry.key}
+          entry={entry}
+          surface={surface}
+          isDrawer={isDrawer}
+          onOpenDrawerStep={onDrawerStepChange}
+        />
+      ))}
+    </Fragment>
+  ));
 }

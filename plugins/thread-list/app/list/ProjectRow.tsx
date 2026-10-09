@@ -960,7 +960,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           nodeDepth: nodeDepth - 1,
         })
       : undefined;
-  const sidebarActions = experimental_useSidebarThreadActions();
+  const navigate = useBbNavigate();
   const sectionWhenUnpinned = nodes.every(
     (node) => node.thread.sectionId === representativeThread.sectionId,
   )
@@ -971,20 +971,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     useArchiveEnvironmentThreadGroupAction({ environmentId });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
-    sidebarActions.openNewThread({
+    navigate.toCompose({
       projectId,
       environmentId,
-      experimental_placement: { sectionId, pinned },
+      placement: { sectionId, pinned },
       focusPrompt: true,
     });
-  }, [
-    environmentId,
-    onProjectSelect,
-    projectId,
-    sectionId,
-    pinned,
-    sidebarActions,
-  ]);
+  }, [environmentId, navigate, onProjectSelect, projectId, sectionId, pinned]);
   const nodeItems = useMemo<ProjectThreadItem[]>(
     () => nodes.map((node) => ({ kind: "thread", node })),
     [nodes],

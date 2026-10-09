@@ -1,4 +1,4 @@
-import type { Thread } from "@bb/domain";
+import type { Thread, ThreadListEntry } from "@bb/domain";
 import { isThreadRead } from "@bb/client-core";
 import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
 
@@ -17,4 +17,15 @@ export function toThreadActionTarget(
     status: thread.status,
     environment,
   };
+}
+
+export function threadListEntryActionTarget(
+  entry: ThreadListEntry,
+): PluginThreadActionTarget {
+  return toThreadActionTarget(
+    entry,
+    entry.environmentId === null
+      ? null
+      : { id: entry.environmentId, path: entry.environmentPath },
+  );
 }

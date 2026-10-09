@@ -1,269 +1,263 @@
-import type {
-  PluginSidebarThreadActions,
-  PluginThreadAction,
-  PluginThreadActionGroup,
-  PluginThreadActionItem,
-  PluginThreadActionSurface,
-  PluginThreadActionTarget,
+import { useLayoutEffect, useMemo, useRef } from "react";
+import { useAtomValue } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Thread } from "@bb/domain";
+import {
+  experimental_THREAD_ACTION_GROUPS as GROUPS,
+  type PluginThreadActionRegistration,
+  type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
+import { useRouteState } from "@/hooks/useRouteState";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { showMutationErrorToast } from "@/lib/mutation-errors";
+import { lookupCachedThread } from "@/lib/plugin-sidebar-hooks";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import { countPanes, listPanes } from "@/lib/split-layout";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 
-export interface CoreThreadActionSectionMove {
-  destinations: readonly { label: string; sectionId: string | null }[];
-  moveThread(
-    thread: Pick<PluginThreadActionTarget, "id" | "pinnedAt" | "sectionId">,
-    sectionId: string | null,
-  ): void;
+function coreThreadAction<Data>(
+  registration: PluginThreadActionRegistration<Data>,
+): PluginThreadActionRegistration<unknown> {
+  return registration;
 }
 
-export interface CoreThreadActionContext {
-  isCompactViewport: boolean;
-  canSplit: boolean;
-  sidebarActions: PluginSidebarThreadActions;
-  requestRename(threadId: string): void;
-  unarchive(threadId: string): void;
-  sectionMove: CoreThreadActionSectionMove | null;
+export function getThreadUrl(thread: PluginThreadActionTarget): string {
+  return new URL(
+    getThreadRoutePath({ projectId: thread.projectId, threadId: thread.id }),
+    window.location.origin,
+  ).toString();
 }
 
-interface CoreThreadActionDefinition {
-  id: string;
-  resolve(
-    target: PluginThreadActionTarget,
-    surface: PluginThreadActionSurface,
-    context: CoreThreadActionContext,
-  ): PluginThreadAction | null;
+interface SplitAvailability {
+  available: boolean;
+  openThreadIds: ReadonlySet<string>;
 }
 
-export const THREAD_ACTION_GROUP_ORDER: readonly PluginThreadActionGroup[] = [
-  "open",
-  "organize",
-  "lifecycle",
-];
-
-const THREADS_DESTINATION_CHOICE_ID = "threads";
+function useSplitAvailability(): SplitAvailability {
+  const isCompact = useIsCompactViewport();
+  const layout = useAtomValue(splitLayoutAtom);
+  const { threadId } = useRouteState();
+  const openThreadIdsKey =
+    layout !== null && countPanes(layout.root) > 1
+      ? listPanes(layout.root)
+          .flatMap((pane) =>
+            pane.content.kind === "thread" ? [pane.content.threadId] : [],
+          )
+          .join("\n")
+      : (threadId ?? "");
+  return useMemo(
+    () => ({
+      available: !isCompact,
+      openThreadIds: new Set(
+        openThreadIdsKey === "" ? [] : openThreadIdsKey.split("\n"),
+      ),
+    }),
+    [isCompact, openThreadIdsKey],
+  );
+}
 
 function afterMenuCloses(run: () => void): void {
   window.setTimeout(run, 0);
 }
 
-export function getThreadUrl(target: PluginThreadActionTarget): string {
-  return new URL(
-    getThreadRoutePath({ projectId: target.projectId, threadId: target.id }),
-    window.location.origin,
-  ).toString();
+interface LifecycleHandlers {
+  archive: (threadId: string) => void;
+  requestDelete: (threadId: string) => void;
 }
 
-const CORE_THREAD_ACTIONS: readonly CoreThreadActionDefinition[] = [
-  {
-    id: "split",
-    resolve(target, _surface, context) {
-      if (!context.canSplit) return null;
-      return {
-        label: "Open in split",
-        icon: "Columns2",
-        group: "open",
-        run: () => {
-          context.sidebarActions.open(target.id, { split: true });
-        },
+function useLifecycleHandlers(): LifecycleHandlers {
+  const actions = useThreadActions();
+  const queryClient = useQueryClient();
+  const latest = useRef(actions);
+  useLayoutEffect(() => {
+    latest.current = actions;
+  });
+  return useMemo(() => {
+    const withThread =
+      (run: (thread: Thread) => void) => (threadId: string) => {
+        const thread = lookupCachedThread(queryClient, threadId);
+        if (thread !== null) run(thread);
       };
-    },
-  },
-  {
-    id: "newThreadInEnvironment",
-    resolve(target, _surface, context) {
-      const environment = target.environment;
-      if (
-        !context.isCompactViewport ||
-        environment === null ||
-        environment.path === null
-      ) {
-        return null;
-      }
-      return {
-        label: "New thread in environment",
-        icon: "MessageSquarePlus",
-        group: "open",
-        run: () => {
-          context.sidebarActions.openNewThread({
-            projectId: target.projectId,
-            environmentId: environment.id,
-            experimental_placement: {
-              sectionId: target.sectionId,
-              pinned: target.pinnedAt !== null,
+    return {
+      archive: withThread((thread) => latest.current.requestArchive(thread)),
+      requestDelete: withThread((thread) =>
+        latest.current.requestDelete(thread),
+      ),
+    };
+  }, [queryClient]);
+}
+
+export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknown>[] =
+  [
+    coreThreadAction({
+      id: "split",
+      title: "Open in split",
+      icon: "Columns2",
+      useData: useSplitAvailability,
+      item: ({ thread, data, navigate }) =>
+        !data.available || data.openThreadIds.has(thread.id)
+          ? null
+          : {
+              label: "Open in split",
+              icon: "Columns2",
+              group: GROUPS.open,
+              run: () => navigate.toThread(thread.id, { split: true }),
             },
-            focusPrompt: true,
-          });
-        },
-      };
-    },
-  },
-  {
-    id: "copyLink",
-    resolve(target) {
-      return {
+    }),
+    coreThreadAction({
+      id: "newThreadInEnvironment",
+      title: "New thread in environment",
+      icon: "MessageSquarePlus",
+      useData: useIsCompactViewport,
+      item: ({ thread, data: isCompact, navigate }) => {
+        const environment = thread.environment;
+        if (!isCompact || environment === null || environment.path === null) {
+          return null;
+        }
+        return {
+          label: "New thread in environment",
+          icon: "MessageSquarePlus",
+          group: GROUPS.organize,
+          order: 10,
+          run: () =>
+            navigate.toCompose({
+              projectId: thread.projectId,
+              environmentId: environment.id,
+              placement: {
+                sectionId: thread.sectionId,
+                pinned: thread.pinnedAt !== null,
+              },
+              focusPrompt: true,
+            }),
+        };
+      },
+    }),
+    coreThreadAction({
+      id: "copyLink",
+      title: "Copy thread link",
+      icon: "Copy",
+      item: ({ thread }) => ({
         label: "Copy thread link",
         icon: "Copy",
-        group: "organize",
-        run: () => {
-          void copyToClipboardWithToast(getThreadUrl(target), {
+        group: GROUPS.organize,
+        order: 20,
+        run: () =>
+          copyToClipboardWithToast(getThreadUrl(thread), {
             successMessage: "Thread link copied",
             errorMessage: "Failed to copy thread link",
-          });
+          }).then(() => undefined),
+      }),
+    }),
+    coreThreadAction({
+      id: "read",
+      title: "Mark read / unread",
+      icon: "MailOpen",
+      item: ({ thread, sdk }) => ({
+        label: thread.isUnread ? "Mark read" : "Mark unread",
+        icon: thread.isUnread ? "MailOpen" : "Mail",
+        group: GROUPS.organize,
+        order: 30,
+        run: async () => {
+          try {
+            if (thread.isUnread) {
+              await sdk.threads.markRead({ threadId: thread.id });
+            } else {
+              await sdk.threads.markUnread({ threadId: thread.id });
+            }
+          } catch (error) {
+            showMutationErrorToast({
+              error,
+              fallbackMessage: thread.isUnread
+                ? "Failed to mark thread read"
+                : "Failed to mark thread unread",
+            });
+          }
         },
-      };
-    },
-  },
-  {
-    id: "read",
-    resolve(target, _surface, context) {
-      return {
-        label: target.isUnread ? "Mark read" : "Mark unread",
-        icon: target.isUnread ? "MailOpen" : "Mail",
-        group: "organize",
-        run: () => {
-          void context.sidebarActions.setRead(target.id, target.isUnread);
-        },
-      };
-    },
-  },
-  {
-    id: "pin",
-    resolve(target, _surface, context) {
-      const isPinned = target.pinnedAt !== null;
-      return {
-        label: isPinned ? "Unpin" : "Pin",
-        icon: isPinned ? "PinOff" : "Pin",
-        group: "organize",
-        run: () => {
-          void context.sidebarActions
-            .setPinned(target.id, !isPinned)
-            .catch(() => undefined);
-        },
-      };
-    },
-  },
-  {
-    id: "move",
-    resolve(target, _surface, context) {
-      const sectionMove = context.sectionMove;
-      if (
-        sectionMove === null ||
-        target.parentThreadId !== null ||
-        target.archivedAt !== null
-      ) {
-        return null;
-      }
-      const isCurrent = (sectionId: string | null) =>
-        target.pinnedAt === null && target.sectionId === sectionId;
-      if (
-        !sectionMove.destinations.some(
-          (destination) => !isCurrent(destination.sectionId),
-        )
-      ) {
-        return null;
-      }
-      return {
-        label: "Move to section",
-        icon: "SectionMove",
-        group: "organize",
-        choices: {
-          heading: "Move to section",
-          items: sectionMove.destinations.map((destination) => ({
-            id: destination.sectionId ?? THREADS_DESTINATION_CHOICE_ID,
-            label: destination.label,
-            selected: isCurrent(destination.sectionId),
-            disabled: isCurrent(destination.sectionId),
-          })),
-          select: (choiceId) => {
-            const destination = sectionMove.destinations.find(
-              (candidate) =>
-                (candidate.sectionId ?? THREADS_DESTINATION_CHOICE_ID) ===
-                choiceId,
-            );
-            if (destination === undefined) return;
-            sectionMove.moveThread(target, destination.sectionId);
+      }),
+    }),
+    coreThreadAction({
+      id: "pin",
+      title: "Pin",
+      icon: "Pin",
+      item: ({ thread, sdk }) => {
+        const isPinned = thread.pinnedAt !== null;
+        return {
+          label: isPinned ? "Unpin" : "Pin",
+          icon: isPinned ? "PinOff" : "Pin",
+          group: GROUPS.organize,
+          order: 40,
+          run: async () => {
+            try {
+              if (isPinned) {
+                await sdk.threads.unpin({ threadId: thread.id });
+              } else {
+                await sdk.threads.pin({ threadId: thread.id });
+              }
+            } catch (error) {
+              showMutationErrorToast({
+                error,
+                fallbackMessage: isPinned
+                  ? "Failed to unpin thread."
+                  : "Failed to pin thread.",
+              });
+            }
           },
-        },
-      };
-    },
-  },
-  {
-    id: "rename",
-    resolve(target, _surface, context) {
-      return {
+        };
+      },
+    }),
+    coreThreadAction({
+      id: "rename",
+      title: "Rename",
+      icon: "Edit",
+      item: ({ thread }) => ({
         label: "Rename",
         icon: "Edit",
-        group: "organize",
-        run: () => {
-          afterMenuCloses(() => context.requestRename(target.id));
-        },
-      };
-    },
-  },
-  {
-    id: "archive",
-    resolve(target, _surface, context) {
-      const isArchived = target.archivedAt !== null;
-      return {
-        label: isArchived ? "Unarchive" : "Archive",
-        icon: isArchived ? "ArchiveRestore" : "Archive",
-        group: "lifecycle",
-        run: () => {
-          if (isArchived) {
-            context.unarchive(target.id);
-            return;
-          }
-          afterMenuCloses(() => context.sidebarActions.archive(target.id));
-        },
-      };
-    },
-  },
-  {
-    id: "delete",
-    resolve(target, _surface, context) {
-      return {
+        group: GROUPS.organize,
+        order: 60,
+        run: ({ requestRename }) => requestRename(thread.id),
+      }),
+    }),
+    coreThreadAction({
+      id: "archive",
+      title: "Archive",
+      icon: "Archive",
+      useData: useLifecycleHandlers,
+      item: ({ thread, data, sdk }) => {
+        const isArchived = thread.archivedAt !== null;
+        return {
+          label: isArchived ? "Unarchive" : "Archive",
+          icon: isArchived ? "ArchiveRestore" : "Archive",
+          group: GROUPS.lifecycle,
+          run: async () => {
+            if (!isArchived) {
+              afterMenuCloses(() => data.archive(thread.id));
+              return;
+            }
+            try {
+              await sdk.threads.unarchive({ threadId: thread.id });
+            } catch (error) {
+              showMutationErrorToast({
+                error,
+                fallbackMessage: "Failed to unarchive thread.",
+              });
+            }
+          },
+        };
+      },
+    }),
+    coreThreadAction({
+      id: "delete",
+      title: "Delete",
+      icon: "Trash2",
+      useData: useLifecycleHandlers,
+      item: ({ thread, data }) => ({
         label: "Delete",
         icon: "Trash2",
-        group: "lifecycle",
+        group: GROUPS.lifecycle,
         variant: "destructive",
-        run: () => {
-          afterMenuCloses(() =>
-            context.sidebarActions.requestDelete(target.id),
-          );
-        },
-      };
-    },
-  },
-];
-
-export function coreThreadActionKey(id: string): string {
-  return `core:${id}`;
-}
-
-export function resolveCoreThreadActions(
-  target: PluginThreadActionTarget,
-  surface: PluginThreadActionSurface,
-  context: CoreThreadActionContext,
-): PluginThreadActionItem[] {
-  return CORE_THREAD_ACTIONS.flatMap((definition) => {
-    const action = definition.resolve(target, surface, context);
-    return action === null
-      ? []
-      : [{ key: coreThreadActionKey(definition.id), pluginId: null, action }];
-  });
-}
-
-export function orderThreadActionItems(
-  items: readonly PluginThreadActionItem[],
-): PluginThreadActionItem[] {
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort((left, right) => {
-      const byGroup =
-        THREAD_ACTION_GROUP_ORDER.indexOf(left.item.action.group) -
-        THREAD_ACTION_GROUP_ORDER.indexOf(right.item.action.group);
-      return byGroup !== 0 ? byGroup : left.index - right.index;
-    })
-    .map(({ item }) => item);
-}
+        run: () => afterMenuCloses(() => data.requestDelete(thread.id)),
+      }),
+    }),
+  ];

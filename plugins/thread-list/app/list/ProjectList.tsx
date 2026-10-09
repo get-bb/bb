@@ -18,17 +18,14 @@ import {
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { toast } from "sonner";
 import type { SidebarThread } from "../model/sidebar-thread.js";
-import {
-  experimental_useSidebarThreadActions,
-  useSdk,
-} from "@get-bb/plugin-sdk/app";
+import { useBbNavigate, useSdk } from "@get-bb/plugin-sdk/app";
 import {
   SidebarRenameProvider,
   useSidebarRename,
   useSidebarRenameState,
 } from "../rows/SidebarInlineRename.js";
-import { AppThreadSectionMoveProvider } from "../rows/ThreadSectionMoveProvider.js";
 import { useDialogState } from "../ui/useDialogState.js";
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import {
   buildProjectThreadGroups,
   getProjectThreadItemDescendants,
@@ -369,24 +366,13 @@ function ProjectListNavigationLoadingRow({
 
 export function ProjectListShell({ children }: ProjectListShellProps) {
   return (
-    <SidebarContentElementProvider>
-      <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
-        <SidebarGroupContent>{children}</SidebarGroupContent>
-      </SidebarStickyStack>
-    </SidebarContentElementProvider>
-  );
-}
-
-function ProjectListSectionMoveScope({
-  children,
-  sections,
-}: ProjectListShellProps & {
-  sections: readonly SidebarSectionDefinition[];
-}) {
-  return (
-    <AppThreadSectionMoveProvider sections={sections}>
-      <ProjectListShell>{children}</ProjectListShell>
-    </AppThreadSectionMoveProvider>
+    <ThreadRowNavigationProvider>
+      <SidebarContentElementProvider>
+        <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
+          <SidebarGroupContent>{children}</SidebarGroupContent>
+        </SidebarStickyStack>
+      </SidebarContentElementProvider>
+    </ThreadRowNavigationProvider>
   );
 }
 
@@ -1314,7 +1300,7 @@ function ProjectListComponent({
   onProjectSelect,
 }: ProjectListProps) {
   const sdk = useSdk();
-  const sidebarActions = experimental_useSidebarThreadActions();
+  const navigate = useBbNavigate();
   const { status, sections, projects, personalProject, archived } =
     useSidebarData();
   const personalProjectId = personalProject?.id ?? null;
@@ -1364,14 +1350,14 @@ function ProjectListComponent({
       pinned = false,
     ) => {
       onProjectSelect?.();
-      sidebarActions.openNewThread({
+      navigate.toCompose({
         ...(projectId !== null ? { projectId } : {}),
-        experimental_placement: { sectionId: sectionId ?? null, pinned },
+        placement: { sectionId: sectionId ?? null, pinned },
         ...(hostId ? { hostId } : {}),
         focusPrompt: true,
       });
     },
-    [onProjectSelect, sidebarActions],
+    [navigate, onProjectSelect],
   );
   const handleCreateProjectThread = useCallback(
     (projectId: string) => {
@@ -1708,7 +1694,7 @@ function ProjectListComponent({
         isCreatingSection: isCreateThreadSectionPending,
       }}
     >
-      <ProjectListSectionMoveScope sections={sections}>
+      <ProjectListShell>
         <SidebarDraftPresenceSync />
         <ActiveSidebarModeSections
           mode={organizationMode}
@@ -1827,7 +1813,7 @@ function ProjectListComponent({
             )}
           </>
         )}
-      </ProjectListSectionMoveScope>
+      </ProjectListShell>
       {sectionCreateDialog}
       {sectionDeleteDialogContent}
     </SidebarHeaderActionsProvider>

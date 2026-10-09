@@ -354,7 +354,7 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
-  threadActions: PluginThreadActionRegistration[];
+  threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -794,13 +794,23 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_threadAction";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadAction, id);
-        if (typeof registration.resolve !== "function") {
-          throw new Error(`${kind}: "resolve" must be a function`);
+        if (typeof registration.item !== "function") {
+          throw new Error(`${kind}: "item" must be a function`);
+        }
+        if (
+          registration.useData !== undefined &&
+          typeof registration.useData !== "function"
+        ) {
+          throw new Error(`${kind}: "useData" must be a function`);
         }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
-          resolve: registration.resolve,
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          ...(registration.useData !== undefined
+            ? { useData: registration.useData }
+            : {}),
+          item: registration.item,
         });
       },
       experimental_browserToolbarAction(registration) {

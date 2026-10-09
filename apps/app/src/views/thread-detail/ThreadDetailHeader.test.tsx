@@ -210,7 +210,7 @@ describe("ThreadDetailHeader", () => {
     render(
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
-          actionsMenu={(includeResponsiveActions) => (
+          actionsMenu={({ includeResponsiveActions }) => (
             <>
               <span>Thread menu</span>
               {includeResponsiveActions ? (
@@ -269,7 +269,7 @@ describe("ThreadDetailHeader", () => {
     render(
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
-          actionsMenu={(includeResponsiveActions) => (
+          actionsMenu={({ includeResponsiveActions }) => (
             <>
               <span>Thread menu</span>
               {includeResponsiveActions ? (

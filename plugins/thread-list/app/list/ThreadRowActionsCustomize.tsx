@@ -19,32 +19,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Icon, type IconName } from "@/components/ui/icon";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import {
-  THREAD_ROW_ACTION_IDS,
-  THREAD_ROW_ACTION_LIMIT,
-  type ThreadRowActionId,
-} from "../../shared/preferences.js";
+  experimental_Icon as RegisteredIcon,
+  experimental_useThreadActionRegistrations,
+  type PluginThreadActionRegistrationInfo,
+} from "@get-bb/plugin-sdk/app";
+import { THREAD_ROW_ACTION_LIMIT } from "../../shared/preferences.js";
 import { arrayMove } from "../model/array-move.js";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
 import { useSidebarSortable } from "../rows/sortableMotion.js";
 import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
-import { THREAD_ROW_ACTIONS } from "../rows/threadRowActions.js";
 
-type RowActionSlot = ThreadRowActionId | null;
+type RowActionSlot = string | null;
 
-function isThreadRowActionId(id: unknown): id is ThreadRowActionId {
-  return (
-    typeof id === "string" &&
-    (THREAD_ROW_ACTION_IDS as readonly string[]).includes(id)
-  );
-}
-
-export function getRowActionSlots(
-  enabled: readonly ThreadRowActionId[],
-): RowActionSlot[] {
+export function getRowActionSlots(enabled: readonly string[]): RowActionSlot[] {
   return [
     ...Array.from(
       { length: Math.max(0, THREAD_ROW_ACTION_LIMIT - enabled.length) },
@@ -55,16 +46,16 @@ export function getRowActionSlots(
 }
 
 export function assignRowActionSlot(
-  enabled: readonly ThreadRowActionId[],
+  enabled: readonly string[],
   slotIndex: number,
   value: RowActionSlot,
-): ThreadRowActionId[] {
+): string[] {
   const slots = getRowActionSlots(enabled);
   const previous = slots[slotIndex] ?? null;
   const existingIndex = value === null ? -1 : slots.indexOf(value);
   if (existingIndex !== -1) slots[existingIndex] = previous;
   slots[slotIndex] = value;
-  return slots.filter((slot): slot is ThreadRowActionId => slot !== null);
+  return slots.filter((slot): slot is string => slot !== null);
 }
 
 const CUSTOMIZE_ATTRIBUTE = "data-row-actions-customize";
@@ -98,6 +89,7 @@ export function ThreadRowActionsEditor({
   onDone: (restoreFocus: boolean) => void;
 }) {
   const [enabled, setEnabled] = useAtom(threadRowActionsAtom);
+  const registrations = experimental_useThreadActionRegistrations();
   const slots = getRowActionSlots(enabled);
   const groupRef = useRef<HTMLDivElement>(null);
   const focusSlot = useRef<number | null>(null);
@@ -118,8 +110,7 @@ export function ThreadRowActionsEditor({
     (event: DragEndEvent) => {
       const activeId = event.active.id;
       const overId = event.over?.id;
-      if (!isThreadRowActionId(activeId) || !isThreadRowActionId(overId))
-        return;
+      if (typeof activeId !== "string" || typeof overId !== "string") return;
       setEnabled((current) => {
         const from = current.indexOf(activeId);
         const to = current.indexOf(overId);
@@ -156,6 +147,7 @@ export function ThreadRowActionsEditor({
               key={slot ?? `empty-${index}`}
               index={index}
               value={slot}
+              registrations={registrations}
               reorderDisabled={slot === null || enabled.length < 2}
               onChange={(value) => {
                 if (value === slot) return false;
@@ -227,11 +219,13 @@ export function useFinishRowActionsOnOutsideClick(
 function RowActionSlotPicker({
   index,
   value,
+  registrations,
   reorderDisabled,
   onChange,
 }: {
   index: number;
   value: RowActionSlot;
+  registrations: readonly PluginThreadActionRegistrationInfo[];
   reorderDisabled: boolean;
   onChange: (value: RowActionSlot) => boolean;
 }) {
@@ -242,7 +236,11 @@ function RowActionSlotPicker({
     id: value ?? `empty-${index}`,
     disabled: reorderDisabled,
   });
-  const label = `Row action ${index + 1}: ${value === null ? "Empty" : THREAD_ROW_ACTIONS[value].label}`;
+  const registration =
+    value === null
+      ? undefined
+      : registrations.find((candidate) => candidate.key === value);
+  const label = `Row action ${index + 1}: ${value === null ? "Empty" : (registration?.title ?? value)}`;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -272,8 +270,8 @@ function RowActionSlotPicker({
             onPointerDown={(event) => event.stopPropagation()}
             onClick={() => setOpen(true)}
           >
-            <Icon
-              name={value === null ? "Plus" : THREAD_ROW_ACTIONS[value].icon}
+            <RegisteredIcon
+              name={value === null ? "Plus" : (registration?.icon ?? "Puzzle")}
               className={cn(
                 "size-3.5 max-md:pointer-coarse:size-4",
                 value === null && "text-muted-foreground",
@@ -294,14 +292,14 @@ function RowActionSlotPicker({
           buttonRef.current?.focus();
         }}
       >
-        {THREAD_ROW_ACTION_IDS.map((id) => (
+        {registrations.map((candidate) => (
           <RowActionOption
-            key={id}
-            icon={THREAD_ROW_ACTIONS[id].icon}
-            label={THREAD_ROW_ACTIONS[id].label}
-            selected={value === id}
+            key={candidate.key}
+            icon={candidate.icon}
+            label={candidate.title}
+            selected={value === candidate.key}
             onSelect={() => {
-              focusHandedOff.current = onChange(id);
+              focusHandedOff.current = onChange(candidate.key);
             }}
           />
         ))}
@@ -329,7 +327,7 @@ function RowActionOption({
   selected,
   onSelect,
 }: {
-  icon: IconName;
+  icon: string;
   label: string;
   selected: boolean;
   onSelect: () => void;
@@ -340,7 +338,7 @@ function RowActionOption({
       aria-checked={selected}
       onSelect={onSelect}
     >
-      <Icon name={icon} aria-hidden="true" />
+      <RegisteredIcon name={icon} aria-hidden="true" />
       {label}
       <span className="ml-auto inline-flex size-4 shrink-0 items-center justify-center">
         {selected && <Icon name="Check" className="size-4" />}

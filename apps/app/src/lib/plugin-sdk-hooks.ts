@@ -76,6 +76,12 @@ import {
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { useStore } from "jotai";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { lookupCachedThread } from "@/lib/plugin-sidebar-hooks";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
@@ -225,21 +231,18 @@ export async function fetchPluginSdkSettings(
   return values;
 }
 
-export function createPluginRpcClient<
-  Contract extends PluginRpcContract = PluginRpcContract,
->(pluginId: string): PluginRpcClient<Contract> {
-  const client = {
-    call: (method: string, input?: unknown) =>
-      callPluginRpc(fetch, pluginId, method, input),
-  };
-  return client as PluginRpcClient<Contract>;
-}
-
 export function useRpc<
   Contract extends PluginRpcContract = PluginRpcContract,
 >(): PluginRpcClient<Contract> {
   const pluginId = usePluginId();
-  return useMemo(() => createPluginRpcClient<Contract>(pluginId), [pluginId]);
+  const client = useMemo(
+    () => ({
+      call: (method: string, input?: unknown) =>
+        callPluginRpc(fetch, pluginId, method, input),
+    }),
+    [pluginId],
+  );
+  return client as PluginRpcClient<Contract>;
 }
 
 export function useRealtime(
@@ -339,18 +342,37 @@ export function useBbNavigate(): BbNavigate {
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
   const appNavigation = useAppNavigationHost();
-  const toThread = useCallback(
-    (threadId: string) => {
+  const store = useStore();
+  const queryClient = useQueryClient();
+  const isCompact = useIsCompactViewport();
+  const setRootComposeProjectId = useSetRootComposeProjectId();
+  const toThread = useCallback<BbNavigate["toThread"]>(
+    (threadId, options) => {
+      const open = (projectId: string) => {
+        store.set(getThreadConversationCollapsedAtom(threadId), false);
+        if (options?.split) {
+          openThreadInSplit({
+            store,
+            navigate,
+            projectId,
+            threadId,
+            isCompact,
+          });
+          return;
+        }
+        void navigate(getThreadRoutePath({ projectId, threadId }));
+      };
+      const cached = lookupCachedThread(queryClient, threadId);
+      if (cached !== null) {
+        open(cached.projectId);
+        return;
+      }
       void sdk.threads
         .get({ threadId })
-        .then((thread) =>
-          navigate(
-            getThreadRoutePath({ projectId: thread.projectId, threadId }),
-          ),
-        )
+        .then((thread) => open(thread.projectId))
         .catch(() => navigate(`/threads/${threadId}`));
     },
-    [navigate],
+    [isCompact, navigate, queryClient, store],
   );
   const toProject = useCallback(
     (projectId: string) => {
@@ -369,23 +391,34 @@ export function useBbNavigate(): BbNavigate {
     },
     [navigate, pluginId],
   );
-  const toCompose = useCallback(
-    (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
+  const toCompose = useCallback<BbNavigate["toCompose"]>(
+    (options) => {
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         isAutomationEditRoutePath(location.pathname);
+      if (options?.projectId !== undefined) {
+        setRootComposeProjectId(options.projectId);
+      }
+      const hostId = options?.hostId?.trim() ?? "";
       void navigate(getRootComposeRoutePath(), {
         ...(replacesAutomationEditRoute ? { replace: true } : {}),
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",
+          ...(options?.placement !== undefined
+            ? { placement: options.placement }
+            : {}),
+          ...(options?.environmentId !== undefined
+            ? { reuseEnvironmentId: options.environmentId }
+            : {}),
+          ...(hostId.length > 0 ? { newEnvironmentHostId: hostId } : {}),
           ...(replacesAutomationEditRoute
             ? { replaceInitialPrompt: true }
             : {}),
         },
       });
     },
-    [location.pathname, navigate, pluginId],
+    [location.pathname, navigate, pluginId, setRootComposeProjectId],
   );
   const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,

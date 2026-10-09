@@ -180,6 +180,16 @@ export const experimental_useSidebarThreadActions = runtimeFunction(
 export const experimental_useThreadActions = runtimeFunction(
   "experimental_useThreadActions",
 );
+export const experimental_useThreadActionRegistrations = runtimeFunction(
+  "experimental_useThreadActionRegistrations",
+);
+export const experimental_ThreadActionsMenu = runtimeComponent(
+  "experimental_ThreadActionsMenu",
+);
+export const experimental_ThreadActionsContextMenu = runtimeComponent(
+  "experimental_ThreadActionsContextMenu",
+);
+export { experimental_THREAD_ACTION_GROUPS } from "./thread-action-groups.js";
 export const experimental_useSidebarThreadPullRequest = runtimeFunction(
   "experimental_useSidebarThreadPullRequest",
 );

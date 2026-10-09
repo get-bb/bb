@@ -1,213 +1,195 @@
+import { useCallback, useEffect, useState } from "react";
+import type {
+  PluginThreadActionsContextMenuProps,
+  PluginThreadActionsInlineItem,
+  PluginThreadActionsMenuProps,
+  PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk";
 import {
-  Fragment,
-  useCallback,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import type { Thread } from "@bb/domain";
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
-import {
-  ActionMenuItem,
-  ActionMenuSeparator,
-} from "@/components/ui/action-menu-items";
-import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@bb/shared-ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
-import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
-import { useThreadActionItems } from "@/lib/thread-actions/use-thread-action-items";
+import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import {
-  groupThreadActionItems,
-  ThreadActionDrawerStep,
   ThreadActionMenuRows,
+  useThreadActionMenuGroups,
+  type ThreadActionMenuSurface,
 } from "./ThreadActionMenuItems";
 
-const SPLIT_ACTION_KEY = "core:split";
-const ACTIONS_STEP = "actions";
-
-interface ThreadActionsMenuBaseProps {
-  thread: Thread;
-  environment?: PluginThreadActionTarget["environment"];
-}
-
-export interface ThreadActionsMenuResponsiveAction {
-  icon: IconName;
-  label: string;
-  onSelect: () => void | Promise<void>;
-}
-
-interface ThreadActionsMenuProps extends ThreadActionsMenuBaseProps {
-  onOpenChange?: (open: boolean) => void;
-  triggerClassName?: string;
-  responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
-}
-
-interface ThreadActionsMenuItemsProps extends ThreadActionsMenuBaseProps {
-  compactStep?: string;
-  onCompactStepChange?: (step: string) => void;
-  responsiveActions?: readonly ThreadActionsMenuResponsiveAction[];
-}
+const MENU_LABEL = "Thread actions";
 
 function ThreadActionsMenuItems({
   thread,
-  environment = null,
-  compactStep = ACTIONS_STEP,
-  onCompactStepChange,
-  responsiveActions = [],
-}: ThreadActionsMenuItemsProps) {
-  const isDrawer = useIsCompactViewport();
-  const target = useMemo(
-    () => toThreadActionTarget(thread, environment),
-    [environment, thread],
-  );
-  const items = useThreadActionItems(target, "menu").filter(
-    (item) => item.key !== SPLIT_ACTION_KEY,
-  );
-  const showSeparators = !isDrawer;
-
-  const stepItem =
-    isDrawer && compactStep !== ACTIONS_STEP
-      ? items.find((item) => item.key === compactStep)
-      : undefined;
-  if (stepItem?.action.choices !== undefined) {
-    return (
-      <ThreadActionDrawerStep
-        item={stepItem}
-        onBack={() => onCompactStepChange?.(ACTIONS_STEP)}
-      />
-    );
-  }
-
-  const separator = showSeparators ? (
-    <ActionMenuSeparator surface="dropdown" />
-  ) : null;
-
+  inline,
+  requestRename,
+  surface,
+  isDrawer,
+  drawerStep,
+  onDrawerStepChange,
+}: {
+  thread: PluginThreadActionTarget;
+  inline?: readonly PluginThreadActionsInlineItem[];
+  requestRename?: (threadId: string) => void;
+  surface: ThreadActionMenuSurface;
+  isDrawer: boolean;
+  drawerStep: string | null;
+  onDrawerStepChange: (key: string | null) => void;
+}) {
+  const groups = useThreadActionMenuGroups({ thread, inline, requestRename });
   return (
-    <>
-      {responsiveActions.length > 0 ? (
-        <>
-          {responsiveActions.map((action) => (
-            <ActionMenuItem
-              key={action.label}
-              surface="dropdown"
-              icon={action.icon}
-              onSelect={() => {
-                void action.onSelect();
-              }}
-            >
-              {action.label}
-            </ActionMenuItem>
-          ))}
-          {separator}
-        </>
-      ) : null}
-      {groupThreadActionItems(items).map((group, index) => (
-        <Fragment key={group[0]?.action.group}>
-          {index > 0 ? separator : null}
-          <ThreadActionMenuRows
-            items={group}
-            surface="dropdown"
-            isDrawer={isDrawer}
-            onOpenDrawerStep={onCompactStepChange}
-          />
-        </Fragment>
-      ))}
-    </>
+    <ThreadActionMenuRows
+      groups={groups}
+      surface={surface}
+      isDrawer={isDrawer}
+      drawerStep={drawerStep}
+      onDrawerStepChange={onDrawerStepChange}
+    />
   );
 }
 
-function useThreadActionsMenuLifecycle(onOpenChange?: (open: boolean) => void) {
-  const [compactStep, setCompactStep] = useState(ACTIONS_STEP);
+function useDrawerStep(onOpenChange?: (open: boolean) => void) {
+  const [drawerStep, setDrawerStep] = useState<string | null>(null);
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (!open) {
-        setCompactStep(ACTIONS_STEP);
-      }
+      if (!open) setDrawerStep(null);
       onOpenChange?.(open);
     },
     [onOpenChange],
   );
-
-  return { compactStep, setCompactStep, handleOpenChange };
+  return { drawerStep, setDrawerStep, handleOpenChange };
 }
 
 export function ThreadActionsMenu({
   thread,
-  environment,
-  responsiveActions,
+  trigger,
+  inline,
+  requestRename,
   onOpenChange,
-  triggerClassName,
-}: ThreadActionsMenuProps) {
-  const { compactStep, setCompactStep, handleOpenChange } =
-    useThreadActionsMenuLifecycle(onOpenChange);
-
+  onCloseAutoFocus,
+  side,
+  align = "end",
+  sideOffset,
+}: PluginThreadActionsMenuProps) {
+  const isCompactViewport = useIsCompactViewport();
+  const { drawerStep, setDrawerStep, handleOpenChange } =
+    useDrawerStep(onOpenChange);
   return (
     <DropdownMenu onOpenChange={handleOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            "rounded-md p-0",
-            "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
-            triggerClassName,
-          )}
-          aria-label="Thread actions"
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-        >
-          <Icon
-            name="MoreHorizontal"
-            className={COARSE_POINTER_ICON_SIZE_CLASS}
-          />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        mobileTitle={MENU_LABEL}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <ThreadActionsMenuItems
           thread={thread}
-          environment={environment}
-          compactStep={compactStep}
-          onCompactStepChange={setCompactStep}
-          responsiveActions={responsiveActions}
+          inline={inline}
+          requestRename={requestRename}
+          surface="dropdown"
+          isDrawer={isCompactViewport}
+          drawerStep={drawerStep}
+          onDrawerStepChange={setDrawerStep}
         />
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-export function ThreadActionsLongPressMenu({
-  children,
-  thread,
-}: {
-  children: ReactNode;
-  thread: Thread;
-}) {
-  const { compactStep, setCompactStep, handleOpenChange } =
-    useThreadActionsMenuLifecycle();
+export function ThreadActionsContextMenu(
+  props: PluginThreadActionsContextMenuProps,
+) {
+  const isCompactViewport = useIsCompactViewport();
+  return isCompactViewport ? (
+    <ThreadActionsLongPressMenu {...props} />
+  ) : (
+    <ThreadActionsDesktopContextMenu {...props} />
+  );
+}
 
+function ThreadActionsLongPressMenu({
+  thread,
+  children,
+  inline,
+  requestRename,
+  onOpenChange,
+  disabled,
+  dragging,
+}: PluginThreadActionsContextMenuProps) {
+  const { drawerStep, setDrawerStep, handleOpenChange } =
+    useDrawerStep(onOpenChange);
   return (
     <CompactLongPressMenu
-      label="Thread actions"
+      label={MENU_LABEL}
+      disabled={disabled}
+      dragging={dragging}
       onOpenChange={handleOpenChange}
       items={
         <ThreadActionsMenuItems
           thread={thread}
-          compactStep={compactStep}
-          onCompactStepChange={setCompactStep}
+          inline={inline}
+          requestRename={requestRename}
+          surface="dropdown"
+          isDrawer
+          drawerStep={drawerStep}
+          onDrawerStepChange={setDrawerStep}
         />
       }
     >
       {children}
     </CompactLongPressMenu>
+  );
+}
+
+function ThreadActionsDesktopContextMenu({
+  thread,
+  children,
+  inline,
+  requestRename,
+  onOpenChange,
+  onCloseAutoFocus,
+  disabled,
+  dragging = false,
+}: PluginThreadActionsContextMenuProps) {
+  const [open, setOpen] = useState(false);
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (nextOpen && dragging) return;
+      setOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [dragging, onOpenChange],
+  );
+  useEffect(() => {
+    if (dragging && open) handleOpenChange(false);
+  }, [dragging, handleOpenChange, open]);
+  return (
+    <ContextMenu open={open} onOpenChange={handleOpenChange}>
+      <ContextMenuTrigger asChild disabled={disabled || dragging}>
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        aria-label={MENU_LABEL}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
+        <ThreadActionsMenuItems
+          thread={thread}
+          inline={inline}
+          requestRename={requestRename}
+          surface="context"
+          isDrawer={false}
+          drawerStep={null}
+          onDrawerStepChange={() => {}}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

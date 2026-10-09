@@ -28,7 +28,6 @@ const THREAD_SEARCH_QUERY_KEY = "threadSearch";
 const THREADS_DISABLED_QUERY_KEY = "threadsDisabled";
 export const THREAD_QUERY_KEY = "thread";
 const THREAD_TABS_QUERY_KEY = "threadTabs";
-const THREAD_PLUGIN_METADATA_QUERY_KEY = "threadPluginMetadata";
 const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
 const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "threadDefaultExecutionOptions";
@@ -200,11 +199,6 @@ type DisabledThreadListQueryKey = readonly [
 type ThreadQueryKeyPrefix = readonly [typeof THREAD_QUERY_KEY];
 type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
 type ThreadTabsQueryKey = readonly [typeof THREAD_TABS_QUERY_KEY, string];
-type ThreadPluginMetadataQueryKey = readonly [
-  typeof THREAD_PLUGIN_METADATA_QUERY_KEY,
-  string,
-  string,
-];
 type ThreadDetailBootstrapQueryKeyPrefix = readonly [
   typeof THREAD_DETAIL_BOOTSTRAP_QUERY_KEY,
 ];
@@ -728,13 +722,6 @@ export function threadQueryKey(threadId: string): ThreadQueryKey {
 
 export function threadTabsQueryKey(threadId: string): ThreadTabsQueryKey {
   return [THREAD_TABS_QUERY_KEY, threadId];
-}
-
-export function threadPluginMetadataQueryKey(
-  pluginId: string,
-  threadId: string,
-): ThreadPluginMetadataQueryKey {
-  return [THREAD_PLUGIN_METADATA_QUERY_KEY, pluginId, threadId];
 }
 
 export function threadDetailBootstrapQueryKey(

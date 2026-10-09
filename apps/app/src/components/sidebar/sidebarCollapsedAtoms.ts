@@ -21,10 +21,6 @@ export const collapsedSidebarSectionIdsAtom = createSyncedPreferenceAtom(
   "sidebar.collapsedSections",
 );
 
-export const sidebarManualSectionOrderAtom = createSyncedPreferenceAtom(
-  "sidebar.manualSectionOrder",
-);
-
 export const sidebarHiddenGroupsAtom = createSyncedPreferenceAtom(
   "sidebar.hiddenGroups",
 );

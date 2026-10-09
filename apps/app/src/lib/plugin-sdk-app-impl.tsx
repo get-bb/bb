@@ -57,7 +57,15 @@ import {
   useSidebarThreadSplit,
 } from "./plugin-sidebar-split";
 import { useAppNavigationHost } from "./app-navigation-host";
-import { useThreadActionItems } from "./thread-actions/use-thread-action-items";
+import { experimental_THREAD_ACTION_GROUPS } from "@get-bb/plugin-sdk";
+import {
+  ThreadActionsContextMenu,
+  ThreadActionsMenu,
+} from "@/components/thread/ThreadActionsMenu";
+import {
+  useThreadActionEntries,
+  useThreadActionRegistrationInfos,
+} from "./thread-actions/thread-action-registry";
 import { useCodeTheme } from "./plugin-code-theme";
 import { copyToClipboard } from "./clipboard";
 
@@ -93,7 +101,11 @@ export const pluginSdkAppImplementation = {
   experimental_Diff: PluginDiff,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
-  experimental_useThreadActions: useThreadActionItems,
+  experimental_useThreadActions: useThreadActionEntries,
+  experimental_useThreadActionRegistrations: useThreadActionRegistrationInfos,
+  experimental_ThreadActionsMenu: ThreadActionsMenu,
+  experimental_ThreadActionsContextMenu: ThreadActionsContextMenu,
+  experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
   useSidebarThreadDraft,

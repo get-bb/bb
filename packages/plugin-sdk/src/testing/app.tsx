@@ -67,9 +67,12 @@ import {
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
-  type PluginThreadActionItem,
+  type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
-  type PluginThreadActionSurface,
+  type PluginThreadActionRegistrationInfo,
+  type PluginThreadActionsContextMenuProps,
+  type PluginThreadActionsMenuProps,
+  type PluginThreadActionsOptions,
   type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
   type PluginThreadListRegistration,
@@ -107,6 +110,7 @@ import {
 } from "../internal/composer-handle.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
+import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import {
   collectPluginAppRegistrations,
   type CollectedPluginProviderIconRegistration,
@@ -165,7 +169,11 @@ type PluginSdkFakeTree<T> = {
  */
 export type PluginSdkTestFakes = PluginSdkFakeTree<PluginBrowserBbSdk>;
 export type NavigateCall =
-  | { method: "toThread"; threadId: string }
+  | {
+      method: "toThread";
+      threadId: string;
+      options?: Parameters<BbNavigate["toThread"]>[1];
+    }
   | { method: "toProject"; projectId: string }
   | {
       method: "toPluginPanel";
@@ -174,7 +182,7 @@ export type NavigateCall =
     }
   | {
       method: "toCompose";
-      options?: { initialPrompt?: string; focusPrompt?: boolean };
+      options?: Parameters<BbNavigate["toCompose"]>[0];
     }
   | {
       method: "openThreadPanel";
@@ -274,6 +282,7 @@ interface SlotEnv {
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   threadActions: TestThreadActionsResolver;
+  threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
   sidebarDraftThreadIds: ReadonlySet<string>;
   sidebarRowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
@@ -300,16 +309,14 @@ interface TestFixedTabTargetStore {
 }
 
 /**
- * What `experimental_useThreadActions(target, surface)` returns in a test;
- * the host's own actions are not emulated. Omitted → an empty list. `rpc` is
- * the slot's `useRpc()` client (backed by `renderSlot` `options.rpc`), so a
- * test can run a captured `threadActions` registration's `resolve` with it.
+ * What `experimental_useThreadActions(thread)` returns in a test, in menu
+ * order; the host's own actions are not emulated. The fake applies `keys`.
+ * Omitted → an empty list. The fake `experimental_ThreadActionsMenu` renders
+ * these entries and its `inline` items as buttons.
  */
 export type TestThreadActionsResolver = (
-  target: PluginThreadActionTarget,
-  surface: PluginThreadActionSurface,
-  rpc: PluginRpcClient,
-) => readonly PluginThreadActionItem[];
+  thread: PluginThreadActionTarget,
+) => readonly PluginThreadActionEntry[];
 
 /** One recorded `experimental_useSidebarThreadActions()` call. */
 export interface SidebarActionCall {
@@ -422,6 +429,81 @@ interface TestRealtimeConnectionStore {
 const SlotEnvContext = createContext<SlotEnv | null>(null);
 
 const NO_THREAD_ACTIONS: TestThreadActionsResolver = () => [];
+const NO_THREAD_ACTION_REGISTRATIONS: readonly PluginThreadActionRegistrationInfo[] =
+  [];
+
+function useTestThreadActions(
+  hook: string,
+  thread: PluginThreadActionTarget,
+  options?: PluginThreadActionsOptions,
+): readonly PluginThreadActionEntry[] {
+  const entries = useSlotEnv(hook).threadActions(thread);
+  const keys = options?.keys;
+  if (keys === undefined) return entries;
+  return keys.flatMap((key) => {
+    const entry = entries.find((candidate) => candidate.key === key);
+    return entry === undefined ? [] : [entry];
+  });
+}
+
+function TestThreadActionsMenu({
+  thread,
+  trigger,
+  inline = [],
+  requestRename,
+}: PluginThreadActionsMenuProps) {
+  const entries = useTestThreadActions(
+    "experimental_ThreadActionsMenu",
+    thread,
+  );
+  const rename = requestRename ?? (() => {});
+  return (
+    <div data-testid="bb-thread-actions-menu" data-thread-id={thread.id}>
+      {trigger}
+      {entries.map((entry) => (
+        <button
+          key={entry.key}
+          type="button"
+          data-thread-action={entry.key}
+          disabled={entry.action.disabled}
+          onClick={() => void entry.action.run()}
+        >
+          {entry.action.label}
+        </button>
+      ))}
+      {inline.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          data-thread-action={item.key}
+          disabled={item.action.disabled}
+          onClick={() => void item.action.run({ requestRename: rename })}
+        >
+          {item.action.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TestThreadActionsContextMenu({
+  thread,
+  children,
+  disabled,
+  dragging,
+}: PluginThreadActionsContextMenuProps) {
+  return (
+    <div
+      data-testid="bb-thread-actions-context-menu"
+      data-thread-id={thread.id}
+      data-disabled={disabled === true ? "true" : "false"}
+      data-dragging={dragging === true ? "true" : "false"}
+      className="contents"
+    >
+      {children}
+    </div>
+  );
+}
 
 function useSlotEnv(hook: string): SlotEnv {
   const env = useContext(SlotEnvContext);
@@ -954,7 +1036,9 @@ function TestDiff({
   );
 }
 
-type TestClipboard = (content: ExperimentalClipboardContent) => Promise<boolean>;
+type TestClipboard = (
+  content: ExperimentalClipboardContent,
+) => Promise<boolean>;
 
 let activeClipboard: TestClipboard | null = null;
 
@@ -1132,12 +1216,22 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },
   experimental_useThreadActions(
-    target: PluginThreadActionTarget,
-    surface: PluginThreadActionSurface,
-  ): readonly PluginThreadActionItem[] {
-    const env = useSlotEnv("experimental_useThreadActions");
-    return env.threadActions(target, surface, env.rpcClient);
+    thread: PluginThreadActionTarget,
+    options?: PluginThreadActionsOptions,
+  ): readonly PluginThreadActionEntry[] {
+    return useTestThreadActions(
+      "experimental_useThreadActions",
+      thread,
+      options,
+    );
   },
+  experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[] {
+    return useSlotEnv("experimental_useThreadActionRegistrations")
+      .threadActionRegistrations;
+  },
+  experimental_ThreadActionsMenu: TestThreadActionsMenu,
+  experimental_ThreadActionsContextMenu: TestThreadActionsContextMenu,
+  experimental_THREAD_ACTION_GROUPS,
   experimental_useSidebarThreadSplit(threadId): PluginSidebarThreadSplit {
     const env = useSlotEnv("experimental_useSidebarThreadSplit");
     return useMemo(
@@ -1260,7 +1354,7 @@ export interface CapturedPluginApp {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
-  threadActions: PluginThreadActionRegistration[];
+  threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -1552,10 +1646,15 @@ export interface RenderSlotOptions<
   /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
   sidebarSplitLayout?: PluginSidebarSplitLayout;
   /**
-   * What `experimental_useThreadActions()` reports for a thread and surface.
-   * Omitted → an empty list.
+   * What `experimental_useThreadActions()` reports for a thread, in menu
+   * order. Omitted → an empty list.
    */
   threadActions?: TestThreadActionsResolver;
+  /**
+   * What `experimental_useThreadActionRegistrations()` reports. Omitted → an
+   * empty list.
+   */
+  threadActionRegistrations?: readonly PluginThreadActionRegistrationInfo[];
   /**
    * The environment provider catalog `useEnvironmentProviders()` reports.
    * Omitted → a ready, empty list. Pass `{ status: "loading" }` to test that
@@ -1886,8 +1985,12 @@ export function renderSlot<
     },
   };
   const navigate: BbNavigate = {
-    toThread(threadId) {
-      navigateCalls.push({ method: "toThread", threadId });
+    toThread(threadId, threadOptions) {
+      navigateCalls.push({
+        method: "toThread",
+        threadId,
+        ...(threadOptions !== undefined ? { options: threadOptions } : {}),
+      });
     },
     toProject(projectId) {
       navigateCalls.push({ method: "toProject", projectId });
@@ -2217,6 +2320,8 @@ export function renderSlot<
     sidebarActions,
     sidebarActionCalls,
     threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
+    threadActionRegistrations:
+      options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,
     sidebarPullRequests,
     sidebarDraftThreadIds,
     sidebarRowStatuses,

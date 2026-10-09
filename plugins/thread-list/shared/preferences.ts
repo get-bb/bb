@@ -33,18 +33,36 @@ export const environmentGroupingSchema = z.union([
   z.boolean(),
 ]);
 
-export const THREAD_ROW_ACTION_IDS = [
-  "split",
-  "copyLink",
-  "read",
-  "pin",
-  "move",
-  "rename",
-  "archive",
-] as const;
 export const THREAD_ROW_ACTION_LIMIT = 3;
-export const threadRowActionIdSchema = z.enum(THREAD_ROW_ACTION_IDS);
-export type ThreadRowActionId = z.infer<typeof threadRowActionIdSchema>;
+const LEGACY_THREAD_ROW_ACTION_KEYS = {
+  split: "core/split",
+  copyLink: "core/copyLink",
+  read: "core/read",
+  pin: "core/pin",
+  move: "thread-list/move",
+  rename: "core/rename",
+  archive: "core/archive",
+} as const;
+type LegacyThreadRowActionId = keyof typeof LEGACY_THREAD_ROW_ACTION_KEYS;
+
+function isLegacyThreadRowActionId(
+  value: string,
+): value is LegacyThreadRowActionId {
+  return Object.hasOwn(LEGACY_THREAD_ROW_ACTION_KEYS, value);
+}
+
+export const threadRowActionKeySchema = z
+  .string()
+  .transform((value) =>
+    isLegacyThreadRowActionId(value)
+      ? LEGACY_THREAD_ROW_ACTION_KEYS[value]
+      : value,
+  )
+  .pipe(
+    z.string().regex(/^[^/\s]+\/[^/\s]+$/, {
+      message: "Row actions are thread action keys: <owner>/<id>",
+    }),
+  );
 
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
@@ -140,14 +158,14 @@ export const preferenceDefinitions = {
   ),
   rowActions: definePreference(
     z
-      .array(threadRowActionIdSchema)
+      .array(threadRowActionKeySchema)
       .max(LIST_MAX_LENGTH)
       .transform((value) => [...new Set(value)])
       .refine((value) => value.length <= THREAD_ROW_ACTION_LIMIT, {
         message: `Choose at most ${THREAD_ROW_ACTION_LIMIT} row actions`,
       }),
-    ["archive"],
-    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu: split, copyLink, read, pin, move, rename, or archive. An empty list shows only the menu.`,
+    ["core/archive"],
+    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu, as thread action keys: core/split, core/copyLink, core/read, core/pin, thread-list/move, core/rename, core/archive, or a plugin's <pluginId>/<actionId>. Bare legacy ids such as archive are accepted. An empty list shows only the menu.`,
     null,
   ),
   collapsedSections: definePreference(
@@ -247,9 +265,10 @@ export function parseStoredPreferenceValue<Key extends PreferenceKey>(
 
 function knownRowActions(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
-  const known = value.filter(
-    (id) => threadRowActionIdSchema.safeParse(id).success,
-  );
+  const known = value.flatMap((id) => {
+    const parsed = threadRowActionKeySchema.safeParse(id);
+    return parsed.success ? [parsed.data] : [];
+  });
   return [...new Set(known)].slice(0, THREAD_ROW_ACTION_LIMIT);
 }
 

@@ -6,7 +6,6 @@ import type {
   ReactNode,
 } from "react";
 import type {
-  JsonObject,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -158,11 +157,10 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface ExperimentalVoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to
@@ -1277,6 +1275,11 @@ export interface PluginSidebarThreadShortcut {
  * flow, so optimistic updates, toasts, dialogs, pane closing, and route repair
  * behave exactly as they do in the built-in sidebar. Unknown thread ids are
  * ignored by `open` and rejected by the rest.
+ *
+ * @deprecated Register menu entries with `app.slots.experimental_threadAction`
+ * and render them with `experimental_ThreadActionsMenu`; use `useSdk().threads`
+ * for data writes and `useBbNavigate().toThread` / `toCompose` for navigation.
+ * Scheduled for removal in the next major.
  */
 export interface PluginSidebarThreadActions {
   /**
@@ -1358,9 +1361,8 @@ export interface ExperimentalPluginBrowserToolbarActionRegistration {
 }
 
 /**
- * The thread a thread action is resolved for: the fields bb's own menu items
- * read, copied from the thread payload. Nothing else about the thread is
- * available to a plugin action; see {@link PluginThreadActionRegistration}.
+ * The thread a thread action is evaluated for: the fields bb's own actions
+ * read, copied from the thread payload by the surface that shows the menu.
  */
 export interface PluginThreadActionTarget {
   id: string;
@@ -1371,23 +1373,12 @@ export interface PluginThreadActionTarget {
   sectionId: string | null;
   isUnread: boolean;
   status: ThreadStatus;
-  /** The thread's environment and its checkout path, when it has one. */
+  /**
+   * The thread's environment when a new thread can reuse it, null otherwise.
+   * `path` is the checkout path, null when the environment has none.
+   */
   environment: { id: string; path: string | null } | null;
 }
-
-/**
- * Where a thread action is about to be shown: a menu (the thread header's
- * actions menu, the sidebar row's menu, its right-click context menu, and the
- * compact long-press drawer) or a standalone icon button (a sidebar row's
- * configurable quick actions).
- */
-export type PluginThreadActionSurface = "menu" | "button";
-
-/**
- * The menu section an action belongs to. Sections render in this order with a
- * separator between non-empty ones; bb's own actions come first within each.
- */
-export type PluginThreadActionGroup = "open" | "organize" | "lifecycle";
 
 /** One row of a thread action's choice list. */
 export interface PluginThreadActionChoice {
@@ -1399,95 +1390,172 @@ export interface PluginThreadActionChoice {
 }
 
 /**
- * A thread action that opens a list of choices instead of running directly: a
- * submenu in desktop menus, a step with Back in the compact drawer, and a
- * popover from the icon button.
+ * A choice list instead of a direct action: a submenu in desktop menus, a step
+ * with Back in the compact drawer, and a popover from a row's quick-action
+ * button. `run` receives the picked choice's `id` as `value`.
  */
 export interface PluginThreadActionChoices {
   heading?: string;
   /** Secondary text under the heading, e.g. where the current value comes from. */
   hint?: string;
   items: readonly PluginThreadActionChoice[];
+}
+
+/** What a thread action's `run` receives. */
+export interface PluginThreadActionRunInput {
+  /** The picked choice's `id` when the action has `choices`; otherwise undefined. */
+  value?: string;
   /**
-   * Runs when the user picks a choice. Errors (sync or async) are contained
-   * and logged; they never break the menu.
+   * Start renaming a thread with the editor of the surface that showed the
+   * menu: inline in the sidebar row or thread header, bb's rename dialog
+   * elsewhere.
    */
-  select(choiceId: string): void | Promise<void>;
+  requestRename(threadId: string): void;
 }
 
 /**
- * One resolved thread action, host-rendered: a leaf row that runs, or a row
- * that opens choices. Exactly one of `run` and `choices` is set.
+ * One evaluated thread action. Menus sort by `group` (string compare) with a
+ * separator between groups, then by `order` within a group (default and ties:
+ * registration order). bb's groups are
+ * {@link PluginSdkApp.experimental_THREAD_ACTION_GROUPS}; any other string is
+ * a group of its own, placed where it sorts.
  */
 export interface PluginThreadAction {
   label: string;
   icon: BbIconName;
-  group: PluginThreadActionGroup;
+  group: string;
+  order?: number;
   variant?: "default" | "destructive";
   disabled?: boolean;
-  /**
-   * Runs when the user activates the action. Errors (sync or async) are
-   * contained and logged; they never break the menu.
-   */
-  run?(): void | Promise<void>;
   choices?: PluginThreadActionChoices;
+  /**
+   * Runs when the user activates the action or picks a choice. Errors (sync
+   * or async) are contained and logged; they never break the menu.
+   */
+  run(input: PluginThreadActionRunInput): void | Promise<void>;
 }
 
-/** What `resolve` receives for each thread and surface it is shown on. */
-export interface PluginThreadActionContext<
-  Contract extends PluginRpcContract = PluginRpcContract,
-> {
+/** What a registration's `item` receives for each thread it is shown for. */
+export interface PluginThreadActionItemInput<Data> {
   thread: PluginThreadActionTarget;
-  surface: PluginThreadActionSurface;
-  /**
-   * This plugin's own `thread_plugin_metadata` row for the thread, or null
-   * while it loads or when the thread has none. The host fetches it when a
-   * menu opens and re-runs `resolve` when it lands or after
-   * `useSdk().threads.updatePluginMetadata` writes it.
-   */
-  metadata: JsonObject | null;
-  /**
-   * This plugin's `bb.rpc` client, the same one `useRpc()` returns, for
-   * `run` and `select` handlers that need the plugin's server. The host
-   * refetches `metadata` after either settles.
-   */
-  rpc: PluginRpcClient<Contract>;
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /** The registering plugin's `useBbNavigate()`. */
+  navigate: BbNavigate;
 }
 
 /**
  * Add an action to every thread actions menu: the thread header's menu, the
- * sidebar row's menu, its right-click context menu, the compact long-press
- * drawer, and, when the user picks it, a sidebar row's quick-action buttons.
- * bb's own items (Open in split, Copy thread link, Mark read, Pin, Move to
- * section, Rename, Archive, Delete) use this same shape.
+ * sidebar row's menu and right-click menu, the compact long-press drawer, and,
+ * when the user picks it, a sidebar row's quick-action buttons. bb's own
+ * actions (Open in split, Copy thread link, Mark read, Pin, Rename, Archive,
+ * Delete, …) are registrations of this same shape.
  *
- * `resolve` is pure data: it may depend only on the thread target and this
- * plugin's own per-thread metadata. Return null to hide the action for that
- * thread or surface. A throwing `resolve` drops only this action; the rest of
- * the menu still renders.
+ * `useData` is a React hook the host calls once for the whole app, never per
+ * thread or per menu; read app-wide state there (preferences, a batched
+ * per-thread map, a realtime channel). `item` is pure and synchronous: it
+ * derives the action for one thread from that thread and `data`, closing over
+ * everything `run` needs, or returns null to hide it. A throw from either
+ * drops only this registration.
  */
-export interface PluginThreadActionRegistration<
-  Contract extends PluginRpcContract = PluginRpcContract,
-> {
+export interface PluginThreadActionRegistration<Data = undefined> {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Label shown where the user picks row quick actions. */
+  /** Static name, shown where the user picks a row's quick actions. */
   title: string;
-  resolve(
-    context: PluginThreadActionContext<Contract>,
-  ): PluginThreadAction | null;
+  /** Static icon for that picker; the evaluated action's `icon` wins in menus. */
+  icon: BbIconName;
+  useData?(): Data;
+  item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
+}
+
+/**
+ * A thread action as {@link PluginSdkApp.experimental_useThreadActions}
+ * returns it: `run` is bound to the caller's `requestRename` (or bb's rename
+ * dialog), contains errors, and resolves when the action settles.
+ */
+export interface PluginBoundThreadAction extends Omit<
+  PluginThreadAction,
+  "run"
+> {
+  /** `value` is the picked choice's `id` for an action with `choices`. */
+  run(value?: string): Promise<void>;
 }
 
 /**
  * One row of {@link PluginSdkApp.experimental_useThreadActions}: `key` is
- * `core:<id>` for bb's own actions and `<pluginId>/<id>` for plugin ones, the
- * same keys the thread list's `rowActions` preference stores.
+ * `<owner>/<id>`, where the owner is the registering plugin's id or `core`
+ * for bb's own actions.
  */
-export interface PluginThreadActionItem {
+export interface PluginThreadActionEntry {
   key: string;
-  /** Null for bb's own actions. */
-  pluginId: string | null;
+  pluginId: string;
+  action: PluginBoundThreadAction;
+}
+
+/** One row of {@link PluginSdkApp.experimental_useThreadActionRegistrations}. */
+export interface PluginThreadActionRegistrationInfo {
+  key: string;
+  pluginId: string;
+  title: string;
+  icon: BbIconName;
+}
+
+/** Options for {@link PluginSdkApp.experimental_useThreadActions}. */
+export interface PluginThreadActionsOptions {
+  /** Return only these keys, in this order. Omit for every action in menu order. */
+  keys?: readonly string[];
+  /**
+   * The surface's own rename editor, passed to `run` as `requestRename`.
+   * Omit to use bb's rename dialog.
+   */
+  requestRename?(threadId: string): void;
+}
+
+/**
+ * An action a surface adds to its own copy of the thread menu, not a
+ * registration: appended to the end of its `group`. `key` must be unique in
+ * the menu.
+ */
+export interface PluginThreadActionsInlineItem {
+  key: string;
   action: PluginThreadAction;
+}
+
+interface PluginThreadActionsMenuBaseProps {
+  thread: PluginThreadActionTarget;
+  inline?: readonly PluginThreadActionsInlineItem[];
+  /** See {@link PluginThreadActionsOptions.requestRename}. */
+  requestRename?(threadId: string): void;
+  onOpenChange?(open: boolean): void;
+  /** Radix's close auto-focus hook, to restore focus to the surface's own control. */
+  onCloseAutoFocus?(event: Event): void;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadActionsMenu`: bb's thread menu
+ * opened from `trigger` (rendered as the Radix trigger, `asChild`), a drawer
+ * at compact width.
+ */
+export interface PluginThreadActionsMenuProps extends PluginThreadActionsMenuBaseProps {
+  trigger: ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadActionsContextMenu`: bb's thread
+ * menu on right-click of `children`, or on touch long-press at compact width.
+ */
+export interface PluginThreadActionsContextMenuProps extends PluginThreadActionsMenuBaseProps {
+  children: ReactNode;
+  /** Suppresses the menu, e.g. while the row edits its title. */
+  disabled?: boolean;
+  /** Closes the menu and suppresses opening while the row is being dragged. */
+  dragging?: boolean;
 }
 
 /** One pane's place in the split layout, as fractions of the split area. */
@@ -2047,9 +2115,9 @@ export interface PluginAppSlots {
    * {@link PluginThreadActionRegistration}). Experimental: see
    * docs/api_to_audit.md.
    */
-  experimental_threadAction<
-    Contract extends PluginRpcContract = PluginRpcContract,
-  >(registration: PluginThreadActionRegistration<Contract>): void;
+  experimental_threadAction<Data = undefined>(
+    registration: PluginThreadActionRegistration<Data>,
+  ): void;
   /** Render a component beside each Browser tab's address bar. */
   experimental_browserToolbarAction(
     registration: ExperimentalPluginBrowserToolbarActionRegistration,
@@ -3262,7 +3330,13 @@ export interface BbContext {
 }
 
 export interface BbNavigate {
-  toThread(threadId: string): void;
+  /**
+   * Open a thread. `split: true` applies bb's split placement rules (a right
+   * split by default, focus when already open, replace at the pane cap) and
+   * falls back to plain navigation where splits are off. Opening also expands
+   * the thread's conversation if the side panel had collapsed it.
+   */
+  toThread(threadId: string, options?: { split?: boolean }): void;
   toProject(projectId: string): void;
   /**
    * Navigate to one of this plugin's own nav panels by its `path`.
@@ -3280,8 +3354,19 @@ export interface BbNavigate {
    * and section mention tokens become pills) and `focusPrompt` to focus the
    * composer on arrival — the pairing behind "Create via chat" style entry
    * points that drop the user into chat with a prefilled prompt.
+   * `projectId` makes that project the composer's selection; `placement`
+   * files the new thread in a section and pin state (omitted: unpinned,
+   * outside sections); `environmentId` reuses that environment and `hostId`
+   * picks a machine for a new one (`environmentId` wins when both are set).
    */
-  toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
+  toCompose(options?: {
+    projectId?: string;
+    initialPrompt?: string;
+    focusPrompt?: boolean;
+    placement?: { sectionId: string | null; pinned: boolean };
+    environmentId?: string;
+    hostId?: string;
+  }): void;
   /**
    * Open one of this plugin's registered panel actions in the current
    * surface's side panel: a `threadPanelAction` in a thread, or an
@@ -3421,23 +3506,54 @@ export interface PluginSdkApp {
    * Thread actions bound to the host's mutations (see
    * {@link PluginSidebarThreadActions}). Experimental: see
    * docs/api_to_audit.md.
+   *
+   * @deprecated Use `experimental_useThreadActions`, the thread action
+   * components, `useSdk().threads`, and `useBbNavigate()`. Scheduled for
+   * removal in the next major.
    */
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
   /**
-   * Every thread action for one thread and surface, in menu order: bb's own
-   * actions and every plugin's `experimental_threadAction` registration (see
-   * {@link PluginThreadActionItem}). Groups follow
-   * {@link PluginThreadActionGroup} order; bb's actions come before plugins
-   * within a group, plugins in registration order. The host fetches each
-   * registering plugin's own per-thread metadata for the target while the
-   * caller is mounted, so call it from a menu that mounts when opened. A
-   * replacement thread list renders the same menu as the built-in one from
-   * this list. Experimental: see docs/api_to_audit.md.
+   * Every thread action for one thread, in menu order (see
+   * {@link PluginThreadAction} for grouping): bb's own registrations first,
+   * then plugins' in registration order. Registrations' `useData` hooks run
+   * once for the app, so calling this per sidebar row costs one store
+   * subscription and a pure `item` call per registration. Pass `keys` for a
+   * row's quick actions. Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActions(
-    target: PluginThreadActionTarget,
-    surface: PluginThreadActionSurface,
-  ): readonly PluginThreadActionItem[];
+    thread: PluginThreadActionTarget,
+    options?: PluginThreadActionsOptions,
+  ): readonly PluginThreadActionEntry[];
+  /**
+   * Every registered thread action with its static title and icon,
+   * independent of any thread: what a quick-action picker lists.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[];
+  /**
+   * bb's thread menu behind a trigger (see
+   * {@link PluginThreadActionsMenuProps}): the same items, order, choice
+   * submenus and compact drawer as the thread header's menu. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ThreadActionsMenu: ComponentType<PluginThreadActionsMenuProps>;
+  /**
+   * bb's thread menu on right-click or long-press (see
+   * {@link PluginThreadActionsContextMenuProps}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ThreadActionsContextMenu: ComponentType<PluginThreadActionsContextMenuProps>;
+  /**
+   * bb's thread menu groups, for a registration that joins one:
+   * `open` (split), `organize` (copy, read, pin, move, rename), `settings`,
+   * and `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
+   */
+  experimental_THREAD_ACTION_GROUPS: {
+    readonly open: "1_open";
+    readonly organize: "2_organize";
+    readonly settings: "3_settings";
+    readonly lifecycle: "4_lifecycle";
+  };
   /**
    * The pull request for one thread's branch (see
    * {@link PluginSidebarThreadPullRequestState}).

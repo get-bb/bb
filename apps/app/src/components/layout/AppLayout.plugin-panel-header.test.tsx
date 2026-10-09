@@ -86,9 +86,7 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ),
 }));
 
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useMoveThreadToSection: () => vi.fn(),
-}));
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({}));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   ThreadActionsProvider: ({ children }: { children: ReactNode }) => (

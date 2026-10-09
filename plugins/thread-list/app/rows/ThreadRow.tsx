@@ -32,7 +32,10 @@ import {
   type ThreadListIndicatorState,
 } from "../model/thread-activity.js";
 import {
-  experimental_useSidebarThreadActions,
+  experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
+  experimental_ThreadActionsMenu as ThreadActionsMenu,
+  experimental_THREAD_ACTION_GROUPS,
+  experimental_useThreadActions,
   experimental_useSidebarThreadSplit,
   experimental_useProviders,
   experimental_ProviderIcon as ProviderIcon,
@@ -41,7 +44,9 @@ import {
   useSidebarThreadDraft,
   useSidebarThreadRowStatus,
   useSidebarThreadShortcut,
+  useSdk,
   type PluginSidebarSplitPane,
+  type PluginThreadActionsInlineItem,
   type PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
@@ -86,16 +91,15 @@ import type {
 import type { SidebarSortableDragBindings } from "./sortableMotion.js";
 import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
+import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";
+import { toThreadActionTarget } from "./threadActionTarget.js";
+import { useOpenThreadInSplit } from "./threadRowNavigation.js";
+import { Button } from "@/components/ui/button";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import {
-  ThreadActionsContextMenu,
-  ThreadActionsMenu,
-  ThreadArchiveQuickAction,
-  canMoveThreadToSection,
-  ThreadRowQuickActions,
-  visibleThreadRowActions,
-} from "./ThreadActionsMenu.js";
-import { useThreadSectionMove } from "./ThreadSectionMoveProvider.js";
-import { useThreadRowActionsCustomizing } from "../list/customizeRowActionsContext.js";
+  useCustomizeThreadRowActions,
+  useThreadRowActionsCustomizing,
+} from "../list/customizeRowActionsContext.js";
 import {
   ThreadRowActionsEditor,
   focusFirstRowActionSlot,
@@ -298,18 +302,28 @@ function ThreadTrailingIndicator({
   );
 }
 
-function ThreadRestoreStatusAction({ thread }: { thread: SidebarThread }) {
+const ARCHIVED_ROW_ACTION_KEYS = ["core/archive"];
+const CUSTOMIZE_ROW_ACTIONS_KEY = "thread-list/customizeRowActions";
+
+function ThreadActionsTrigger() {
   return (
-    <span
-      className="relative z-10 pointer-events-auto"
-      onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className={cn(
+        "rounded-md p-0",
+        "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+        SIDEBAR_CONTROL_BUTTON_CLASS,
+      )}
+      aria-label="Thread actions"
+      data-thread-actions-trigger=""
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
     >
-      <ThreadArchiveQuickAction
-        thread={thread}
-        className={SIDEBAR_CONTROL_BUTTON_CLASS}
-      />
-    </span>
+      <Icon name="MoreHorizontal" className={COARSE_POINTER_ICON_SIZE_CLASS} />
+    </Button>
   );
 }
 
@@ -338,7 +352,8 @@ function ThreadRowComponent({
 }: ThreadRowProps) {
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
-  const actions = experimental_useSidebarThreadActions();
+  const sdk = useSdk();
+  const openThreadInSplit = useOpenThreadInSplit();
   const showProviderIcons = useAtomValue(sidebarShowProviderIconsAtom);
   const { providers } = experimental_useProviders();
   const provider = showProviderIcons
@@ -363,8 +378,10 @@ function ThreadRowComponent({
         ? `In project ${crossProjectName}`
         : "In another project";
   const handleRename = useCallback(
-    (nextTitle: string) => actions.rename(thread.id, nextTitle),
-    [actions, thread.id],
+    async (nextTitle: string) => {
+      await sdk.threads.update({ threadId: thread.id, title: nextTitle });
+    },
+    [sdk, thread.id],
   );
   const rename = useSidebarRename({
     kind: "thread",
@@ -391,16 +408,34 @@ function ThreadRowComponent({
   const onSplitDragPointerDown = split.splitProps.onPointerDown;
   const splitAvailable = split.isAvailable;
   const openInSplit = useCallback(() => {
-    actions.open(thread.id, { split: true });
-  }, [actions, thread.id]);
-  const sectionMove = useThreadSectionMove();
-  const rowActionIds = visibleThreadRowActions(
-    useAtomValue(threadRowActionsAtom),
-    {
-      split: splitAvailable,
-      move: canMoveThreadToSection(sectionMove, thread),
+    openThreadInSplit(thread.id);
+  }, [openThreadInSplit, thread.id]);
+  const rowActionKeys = useAtomValue(threadRowActionsAtom);
+  const actionTarget = toThreadActionTarget(thread);
+  const quickActions = experimental_useThreadActions(actionTarget, {
+    keys: thread.archivedAt !== null ? ARCHIVED_ROW_ACTION_KEYS : rowActionKeys,
+    requestRename: () => {
+      startEditing();
     },
-  );
+  });
+  const customizeRowActions = useCustomizeThreadRowActions();
+  const inlineMenuActions: PluginThreadActionsInlineItem[] =
+    customizeRowActions === null
+      ? []
+      : [
+          {
+            key: CUSTOMIZE_ROW_ACTIONS_KEY,
+            action: {
+              label: "Customize row actions",
+              icon: "FilterHorizontal",
+              group: experimental_THREAD_ACTION_GROUPS.settings,
+              run: () => customizeRowActions(thread.id),
+            },
+          },
+        ];
+  const requestRenameFromMenu = () => {
+    rename.startEditingFromMenu();
+  };
   const parentOptions = options.kind === "parent" ? options : null;
   const isParentRow = parentOptions !== null;
   const isParentCollapsed = parentOptions?.isCollapsed ?? false;
@@ -547,9 +582,7 @@ function ThreadRowComponent({
               ? "pr-(--bb-sidebar-hover-actions-inset) [@media(hover:none)]:pr-0"
               : SIDEBAR_HOVER_ACTIONS_INSET_CLASS),
         )}
-        style={getHoverActionsInsetStyle(
-          thread.archivedAt !== null ? 1 : rowActionIds.length,
-        )}
+        style={getHoverActionsInsetStyle(quickActions.length)}
       >
         <a
           ref={rowLinkRef}
@@ -693,15 +726,27 @@ function ThreadRowComponent({
               )}
             >
               <ThreadActionsMenu
-                thread={thread}
-                triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
-                onOpenInSplit={splitAvailable ? openInSplit : undefined}
+                thread={actionTarget}
+                trigger={<ThreadActionsTrigger />}
+                inline={inlineMenuActions}
+                requestRename={requestRenameFromMenu}
+                side="right"
+                align="start"
+                sideOffset={8}
                 onOpenChange={setIsDropdownActionsOpen}
-                onRename={rename.startEditingFromMenu}
                 onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
               />
             </div>
-            <ThreadRestoreStatusAction thread={thread} />
+            <span
+              className="relative z-10 pointer-events-auto"
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <ThreadRowQuickActions
+                entries={quickActions}
+                className={SIDEBAR_CONTROL_BUTTON_CLASS}
+              />
+            </span>
           </span>
         ) : shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
@@ -764,22 +809,21 @@ function ThreadRowComponent({
                 <SidebarRowControls
                   primaryAction={
                     <ThreadRowQuickActions
-                      actionIds={rowActionIds}
-                      actions={actions}
-                      thread={thread}
+                      entries={quickActions}
                       className={SIDEBAR_CONTROL_BUTTON_CLASS}
-                      onOpenInSplit={openInSplit}
-                      onRename={startEditing}
                       onMenuOpenChange={setIsDropdownActionsOpen}
                     />
                   }
                 >
                   <ThreadActionsMenu
-                    thread={thread}
-                    triggerClassName={SIDEBAR_CONTROL_BUTTON_CLASS}
-                    onOpenInSplit={splitAvailable ? openInSplit : undefined}
+                    thread={actionTarget}
+                    trigger={<ThreadActionsTrigger />}
+                    inline={inlineMenuActions}
+                    requestRename={requestRenameFromMenu}
+                    side="right"
+                    align="start"
+                    sideOffset={8}
                     onOpenChange={setIsDropdownActionsOpen}
-                    onRename={rename.startEditingFromMenu}
                     onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
                   />
                 </SidebarRowControls>
@@ -813,10 +857,10 @@ function ThreadRowComponent({
 
   return (
     <ThreadActionsContextMenu
-      thread={thread}
-      onOpenInSplit={splitAvailable ? openInSplit : undefined}
+      thread={actionTarget}
+      inline={inlineMenuActions}
+      requestRename={requestRenameFromMenu}
       onOpenChange={setIsContextActionsOpen}
-      onRename={rename.startEditingFromMenu}
       onCloseAutoFocus={handleActionsMenuCloseAutoFocus}
       disabled={isEditing}
       dragging={rowDragBindings?.isDragging ?? false}

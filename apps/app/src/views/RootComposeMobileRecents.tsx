@@ -3,7 +3,8 @@ import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
-import { ThreadActionsLongPressMenu } from "@/components/thread/ThreadActionsMenu";
+import { ThreadActionsContextMenu } from "@/components/thread/ThreadActionsMenu";
+import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -312,7 +313,7 @@ function MobileRecentThreadRow({
     </span>
   );
   return (
-    <ThreadActionsLongPressMenu thread={thread}>
+    <ThreadActionsContextMenu thread={threadListEntryActionTarget(thread)}>
       <li
         onTouchStart={(event) => {
           const touch = event.touches[0];
@@ -409,7 +410,7 @@ function MobileRecentThreadRow({
           ) : null}
         </RouteAnchor>
       </li>
-    </ThreadActionsLongPressMenu>
+    </ThreadActionsContextMenu>
   );
 }
 
