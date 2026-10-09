@@ -2,6 +2,7 @@ import {
   Component,
   useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -128,24 +129,21 @@ function useLatestNavigate(navigate: BbNavigate): BbNavigate {
   useLayoutEffect(() => {
     latest.current = navigate;
   });
-  const stable = useRef<BbNavigate | null>(null);
-  if (stable.current === null) {
-    stable.current = {
-      toThread: (...args) => latest.current.toThread(...args),
-      toProject: (...args) => latest.current.toProject(...args),
-      toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
-      toCompose: (...args) => latest.current.toCompose(...args),
-      openThreadPanel: (...args) => latest.current.openThreadPanel(...args),
-      openUrl: (...args) => latest.current.openUrl(...args),
-      experimental_openFilePreview: (...args) =>
-        latest.current.experimental_openFilePreview(...args),
-      experimental_openFileExternally: (...args) =>
-        latest.current.experimental_openFileExternally(...args),
-      experimental_openTerminal: (...args) =>
-        latest.current.experimental_openTerminal(...args),
-    };
-  }
-  return stable.current;
+  const [stable] = useState<BbNavigate>(() => ({
+    toThread: (...args) => latest.current.toThread(...args),
+    toProject: (...args) => latest.current.toProject(...args),
+    toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
+    toCompose: (...args) => latest.current.toCompose(...args),
+    openThreadPanel: (...args) => latest.current.openThreadPanel(...args),
+    openUrl: (...args) => latest.current.openUrl(...args),
+    experimental_openFilePreview: (...args) =>
+      latest.current.experimental_openFilePreview(...args),
+    experimental_openFileExternally: (...args) =>
+      latest.current.experimental_openFileExternally(...args),
+    experimental_openTerminal: (...args) =>
+      latest.current.experimental_openTerminal(...args),
+  }));
+  return stable;
 }
 
 function ThreadActionCollector({

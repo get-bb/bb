@@ -160,40 +160,49 @@ surface them here instead, filtering `experimental_useSidebarThreads()` by
 
 ### An action in every thread menu
 
-`app.slots.experimental_threadAction` adds a row to the thread header's
+`app.slots.experimental_threadAction` adds an entry to the thread header's
 actions menu, the sidebar row's menu, its right-click menu, the compact
 long-press drawer, and, when the user picks it in Customize row actions, a
-sidebar row's quick-action buttons. The host renders it; `resolve` returns
-data and may depend only on the thread target and your plugin's own
-per-thread metadata, which the host fetches for you. Return null to hide the
-action for that thread or surface. Set exactly one of `run` or `choices`; a
-`choices` action renders as a submenu, a drawer step with Back, or a popover.
-`rpc` is your plugin's `useRpc()` client for handlers that run outside React;
-the host refetches `metadata` after `run` or `select` settles.
+sidebar row's quick-action buttons. bb's own actions are registrations of the
+same shape.
+
+`useData` is a hook the host runs once for the whole app, never per row: read
+your preferences, a batched per-thread map, or a realtime channel there.
+`item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
+`useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
+null to hide it. Menus sort by `group`, a separator between groups, then by
+`order`. Join one of bb's groups through `experimental_THREAD_ACTION_GROUPS`
+or name your own. `choices` renders as a submenu, a drawer step with Back, or
+a popover; the picked id reaches `run` as `value`.
 
 ```tsx
 app.slots.experimental_threadAction({
   id: "notifications",
   title: "Notifications",
-  resolve: ({ thread, metadata, rpc }) => ({
+  icon: "Notification",
+  useData: () => useNotificationLevels(),
+  item: ({ thread, data, sdk }) => ({
     label: "Notifications",
-    icon: "Bell",
-    group: "organize",
+    icon: "Notification",
+    group: experimental_THREAD_ACTION_GROUPS.settings,
     choices: {
-      heading: "Notifications",
       items: [
-        { id: "all", label: "All activity", selected: metadata?.level === "all" },
-        { id: "muted", label: "Muted", selected: metadata?.level === "muted" },
+        { id: "all", label: "All activity", selected: data.get(thread.id) === "all" },
+        { id: "muted", label: "Muted", selected: data.get(thread.id) === "muted" },
       ],
-      select: (level) => rpc.call("setLevel", { threadId: thread.id, level }),
     },
+    run: ({ value }) => saveLevel(sdk, thread.id, value),
   }),
 });
 ```
 
-`experimental_useThreadActions(target, surface)` returns the full ordered list
-(bb's own actions and every plugin's) so a replaced thread list renders the
-same menu as the built-in one. Keys are `core:<id>` and `<pluginId>/<id>`.
+A replacement thread list renders bb's menus with
+`experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
+passing its own rename editor as `requestRename` and list-only entries as
+`inline`. `experimental_useThreadActions(thread, { keys })` returns bound
+actions for quick-action buttons, and
+`experimental_useThreadActionRegistrations()` lists every action's static
+title and icon for a picker. Keys are `core/<id>` and `<pluginId>/<id>`.
 
 ### A control in the Browser toolbar
 

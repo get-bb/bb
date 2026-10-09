@@ -310,12 +310,17 @@ interface TestFixedTabTargetStore {
 
 /**
  * What `experimental_useThreadActions(thread)` returns in a test, in menu
- * order; the host's own actions are not emulated. The fake applies `keys`.
- * Omitted → an empty list. The fake `experimental_ThreadActionsMenu` renders
- * these entries and its `inline` items as buttons.
+ * order; the host's own actions are not emulated. `requestRename` is the
+ * caller's rename editor (a no-op when it passed none), for entries whose
+ * `run` renames. The fake applies `keys`. Omitted → an empty list. The fake
+ * `experimental_ThreadActionsMenu` opens on a trigger click and the fake
+ * context menu on right-click; each lists these entries and its `inline`
+ * items as `menuitem` buttons, and closes after one runs (calling
+ * `onOpenChange(false)` and `onCloseAutoFocus`).
  */
 export type TestThreadActionsResolver = (
   thread: PluginThreadActionTarget,
+  options: { requestRename(threadId: string): void },
 ) => readonly PluginThreadActionEntry[];
 
 /** One recorded `experimental_useSidebarThreadActions()` call. */
@@ -432,12 +437,16 @@ const NO_THREAD_ACTIONS: TestThreadActionsResolver = () => [];
 const NO_THREAD_ACTION_REGISTRATIONS: readonly PluginThreadActionRegistrationInfo[] =
   [];
 
+function noRenameEditor(): void {}
+
 function useTestThreadActions(
   hook: string,
   thread: PluginThreadActionTarget,
   options?: PluginThreadActionsOptions,
 ): readonly PluginThreadActionEntry[] {
-  const entries = useSlotEnv(hook).threadActions(thread);
+  const entries = useSlotEnv(hook).threadActions(thread, {
+    requestRename: options?.requestRename ?? noRenameEditor,
+  });
   const keys = options?.keys;
   if (keys === undefined) return entries;
   return keys.flatMap((key) => {
@@ -446,52 +455,114 @@ function useTestThreadActions(
   });
 }
 
-function TestThreadActionsMenu({
+function TestThreadActionsMenuItems({
+  hook,
   thread,
-  trigger,
   inline = [],
   requestRename,
-}: PluginThreadActionsMenuProps) {
-  const entries = useTestThreadActions(
-    "experimental_ThreadActionsMenu",
-    thread,
-  );
-  const rename = requestRename ?? (() => {});
+  onClose,
+}: {
+  hook: string;
+  thread: PluginThreadActionTarget;
+  inline?: PluginThreadActionsMenuProps["inline"];
+  requestRename?: (threadId: string) => void;
+  onClose: () => void;
+}) {
+  const rename = requestRename ?? noRenameEditor;
+  const entries = useTestThreadActions(hook, thread, { requestRename: rename });
+  const rows = [
+    ...entries.map((entry) => ({
+      key: entry.key,
+      action: entry.action,
+      run: () => entry.action.run(),
+    })),
+    ...inline.map((item) => ({
+      key: item.key,
+      action: item.action,
+      run: () => item.action.run({ requestRename: rename }),
+    })),
+  ];
   return (
-    <div data-testid="bb-thread-actions-menu" data-thread-id={thread.id}>
-      {trigger}
-      {entries.map((entry) => (
+    <div role="menu" aria-label="Thread actions">
+      {rows.map((row) => (
         <button
-          key={entry.key}
+          key={row.key}
           type="button"
-          data-thread-action={entry.key}
-          disabled={entry.action.disabled}
-          onClick={() => void entry.action.run()}
+          role="menuitem"
+          data-thread-action={row.key}
+          disabled={row.action.disabled}
+          onClick={() => {
+            void row.run();
+            onClose();
+          }}
         >
-          {entry.action.label}
-        </button>
-      ))}
-      {inline.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          data-thread-action={item.key}
-          disabled={item.action.disabled}
-          onClick={() => void item.action.run({ requestRename: rename })}
-        >
-          {item.action.label}
+          {row.action.label}
         </button>
       ))}
     </div>
   );
 }
 
+function useTestMenuOpenState({
+  onOpenChange,
+  onCloseAutoFocus,
+}: {
+  onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return {
+    open,
+    show: () => {
+      setOpen(true);
+      onOpenChange?.(true);
+    },
+    close: () => {
+      setOpen(false);
+      onOpenChange?.(false);
+      onCloseAutoFocus?.(new Event("focus", { cancelable: true }));
+    },
+  };
+}
+
+function TestThreadActionsMenu({
+  thread,
+  trigger,
+  inline,
+  requestRename,
+  onOpenChange,
+  onCloseAutoFocus,
+}: PluginThreadActionsMenuProps) {
+  const menu = useTestMenuOpenState({ onOpenChange, onCloseAutoFocus });
+  return (
+    <span data-testid="bb-thread-actions-menu" data-thread-id={thread.id}>
+      <span className="contents" onClickCapture={menu.show}>
+        {trigger}
+      </span>
+      {menu.open ? (
+        <TestThreadActionsMenuItems
+          hook="experimental_ThreadActionsMenu"
+          thread={thread}
+          inline={inline}
+          requestRename={requestRename}
+          onClose={menu.close}
+        />
+      ) : null}
+    </span>
+  );
+}
+
 function TestThreadActionsContextMenu({
   thread,
   children,
+  inline,
+  requestRename,
+  onOpenChange,
+  onCloseAutoFocus,
   disabled,
   dragging,
 }: PluginThreadActionsContextMenuProps) {
+  const menu = useTestMenuOpenState({ onOpenChange, onCloseAutoFocus });
   return (
     <div
       data-testid="bb-thread-actions-context-menu"
@@ -499,8 +570,22 @@ function TestThreadActionsContextMenu({
       data-disabled={disabled === true ? "true" : "false"}
       data-dragging={dragging === true ? "true" : "false"}
       className="contents"
+      onContextMenu={(event) => {
+        if (disabled === true || dragging === true) return;
+        event.preventDefault();
+        menu.show();
+      }}
     >
       {children}
+      {menu.open ? (
+        <TestThreadActionsMenuItems
+          hook="experimental_ThreadActionsContextMenu"
+          thread={thread}
+          inline={inline}
+          requestRename={requestRename}
+          onClose={menu.close}
+        />
+      ) : null}
     </div>
   );
 }

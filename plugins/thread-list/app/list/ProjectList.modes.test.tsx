@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import { useMemo, type ReactNode } from "react";
 import {
   act,
@@ -201,7 +202,9 @@ interface HarnessProps {
 function Harness({ store, children }: HarnessProps) {
   return (
     <JotaiProvider store={store}>
-      <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      <ThreadRowNavigationProvider>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </ThreadRowNavigationProvider>
     </JotaiProvider>
   );
 }

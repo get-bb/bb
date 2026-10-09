@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useAtomValue } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Thread } from "@bb/domain";
 import {
   experimental_THREAD_ACTION_GROUPS as GROUPS,
   type PluginThreadActionRegistration,
@@ -74,19 +73,19 @@ function useLifecycleHandlers(): LifecycleHandlers {
   useLayoutEffect(() => {
     latest.current = actions;
   });
-  return useMemo(() => {
-    const withThread =
-      (run: (thread: Thread) => void) => (threadId: string) => {
+  return useMemo(
+    () => ({
+      archive: (threadId: string) => {
         const thread = lookupCachedThread(queryClient, threadId);
-        if (thread !== null) run(thread);
-      };
-    return {
-      archive: withThread((thread) => latest.current.requestArchive(thread)),
-      requestDelete: withThread((thread) =>
-        latest.current.requestDelete(thread),
-      ),
-    };
-  }, [queryClient]);
+        if (thread !== null) latest.current.requestArchive(thread);
+      },
+      requestDelete: (threadId: string) => {
+        const thread = lookupCachedThread(queryClient, threadId);
+        if (thread !== null) latest.current.requestDelete(thread);
+      },
+    }),
+    [queryClient],
+  );
 }
 
 export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknown>[] =

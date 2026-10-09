@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import {
   cleanup,
   fireEvent,
@@ -101,7 +102,9 @@ function Harness({ children, store }: HarnessProps) {
     <TooltipProvider>
       <SidebarDraftPresenceSync />
       <Provider store={store}>
-        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+        <ThreadRowNavigationProvider>
+          <SidebarRenameProvider>{children}</SidebarRenameProvider>
+        </ThreadRowNavigationProvider>
       </Provider>
     </TooltipProvider>
   );
@@ -1095,7 +1098,7 @@ describe("ProjectRow interactions", () => {
     "keeps environment actions touch-accessible when collapsed=%s",
     async (isCollapsed) => {
       const update = vi.fn(sdkResult({ ok: true }));
-      const { sidebarActionCalls, sdkCalls } = renderProjectRow(
+      const { navigateCalls, sdkCalls } = renderProjectRow(
         vi.fn(),
         { status: "ready", threads: ENVIRONMENT_THREADS },
         false,
@@ -1117,13 +1120,13 @@ describe("ProjectRow interactions", () => {
         ),
       ).toBe(true);
       fireEvent.click(createButton);
-      expect(sidebarActionCalls).toEqual([
+      expect(navigateCalls).toEqual([
         {
-          method: "openNewThread",
+          method: "toCompose",
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
-            experimental_placement: { sectionId: null, pinned: false },
+            placement: { sectionId: null, pinned: false },
             focusPrompt: true,
           },
         },
@@ -1283,7 +1286,7 @@ describe("environment creation placement", () => {
       }).rootItems[0];
       if (group.kind !== "environment")
         throw new Error("Expected environment group");
-      const { sidebarActionCalls } = renderTree(
+      const { navigateCalls } = renderTree(
         <ThreadCreationPlacementScope
           group={groupId === "pinned-mixed" ? "pinned" : groupId}
         >
@@ -1300,14 +1303,14 @@ describe("environment creation placement", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "New thread in environment" }),
       );
-      expect(sidebarActionCalls).toEqual([
+      expect(navigateCalls).toEqual([
         {
-          method: "openNewThread",
+          method: "toCompose",
           options: {
             projectId: "proj_test",
             environmentId: "env_test",
             focusPrompt: true,
-            experimental_placement: { sectionId, pinned },
+            placement: { sectionId, pinned },
           },
         },
       ]);

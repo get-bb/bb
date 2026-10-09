@@ -1186,15 +1186,20 @@ leaves only the actions menu. Done, Escape, or a click elsewhere finishes;
 each change saves immediately.
 Archived rows keep their unarchive button regardless of this setting.
 
-The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
-`archive`, in display order. Duplicates are deduplicated. `split` is skipped
-where a split is unavailable, and `move` is skipped for threads that cannot
-move to another section. `move` opens a menu of sections.
+The Thread list plugin's `rowActions` preference stores up to three thread
+action keys in display order and defaults to `["core/archive"]`. bb's keys are
+`core/split`, `core/newThreadInEnvironment`, `core/copyLink`, `core/read`,
+`core/pin`, `core/rename`, `core/archive`, and `core/delete`; the thread list's
+own Move to section is `thread-list/move`, and other plugins add
+`<pluginId>/<actionId>`. Bare legacy ids (`pin`, `archive`, `move`, …) are
+accepted and migrate to their keys. Duplicates are deduplicated. A key whose
+action is hidden for a row (`core/split` for a thread already open,
+`thread-list/move` for a thread that cannot move) or whose plugin is not
+installed is skipped on that row. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '["core/pin","core/copyLink","core/archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```
