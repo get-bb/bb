@@ -29,10 +29,10 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 3. Only if "Keep this computer awake" is yes: run \`bb keep-awake enable\`, then \`bb keep-awake status\`.
    Check: it shows Keep Awake enabled. If the command isn't found, run \`bb plugin enable keep-awake\` and try again.
 
-4. Only if Notifications is yes: tell me to open Settings → Mobile in bb on this computer, install the app for my phone (TestFlight for iPhone, the Android download for Android), choose Add mobile device, and scan the code with the app. Wait until I say "done", then run \`bb push-notifications list\`.
+4. Set up the phone app: tell me to open Settings → Mobile in bb on this computer, install the app for my phone (TestFlight for iPhone, the Android download for Android), choose Add mobile device, and scan the code in the app. If Notifications is yes, tell me to allow them when the app asks. Wait until I say "done", then run \`bb push-notifications list\`.
    Check: my phone shows up in the list.
 
-Reply with my getbb.app address and these steps: open it on my phone, sign in with the same getbb.app account, and add it to my Home Screen. Say whether Keep Awake is on, and remind me that closing a laptop's lid still puts it to sleep.`,
+Reply with my getbb.app address (I can also open it in any browser), whether my phone is connected, and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep.`,
 );
 
 export const meta: GuideMeta = {
@@ -45,7 +45,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from your phone or any browser.",
+    "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from the bb app on your phone.",
   concept: <AnywhereConcept />,
   agentPrompt: AGENT_PROMPT,
   requirement: null,
@@ -65,6 +65,9 @@ export const guide: Guide = {
             Check that your address shows. If it says{" "}
             <strong>Remote access is off</strong>, choose{" "}
             <strong>Turn on</strong>.
+          </li>
+          <li>
+            You can open that address in any browser and use bb from anywhere.
           </li>
         </Substeps>
       ),
@@ -110,30 +113,8 @@ export const guide: Guide = {
     },
     {
       id: "step-3",
-      title: "Open bb on your phone",
+      title: "Get the bb app on your phone",
       lead: "Pick up any thread where you left it, answer your agents, or start new work.",
-      body: (
-        <Substeps>
-          <li>
-            Open your <code>https://&lt;handle&gt;.getbb.app</code> address in
-            your phone's browser.
-          </li>
-          <li>Sign in with the same getbb.app account.</li>
-          <li>Add it to your Home Screen.</li>
-        </Substeps>
-      ),
-      shot: {
-        src: "/guides/work-from-anywhere/window-phone.png",
-        alt: "bb at phone width, showing an agent's reply in a thread and an Ask a follow-up box",
-        width: 780,
-        height: 1688,
-      },
-      options: [],
-    },
-    {
-      id: "step-4",
-      title: "Get notified",
-      lead: "Know when an agent finishes or needs you, even with the app closed.",
       body: (
         <Substeps>
           <li>
@@ -146,14 +127,35 @@ export const guide: Guide = {
             appears once bb connect is on.
           </li>
           <li>
-            In the app, choose <strong>Connect with bb connect</strong>, scan
-            the code, and allow notifications.
+            In the app, choose <strong>Connect with bb connect</strong> and scan
+            the code.
           </li>
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-mobile-signed-in.png",
-        alt: "bb's Mobile apps settings, with bb connect ready at bb-demo.getbb.app, an Add mobile device button, and the iOS TestFlight and Android downloads",
+        src: "/guides/work-from-anywhere/window-phone.png",
+        alt: "The bb app on a phone, showing an agent's reply in a thread and an Ask a follow-up box",
+        width: 780,
+        height: 1688,
+      },
+      options: [],
+    },
+    {
+      id: "step-4",
+      title: "Get notified",
+      lead: "Know when an agent finishes or needs you, even with the app closed.",
+      body: (
+        <Substeps>
+          <li>When the app asks, allow notifications.</li>
+          <li>
+            Choose what reaches you in{" "}
+            <Ui icon="settings">Settings → Push notifications</Ui>.
+          </li>
+        </Substeps>
+      ),
+      shot: {
+        src: "/guides/run-an-agent-on-a-schedule/window-notify.png",
+        alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
         width: 2048,
         height: 1280,
       },
@@ -244,8 +246,8 @@ export const guide: Guide = {
       question: "Do I need to install anything on my phone?",
       answer: (
         <p>
-          No. bb runs in your phone's browser. Add the iOS or Android app only
-          if you want notifications.
+          The bb app for iPhone or Android, from Settings → Mobile. You can also
+          open your getbb.app address in any browser.
         </p>
       ),
     },

@@ -264,19 +264,29 @@ export function Note({
 }
 
 export function ProductShot({ shot }: { shot: GuideShot }) {
+  const image = (
+    <LightboxImage
+      src={shot.src}
+      alt={shot.alt}
+      size={{ width: shot.width, height: shot.height }}
+    />
+  );
+  if (shot.height > shot.width) {
+    return (
+      <figure className="gd-shot gd-shot-phone">
+        <div className="cmp-phone">
+          <div className="cmp-phone-screen">{image}</div>
+        </div>
+      </figure>
+    );
+  }
   return (
-    <figure
-      className={shot.width > shot.height ? "gd-shot gd-shot-wide" : "gd-shot"}
-    >
+    <figure className="gd-shot gd-shot-wide">
       <div
         className="gd-shot-frame"
         style={{ maxWidth: `${shot.width / 2}px` }}
       >
-        <LightboxImage
-          src={shot.src}
-          alt={shot.alt}
-          size={{ width: shot.width, height: shot.height }}
-        />
+        {image}
       </div>
     </figure>
   );
