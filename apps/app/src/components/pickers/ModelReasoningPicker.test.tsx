@@ -482,6 +482,27 @@ describe("ModelReasoningPicker", () => {
     expect(screen.queryByText(/put `codex` on PATH/)).toBeNull();
   });
 
+  it("shows the provider's sign-in instructions beneath a signed-out model-load error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "auth_required",
+        detail:
+          "Authentication required. To sign in, run this in a terminal on the machine that hosts the thread, then try again: agent login --device",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Not signed in")).not.toBeNull();
+    expect(screen.getByText(/agent login --device$/)).not.toBeNull();
+  });
+
   it("shows the underlying failure detail beneath a generic model-load error", () => {
     renderPicker({
       modelOptions: [],

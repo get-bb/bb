@@ -28,7 +28,7 @@ describe("ACP sign-in guidance", () => {
         platform: "linux",
       }),
     ).toBe(
-      "To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: AGENT_LOGIN=1 NOTE='two words' '/opt/my agent/bin/agent' acp --profile 'it'\\''s mine' login --device",
+      "To sign in, run this in a terminal on the machine that hosts the thread, then try again: AGENT_LOGIN=1 NOTE='two words' '/opt/my agent/bin/agent' acp --profile 'it'\\''s mine' login --device",
     );
   });
 
@@ -74,7 +74,7 @@ describe("ACP sign-in guidance", () => {
         ],
       }),
     ).toBe(
-      "The agent offers these ways to sign in: Browser login, API key. Sign in with the agent's own command on the machine that hosts the thread, then send the message again.",
+      "The agent offers these ways to sign in: Browser login, API key. Sign in with the agent's own command on the machine that hosts the thread, then try again.",
     );
     expect(
       describeAcpSignIn({

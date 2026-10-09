@@ -1107,7 +1107,7 @@ describe("acp bridge", () => {
     ]);
   });
 
-  it("times out hung ACP-native discovery, kills the child, and falls back to the synthetic model", async () => {
+  it("times out hung ACP-native discovery, kills the child, and reports the timeout", async () => {
     const readyFile = join(workspaceDir, "discovery-agent-ready.txt");
     let modelListId: number;
 
@@ -1125,11 +1125,60 @@ describe("acp bridge", () => {
       vi.useRealTimers();
     }
 
-    expect((await waitForResponse(modelListId!)).result).toMatchObject({
-      models: [{ id: "acp-default", isDefault: true }],
-      selectedOnlyModels: [],
-    });
+    const response = await waitForResponse(modelListId!);
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toBe(
+      "The agent did not answer within 30 seconds while bb asked it for its models",
+    );
     await waitForAgentExit(readyFile);
+  });
+
+  it("reports the agent's own error when it cannot open a session to list models, instead of a placeholder model", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        envVars: {
+          FAKE_ACP_SESSION_NEW_ERROR:
+            "Could not start pi: executable not found (command: pi)",
+        },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toContain(
+      "Could not start pi: executable not found (command: pi)",
+    );
+  });
+
+  it("fails model/list with a clear error when the agent itself is missing", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        agent: { command: "/nonexistent/acp-agent", args: [] },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toMatch(
+      /spawn \/nonexistent\/acp-agent ENOENT/,
+    );
+  });
+
+  it("tells a signed-out user how to sign in when listing models, with the agent's terminal command", async () => {
+    const response = await waitForResponse(
+      sendModelList({
+        envVars: {
+          FAKE_ACP_AUTH_METHODS: "agent.login",
+          FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
+        },
+      }),
+    );
+
+    expect(response.result).toBeUndefined();
+    expect(response.error?.message).toMatch(
+      /^Authentication required.* To sign in, run this in a terminal on the machine that hosts the thread, then try again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
+    );
+    expect(response.error?.data).toMatchObject({
+      recovery: { kind: "authRequired", retryable: false },
+    });
   });
 
   it("serves ACP-native discovered models from cache within the TTL and re-discovers after it", async () => {
@@ -2000,7 +2049,7 @@ describe("acp bridge", () => {
       FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
     });
     expect(terminal.error?.message).toMatch(
-      /To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
+      /To sign in, run this in a terminal on the machine that hosts the thread, then try again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
     );
     expect(terminal.error?.data).toMatchObject({
       recovery: { kind: "authRequired", retryable: false },

@@ -53,7 +53,7 @@ export function describeAcpSignIn(args: {
     (method) => method.type === "terminal",
   );
   if (terminal !== undefined) {
-    return `To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: ${acpTerminalSignInCommand(
+    return `To sign in, run this in a terminal on the machine that hosts the thread, then try again: ${acpTerminalSignInCommand(
       {
         command: args.command,
         args: args.args,
@@ -77,5 +77,5 @@ export function describeAcpSignIn(args: {
     names.length > MAX_LISTED_METHODS
       ? ` and ${names.length - MAX_LISTED_METHODS} more`
       : "";
-  return `The agent offers these ways to sign in: ${listed}${more}. Sign in with the agent's own command on the machine that hosts the thread, then send the message again.`;
+  return `The agent offers these ways to sign in: ${listed}${more}. Sign in with the agent's own command on the machine that hosts the thread, then try again.`;
 }

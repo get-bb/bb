@@ -1040,12 +1040,13 @@ async function loadSessionDiscoveredModels(
       connection.kill();
       reject(
         new Error(
-          `ACP-native model discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+          `The agent did not answer within ${MODEL_LIST_TIMEOUT_MS / 1000} seconds while bb asked it for its models`,
         ),
       );
     }, MODEL_LIST_TIMEOUT_MS);
   });
 
+  let discoveredCapabilities: AcpAgentCapabilities | null = null;
   try {
     const newSession = await Promise.race([
       (async () => {
@@ -1053,6 +1054,7 @@ async function loadSessionDiscoveredModels(
           parameterizedModelPicker,
           fsAccess: false,
         });
+        discoveredCapabilities = capabilities;
         await authenticateAcpAgent({
           connection,
           env: childEnv,
@@ -1109,7 +1111,11 @@ async function loadSessionDiscoveredModels(
         error instanceof Error ? error.message : String(error)
       }\n`,
     );
-    return null;
+    throw withAcpSignInGuidance(error, {
+      command: agent.command,
+      args: agent.args,
+      capabilities: discoveredCapabilities,
+    });
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
@@ -1279,6 +1285,32 @@ function withAcpAuthRequiredRecovery(error: unknown): unknown {
     return new AcpAuthRequiredError(error.message);
   }
   return error;
+}
+
+function withAcpSignInGuidance(
+  error: unknown,
+  agent: {
+    command: string;
+    args: readonly string[];
+    capabilities: AcpAgentCapabilities | null | undefined;
+  },
+): unknown {
+  const typed = withAcpAuthRequiredRecovery(error);
+  if (!(typed instanceof AcpAuthRequiredError)) {
+    return error;
+  }
+  const guidance = agent.capabilities
+    ? describeAcpSignIn({
+        command: agent.command,
+        args: agent.args,
+        authMethods: agent.capabilities.authMethods,
+      })
+    : null;
+  return guidance === null
+    ? typed
+    : new AcpAuthRequiredError(
+        `${typed.message.replace(/[\s.!?:;]*$/u, "")}. ${guidance}`,
+      );
 }
 
 async function resolveAgentLaunchArgs(
@@ -2341,21 +2373,11 @@ async function startAgentSession(
     await connection.kill();
     removeSession(session);
     await releaseCursorMcpApproval(session);
-    const typed = withAcpAuthRequiredRecovery(error);
-    const guidance =
-      typed instanceof AcpAuthRequiredError && session.capabilities
-        ? describeAcpSignIn({
-            command: params.agent.command,
-            args: params.agent.args,
-            authMethods: session.capabilities.authMethods,
-          })
-        : null;
-    if (typed instanceof AcpAuthRequiredError && guidance !== null) {
-      throw new AcpAuthRequiredError(
-        `${typed.message.replace(/[\s.!?:;]*$/u, "")}. ${guidance}`,
-      );
-    }
-    throw error;
+    throw withAcpSignInGuidance(error, {
+      command: params.agent.command,
+      args: params.agent.args,
+      capabilities: session.capabilities,
+    });
   }
 }
 
