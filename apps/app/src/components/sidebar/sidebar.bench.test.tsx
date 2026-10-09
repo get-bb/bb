@@ -29,7 +29,13 @@ import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sideba
 import { isPluginAppDefinition } from "@/lib/plugin-app-definition";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
-import type { PluginThreadListSlot } from "@/lib/plugin-slots";
+import {
+  setPluginSlotRegistrations,
+  type PluginThreadListSlot,
+} from "@/lib/plugin-slots";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { PluginThreadList } from "./PluginThreadList";
 
@@ -100,6 +106,10 @@ async function loadPluginThreadListReplacement(): Promise<
     throw new Error("thread-list's app.tsx exports no plugin app definition");
   }
   const collected = collectPluginAppRegistrations(module.default);
+  setPluginSlotRegistrations(
+    "thread-list",
+    makePluginRegistrationSet({ threadActions: collected.threadActions }),
+  );
   const registration = collected.threadLists[0];
   if (registration === undefined) {
     throw new Error("thread-list plugin registered no thread list");
@@ -279,6 +289,8 @@ interface BenchResults {
   statusPatchMs: number;
   membershipRefetchMs: number;
   pinMs: number;
+  queryObservers: number;
+  queryObserversPerRow: number;
 }
 
 function seedQueryClient(): QueryClient {
@@ -338,6 +350,10 @@ async function runScenario(
     "[data-sidebar-windowed-item]",
   ).length;
   expect(renderedRows).toBeGreaterThan(0);
+  const queryObservers = queryClient
+    .getQueryCache()
+    .getAll()
+    .reduce((total, query) => total + query.getObserversCount(), 0);
 
   const patchSamples: number[] = [];
   const refetchSamples: number[] = [];
@@ -432,6 +448,8 @@ async function runScenario(
     statusPatchMs: Math.round(median(patchSamples)),
     membershipRefetchMs: Math.round(median(refetchSamples)),
     pinMs: Math.round(median(pinSamples)),
+    queryObservers,
+    queryObserversPerRow: Math.round((queryObservers / renderedRows) * 100) / 100,
   };
   process.stdout.write(`SIDEBAR_BENCH ${JSON.stringify(results)}\n`);
   return results;
@@ -447,7 +465,13 @@ describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
       await runScenario(
         "plugin",
         seedQueryClient(),
-        <PluginThreadList replacement={replacement} onNavigate={() => {}} />,
+        <>
+          <ThreadActionCollectors
+            coreRegistrations={CORE_THREAD_ACTIONS}
+            requestRename={() => {}}
+          />
+          <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+        </>,
       ),
     );
     vi.unstubAllGlobals();
