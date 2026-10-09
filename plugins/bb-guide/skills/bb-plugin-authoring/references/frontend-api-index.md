@@ -72,6 +72,8 @@ Read the installed SDK declarations for the exact current signatures.
   app command modifier is held, or null
 - `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
   and `@thread:` mentions rendered as bb's chips
+- `experimental_ThreadStatusGlyph` — bb's thread status glyph for an
+  indicator you resolve, with another plugin's row status and bb's labels
 - `useEnvironmentProviders` — bb's environment provider catalog, for naming
   and drawing the environment a thread runs in
 - `useSdk` — bb's public API client bound to this plugin, the same areas the
@@ -172,6 +174,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginSidebarThreadRowStatus`
 - `PluginSidebarThreadShortcut`
 - `PluginThreadTitleProps`
+- `PluginThreadStatusGlyphProps`
 - `PluginEnvironmentProvider`
 - `PluginEnvironmentProvidersState`
 - `PluginBoundThreadsArea`

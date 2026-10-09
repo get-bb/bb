@@ -400,6 +400,12 @@ actions; see "An action in every thread menu".
 `experimental_useArchiveEnvironmentThreads()` archives a whole environment
 group with bb's pane cleanup and Undo toast.
 
+**bb's status glyph on your row.** Render `experimental_ThreadStatusGlyph`
+with the row's `indicator` (start from the thread's own, then fold in what
+your row knows, such as collapsed children or `useSidebarThreadDraft`) and
+`useSidebarThreadRowStatus(threadId)` as `rowStatus`; bb draws the same icon,
+color, and accessible label its own lists use.
+
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or
 the surface-specific numbered shortcuts, `thread.next`, and `thread.previous`
