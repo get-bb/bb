@@ -60,7 +60,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Wake up to triaged issues, test results, or a dependency update. Run an agent once or on repeat, or have a script check first and wake it only when there's work.",
+    "Wake up to triaged issues, test results, or a dependency update. Run an agent once or on repeat, or have a script run first before an agent.",
   concept: <ScheduleConcept />,
   picker: null,
   handoffNote:

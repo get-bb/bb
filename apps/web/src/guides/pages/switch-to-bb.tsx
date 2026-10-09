@@ -259,10 +259,10 @@ export function guideVariant(variant: string | null): Guide {
     concept: <SwitchConcept selected={tool ? tool.id : null} />,
     picker: {
       label: "Switching from",
-      placeholder: "All my tools",
+      placeholder: "Any tool",
       selected: tool ? tool.id : "",
       options: [
-        { id: "", label: "All my tools" },
+        { id: "", label: "Any tool" },
         ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
       ],
     },
