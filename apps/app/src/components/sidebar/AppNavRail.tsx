@@ -296,6 +296,8 @@ export function AppNavRail({
       className={cn(
         "relative z-10 flex shrink-0 flex-col",
         NAV_RAIL_WIDTH_CLASS,
+        !isFramed &&
+          "-mt-[env(safe-area-inset-top)] -mb-[env(safe-area-inset-bottom)] bg-surface-recessed pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
       )}
     >
       {isFramed ? null : (
@@ -303,7 +305,7 @@ export function AppNavRail({
           aria-hidden="true"
           className={cn(
             CHROME_ROW_HEIGHT_CLASS,
-            "shrink-0 bg-surface-recessed",
+            "shrink-0",
             shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
           )}
         />
@@ -312,7 +314,7 @@ export function AppNavRail({
         aria-label="Primary navigation"
         className={cn(
           "flex min-h-0 flex-1 flex-col items-center gap-2.5",
-          isFramed ? "pt-2" : "bg-surface-recessed pb-2.5",
+          isFramed ? "pt-2" : "pb-2.5",
         )}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
