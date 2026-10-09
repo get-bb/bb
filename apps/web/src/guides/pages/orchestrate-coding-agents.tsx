@@ -66,8 +66,6 @@ export const guide: Guide = {
     "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
   concept: <SpawnTimeline />,
   picker: null,
-  handoffNote:
-    "Your agent asks for your task, builds it, and has a second agent review it.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

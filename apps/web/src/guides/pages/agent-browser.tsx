@@ -58,8 +58,6 @@ export const guide: Guide = {
     "Have your coding agent open your app, click through its change, and show you screenshots. Then point at what to change instead of describing it.",
   concept: <BrowserConcept scene="code" />,
   picker: null,
-  handoffNote:
-    "Your agent asks what to check, then tries it in a browser and shows you screenshots.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

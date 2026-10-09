@@ -62,8 +62,6 @@ export const guide: Guide = {
     "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
   concept: <AgentSplit />,
   picker: null,
-  handoffNote:
-    "Claude Code asks for your task, builds it, and has Codex review it.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

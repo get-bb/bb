@@ -46,8 +46,6 @@ export const guide: Guide = {
     "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from your phone or any browser.",
   concept: <AnywhereConcept />,
   picker: null,
-  handoffNote:
-    "Your agent asks a few questions, sets everything up, and sends you your address.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

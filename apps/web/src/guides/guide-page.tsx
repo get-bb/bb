@@ -200,10 +200,7 @@ function AgentHandoff({ guide }: { guide: Guide }) {
   return (
     <div className="gd-card gd-handoff" id="handoff">
       <div className="gd-handoff-head">
-        <div>
-          <div className="gd-handoff-title">Hand this to your agent</div>
-          <p className="gd-handoff-sub">{brandProse(guide.handoffNote)}</p>
-        </div>
+        <div className="gd-handoff-title">Hand this to your agent</div>
         <CopyForAgent
           prompt={guide.agentPrompt}
           label="Copy"

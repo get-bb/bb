@@ -515,7 +515,7 @@
 
 .gd-handoff-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 18px 18px 14px;
@@ -525,13 +525,6 @@
   font-size: 16px;
   font-weight: 650;
   color: var(--heading);
-}
-
-.gd-handoff-sub {
-  margin-top: 4px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--dim);
 }
 
 .gd-copy {
