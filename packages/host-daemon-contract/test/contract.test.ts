@@ -315,6 +315,19 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.read_workspace_agent_context": {
+    agentInstructions: "Prefer small commits.",
+    projectSkills: [
+      {
+        kind: "file",
+        directoryName: "review",
+        content: "---\nname: review\ndescription: Review\n---\n",
+      },
+      { kind: "oversized", directoryName: "huge", sizeBytes: 11_000_000 },
+    ],
+    projectSkillsTruncated: false,
+    sharedSkills: [],
+  },
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
   },
@@ -860,6 +873,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.user.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedSkillRoots.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedSkillRoots.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
@@ -1208,7 +1225,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(231);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(232);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

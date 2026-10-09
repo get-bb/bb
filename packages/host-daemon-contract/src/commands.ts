@@ -28,6 +28,7 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  providerNativeRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
@@ -746,6 +747,34 @@ const hostListSkillsCommandSchema = z
   })
   .strict();
 
+const hostReadWorkspaceAgentContextCommandSchema = z
+  .object({
+    type: z.literal("host.read_workspace_agent_context"),
+    rootPath: z.string().min(1),
+    sharedSkillRoots: providerNativeRootsSchema,
+  })
+  .strict();
+
+const workspaceProjectSkillFileSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("file"),
+      directoryName: z.string().min(1),
+      content: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("oversized"),
+      directoryName: z.string().min(1),
+      sizeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type WorkspaceProjectSkillFile = z.infer<
+  typeof workspaceProjectSkillFileSchema
+>;
+
 export const deletableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
@@ -1156,6 +1185,15 @@ const commandListResultSchema = z.object({
 const skillListResultSchema = z.object({
   skills: z.array(discoveredSkillSchema),
 });
+
+const hostReadWorkspaceAgentContextResultSchema = z
+  .object({
+    agentInstructions: z.string().nullable(),
+    projectSkills: z.array(workspaceProjectSkillFileSchema),
+    projectSkillsTruncated: z.boolean(),
+    sharedSkills: z.array(discoveredSkillSchema),
+  })
+  .strict();
 
 const deleteSkillResultSchema = z.object({
   deletedPath: z.string(),
@@ -1780,6 +1818,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_skills",
     schema: hostListSkillsCommandSchema,
     resultSchema: skillListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.read_workspace_agent_context": defineHostDaemonCommandDescriptor({
+    type: "host.read_workspace_agent_context",
+    schema: hostReadWorkspaceAgentContextCommandSchema,
+    resultSchema: hostReadWorkspaceAgentContextResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

@@ -10,6 +10,7 @@ import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queue
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
 } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -56,15 +57,8 @@ function registerSuccessfulTurnResponder(
   return registerHostRpcResponder(harness, {
     ...args,
     handle: ({ command }): HostRpcHandlerResult => {
-      if (command.type === "host.list_files") {
-        return { ok: true, result: { files: [], truncated: false } };
-      }
-      if (command.type === "host.read_file") {
-        return {
-          ok: false,
-          errorCode: "ENOENT",
-          errorMessage: `Path does not exist: ${command.path}`,
-        };
+      if (command.type === "host.read_workspace_agent_context") {
+        return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
       }
       if (command.type === "turn.submit") {
         return { ok: true, result: { trace: { spans: [] } } };
