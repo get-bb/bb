@@ -430,6 +430,24 @@ payloads. Use it to reproduce performance problems that only appear at scale.
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
 
+## Opt-in Benchmarks
+
+`pnpm exec turbo run bench` runs the benchmarks that `turbo run test` skips. The
+task is uncached, and each package's `bench` script turns its benchmark on:
+
+- `@bb/app`: the sidebar thread list mount and update benchmark
+  (`sidebar.bench.test.tsx`) and the composer large-paste benchmark
+  (`prompt-paste-performance.test.ts`). `BB_SIDEBAR_BENCH_THREADS` sets the
+  thread count (default 3000), `BB_SIDEBAR_BENCH_OUT` writes the results as
+  JSON, and `PROMPTBOX_PERF_FIXTURE_OUT` saves the paste fixture.
+- `@bb/host-watcher`: the root watcher recovery benchmark
+  (`root-recovery-benchmark.test.ts`). `BB_WATCHER_BENCHMARK_OUTPUT` writes its
+  report.
+
+Filter to one package, e.g.
+`BB_SIDEBAR_BENCH_OUT=/tmp/sidebar.json pnpm exec turbo run bench --filter=@bb/app`.
+Compare runs on an idle machine; the numbers are wall-clock timings.
+
 ## Provider Corpus
 
 The provider corpus is a private set of real production threads (307 threads,
