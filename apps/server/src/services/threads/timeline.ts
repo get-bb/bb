@@ -55,7 +55,11 @@ import type {
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
-import { threadConversationOutlineItemSchema } from "@bb/server-contract";
+import {
+  mapTimelineRowTree,
+  threadConversationOutlineItemSchema,
+  timelineRowChildren,
+} from "@bb/server-contract";
 import {
   findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
@@ -344,43 +348,16 @@ export function applyRetainedOutputPreviews(
     return [...rows];
   }
 
-  const applyToRows = (nestedRows: readonly TimelineRow[]): TimelineRow[] => {
-    const nextRows = nestedRows.map((row): TimelineRow => {
-      if (row.kind === "turn") {
-        if (row.children === null) {
-          return row;
-        }
-        const originalChildren = row.children;
-        const children = applyToRows(originalChildren);
-        const changed = children.some(
-          (child, index) => child !== originalChildren[index],
-        );
-        return changed ? { ...row, children } : row;
-      }
-      if (row.kind !== "work") {
-        return row;
-      }
-      if (row.workKind === "delegation") {
-        const originalChildRows = row.childRows;
-        if (originalChildRows === null) {
-          return row;
-        }
-        const childRows = applyToRows(originalChildRows);
-        const changed = childRows.some(
-          (child, index) => child !== originalChildRows[index],
-        );
-        return changed ? { ...row, childRows } : row;
-      }
-      if (row.workKind !== "command" && row.workKind !== "tool") {
-        return row;
-      }
-      const outputPreview = previews.get(row.callId);
-      return outputPreview === undefined ? row : { ...row, outputPreview };
-    });
-    return nextRows;
-  };
-
-  return applyToRows(rows);
+  return mapTimelineRowTree([...rows], (row) => {
+    if (
+      row.kind !== "work" ||
+      (row.workKind !== "command" && row.workKind !== "tool")
+    ) {
+      return row;
+    }
+    const outputPreview = previews.get(row.callId);
+    return outputPreview === undefined ? row : { ...row, outputPreview };
+  });
 }
 
 type StoredEventDecoder = (row: StoredEventRow) => ThreadEvent;
@@ -1191,10 +1168,9 @@ function selectStandardTimelineEventRows(
       orderingBoundarySequence: groupingContext.orderingBoundarySequence,
       ownedSequenceStart: sequenceStart,
       ownedSequenceEnd: beforeSequence,
-      knownHasOlderSegments: hasOlder ? true : null,
+      hasOlderSegments: hasOlder,
       paginationPage:
         contentCursor === undefined ? page : { ...page, segmentLimit: 1 },
-      responsePageKind: page.kind,
       rows: ensureTimelineWindowTurnStartedRows(db, {
         threadId: thread.id,
         rows: mergeStoredEventRowsById([
@@ -1490,7 +1466,7 @@ function buildThreadTimelineInternal(
           options.responseByteBudget ?? THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
         ownedSequenceStart: eventSelection.ownedSequenceStart,
         ownedSequenceEnd: eventSelection.ownedSequenceEnd,
-        knownHasOlderSegments: eventSelection.knownHasOlderSegments,
+        hasOlderSegments: eventSelection.hasOlderSegments,
         page: eventSelection.paginationPage,
         rows: pageableTimelineRows,
       }),
@@ -1522,10 +1498,7 @@ function buildThreadTimelineInternal(
         ? (timeline.contextWindowUsage ?? undefined)
         : undefined,
     timelinePage: {
-      kind: eventSelection.responsePageKind,
-      segmentLimit: options.page.segmentLimit,
       returnedSegmentCount: paginatedTimeline.returnedSegmentCount,
-      hasOlderRows: paginatedTimeline.hasOlderRows,
       olderCursor: bindTimelineCursor(
         paginatedTimeline.olderCursor,
         snapshot,
@@ -1536,7 +1509,6 @@ function buildThreadTimelineInternal(
       olderRowUpdates: options.summaryOnly
         ? undefined
         : paginatedTimeline.olderRowUpdates,
-      contentPage: paginatedTimeline.contentPage,
     },
   };
   return {
@@ -1570,10 +1542,7 @@ export function buildThreadTimelineWithProfile(
           },
         });
         result.response.rows = older.response.rows;
-        result.response.timelinePage = {
-          ...older.response.timelinePage,
-          kind: options.page.kind,
-        };
+        result.response.timelinePage = older.response.timelinePage;
         result.profile.eventRowCount += older.profile.eventRowCount;
         result.profile.eventDataBytes += older.profile.eventDataBytes;
         result.profile.decodedEventCount += older.profile.decodedEventCount;
@@ -1998,12 +1967,7 @@ function collectTimelineItemRows(
       }
       continue;
     }
-    const nested =
-      row.kind === "turn"
-        ? row.children
-        : row.kind === "work" && row.workKind === "delegation"
-          ? row.childRows
-          : null;
+    const nested = timelineRowChildren(row);
     if (nested !== null) {
       collectTimelineItemRows(nested, itemId, matches);
     }

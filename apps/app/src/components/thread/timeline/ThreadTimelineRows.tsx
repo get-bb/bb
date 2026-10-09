@@ -157,11 +157,11 @@ import {
   CodeFenceRendererRegistryProvider,
 } from "@/components/ui/markdown-code-fence-renderers.js";
 import {
-  TimelineWindowedItemsLoader,
+  TimelineWindowedItems,
   TimelineWindowingMeasurementsContext,
   TimelineWindowingScrollRootContext,
   type TimelineWindowedItemRenderState,
-} from "./TimelineWindowedItemsLoader.js";
+} from "./TimelineWindowedItems.js";
 
 export interface ThreadTimelineRowsProps {
   initialExpanded?: ReadonlySet<string>;
@@ -1156,7 +1156,10 @@ function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
   if (displayRow !== null && renderersReady) {
     return <TimelineExpandableBodyContent {...props} row={displayRow} />;
   }
-  if (displayRow === null && (deferred.isError || deferred.rows !== undefined)) {
+  if (
+    displayRow === null &&
+    (deferred.isError || deferred.rows !== undefined)
+  ) {
     return (
       <TimelineDetailLoadError
         horizontalPadding="flush"
@@ -2008,11 +2011,6 @@ function TimelineRowItemWrapper({
       data-timeline-row-id={row.id}
       data-timeline-window-key={row.id}
       data-index={windowedState.itemIndex}
-      data-timeline-windowed-realized={
-        windowedState.windowingEnabled
-          ? String(windowedState.isRealized)
-          : undefined
-      }
       className={
         isTopLevel && !windowedState.windowingEnabled
           ? TOP_LEVEL_TIMELINE_ROW_INTRINSIC_SIZE_CLASS_NAME
@@ -2149,7 +2147,7 @@ function TimelineRowsList({
           style={isInitialRevealPending ? { visibility: "hidden" } : undefined}
           aria-busy={isInitialRevealPending || undefined}
         >
-          <TimelineWindowedItemsLoader
+          <TimelineWindowedItems
             alwaysMountedKeys={alwaysMountedKeys}
             estimateItemHeight={(index) => {
               const item = items[index];
@@ -2178,18 +2176,11 @@ function TimelineRowsList({
                     ref={windowedState.itemRef}
                     data-index={windowedState.itemIndex}
                     data-timeline-window-key={`divider:${item.id}`}
-                    data-timeline-windowed-realized={
-                      windowedState.windowingEnabled
-                        ? String(windowedState.isRealized)
-                        : undefined
-                    }
                     style={windowedState.itemStyle}
                   >
-                    {windowedState.isRealized ? (
-                      <TimelineUnreadDivider
-                        autoScroll={unreadDividerAutoScroll}
-                      />
-                    ) : null}
+                    <TimelineUnreadDivider
+                      autoScroll={unreadDividerAutoScroll}
+                    />
                   </div>
                 );
               }
@@ -2200,16 +2191,14 @@ function TimelineRowsList({
                   spacing={spacing}
                   windowedState={windowedState}
                 >
-                  {windowedState.isRealized ? (
-                    <MemoizedTimelineRowView
-                      activeLatestBundleId={activeLatestBundleId}
-                      row={item.row}
-                      scopeActive={scopeActive}
-                      showAssistantMessageActions={showAssistantMessageActions}
-                      spacing={spacing}
-                      compactActivityIntents={compactActivityIntents}
-                    />
-                  ) : null}
+                  <MemoizedTimelineRowView
+                    activeLatestBundleId={activeLatestBundleId}
+                    row={item.row}
+                    scopeActive={scopeActive}
+                    showAssistantMessageActions={showAssistantMessageActions}
+                    spacing={spacing}
+                    compactActivityIntents={compactActivityIntents}
+                  />
                 </TimelineRowItemWrapper>
               );
             }}

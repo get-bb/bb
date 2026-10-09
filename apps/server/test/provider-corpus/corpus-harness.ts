@@ -233,8 +233,8 @@ export function buildAllRouteTimelinePages(
   for (;;) {
     const built = buildRouteTimelinePage({ ...args, page });
     pages.push(built);
-    const { hasOlderRows, olderCursor } = built.response.timelinePage;
-    if (!hasOlderRows || olderCursor === null) {
+    const { olderCursor } = built.response.timelinePage;
+    if (olderCursor === null) {
       return pages;
     }
     const cursorKey = `${olderCursor.anchorId}\0${olderCursor.anchorSeq}`;

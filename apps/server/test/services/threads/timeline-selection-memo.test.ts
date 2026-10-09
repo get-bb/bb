@@ -561,7 +561,8 @@ function walkOlderPages(
   let page = latest;
   for (let depth = 0; depth < 10; depth += 1) {
     const cursor = page.response.timelinePage.olderCursor;
-    if (!page.response.timelinePage.hasOlderRows || cursor === null) return;
+    if (page.response.timelinePage.olderCursor === null || cursor === null)
+      return;
     page = expectWarmEqualsCold(
       testThread,
       {

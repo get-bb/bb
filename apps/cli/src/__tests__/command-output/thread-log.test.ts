@@ -446,11 +446,10 @@ describe("bb thread log command output", () => {
         fixtures.makePendingSteerTimelineRow(),
       ]),
       timelinePage: {
-        kind: "latest" as const,
-        segmentLimit: 20,
         returnedSegmentCount: 20,
-        hasOlderRows: true,
         olderCursor: { anchorSeq: 12, anchorId: "pending-steer-1" },
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     }));
     stubServerApi({
@@ -509,11 +508,10 @@ describe("bb thread log command output", () => {
               makeUserRow("user-3", 30, "third prompt"),
             ]),
             timelinePage: {
-              kind: "latest" as const,
-              segmentLimit: 100,
               returnedSegmentCount: 1,
-              hasOlderRows: true,
               olderCursor: { anchorSeq: 30, anchorId: "user-3" },
+              historySnapshot: "snapshot-1",
+              olderRowsSourceSeqEnd: null,
             },
           };
         }
@@ -523,11 +521,10 @@ describe("bb thread log command output", () => {
               makeUserRow("user-2", 20, "second prompt"),
             ]),
             timelinePage: {
-              kind: "older" as const,
-              segmentLimit: 100,
               returnedSegmentCount: 1,
-              hasOlderRows: true,
               olderCursor: { anchorSeq: 20, anchorId: "user-2" },
+              historySnapshot: "snapshot-1",
+              olderRowsSourceSeqEnd: null,
             },
           };
         }
@@ -536,11 +533,10 @@ describe("bb thread log command output", () => {
             makeUserRow("user-1", 10, "first prompt"),
           ]),
           timelinePage: {
-            kind: "older" as const,
-            segmentLimit: 100,
             returnedSegmentCount: 1,
-            hasOlderRows: false,
             olderCursor: null,
+            historySnapshot: "snapshot-1",
+            olderRowsSourceSeqEnd: null,
           },
         };
       },

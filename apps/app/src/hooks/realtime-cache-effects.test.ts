@@ -1661,11 +1661,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
-        kind: "latest",
         topLevelLimit: 100,
         returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     });
 
@@ -1697,11 +1697,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(streamingTimelineKey, {
       rows: [],
       timelinePage: {
-        kind: "latest",
         topLevelLimit: 100,
         returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     });
 
@@ -1784,11 +1784,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
-        kind: "latest",
         topLevelLimit: 100,
         returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     });
 
@@ -2023,11 +2023,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
-        kind: "latest",
         topLevelLimit: 100,
         returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     });
     queryClient.setQueryData<CachedThreadListEntryFixture[]>(threadListKey, [
@@ -2445,11 +2445,11 @@ describe("createRealtimeCacheEffects", () => {
     queryClient.setQueryData(timelineKey, {
       rows: [],
       timelinePage: {
-        kind: "latest",
         topLevelLimit: 100,
         returnedOlderTopLevelRowCount: 0,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
       },
     });
 

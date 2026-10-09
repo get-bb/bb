@@ -1,4 +1,8 @@
-import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import {
+  mapTimelineRowTree,
+  type ThreadTimelineResponse,
+  type TimelineRow,
+} from "@bb/server-contract";
 
 export const DEFAULT_MAX_INLINE_OUTPUT_CHARS = 32_000;
 
@@ -16,14 +20,6 @@ function truncateString(value: string, max: number): string {
 }
 
 function truncateRow(row: TimelineRow, max: number): TimelineRow {
-  if (row.kind === "turn") {
-    if (!row.children) {
-      return row;
-    }
-    const children = truncateRows(row.children, max);
-    return children === row.children ? row : { ...row, children };
-  }
-
   if (row.kind !== "work") {
     return row;
   }
@@ -57,12 +53,7 @@ function truncateRow(row: TimelineRow, max: number): TimelineRow {
     }
     case "delegation": {
       const output = truncateString(row.output, max);
-      const childRows =
-        row.childRows === null ? null : truncateRows(row.childRows, max);
-      if (output === row.output && childRows === row.childRows) {
-        return row;
-      }
-      return { ...row, output, childRows };
+      return output === row.output ? row : { ...row, output };
     }
     default:
       return row;
@@ -70,15 +61,7 @@ function truncateRow(row: TimelineRow, max: number): TimelineRow {
 }
 
 function truncateRows(rows: TimelineRow[], max: number): TimelineRow[] {
-  let changed = false;
-  const next = rows.map((row) => {
-    const truncated = truncateRow(row, max);
-    if (truncated !== row) {
-      changed = true;
-    }
-    return truncated;
-  });
-  return changed ? next : rows;
+  return mapTimelineRowTree(rows, (row) => truncateRow(row, max));
 }
 
 export function truncateTimelineResponseOutputs(

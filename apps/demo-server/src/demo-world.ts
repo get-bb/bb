@@ -555,11 +555,10 @@ export class DemoWorld {
         usedTokens: 12_400,
       },
       timelinePage: {
-        kind: "latest",
-        segmentLimit: 20,
         returnedSegmentCount: 1,
-        hasOlderRows: false,
         olderCursor: null,
+        historySnapshot: "demo",
+        olderRowsSourceSeqEnd: null,
       },
     };
   }

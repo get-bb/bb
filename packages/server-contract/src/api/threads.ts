@@ -979,22 +979,11 @@ export type TimelinePaginationCursor = z.infer<
 
 export const timelinePageMetadataSchema = z
   .object({
-    kind: z.enum(["latest", "older"]),
-    segmentLimit: z.number().int().positive(),
     returnedSegmentCount: z.number().int().nonnegative(),
-    hasOlderRows: z.boolean(),
     olderCursor: timelinePaginationCursorSchema.nullable(),
-    historySnapshot: z.string().optional(),
-    olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable().optional(),
+    historySnapshot: z.string(),
+    olderRowsSourceSeqEnd: z.number().int().nonnegative().nullable(),
     olderRowUpdates: z.array(timelineRowSchema).optional(),
-    contentPage: z
-      .object({
-        anchorSeq: z.number().int().nonnegative(),
-        start: z.number().int().nonnegative(),
-        end: z.number().int().nonnegative(),
-        total: z.number().int().nonnegative(),
-      })
-      .optional(),
   })
   .strict();
 

@@ -86,9 +86,6 @@ Discard older responses whose request cursor is no longer the loaded
 cursor or incompatible
 grouping version returns HTTP 400 `invalid_request` with a
 message that the cursor is no longer available. Reload latest to restart.
-The new response fields are optional in the wire schemas so updated clients
-can still read an older server; absence identifies that legacy contract.
-Current servers always return the snapshot and detail continuation fields.
 The snapshot is a read boundary, not a retained copy of the history. Pagination
 continues on a best-effort basis when existing events are updated, deleted or
 replaced. Previously loaded pages can then disagree with later pages, leaving
@@ -97,10 +94,9 @@ If the event at the cursor anchor sequence was deleted, the server returns
 HTTP 400 `invalid_request`; reload latest to restart, as on main. No history-edit
 revision is stored or checked. Other edits do not automatically reject a cursor.
 
-`timelinePage.contentPage`, when present, gives the group anchor and the
-half-open leaf interval `[start, end)` within `total` leaves. Ancestor summaries
-retain their full IDs, source bounds, counts, and status. Their child arrays
-can contain only part of the group. Prepend older pages with
+A content cut can return only part of a group. Ancestor summaries retain their
+full IDs, source bounds, counts, and status; their child arrays can contain only
+part of the group. Prepend older pages with
 `prependOlderTimelineRows` from `@bb/client-core`: it joins turn children and
 delegation children recursively by ID while preserving order. Do not flatten
 responses by concatenation or replace an entire summary solely because its ID

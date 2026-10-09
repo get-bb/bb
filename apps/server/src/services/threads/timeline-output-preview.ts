@@ -1,4 +1,8 @@
-import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
+import {
+  mapTimelineRowTree,
+  type ThreadTimelineResponse,
+  type TimelineRow,
+} from "@bb/server-contract";
 import { sliceUtf16HeadAndTail } from "@bb/text-utils";
 import { mapTimelineResponseRows } from "./timeline-output-truncation.js";
 
@@ -21,22 +25,8 @@ function buildTimelineOutputPreview(output: string): string {
 }
 
 function previewRow(row: TimelineRow): TimelineRow {
-  if (row.kind === "turn") {
-    if (row.children === null) {
-      return row;
-    }
-    const children = previewTimelineRowOutputs(row.children);
-    return children === row.children ? row : { ...row, children };
-  }
   if (row.kind !== "work") {
     return row;
-  }
-  if (row.workKind === "delegation") {
-    if (row.childRows === null) {
-      return row;
-    }
-    const childRows = previewTimelineRowOutputs(row.childRows);
-    return childRows === row.childRows ? row : { ...row, childRows };
   }
   if (
     (row.workKind !== "command" && row.workKind !== "tool") ||
@@ -55,15 +45,7 @@ function previewRow(row: TimelineRow): TimelineRow {
 }
 
 export function previewTimelineRowOutputs(rows: TimelineRow[]): TimelineRow[] {
-  let changed = false;
-  const previewed = rows.map((row) => {
-    const next = previewRow(row);
-    if (next !== row) {
-      changed = true;
-    }
-    return next;
-  });
-  return changed ? previewed : rows;
+  return mapTimelineRowTree(rows, previewRow);
 }
 
 export function previewTimelineResponseOutputs(

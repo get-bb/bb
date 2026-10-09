@@ -126,11 +126,10 @@ function makeTimelineResponse(
     modelFallback: null,
     maxSeq,
     timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: rows.length > 0 ? 1 : 0,
-      hasOlderRows: olderCursor !== null,
       olderCursor,
+      historySnapshot: "snapshot-1",
+      olderRowsSourceSeqEnd: null,
     },
   };
 }
@@ -144,6 +143,7 @@ function makeLoadedTimelineState(
   ),
 ): LoadedTimelineState {
   return {
+    historySnapshot: "snapshot-1",
     latestWindowEndSequence,
     rows,
     olderCursor,
@@ -731,12 +731,6 @@ describe("snapshot content pagination", () => {
     );
     latestTimeline.timelinePage.historySnapshot = "snapshot-2";
     latestTimeline.timelinePage.olderRowsSourceSeqEnd = null;
-    latestTimeline.timelinePage.contentPage = {
-      anchorSeq: 10,
-      start: 2,
-      end: 5,
-      total: 5,
-    };
 
     const next = mergeLoadedTimelineWithLatest({
       current,

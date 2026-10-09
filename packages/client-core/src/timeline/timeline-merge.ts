@@ -8,7 +8,7 @@ import { isOptimisticTimelineRowId } from "./optimistic-timeline-row.js";
 type NullableTimelinePaginationCursor = TimelinePaginationCursor | null;
 
 export interface LoadedTimelineState {
-  historySnapshot?: string;
+  historySnapshot: string | null;
   latestWindowEndSequence: number | null;
   olderCursor: NullableTimelinePaginationCursor;
   rows: TimelineRow[];
@@ -16,7 +16,7 @@ export interface LoadedTimelineState {
 }
 
 interface BuildLoadedTimelineStateArgs {
-  historySnapshot?: string;
+  historySnapshot: string | null;
   latestWindowEndSequence: number | null;
   latestRows: TimelineRow[];
   olderCursor: NullableTimelinePaginationCursor;
@@ -391,9 +391,8 @@ function mergeSnapshotTimelineRows({
   const { olderRowUpdates, olderRowsSourceSeqEnd } =
     latestTimeline.timelinePage;
   if (
-    olderRowsSourceSeqEnd === undefined ||
-    (olderRowsSourceSeqEnd !== null &&
-      olderRowsSourceSeqEnd > (current.latestWindowEndSequence ?? 0))
+    olderRowsSourceSeqEnd !== null &&
+    olderRowsSourceSeqEnd > (current.latestWindowEndSequence ?? 0)
   ) {
     return { canMerge: false, rows: [...latestRows] };
   }
@@ -459,26 +458,21 @@ export function mergeLoadedTimelineWithLatest({
   const latestHistorySnapshot = latestTimeline.timelinePage.historySnapshot;
   if (
     current.surfaceKey !== surfaceKey ||
-    (current.historySnapshot === undefined) !==
-      (latestHistorySnapshot === undefined) ||
     !timelineWindowsAreContiguous(current, latestTimeline)
   ) {
     return loadedTimelineStateFromLatest(latestTimeline, surfaceKey);
   }
 
   const currentRowsById = new Map(current.rows.map((row) => [row.id, row]));
-  const latestRows =
-    current.historySnapshot === undefined
-      ? latestTimeline.rows
-      : latestTimeline.rows.map((row) => {
-          const loaded = currentRowsById.get(row.id);
-          return loaded === undefined
-            ? row
-            : prependOlderTimelineRows({
-                olderRows: [loaded],
-                loadedRows: [row],
-              })[0]!;
-        });
+  const latestRows = latestTimeline.rows.map((row) => {
+    const loaded = currentRowsById.get(row.id);
+    return loaded === undefined
+      ? row
+      : prependOlderTimelineRows({
+          olderRows: [loaded],
+          loadedRows: [row],
+        })[0]!;
+  });
   const latestMerge =
     current.historySnapshot === latestHistorySnapshot &&
     latestTimeline.timelinePage.olderRowUpdates === undefined

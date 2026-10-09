@@ -36,11 +36,10 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     modelFallback: null,
     maxSeq: 0,
     timelinePage: {
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: 0,
-      hasOlderRows: false,
       olderCursor: null,
+      historySnapshot: "",
+      olderRowsSourceSeqEnd: null,
     },
   };
 }

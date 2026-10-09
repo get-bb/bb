@@ -169,10 +169,7 @@ describe("timeline pages with provider-recorded input", () => {
     });
 
     expect(response.timelinePage).toMatchObject({
-      kind: "latest",
-      segmentLimit: 20,
       returnedSegmentCount: 1,
-      hasOlderRows: false,
       olderCursor: null,
     });
     expect(conversationTexts(response.rows)).toEqual([

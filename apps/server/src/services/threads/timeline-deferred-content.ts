@@ -1,4 +1,8 @@
-import type { TimelineRow, TimelineRowStatus } from "@bb/server-contract";
+import {
+  mapTimelineRowTree,
+  type TimelineRow,
+  type TimelineRowStatus,
+} from "@bb/server-contract";
 import { sliceUtf16Head } from "@bb/text-utils";
 
 export const TIMELINE_DEFERRED_CONTENT_MIN_CHARS = 1_000;
@@ -92,22 +96,14 @@ function deferRowContent(row: TimelineRow): TimelineRow {
 }
 
 function deferRow(row: TimelineRow): TimelineRow {
-  if (row.kind === "turn") {
-    if (row.children === null) {
-      return row;
-    }
-    const children = deferSettledTimelineContent(row.children);
-    return children === row.children ? row : { ...row, children };
-  }
-  if (row.kind === "work" && row.workKind === "delegation") {
-    if (row.childRows === null) {
-      return row;
-    }
-    if (isSettled(row) && row.childRows.length > 0) {
-      return { ...row, childRows: null };
-    }
-    const childRows = deferSettledTimelineContent(row.childRows);
-    return childRows === row.childRows ? row : { ...row, childRows };
+  if (
+    row.kind === "work" &&
+    row.workKind === "delegation" &&
+    row.childRows !== null &&
+    row.childRows.length > 0 &&
+    isSettled(row)
+  ) {
+    return { ...row, childRows: null };
   }
   return deferRowContent(row);
 }
@@ -115,13 +111,5 @@ function deferRow(row: TimelineRow): TimelineRow {
 export function deferSettledTimelineContent(
   rows: TimelineRow[],
 ): TimelineRow[] {
-  let changed = false;
-  const next = rows.map((row) => {
-    const deferred = deferRow(row);
-    if (deferred !== row) {
-      changed = true;
-    }
-    return deferred;
-  });
-  return changed ? next : rows;
+  return mapTimelineRowTree(rows, deferRow);
 }
