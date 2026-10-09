@@ -43,8 +43,9 @@ Read the installed SDK declarations for the exact current signatures.
 - `useComposers`
 - `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
 - `experimental_useSidebarThreads`
-- `experimental_useSidebarThreadActions` — deprecated; use the thread action
-  registry, `useSdk().threads`, and `useBbNavigate()`
+- `experimental_useSidebarThreadActions` — deprecated, runtime-only for older
+  plugins; use the thread action registry, `useSdk().threads`, and
+  `useBbNavigate()`
 - `experimental_useArchiveEnvironmentThreads` — archive an environment's
   threads with bb's pane cleanup, route repair, and Undo toast
 - `experimental_useThreadActions` — every thread action for one thread, in
@@ -167,7 +168,6 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
 - `ExperimentalClipboardContent`
-- `PluginSidebarThreadActions`
 - `PluginSidebarThreadDraftState`
 - `PluginSidebarThreadRowStatus`
 - `PluginSidebarThreadShortcut`

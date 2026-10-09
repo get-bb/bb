@@ -1277,10 +1277,10 @@ export interface PluginSidebarThreadShortcut {
  * behave exactly as they do in the built-in sidebar. Unknown thread ids are
  * ignored by `open` and rejected by the rest.
  *
- * @deprecated Register menu entries with `app.slots.experimental_threadAction`
- * and render them with `experimental_ThreadActionsMenu`; use `useSdk().threads`
- * for data writes and `useBbNavigate().toThread` / `toCompose` for navigation.
- * Scheduled for removal in the next major.
+ * @internal Superseded by `app.slots.experimental_threadAction` and
+ * `experimental_ThreadActionsMenu`, `useSdk().threads` for data writes, and
+ * `useBbNavigate().toThread` / `toCompose` for navigation; kept for plugins
+ * built against older SDKs.
  */
 export interface PluginSidebarThreadActions {
   /**
@@ -3524,9 +3524,9 @@ export interface PluginSdkApp {
    * {@link PluginSidebarThreadActions}). Experimental: see
    * docs/api_to_audit.md.
    *
-   * @deprecated Use `experimental_useThreadActions`, the thread action
-   * components, `useSdk().threads`, and `useBbNavigate()`. Scheduled for
-   * removal in the next major.
+   * @internal Superseded by `experimental_useThreadActions`, the thread
+   * action components, `useSdk().threads`, and `useBbNavigate()`; kept for
+   * plugins built against older SDKs.
    */
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
   /**
@@ -3677,8 +3677,8 @@ export interface PluginSdkApp {
    * together. Unarchive, environment-group archive, project/machine/environment
    * renames, and project/section removal are also optimistic and roll back on
    * failure. Created sections enter the cache when the server assigns their id.
-   * `experimental_useSidebarThreadActions()` owns navigation, read state,
-   * archive confirmation, and delete confirmation.
+   * Navigation belongs to `useBbNavigate()`; archive and delete
+   * confirmation to the thread action menus.
    *
    * The client is stable for the plugin's lifetime, so it is safe in effect
    * and callback dependency lists.

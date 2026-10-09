@@ -326,7 +326,7 @@ export type TestThreadActionsResolver = (
   options: { requestRename(threadId: string): void },
 ) => readonly PluginThreadActionEntry[];
 
-/** One recorded `experimental_useSidebarThreadActions()` call. */
+/** @internal One recorded `experimental_useSidebarThreadActions()` call; kept for plugins built against older SDKs. */
 export interface SidebarActionCall {
   method: keyof PluginSidebarThreadActions;
   threadId?: string;
@@ -1835,7 +1835,7 @@ export interface RenderedSlotInspectionState {
   readonly navigateCalls: NavigateCall[];
   /** Every validated `experimental_useAppPanel().openFixedTab` call. */
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
-  /** Every `experimental_useSidebarThreadActions()` call, in order. */
+  /** @internal Every `experimental_useSidebarThreadActions()` call, in order; kept for plugins built against older SDKs. */
   readonly sidebarActionCalls: SidebarActionCall[];
   /**
    * The environment id of every `experimental_useArchiveEnvironmentThreads()`

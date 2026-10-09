@@ -351,13 +351,18 @@ producing tool removals when the subagent and workflow toggles moved to
 version.
 
 `experimental_useSidebarThreadActions` and `PluginSidebarThreadActions`
-(`@get-bb/plugin-sdk/app`) are deprecated in favour of the thread action
-registry (`app.slots.experimental_threadAction`, `experimental_useThreadActions`,
-the thread action components), `useSdk().threads`, and
-`useBbNavigate().toThread` / `toCompose`. The runtime keeps the hook's full
-behaviour so installed plugins keep working; nothing in this repository calls
-it (the runtime test in `PluginAppOverlays.test.tsx` only checks it still
-resolves). Its `experimental_archiveEnvironmentThreads` moved to
+(`@get-bb/plugin-sdk/app`) are superseded by the thread action registry
+(`app.slots.experimental_threadAction`, `experimental_useThreadActions`, the
+thread action components), `useSdk().threads`, and
+`useBbNavigate().toThread` / `toCompose`. Like `useComposerView`, they and the
+testing harness's `SidebarActionCall` / `inspection.sidebarActionCalls` are
+tagged `@internal`: `stripInternal` removes them from the published
+declarations, so a plugin that upgrades its SDK gets type errors, while the
+runtime keeps exporting and implementing the hook, so installed plugins and
+host builds of plugins that still import it keep working. The frontend export
+parity test lists it as a runtime-only export; nothing in this repository
+calls it (the runtime test in `PluginAppOverlays.test.tsx` only checks it
+still resolves). Its `experimental_archiveEnvironmentThreads` moved to
 `experimental_useArchiveEnvironmentThreads`. Remove at the next major version.
 
 ## Settings schemas and server writes

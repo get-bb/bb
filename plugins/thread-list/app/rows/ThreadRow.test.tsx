@@ -355,7 +355,7 @@ describe("ThreadRow", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(slot.inspection.navigateCalls).toEqual([]);
 
     slot.rerenderThreadRow(createThread({ providerId: "missing" }));
     expect(screen.queryByRole("img", { name: "Test Provider" })).toBeNull();
@@ -383,7 +383,7 @@ describe("ThreadRow", () => {
     expect(link.getAttribute("data-sidebar-rename-anchor")).toBe("");
     expect(link.closest("[data-sidebar-rename-row]")).not.toBeNull();
     fireEvent.click(link);
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(slot.inspection.navigateCalls).toEqual([]);
   });
 
   it.each([

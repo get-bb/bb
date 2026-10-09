@@ -351,25 +351,25 @@ const { providers: environmentProviders } = useEnvironmentProviders();
 const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
 // → { isLoading, pullRequest: { number, title, url, state, attention } | null }
 
-actions.open(id, { split: true }); // bb's split placement rules
-actions.openNewThread({ projectId, focusPrompt: true });
-actions.openNewThread({ projectId, sectionId }); // file it under a section
-actions.openNewThread({ projectId, environmentId }); // reuse an environment
-actions.setPinned(id, true);
-actions.setRead(id, false);
-actions.rename(id, "New title"); // silent; for inline editing
-actions.archive(id); // archives immediately, or confirms first if there are children
-actions.requestDelete(id); // opens bb's delete confirmation
+const navigate = useBbNavigate();
+const sdk = useSdk();
+navigate.toThread(id, { split: true }); // bb's split placement rules
+navigate.toCompose({ projectId, focusPrompt: true });
+navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
+navigate.toCompose({ projectId, environmentId }); // reuse an environment
+await sdk.threads.pin({ threadId: id }); // optimistic in bb's surfaces
+await sdk.threads.markUnread({ threadId: id });
+await sdk.threads.update({ threadId: id, title: "New title" }); // silent; for inline editing
 ```
 
-Cascading actions route through the host's own flow. Archiving a thread with
-children opens bb's confirmation, which counts them; archiving a thread without
-children takes effect immediately. Deletion opens bb's confirmation.
+Archive and delete go through bb's thread menu (below), which owns the
+confirmations: archiving a thread with children asks first and counts them,
+and deletion always asks.
 
 Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
 `sidebarRowStatuses`, and `sidebarShortcuts` for the per-row hooks) and assert against
-`inspection.sidebarActionCalls`.
+`inspection.navigateCalls` and `inspection.sdkCalls`.
 
 **Splits.** Rows can drag out to the split area:
 
