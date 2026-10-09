@@ -61,9 +61,8 @@ export const PLUGINS_STEP: GuideStep = {
         add it.
       </li>
       <li>
-        Agent Annotations comes with bb, turned off. Open{" "}
-        <strong>Installed plugins</strong> and switch on{" "}
-        <strong>Agent Annotations</strong>.
+        Agent Annotations comes with bb, turned off. In the same list, open{" "}
+        <strong>Agent Annotations</strong> and turn on its switch.
       </li>
     </Substeps>
   ),
@@ -129,8 +128,8 @@ export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
           preview in a thread.
         </li>
         <li>
-          In <strong>Installed plugins</strong>, switch on{" "}
-          <strong>Agent Annotations</strong>.
+          In <strong>Plugins</strong>, open <strong>Agent Annotations</strong>{" "}
+          and turn on its switch.
         </li>
         <li>
           If your agent is using the tab, choose <strong>Take over</strong>{" "}
