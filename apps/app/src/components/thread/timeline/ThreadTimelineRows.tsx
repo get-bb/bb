@@ -1151,7 +1151,7 @@ function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
       />
     );
   }
-  return <TimelineRowBodyPlaceholder shape="block" />;
+  return <TimelineRowBodyPlaceholder />;
 }
 
 function TimelineExpandableBodyContent({
@@ -1412,7 +1412,11 @@ function LazyTurnRowBody({
           onRetry={detail.retry}
         />
       ) : (
-        <TimelineRowBodyPlaceholder shape="rows" />
+        <TimelineStaticRowHeader>
+          <span className={PAST_ROW_DIM_CLASS_NAME}>
+            Loading turn details...
+          </span>
+        </TimelineStaticRowHeader>
       )}
     </div>
   );

@@ -8,6 +8,6 @@ export const LazyTerminalOutputBlock = defineSplit<TerminalOutputBlockProps>({
     import("./TerminalOutputBlock.js").then(
       (module) => module.TerminalOutputBlock,
     ),
-  loading: () => <TimelineRowBodyPlaceholder shape="block" />,
+  loading: () => <TimelineRowBodyPlaceholder />,
   tier: "intent",
 });

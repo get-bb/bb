@@ -9,6 +9,6 @@ export const LazyTimelineFileDiffBlock =
       import("./TimelineFileDiffBlock.js").then(
         (module) => module.TimelineFileDiffBlock,
       ),
-    loading: () => <TimelineRowBodyPlaceholder shape="block" />,
+    loading: () => <TimelineRowBodyPlaceholder />,
     tier: "intent",
   });
