@@ -210,7 +210,7 @@ for (let line = readLine(); line !== null; line = readLine()) {
 describe("server Git credential refresh", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("shares concurrent and repeated lookups, isolates returned entries, and refreshes rotated credentials after a minute", async () => {
+  it("shares concurrent and repeated lookups, isolates returned entries, and serves expired credentials while refreshing rotated ones in the background", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const run = gh();
     const results = await Promise.all(
@@ -237,17 +237,23 @@ describe("server Git credential refresh", () => {
     expect(cached.some((entry) => entry.name === "EXTRA")).toBe(false);
     expect(run).toHaveBeenCalledTimes(2);
     vi.advanceTimersByTime(1);
-    const refreshed = await resolveGitCredentials(run);
-    expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
-      "rotated-token",
+    const expired = await resolveGitCredentials(run);
+    expect(expired.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "test-private-token",
     );
-    expect(
-      refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
-    ).toBe("new-user");
+    await vi.waitFor(async () => {
+      const refreshed = await resolveGitCredentials(run);
+      expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+        "rotated-token",
+      );
+      expect(
+        refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
+      ).toBe("new-user");
+    });
     expect(run).toHaveBeenCalledTimes(4);
   });
 
-  it("retries unavailable credentials after five seconds and lets health checks observe logout and login immediately", async () => {
+  it("retries unavailable credentials in the background after five seconds and lets health checks observe logout and login immediately", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const run = gh();
     run.mockRejectedValue(new Error("unavailable"));
@@ -256,8 +262,11 @@ describe("server Git credential refresh", () => {
     expect(run).toHaveBeenCalledTimes(1);
     run.mockImplementation(gh());
     vi.advanceTimersByTime(5_000);
-    expect(await resolveGitCredentials(run)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    await vi.waitFor(async () =>
+      expect(await resolveGitCredentials(run)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+      ),
     );
     run.mockRejectedValue(new Error("logged out"));
     expect((await machineGitHealth(run)).status).toBe("not configured");
