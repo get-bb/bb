@@ -78,6 +78,24 @@ function ThreadSecondaryPanelInlinePlaceholder({
   );
 }
 
+function ThreadSecondaryPanelPlaceholderContent({
+  activeTab,
+  metadataContent,
+}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  switch (activeTab?.kind) {
+    case "thread-info":
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
+      );
+    case "workspace-file-preview":
+    case "host-file-preview":
+    case "thread-storage-file-preview":
+      return <FilePreviewLoading path={activeTab.path} copyPath={null} />;
+    default:
+      return <SecondaryPanelContentSkeleton />;
+  }
+}
+
 type LazyThreadSecondaryPanelProps = ComponentProps<
   ThreadSecondaryPanelModule["ThreadSecondaryPanel"]
 > & {
@@ -99,11 +117,10 @@ const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
         isConversationCollapsed={props.isConversationCollapsed}
         resizablePanelId={props.resizablePanelId}
       >
-        {props.activeTab?.kind === "thread-info" ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-            {props.metadataContent}
-          </div>
-        ) : undefined}
+        <ThreadSecondaryPanelPlaceholderContent
+          activeTab={props.activeTab}
+          metadataContent={props.metadataContent}
+        />
       </ThreadSecondaryPanelInlinePlaceholder>
     ),
   error: (props) =>

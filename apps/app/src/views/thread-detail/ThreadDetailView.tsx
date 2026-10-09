@@ -2697,7 +2697,9 @@ function ThreadDetailViewInternal(
           <ThreadDetailSecondaryContent
             footer={composerFooter}
             header={timelineHeader}
-            isMetadataLoading={environmentQuery.isLoading}
+            isMetadataLoading={
+              !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
+            }
             isSecondaryPanelOpen={isSecondaryPanelOpen}
             isConversationCollapsed={isConversationCollapsed}
             isBoundedPane={isBoundedPane}
