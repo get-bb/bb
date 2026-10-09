@@ -3824,6 +3824,35 @@ asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavi
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
 
+## `experimental_ThreadStatusGlyph` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders bb's thread status glyph, the one bb's own thread
+lists draw, from `PluginThreadStatusGlyphProps`: `indicator` (a
+`PluginSidebarThreadIndicator` the caller resolved), optional `archived`,
+`rowStatus` (another plugin's row status, which replaces every indicator
+except `runtime`, `unread-error`, and `waiting-for-input`),
+`hideIdleDraftLabel`, and `size` (`default` or `compact`). The host owns the
+icons, colors, shimmer, and accessible labels; the caller owns the indicator,
+so a row can fold in collapsed children or a client-local draft first. The
+SDK test fake renders nothing for `none` without a row status and otherwise
+exposes the props as `data-thread-status-glyph`, `data-row-status`,
+`data-row-status-tone`, `data-hide-idle-draft-label`, and `data-size`.
+
+**Core callers on the same path.** `ThreadStatusGlyph`
+(`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK
+implementation and the glyph in the thread search palette, the related threads
+info section, and mobile recents. The thread-list plugin draws its rows and
+collapsed-group rollups with it.
+
+**Audit before stabilizing.**
+
+1. **Indicator resolution.** The caller resolves the indicator, so the
+   thread-list plugin keeps its own copy of the indicator precedence and labels
+   that `@bb/client-core` holds for bb's surfaces. Decide whether the SDK should
+   export the resolver and labels instead.
+2. **Archived rows.** No plugin passes `archived` yet; confirm the archived
+   glyph belongs on this component rather than in the archived list.
+
 ## `HostsArea.experimental_reconcile`
 
 Explicitly reconcile a provider-managed machine with core’s recorded state.

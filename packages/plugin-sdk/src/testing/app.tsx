@@ -74,6 +74,7 @@ import {
   type PluginThreadActionRegistrationInfo,
   type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsMenuProps,
+  type PluginThreadStatusGlyphProps,
   type PluginThreadActionsOptions,
   type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
@@ -416,6 +417,30 @@ function TestThreadTitle({ threadId }: { threadId: string }) {
   const thread = env.sidebarThreads.threads.find((row) => row.id === threadId);
   if (thread === undefined) return null;
   return <span data-thread-title={threadId}>{thread.displayTitle}</span>;
+}
+
+/**
+ * `experimental_ThreadStatusGlyph` draws nothing for "none" without a row
+ * status, and otherwise exposes what the row asked for as data attributes:
+ * the indicator (or "archived"), the row status label and tone, and the size.
+ */
+function TestThreadStatusGlyph({
+  indicator,
+  archived = false,
+  rowStatus = null,
+  hideIdleDraftLabel = false,
+  size = "default",
+}: PluginThreadStatusGlyphProps) {
+  if (!archived && indicator === "none" && rowStatus === null) return null;
+  return (
+    <span
+      data-thread-status-glyph={archived ? "archived" : indicator}
+      data-row-status={rowStatus?.label}
+      data-row-status-tone={rowStatus?.tone}
+      data-hide-idle-draft-label={hideIdleDraftLabel ? "" : undefined}
+      data-size={size}
+    />
+  );
 }
 
 function SlotLifecycleGuard({
@@ -1396,6 +1421,7 @@ const testPluginSdkApp = {
     return env.sidebarShortcuts.get(threadId) ?? null;
   },
   ThreadTitle: TestThreadTitle,
+  experimental_ThreadStatusGlyph: TestThreadStatusGlyph,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
   },

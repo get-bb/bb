@@ -68,7 +68,7 @@ function installedApp(): Partial<PluginSdkApp> | undefined {
 function runtimeMember<Name extends keyof PluginSdkApp>(
   name: Name,
 ): PluginSdkApp[Name] {
-  const member = installedApp()?.[name];
+  const member = installedApp()?.[name] as PluginSdkApp[Name] | undefined;
   if (member === undefined) {
     throw new Error(
       `@get-bb/plugin-sdk/app: ${name} needs the bb app's plugin runtime. In tests, call installTestPluginRuntime() from @get-bb/plugin-sdk/testing/app first.`,
@@ -215,6 +215,9 @@ export const useSidebarThreadShortcut = runtimeFunction(
   "useSidebarThreadShortcut",
 );
 export const ThreadTitle = runtimeComponent("ThreadTitle");
+export const experimental_ThreadStatusGlyph = runtimeComponent(
+  "experimental_ThreadStatusGlyph",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );

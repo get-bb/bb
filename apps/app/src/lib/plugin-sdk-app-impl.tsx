@@ -15,6 +15,7 @@ import { PluginPermissionModePicker } from "@/components/plugin/PluginPermission
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { LazyPluginThreadChat } from "@/components/plugin/LazyPluginThreadChat";
 import { PluginThreadTitle } from "@/components/plugin/PluginThreadTitle";
+import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
@@ -123,6 +124,7 @@ export const pluginSdkAppImplementation = {
   useSidebarSplitLayout,
   useSidebarThreadShortcut,
   ThreadTitle: PluginThreadTitle,
+  experimental_ThreadStatusGlyph: ThreadStatusGlyph,
   useEnvironmentProviders,
   useSdk,
   experimental_useProviders: useProviders,

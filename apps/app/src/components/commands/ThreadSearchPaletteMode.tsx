@@ -15,7 +15,10 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { threadListIndicatorStateForThread } from "@bb/client-core";
+import {
+  resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
+} from "@bb/client-core";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   highlightedText,
@@ -635,12 +638,11 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
     projectId: row.projectId,
     threadId: row.threadId,
   });
-  const state = threadListIndicatorStateForThread(
-    row.thread,
-    hasUnsubmittedDraft,
+  const indicator = resolveThreadListIndicator(
+    threadListIndicatorStateForThread(row.thread, hasUnsubmittedDraft),
   );
-  const pluginStatus = usePluginThreadRowStatus(row.threadId);
-  const { accessibleLabel: label } = resolveThreadStatus(state, pluginStatus);
+  const rowStatus = usePluginThreadRowStatus(row.threadId);
+  const { accessibleLabel: label } = resolveThreadStatus(indicator, rowStatus);
   if (label === null) return null;
   return (
     <>
@@ -660,8 +662,8 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
             data-palette-thread-status
           >
             <ThreadStatusGlyph
-              {...state}
-              pluginStatus={pluginStatus}
+              indicator={indicator}
+              rowStatus={rowStatus}
               size="compact"
             />
           </span>

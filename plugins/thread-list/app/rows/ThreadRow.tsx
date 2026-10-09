@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
   hasThreadListWorkingActivity,
+  resolveThreadListIndicator,
+  resolveThreadStatus,
   threadListIndicatorStateForThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
@@ -34,6 +36,7 @@ import {
 import {
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadActionsMenu as ThreadActionsMenu,
+  experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_THREAD_ACTION_GROUPS,
   experimental_useThreadActions,
   experimental_useSidebarThreadSplit,
@@ -105,11 +108,6 @@ import {
   ThreadRowActionsEditor,
   focusFirstRowActionSlot,
 } from "../list/ThreadRowActionsCustomize.js";
-import {
-  ThreadStatusGlyph,
-  resolveThreadStatus,
-  type ThreadStatusGlyphProps,
-} from "./ThreadStatusGlyph.js";
 
 const SIDEBAR_TITLE_DOUBLE_CLICK_MS = 400;
 
@@ -270,23 +268,29 @@ export function CollapsedThreadStatusGlyph({
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
   };
-  return <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />;
+  return (
+    <ThreadStatusGlyph
+      indicator={resolveThreadListIndicator(statusProps)}
+      rowStatus={pluginStatus}
+    />
+  );
 }
 
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
-  pluginStatus: PluginSidebarThreadRowStatus | null;
-};
-
 function ThreadTrailingIndicator({
-  pluginStatus,
-  ...statusProps
-}: ThreadTrailingIndicatorProps) {
-  const { indicatorKind, pluginStatusIsVisible } = resolveThreadStatus(
-    statusProps,
-    pluginStatus,
+  state,
+  hideIdleDraftLabel,
+  rowStatus,
+}: {
+  state: ThreadListIndicatorState;
+  hideIdleDraftLabel: boolean;
+  rowStatus: PluginSidebarThreadRowStatus | null;
+}) {
+  const { indicatorKind, rowStatusIsVisible } = resolveThreadStatus(
+    state,
+    rowStatus,
   );
 
-  if (indicatorKind === "none" && !pluginStatusIsVisible) {
+  if (indicatorKind === "none" && !rowStatusIsVisible) {
     return null;
   }
 
@@ -298,7 +302,11 @@ function ThreadTrailingIndicator({
         SIDEBAR_STATUS_GLYPH_BOX_CLASS,
       )}
     >
-      <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />
+      <ThreadStatusGlyph
+        indicator={indicatorKind}
+        rowStatus={rowStatus}
+        hideIdleDraftLabel={hideIdleDraftLabel}
+      />
     </span>
   );
 }
@@ -792,11 +800,11 @@ function ThreadRowComponent({
                   </span>
                 ) : (
                   <ThreadTrailingIndicator
-                    {...trailingIndicatorState}
+                    state={trailingIndicatorState}
                     hideIdleDraftLabel={
                       !hasHiddenChildren && trailingIndicatorKind === "draft"
                     }
-                    pluginStatus={pluginThreadRowStatus}
+                    rowStatus={pluginThreadRowStatus}
                   />
                 )}
               </span>

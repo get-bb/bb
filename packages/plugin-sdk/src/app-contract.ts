@@ -1225,6 +1225,29 @@ export interface PluginThreadTitleProps {
 }
 
 /**
+ * Props for {@link PluginSdkApp.experimental_ThreadStatusGlyph}: bb's thread
+ * status glyph, the one its own lists draw. The caller resolves the
+ * indicator, so a row can fold in state the host does not know about, such
+ * as collapsed children or a client-local draft.
+ */
+export interface PluginThreadStatusGlyphProps {
+  /** The indicator to draw; "none" draws nothing unless `rowStatus` shows. */
+  indicator: PluginSidebarThreadIndicator;
+  /** Draws the archive glyph instead of the indicator. */
+  archived?: boolean;
+  /**
+   * A status another plugin set on the row (see
+   * {@link PluginSdkApp.useSidebarThreadRowStatus}). It replaces every
+   * indicator except "runtime", "unread-error", and "waiting-for-input".
+   */
+  rowStatus?: PluginSidebarThreadRowStatus | null;
+  /** Hides the idle draft glyph from assistive technology. */
+  hideIdleDraftLabel?: boolean;
+  /** "compact" draws a 14 px glyph; "default" matches bb's sidebar rows. */
+  size?: "default" | "compact";
+}
+
+/**
  * One environment provider from bb's catalog (see
  * {@link PluginSdkApp.useEnvironmentProviders}): what a sidebar needs to
  * name and draw the environment a thread runs in. `icon` and `logoUrl` are
@@ -3690,6 +3713,12 @@ export interface PluginSdkApp {
    * form is `displayTitle` on the thread.
    */
   ThreadTitle: ComponentType<PluginThreadTitleProps>;
+  /**
+   * bb's thread status glyph (see {@link PluginThreadStatusGlyphProps}): the
+   * same icons, colors, and accessible labels as bb's own thread lists.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
   /**
    * bb's environment provider catalog (see
    * {@link PluginEnvironmentProvidersState}), the directory a thread's

@@ -133,6 +133,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarThreadShortcut",
           "ThreadTitle",
           "PluginThreadTitleProps",
+          "experimental_ThreadStatusGlyph",
+          "PluginThreadStatusGlyphProps",
           "useEnvironmentProviders",
           "PluginEnvironmentProvidersState",
           "useSdk",

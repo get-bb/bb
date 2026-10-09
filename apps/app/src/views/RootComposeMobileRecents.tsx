@@ -405,7 +405,7 @@ function MobileRecentThreadRow({
           </span>
           {indicatorKind !== "none" ? (
             <span className="flex size-6 shrink-0 items-center justify-center">
-              <ThreadStatusGlyph {...trailingIndicatorState} />
+              <ThreadStatusGlyph indicator={indicatorKind} />
             </span>
           ) : null}
         </RouteAnchor>
