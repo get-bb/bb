@@ -5,7 +5,7 @@ import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
-import { BbDiffSplit } from "@/components/code/DiffHost";
+import { BbDiffSplit } from "@/components/code/BbDiffSplit";
 import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {

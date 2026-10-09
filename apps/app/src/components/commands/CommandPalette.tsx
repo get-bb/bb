@@ -40,7 +40,7 @@ const ThreadSearchPaletteMode = defineSplit({
     import("./ThreadSearchPaletteMode").then(
       (module) => module.ThreadSearchPaletteMode,
     ),
-  loading: ({ onExit }) => <ThreadSearchPalettePlaceholder onExit={onExit} />,
+  loading: () => <ThreadSearchPalettePlaceholder />,
   tier: "preload",
 });
 

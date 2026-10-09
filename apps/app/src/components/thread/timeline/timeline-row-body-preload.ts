@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { deferredTimelineContentItemId } from "@bb/client-core";
 import type { ThreadTimelineViewRow } from "@bb/thread-view";
-import { BbDiffSplit } from "@/components/code/DiffHost";
+import { BbDiffSplit } from "@/components/code/BbDiffSplit";
 import type { ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import { prefetchThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
 import {

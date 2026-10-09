@@ -1,6 +1,6 @@
-import { useId, type ReactNode } from "react";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { PaletteShell } from "./PaletteShell";
+import type { ReactNode } from "react";
+import { Skeleton } from "@bb/shared-ui/skeleton";
+import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
 
 export const THREAD_SEARCH_INPUT = {
   label: "Search threads",
@@ -25,28 +25,22 @@ export function PaletteStatusMessage({ children }: { children: ReactNode }) {
   );
 }
 
-export function ThreadSearchPalettePlaceholder({
-  onExit,
-}: {
-  onExit: () => void;
-}) {
-  const listId = useId();
-  const isCompact = useIsCompactViewport();
+export function ThreadSearchPalettePlaceholder() {
   return (
-    <PaletteShell
-      inputDescription="Use Escape to return to commands."
-      inputLabel={THREAD_SEARCH_INPUT.label}
-      listId={listId}
-      listLabel="Threads"
-      modeChip={threadSearchModeChip(onExit, isCompact)}
-      onInputChange={() => undefined}
-      onInputKeyDown={() => undefined}
-      placeholder={THREAD_SEARCH_INPUT.placeholder}
-      value=""
-    >
-      <div role="status">
+    <>
+      <PaletteInputBand>
+        <Skeleton className="h-6 w-20 shrink-0 rounded-md" />
+        <input
+          autoFocus
+          readOnly
+          aria-label={THREAD_SEARCH_INPUT.label}
+          className={PALETTE_INPUT_CLASS}
+          placeholder={THREAD_SEARCH_INPUT.placeholder}
+        />
+      </PaletteInputBand>
+      <div role="status" className="rounded-b-[inherit] bg-background p-1">
         <PaletteStatusMessage>Loading threads</PaletteStatusMessage>
       </div>
-    </PaletteShell>
+    </>
   );
 }

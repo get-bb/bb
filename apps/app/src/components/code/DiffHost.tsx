@@ -1,26 +1,17 @@
 import { useMemo } from "react";
 import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { defineSplit } from "@/lib/define-split";
-import { DiffLoadingSkeleton } from "./code-loading-skeletons";
 import type { ParsedGitDiffFile } from "@/components/git-diff/git-diff-parsing";
 import { buildFileDiffPatchText } from "@/components/git-diff/git-diff-patch-text";
+import { BbDiffSplit } from "./BbDiffSplit";
 import { useDiffRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
   DEFAULT_DIFF_VIEW,
-  type BbDiffProps,
   type DiffPresentation,
 } from "./code-rendering";
 
 const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
-
-export const BbDiffSplit = defineSplit<BbDiffProps>({
-  id: "bb-diff",
-  load: () => import("./BbDiff").then((module) => module.default),
-  loading: () => <DiffLoadingSkeleton />,
-  tier: "intent",
-});
 
 interface DiffHostProps extends Partial<DiffPresentation> {
   file: ParsedGitDiffFile;
