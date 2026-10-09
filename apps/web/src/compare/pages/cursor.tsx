@@ -1,5 +1,5 @@
-import cursorIcon from "../assets/competitors/cursor.png";
-import type { Comparison } from "./comparisons";
+import cursorIcon from "../../assets/competitors/cursor.png";
+import type { CompareMeta, Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -23,14 +23,14 @@ import {
   faqUsageLimit,
   price,
   faqScript,
-} from "./compare-content";
+} from "../compare-content";
 import {
   ANYWHERE_COPY,
   anywhereSection,
   SPAWN_COPY,
   spawnSection,
-} from "./compare-sections";
-import { AgentSplit, UsageVisual, type BrandLogo } from "./compare-visuals";
+} from "../compare-sections";
+import { AgentSplit, UsageVisual, type BrandLogo } from "../compare-visuals";
 
 const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
 
@@ -49,13 +49,17 @@ const PLANS_SECTION = {
   ),
 };
 
-export const BB_VS_CURSOR: Comparison = {
+export const meta: CompareMeta = {
   slug: "cursor-alternative",
+  competitor: { name: "Cursor", logo: CURSOR_LOGO },
+};
+
+export const comparison: Comparison = {
+  ...meta,
   title:
     "Cursor Alternative for Your Claude and ChatGPT Subscriptions: bb, Free and Open Source",
   description:
     "bb is a free, open-source Cursor alternative. Run Claude Code and Codex directly on your Claude and ChatGPT subscriptions, next to Cursor’s agent, and change anything with plugins.",
-  competitor: { name: "Cursor", logo: CURSOR_LOGO },
   headline: "The Cursor alternative for your Claude and ChatGPT subscriptions",
   sub: "Run Claude Code and Codex on the subscriptions you already have. Cursor’s agent works too. Free and open source.",
   heroVisual: <AgentSplit />,

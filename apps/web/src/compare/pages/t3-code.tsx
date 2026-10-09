@@ -1,5 +1,5 @@
-import t3CodeIcon from "../assets/competitors/t3-code.png";
-import type { Comparison } from "./comparisons";
+import t3CodeIcon from "../../assets/competitors/t3-code.png";
+import type { CompareMeta, Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -20,7 +20,7 @@ import {
   faqUsageLimit,
   price,
   faqScript,
-} from "./compare-content";
+} from "../compare-content";
 import {
   ANYWHERE_COPY,
   anywhereSection,
@@ -30,8 +30,8 @@ import {
   type SectionCopy,
   LIMITS_COPY,
   limitsSection,
-} from "./compare-sections";
-import { AgentSplit, type BrandLogo } from "./compare-visuals";
+} from "../compare-sections";
+import { AgentSplit, type BrandLogo } from "../compare-visuals";
 
 const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
 
@@ -53,12 +53,16 @@ const PLUGINS_COPY_T3: SectionCopy = {
   ),
 };
 
-export const BB_VS_T3_CODE: Comparison = {
+export const meta: CompareMeta = {
   slug: "t3-code-alternatives",
+  competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
+};
+
+export const comparison: Comparison = {
+  ...meta,
   title: "T3 Code Alternatives: bb, Change Anything Without Forking",
   description:
     "bb is a free, open-source T3 Code alternative you can change without forking. Add panels, commands, and agents from the plugin marketplace, or have your agent build them.",
-  competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
   headline: "The T3 Code alternative you can change without forking",
   sub: "Add what you need from the plugin marketplace, or have your agent build it and share it with your team. Free and open source.",
   heroVisual: <AgentSplit />,

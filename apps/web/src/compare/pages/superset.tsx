@@ -1,7 +1,5 @@
-import type { ReactElement, ReactNode } from "react";
-
-import supersetIcon from "../assets/competitors/superset.png";
-import { WINDOWS_DOWNLOAD_URL } from "../landing/site";
+import supersetIcon from "../../assets/competitors/superset.png";
+import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import {
   BB_ROWS,
   CLOSER,
@@ -25,7 +23,7 @@ import {
   faqUsageLimit,
   price,
   faqScript,
-} from "./compare-content";
+} from "../compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
@@ -35,76 +33,23 @@ import {
   pricingSection,
   LIMITS_COPY,
   limitsSection,
-} from "./compare-sections";
-import { FleetVisual, type BrandLogo } from "./compare-visuals";
-import { BB_VS_CONDUCTOR } from "./conductor";
-import { BB_VS_CURSOR } from "./cursor";
-import { BB_VS_T3_CODE } from "./t3-code";
-import { BB_VS_VIBE_KANBAN } from "./vibe-kanban";
+} from "../compare-sections";
+import { FleetVisual, type BrandLogo } from "../compare-visuals";
 
-export type Mark = "yes" | "partial" | "no";
-
-export type CompareCell = {
-  mark: Mark | null;
-  value: string;
-  text: string;
-  href: string | null;
-  pro: boolean;
-};
-
-export type CompareRow = {
-  feature: string;
-  bb: CompareCell;
-  competitor: CompareCell;
-};
-
-export type CompareGroup = {
-  title: string;
-  rows: CompareRow[];
-};
-
-export type CompareHighlight = {
-  title: string;
-  body: ReactNode;
-  visual: ReactNode;
-  wide: boolean;
-};
-
-export type CompareFaq = {
-  question: string;
-  answer: ReactNode;
-};
-
-export type CompareFaqGroup = {
-  title: string;
-  items: CompareFaq[];
-};
-
-export type Comparison = {
-  slug: string;
-  title: string;
-  description: string;
-  competitor: { name: string; logo: BrandLogo };
-  headline: string;
-  sub: string;
-  heroVisual: ReactElement;
-  tailored: CompareHighlight;
-  sections: CompareHighlight[];
-  tableNote: string | null;
-  table: CompareGroup[];
-  faqTitle: string;
-  faq: CompareFaqGroup[];
-  closer: { title: string; body: string };
-};
+import type { CompareMeta, Comparison } from "../compare-types";
 
 const SUPERSET_LOGO: BrandLogo = { kind: "image", src: supersetIcon };
 
-const BB_VS_SUPERSET: Comparison = {
+export const meta: CompareMeta = {
   slug: "superset-alternative",
+  competitor: { name: "Superset", logo: SUPERSET_LOGO },
+};
+
+export const comparison: Comparison = {
+  ...meta,
   title: "bb vs Superset: The Free, Open-Source Alternative",
   description:
     "bb is a free, open-source Superset alternative. Run Claude Code and Codex in parallel, let agents hand off work, and check in from your phone. No Pro plan.",
-  competitor: { name: "Superset", logo: SUPERSET_LOGO },
   headline: "The free, open-source Superset alternative",
   sub: "Pay nothing per seat, with mobile, remote machines, and automations included. Run Claude Code, Codex, or any agent on the same task.",
   heroVisual: <FleetVisual />,
@@ -390,15 +335,3 @@ const BB_VS_SUPERSET: Comparison = {
   ],
   closer: CLOSER,
 };
-
-export const COMPARISONS: Comparison[] = [
-  BB_VS_SUPERSET,
-  BB_VS_VIBE_KANBAN,
-  BB_VS_CONDUCTOR,
-  BB_VS_T3_CODE,
-  BB_VS_CURSOR,
-];
-
-export function getComparison(slug: string): Comparison | undefined {
-  return COMPARISONS.find((comparison) => comparison.slug === slug);
-}

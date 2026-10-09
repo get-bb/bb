@@ -1,14 +1,18 @@
-import vibeKanbanIcon from "../assets/competitors/vibe-kanban.png";
-import type { CompareHighlight, Comparison } from "./comparisons";
+import vibeKanbanIcon from "../../assets/competitors/vibe-kanban.png";
+import type {
+  CompareHighlight,
+  CompareMeta,
+  Comparison,
+} from "../compare-types";
 import {
   BB_ROWS,
   FAQ_AGENTS,
   FAQ_REVIEW,
   cell,
   price,
-} from "./compare-content";
-import { AGENTS_COPY, agentsSection } from "./compare-sections";
-import { TaskLedger, TasksBoard, type BrandLogo } from "./compare-visuals";
+} from "../compare-content";
+import { AGENTS_COPY, agentsSection } from "../compare-sections";
+import { TaskLedger, TasksBoard, type BrandLogo } from "../compare-visuals";
 
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
 
@@ -24,12 +28,16 @@ const LEDGER_HIGHLIGHT: CompareHighlight = {
   ),
 };
 
-export const BB_VS_VIBE_KANBAN: Comparison = {
+export const meta: CompareMeta = {
   slug: "vibe-kanban-alternative",
+  competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
+};
+
+export const comparison: Comparison = {
+  ...meta,
   title: "Vibe Kanban Alternative: Get Your Board Back in bb",
   description:
     "Vibe Kanban shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any task to Claude Code, Codex, or another agent in its own Git worktree.",
-  competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
   headline: "Vibe Kanban shut down. Get your board back in bb.",
   sub: "Hand any task to Claude Code, Codex, or another agent on a local board, in an app that ships a release every week.",
   heroVisual: <TasksBoard compact={false} />,

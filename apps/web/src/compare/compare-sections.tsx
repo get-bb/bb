@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
-import type { CompareHighlight } from "./comparisons";
+import type { CompareHighlight } from "./compare-types";
 import {
   AgentSplit,
   AnywhereVisual,
@@ -179,4 +179,8 @@ export function pluginsSection(copy: SectionCopy): CompareHighlight {
     visual: <CustomizeBuild />,
     body: copy.body,
   };
+}
+
+export function textOnly(section: CompareHighlight): CompareHighlight {
+  return { ...section, visual: null, wide: true };
 }

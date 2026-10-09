@@ -1,4 +1,6 @@
+import type { CompareMeta } from "../compare/compare-types";
 import type { GuideMeta } from "../guides/guide-types";
+import type { LandingMeta } from "./landing-template";
 
 export interface ContentLink {
   label: string;
@@ -51,19 +53,29 @@ export const GUIDE_MENU: (ContentGroup | ContentLink)[] = NAV_GUIDES.reduce<
   return [...menu, { label: nav.group, links: [link] }];
 }, []);
 
-export const COMPARE_LINKS: ContentLink[] = [
-  { label: "bb vs Conductor", href: "/compare/conductor-alternatives" },
-  { label: "bb vs Cursor", href: "/compare/cursor-alternative" },
-  { label: "bb vs Superset", href: "/compare/superset-alternative" },
-  { label: "bb vs T3 Code", href: "/compare/t3-code-alternatives" },
-  { label: "bb vs Vibe Kanban", href: "/compare/vibe-kanban-alternative" },
-];
+const COMPARE_METAS: CompareMeta[] = Object.values(
+  import.meta.glob<CompareMeta>("../compare/pages/*.tsx", {
+    eager: true,
+    import: "meta",
+  }),
+).filter((meta): meta is CompareMeta => meta !== undefined);
 
-export const LANDING_LINKS: ContentLink[] = [
-  { label: "Claude Code on your phone", href: "/claude-code-mobile" },
-  { label: "Claude Code with Codex", href: "/claude-code-and-codex" },
-  { label: "Parallel coding agents", href: "/claude-code-parallel-agents" },
-];
+export const COMPARE_LINKS: ContentLink[] = COMPARE_METAS.map((meta) => ({
+  label: `bb vs ${meta.competitor.name}`,
+  href: `/compare/${meta.slug}`,
+})).sort((a, b) => a.label.localeCompare(b.label));
+
+const LANDING_METAS: LandingMeta[] = Object.values(
+  import.meta.glob<LandingMeta>("./pages/*.tsx", {
+    eager: true,
+    import: "meta",
+  }),
+).filter((meta): meta is LandingMeta => meta !== undefined);
+
+export const LANDING_LINKS: ContentLink[] = LANDING_METAS.map((meta) => ({
+  label: meta.label,
+  href: `/${meta.slug}`,
+})).sort((a, b) => a.label.localeCompare(b.label));
 
 export const LANDING_PATHS: string[] = LANDING_LINKS.map((link) => link.href);
 

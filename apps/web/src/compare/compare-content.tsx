@@ -7,7 +7,7 @@ import type {
   CompareRow,
   Comparison,
   Mark,
-} from "./comparisons";
+} from "./compare-types";
 
 export function cell(mark: Mark | null, text = "", pro = false): CompareCell {
   return { mark, value: "", text, href: null, pro };

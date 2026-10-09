@@ -1,5 +1,5 @@
-import conductorIcon from "../assets/competitors/conductor.png";
-import type { Comparison } from "./comparisons";
+import conductorIcon from "../../assets/competitors/conductor.png";
+import type { CompareMeta, Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -20,7 +20,7 @@ import {
   faqUsageLimit,
   price,
   faqScript,
-} from "./compare-content";
+} from "../compare-content";
 import {
   AGENTS_COPY,
   agentsSection,
@@ -30,8 +30,8 @@ import {
   pricingSection,
   LIMITS_COPY,
   limitsSection,
-} from "./compare-sections";
-import { FleetVisual, type BrandLogo } from "./compare-visuals";
+} from "../compare-sections";
+import { FleetVisual, type BrandLogo } from "../compare-visuals";
 
 const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
 
@@ -42,12 +42,16 @@ const COST_SECTION = pricingSection(PRICING_COPY, {
   priceNote: "Conductor Teams at $60 per person a month.",
 });
 
-export const BB_VS_CONDUCTOR: Comparison = {
+export const meta: CompareMeta = {
   slug: "conductor-alternatives",
+  competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
+};
+
+export const comparison: Comparison = {
+  ...meta,
   title: "Conductor Alternatives: bb, the Free, Open-Source Option",
   description:
     "bb is a free, open-source Conductor alternative for Mac, Windows, and Linux. Run Claude Code, Codex, and other agents on any computer you own, and keep working from anywhere.",
-  competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
   headline: "The free, open-source Conductor alternative",
   sub: "Run Claude Code, Codex, or any agent on Mac, Windows, or Linux, with the mobile app and remote machines free.",
   heroVisual: <FleetVisual />,
