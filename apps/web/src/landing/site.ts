@@ -52,6 +52,13 @@ export const UTM_PARAM_NAMES = [
   "utm_content",
 ] as const;
 
+export const CAMPAIGN_PARAM_NAMES = [
+  ...UTM_PARAM_NAMES,
+  "gclid",
+  "gbraid",
+  "wbraid",
+] as const;
+
 export function downloadHref(
   platform: DesktopPlatform,
   placement: CtaPlacement,

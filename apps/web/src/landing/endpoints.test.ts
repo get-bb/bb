@@ -164,7 +164,9 @@ describe("marketing download", () => {
 
     await handleDownload(
       "linux",
-      new Request("https://getbb.app/download/linux?placement=nav"),
+      new Request(
+        "https://getbb.app/download/linux?placement=nav&utm_campaign=x&gclid=abc",
+      ),
       { LANDING_POSTHOG_KEY: "phc_test" },
       waitUntil,
     );
@@ -177,11 +179,18 @@ describe("marketing download", () => {
     expect(captureCall).toBeTruthy();
     const body = JSON.parse(String(captureCall?.[1]?.body)) as {
       event: string;
-      properties: { download_target: string; placement: string };
+      properties: {
+        download_target: string;
+        placement: string;
+        utm_campaign?: string;
+        gclid?: string;
+      };
     };
     expect(body.event).toBe("landing_download_linux_clicked");
     expect(body.properties.download_target).toBe("linux");
     expect(body.properties.placement).toBe("nav");
+    expect(body.properties.utm_campaign).toBe("x");
+    expect(body.properties.gclid).toBe("abc");
   });
 });
 
