@@ -16,6 +16,7 @@ variables:
 
 {{#if parentIsChildThread}}
 Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.
-{{else}}
-Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, do not ask the user or restate the question in chat; the user sees and answers it in this thread's child threads banner. End your turn with at most one short line.
 {{/if}}
+{{#unless parentIsChildThread}}
+Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, do not ask the user or restate the question in chat; the user sees and answers it in this thread's child threads banner. End your turn with at most one short line.
+{{/unless}}
