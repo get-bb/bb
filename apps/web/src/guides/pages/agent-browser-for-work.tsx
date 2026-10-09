@@ -3,15 +3,16 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 
 import { BrowserConcept } from "../concepts";
-import { BulletList, PromptBlock, Substeps, Ui } from "../guide-blocks";
+import { BulletList, PromptBlock } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
+  annotateStep,
   BROWSER_FAQ,
   BROWSER_TROUBLESHOOTING,
   PLUGINS_STEP,
   SIGN_INS_STEP,
-} from "./agent-browser";
+} from "../shared/browser";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -52,7 +53,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch. Every fact links to the page it came from.",
+    "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch.",
   concept: <BrowserConcept scene="work" />,
   picker: null,
   handoffNote:
@@ -142,34 +143,24 @@ export const guide: Guide = {
         },
       ],
     },
-    {
-      id: "annotate",
+    annotateStep({
       title: "Point at what to dig into",
       lead: "Select the thing on the page instead of describing it.",
-      body: (
-        <Substeps>
-          <li>
-            In the Browser tab, choose <strong>Take over</strong> if your agent
-            still has it.
-          </li>
-          <li>
-            Choose <Ui icon="annotate">Annotate elements</Ui> in the toolbar and
-            click the text, number, or button.
-          </li>
-          <li>
-            In the box, write your question or request and choose{" "}
-            <strong>Add to prompt</strong>. Then send.
-          </li>
-        </Substeps>
+      open: (
+        <>
+          In the Browser tab, choose <strong>Take over</strong> if your agent
+          still has it.
+        </>
       ),
+      target: "the text, number, or button",
+      note: "your question or request",
       shot: {
         src: "/guides/agent-browser-for-work/window-annotate.png",
         alt: "Asana's pricing page in a bb Browser tab with the Starter price selected, and the note: Add each plan's monthly price as a second column.",
         width: 2048,
         height: 1280,
       },
-      options: [],
-    },
+    }),
   ],
   troubleshooting: BROWSER_TROUBLESHOOTING,
   faq: [

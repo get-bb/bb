@@ -3,9 +3,16 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { BrowserConcept } from "../concepts";
-import { PromptBlock, Substeps, Ui } from "../guide-blocks";
+import { PromptBlock, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta, GuideFaq, GuideStep } from "../guide-types";
+import type { Guide, GuideMeta } from "../guide-types";
+import {
+  annotateStep,
+  BROWSER_FAQ,
+  BROWSER_TROUBLESHOOTING,
+  PLUGINS_STEP,
+  SIGN_INS_STEP,
+} from "../shared/browser";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -37,219 +44,6 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
 4. Leave the app ready for feedback. Close the automation session with bb browser-automation close and keep the preview server running. In desktop bb, use bb browser create with the selected host, instance, generation, current thread, URL, and --reveal to leave a Browser tab open for annotations. If no desktop instance is connected, explain that element annotations require the desktop app and give me the app URL. Tell me to choose Annotate elements, click the element, write the change, and choose Add to prompt. When I send an annotation, use its element context to make the change and verify it in a new browser session.
    Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.`,
 );
-
-export const PLUGINS_STEP: GuideStep = {
-  id: "plugins",
-  title: "Add the browser plugins",
-  lead: (
-    <>
-      The <a href="/marketplace/browser-automation">Browser Automation</a>{" "}
-      plugin gives your agent a browser. The Agent Annotations plugin lets you
-      point at what you mean.
-    </>
-  ),
-  body: (
-    <Substeps>
-      <li>
-        Choose <strong>Plugins</strong> in the sidebar, search for “browser”,
-        open <strong>Browser Automation</strong>, and choose{" "}
-        <strong>Install</strong>. It's made by bb but isn't installed until you
-        add it.
-      </li>
-      <li>
-        Agent Annotations comes with bb, turned off. Open{" "}
-        <strong>Installed plugins</strong> and switch on{" "}
-        <strong>Agent Annotations</strong>.
-      </li>
-    </Substeps>
-  ),
-  shot: {
-    src: "/guides/agent-browser/window-plugins-sidebar.png",
-    alt: "bb's Plugins page with Browse plugins selected in the sidebar, a search for browser, and Browser Automation open with an Install button",
-    width: 2048,
-    height: 1280,
-  },
-  options: [],
-};
-
-export const SIGN_INS_STEP: GuideStep = {
-  id: "sign-ins",
-  title: "Import your browser logins",
-  lead: "Your agent can open the sites you use already logged in as you.",
-  body: (
-    <Substeps>
-      <li>
-        In the bb desktop app, open <Ui icon="settings">Settings → Browser</Ui>.
-      </li>
-      <li>
-        If a browser shows <strong>Running</strong>, quit it and choose{" "}
-        <strong>Recheck</strong>.
-      </li>
-      <li>
-        Choose <strong>Import…</strong> next to your browser, like Chrome, and
-        pick a profile.
-      </li>
-    </Substeps>
-  ),
-  shot: {
-    src: "/guides/agent-browser/window-sign-ins.png",
-    alt: "bb's Browser settings listing Google Chrome (running, quit to import), Chromium with an Import button, and Safari needing Full Disk Access",
-    width: 2048,
-    height: 1280,
-  },
-  options: [],
-};
-
-export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
-  {
-    question: "Browser Automation isn't in my installed plugins",
-    answer: (
-      <ol>
-        <li>
-          It's not installed by default. Choose <strong>Plugins</strong>, search
-          for “browser”, and open <strong>Browser Automation</strong>.
-        </li>
-        <li>
-          Choose <strong>Install</strong>, then confirm. It turns on right away.
-        </li>
-      </ol>
-    ),
-  },
-  {
-    question: "I don't see Annotate elements",
-    answer: (
-      <ol>
-        <li>
-          Use the bb desktop app. Annotations only work in a{" "}
-          <strong>Browser</strong> tab there, not in the web app or the live
-          preview in a thread.
-        </li>
-        <li>
-          In <strong>Installed plugins</strong>, switch on{" "}
-          <strong>Agent Annotations</strong>.
-        </li>
-        <li>
-          If your agent is using the tab, choose <strong>Take over</strong>{" "}
-          first.
-        </li>
-      </ol>
-    ),
-  },
-  {
-    question: "The browser won't start",
-    answer: (
-      <ol>
-        <li>
-          Check that the machine is connected in{" "}
-          <Ui icon="settings">Settings → Machines</Ui>.
-        </li>
-        <li>
-          The first run installs the browser tools on that machine, so it needs
-          network access and npm. A fresh browser also needs Chrome or Chromium
-          installed there.
-        </li>
-        <li>
-          For a Browser tab, keep the bb desktop app open, then ask again.
-        </li>
-      </ol>
-    ),
-  },
-  {
-    question: "The site still asks me to sign in",
-    answer: (
-      <ol>
-        <li>
-          A fresh browser starts signed out. Ask your agent to use a Browser tab
-          instead.
-        </li>
-        <li>
-          Import from <Ui icon="settings">Settings → Browser</Ui> again.
-          Importing copies your logins once, so newer logins don't carry over.
-        </li>
-        <li>
-          Still signed out? Sign in once in a Browser tab. It stays signed in.
-        </li>
-      </ol>
-    ),
-  },
-  {
-    question: "I can't import from my browser",
-    answer: (
-      <ol>
-        <li>
-          Quit that browser completely, then choose <strong>Recheck</strong>.
-        </li>
-        <li>
-          For Safari, choose <strong>Grant access…</strong> and turn on Full
-          Disk Access for bb. Chrome may ask for Keychain access; allow it.
-        </li>
-        <li>
-          Choose <strong>Refresh</strong> to look for browsers again.
-        </li>
-      </ol>
-    ),
-  },
-  {
-    question: "The live preview says Ended",
-    answer: (
-      <p>
-        Your agent closed its browser, or it sat unused for five minutes. The
-        thread keeps the last view. Ask your agent to open it again.
-      </p>
-    ),
-  },
-];
-
-export const BROWSER_FAQ: GuideFaq[] = [
-  {
-    question: "Which agents can use the browser?",
-    answer: (
-      <p>
-        Any agent you run in a bb thread, including Claude Code, Codex, Cursor,
-        and OpenCode. You don't need a browser extension.
-      </p>
-    ),
-  },
-  {
-    question: "Do I need the desktop app?",
-    answer: (
-      <p>
-        Not for a fresh browser: your agent can open Chrome on any connected Mac
-        or Linux machine, and you watch it in the thread. Browser tabs, your
-        logins, and annotations need the desktop app.
-      </p>
-    ),
-  },
-  {
-    question: "Can I stop the agent or step in?",
-    answer: (
-      <p>
-        Yes. A Browser tab shows a bar while your agent controls it. Choose{" "}
-        <strong>Stop</strong> to end its control, or <strong>Take over</strong>{" "}
-        to click and type yourself.
-      </p>
-    ),
-  },
-  {
-    question: "Can the browser run on a different computer?",
-    answer: (
-      <p>
-        Yes. Ask for the browser on the machine you want. There,{" "}
-        <code>localhost</code> means that computer, so use an address it can
-        reach.
-      </p>
-    ),
-  },
-  {
-    question: "Does it need macOS Automation permission?",
-    answer: (
-      <p>
-        No. Browser Automation talks to Chrome and bb's Browser directly, so it
-        doesn't need Accessibility or Automation permission.
-      </p>
-    ),
-  },
-];
 
 export const meta: GuideMeta = {
   slug: "agent-browser",
@@ -332,35 +126,25 @@ export const guide: Guide = {
         },
       ],
     },
-    {
-      id: "annotate",
+    annotateStep({
       title: "Point at what to change",
       lead: "Select the element instead of describing where it is.",
-      body: (
-        <Substeps>
-          <li>
-            Open the side panel <Ui icon="side-panel" /> (⌘ J), choose{" "}
-            <Ui icon="plus" />, then <strong>Open browser</strong>, and enter
-            your app's address. Or ask your agent to open it.
-          </li>
-          <li>
-            Choose <Ui icon="annotate">Annotate elements</Ui> in the toolbar and
-            click the element.
-          </li>
-          <li>
-            In the box, write your note and choose{" "}
-            <strong>Add to prompt</strong>. Add as many as you like, then send.
-          </li>
-        </Substeps>
+      open: (
+        <>
+          Open the side panel <Ui icon="side-panel" /> (⌘ J), choose{" "}
+          <Ui icon="plus" />, then <strong>Open browser</strong>, and enter your
+          app's address. Or ask your agent to open it.
+        </>
       ),
+      target: "the element",
+      note: "your note",
       shot: {
         src: "/guides/agent-browser/window-annotate.png",
         alt: "A Browser tab in bb with the All filter selected for annotation, and the note: Use our brand blue for the selected filter, like Export CSV",
         width: 2048,
         height: 1280,
       },
-      options: [],
-    },
+    }),
   ],
   troubleshooting: BROWSER_TROUBLESHOOTING,
   faq: [
