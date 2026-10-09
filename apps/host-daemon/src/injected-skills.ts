@@ -140,12 +140,7 @@ interface CreateCatalogFileArgs {
 
 const MAX_COLLECTED_TREE_MEMOS = 256;
 
-interface CollectedTreeMemo {
-  fingerprint: string;
-  tree: SkillTreeCollectionState;
-}
-
-const collectedTreeMemos = new Map<string, CollectedTreeMemo>();
+const collectedTreeMemos = new Map<string, SkillTreeCollectionState>();
 const scheduledSkillStoreGcs = new Set<string>();
 const pendingStageRootWrites = new Map<string, Promise<string>>();
 const pendingSkillTreePulls = new Map<string, Promise<string>>();
@@ -350,54 +345,12 @@ function sha256Hex(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-async function fingerprintSkillDirectory(
-  rootPath: string,
-): Promise<string | null> {
-  const parts: string[] = [];
-  const visit = async (directoryPath: string, depth: number) => {
-    if (depth > MAX_STAGED_SKILL_DEPTH) {
-      return false;
-    }
-    const entries = (
-      await fs.readdir(directoryPath, { withFileTypes: true })
-    ).sort(sortDirentsByName);
-    for (const entry of entries) {
-      const entryPath = path.join(directoryPath, entry.name);
-      const stat = await fs.lstat(entryPath);
-      parts.push(
-        [
-          path.relative(rootPath, entryPath),
-          stat.mode,
-          stat.size,
-          stat.ino,
-          stat.mtimeMs,
-          stat.ctimeMs,
-        ].join("\0"),
-      );
-      if (parts.length > MAX_STAGED_SKILL_FILES * 2) {
-        return false;
-      }
-      if (stat.isDirectory() && !(await visit(entryPath, depth + 1))) {
-        return false;
-      }
-    }
-    return true;
-  };
-  try {
-    const rootStat = await fs.lstat(rootPath);
-    parts.push([rootStat.mode, rootStat.ino, rootStat.mtimeMs].join("\0"));
-    if (!rootStat.isDirectory() || !(await visit(rootPath, 0))) {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-  return parts.join("\n");
-}
-
-function rememberCollectedTree(key: string, memo: CollectedTreeMemo): void {
+function rememberCollectedTree(
+  key: string,
+  tree: SkillTreeCollectionState,
+): void {
   collectedTreeMemos.delete(key);
-  collectedTreeMemos.set(key, memo);
+  collectedTreeMemos.set(key, tree);
   if (collectedTreeMemos.size > MAX_COLLECTED_TREE_MEMOS) {
     const oldestKey = collectedTreeMemos.keys().next().value;
     if (oldestKey !== undefined) {
@@ -406,16 +359,13 @@ function rememberCollectedTree(key: string, memo: CollectedTreeMemo): void {
   }
 }
 
-function recallCollectedTree(
-  key: string,
-  fingerprint: string,
-): SkillTreeCollectionState | null {
-  const memo = collectedTreeMemos.get(key);
-  if (memo === undefined || memo.fingerprint !== fingerprint) {
+function recallCollectedTree(key: string): SkillTreeCollectionState | null {
+  const tree = collectedTreeMemos.get(key);
+  if (tree === undefined) {
     return null;
   }
-  rememberCollectedTree(key, memo);
-  return memo.tree;
+  rememberCollectedTree(key, tree);
+  return tree;
 }
 
 function toCollectedSkillTree(
@@ -441,28 +391,6 @@ async function collectSkillTree(
       skillFilePath: args.skillFilePath,
     }),
   );
-}
-
-async function collectHostSkillTreeWithMemo(
-  source: Exclude<HostDaemonInjectedSkillSource, { kind: "tree" }>,
-): Promise<CollectedSkillTree> {
-  const key = `path\0${source.name}\0${source.sourceRootPath}\0${source.skillFilePath}`;
-  const fingerprint = await fingerprintSkillDirectory(source.sourceRootPath);
-  if (fingerprint !== null) {
-    const remembered = recallCollectedTree(key, fingerprint);
-    if (remembered !== null) {
-      return toCollectedSkillTree(source, remembered);
-    }
-  }
-  const tree = await collectSkillTree({
-    source,
-    sourceRootPath: source.sourceRootPath,
-    skillFilePath: source.skillFilePath,
-  });
-  if (fingerprint !== null) {
-    rememberCollectedTree(key, { fingerprint, tree });
-  }
-  return tree;
 }
 
 function storedTreeMemoKey(
@@ -1000,7 +928,7 @@ export async function stageInjectedSkillSources(
     for (const source of sortedSources) {
       if (source.kind === "tree") {
         const memoKey = storedTreeMemoKey(args.dataDir, source);
-        const remembered = recallCollectedTree(memoKey, "");
+        const remembered = recallCollectedTree(memoKey);
         if (remembered !== null) {
           trees.push(toCollectedSkillTree(source, remembered));
           continue;
@@ -1026,7 +954,7 @@ export async function stageInjectedSkillSources(
             sourceRootPath,
             skillFilePath,
           });
-          rememberCollectedTree(memoKey, { fingerprint: "", tree });
+          rememberCollectedTree(memoKey, tree);
           trees.push(tree);
         } catch (error) {
           logger.warn(
@@ -1046,7 +974,13 @@ export async function stageInjectedSkillSources(
         continue;
       }
       try {
-        trees.push(await collectHostSkillTreeWithMemo(source));
+        trees.push(
+          await collectSkillTree({
+            source,
+            sourceRootPath: source.sourceRootPath,
+            skillFilePath: source.skillFilePath,
+          }),
+        );
       } catch (error) {
         logger.warn(
           {
