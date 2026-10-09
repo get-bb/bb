@@ -9,7 +9,6 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { preloadThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 
@@ -21,6 +20,12 @@ interface WindowRightPanelRegistration {
 const windowRightPanelRegistrationsAtom = atom<
   readonly WindowRightPanelRegistration[]
 >([]);
+
+function preloadRightPanel(): void {
+  void import("@/components/secondary-panel/lazySecondaryPanelComponents")
+    .then((module) => module.preloadThreadSecondaryPanel())
+    .catch(() => undefined);
+}
 
 export function useWindowTitleBarHostsRightPanelToggle(): boolean {
   return useIsSidebarFramed();
@@ -68,9 +73,9 @@ export function WindowRightPanelToggle({ className }: { className?: string }) {
         aria-label={shortcut ? `${label} (${shortcut.label})` : label}
         aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
         aria-expanded={panel.isOpen}
-        onPointerEnter={preloadThreadSecondaryPanel}
-        onFocus={preloadThreadSecondaryPanel}
-        onPointerDown={preloadThreadSecondaryPanel}
+        onPointerEnter={preloadRightPanel}
+        onFocus={preloadRightPanel}
+        onPointerDown={preloadRightPanel}
         onClick={() => dispatch("panel.toggle", null)}
       >
         <Icon name={RIGHT_PANEL_TOGGLE_ICON_NAME} />
