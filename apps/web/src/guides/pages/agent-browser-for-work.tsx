@@ -154,10 +154,10 @@ export const guide: Guide = {
       question: "Will it buy things or send messages for me?",
       answer: (
         <p>
-          The prompt from <strong>Copy for agent</strong> tells it to stop and
-          ask before buying, sending, or submitting anything. That's an
-          instruction, not a lock, so watch the tab and choose{" "}
-          <strong>Stop</strong> if anything looks wrong.
+          Not unless you ask. The prompt tells it to stop and ask first, and for
+          a hard stop, choose <strong>Accept Edits</strong> in the permission
+          menu below the message box. Your agent then needs your OK before it
+          acts in the browser.
         </p>
       ),
     },
