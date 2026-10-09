@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSetAtom } from "jotai";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -325,13 +325,21 @@ export function ThreadActionsProvider({
     [unarchiveMutate],
   );
 
+  const { mutateAsync: archiveEnvironmentMutateAsync } = useMutation({
+    meta: { lifecycleOperation: "archive_thread", showErrorToast: false },
+    mutationFn: (environmentId: string) =>
+      getPluginBoundSdk(
+        sdk,
+        "thread-list",
+        queryClient,
+      ).environments.archiveThreads({ environmentId }),
+  });
+
   const archiveEnvironmentThreads = useCallback(
     async (environmentId: string) => {
       const browserSdk = getPluginBoundSdk(sdk, "thread-list", queryClient);
       try {
-        const response = await browserSdk.environments.archiveThreads({
-          environmentId,
-        });
+        const response = await archiveEnvironmentMutateAsync(environmentId);
         if (response.archivedThreadIds.length === 0) return;
         const displacedThreadId = viewedThreadIdRef.current;
         const displaced =
@@ -391,7 +399,13 @@ export function ThreadActionsProvider({
         throw error;
       }
     },
-    [queryClient, closePanesForThreads, syncNavigationAfterClose, navigate],
+    [
+      archiveEnvironmentMutateAsync,
+      queryClient,
+      closePanesForThreads,
+      syncNavigationAfterClose,
+      navigate,
+    ],
   );
 
   const performArchive = useCallback(
