@@ -257,15 +257,15 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     isFetching: mocks.pendingInteractionsIsFetching,
     isLoading: mocks.pendingInteractionsIsLoading,
   }),
-  getLatestPendingInteraction: (
+  orderPendingInteractions: (
     interactions: readonly { createdAt: number }[] | undefined,
-  ) => (interactions && interactions.length > 0 ? interactions[0] : null),
+  ) => interactions ?? [],
 }));
 
 vi.mock(
   "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
   () => ({
-    ThreadPendingInteractionBanner: ({ threadId }: { threadId: string }) => (
+    ThreadPendingInteractionBanners: ({ threadId }: { threadId: string }) => (
       <div data-testid="pending-interaction-banner">{threadId}</div>
     ),
   }),

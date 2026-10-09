@@ -36,6 +36,10 @@ import {
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
 import {
+  useWindowRightPanel,
+  useWindowTitleBarHostsRightPanelToggle,
+} from "@/components/layout/WindowRightPanelToggle";
+import {
   getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
@@ -146,6 +150,9 @@ export function SplitWorkspaceSecondaryPanelHost({
     toggleWindowPanel();
     return true;
   });
+  useWindowRightPanel({ isOpen, enabled: model === null });
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
 
   const setPanelWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
   const lastEmptyPanelSizeRef = useRef(0);
@@ -177,7 +184,10 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   const toggleLabel = isOpen ? "Hide right panel" : "Show right panel";
   const toggleIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
-  const showsCornerToggle = !isPaneMaximized && !(isOpen && model !== null);
+  const showsCornerToggle =
+    !titleBarHostsRightPanelToggle &&
+    !isPaneMaximized &&
+    !(isOpen && model !== null);
   const pinsCornerToggle = showsCornerToggle && !isOpen;
   const hostLayout = useMemo<SecondaryPanelHostLayout>(
     () => ({ isOpen, isSuppressed: isPaneMaximized, pinsCornerToggle }),

@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
   connectAccessUrl,
   defaultSelectedRepoPaths,
-  hasNoUsableAgent,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
@@ -261,16 +260,10 @@ describe("resolveSignInCommand", () => {
 });
 
 describe("agent readiness summaries", () => {
-  it("only reports no usable agent when every agent is definitely unusable", () => {
+  it("reports readiness only when an agent is ready", () => {
     const signedOut = health({ status: "unauthenticated" });
-    const missing = health({ providerId: "codex", status: "not_installed" });
     const unknown = health({ providerId: "pi", status: "unknown" });
 
-    expect(hasNoUsableAgent([signedOut, missing])).toBe(true);
-    expect(hasNoUsableAgent([signedOut, unknown])).toBe(false);
-    expect(hasNoUsableAgent([signedOut, health()])).toBe(false);
-    expect(hasNoUsableAgent([])).toBe(false);
-    expect(hasNoUsableAgent(undefined)).toBe(false);
     expect(hasReadyAgent([signedOut, health()])).toBe(true);
     expect(hasReadyAgent([signedOut, unknown])).toBe(false);
     expect(hasReadyAgent(undefined)).toBe(false);

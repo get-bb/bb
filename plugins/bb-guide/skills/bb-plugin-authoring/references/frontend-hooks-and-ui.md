@@ -12,10 +12,11 @@ Hooks:
   origin and the plugin-metadata calls default `pluginId`, exactly like the
   backend client. Thread title, section, and parent updates are optimistic in
   bb's own surfaces, and synchronous calls are applied in one cache transaction;
-  other writes refresh over realtime. Use
-  `experimental_useSidebarThreadActions()` for optimistic pin, read state,
-  rename, and archive actions. The client is stable, so it is safe in dependency
-  lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
+  other writes refresh over realtime, and pin, unpin, mark read, and mark
+  unread are optimistic too. For bb's archive and delete flows (child
+  confirmation, pane cleanup, Undo) render bb's thread menu or run its
+  thread actions; see "An action in every thread menu". The client is stable,
+  so it is safe in dependency lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
 } } })` and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.

@@ -53,6 +53,7 @@ vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
 vi.mock("@/components/ui/sidebar.js", () => ({
   useOptionalIsSidebarShowing: () => true,
   useSidebarKeepsCollapsedRail: () => false,
+  useIsSidebarFramed: () => false,
 }));
 
 const { useThreadsMock } = vi.hoisted(() => ({

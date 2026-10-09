@@ -13,9 +13,17 @@
       ],
       "@get-bb/plugin-sdk/app": [
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
-      ]
+      ],
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/components/ui/question-form-host": [
+        "../../packages/plugin-registry/flavors/components/ui/question-form-host.tsx"
+      ],
+      "@/*": ["../../packages/shared-ui/src/*"]
     },
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react-jsx"
   },
-  "include": ["server.ts", "src", "vitest.config.ts"]
+  "include": ["server.ts", "app.tsx", "src", "vitest.config.ts"]
 }

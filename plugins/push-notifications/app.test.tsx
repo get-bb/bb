@@ -1,82 +1,20 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { useLayoutEffect } from "react";
+import type {
+  PluginThreadAction,
+  PluginThreadActionTarget,
+} from "@get-bb/plugin-sdk/app";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { pushNotificationsRpcContract } from "./contract.js";
+import type { ThreadNotificationInputs } from "./preferences.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  window.localStorage.clear();
 });
-
-function thread(status: PluginSidebarThread["status"]): PluginSidebarThread {
-  return {
-    id: "thr_running",
-    projectId: "project-one",
-    title: "Fix the build",
-    titleFallback: null,
-    displayTitle: "Fix the build",
-    parentThreadId: null,
-    lifecycleOwnerThreadId: null,
-    sourceThreadId: null,
-    sectionId: null,
-    originKind: null,
-    originPluginId: null,
-    providerId: "codex",
-    status,
-    runtimeStatus: status,
-    queuedWork: "none",
-    hasPendingInteraction: false,
-    activity: {
-      workflows: 0,
-      backgroundAgents: 0,
-      backgroundCommands: 0,
-      planMode: 0,
-      goals: 0,
-    },
-    indicator: "none",
-    indicatorLabel: null,
-    isUnread: false,
-    isPinned: false,
-    pinnedAt: null,
-    pinSortKey: null,
-    isArchived: false,
-    archivedAt: null,
-    href: "/projects/project-one/threads/thr_running",
-    isHidden: false,
-    environment: null,
-    host: { id: "host-1", name: "Laptop" },
-    createdAt: 1,
-    updatedAt: 1,
-    lastReadAt: 1,
-    latestAttentionAt: 1,
-  };
-}
-
-function renderPrompt(
-  status: PluginSidebarThread["status"],
-  recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
-    ok: true as const,
-  })),
-) {
-  const overlay = app.appOverlays.find((entry) => entry.id === "prompt");
-  if (overlay === undefined) throw new Error("missing prompt overlay");
-  return renderSlot(
-    overlay,
-    {},
-    {
-      pluginId: "push-notifications",
-      settings: { webEnabled: true },
-      context: { projectId: "project-one", threadId: "thr_running" },
-      sidebarThreads: { status: "ready", threads: [thread(status)] },
-      sdk: {
-        system: { experimental_recordTelemetryEvent: recordTelemetryEvent },
-      },
-    },
-  );
-}
 
 describe("device notification settings", () => {
   it("requests permission only on a click and uses the server test route", async () => {
@@ -120,93 +58,281 @@ describe("device notification settings", () => {
   });
 });
 
-describe("running thread notification prompt", () => {
-  it("asks while the open thread runs and requests permission only on a click", async () => {
-    const requestPermission = vi.fn(async () => "granted");
-    vi.stubGlobal("Notification", { permission: "default", requestPermission });
-    vi.stubGlobal("isSecureContext", true);
-    const recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
-      ok: true as const,
-    }));
+const { useBbNavigate, useSdk } = await import("@get-bb/plugin-sdk/app");
+const { notificationsThreadAction } = await import("./notificationsAction.js");
 
-    const view = renderPrompt("active", recordTelemetryEvent);
+function makeTarget(
+  overrides: Partial<PluginThreadActionTarget> = {},
+): PluginThreadActionTarget {
+  return {
+    id: "thr_top",
+    projectId: "proj_test",
+    parentThreadId: null,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: null,
+    isUnread: false,
+    status: "idle",
+    environment: null,
+    ...overrides,
+  };
+}
 
-    expect(
-      await view.findByText("Get notified when this agent needs you?"),
-    ).toBeTruthy();
-    expect(requestPermission).not.toHaveBeenCalled();
-    fireEvent.click(view.getByRole("button", { name: "Turn on" }));
-    await waitFor(() =>
-      expect(recordTelemetryEvent.mock.calls.map(([event]) => event)).toEqual([
-        {
-          name: "notification_prompt_shown",
-          properties: { surface: "thread" },
-        },
-        {
-          name: "notification_prompt_accepted",
-          properties: { surface: "thread" },
-        },
-      ]),
+type ItemFor = (thread: PluginThreadActionTarget) => PluginThreadAction | null;
+
+function Probe({
+  threadIds,
+  onItem,
+}: {
+  threadIds: readonly string[];
+  onItem(item: ItemFor): void;
+}) {
+  const data = notificationsThreadAction.useData!({ threadIds });
+  const sdk = useSdk();
+  const navigate = useBbNavigate();
+  useLayoutEffect(() => {
+    onItem((thread) =>
+      notificationsThreadAction.item({ thread, data, sdk, navigate }),
     );
-    expect(requestPermission).toHaveBeenCalledTimes(1);
-    expect(view.queryByRole("dialog")).toBeNull();
   });
+  return null;
+}
 
-  it("stays hidden for idle threads", () => {
-    vi.stubGlobal("Notification", {
-      permission: "default",
-      requestPermission: vi.fn(),
-    });
-    vi.stubGlobal("isSecureContext", true);
-
-    const view = renderPrompt("idle");
-
-    expect(view.queryByRole("dialog")).toBeNull();
-  });
-
-  it("does not ask again after Not now", async () => {
-    const requestPermission = vi.fn();
-    vi.stubGlobal("Notification", { permission: "default", requestPermission });
-    vi.stubGlobal("isSecureContext", true);
-
-    const first = renderPrompt("active");
-    fireEvent.click(await first.findByRole("button", { name: "Not now" }));
-    expect(first.queryByRole("dialog")).toBeNull();
-    cleanup();
-
-    const second = renderPrompt("active");
-    expect(second.queryByRole("dialog")).toBeNull();
-    expect(requestPermission).not.toHaveBeenCalled();
-  });
-
-  it("stops asking once permission was decided after the overlay mounted", () => {
-    const reads: NotificationPermission[] = ["default"];
-    vi.stubGlobal("Notification", {
-      get permission() {
-        return reads.shift() ?? "granted";
+function renderNotifications(
+  stored: Record<string, ThreadNotificationInputs>,
+  threadIds: readonly string[],
+) {
+  let itemFor: ItemFor | null = null;
+  const onItem = (next: ItemFor) => {
+    itemFor = next;
+  };
+  let current = stored;
+  const listInput =
+    pushNotificationsRpcContract["threadNotifications.list"].input;
+  const view = renderSlot(
+    { component: Probe },
+    { threadIds, onItem },
+    {
+      settings: { defaultLevel: "all", childLevel: "input-only" },
+      rpc: {
+        "threadNotifications.list": (input) => ({
+          threads: Object.fromEntries(
+            listInput
+              .parse(input)
+              .threadIds.flatMap((id) =>
+                current[id] === undefined ? [] : [[id, current[id]]],
+              ),
+          ),
+        }),
+        "threadNotifications.set": (input) => ({
+          own: pushNotificationsRpcContract[
+            "threadNotifications.set"
+          ].input.parse(input).level,
+          ancestorCap: null,
+        }),
       },
-      requestPermission: vi.fn(),
+    },
+  );
+  const item = (overrides: Partial<PluginThreadActionTarget> = {}) =>
+    itemFor?.(makeTarget(overrides)) ?? null;
+  const summary = (overrides: Partial<PluginThreadActionTarget> = {}) => {
+    const action = item(overrides);
+    return action === null
+      ? null
+      : {
+          detail: action.detail ?? null,
+          icon: action.icon,
+          inheritLabel:
+            action.choices?.items.find((choice) => choice.id === "inherit")
+              ?.label ?? null,
+          hint: action.choices?.hint ?? null,
+          selected:
+            action.choices?.items.find((choice) => choice.selected)?.id ?? null,
+        };
+  };
+  return {
+    view,
+    item,
+    summary,
+    show(ids: readonly string[]) {
+      view.rerender(<Probe threadIds={ids} onItem={onItem} />);
+    },
+    listCalls: () =>
+      view.inspection.rpcCalls
+        .filter((call) => call.method === "threadNotifications.list")
+        .map((call) => call.input),
+    restore(next: Record<string, ThreadNotificationInputs>) {
+      current = next;
+    },
+  };
+}
+
+describe("thread notifications action", () => {
+  it("resolves each shown thread's level and hint", async () => {
+    const { summary, listCalls } = renderNotifications(
+      {
+        thr_top: { own: "muted", ancestorCap: null },
+        thr_child: {
+          own: "inherit",
+          ancestorCap: { level: "muted", threadId: "thr_top" },
+        },
+        thr_grandchild: {
+          own: "inherit",
+          ancestorCap: { level: "muted", threadId: "thr_top" },
+        },
+      },
+      ["thr_child", "thr_grandchild", "thr_new", "thr_other", "thr_top"],
+    );
+    await waitFor(() => expect(summary()?.selected).toBe("muted"));
+    expect(summary()).toEqual({
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (All activity)",
+      hint: null,
+      selected: "muted",
     });
-    vi.stubGlobal("isSecureContext", true);
-    const recordTelemetryEvent = vi.fn(async (_event: unknown) => ({
-      ok: true as const,
-    }));
-
-    const view = renderPrompt("active", recordTelemetryEvent);
-
-    expect(view.queryByRole("dialog")).toBeNull();
-    expect(recordTelemetryEvent).not.toHaveBeenCalled();
+    expect(summary({ id: "thr_child", parentThreadId: "thr_top" })).toEqual({
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (Needs input only)",
+      hint: "Limited by a parent thread",
+      selected: "inherit",
+    });
+    expect(
+      summary({ id: "thr_grandchild", parentThreadId: "thr_child" }),
+    ).toEqual({
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (Needs input only)",
+      hint: "Limited by an ancestor thread",
+      selected: "inherit",
+    });
+    expect(summary({ id: "thr_other", parentThreadId: "thr_top" })).toEqual({
+      detail: "Needs input only",
+      icon: "BellDot",
+      inheritLabel: "Default (Needs input only)",
+      hint: null,
+      selected: "inherit",
+    });
+    expect(summary({ id: "thr_new" })).toEqual({
+      detail: "All activity",
+      icon: "push-notifications/ringing",
+      inheritLabel: "Default (All activity)",
+      hint: null,
+      selected: "inherit",
+    });
+    expect(summary({ id: "thr_unshown" })).toEqual({
+      detail: "All activity",
+      icon: "push-notifications/ringing",
+      inheritLabel: "Default (All activity)",
+      hint: null,
+      selected: "inherit",
+    });
+    expect(summary({ archivedAt: 1 })).toBeNull();
+    expect(listCalls()).toEqual([
+      {
+        threadIds: [
+          "thr_child",
+          "thr_grandchild",
+          "thr_new",
+          "thr_other",
+          "thr_top",
+        ],
+      },
+    ]);
   });
 
-  it("never asks once the browser already denied permission", () => {
-    vi.stubGlobal("Notification", {
-      permission: "denied",
-      requestPermission: vi.fn(),
+  it("fetches only ids it has not loaded, once each, and none for an empty list", async () => {
+    const { show, listCalls } = renderNotifications({}, []);
+    await act(async () => {});
+    expect(listCalls()).toEqual([]);
+    show(["thr_a", "thr_b"]);
+    await waitFor(() => expect(listCalls()).toHaveLength(1));
+    show(["thr_a", "thr_b", "thr_c"]);
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
+    show(["thr_a"]);
+    show(["thr_a", "thr_b", "thr_c"]);
+    await act(async () => {});
+    const many = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
+    show(many);
+    await waitFor(() => expect(listCalls()).toHaveLength(4));
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_a", "thr_b"] },
+      { threadIds: ["thr_c"] },
+      { threadIds: many.slice(0, 200) },
+      { threadIds: many.slice(200) },
+    ]);
+  });
+
+  it("shows an unarchived thread's stored level without a reload", async () => {
+    const { show, summary } = renderNotifications(
+      { thr_top: { own: "muted", ancestorCap: null } },
+      [],
+    );
+    expect(summary({ archivedAt: 1 })).toBeNull();
+    show(["thr_top"]);
+    await waitFor(() => expect(summary()?.selected).toBe("muted"));
+  });
+
+  it("applies its own write, realtime updates, and a reload after reconnecting", async () => {
+    const { view, item, summary, restore, listCalls } = renderNotifications(
+      {},
+      ["thr_top"],
+    );
+    await waitFor(() => expect(summary()?.selected).toBe("inherit"));
+
+    await act(() => item()!.run({ value: "muted", requestRename: () => {} }));
+    expect(view.inspection.rpcCalls.at(-1)).toEqual({
+      method: "threadNotifications.set",
+      input: { threadId: "thr_top", level: "muted" },
     });
-    vi.stubGlobal("isSecureContext", true);
+    expect(summary()?.selected).toBe("muted");
 
-    const view = renderPrompt("active");
+    await view.behavior.emitRealtime("threadNotifications", {
+      threadId: "thr_top",
+      notifications: null,
+    });
+    expect(summary()?.selected).toBe("inherit");
 
-    expect(view.queryByRole("dialog")).toBeNull();
+    restore({ thr_top: { own: "all", ancestorCap: null } });
+    await view.behavior.setRealtimeConnectionState("reconnecting");
+    await view.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(summary()?.selected).toBe("all"));
+    expect(listCalls()).toHaveLength(2);
+  });
+
+  it("refetches threads that were off screen during a reconnect when they return", async () => {
+    const { view, show, summary, restore, listCalls } = renderNotifications(
+      {
+        thr_a: { own: "muted", ancestorCap: null },
+        thr_b: { own: "muted", ancestorCap: null },
+        thr_c: { own: "muted", ancestorCap: null },
+      },
+      ["thr_a", "thr_b", "thr_c"],
+    );
+    await waitFor(() =>
+      expect(summary({ id: "thr_c" })?.selected).toBe("muted"),
+    );
+    show(["thr_a"]);
+
+    restore({
+      thr_a: { own: "muted", ancestorCap: null },
+      thr_b: { own: "all", ancestorCap: null },
+    });
+    await view.behavior.setRealtimeConnectionState("reconnecting");
+    await view.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
+
+    show(["thr_a", "thr_b", "thr_c"]);
+    await waitFor(() =>
+      expect(summary({ id: "thr_b" })?.selected).toBe("all"),
+    );
+    expect(summary({ id: "thr_c" })?.selected).toBe("inherit");
+    expect(summary({ id: "thr_a" })?.selected).toBe("muted");
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_a", "thr_b", "thr_c"] },
+      { threadIds: ["thr_a"] },
+      { threadIds: ["thr_b", "thr_c"] },
+    ]);
   });
 });

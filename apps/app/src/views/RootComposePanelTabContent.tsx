@@ -14,6 +14,7 @@ import {
   LazyNewTabPage,
   LazyProjectFilePreviewTabContent,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -162,6 +163,16 @@ export function RootComposePanelTabContent({
   switch (tab.kind) {
     case "browser":
       return null;
+    case "attachment-file-preview":
+      return (
+        <LazyAttachmentFilePreviewTabContent
+          isPanelOpen={isPanelOpen}
+          name={tab.name}
+          onSelectionAddToChat={onSelectionAddToChat}
+          path={tab.path}
+          projectId={tab.projectId}
+        />
+      );
     case "terminal":
       return terminalTarget === null ? null : (
         <LazyThreadTerminalPanel

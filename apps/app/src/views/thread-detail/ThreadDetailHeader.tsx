@@ -26,20 +26,25 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useSidebarRename } from "@/components/sidebar/SidebarInlineRename";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
+import { useDefaultRequestRename } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
   CONTEXT_SELECTION_SURFACE_CLASS,
-} from "@/components/ui/context-selection";
+} from "@bb/shared-ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import type { ThreadHeaderGitAction } from "./useThreadGitActions";
@@ -50,8 +55,14 @@ const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
 );
 const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 
+export interface ThreadDetailHeaderActionsMenuArgs {
+  includeResponsiveActions: boolean;
+  requestRename: (threadId: string) => void;
+  onCloseAutoFocus: (event: Event) => void;
+}
+
 interface ThreadDetailHeaderProps {
-  actionsMenu: ((includeResponsiveActions: boolean) => ReactNode) | null;
+  actionsMenu: ((args: ThreadDetailHeaderActionsMenuArgs) => ReactNode) | null;
   childPillLabel: "child" | null;
   isSecondaryPanelOpen: boolean;
   onClosePane?: () => void;
@@ -91,6 +102,22 @@ export function ThreadDetailHeader({
     label: "Thread name",
     onSave: handleRename,
   });
+  const requestRenameDialog = useDefaultRequestRename();
+  const pendingMenuRename = useRef(false);
+  const requestRename = (id: string) => {
+    if (isCompactViewport) requestRenameDialog(id);
+    else startEditing();
+  };
+  const requestRenameFromMenu = (id: string) => {
+    if (isCompactViewport) requestRenameDialog(id);
+    else pendingMenuRename.current = true;
+  };
+  const handleActionsMenuCloseAutoFocus = (event: Event) => {
+    if (!pendingMenuRename.current) return;
+    pendingMenuRename.current = false;
+    event.preventDefault();
+    startEditing();
+  };
   const [desktopInfo] = useState(getBbDesktopInfo);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const panelShortcut = useAppCommandShortcut("panel.toggle");
@@ -104,6 +131,11 @@ export function ThreadDetailHeader({
     reservesWindowPanelToggle,
     secondaryPanelHost,
   } = usePaneContext();
+  useAppCommandHandler("thread.rename", () => {
+    if (!isFocused) return false;
+    requestRename(threadId);
+    return true;
+  });
   const isWindowPanelOpen =
     useContext(SecondaryPanelHostLayoutContext)?.isOpen === true;
   const isSplitPaneHeader = beginPaneDrag !== undefined;
@@ -150,8 +182,12 @@ export function ThreadDetailHeader({
     ? "Hide right panel"
     : "Show right panel";
   const rightPanelIconName = RIGHT_PANEL_TOGGLE_ICON_NAME;
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
   const showRightPanelToggle =
-    secondaryPanelHost === null && (!isSecondaryPanelOpen || isCompactViewport);
+    !titleBarHostsRightPanelToggle &&
+    secondaryPanelHost === null &&
+    (!isSecondaryPanelOpen || isCompactViewport);
 
   const center = (
     <>
@@ -194,7 +230,11 @@ export function ThreadDetailHeader({
             usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
           )}
         >
-          {actionsMenu(usesResponsiveActionOverflow)}
+          {actionsMenu({
+            includeResponsiveActions: usesResponsiveActionOverflow,
+            requestRename: requestRenameFromMenu,
+            onCloseAutoFocus: handleActionsMenuCloseAutoFocus,
+          })}
         </span>
       )}
     </>
@@ -287,7 +327,9 @@ export function ThreadDetailHeader({
             </Button>
           </span>
         ) : null}
-        {reservesWindowPanelToggle && !isWindowPanelOpen ? (
+        {reservesWindowPanelToggle &&
+        !isWindowPanelOpen &&
+        !titleBarHostsRightPanelToggle ? (
           <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
         ) : null}
       </div>

@@ -315,7 +315,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -420,8 +431,7 @@ A new install opens a first-run setup guide (connect an agent, add projects,
 pick plugins, set up devices). `onboardingCompletedAt` in general settings
 records when it was finished or skipped; `bb settings replay-onboarding`, or
 Settings → General → Setup guide, clears it so the guide shows again.
-`setupChecklistVisible` controls the "Finish setting up bb" home-screen
-checklist. The projects step lists what `bb project discover` and
+The projects step lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
@@ -1051,12 +1061,6 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
 | `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
 | `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
 | `sidebar.footerOrder`                | Footer action order                                                                       |
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
 | `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
@@ -1203,15 +1207,22 @@ leaves only the actions menu. Done, Escape, or a click elsewhere finishes;
 each change saves immediately.
 Archived rows keep their unarchive button regardless of this setting.
 
-The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
-`archive`, in display order. Duplicates are deduplicated. `split` is skipped
-where a split is unavailable, and `move` is skipped for threads that cannot
-move to another section. `move` opens a menu of sections.
+The Thread list plugin's `rowActions` preference stores up to three thread
+action keys in display order and defaults to `["bb--core/archive"]`. bb's
+keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
+`bb--core/copyLink`, `bb--core/read`, `bb--core/pin`, `bb--core/rename`,
+`bb--core/archive`, and `bb--core/delete`; the thread list's own Move to
+section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
+Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
+accepted and migrate to their current keys. Duplicates are deduplicated. A key
+whose action is hidden for a row (`bb--core/split` for the thread in view,
+`thread-list/move` for a thread that cannot move) or whose plugin is not
+installed is skipped on that row. `bb--core/split` reads Focus split for a
+thread open in another split pane. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '["bb--core/pin","bb--core/copyLink","bb--core/archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```
@@ -2072,8 +2083,8 @@ version: `app_started`, `telemetry_disabled`, `thread_created`,
 through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordTelemetryEvent`):
 `onboarding_started` (whether an agent was installed or ready at first launch),
 `onboarding_step_reached`, `onboarding_step_completed`, and
-`onboarding_step_skipped` (per first-run step), `onboarding_finished` (completed
-or skipped), `setup_checklist_item_completed`, `setup_checklist_dismissed`, and
+`onboarding_step_skipped` (per setup-guide step, marked first run or replay),
+`onboarding_finished` (completed or skipped), and the sidebar notification card's
 `notification_prompt_shown`, `notification_prompt_accepted`,
 `notification_prompt_dismissed`, and `notification_prompt_denied`, plus
 `tip_shown` (once per tip per visit to the New thread page) and `tip_used` (on

@@ -6,7 +6,7 @@ Learn what bb can do from a small feed under the composer. Tips shows three shor
 - Hover or focus a prompt tip to preview its prompt in the empty composer; click it to fill the composer and put the cursor at the end. Anything you had already typed moves into the prompt's "Task:" slot.
 - Setup tips open the right page or command, such as Account Pooler's settings. Tips for features that take a few steps, like connecting the mobile app or turning on bb connect, fill the composer with a prompt asking the agent to walk you through it.
 - "Hide tips" turns tips off in one click, with Undo. Turn them back on with the Show tips switch in the plugin settings.
-- No tips on phones or in compact layouts, and none until bb's setup checklist is finished or dismissed.
+- No tips on phones or in compact layouts, and none until bb's setup guide is finished or skipped and you have started a thread.
 
 ## How it works
 

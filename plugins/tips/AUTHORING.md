@@ -15,8 +15,8 @@ oldest. The engine works through every eligible tip in ranked order (by
 left out of the next
 visit and comes back only after the rest of the library has been shown. A tip
 retires for good when `retireWhen` turns true or the person dismisses it.
-Held and expired tips never show. No tips show until bb's setup checklist is
-finished or dismissed.
+Held and expired tips never show. No tips show until bb's setup guide is
+finished or skipped and a first thread exists.
 
 ## Fields
 

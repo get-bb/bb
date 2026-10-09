@@ -66,7 +66,7 @@ export function serializedTextForPromptMentionResource(
   if (resource.kind === "command") {
     return `${resource.trigger}${resource.name}`;
   }
-  if (resource.kind === "plugin") {
+  if (resource.kind === "plugin" || resource.kind === "attachment") {
     return `@${resource.label}`;
   }
 

@@ -19,6 +19,7 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
+import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
@@ -27,9 +28,13 @@ import {
   usePluginSidebarFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import {
+  SidebarNotificationsCard,
+  useSidebarNotificationsPrompt,
+} from "./SidebarNotificationsPrompt";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
-import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
@@ -76,7 +81,9 @@ export function AppSidebar({
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isCompactViewport, openMobile } = useSidebar();
+  const { isCompactViewport, open, openMobile } = useSidebar();
+  const isThreadListVisible =
+    !isBodyHidden && (isCompactViewport ? openMobile : open);
   const [isFooterCustomizing, setFooterCustomizing] = useState(false);
   const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
@@ -91,6 +98,7 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
+  const notificationsPrompt = useSidebarNotificationsPrompt();
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -205,10 +213,12 @@ export function AppSidebar({
         }
       />
       <SidebarContent>
-        <PluginThreadList
-          replacement={threadListReplacement}
-          onNavigate={closeOnMobile}
-        />
+        <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
+          <PluginThreadList
+            replacement={threadListReplacement}
+            onNavigate={closeOnMobile}
+          />
+        </ThreadActionSurfaceVisibility>
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
@@ -226,6 +236,10 @@ export function AppSidebar({
             item={pluginSidebarFooter.activeItem}
             onDismiss={pluginSidebarFooter.dismiss}
           />
+        )}
+        {isFooterCustomizing ||
+        pluginSidebarFooter.activeItem !== null ? null : (
+          <SidebarNotificationsCard prompt={notificationsPrompt} />
         )}
         <SidebarMenu
           className={cn(

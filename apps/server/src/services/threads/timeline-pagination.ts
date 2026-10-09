@@ -114,7 +114,11 @@ function timelineRowChangesFrom(
       children: timelineRowsChangedFrom(row.children, sequence),
     };
   }
-  if (row.kind === "work" && row.workKind === "delegation") {
+  if (
+    row.kind === "work" &&
+    row.workKind === "delegation" &&
+    row.childRows !== null
+  ) {
     return {
       ...row,
       childRows: timelineRowsChangedFrom(row.childRows, sequence),

@@ -1,3 +1,10 @@
+import {
+  retryAvailabilityContract,
+  retryAvailabilityMethod,
+  type RetryAvailability,
+} from "./retry-contract.js";
+import { modelFamily } from "./quota.js";
+import { modelFamilySchema } from "./contracts.js";
 import { registerUsageSource } from "./usage-source.js";
 import {
   createUpstreamTransport,
@@ -88,9 +95,9 @@ export function createAccountPoolPlugin(
   options: AccountPoolPluginOptions = {},
 ) {
   return async function accountPoolPlugin(bb: BbPluginApi): Promise<void> {
-    const storedConfig = z.record(z.string(), z.unknown()).parse(
-      (await bb.storage.kv.get("config")) ?? {},
-    );
+    const storedConfig = z
+      .record(z.string(), z.unknown())
+      .parse((await bb.storage.kv.get("config")) ?? {});
     const hasRemovedSettings =
       "cacheMissDebug" in storedConfig || "cacheMissMinTokens" in storedConfig;
     delete storedConfig.cacheMissDebug;
@@ -231,6 +238,42 @@ export function createAccountPoolPlugin(
         "Add and enable a Claude or Codex account with `bb pool account add`.",
       );
     }
+    const routedProviderSchema = z.enum(["claude", "codex"]);
+    const failedRequestSchema = z.object({
+      requestId: z.string(),
+      execution: z.object({ model: z.string() }),
+    });
+    const retryAvailability = async (input: {
+      threadId: string;
+      requestId: string;
+    }): Promise<RetryAvailability> => {
+      const provider = routedProviderSchema.safeParse(
+        await bb.storage.kv.get(`retry-route:${input.threadId}`),
+      );
+      if (!provider.success) return { kind: "not-routed" };
+      const events = await bb.sdk.threads.events.list({
+        threadId: input.threadId,
+        types: ["client/turn/requested"],
+        order: "desc",
+        limit: "1",
+      });
+      const request = failedRequestSchema.safeParse(events[0]?.data);
+      if (!request.success || request.data.requestId !== input.requestId)
+        return { kind: "unavailable", reason: "source-unavailable" };
+      return hub.retryAvailability(
+        provider.data,
+        modelFamily(request.data.execution.model),
+      );
+    };
+    bb.rpc.register(
+      retryAvailabilityContract,
+      { [retryAvailabilityMethod]: retryAvailability },
+      {
+        experimental_discoverable: true,
+        experimental_description:
+          "Account Pooler retry availability for routed failed turns.",
+      },
+    );
     registerUsageSource(bb, hub);
     bb.rpc.register(
       accountPoolRpcContract,
@@ -271,12 +314,14 @@ export function createAccountPoolPlugin(
       async (context: { threadId: string; hostId: string }) => {
         const bypassed = await routing.isBypassed(context.threadId);
         if (!bypassed && (await canServe(provider))) {
+          await bb.storage.kv.set(`retry-route:${context.threadId}`, provider);
           const token = await hubTokens.forHost(context.hostId);
           if (provider === "claude") {
             await routing.recordRouted(context.threadId, context.hostId);
           }
           return [...(await serving(token)), ...markerEntries(token)];
         }
+        await bb.storage.kv.delete(`retry-route:${context.threadId}`);
         return parentPool === null ? [] : neutralized(provider);
       };
     const subscriptionCacheEntries = async (): Promise<PoolEnvEntry[]> =>
@@ -417,6 +462,24 @@ export function createAccountPoolPlugin(
             claude: await canServe("claude"),
             codex: await canServe("codex"),
           }),
+        );
+      },
+      { auth: "none" },
+    );
+    bb.http.route(
+      "GET",
+      "/retry-availability",
+      async (context) => {
+        if ((await hub.authenticate(context.req.raw)) === null)
+          return new Response(null, { status: 401 });
+        const query = z
+          .object({ provider: routedProviderSchema, family: modelFamilySchema })
+          .safeParse(
+            Object.fromEntries(new URL(context.req.raw.url).searchParams),
+          );
+        if (!query.success) return new Response(null, { status: 400 });
+        return Response.json(
+          await hub.retryAvailability(query.data.provider, query.data.family),
         );
       },
       { auth: "none" },

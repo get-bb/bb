@@ -53,6 +53,7 @@ import {
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
 } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -739,6 +740,20 @@ describe("public thread data routes", () => {
         "Third question",
         "Third question — answered.",
       ]);
+      for (const role of ["user", "assistant"] as const) {
+        const roleResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/conversation-outline?role=${role}`,
+        );
+        expect(roleResponse.status).toBe(200);
+        expect(
+          threadConversationOutlineResponseSchema.parse(
+            await readJson(roleResponse),
+          ),
+        ).toEqual({
+          items: outline.items.filter((item) => item.role === role),
+          maxSeq: outline.maxSeq,
+        });
+      }
 
       const outlineIds = new Set(outline.items.map((item) => item.id));
       for (const id of windowedConversationIds) {
@@ -1059,6 +1074,13 @@ describe("public thread data routes", () => {
         imageUrls: [],
         localImagePaths: [],
         localFilePaths: [uploaded.path],
+        localFileDetails: [
+          {
+            path: uploaded.path,
+            name: uploaded.name,
+            sizeBytes: uploaded.sizeBytes,
+          },
+        ],
       });
     });
   });
@@ -1840,7 +1862,7 @@ describe("public thread data routes", () => {
       }
 
       const detailsResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}`,
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${parentTurnRow.turnId}&sourceSeqStart=${parentTurnRow.sourceSeqStart}&sourceSeqEnd=${parentTurnRow.sourceSeqEnd}&deferContent=true`,
       );
       expect(detailsResponse.status).toBe(200);
       const details = timelineTurnSummaryDetailsResponseSchema.parse(
@@ -1855,14 +1877,30 @@ describe("public thread data routes", () => {
         > => row.kind === "work" && row.workKind === "delegation",
       );
 
-      expect(delegation).toBeDefined();
-      expect(delegation?.callId).toBe("agent-call");
-      expect(delegation?.childRows).toContainEqual(
-        expect.objectContaining({
-          kind: "conversation",
-          text: "Child mapped the Telegram integration.",
-        }),
+      if (!delegation) {
+        throw new Error("Expected delegation row");
+      }
+      expect(delegation.callId).toBe("agent-call");
+      expect(delegation.childRows).toBeNull();
+
+      const delegationResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${delegation.turnId}&sourceSeqStart=${delegation.sourceSeqStart}&sourceSeqEnd=${delegation.sourceSeqEnd}&itemId=${delegation.callId}`,
       );
+      expect(delegationResponse.status).toBe(200);
+      const delegationDetails = timelineTurnSummaryDetailsResponseSchema.parse(
+        await readJson(delegationResponse),
+      );
+      expect(delegationDetails.rows).toEqual([
+        expect.objectContaining({
+          callId: "agent-call",
+          childRows: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "conversation",
+              text: "Child mapped the Telegram integration.",
+            }),
+          ]),
+        }),
+      ]);
     });
   });
 
@@ -3918,18 +3956,8 @@ describe("public thread data routes", () => {
               result: { providerThreadId: "provider-immediate-reprovision" },
             };
           }
-          if (request.command.type === "host.list_files") {
-            return {
-              ok: true,
-              result: { files: [], truncated: false },
-            };
-          }
-          if (request.command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${request.command.path}`,
-            };
+          if (request.command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
           }
           throw new Error(`Unexpected RPC command ${request.command.type}`);
         },

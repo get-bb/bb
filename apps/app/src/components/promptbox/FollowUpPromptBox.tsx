@@ -290,13 +290,15 @@ function FollowUpPromptBoxWithComposer({
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
-  const interactionExpandedRef = useRef(false);
+  const focusesEditorOnMount = !isPointerCoarse;
+  const interactionExpandedRef = useRef(focusesEditorOnMount);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const deferredControlFocusLossRef = useRef<(() => void) | null>(null);
   const pressedComposerControlRef = useRef(false);
   const pressedComposerControlCleanupRef = useRef<(() => void) | null>(null);
-  const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
+  const [isInteractionExpanded, setIsInteractionExpanded] =
+    useState(focusesEditorOnMount);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
   >(null);

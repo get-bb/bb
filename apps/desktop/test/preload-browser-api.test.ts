@@ -110,8 +110,12 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcRenderer: {
-      invoke(channel: string): Promise<BbDesktopInfo | BbDesktopWindowState> {
+      invoke(channel: string): Promise<unknown> {
         invokeCalls.push(channel);
+        if (channel === "bb-desktop:get-server-choices")
+          return Promise.resolve([
+            { id: "builtin", name: "Local", active: true },
+          ]);
         if (channel === "bb-desktop:get-window-state") {
           return Promise.resolve(desktopWindowState);
         }
@@ -172,6 +176,39 @@ describe("desktop preload browser API", () => {
   beforeEach(async () => {
     api = await loadPreload();
   }, 30_000);
+
+  it("validates server updates and unsubscribes while sending only opaque selection IDs", async () => {
+    expect(await api.getServerChoices?.()).toEqual([
+      { id: "builtin", name: "Local", active: true },
+    ]);
+    const updates = vi.fn();
+    const stop = api.onServerChoicesChange?.(updates);
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [
+        { id: "remote", name: "Remote", active: false, url: "private" },
+      ],
+    });
+    expect(updates).not.toHaveBeenCalled();
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [{ id: "remote", name: "Remote", active: false }],
+    });
+    expect(updates).toHaveBeenCalledWith([
+      { id: "remote", name: "Remote", active: false },
+    ]);
+    stop?.();
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [],
+    });
+    expect(updates).toHaveBeenCalledTimes(1);
+    api.selectServer?.("remote");
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: "bb-desktop:select-server",
+      payload: "remote",
+    });
+  });
 
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const attachRequest = {

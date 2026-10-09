@@ -244,16 +244,8 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
         },
 }));
 
-vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
-  SetupChecklistBanner: () => null,
-  hasSetupChecklistBanner: () => false,
-  useSetupChecklist: () => ({
-    items: null,
-    agentMissing: false,
-    setupComplete: true,
-    act: () => {},
-    dismiss: () => {},
-  }),
+vi.mock("@/components/onboarding/useSetupComplete", () => ({
+  useSetupComplete: () => true,
 }));
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({

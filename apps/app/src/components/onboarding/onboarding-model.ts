@@ -31,9 +31,6 @@ export const ONBOARDING_PLUGINS: readonly {
   { entryId: "ask-user-question", pluginId: "ask-user-question" },
 ];
 
-export const FIRST_THREAD_PROMPT =
-  "What can bb do, and how can you (my agent) interact with it? Summarize bb's capabilities and how you'd use the bb CLI to work with threads and projects.";
-
 export const CONNECT_PLUGIN_ID = "connect";
 export const PUSH_NOTIFICATIONS_PLUGIN_ID = "push-notifications";
 
@@ -129,15 +126,6 @@ export function hasReadyAgent(
   providers: readonly SystemProviderState[] | undefined,
 ): boolean {
   return providers?.some((provider) => provider.status === "ready") ?? false;
-}
-
-export function hasNoUsableAgent(
-  providers: readonly SystemProviderState[] | undefined,
-): boolean {
-  if (providers === undefined || providers.length === 0) return false;
-  return providers.every(
-    (provider) => provider.status !== "ready" && provider.status !== "unknown",
-  );
 }
 
 const RECENT_REPO_WINDOW_MS = 7 * 86_400_000;

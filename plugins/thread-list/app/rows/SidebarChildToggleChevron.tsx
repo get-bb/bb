@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
-} from "../ui/sidebar-hover-actions.js";
-import { SIDEBAR_CONTROL_STATE_CLASS } from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-hover-actions";
+import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/ui/sidebar-row-classes";
 
 const COARSE_POINTER_CHILD_TOGGLE_HIT_AREA_CLASS =
   "max-md:pointer-coarse:after:absolute max-md:pointer-coarse:after:-inset-y-2 max-md:pointer-coarse:after:-left-1.5 max-md:pointer-coarse:after:-right-2.5 max-md:pointer-coarse:after:content-['']";

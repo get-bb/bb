@@ -53,7 +53,7 @@ import {
   waitUntilComposerStateSettled,
   type CommittedComposerState,
 } from "@/components/promptbox/composer-selection-settle";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   type PluginComposerHost,
   useComposerHostDraftNotifier,
@@ -117,7 +117,7 @@ import {
   useUnarchiveThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import {
-  getLatestPendingInteraction,
+  orderPendingInteractions,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
@@ -526,7 +526,7 @@ export function ThreadDetailPromptArea({
     activeComposerDraft,
     activeComposerDraftInput,
     handleChangeMessage: handleComposerMessageChange,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
   } = useActiveComposerDraft({
     draftScope: {
       kind: "thread",
@@ -902,9 +902,9 @@ export function ThreadDetailPromptArea({
   const isStopRequested =
     thread.status === "stopping" ||
     (stopThread.isPending && stopThread.variables === thread.id);
-  const activePendingInteraction =
-    getLatestPendingInteraction(pendingInteractions);
-  const hasPendingInteraction = activePendingInteraction !== null;
+  const orderedPendingInteractions =
+    orderPendingInteractions(pendingInteractions);
+  const hasPendingInteraction = orderedPendingInteractions.length > 0;
   const shouldHideComposer =
     environmentGoneStatus !== null || thread.archivedAt !== null;
   const {
@@ -1489,7 +1489,7 @@ export function ThreadDetailPromptArea({
       pendingUploads: bottomPendingUploads,
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
-      onRemove: promptDraft.removeAttachment,
+      onUpdate: promptDraft.updateAttachments,
     }),
     [
       bottomAttachmentError,
@@ -1498,7 +1498,7 @@ export function ThreadDetailPromptArea({
       isAttachingBottomFiles,
       bottomPendingUploads,
       projectId,
-      promptDraft.removeAttachment,
+      promptDraft.updateAttachments,
     ],
   );
   const handleBottomComposerSubmit = useCallback(() => {
@@ -1906,7 +1906,7 @@ export function ThreadDetailPromptArea({
           pendingUploads: inlinePendingUploads,
           error: inlineAttachmentError,
           onAttachFiles: handleAttachInlineFiles,
-          onRemove: removeActiveComposerAttachment,
+          onUpdate: updateActiveComposerAttachments,
         },
         canModifierSubmit:
           activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
@@ -1957,7 +1957,7 @@ export function ThreadDetailPromptArea({
     promptPlaceholder,
     queuedComposerTextEffects,
     queuedMessagePluginComposerHost,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
     runtimeDisplayStatus,
     thread.id,
     inlineTypeaheadConfig,
@@ -2043,12 +2043,10 @@ export function ThreadDetailPromptArea({
             pendingUploads: sentMessagePendingUploads,
             error: sentMessageAttachmentError,
             onAttachFiles: handleAttachSentMessageFiles,
-            onRemove: (path) => {
+            onUpdate: (update) => {
               sentMessageEdit.updateDraft((current) => ({
                 ...current,
-                attachments: current.attachments.filter(
-                  (attachment) => attachment.path !== path,
-                ),
+                attachments: update(current.attachments),
               }));
             },
           },
@@ -2111,9 +2109,9 @@ export function ThreadDetailPromptArea({
   const childPendingInteractionBanners = useMemo(
     () =>
       childPendingInteractions.map((item) => (
-        <ThreadPendingInteractionBanner
-          key={item.interaction.id}
-          interaction={item.interaction}
+        <ThreadPendingInteractionBanners
+          key={item.childThreadId}
+          interactions={item.interactions}
           sourceThread={{ href: item.href, title: item.childTitle }}
           threadId={item.childThreadId}
         />
@@ -2292,16 +2290,21 @@ export function ThreadDetailPromptArea({
   );
 
   const pendingInteractionNode = useMemo(() => {
-    if (!activePendingInteraction || shouldHideComposer) {
+    if (!hasPendingInteraction || shouldHideComposer) {
       return null;
     }
     return (
-      <ThreadPendingInteractionBanner
-        interaction={activePendingInteraction}
+      <ThreadPendingInteractionBanners
+        interactions={orderedPendingInteractions}
         threadId={thread.id}
       />
     );
-  }, [activePendingInteraction, shouldHideComposer, thread.id]);
+  }, [
+    hasPendingInteraction,
+    orderedPendingInteractions,
+    shouldHideComposer,
+    thread.id,
+  ]);
   const pendingInteractionStack = useMemo(
     () => (
       <>

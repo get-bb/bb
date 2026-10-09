@@ -40,10 +40,17 @@ import { PluginCompactIconMask } from "@/components/plugin/PluginIcon";
 import { usePluginIconUrl } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-interface ThreadPendingInteractionBannerProps {
+interface ThreadPendingInteractionBannersProps {
+  interactions: readonly PendingInteraction[];
+  sourceThread?: PendingInteractionSourceThread;
+  threadId: string;
+}
+
+interface PendingInteractionBannerProps {
   interaction: PendingInteraction;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+  collapsedByDefault: boolean;
 }
 
 type ApprovalBannerSubject = Extract<
@@ -57,6 +64,7 @@ interface ApprovalPendingInteractionBannerProps {
   subject: ApprovalBannerSubject;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+  collapsedByDefault: boolean;
 }
 
 interface UserQuestionPendingInteractionBannerProps {
@@ -64,6 +72,7 @@ interface UserQuestionPendingInteractionBannerProps {
   questions: readonly PendingInteractionUserQuestionQuestion[];
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+  collapsedByDefault: boolean;
 }
 
 interface ApprovalSubject {
@@ -96,17 +105,28 @@ interface ApprovalDecisionSubmission {
   submitDisabled: boolean;
 }
 
-export function ThreadPendingInteractionBanner(
-  props: ThreadPendingInteractionBannerProps,
-) {
-  return <PendingInteractionBanner key={props.interaction.id} {...props} />;
+export function ThreadPendingInteractionBanners({
+  interactions,
+  sourceThread,
+  threadId,
+}: ThreadPendingInteractionBannersProps) {
+  return interactions.map((interaction, index) => (
+    <PendingInteractionBanner
+      key={interaction.id}
+      interaction={interaction}
+      sourceThread={sourceThread}
+      threadId={threadId}
+      collapsedByDefault={index > 0}
+    />
+  ));
 }
 
 function PendingInteractionBanner({
   interaction,
   sourceThread,
   threadId,
-}: ThreadPendingInteractionBannerProps) {
+  collapsedByDefault,
+}: PendingInteractionBannerProps) {
   const request = classifyInteractionRequest(interaction);
   if (request.family === "approval") {
     return (
@@ -116,6 +136,7 @@ function PendingInteractionBanner({
         subject={request.subject}
         sourceThread={sourceThread}
         threadId={threadId}
+        collapsedByDefault={collapsedByDefault}
       />
     );
   }
@@ -127,6 +148,7 @@ function PendingInteractionBanner({
           questions={request.questions}
           sourceThread={sourceThread}
           threadId={threadId}
+          collapsedByDefault={collapsedByDefault}
         />
       );
     case "plan_review":
@@ -136,6 +158,7 @@ function PendingInteractionBanner({
           request={request}
           sourceThread={sourceThread}
           threadId={threadId}
+          collapsedByDefault={collapsedByDefault}
         />
       );
     default:
@@ -146,6 +169,7 @@ function PendingInteractionBanner({
         >
           <PluginPendingInteractionComposer
             sourceThread={sourceThread}
+            collapsedByDefault={collapsedByDefault}
             interaction={interaction}
             request={{
               pluginId: request.pluginId,
@@ -167,6 +191,7 @@ interface PlanReviewRequestBannerProps {
   request: Extract<InteractionRequestView, { kind: "plan_review" }>;
   sourceThread?: PendingInteractionSourceThread;
   threadId: string;
+  collapsedByDefault: boolean;
 }
 
 function useApprovalDecisionSubmission({
@@ -210,6 +235,7 @@ function PlanReviewRequestBanner({
   request,
   sourceThread,
   threadId,
+  collapsedByDefault,
 }: PlanReviewRequestBannerProps) {
   const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
     useApprovalDecisionSubmission({
@@ -223,6 +249,7 @@ function PlanReviewRequestBanner({
     <PendingInteractionShell
       label="Plan review"
       title={approval.reason ?? "Ready to code?"}
+      expandedByDefault={!collapsedByDefault}
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="plan-review-banner"
@@ -276,6 +303,7 @@ function ApprovalPendingInteractionBanner({
   subject,
   sourceThread,
   threadId,
+  collapsedByDefault,
 }: ApprovalPendingInteractionBannerProps) {
   const { errorMessage, loadingDecision, submitDecision, submitDisabled } =
     useApprovalDecisionSubmission({
@@ -292,6 +320,7 @@ function ApprovalPendingInteractionBanner({
     <PendingInteractionShell
       label="Approval needed"
       title={view.title}
+      expandedByDefault={!collapsedByDefault}
       errorMessage={errorMessage}
       sourceThread={sourceThread}
       testId="approval-banner"
@@ -315,6 +344,7 @@ function ThreadUserQuestionPendingInteractionBanner({
   questions,
   sourceThread,
   threadId,
+  collapsedByDefault,
 }: UserQuestionPendingInteractionBannerProps) {
   const isResolving = interaction.status === "resolving";
 
@@ -323,6 +353,7 @@ function ThreadUserQuestionPendingInteractionBanner({
       label={
         questions.length === 1 ? "Question" : `${questions.length} questions`
       }
+      expandedByDefault={!collapsedByDefault}
       sourceThread={sourceThread}
       testId="user-question-banner"
     >

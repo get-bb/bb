@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  experimental_Icon as Icon,
-  experimental_usePluginId,
-  experimental_useSidebarThreads,
-  useBbContext,
   useBbNavigate,
   useRealtime,
   useRpc,
-  useSdk,
   useSettings,
 } from "@get-bb/plugin-sdk/app";
 import {
@@ -19,32 +14,8 @@ import {
   clientChannel,
   createClientDelivery,
   notificationPermission,
-  type ClientChannel,
 } from "./client.js";
-
-type PromptOutcome = "accepted" | "denied" | "dismissed";
-
-const PROMPT_OUTCOME_EVENTS = {
-  accepted: "notification_prompt_accepted",
-  denied: "notification_prompt_denied",
-  dismissed: "notification_prompt_dismissed",
-} as const;
-
-function readPromptAnswered(storageKey: string): boolean {
-  try {
-    return window.localStorage.getItem(storageKey) !== null;
-  } catch {
-    return true;
-  }
-}
-
-function rememberPromptAnswer(storageKey: string, outcome: PromptOutcome) {
-  try {
-    window.localStorage.setItem(storageKey, outcome);
-  } catch {
-    return;
-  }
-}
+import { notificationsThreadAction } from "./notificationsAction.js";
 
 function NotificationDelivery() {
   const navigate = useBbNavigate();
@@ -64,136 +35,6 @@ function NotificationDelivery() {
     void delivery.current?.deliver(payload, enabled).catch(() => undefined);
   });
   return null;
-}
-
-function RunningThreadPrompt({
-  channel,
-  onAnswered,
-}: {
-  channel: ClientChannel;
-  onAnswered: (outcome: PromptOutcome) => void;
-}) {
-  const { threadId } = useBbContext();
-  const { threads } = experimental_useSidebarThreads();
-  const sdk = useSdk();
-  const [shown, setShown] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const undecided = notificationPermission() === "default";
-  const running =
-    undecided &&
-    threadId !== null &&
-    threads.some(
-      (thread) =>
-        thread.id === threadId &&
-        (thread.status === "starting" || thread.status === "active"),
-    );
-  if (running && !shown) setShown(true);
-  const reportedShownRef = useRef(false);
-  useEffect(() => {
-    if (!shown || reportedShownRef.current) return;
-    reportedShownRef.current = true;
-    void sdk.system
-      .experimental_recordTelemetryEvent({
-        name: "notification_prompt_shown",
-        properties: { surface: "thread" },
-      })
-      .catch(() => undefined);
-  }, [sdk, shown]);
-  if (!shown || !undecided || threadId === null) return null;
-
-  const answer = (outcome: PromptOutcome) => {
-    void sdk.system
-      .experimental_recordTelemetryEvent({
-        name: PROMPT_OUTCOME_EVENTS[outcome],
-        properties: { surface: "thread" },
-      })
-      .catch(() => undefined);
-    onAnswered(outcome);
-  };
-
-  async function allow() {
-    setBusy(true);
-    try {
-      const result = await Notification.requestPermission();
-      answer(
-        result === "granted"
-          ? "accepted"
-          : result === "denied"
-            ? "denied"
-            : "dismissed",
-      );
-    } catch {
-      answer("dismissed");
-    }
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-label="Notification prompt"
-      className="fixed top-16 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] items-start gap-3 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
-    >
-      <Icon
-        name="BellDot"
-        aria-hidden
-        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-      />
-      <div className="min-w-0 flex-1 space-y-2">
-        <p className="text-sm font-medium">
-          Get notified when this agent needs you?
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {channel === "desktop" ? "bb" : "This browser"} will show a system
-          notification when a thread finishes or asks a question.
-        </p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-            disabled={busy}
-            onClick={() => void allow()}
-          >
-            Turn on
-          </button>
-          <button
-            type="button"
-            className="rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-            disabled={busy}
-            onClick={() => answer("dismissed")}
-          >
-            Not now
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NotificationPrompt() {
-  const { values } = useSettings();
-  const pluginId = experimental_usePluginId();
-  const storageKey = `${pluginId}.notification-prompt`;
-  const [answered, setAnswered] = useState(() =>
-    readPromptAnswered(storageKey),
-  );
-  const channel = clientChannel();
-  if (
-    answered ||
-    channel === null ||
-    values?.[`${channel}Enabled`] !== true ||
-    notificationPermission() !== "default"
-  ) {
-    return null;
-  }
-  return (
-    <RunningThreadPrompt
-      channel={channel}
-      onAnswered={(outcome) => {
-        rememberPromptAnswer(storageKey, outcome);
-        setAnswered(true);
-      }}
-    />
-  );
 }
 
 function NotificationSettings() {
@@ -302,9 +143,6 @@ export default definePluginApp((app) => {
     id: "delivery",
     component: NotificationDelivery,
   });
-  app.slots.experimental_appOverlay({
-    id: "prompt",
-    component: NotificationPrompt,
-  });
   app.slots.settingsSection({ id: "device", component: NotificationSettings });
+  app.slots.experimental_threadAction(notificationsThreadAction);
 });

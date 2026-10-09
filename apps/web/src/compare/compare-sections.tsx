@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { CustomizeBuild, ProviderChips } from "../landing/landing-visuals";
-import type { CompareHighlight } from "./comparisons";
+import type { CompareHighlight } from "./compare-types";
 import {
   AgentSplit,
   AnywhereVisual,

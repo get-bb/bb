@@ -14,10 +14,6 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import {
-  SetupChecklistBanner,
-  type SetupChecklistItem,
-} from "./SetupChecklistHost";
 import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
@@ -300,6 +296,7 @@ function AgentFrame({
   signInVariant = "guided",
   onSignIn = noop,
   onInstall = noop,
+  onViewInstallLog = noop,
   onCancelSignIn = noop,
   onRecheck = noop,
   ...chrome
@@ -310,6 +307,7 @@ function AgentFrame({
   signInVariant?: SignInVariant;
   onSignIn?: (id: string) => void;
   onInstall?: (id: string) => void;
+  onViewInstallLog?: (id: string) => void;
   onCancelSignIn?: (id: string) => void;
   onRecheck?: () => void;
 }) {
@@ -336,6 +334,7 @@ function AgentFrame({
         agents={loading ? null : buildAgents(states, signInVariant)}
         onSignIn={onSignIn}
         onInstall={onInstall}
+        onViewInstallLog={onViewInstallLog}
         onCancelSignIn={onCancelSignIn}
         onRecheck={onRecheck}
       />
@@ -487,102 +486,9 @@ function DevicesFrame({
   );
 }
 
-function checklistItems(done: {
-  agent: boolean;
-  projects: boolean;
-  thread: boolean;
-  plugins: boolean;
-  devices: boolean;
-  notifications: boolean;
-}): SetupChecklistItem[] {
-  return [
-    {
-      id: "agent",
-      title: "Connect a coding agent",
-      detail: done.agent
-        ? "Ready on this computer"
-        : "Needed before a thread can start",
-      done: done.agent,
-      optional: false,
-      actionLabel: "Set up",
-    },
-    {
-      id: "projects",
-      title: "Add your projects",
-      detail: done.projects
-        ? "3 added"
-        : "Import the repos you've used recently",
-      done: done.projects,
-      optional: false,
-      actionLabel: "Add",
-    },
-    {
-      id: "thread",
-      title: "Start your first thread",
-      detail: done.thread
-        ? "Your threads live in the sidebar"
-        : "Ask your agent what bb can do",
-      done: done.thread,
-      optional: false,
-      actionLabel: "Start",
-    },
-    {
-      id: "plugins",
-      title: "Pick plugins",
-      detail: done.plugins
-        ? "2 turned on"
-        : "Browser automation, workflows, and more. Off until you want them.",
-      done: done.plugins,
-      optional: true,
-      actionLabel: "Browse",
-    },
-    {
-      id: "devices",
-      title: "Use bb from anywhere",
-      detail: done.devices
-        ? CONNECT_URL
-        : "Check on agents from your phone, with a push when one needs you",
-      done: done.devices,
-      optional: true,
-      actionLabel: "Set up",
-    },
-    {
-      id: "notifications",
-      title: "Turn on notifications",
-      detail: done.notifications
-        ? "On for this device"
-        : "Know when an agent finishes or needs your answer",
-      done: done.notifications,
-      optional: true,
-      actionLabel: "Turn on",
-    },
-  ];
-}
-
-function HomeFrame({
-  items,
-  agentMissing,
-  onOpen = noop,
-  onDismiss = noop,
-}: {
-  items: SetupChecklistItem[] | null;
-  agentMissing: boolean;
-  onOpen?: (step: OnboardingStepId) => void;
-  onDismiss?: () => void;
-}) {
+function HomeFrame() {
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
-      <SetupChecklistBanner
-        checklist={{
-          items,
-          agentMissing,
-          setupComplete: false,
-          act: (id) => {
-            if (id !== "thread" && id !== "notifications") onOpen(id);
-          },
-          dismiss: onDismiss,
-        }}
-      />
       <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
         The usual bb home composer goes here.
       </p>
@@ -620,12 +526,10 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   const [selectedRepoIds, setSelectedRepoIds] = useState<ReadonlySet<string>>(
     () => new Set(DEFAULT_REPO_IDS),
   );
-  const [imported, setImported] = useState(false);
   const [enabledPluginIds, setEnabledPluginIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
-  const [checklistDismissed, setChecklistDismissed] = useState(false);
   const timers = useRef<number[]>([]);
 
   const later = (delayMs: number, run: () => void) => {
@@ -673,22 +577,9 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   };
 
   if (view === "home") {
-    const items = checklistItems({
-      agent: anyReady(states),
-      projects: imported,
-      thread: false,
-      plugins: enabledPluginIds.size > 0,
-      devices: false,
-      notifications: false,
-    });
     return (
       <StoryWindow>
-        <HomeFrame
-          items={checklistDismissed ? null : items}
-          agentMissing={!anyReady(states)}
-          onOpen={setView}
-          onDismiss={() => setChecklistDismissed(true)}
-        />
+        <HomeFrame />
       </StoryWindow>
     );
   }
@@ -744,10 +635,7 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
             )
           }
           onSelectNone={() => setSelectedRepoIds(new Set())}
-          onPrimary={() => {
-            setImported(selectedRepoIds.size > 0);
-            setView("plugins");
-          }}
+          onPrimary={() => setView("plugins")}
           onSecondary={() => setView("plugins")}
           onBack={() => setView("agent")}
         />
@@ -908,7 +796,7 @@ export function Step1AgentStates() {
       </Captioned>
       <Captioned
         label="Installing, failed, update needed, unknown"
-        hint="Install and Update reuse the provider CLI install action. Unknown health never blocks or nags."
+        hint="Install and Update reuse the provider CLI install action. A failed install offers its log. Unknown health never blocks or nags."
       >
         <StoryWindow>
           <AgentFrame
@@ -916,7 +804,7 @@ export function Step1AgentStates() {
               "claude-code": { status: "installing" },
               codex: {
                 status: "installFailed",
-                message: "Install failed. Check the log, then retry.",
+                message: "Install failed",
                 canInstall: true,
               },
               pi: {
@@ -1072,57 +960,11 @@ export function HomeAfterSkipping() {
   return (
     <Gallery>
       <Captioned
-        label="Home after Skip setup, no agent ready"
-        hint="The home composer leads with the missing agent. Dismissing the checklist also stops this notice."
+        label="Home after Skip setup"
+        hint="The home composer is ready."
       >
         <StoryWindow>
-          <HomeFrame
-            agentMissing
-            items={checklistItems({
-              agent: false,
-              projects: false,
-              thread: false,
-              plugins: false,
-              devices: false,
-              notifications: false,
-            })}
-          />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Home with an agent ready and steps left"
-        hint="A one-line checklist counts the three required steps and names the next one; Continue starts the first thread."
-      >
-        <StoryWindow>
-          <HomeFrame
-            agentMissing={false}
-            items={checklistItems({
-              agent: true,
-              projects: true,
-              thread: false,
-              plugins: false,
-              devices: false,
-              notifications: false,
-            })}
-          />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Home with only optional extras left"
-        hint="Once the required steps are done, the line offers the next optional extra with its one-line reason."
-      >
-        <StoryWindow>
-          <HomeFrame
-            agentMissing={false}
-            items={checklistItems({
-              agent: true,
-              projects: true,
-              thread: true,
-              plugins: true,
-              devices: false,
-              notifications: false,
-            })}
-          />
+          <HomeFrame />
         </StoryWindow>
       </Captioned>
     </Gallery>

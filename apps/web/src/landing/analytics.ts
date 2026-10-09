@@ -20,6 +20,13 @@ type LandingEvent =
       properties: { placement: CtaPlacement; command: string };
     }
   | {
+      name: "guide_prompt_copied";
+      properties: {
+        guide: string;
+        placement: "hero" | "handoff" | "step";
+      };
+    }
+  | {
       name: "landing_email_subscribed";
       properties: { placement: CtaPlacement };
     }

@@ -21,8 +21,6 @@ const sidebarChronologicalSortSchema = z.enum([
 
 const sidebarThreadGroupingSchema = z.union([z.literal("auto"), z.boolean()]);
 
-const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
-
 const uiPreferenceStringSchema = z
   .string()
   .min(1)
@@ -44,12 +42,6 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
   "sidebar.hiddenGroups",
-  "sidebar.collapsedSections",
-  "sidebar.collapsedProjects",
-  "sidebar.collapsedThreads",
-  "sidebar.collapsedEnvironments",
-  "sidebar.collapsedThreadSections",
-  "sidebar.collapsedMachines",
   "sidebar.footerOrder",
   "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
@@ -118,38 +110,6 @@ export const uiPreferenceDefinitions = {
     sidebarHiddenGroupsSchema,
     [],
     "Project, custom section, and machine groups moved into More, using project:<id>, section:<id>, or machine:<id>. Setting this list replaces the hidden groups across all sidebar organizations; reset shows every group.",
-  ),
-  "sidebar.collapsedSections": defineUiPreference(
-    z
-      .array(collapsibleSidebarSectionIdSchema)
-      .max(UI_PREFERENCE_LIST_MAX_LENGTH),
-    [],
-    "Built-in sidebar sections that are collapsed.",
-  ),
-  "sidebar.collapsedProjects": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Project ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreads": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread ids whose child threads are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedEnvironments": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Environment ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreadSections": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread section ids that are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedMachines": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Machine ids whose sidebar rows are collapsed.",
   ),
   "sidebar.footerOrder": defineUiPreference(
     uiPreferenceStringListSchema,

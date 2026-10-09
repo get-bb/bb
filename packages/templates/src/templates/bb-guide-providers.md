@@ -104,8 +104,16 @@ settings, or run:
   bb plugin config provider-retry set maximumWait "24 hours"
 
   bb provider-retry status [thread-id] [--json]    Inspect pending retries
+  bb provider-retry explain [thread-id] [--json]   Explain the last retry decision
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
   bb provider-retry retry <thread-id> [--json]     Send a pending retry now
+
+For Account Pooler routes, the pool supplies the earliest usable account for
+the failed request’s model, including parent pools. A generic 429 without a
+provider quota snapshot can still schedule a retry. Unknown resets,
+authentication failures, and unavailable pool sources are not retried.
+`explain` reports the last recorded decision, including skips; it is historical,
+while `status` reports the current queue. Decisions are not backfilled.
 
 A pending retry is a queued row on the thread, so it survives a server restart
 and appears above the composer with its reason and time. Credit and

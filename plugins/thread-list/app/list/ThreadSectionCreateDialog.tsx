@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { RenameDialog, useNameValidation } from "../ui/RenameDialog.js";
+import { RenameDialog, useNameValidation } from "@/components/ui/rename-dialog";
 
 interface ThreadSectionCreateDialogProps {
   errorMessage?: string | null;

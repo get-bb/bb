@@ -21,7 +21,7 @@ import {
   SIDEBAR_CONTROL_BUTTON_CLASS,
   SIDEBAR_CONTROL_PAIR_SIZE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import {
   Fragment,
   memo,
@@ -43,7 +43,7 @@ import { createPortal } from "react-dom";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { toast } from "sonner";
 import {
-  experimental_useSidebarThreadActions,
+  experimental_useArchiveEnvironmentThreads,
   useBbNavigate,
   useEnvironmentProviders,
   useSdk,
@@ -58,7 +58,7 @@ import type { SidebarProject } from "../model/use-sidebar-data.js";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "../ui/ConfirmDeleteDialog.js";
+} from "@/components/ui/confirm-delete-dialog";
 import { getMutationErrorMessage } from "../ui/mutation-errors.js";
 import {
   useSidebarRename,
@@ -72,7 +72,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
-import { ThreadListEmptyState } from "../ui/ThreadListEmptyState.js";
+import { ThreadListEmptyState } from "@/components/ui/thread-list-empty-state";
 import {
   SidebarMenuSkeleton,
   SidebarStickyGroup,
@@ -93,7 +93,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "../ui/sidebar-hover-actions.js";
+} from "@/components/ui/sidebar-hover-actions";
 import type {
   CollapsibleSidebarSectionId,
   SidebarSectionId,
@@ -140,17 +140,16 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import {
   resolveSectionDropTargetState,
   SectionDropTargetOverlay,
 } from "../dnd/useSectionDropTargetState.js";
 import {
-  SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
   useSidebarSortable,
   type SidebarSortableDragBindings,
-} from "../rows/sortableMotion.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+} from "@/components/ui/sortable-motion";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { NeighborReorderRequest } from "../model/neighbor-reorder.js";
 import { SidebarChildToggleChevron } from "../rows/SidebarChildToggleChevron.js";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList.js";
@@ -644,15 +643,14 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const actions = experimental_useSidebarThreadActions();
+  const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
   const [archiveThreadsPending, setArchiveThreadsPending] = useState(false);
   const onArchiveThreads = useCallback(() => {
     setArchiveThreadsPending(true);
-    void actions
-      .experimental_archiveEnvironmentThreads(environmentId)
+    void archiveEnvironmentThreads(environmentId)
       .catch(() => {})
       .finally(() => setArchiveThreadsPending(false));
-  }, [actions, environmentId]);
+  }, [archiveEnvironmentThreads, environmentId]);
 
   return { archiveThreadsPending, onArchiveThreads };
 }
@@ -960,7 +958,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
           nodeDepth: nodeDepth - 1,
         })
       : undefined;
-  const sidebarActions = experimental_useSidebarThreadActions();
+  const navigate = useBbNavigate();
   const sectionWhenUnpinned = nodes.every(
     (node) => node.thread.sectionId === representativeThread.sectionId,
   )
@@ -971,20 +969,13 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
     useArchiveEnvironmentThreadGroupAction({ environmentId });
   const handleCreateNewThread = useCallback(() => {
     onProjectSelect?.();
-    sidebarActions.openNewThread({
+    navigate.toCompose({
       projectId,
       environmentId,
-      experimental_placement: { sectionId, pinned },
+      placement: { sectionId, pinned },
       focusPrompt: true,
     });
-  }, [
-    environmentId,
-    onProjectSelect,
-    projectId,
-    sectionId,
-    pinned,
-    sidebarActions,
-  ]);
+  }, [environmentId, navigate, onProjectSelect, projectId, sectionId, pinned]);
   const nodeItems = useMemo<ProjectThreadItem[]>(
     () => nodes.map((node) => ({ kind: "thread", node })),
     [nodes],
@@ -1239,7 +1230,7 @@ export function SectionThreadDragOverlayPortal({
   return createPortal(
     <DragOverlay
       className="cursor-grabbing"
-      dropAnimation={activeThread ? SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION : null}
+      dropAnimation={null}
       modifiers={modifiers}
     >
       {activeThread ? <SectionThreadDragOverlay thread={activeThread} /> : null}

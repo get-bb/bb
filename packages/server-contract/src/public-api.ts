@@ -248,6 +248,7 @@ import type {
   ThreadCountResponse,
   ThreadListQuery,
   ThreadListResponse,
+  ThreadConversationOutlineQuery,
   ThreadConversationOutlineResponse,
   ThreadOpenRequest,
   ThreadOpenResponse,
@@ -258,6 +259,10 @@ import type {
   QueuedMessageListQuery,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
+  PluginThreadMetadataListRequest,
+  PluginThreadMetadataListResponse,
+  ThreadAncestorsListRequest,
+  ThreadAncestorsListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -318,6 +323,8 @@ import {
   createThreadRequestSchema,
   forkThreadRequestSchema,
   updateThreadPluginMetadataRequestSchema,
+  pluginThreadMetadataListRequestSchema,
+  threadAncestorsListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -391,6 +398,7 @@ import {
   threadTimelineQuerySchema,
   systemCliSkillsStatusQuerySchema,
   systemInstallCliSkillsRequestSchema,
+  threadConversationOutlineQuerySchema,
   timelineTurnSummaryDetailsQuerySchema,
   listEnvironmentsQuerySchema,
   updateEnvironmentRequestSchema,
@@ -1372,7 +1380,33 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadResponse>(),
     }),
+    /**
+     * Each of `threadIds` (1–200) that exists, with its ancestors' ids from
+     * the parent up to the root; archived and deleted threads included.
+     * Unknown ids are omitted.
+     */
+    ancestors: defineRoute({
+      path: "/threads/ancestors",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadAncestorsListRequest>(
+        threadAncestorsListRequestSchema,
+      ),
+      response: jsonResponse<ThreadAncestorsListResponse>(),
+    }),
     pluginMetadata: {
+      /**
+       * `pluginId`'s metadata for each of `threadIds` (1–200) that has any,
+       * archived and deleted threads included. Threads without a namespace
+       * and corrupt records are omitted.
+       */
+      list: defineRoute({
+        path: "/threads/plugin-metadata",
+        method: "post",
+        request: jsonRequest<EmptyInput, PluginThreadMetadataListRequest>(
+          pluginThreadMetadataListRequestSchema,
+        ),
+        response: jsonResponse<PluginThreadMetadataListResponse>(),
+      }),
       get: defineRoute({
         path: "/threads/:id/plugin-metadata",
         method: "get",
@@ -1694,7 +1728,9 @@ export const publicApiRoutes = {
     conversationOutline: defineRoute({
       path: "/threads/:id/conversation-outline",
       method: "get",
-      request: noRequest<PathId>(),
+      request: queryRequest<PathId, ThreadConversationOutlineQuery>(
+        threadConversationOutlineQuerySchema,
+      ),
       response: jsonResponse<ThreadConversationOutlineResponse>(),
     }),
     timelineTurnSummaryDetails: defineRoute({
@@ -1869,8 +1905,8 @@ export const publicApiRoutes = {
     }),
     /**
      * Forward one anonymous product event from a bb client to the server's
-     * usage telemetry. Only the onboarding, setup checklist, and notification
-     * prompt events in the request schema are accepted, and the server drops
+     * usage telemetry. Only the onboarding, setup, notification prompt, and Tips
+     * events in the request schema are accepted, and the server drops
      * them when usage data sharing is off.
      */
     recordTelemetryEvent: defineRoute({

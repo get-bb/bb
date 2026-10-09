@@ -89,6 +89,7 @@ import {
 } from "./workspace-resolution.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 import type { ServerMoveService } from "./server-move/service.js";
+import { readWorkspaceAgentContext } from "./command-handlers/workspace-agent-context.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 
@@ -646,6 +647,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
+  "host.read_workspace_agent_context": readWorkspaceAgentContext,
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
   "host.install_global_skills": installGlobalSkills,

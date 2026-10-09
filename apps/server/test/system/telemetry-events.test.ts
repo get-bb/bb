@@ -40,7 +40,7 @@ describe("client telemetry events", () => {
       });
       const extra = await post(harness, {
         name: "notification_prompt_shown",
-        properties: { surface: "thread", threadId: "thr_123" },
+        properties: { surface: "sidebar", threadId: "thr_123" },
       });
 
       expect(unknown.status).toBe(400);

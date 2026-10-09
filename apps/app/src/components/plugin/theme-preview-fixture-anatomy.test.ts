@@ -22,7 +22,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "The mock sidebar carries `fixed bg-sidebar` so theme blocks scoped to `.fixed.bg-sidebar` (token overrides, noise overlays) apply to it exactly as they do in the app.",
   },
   {
-    file: "plugins/thread-list/app/rows/sidebarRowClasses.ts",
+    file: "packages/shared-ui/src/components/ui/sidebar-row-classes.ts",
     mustContain: [
       "SIDEBAR_ROW_BASE_CLASS =",
       "SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =",
@@ -45,7 +45,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "Mock sidebars use BB's shared button primitive, section-label token, padding, and project-row anatomy.",
   },
   {
-    file: "apps/app/src/components/ui/context-selection.ts",
+    file: "packages/shared-ui/src/components/ui/context-selection.ts",
     mustContain: ['CONTEXT_SELECTION_SURFACE_CLASS = "bg-state-active"'],
     because: "The open thread's row in the mock paints state-active.",
   },
