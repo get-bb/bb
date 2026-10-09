@@ -11,9 +11,10 @@ const AFTER_QUESTIONS = [
 
 const BB_SETUP = [
   "These steps use the bb CLI. If BB_THREAD_ID is set, you're in a bb thread and `bb` is ready. If it isn't set, set up first:",
-  "- Run `bb status`, or `npx -p bb-app@latest bb status` if `bb` isn't installed, and use that same command wherever a step says `bb`. If it can't reach bb, ask me to open the bb app or run `npx bb-app@latest`, and wait.",
+  "- Run `bb status`. Only if `command -v bb` finds nothing, use `npx -p bb-app@latest bb` instead, wherever a step says `bb`. Never rerun a failed `bb` command through npx. If `bb status` can't reach bb, ask me to open the bb app or run `npx bb-app@latest`, and wait.",
   "- Find this repo's project with `bb project list --json`. If it isn't there, ask me, then run `bb project create --root <repo path>`. Use its ID wherever a step says $BB_PROJECT_ID.",
-  '- Where a step says $BB_ENVIRONMENT_ID or asks for an environment, pass the repo path to --environment. Where it says --parent-self, leave that out and follow the thread with `bb thread wait <id>` and `bb thread log <id>`. Where a terminal uses --thread "$BB_THREAD_ID", use --machine <this machine> --cwd <repo path> instead.',
+  '- Where a step says $BB_ENVIRONMENT_ID or asks for an environment, pass the repo path to --environment. Where it says --parent-self, leave that out and follow the thread with `bb thread wait <id>` and `bb thread output <id>`. Where a terminal uses --thread "$BB_THREAD_ID", use --machine <this machine> --cwd <repo path> instead.',
+  "- Where a command needs a thread, like `bb browser-automation`, start one first: `bb thread spawn --json --project <project ID> --environment <repo path> --title '<task>' --prompt 'Hold a browser session for me. Reply ready.'`, then pass `--thread <its ID>`.",
 ].join("\n");
 
 export function withIntake(fields: IntakeField[], prompt: string): string {
