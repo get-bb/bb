@@ -88,8 +88,8 @@ export const FAQ_GET_STARTED: CompareFaq = {
     <ol>
       <li>
         Download bb for <a href="/download/macos">macOS</a> (Apple Silicon),{" "}
-        <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (both alpha). On an Intel Mac, run{" "}
+        <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>, or{" "}
+        <a href="/download/linux">Linux (Alpha)</a>. On an Intel Mac, run{" "}
         <code>npx bb-app@latest</code>, which needs Node.js 22.19 or later.
       </li>
       <li>
@@ -300,8 +300,8 @@ export function faqPlatforms(contrast: ReactNode): CompareFaq {
       <p>
         Yes. Download the app for{" "}
         <a href="/download/macos">Apple Silicon Macs</a>,{" "}
-        <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (both alpha), or run{" "}
+        <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>, or{" "}
+        <a href="/download/linux">Linux (Alpha)</a>, or run{" "}
         <code>npx bb-app@latest</code> on an Intel Mac. {contrast}
       </p>
     ),

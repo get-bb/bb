@@ -68,7 +68,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           />
           <span className="install-note">
             <a className="install-note-link" href={WINDOWS_DOWNLOAD_URL}>
-              Windows
+              Windows (Alpha)
             </a>
             , Intel Macs &amp; remote machines
           </span>

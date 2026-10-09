@@ -29,7 +29,7 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     redirectPath: "/download/macos",
   },
   linux: {
-    label: "Linux",
+    label: "Linux (Alpha)",
     buttonLabel: "Download for Linux",
     note: "x64 AppImage, alpha",
     installerExtension: ".AppImage",
