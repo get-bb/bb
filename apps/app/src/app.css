@@ -30,6 +30,7 @@
     --bb-app-chrome-row-height: 3rem;
     --bb-shell-height: 100dvh;
     --bb-window-frame-top: 0px;
+    --bb-window-frame-lip: 0px;
     --secondary-panel-width-mobile: min(76vw, 320px);
     --bb-sidebar-control-size: 28px;
     --bb-sidebar-control-icon-size: 16px;

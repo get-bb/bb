@@ -41,10 +41,10 @@ const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 
 const SIDEBAR_FRAME_CLASS =
-  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-app-chrome-row-height) [--bb-window-frame-top:var(--bb-app-chrome-row-height)]";
+  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-app-chrome-row-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-app-chrome-row-height)] [--bb-window-frame-lip:0.25rem]";
 const SIDEBAR_FRAMED_PANEL_CLASS =
-  "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
-const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-t border-l border-border-seam";
+  "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
+const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border-seam";
 
 type SidebarMobileWidthStyle = React.CSSProperties & {
   "--sidebar-width-mobile": string;
@@ -811,7 +811,7 @@ const SidebarCollapsibleBody = React.forwardRef<
         "group-data-[collapsible=rail]:invisible group-data-[collapsible=rail]:[transition:visibility_0s_linear_200ms]",
         isFramed
           ? [
-              "rounded-tl-xl bg-sidebar [clip-path:inset(0_-6px_0_0_round_0.75rem_0_0_0)]",
+              "rounded-tl-xl rounded-bl-xl bg-sidebar [clip-path:inset(0_-6px_0_0_round_0.75rem_0_0_0.75rem)]",
               SIDEBAR_FRAMED_CARD_EDGE_CLASS,
             ]
           : "[clip-path:inset(0_-6px_0_0)]",
@@ -1689,10 +1689,13 @@ const SidebarInset = React.forwardRef<
         SIDEBAR_MOBILE_SHELF_INSET_TRANSITION_CLASS,
         "data-[sidebar-shelf=open]:translate-x-(--sidebar-width-mobile) data-[sidebar-shelf]:will-change-[translate]",
         "data-[panel-shelf=full]:-translate-x-full data-[panel-shelf]:will-change-[translate]",
-        isFramed && ["overflow-clip", SIDEBAR_FRAMED_CARD_EDGE_CLASS],
+        isFramed && [
+          "overflow-clip rounded-tr-xl rounded-br-xl border-r",
+          SIDEBAR_FRAMED_CARD_EDGE_CLASS,
+        ],
         isFramed &&
           !open &&
-          "rounded-tl-xl [transition:border-top-left-radius_0s_linear_200ms]",
+          "rounded-tl-xl rounded-bl-xl [transition:border-top-left-radius_0s_linear_200ms,border-bottom-left-radius_0s_linear_200ms]",
         className,
       )}
       {...props}
