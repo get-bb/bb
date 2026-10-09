@@ -18,29 +18,14 @@ const AGENT_PROMPT = withIntake(
   `Run a dev server for each branch on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
 
-Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
+If a step fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
 
-1. Find or add the machine. Run \`bb machine list\`. If the machine isn't there, add it without blocking this thread: bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual", then read the one-time install command from bb terminal output <terminal-id> and run it on that machine over SSH.
-   Check: \`bb machine list\` shows the machine as connected. If you can't reach it over SSH, stop and send me the install command to run there.
-
-2. Put the project on the machine, unless it already has a source there:
-   bb project source add "$BB_PROJECT_ID" --clone --machine <machine>
-   Check: \`bb project show "$BB_PROJECT_ID"\` lists a source on the machine.
-
-3. For each branch, start a worktree thread on that machine:
-   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if the repo has no remote> --title "<branch>" --prompt "You run the dev server for <branch>. Reply ready."
-   Check: each spawn returns a thread ID. If a thread fails to start its agent, stop and ask me to sign in to that agent on the machine.
-
-4. Give each branch its own ports. In each branch's worktree, if there's no \`.env.local\`, pick two free ports and write WEB_PORT and API_PORT to \`.env.local\` there. Don't commit it. (A committed \`.bb-env-setup.sh\` that does this only runs for branches that already contain it.)
-   Check: every worktree's \`.env.local\` has different ports.
-
-5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using my Dev server command answer. Pass the host and port as environment variables, since many dev commands ignore extra flags (npm scripts need \`--\` before flags):
-   bb terminal create --thread <thread-id> --title "Dev server" --command 'set -a; . ./.env.local; set +a; HOST=127.0.0.1 PORT="$WEB_PORT" <dev server command>'
-   Check: \`bb terminal output <terminal-id>\` shows the server listening on 127.0.0.1 at that port, not on all interfaces. If it isn't, stop and ask me before changing the app's code.
-
-6. Share each WEB_PORT. Run \`bb connect status\` first; if remote access is off, stop and ask me to turn on bb connect in Settings. Then:
-   bb connect expose <port> --host <machine>
-   Check: \`bb connect shares --host <machine>\` lists every port.
+1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it.
+2. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\`.
+3. For each branch, start a thread on the machine that starts its own server, all at once:
+   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if there's no remote> --title "<branch>" --prompt "Start this branch's dev server. Pick a free port, save it as WEB_PORT in .env.local (don't commit it), and run <dev server command> with HOST=127.0.0.1 and PORT set to that port in a bb terminal titled Dev server. Reply with the port once it's listening on 127.0.0.1, or with the error."
+4. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
+5. Share each port with \`bb connect expose <port> --host <machine>\`, and check that \`bb connect shares --host <machine>\` lists them all.
 
 Reply with a table of branch, port, and link.`,
 );
