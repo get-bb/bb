@@ -44,7 +44,7 @@ import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
-import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
 export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
@@ -422,7 +422,7 @@ export function RootComposeMobileRecents({
   threads,
 }: RootComposeMobileRecentsProps) {
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
-    collapsedThreadIdsAtom,
+    mobileRecentsCollapsedThreadIdsAtom,
   );
   const collapsedThreadIds = useMemo(
     () => new Set(collapsedThreadIdList),

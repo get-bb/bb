@@ -5,7 +5,6 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { useSetAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import type { ProjectResponse } from "@bb/server-contract";
 import { useRouteState } from "@/hooks/useRouteState";
@@ -28,7 +27,6 @@ import {
   ProjectRenameDialog,
   type ProjectRenameDialogTarget,
 } from "@/components/dialogs/ProjectRenameDialog";
-import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 
 interface ProjectActionsContextValue {
@@ -60,7 +58,6 @@ export function ProjectActionsProvider({
 }: ProjectActionsProviderProps) {
   const navigate = useNavigate();
   const { projectId: routeProjectId } = useRouteState();
-  const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const addLocalSource = useAddLocalProjectSource();
@@ -118,9 +115,6 @@ export function ProjectActionsProvider({
       deleteProjectMutate(projectId, {
         onSuccess: () => {
           closeDeleteDialog();
-          setCollapsedProjectIdList((current) =>
-            current.filter((id) => id !== projectId),
-          );
           if (routeProjectId === projectId) {
             navigate(getRootComposeRoutePath(), { replace: true });
           }
@@ -132,7 +126,6 @@ export function ProjectActionsProvider({
       deleteProjectMutate,
       navigate,
       routeProjectId,
-      setCollapsedProjectIdList,
     ],
   );
 

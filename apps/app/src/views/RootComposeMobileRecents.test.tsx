@@ -12,7 +12,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Provider, createStore } from "jotai";
-import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -92,7 +92,7 @@ function TestProviders({
 
 function storeWithCollapsedThreads(threadIds: string[]) {
   const store = createStore();
-  store.set(collapsedThreadIdsAtom, threadIds);
+  store.set(mobileRecentsCollapsedThreadIdsAtom, threadIds);
   return store;
 }
 
@@ -481,7 +481,7 @@ describe("mobile recents hierarchy interaction", () => {
     );
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
-    expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
+    expect(store.get(mobileRecentsCollapsedThreadIdsAtom)).toEqual([]);
   });
 
   it("de-emphasizes the provider tile on child rows only", () => {

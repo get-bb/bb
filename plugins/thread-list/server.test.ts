@@ -178,18 +178,18 @@ describe("migration from bb's sidebar preferences", () => {
     const { bb } = setup({
       uiPreferences: {
         "sidebar.organizationMode": { revision: 3, value: "machine" },
-        "sidebar.collapsedProjects": { revision: 1, value: ["proj_a"] },
+        "sidebar.sectionOrder": { revision: 1, value: ["proj_a"] },
         "sidebar.chronologicalSort": { revision: 0, value: "updated" },
         "sidebar.hiddenGroups": { revision: 2, value: ["not-a-group"] },
       },
     });
-    await bb.storage.kv.set("preference:collapsedProjects", ["proj_mine"]);
+    await bb.storage.kv.set("preference:sectionOrder", ["proj_mine"]);
     const first = await migrateFromUiPreferences(bb);
     expect(first.migrated).toEqual(["organizationMode"]);
     await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBe(
       "machine",
     );
-    await expect(bb.storage.kv.get("preference:collapsedProjects")).resolves.toEqual([
+    await expect(bb.storage.kv.get("preference:sectionOrder")).resolves.toEqual([
       "proj_mine",
     ]);
     await expect(bb.storage.kv.get("preference:chronologicalSort")).resolves.toBeUndefined();
