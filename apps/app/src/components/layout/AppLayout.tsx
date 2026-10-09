@@ -104,6 +104,7 @@ import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
 import { AppLayoutSidebar } from "./AppLayoutSidebar";
+import { WindowRightPanelToggle } from "./WindowRightPanelToggle";
 import { NAV_RAIL_COLLAPSED_SIDEBAR_WIDTH } from "@/components/sidebar/navRailWidth";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import {
@@ -249,7 +250,7 @@ function SidebarTriggerOverlay({
         data-testid="app-window-title-bar"
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed inset-x-0 top-0 gap-1",
+          "fixed inset-x-0 top-0 gap-1 pr-3",
           CHROME_ROW_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
@@ -273,6 +274,9 @@ function SidebarTriggerOverlay({
             )}
           />
         </div>
+        <WindowRightPanelToggle
+          className={cn("ml-auto", MACOS_CHROME_CONTROL_NO_DRAG_CLASS)}
+        />
       </div>
     );
   }

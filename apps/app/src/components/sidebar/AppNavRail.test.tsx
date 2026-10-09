@@ -501,6 +501,40 @@ describe("AppNavRail", () => {
     expect(wrapper.style.transform).toBe(openedAt);
   });
 
+  it("opens the More menu at the top of the rail instead of beside the More button", async () => {
+    renderRail(THREAD_PATH);
+    vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 40, 28, 28),
+    );
+    vi.spyOn(railButton("More"), "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(12, 200, 28, 28),
+    );
+
+    const viewport = [
+      vi
+        .spyOn(document.documentElement, "clientWidth", "get")
+        .mockReturnValue(1280),
+      vi
+        .spyOn(document.documentElement, "clientHeight", "get")
+        .mockReturnValue(800),
+    ];
+
+    try {
+      fireEvent.keyDown(railButton("More"), { key: "Enter" });
+      const menu = await screen.findByTestId("nav-rail-more-menu");
+      const wrapper = menu.closest<HTMLElement>(
+        "[data-radix-popper-content-wrapper]",
+      );
+      if (!wrapper) throw new Error("Expected the menu position wrapper");
+
+      await waitFor(() =>
+        expect(wrapper.style.transform).toBe("translate(52px, 40px)"),
+      );
+    } finally {
+      for (const spy of viewport) spy.mockRestore();
+    }
+  });
+
   it("drops the header New thread button when the user hid New thread", () => {
     renderRail(THREAD_PATH, { visibleKeys: ["__bb__/extensions"] });
 

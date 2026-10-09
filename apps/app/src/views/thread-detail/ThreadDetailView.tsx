@@ -282,6 +282,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { useWindowRightPanel } from "@/components/layout/WindowRightPanelToggle";
 import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
@@ -1510,6 +1511,7 @@ function ThreadDetailViewInternal(
     toggleSecondaryPanel();
     return true;
   });
+  useWindowRightPanel({ isOpen: isSecondaryPanelOpen, enabled: isFocused });
   useAppCommandHandler("panel.fullScreen.toggle", () => {
     if (
       !isFocused ||

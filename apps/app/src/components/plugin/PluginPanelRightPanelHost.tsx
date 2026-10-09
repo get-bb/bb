@@ -28,6 +28,10 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { PluginIcon, PluginItemIcon } from "@/components/plugin/PluginIcon";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { RIGHT_PANEL_TOGGLE_ICON_NAME } from "@/components/secondary-panel/panelToggleControlState";
+import {
+  useWindowRightPanel,
+  useWindowTitleBarHostsRightPanelToggle,
+} from "@/components/layout/WindowRightPanelToggle";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
 import {
   LazyBrowserTabDeck,
@@ -561,6 +565,9 @@ export function PluginPanelRightPanelHost({
     togglePanel();
     return true;
   });
+  useWindowRightPanel({ isOpen, enabled: isFocused && panel !== null });
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused || panel === null) return false;
     openNewTab();
@@ -1120,6 +1127,7 @@ export function PluginPanelRightPanelHost({
     <>
       {panel !== null &&
       togglePortalTarget !== null &&
+      !titleBarHostsRightPanelToggle &&
       !isOpen &&
       !isHostedBySplitWorkspace
         ? createPortal(
