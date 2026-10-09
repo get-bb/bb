@@ -283,8 +283,8 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   send({ type: "send", label: "Synth take", data: { keys: [["C4", 0, 1]] } });
   send({ type: "open", url: "https://example.com/" });
   await waitFor(() =>
-    expect(view.inspection.composer.mentions).toEqual([
-      { provider: "shared", id: `${answer.id}.12`, label: "Synth take" },
+    expect(view.inspection.composer.draft.mentions).toEqual([
+      expect.objectContaining({ id: `${answer.id}.12`, label: "Synth take" }),
     ]),
   );
   expect(backend.calls.find((c) => c.method === "share")?.input).toMatchObject({

@@ -402,11 +402,10 @@ export function HtmlAnswerView({
       })
       .then(
         ({ itemId }) => {
-          composer.insertMention({
-            provider: SHARE_PROVIDER,
-            id: itemId,
-            label,
-          });
+          composer.insert(
+            { provider: SHARE_PROVIDER, id: itemId, label },
+            { at: "end" },
+          );
           composer.focus();
         },
         () => {},
@@ -423,8 +422,12 @@ export function HtmlAnswerView({
     [id, threadId, live.initialState],
   );
   useEffect(() => {
-    const budget = { tokens: MESSAGE_BURST, at: Date.now() };
-    const spend = () => {
+    const budgets = {
+      event: { tokens: MESSAGE_BURST, at: Date.now() },
+      actions: { tokens: MESSAGE_BURST, at: Date.now() },
+    };
+    const spend = (kind: keyof typeof budgets) => {
+      const budget = budgets[kind];
       const now = Date.now();
       budget.tokens = Math.min(
         MESSAGE_BURST,
@@ -470,7 +473,7 @@ export function HtmlAnswerView({
       if (
         message.type === "event" &&
         typeof message.name === "string" &&
-        spend()
+        spend("event")
       )
         emit(message.name, message.data);
       if (message.type === "active") active();
@@ -483,7 +486,7 @@ export function HtmlAnswerView({
       if (
         message.type === "actions" &&
         Array.isArray(message.actions) &&
-        spend()
+        spend("actions")
       )
         setActions(
           message.actions

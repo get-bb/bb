@@ -1,6 +1,6 @@
 ---
 name: interactive-answers
-description: Compose interactive answers directly in a bb message: native calculators, charts, and comparisons, or custom HTML interfaces such as illustrated step-by-step guides, maps with photos, and visual previews. Use when exploring, comparing, or following along would help more than prose.
+description: "Compose interactive answers directly in a bb message: native calculators, charts, and comparisons, or custom HTML interfaces such as illustrated step-by-step guides, maps with photos, and visual previews. Use when exploring, comparing, or following along would help more than prose."
 ---
 
 # Interactive Answers
