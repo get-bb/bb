@@ -2000,7 +2000,7 @@ describe("acp bridge", () => {
       FAKE_ACP_TERMINAL_AUTH_ARGS: "login --device",
     });
     expect(terminal.error?.message).toMatch(
-      /To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: \S*node \S*fake-acp-agent\.mjs login --device$/u,
+      /To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: \S*node(?:\.exe)? \S*fake-acp-agent\.mjs login --device$/u,
     );
     expect(terminal.error?.data).toMatchObject({
       recovery: { kind: "authRequired", retryable: false },

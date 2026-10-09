@@ -25,9 +25,40 @@ describe("ACP sign-in guidance", () => {
             env: { AGENT_LOGIN: "1", NOTE: "two words" },
           },
         ],
+        platform: "linux",
       }),
     ).toBe(
       "To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: AGENT_LOGIN=1 NOTE='two words' '/opt/my agent/bin/agent' acp --profile 'it'\\''s mine' login --device",
+    );
+  });
+
+  it("writes the command for a Windows terminal: paths stay bare, words with spaces take double quotes", () => {
+    const terminal = {
+      id: "terminal",
+      name: "Log in",
+      type: "terminal",
+      args: ["login", "--device"],
+      env: {},
+    };
+    expect(
+      describeAcpSignIn({
+        command: "C:\\Tools\\node\\node.exe",
+        args: ["C:\\Users\\me\\agent.mjs"],
+        authMethods: [terminal],
+        platform: "win32",
+      }),
+    ).toMatch(
+      /again: C:\\Tools\\node\\node\.exe C:\\Users\\me\\agent\.mjs login --device$/u,
+    );
+    expect(
+      describeAcpSignIn({
+        command: "C:\\Program Files\\Agent\\agent.exe",
+        args: ["--profile", "it's mine"],
+        authMethods: [{ ...terminal, env: { NOTE: "two words" } }],
+        platform: "win32",
+      }),
+    ).toMatch(
+      /again: \$env:NOTE="two words"; "C:\\Program Files\\Agent\\agent\.exe" --profile "it's mine" login --device$/u,
     );
   });
 

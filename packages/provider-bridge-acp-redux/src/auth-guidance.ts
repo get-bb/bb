@@ -1,9 +1,15 @@
 import type { AcpAuthMethod } from "./client/capabilities.js";
 
 const SHELL_SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/u;
+const WINDOWS_SAFE_WORD = /^[A-Za-z0-9_@%+=:,./\\-]+$/u;
 const MAX_LISTED_METHODS = 4;
 
-function shellWord(value: string): string {
+function shellWord(value: string, platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    return WINDOWS_SAFE_WORD.test(value)
+      ? value
+      : `"${value.replaceAll('"', '\\"')}"`;
+  }
   return SHELL_SAFE_WORD.test(value)
     ? value
     : `'${value.replaceAll("'", `'\\''`)}'`;
@@ -13,14 +19,27 @@ export function acpTerminalSignInCommand(args: {
   command: string;
   args: readonly string[];
   method: Pick<AcpAuthMethod, "args" | "env">;
+  platform?: NodeJS.Platform;
 }): string {
+  const platform = args.platform ?? process.platform;
+  const word = (value: string) => shellWord(value, platform);
+  const command = [
+    word(args.command),
+    ...args.args.map(word),
+    ...args.method.args.map(word),
+  ].join(" ");
+  const env = Object.entries(args.method.env);
+  if (platform === "win32") {
+    return [
+      ...env.map(
+        ([name, value]) => `$env:${name}="${value.replaceAll('"', '`"')}";`,
+      ),
+      command,
+    ].join(" ");
+  }
   return [
-    ...Object.entries(args.method.env).map(
-      ([name, value]) => `${name}=${shellWord(value)}`,
-    ),
-    shellWord(args.command),
-    ...args.args.map(shellWord),
-    ...args.method.args.map(shellWord),
+    ...env.map(([name, value]) => `${name}=${word(value)}`),
+    command,
   ].join(" ");
 }
 
@@ -28,13 +47,19 @@ export function describeAcpSignIn(args: {
   command: string;
   args: readonly string[];
   authMethods: readonly AcpAuthMethod[];
+  platform?: NodeJS.Platform;
 }): string | null {
   const terminal = args.authMethods.find(
     (method) => method.type === "terminal",
   );
   if (terminal !== undefined) {
     return `To sign in, run this in a terminal on the machine that hosts the thread, then send the message again: ${acpTerminalSignInCommand(
-      { command: args.command, args: args.args, method: terminal },
+      {
+        command: args.command,
+        args: args.args,
+        method: terminal,
+        ...(args.platform === undefined ? {} : { platform: args.platform }),
+      },
     )}`;
   }
   const names = [
