@@ -249,10 +249,6 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
         .strict(),
     })
     .strict(),
-    })
-    .strict(),
-    })
-    .strict(),
   z
     .object({
       name: z.literal("notification_prompt_shown"),

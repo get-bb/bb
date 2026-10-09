@@ -50,13 +50,19 @@ describe("useSetupComplete", () => {
   });
 
   it("is false after the guide until the first thread exists", () => {
-    arrange({ onboardingCompletedAt: "2026-10-09T00:00:00.000Z", threadCount: 0 });
+    arrange({
+      onboardingCompletedAt: "2026-10-09T00:00:00.000Z",
+      threadCount: 0,
+    });
 
     expect(renderHook(() => useSetupComplete()).result.current).toBe(false);
   });
 
   it("is true once the guide is done and a thread exists", () => {
-    arrange({ onboardingCompletedAt: "2026-10-09T00:00:00.000Z", threadCount: 1 });
+    arrange({
+      onboardingCompletedAt: "2026-10-09T00:00:00.000Z",
+      threadCount: 1,
+    });
 
     expect(renderHook(() => useSetupComplete()).result.current).toBe(true);
   });
