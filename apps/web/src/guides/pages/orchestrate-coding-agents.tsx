@@ -56,7 +56,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
+    "Have one agent build and another review, keep a manager for work you repeat, or fan out big changes to many at once. You can step in at any time, or coordinate with just one.",
   heroTop: null,
   concept: <SpawnTimeline />,
   agentPrompt: AGENT_PROMPT,
@@ -89,11 +89,11 @@ export const guide: Guide = {
     {
       id: "step-2",
       title: "Get a second opinion from another agent",
-      lead: "An agent on a different model reads the change with fresh eyes and catches what the first one missed. You don't copy anything between them.",
+      lead: "A different agent reads the change with fresh context and catches what the first one missed. You don't copy anything between them.",
       body: (
         <p>
           Once its work is committed, your agent starts the reviewer in a thread
-          of its own, on the same branch, and nests it under yours in the
+          of its own, on the same branch, and nests it under itself in the
           sidebar. You can ask for any agent by name, like “Have Codex review
           this” or “Ask Cursor to write the release notes.”
         </p>
