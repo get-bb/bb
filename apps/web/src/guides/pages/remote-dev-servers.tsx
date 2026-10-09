@@ -8,6 +8,11 @@ import {
 } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
+import {
+  COST_FAQ,
+  LINK_ACCESS_FAQ,
+  MACHINE_DISCONNECTED_TROUBLESHOOTING,
+} from "../shared/faq";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -221,8 +226,10 @@ export const guide: Guide = {
             that the server is still running.
           </li>
           <li>
-            Start it on <code>127.0.0.1</code>, at the same port you shared. bb
-            connect can't reach a server bound to another address.
+            bb connect opens the port at <code>127.0.0.1</code>, so a server on{" "}
+            <code>127.0.0.1</code> or <code>0.0.0.0</code> works. If it only
+            listens on <code>::1</code>, start it on <code>127.0.0.1</code> at
+            the same port.
           </li>
           <li>Reload the link.</li>
         </ol>
@@ -279,22 +286,7 @@ export const guide: Guide = {
         </ol>
       ),
     },
-    {
-      question: "The machine shows as disconnected",
-      answer: (
-        <ol>
-          <li>Check that the machine is on and online.</li>
-          <li>
-            In <Ui icon="settings">Settings → Machines</Ui>, open its menu and
-            choose <strong>Reconnect</strong>.
-          </li>
-          <li>
-            Run the command it shows on the machine. Its threads and worktrees
-            are kept.
-          </li>
-        </ol>
-      ),
-    },
+    MACHINE_DISCONNECTED_TROUBLESHOOTING,
     {
       question: "My app's sign-in redirects to localhost",
       answer: (
@@ -330,15 +322,7 @@ export const guide: Guide = {
         </p>
       ),
     },
-    {
-      question: "Who can open the link?",
-      answer: (
-        <p>
-          Only you, signed in to your getbb.app account. It isn't public, so
-          webhooks and other services can't call it.
-        </p>
-      ),
-    },
+    LINK_ACCESS_FAQ,
     {
       question: "Does it work with my company VPN or Tailscale?",
       answer: (
@@ -352,22 +336,10 @@ export const guide: Guide = {
     {
       question: "Can my team share these servers?",
       answer: (
-        <>
-          <p>
-            Yes. Run one bb on an always-on machine, like a Linux VM, with{" "}
-            <code>npx bb-app@latest</code>, and add your machines to it.
-            Everyone then sees the same projects, threads, and terminals. To let
-            your Tailscale ACLs decide who gets in, ask an agent on it:
-          </p>
-          <PromptBlock
-            name="Ask the agent"
-            prompt="Serve bb on this machine over HTTPS with Tailscale Serve, and set bb's app URL to the tailnet address."
-          />
-          <p>
-            Everyone with access can run commands on every machine, so share it
-            only with people you trust.
-          </p>
-        </>
+        <p>
+          No. Shared links only open for your getbb.app account, and bb is built
+          for one person.
+        </p>
       ),
     },
     {
@@ -378,8 +350,8 @@ export const guide: Guide = {
           <a href="/marketplace/environment-modal-sandbox">
             Modal Sandbox plugin
           </a>
-          , then add a Modal machine in{" "}
-          <Ui icon="settings">Settings → Machines</Ui>.
+          , then pick <strong>Modal Sandbox</strong> as the machine when you
+          start a new thread.
         </p>
       ),
     },
@@ -399,22 +371,14 @@ export const guide: Guide = {
       question: "What happens to a server when I archive its thread?",
       answer: (
         <p>
-          Five minutes later, bb removes the worktree and stops everything
-          running in it, including the dev server. The branch is kept. Commit a{" "}
-          <code>.bb-env-teardown.sh</code> to clean up anything outside the
-          worktree, like Docker containers.
+          The dev server and other terminals stop after the 30-second undo
+          window. Five minutes later, bb removes the worktree if no other thread
+          uses it. The branch is kept. Commit a <code>.bb-env-teardown.sh</code>{" "}
+          to clean up anything outside the worktree, like Docker containers.
         </p>
       ),
     },
-    {
-      question: "What does it cost?",
-      answer: (
-        <p>
-          bb and bb connect are free. You pay for your machines and agents as
-          you do now.
-        </p>
-      ),
-    },
+    COST_FAQ,
   ],
   closer: {
     title: "Preview every branch",

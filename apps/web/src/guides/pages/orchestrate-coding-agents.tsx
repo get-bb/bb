@@ -43,7 +43,7 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 
 6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what each review found, what you fixed, and what's left for me.`,
+Reply with what you built, what the review found, what you fixed, and what's left for me.`,
 );
 
 export const meta: GuideMeta = {
@@ -228,8 +228,9 @@ export const guide: Guide = {
             prompt="Use a workflow to fix every no-floating-promises lint error. Start one Codex worker per top-level folder, then have a Claude Code worker check each folder's fixes. Open one PR when every check passes."
           />
           <p>
-            The run shows in the thread with each worker's progress. Stop it
-            from its card above the message box.
+            The run shows in the thread with each worker's progress. To stop it,
+            open the run in the side panel from its card above the message box,
+            and choose <strong>Stop workflow</strong>.
           </p>
         </>
       ),
@@ -262,22 +263,13 @@ export const guide: Guide = {
     {
       question: "My manager didn't run this morning",
       answer: (
-        <ol>
-          <li>
-            Open the automation in <strong>Automations</strong>, check that it's
-            on, and read its <strong>Runs</strong>.
-          </li>
-          <li>
-            Check that bb and the computer were awake at that time. The run
-            happens once they're back.
-          </li>
-          <li>
-            <a href="/guides/run-an-agent-on-a-schedule">
-              Run an agent on a schedule
-            </a>{" "}
-            covers more fixes.
-          </li>
-        </ol>
+        <p>
+          See “My automation didn't run” in{" "}
+          <a href="/guides/run-an-agent-on-a-schedule">
+            Run an agent on a schedule
+          </a>
+          .
+        </p>
       ),
     },
     {

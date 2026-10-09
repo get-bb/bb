@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Substeps, Ui } from "../guide-blocks";
 import type { GuideFaq, GuideShot, GuideStep } from "../guide-types";
+import { AGENTS_FAQ } from "./faq";
 
 export function annotateStep({
   title,
@@ -203,15 +204,7 @@ export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
 ];
 
 export const BROWSER_FAQ: GuideFaq[] = [
-  {
-    question: "Which agents can use the browser?",
-    answer: (
-      <p>
-        Any agent you run in a bb thread, including Claude Code, Codex, Cursor,
-        and OpenCode. You don't need a browser extension.
-      </p>
-    ),
-  },
+  AGENTS_FAQ,
   {
     question: "Do I need the desktop app?",
     answer: (
@@ -227,8 +220,20 @@ export const BROWSER_FAQ: GuideFaq[] = [
     answer: (
       <p>
         Yes. A Browser tab shows a bar while your agent controls it. Choose{" "}
-        <strong>Stop</strong> to end its control, or <strong>Take over</strong>{" "}
-        to click and type yourself.
+        <strong>Take over</strong> to click and type yourself, like to enter a
+        sign-in code, or <strong>Stop</strong> to end its control.
+      </p>
+    ),
+  },
+  {
+    question: "Can my agent see my passwords?",
+    answer: (
+      <p>
+        No. bb imports your logins, not your saved passwords, so your agent
+        opens sites already signed in without seeing a password. Your logins
+        stay in bb's Browser on this computer, and the prompt from{" "}
+        <strong>Copy for agent</strong> tells your agent never to read or print
+        them.
       </p>
     ),
   },

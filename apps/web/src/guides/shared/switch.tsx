@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { SwitchConcept } from "../concepts";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import type { Guide, GuideMeta } from "../guide-types";
+import { AGENTS_FAQ, COST_FAQ } from "./faq";
 
 const GENERIC_SETUP_STEP = (
   <>
@@ -208,12 +209,13 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
     ],
     troubleshooting: [
       {
-        question: "My old worktree isn't in the list",
+        question: "I can't find my old folder",
         answer: (
           <ol>
             <li>
-              The list shows the Git worktrees of the repo you picked. Check
-              that you picked the right repo.
+              Choose <strong>Worktree</strong>, then{" "}
+              <strong>Existing worktree</strong>. It lists the Git worktrees of
+              the repo you picked, so check that you picked the right repo.
             </li>
             <li>
               If the folder isn't a Git worktree, add it as a project in{" "}
@@ -227,9 +229,8 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
         answer: (
           <ol>
             <li>
-              Conversations are read from where Claude Code and Codex keep them
-              on this computer. If they were deleted or ran elsewhere, there's
-              nothing to read.
+              Your agent looks for {oldTool}'s conversations on this computer.
+              If they were deleted or ran elsewhere, there's nothing to read.
             </li>
             <li>
               It then works from the branch or pull request. Tell it what was
@@ -256,8 +257,10 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
         question: `Will bb change anything in ${tool.name}?`,
         answer: (
           <p>
-            No. bb works in your worktrees where they are and doesn't move or
-            delete anything. {tool.keepsWorking}
+            No. bb works in your worktrees where they are and doesn't move
+            anything, and archiving a bb thread never deletes a worktree bb
+            didn't create. Bring over one task at a time, whenever you're ready.{" "}
+            {tool.keepsWorking}
           </p>
         ),
       },
@@ -265,19 +268,10 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
         question: "What comes along?",
         answer: (
           <p>
-            Your repos, branches, uncommitted changes, and open pull requests,
-            plus CLAUDE.md, AGENTS.md, skills, MCP servers, and agent sign-ins,
-            since bb runs the same agents. Your old chats stay in {oldTool};
-            each bb thread reads the one it continues.
-          </p>
-        ),
-      },
-      {
-        question: "Do I have to move everything at once?",
-        answer: (
-          <p>
-            No. Bring over one task at a time, whenever you're ready. {oldTool}{" "}
-            keeps working alongside bb.
+            Your repos, branches, uncommitted changes, and open pull requests.
+            Claude Code and Codex in bb use the same CLAUDE.md, AGENTS.md,
+            skills, MCP servers, and sign-ins they use now. Your old chats stay
+            in {oldTool}; each bb thread reads the one it continues.
           </p>
         ),
       },
@@ -295,6 +289,8 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
           </p>
         ),
       },
+      COST_FAQ,
+      AGENTS_FAQ,
     ],
     closer: {
       title: "Get more done with the agents you already use",

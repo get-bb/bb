@@ -2,6 +2,12 @@ import { AnywhereConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
+import {
+  COST_FAQ,
+  LINK_ACCESS_FAQ,
+  MACHINE_DISCONNECTED_TROUBLESHOOTING,
+  SLEEP_TROUBLESHOOTING,
+} from "../shared/faq";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -56,7 +62,9 @@ export const guide: Guide = {
           </li>
           <li>Approve the sign-in on getbb.app and claim a handle.</li>
           <li>
-            Keep <strong>Remote access</strong> on.
+            Check that your address shows. If it says{" "}
+            <strong>Remote access is off</strong>, choose{" "}
+            <strong>Turn on</strong>.
           </li>
         </Substeps>
       ),
@@ -166,31 +174,14 @@ export const guide: Guide = {
           </li>
           <li>
             On that computer, open{" "}
-            <Ui icon="settings">Settings → bb connect</Ui> and check that{" "}
-            <strong>Remote access</strong> is on.
+            <Ui icon="settings">Settings → bb connect</Ui>. If it says{" "}
+            <strong>Remote access is off</strong>, choose{" "}
+            <strong>Turn on</strong>.
           </li>
         </ol>
       ),
     },
-    {
-      question: "My agents stopped while I was away",
-      answer: (
-        <ol>
-          <li>
-            Check whether the computer slept. Keep Awake doesn't stop a closed
-            lid or a chosen Sleep.
-          </li>
-          <li>
-            If the server's computer slept, nothing could reach bb until it
-            woke. Open the thread and send a message to continue.
-          </li>
-          <li>
-            For agents that run all day, run bb on a computer that stays on and
-            add your laptop as a machine.
-          </li>
-        </ol>
-      ),
-    },
+    SLEEP_TROUBLESHOOTING,
     {
       question: "I don't see Add mobile device",
       answer: (
@@ -200,8 +191,8 @@ export const guide: Guide = {
             your bb account.
           </li>
           <li>
-            Turn on <strong>Remote access</strong> and wait for your address to
-            show.
+            If it says <strong>Remote access is off</strong>, choose{" "}
+            <strong>Turn on</strong>, and wait for your address to show.
           </li>
           <li>
             Go back to <Ui icon="settings">Settings → Mobile</Ui>.
@@ -209,22 +200,7 @@ export const guide: Guide = {
         </ol>
       ),
     },
-    {
-      question: "A machine shows as disconnected",
-      answer: (
-        <ol>
-          <li>Check that its computer is on, awake, and online.</li>
-          <li>
-            In <Ui icon="settings">Settings → Machines</Ui>, open its menu and
-            choose <strong>Reconnect</strong>.
-          </li>
-          <li>
-            Run the command it shows on that machine. Its threads and worktrees
-            are kept.
-          </li>
-        </ol>
-      ),
-    },
+    MACHINE_DISCONNECTED_TROUBLESHOOTING,
     {
       question: "A machine is stuck updating",
       answer: (
@@ -335,34 +311,19 @@ export const guide: Guide = {
         </p>
       ),
     },
-    {
-      question: "Who can open my getbb.app address?",
-      answer: (
-        <p>
-          Only you, signed in to your getbb.app account, and devices you've
-          paired. To shut it off, turn off <strong>Remote access</strong>, or
-          choose <strong>Disconnect</strong> on that bb in your getbb.app
-          dashboard.
-        </p>
-      ),
-    },
+    LINK_ACCESS_FAQ,
     {
       question: "Does bb store my traffic?",
       answer: (
         <p>
-          No. bb connect passes it through without recording it. It only caches
-          bb's own static files.
+          No. bb connect doesn't store what you send or receive. Like a CDN, it
+          caches public files that are marked cacheable, including ones from
+          shared dev servers, and it logs a request's path when something
+          errors.
         </p>
       ),
     },
-    {
-      question: "What does it cost?",
-      answer: (
-        <p>
-          bb and bb connect are free. You pay for your agents as you do now.
-        </p>
-      ),
-    },
+    COST_FAQ,
   ],
   closer: {
     title: "Take your agents with you",
