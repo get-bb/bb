@@ -314,6 +314,7 @@ function renderThreadActionsTrigger(props: PluginThreadActionsTriggerProps) {
       variant="ghost"
       size="icon"
       className={cn(
+        props.className,
         "rounded-md p-0",
         "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
         SIDEBAR_CONTROL_BUTTON_CLASS,

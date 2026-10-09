@@ -513,6 +513,44 @@ describe("thread action run containment", () => {
 });
 
 describe("thread actions menu trigger", () => {
+  it("reports a trigger that replaces the host's classes", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      {
+        ...surface,
+        render: ({ thread }) => (
+          <ThreadActionsMenu
+            thread={threadListEntryActionTarget(thread)}
+            trigger={(props) => (
+              <button {...props} type="button" className="mine">
+                Thread actions
+              </button>
+            )}
+          />
+        ),
+      },
+      { thread: baseThread },
+    );
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("dropped the host's classes (select-none)"),
+    );
+  });
+
+  it("keeps the host's classes on a trigger that merges them", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(surface, { thread: baseThread });
+    expect(
+      screen
+        .getByRole("button", { name: "Thread actions" })
+        .classList.contains("select-none"),
+    ).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("reports a trigger that drops the props and ref it receives", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const [surface] = SURFACES;

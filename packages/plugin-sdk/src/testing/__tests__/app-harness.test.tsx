@@ -2079,6 +2079,28 @@ describe("thread actions menu fake", () => {
     error.mockRestore();
   });
 
+  it("rejects a trigger that replaces the host's className", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button" className="mine">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /replaced the host's className/,
+    );
+    error.mockRestore();
+  });
+
   it("opens from a trigger that spreads its props", async () => {
     const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
       await import("../../app.js");

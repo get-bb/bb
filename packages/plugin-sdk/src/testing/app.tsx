@@ -528,6 +528,8 @@ function useTestMenuOpenState({
   };
 }
 
+const TEST_TRIGGER_HOST_CLASS = "bb-test-thread-actions-trigger";
+
 function TestThreadActionsMenu({
   thread,
   trigger,
@@ -539,9 +541,15 @@ function TestThreadActionsMenu({
   const menu = useTestMenuOpenState({ onOpenChange, onCloseAutoFocus });
   const triggerElement = useRef<HTMLButtonElement | null>(null);
   useLayoutEffect(() => {
-    if (triggerElement.current?.getAttribute("aria-haspopup") !== "menu") {
+    const element = triggerElement.current;
+    if (element?.getAttribute("aria-haspopup") !== "menu") {
       throw new Error(
         "experimental_ThreadActionsMenu: `trigger` must spread the props and ref it receives onto the button it renders, or the menu never opens",
+      );
+    }
+    if (!element.classList.contains(TEST_TRIGGER_HOST_CLASS)) {
+      throw new Error(
+        "experimental_ThreadActionsMenu: `trigger` replaced the host's className; merge props.className into its own",
       );
     }
   });
@@ -550,6 +558,7 @@ function TestThreadActionsMenu({
       {trigger({
         ref: triggerElement,
         type: "button",
+        className: TEST_TRIGGER_HOST_CLASS,
         "aria-haspopup": "menu",
         "aria-expanded": menu.open,
         onClick: menu.show,

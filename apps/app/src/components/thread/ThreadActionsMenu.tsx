@@ -64,6 +64,21 @@ function ThreadActionsMenuItems({
   );
 }
 
+function describeTriggerContractViolation(
+  element: HTMLElement | null,
+  hostClassName: string | undefined,
+): string | null {
+  if (element === null) {
+    return "did not attach the ref it received, so the menu cannot open; spread its props and ref onto the button";
+  }
+  const missing = (hostClassName ?? "")
+    .split(/\s+/)
+    .filter((name) => name.length > 0 && !element.classList.contains(name));
+  return missing.length === 0
+    ? null
+    : `dropped the host's classes (${missing.join(" ")}); merge props.className into your own className`;
+}
+
 const ThreadActionsTriggerSlot = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & {
@@ -71,13 +86,16 @@ const ThreadActionsTriggerSlot = forwardRef<
   }
 >(function ThreadActionsTriggerSlot({ render, ...props }, ref) {
   const element = useRef<HTMLButtonElement | null>(null);
+  const hostClassName = props.className;
   useLayoutEffect(() => {
-    if (element.current === null) {
-      console.error(
-        "experimental_ThreadActionsMenu: `trigger` did not attach the ref it received, so the menu cannot open; spread its props and ref onto the button",
-      );
+    const problem = describeTriggerContractViolation(
+      element.current,
+      hostClassName,
+    );
+    if (problem !== null) {
+      console.error(`experimental_ThreadActionsMenu: \`trigger\` ${problem}`);
     }
-  }, []);
+  }, [hostClassName]);
   return render({
     ...props,
     ref: (node: HTMLButtonElement | null) => {

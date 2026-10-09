@@ -2305,6 +2305,7 @@ function ThreadDetailViewInternal(
               variant="ghost"
               size="icon"
               className={cn(
+                triggerProps.className,
                 "rounded-md p-0",
                 "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
                 HEADER_ICON_BUTTON_CLASS,
