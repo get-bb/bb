@@ -180,6 +180,10 @@ export const timelineParentChangeSchema = z.object({
 });
 export type TimelineParentChange = z.infer<typeof timelineParentChangeSchema>;
 
+const timelineContentDeferredField = {
+  contentDeferred: z.literal(true).optional(),
+};
+
 const timelineSystemRowBaseSchema = timelineRowBaseSchema.extend({
   kind: z.literal("system"),
   title: z.string(),
@@ -201,6 +205,7 @@ export const timelineGenericOperationSystemRowSchema =
     operationKind: timelineGenericSystemOperationKindSchema,
     reasoningId: z.string().optional(),
     completedAt: z.number().nullable(),
+    ...timelineContentDeferredField,
   });
 
 export const timelineParentChangeSystemRowSchema =
@@ -284,6 +289,7 @@ export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   approvalStatus: timelineApprovalStatusSchema,
   activityIntents: z.array(timelineActivityIntentSchema),
   ...timelineRowPresentationField,
+  ...timelineContentDeferredField,
 });
 export type TimelineCommandWorkRow = z.infer<
   typeof timelineCommandWorkRowSchema
@@ -299,6 +305,7 @@ export const timelineToolWorkRowSchema = timelineWorkRowBaseSchema.extend({
   completedAt: z.number().nullable(),
   approvalStatus: timelineApprovalStatusSchema,
   ...timelineRowPresentationField,
+  ...timelineContentDeferredField,
 });
 export type TimelineToolWorkRow = z.infer<typeof timelineToolWorkRowSchema>;
 
@@ -311,6 +318,7 @@ export const timelineFileChangeWorkRowSchema = timelineWorkRowBaseSchema.extend(
     stderr: z.string().nullable(),
     approvalStatus: timelineApprovalStatusSchema,
     ...timelineRowPresentationField,
+    ...timelineContentDeferredField,
   },
 );
 export type TimelineFileChangeWorkRow = z.infer<
@@ -520,7 +528,7 @@ export interface TimelineDelegationWorkRow extends TimelineWorkRowBase {
   description: string | null;
   output: string;
   completedAt: number | null;
-  childRows: TimelineRow[];
+  childRows: TimelineRow[] | null;
   presentation?: TimelineRowPresentation;
 }
 
@@ -535,7 +543,7 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
     description: z.string().nullable(),
     output: z.string(),
     completedAt: z.number().nullable(),
-    childRows: z.array(z.lazy(() => timelineRowSchema)),
+    childRows: z.array(z.lazy(() => timelineRowSchema)).nullable(),
     ...timelineRowPresentationField,
   });
 

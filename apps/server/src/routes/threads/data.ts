@@ -288,6 +288,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
+    const deferContent = query.deferContent === "true";
     const summaryOnly = query.summaryOnly === "true";
 
     const providerDisplayName = resolveThreadProviderDisplayName(
@@ -313,6 +314,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       providerDisplayName,
       page,
       includeNestedRows,
+      deferContent,
       summaryOnly,
       includeClearedContextHistory,
       includeDiagnosticOperations,
@@ -327,6 +329,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           thread,
           {
             completedTurnDisplay,
+            deferContent,
             eventBudget,
             includeClearedContextHistory,
             includeDiagnosticOperations,
@@ -378,8 +381,12 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.conversationOutline, (context) => {
+  get(routes.conversationOutline, (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const selectItems = (items: ThreadConversationOutlineResponse["items"]) =>
+      query.role === undefined
+        ? items
+        : items.filter((item) => item.role === query.role);
 
     const outlineSequence = getLatestStoredConversationOutlineSequence(
       deps.db,
@@ -400,7 +407,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     if (cached !== undefined) {
       conversationOutlineCache.delete(cacheKey);
       conversationOutlineCache.set(cacheKey, cached);
-      return context.json({ items: cached, maxSeq });
+      return context.json({ items: selectItems(cached), maxSeq });
     }
     const response = loadThreadConversationOutline(deps.db, thread, {
       ...outlineOptions,
@@ -416,7 +423,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       }
       conversationOutlineCache.delete(oldest);
     }
-    return context.json(response);
+    return context.json({ ...response, items: selectItems(response.items) });
   });
 
   get(routes.message, (context, query) => {
@@ -445,6 +452,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildTimelineTurnSummaryDetails(deps.db, thread, {
         beforeCursor: query.beforeCursor,
+        deferContent: query.deferContent === "true",
+        itemId: query.itemId ?? null,
         completedTurnDisplay: resolveThreadCompletedTurnDisplay(
           deps,
           settings,

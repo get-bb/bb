@@ -1441,7 +1441,7 @@ export function flattenTimelineRows(
       return [row, ...flattenTimelineRows(row.children ?? [])];
     }
     if (row.kind === "work" && row.workKind === "delegation") {
-      return [row, ...flattenTimelineRows(row.childRows)];
+      return [row, ...flattenTimelineRows(row.childRows ?? [])];
     }
     return [row];
   });

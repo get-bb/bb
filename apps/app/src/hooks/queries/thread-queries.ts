@@ -3,6 +3,7 @@ import {
   useInfiniteQuery,
   useQuery,
   useQueryClient,
+  type InfiniteData,
   type NotifyOnChangeProps,
   type QueryClient,
 } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import type {
   ThreadStorageLocationResponse,
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
+  TimelineRow,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import { useDebouncedValue } from "../useDebouncedValue";
@@ -84,6 +86,7 @@ import {
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
   threadsQueryKey,
+  type ThreadConversationOutlineRole,
   type ThreadTimelineTurnSummaryDetailsQueryIdentity,
 } from "./query-keys";
 import { ARCHIVED_THREADS_PAGE_SIZE } from "./archived-threads-page-size";
@@ -964,8 +967,12 @@ async function fetchThreadTimeline({
   const queryKey = threadTimelineQueryKey(threadId);
   const previous = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
   const segmentLimit = resolveThreadTimelineSegmentLimit();
-  const pageArgs =
-    segmentLimit === undefined ? {} : { segmentLimit: String(segmentLimit) };
+  const pageArgs = {
+    deferContent: "true" as const,
+    ...(segmentLimit === undefined
+      ? {}
+      : { segmentLimit: String(segmentLimit) }),
+  };
   const response = await sdk.threads.timeline({
     threadId,
     signal,
@@ -1026,16 +1033,17 @@ export function useThreadTimeline(
 
 export function useThreadConversationOutline(
   id: string,
+  role: ThreadConversationOutlineRole,
   options?: ThreadConversationOutlineQueryOptions,
 ) {
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
   return useQuery<ThreadConversationOutlineResponse>({
-    queryKey: threadConversationOutlineQueryKey(id),
+    queryKey: threadConversationOutlineQueryKey(id, role),
     queryFn: async ({ signal }) => {
       const threadId = requireThreadId(id, "useThreadConversationOutline");
-      return sdk.threads.conversationOutline({ threadId, signal });
+      return sdk.threads.conversationOutline({ threadId, role, signal });
     },
     enabled,
     refetchOnMount: options?.refetchOnMount ?? true,
@@ -1045,14 +1053,34 @@ export function useThreadConversationOutline(
   });
 }
 
+function mergeTimelineTurnSummaryDetailsPages(
+  data: InfiniteData<TimelineTurnSummaryDetailsResponse, string | undefined>,
+): TimelineRow[] {
+  const [latest, ...olderPages] = data.pages;
+  let rows = latest?.rows ?? [];
+  for (const older of olderPages) {
+    rows = prependOlderTimelineRows({
+      olderRows: older.rows,
+      loadedRows: rows,
+    });
+  }
+  return rows;
+}
+
 export function useThreadTimelineTurnSummaryDetails(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
   options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
 ) {
-  return useQuery<TimelineTurnSummaryDetailsResponse>({
+  return useInfiniteQuery<
+    TimelineTurnSummaryDetailsResponse,
+    Error,
+    TimelineRow[],
+    ReturnType<typeof threadTimelineTurnSummaryDetailsQueryKey>,
+    string | undefined
+  >({
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
-    queryFn: async ({ signal }) => {
-      const input = {
+    queryFn: ({ pageParam, signal }) =>
+      sdk.threads.timelineTurnSummaryDetails({
         threadId: requireThreadId(
           identity.threadId,
           "useThreadTimelineTurnSummaryDetails",
@@ -1060,24 +1088,14 @@ export function useThreadTimelineTurnSummaryDetails(
         sourceSeqEnd: String(identity.sourceSeqEnd),
         sourceSeqStart: String(identity.sourceSeqStart),
         turnId: identity.turnId,
+        deferContent: "true",
+        ...(identity.itemId === null ? {} : { itemId: identity.itemId }),
+        ...(pageParam === undefined ? {} : { beforeCursor: pageParam }),
         signal,
-      };
-      const response = await sdk.threads.timelineTurnSummaryDetails(input);
-      let rows = response.rows;
-      let cursor = response.olderCursor;
-      while (cursor) {
-        const older = await sdk.threads.timelineTurnSummaryDetails({
-          ...input,
-          beforeCursor: cursor,
-        });
-        rows = prependOlderTimelineRows({
-          olderRows: older.rows,
-          loadedRows: rows,
-        });
-        cursor = older.olderCursor;
-      }
-      return { ...response, rows, olderCursor: null };
-    },
+      }),
+    initialPageParam: undefined,
+    getNextPageParam: (lastPage) => lastPage.olderCursor ?? undefined,
+    select: mergeTimelineTurnSummaryDetailsPages,
     enabled:
       (options?.enabled ?? true) &&
       Boolean(identity.threadId) &&

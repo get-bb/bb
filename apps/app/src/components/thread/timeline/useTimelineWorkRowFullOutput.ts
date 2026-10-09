@@ -44,27 +44,16 @@ function loadedOutputState(
 
 function findPreviewableWorkRow(
   rows: readonly TimelineRow[],
-  predicate: (row: TimelinePreviewableWorkRow) => boolean,
+  workKind: TimelinePreviewableWorkRow["workKind"],
+  callId: string,
 ): TimelinePreviewableWorkRow | null {
-  for (const row of rows) {
+  for (const candidate of rows) {
     if (
-      row.kind === "work" &&
-      (row.workKind === "command" || row.workKind === "tool") &&
-      predicate(row)
+      candidate.kind === "work" &&
+      candidate.workKind === workKind &&
+      candidate.callId === callId
     ) {
-      return row;
-    }
-    const children =
-      row.kind === "turn"
-        ? row.children
-        : row.kind === "work" && row.workKind === "delegation"
-          ? row.childRows
-          : null;
-    if (children !== null) {
-      const match = findPreviewableWorkRow(children, predicate);
-      if (match !== null) {
-        return match;
-      }
+      return candidate;
     }
   }
   return null;
@@ -82,6 +71,7 @@ export function useTimelineWorkRowFullOutput(
     row.status !== "pending";
   const { data, isError, refetch } = useThreadTimelineTurnSummaryDetails(
     {
+      itemId: row.callId,
       sourceSeqEnd: row.sourceSeqEnd,
       sourceSeqStart: row.sourceSeqStart,
       threadId: row.threadId,
@@ -99,17 +89,7 @@ export function useTimelineWorkRowFullOutput(
     if (!shouldLoad || data === undefined) {
       return null;
     }
-    const match =
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) => candidate.id === row.id,
-      ) ??
-      findPreviewableWorkRow(
-        data.rows,
-        (candidate) =>
-          candidate.workKind === row.workKind &&
-          candidate.callId === row.callId,
-      );
+    const match = findPreviewableWorkRow(data, row.workKind, row.callId);
     if (match === null) {
       return null;
     }
@@ -117,7 +97,7 @@ export function useTimelineWorkRowFullOutput(
       output: match.output,
       outputPreview: match.outputPreview,
     };
-  }, [data, row.callId, row.id, row.workKind, shouldLoad]);
+  }, [data, row.callId, row.workKind, shouldLoad]);
 
   if (!isPreview) {
     return { output: row.output, state: "complete", retry };

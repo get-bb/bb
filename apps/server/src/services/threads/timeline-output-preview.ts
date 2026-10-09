@@ -21,8 +21,24 @@ function buildTimelineOutputPreview(output: string): string {
 }
 
 function previewRow(row: TimelineRow): TimelineRow {
+  if (row.kind === "turn") {
+    if (row.children === null) {
+      return row;
+    }
+    const children = previewTimelineRowOutputs(row.children);
+    return children === row.children ? row : { ...row, children };
+  }
+  if (row.kind !== "work") {
+    return row;
+  }
+  if (row.workKind === "delegation") {
+    if (row.childRows === null) {
+      return row;
+    }
+    const childRows = previewTimelineRowOutputs(row.childRows);
+    return childRows === row.childRows ? row : { ...row, childRows };
+  }
   if (
-    row.kind !== "work" ||
     (row.workKind !== "command" && row.workKind !== "tool") ||
     row.output.length <= TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS
   ) {
@@ -38,7 +54,7 @@ function previewRow(row: TimelineRow): TimelineRow {
   };
 }
 
-function previewRows(rows: TimelineRow[]): TimelineRow[] {
+export function previewTimelineRowOutputs(rows: TimelineRow[]): TimelineRow[] {
   let changed = false;
   const previewed = rows.map((row) => {
     const next = previewRow(row);
@@ -53,5 +69,5 @@ function previewRows(rows: TimelineRow[]): TimelineRow[] {
 export function previewTimelineResponseOutputs(
   response: ThreadTimelineResponse,
 ): ThreadTimelineResponse {
-  return mapTimelineResponseRows(response, previewRows);
+  return mapTimelineResponseRows(response, previewTimelineRowOutputs);
 }
