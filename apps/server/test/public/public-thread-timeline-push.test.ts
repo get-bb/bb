@@ -24,8 +24,8 @@ async function getTimeline(
   return threadTimelineResponseSchema.parse(await readJson(response));
 }
 
-function nextTick(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
+function settlePushes(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 50));
 }
 
 function timelineSignals(messages: readonly string[]): ThreadTimelineSignal[] {
@@ -79,7 +79,7 @@ describe("thread-timeline realtime push", () => {
           data: { itemId: "assistant-1", delta },
         });
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-        await nextTick();
+        await settlePushes();
         const [signal] = timelineSignals(socket.messages.splice(0));
         expect(signal).toMatchObject({
           target,
@@ -112,7 +112,7 @@ describe("thread-timeline realtime push", () => {
         data: { status: "completed" },
       });
       harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-      await nextTick();
+      await settlePushes();
       const [completed] = timelineSignals(socket.messages.splice(0));
       expect(completed?.afterSequence).toBe(4);
       const completedRows = applySignal(client.rows, completed!);
@@ -149,7 +149,7 @@ describe("thread-timeline realtime push", () => {
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
         harness.deps.hub.notifyThread(other.id, ["events-appended"]);
       }
-      await nextTick();
+      await settlePushes();
 
       const signals = timelineSignals(socket.messages);
       expect(signals).toHaveLength(1);
@@ -184,7 +184,7 @@ describe("thread-timeline realtime push", () => {
           data: sequence === 1 ? {} : { itemId: "a", delta: `${sequence}\n` },
         });
         harness.deps.hub.notifyThread(thread.id, ["events-appended"]);
-        await nextTick();
+        await settlePushes();
         return timelineSignals(socket.messages.splice(0));
       };
 
