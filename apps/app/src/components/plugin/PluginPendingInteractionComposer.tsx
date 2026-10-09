@@ -97,7 +97,7 @@ export function PluginPendingInteractionComposer({
     <PendingInteractionShell
       key={interaction.id}
       label={request.title}
-      initiallyExpanded={!collapsedByDefault}
+      expandedByDefault={!collapsedByDefault}
       errorMessage={error}
       sourceThread={sourceThread}
       testId="plugin-interaction-shell"

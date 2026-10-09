@@ -109,7 +109,7 @@ export function Overview() {
       />
       <PendingInteractionShell
         label="Question submission failed"
-        initiallyExpanded
+        expandedByDefault
         errorMessage="Could not submit your answer. Please try again once the connection is restored."
         testId="error-interaction-shell"
       >
