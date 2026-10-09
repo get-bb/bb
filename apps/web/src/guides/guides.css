@@ -114,6 +114,11 @@
   transition: opacity 0.2s ease;
 }
 
+.gd-hero-badge .gd-switch {
+  margin-top: 20px;
+  justify-content: center;
+}
+
 .gd-switch-glyph {
   display: grid;
   place-items: center;

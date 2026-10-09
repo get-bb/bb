@@ -31,7 +31,7 @@ export interface GuideStepOption {
 export interface GuideStep {
   id: string;
   title: string;
-  lead: ReactNode;
+  lead: ReactNode | null;
   body: ReactNode;
   shot: GuideShot;
   options: GuideStepOption[];
@@ -45,6 +45,7 @@ export interface GuideFaq {
 export interface Guide extends GuideMeta {
   description: string;
   concept: ReactNode;
+  heroBadge: ReactNode | null;
   agentPrompt: string;
   requirement: string | null;
   steps: GuideStep[];

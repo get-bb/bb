@@ -54,6 +54,7 @@ export const guide: Guide = {
   description:
     "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
   concept: <AgentSplit />,
+  heroBadge: null,
   agentPrompt: AGENT_PROMPT,
   requirement: "Claude Code and Codex, each signed in once",
   steps: [

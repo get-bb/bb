@@ -123,7 +123,7 @@ export const SWITCH_TOOLS = {
 export function switchPrompt(tool: SwitchTool): string {
   const from = tool.name;
   const url = `https://getbb.app/guides/${tool.slug}`;
-  return `Pick up the task I was working on in ${from}, in this folder, and keep going here. If it isn't clear which task, ask me first.
+  return `Pick up a task I was working on in ${from}, in this folder, and keep going here. First, ask me which work I want to bring over, and suggest the latest conversation you find for this folder.
 Guide: ${url}
 
 1. See where the work stands: git log, git status, and git diff against the base branch. If I named a pull request, read it and its comments with gh pr view <url> --comments.
@@ -137,7 +137,8 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
   return {
     ...meta,
     description: `Pick up where ${oldTool} left off. Open the task where it was, and your agent reads the old conversation, tells you where things stand, and keeps going.`,
-    concept: <SwitchConcept tool={tool.id} />,
+    concept: null,
+    heroBadge: <SwitchConcept tool={tool.id} />,
     agentPrompt: switchPrompt(tool),
     requirement: null,
     steps: [
@@ -169,11 +170,11 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
       {
         id: "thread",
         title: "Create a new thread",
-        lead: `Work where ${oldTool} left the task, so its branch and changes are right there.`,
+        lead: `Start where ${oldTool} left off, so its branch and changes come along.`,
         body: (
           <p>
-            Choose <strong>New thread</strong>, then choose the repo and where
-            you want to work.
+            Choose <strong>New thread</strong>, then choose the repo and the
+            folder {oldTool} worked in.
           </p>
         ),
         shot: {
@@ -187,13 +188,14 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
       {
         id: "prompt",
         title: "Paste the prompt",
-        lead: "Your agent catches up, then keeps going once you agree.",
+        lead: null,
         body: (
           <Substeps>
             <li>
               Paste the prompt from <CopyPromptButton /> and send it. Your agent
-              writes a handoff: the goal, what's done, and what's left. Reply to
-              correct it, or say go.
+              asks which work you want to bring over, then writes a handoff: the
+              goal, what's done, and what's left. Reply to correct it, or say
+              go.
             </li>
             <li>Do the same for each task you want to bring over.</li>
           </Substeps>
