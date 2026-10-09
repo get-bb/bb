@@ -33,5 +33,19 @@ tier to Codex as given. When the model does not list it, Codex runs the turn
 at its default tier and the thread shows its warning that the tier "is not
 advertised as supported" and was omitted.
 
+Daybreak is a session option with the id `daybreak`, offered only when the
+signed-in account's model list advertises a Daybreak program. Turn it on in the
+model picker, with `bb thread spawn --option daybreak=true`, or on an existing
+thread with `bb thread options --set daybreak=true`; it applies from the next
+turn and Codex stores the choice on its own thread. With it on, each turn asks
+for the selected model's Daybreak program (blue when the model lists it,
+otherwise red); with it off, each turn asks for the standard program.
+`bb provider models codex` lists the option, and `--json` shows per model
+whether it runs with Daybreak, without it, or both (`sessionOptions`, where
+`fixed: true` means only the listed value). A model that cannot run in the
+current state is disabled in the picker. The `gpt-daybreak-*-latest` alias
+models leave the main list when the switch is available and stay selectable
+only on threads that already use them.
+
 Use the core CLI skill for command syntax and official Codex guidance for
 upstream product behavior.

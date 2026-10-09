@@ -647,6 +647,7 @@ describe("useThreadCreationOptions", () => {
       ).toEqual(["daybreak"]);
     });
     expect(result.current.sessionOptionSelections).toEqual({});
+    expect(result.current.executionInputSources.model).toBeUndefined();
 
     act(() => {
       result.current.setSessionOption("daybreak", true);
@@ -657,6 +658,7 @@ describe("useThreadCreationOptions", () => {
       });
       expect(result.current.selectedModel).toBe("global-remembered");
     });
+    expect(result.current.executionInputSources.model).toBe("explicit");
     expect(
       result.current.modelOptions.map((option) => option.disabled === true),
     ).toEqual([true, false]);

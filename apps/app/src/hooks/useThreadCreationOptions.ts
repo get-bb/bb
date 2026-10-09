@@ -603,6 +603,7 @@ export function useThreadCreationOptions(
     declaredSessionOptions,
     sessionOptionSelections,
     isUnavailableModelRecovery,
+    isSessionOptionModelSwitch,
   } = useMemo(
     () =>
       resolveModelCatalogSelection({
@@ -700,7 +701,8 @@ export function useThreadCreationOptions(
           reasoningLevel,
           permissionMode,
         },
-        forceExplicitModel: isUnavailableModelRecovery,
+        forceExplicitModel:
+          isUnavailableModelRecovery || isSessionOptionModelSwitch,
         initialProviderSource: effectiveInitialProviderSource,
         scope,
         storedValues: {
@@ -717,6 +719,7 @@ export function useThreadCreationOptions(
     [
       effectiveProviderId,
       effectiveInitialProviderSource,
+      isSessionOptionModelSwitch,
       isUnavailableModelRecovery,
       permissionMode,
       reasoningLevel,

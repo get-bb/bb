@@ -1,3 +1,4 @@
+import { upsertProjectExecutionDefaults } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { waitForQueuedCommand } from "../helpers/commands.js";
@@ -10,10 +11,70 @@ import {
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { installFakeGitWorktreeProvider } from "../helpers/environment-provider.js";
 import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
+import { availableModelFixture } from "../helpers/available-models.js";
+import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
+
+function daybreakModel(
+  model: string,
+  daybreak: { value: boolean; fixed: boolean },
+  isDefault = false,
+) {
+  return {
+    ...availableModelFixture({ model, isDefault }),
+    sessionOptions: [
+      {
+        type: "boolean" as const,
+        id: "daybreak",
+        label: "Daybreak",
+        ...daybreak,
+      },
+    ],
+  };
+}
+
+function registerDaybreakCatalog(
+  harness: TestAppHarness,
+  args: { hostId: string; sessionId: string },
+) {
+  registerProviderHostRpcResponder(harness, {
+    hostId: args.hostId,
+    sessionId: args.sessionId,
+    restoreCommandCaptureAfterResponse: true,
+    modelsByProviderId: {
+      codex: {
+        models: [
+          daybreakModel("gpt-standard", { value: false, fixed: true }, true),
+          daybreakModel("gpt-both", { value: false, fixed: false }),
+        ],
+        selectedOnlyModels: [
+          daybreakModel("gpt-daybreak-only", { value: true, fixed: true }),
+        ],
+      },
+    },
+  });
+}
+
+async function startedModel(harness: TestAppHarness, response: Response) {
+  expect(response.status).toBe(201);
+  const thread = threadSchema.parse(await readJson(response));
+  const start = await waitForQueuedCommand(
+    harness,
+    ({ command }) =>
+      command.type === "thread.start" && command.threadId === thread.id,
+  );
+  return start.command.type === "thread.start"
+    ? start.command.options.model
+    : null;
+}
 
 async function createThread(
   harness: TestAppHarness,
-  args: { hostId: string; projectId: string; sessionOptions?: unknown },
+  args: {
+    hostId: string;
+    projectId: string;
+    sessionOptions?: unknown;
+    model?: string | null;
+  },
 ) {
   return harness.app.request("/api/v1/threads", {
     method: "POST",
@@ -22,7 +83,7 @@ async function createThread(
       origin: "app",
       projectId: args.projectId,
       providerId: "codex",
-      model: "gpt-5",
+      ...(args.model === null ? {} : { model: args.model ?? "gpt-5" }),
       input: [{ type: "text", text: "Start with my options" }],
       ...(args.sessionOptions === undefined
         ? {}
@@ -40,7 +101,9 @@ async function createThread(
 }
 
 function seedWorkspace(harness: TestAppHarness, name: string) {
-  const { host } = seedHostSession(harness.deps, { id: `host-${name}` });
+  const { host, session } = seedHostSession(harness.deps, {
+    id: `host-${name}`,
+  });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
     path: `/tmp/${name}-project`,
@@ -59,7 +122,7 @@ function seedWorkspace(harness: TestAppHarness, name: string) {
       path: `/tmp/${name}-workspace`,
     },
   }));
-  return { host, project };
+  return { host, session, project };
 }
 
 describe("session options chosen when a thread is created", () => {
@@ -116,6 +179,109 @@ describe("session options chosen when a thread is created", () => {
         sessionOptions: { daybreak: 1 },
       });
       expect(invalid.status).toBe(400);
+    });
+  });
+
+  it("starts on a model that fits the chosen options when the caller left the model to bb, keeping a remembered model that fits", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, project } = seedWorkspace(
+        harness,
+        "create-options-default-model",
+      );
+      registerDaybreakCatalog(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      expect(
+        await startedModel(
+          harness,
+          await createThread(harness, {
+            hostId: host.id,
+            projectId: project.id,
+            model: null,
+            sessionOptions: { daybreak: true },
+          }),
+        ),
+      ).toBe("gpt-both");
+      expect(
+        await startedModel(
+          harness,
+          await createThread(harness, {
+            hostId: host.id,
+            projectId: project.id,
+            model: null,
+            sessionOptions: { daybreak: false },
+          }),
+        ),
+      ).toBe("gpt-both");
+
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-standard",
+        serviceTier: "default",
+        reasoningLevel: "low",
+        permissionMode: "full",
+      });
+      expect(
+        await startedModel(
+          harness,
+          await createThread(harness, {
+            hostId: host.id,
+            projectId: project.id,
+            model: null,
+            sessionOptions: { daybreak: true },
+          }),
+        ),
+      ).toBe("gpt-both");
+    });
+  });
+
+  it("refuses a model the caller named that cannot run with the chosen options, and names one that can", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, project } = seedWorkspace(
+        harness,
+        "create-options-explicit-model",
+      );
+      registerDaybreakCatalog(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const refused = await createThread(harness, {
+        hostId: host.id,
+        projectId: project.id,
+        model: "gpt-standard",
+        sessionOptions: { daybreak: true },
+      });
+      expect(refused.status).toBe(400);
+      expect(JSON.stringify(await readJson(refused))).toContain(
+        "gpt-standard cannot run with the chosen options: Turn off Daybreak to use this model. gpt-both can.",
+      );
+
+      expect(
+        await startedModel(
+          harness,
+          await createThread(harness, {
+            hostId: host.id,
+            projectId: project.id,
+            model: "gpt-daybreak-only",
+            sessionOptions: { daybreak: true },
+          }),
+        ),
+      ).toBe("gpt-daybreak-only");
+      expect(
+        await startedModel(
+          harness,
+          await createThread(harness, {
+            hostId: host.id,
+            projectId: project.id,
+            model: "gpt-unlisted",
+            sessionOptions: { daybreak: true },
+          }),
+        ),
+      ).toBe("gpt-unlisted");
     });
   });
 });

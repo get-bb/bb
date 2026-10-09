@@ -129,6 +129,7 @@ describe("resolveModelCatalogSelection with agent options", () => {
     expect(selection.selectedModel).toBe("sol");
     expect(selection.activeModel?.model).toBe("sol");
     expect(selection.isUnavailableModelRecovery).toBe(false);
+    expect(selection.isSessionOptionModelSwitch).toBe(true);
     expect(
       selection.modelOptions.map((option) => [
         option.value,
@@ -145,6 +146,7 @@ describe("resolveModelCatalogSelection with agent options", () => {
   it("keeps a compatible model and greys out the one that needs the option on", () => {
     const selection = selectWithDaybreak("luna", { daybreak: false });
     expect(selection.selectedModel).toBe("luna");
+    expect(selection.isSessionOptionModelSwitch).toBe(false);
     expect(
       selection.modelOptions.find((option) => option.value === "daybreak-only")
         ?.disabledReason,

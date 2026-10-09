@@ -60,7 +60,14 @@ import {
   extractCodexMacOsPermissionRequest,
   type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
-import { parseModelsResponse } from "../models.js";
+import {
+  CODEX_DAYBREAK_OPTION_ID,
+  codexDaybreakOption,
+  cyberProgramForTurn,
+  parseModelCatalog,
+  type CodexCyberProgram,
+  type CodexModelCatalog,
+} from "../models.js";
 import { macOsPermissionPresentation } from "../presentation.js";
 import {
   codexTurnSchema,
@@ -475,6 +482,9 @@ interface CodexBridgeSession {
   quotaRecoveryAttempted: boolean;
   quotaRecoveryAllowed: boolean;
   rebuildBeforeNextTurnReason: string | null;
+  daybreakEnabled: boolean | null;
+  modelCatalog: Promise<CodexModelCatalog | null> | null;
+  publishedSessionOptions: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
@@ -538,6 +548,7 @@ const codexProviderOptionsSchema = z
 interface DecodedCodexOptions {
   sessionOptions: CodexSessionOptions;
   additionalWorkspaceWriteRoots: string[];
+  daybreak: boolean | null;
 }
 
 function decodeCodexOptions(
@@ -557,7 +568,13 @@ function decodeCodexOptions(
         : {}),
     },
     additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots ?? [],
+    daybreak: requestedDaybreak(options),
   };
+}
+
+function requestedDaybreak(options: BridgeExecutionOptions): boolean | null {
+  const requested = options.sessionOptions?.[CODEX_DAYBREAK_OPTION_ID];
+  return typeof requested === "boolean" ? requested : null;
 }
 
 function constructionSignature(
@@ -1003,8 +1020,106 @@ async function initializeChild(
 }
 
 const codexThreadIdentityResultSchema = z
-  .object({ thread: z.object({ id: z.string().min(1) }).passthrough() })
+  .object({
+    thread: z
+      .object({
+        id: z.string().min(1),
+        daybreakEnabled: z.boolean().nullish().catch(null),
+      })
+      .passthrough(),
+  })
   .passthrough();
+
+const SESSION_OPTIONS_STATE_KIND = "bb/session-options";
+const SESSION_MODEL_CATALOG_TIMEOUT_MS = 10_000;
+
+function loadSessionModelCatalog(
+  connection: CodexAppServerConnection,
+): Promise<CodexModelCatalog | null> {
+  return connection
+    .request({
+      method: "model/list",
+      params: {},
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: SESSION_MODEL_CATALOG_TIMEOUT_MS,
+    })
+    .then(parseModelCatalog)
+    .catch(() => null);
+}
+
+function publishDaybreakState(
+  session: CodexBridgeSession,
+  catalog: CodexModelCatalog | null,
+): void {
+  if (session.closing || catalog === null || !catalog.daybreakAvailable) {
+    return;
+  }
+  const payload = {
+    options: [codexDaybreakOption(session.daybreakEnabled ?? false)],
+  };
+  const serialized = JSON.stringify(payload);
+  if (session.publishedSessionOptions === serialized) {
+    return;
+  }
+  session.publishedSessionOptions = serialized;
+  sendThreadDeltas(session, [
+    {
+      kind: "extension.state",
+      extensionKind: SESSION_OPTIONS_STATE_KIND,
+      payload,
+    },
+  ]);
+}
+
+async function saveDaybreakChoice(
+  session: CodexBridgeSession,
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+  daybreakEnabled: boolean,
+): Promise<void> {
+  session.daybreakEnabled = daybreakEnabled;
+  await connection
+    .request({
+      method: "thread/metadata/update",
+      params: { threadId: codexThreadId, daybreakEnabled },
+      resultSchema: ignoredChildResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    })
+    .catch((error: unknown) => {
+      process.stderr.write(
+        `codex thread/metadata/update could not save the Daybreak choice: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    });
+}
+
+async function resolveTurnCyberAccessProgram(
+  session: CodexBridgeSession,
+  connection: CodexAppServerConnection,
+  codexThreadId: string,
+  decoded: DecodedCodexOptions,
+): Promise<CodexCyberProgram | null> {
+  if (
+    decoded.daybreak !== null &&
+    decoded.daybreak !== session.daybreakEnabled
+  ) {
+    await saveDaybreakChoice(
+      session,
+      connection,
+      codexThreadId,
+      decoded.daybreak,
+    );
+  }
+  const catalog = await session.modelCatalog;
+  publishDaybreakState(session, catalog);
+  const model = decoded.sessionOptions.model;
+  if (catalog === null || !catalog.daybreakAvailable || model === undefined) {
+    return null;
+  }
+  return cyberProgramForTurn(
+    catalog.cyberProgramsByModel.get(model) ?? [],
+    session.daybreakEnabled ?? false,
+  );
+}
 
 async function requestThreadConstructionWithWriterRetry(
   connection: CodexAppServerConnection,
@@ -1116,6 +1231,9 @@ async function constructThreadSession(
       launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV]
     ),
     rebuildBeforeNextTurnReason: null,
+    daybreakEnabled: null,
+    modelCatalog: null,
+    publishedSessionOptions: existing?.publishedSessionOptions ?? null,
     closing: false,
     previousChildExit: null,
     releasePromise: null,
@@ -1203,6 +1321,9 @@ async function constructThreadSession(
           ...sharedConstructionParams,
           ephemeral: false,
           experimentalRawEvents: true,
+          ...(decoded.daybreak === null
+            ? {}
+            : { daybreakEnabled: decoded.daybreak }),
         };
         params = startParams;
         break;
@@ -1252,6 +1373,23 @@ async function constructThreadSession(
       options: decoded.sessionOptions,
     });
     announceSessionIdentity(session, codexThreadId);
+    session.daybreakEnabled = result.thread.daybreakEnabled ?? null;
+    if (args.request.kind === "start" && decoded.daybreak !== null) {
+      session.daybreakEnabled = decoded.daybreak;
+    } else if (
+      decoded.daybreak !== null &&
+      decoded.daybreak !== session.daybreakEnabled
+    ) {
+      await saveDaybreakChoice(
+        session,
+        connection,
+        codexThreadId,
+        decoded.daybreak,
+      );
+    }
+    const modelCatalog = loadSessionModelCatalog(connection);
+    session.modelCatalog = modelCatalog;
+    void modelCatalog.then((catalog) => publishDaybreakState(session, catalog));
     return { session, codexThreadId };
   } catch (error) {
     const released = session.closing;
@@ -1299,6 +1437,9 @@ function registerResumableSession(session: CodexBridgeSession): void {
     quotaRecoveryAttempted: false,
     quotaRecoveryAllowed: session.quotaRecoveryAllowed,
     rebuildBeforeNextTurnReason: null,
+    daybreakEnabled: session.daybreakEnabled,
+    modelCatalog: null,
+    publishedSessionOptions: session.publishedSessionOptions,
     closing: false,
     previousChildExit: null,
     releasePromise: null,
@@ -1470,7 +1611,7 @@ async function handleModelList(id: string | number): Promise<void> {
       resultSchema: ignoredChildResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
-    const models = parseModelsResponse(result);
+    const { models, selectedOnlyModels } = parseModelCatalog(result);
     const configuredModel = await connection
       .request({
         method: "config/read",
@@ -1489,7 +1630,7 @@ async function handleModelList(id: string | number): Promise<void> {
     }
     sendResult(id, {
       models,
-      selectedOnlyModels: [],
+      selectedOnlyModels,
     });
   } catch (error) {
     if (connection !== null) {
@@ -1873,6 +2014,12 @@ async function handleTurnStart(
         ),
         options: decoded.sessionOptions,
       });
+      const cyberAccessProgram = await resolveTurnCyberAccessProgram(
+        session,
+        connection,
+        codexThreadId,
+        decoded,
+      );
       const previousPermissions = session.turnPermissionSettings;
       session.turnPermissionSettings = permissionSettings;
       result = await connection
@@ -1886,6 +2033,7 @@ async function handleTurnStart(
             sandboxPolicy: permissionSettings.sandboxPolicy,
             model: decoded.sessionOptions.model ?? undefined,
             serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
+            ...(cyberAccessProgram === null ? {} : { cyberAccessProgram }),
           },
           resultSchema: ignoredChildResultSchema,
           timeoutMs: CHILD_REQUEST_TIMEOUT_MS,

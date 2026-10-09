@@ -40,7 +40,10 @@ When a provider's models declare options (a mode, an on/off switch), `bb provide
 models` lists them under the table with their ids, values and defaults; `--json`
 carries them per model as `sessionOptions`. Choose values at creation with
 `bb thread spawn --option <id>=<value>` and on an existing thread with
-`bb thread options --set <id>=<value>`.
+`bb thread options --set <id>=<value>`. A model may accept only some values
+(`fixed: true` on an on/off option, or a shorter `values` list): a spawn
+without `--model` starts on a model that fits the chosen options, and a spawn
+whose `--model` cannot run with them is refused with the name of one that can.
 
 Service tiers are provider-defined ids. `bb provider list --json` reports each
 provider's `serviceTiers` ({id, label, description?}); `default` always means

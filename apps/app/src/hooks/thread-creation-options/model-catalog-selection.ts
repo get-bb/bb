@@ -37,6 +37,7 @@ interface ResolvedModelCatalogSelection {
   declaredSessionOptions: ThreadSessionOption[];
   sessionOptionSelections: SessionOptionSelections;
   isUnavailableModelRecovery: boolean;
+  isSessionOptionModelSwitch: boolean;
 }
 
 export function resolveModelReasoningLevel(
@@ -198,5 +199,6 @@ export function resolveModelCatalogSelection({
       catalogIsVerified &&
       rawSelectedModel.length > 0 &&
       catalogSelectedModel !== rawSelectedModel,
+    isSessionOptionModelSwitch: selectedModel !== catalogSelectedModel,
   };
 }

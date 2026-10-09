@@ -331,7 +331,11 @@ range is what gates a bridge: every bridge in this repo reports
   that value. bb shows the union across models in the new-thread composer's
   model picker, disables a model the current choices rule out, moves the
   selection to a model that fits when the selected one does not, and sends the
-  choices as `sessionOptions` on the thread's first commands.
+  choices as `sessionOptions` on the thread's first commands. The server
+  applies the same rule to every create: when the caller leaves the model to
+  bb it starts on a model that fits the choices (the default one when it
+  fits), and when the caller names a model the choices rule out it refuses the
+  create and names a model that fits.
 - **`sessionOptions` execution option**: `{ [optionId]: string | boolean }` on
   `thread/start` and `turn/start`. Before the bridge has published any
   `bb/session-options` state for the thread it carries every choice made at
