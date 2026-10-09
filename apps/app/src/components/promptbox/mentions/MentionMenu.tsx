@@ -110,7 +110,7 @@ function getPathSectionLabel(item: PathMentionSuggestion): string {
 const THREAD_MENTION_RELATION_LABEL: Record<ThreadMentionRelation, string> = {
   parent: "parent",
   child: CHILD_THREAD_NOUN,
-  "same-parent": "sibling",
+  "same-parent": "same parent",
   "same-environment": "same environment",
 };
 
@@ -120,7 +120,7 @@ const THREAD_MENTION_RELATION_COMPACT_LABEL: Record<
 > = {
   parent: "parent",
   child: CHILD_THREAD_NOUN,
-  "same-parent": "sibling",
+  "same-parent": "same parent",
   "same-environment": "same env",
 };
 

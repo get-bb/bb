@@ -56,7 +56,7 @@ describe("ThreadArchiveDialog", () => {
       screen.getByRole("heading", { name: "Archive thread?" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Archive thread" }),
+      screen.getByRole("button", { name: "Archive" }),
     ).toBeTruthy();
   });
 
@@ -76,7 +76,7 @@ describe("ThreadArchiveDialog", () => {
   it("focuses the archive action when opened for keyboard confirmation", () => {
     renderDialog();
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Archive thread" }),
+      screen.getByRole("button", { name: "Archive" }),
     );
   });
 
@@ -89,7 +89,7 @@ describe("ThreadArchiveDialog", () => {
 
   it("ignores confirmation while archiving is pending", () => {
     const { onArchive } = renderDialog({ pending: true });
-    fireEvent.click(screen.getByRole("button", { name: "Archive thread" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     expect(onArchive).not.toHaveBeenCalled();
   });
 
@@ -102,7 +102,7 @@ describe("ThreadArchiveDialog", () => {
     expect(onArchive).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive thread" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     expect(onArchive).toHaveBeenCalledWith({ thread, childThreadCount: 2 });
   });
 });

@@ -752,7 +752,7 @@ function ActiveChildThreadsCard({
         )}
         {collapsedQuestion ? (
           <span
-            className="min-w-0 flex-1 truncate text-left font-medium text-foreground"
+            className="min-w-0 flex-1 truncate text-left text-foreground"
             title={collapsedQuestion}
           >
             {collapsedQuestion}
@@ -761,7 +761,7 @@ function ActiveChildThreadsCard({
           <span
             className={activityTextClass(
               "active",
-              "min-w-0 flex-1 truncate text-left",
+              "min-w-0 flex-1 truncate text-left font-normal",
             )}
           >
             Active child threads

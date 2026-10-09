@@ -106,7 +106,7 @@ export function ThreadArchiveDialogContent({
           Cancel
         </Button>
         <Button type="submit" disabled={pending}>
-          Archive thread
+          Archive
         </Button>
       </DialogFooter>
     </form>
