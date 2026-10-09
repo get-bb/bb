@@ -39,7 +39,6 @@ export const fallbackTheme: WidgetTheme = {
 };
 
 const KIT = String.raw`
-@font-face { font-family: "Inter Variable"; src: url("https://rsms.me/inter/font-files/InterVariable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
   color-scheme: light; --ia-ease: cubic-bezier(.2,.7,.2,1);
   --ia-ink: var(--foreground);
@@ -127,6 +126,9 @@ function bridge(id: string, state: unknown, theme: WidgetTheme) {
     if (event.source !== parent || !message || message.source !== SOURCE) return;
     if (message.type === "theme") { theme = message.theme; apply(theme); notify(listeners, theme); }
     if (message.type === "state") { state = message.state; notify(stateListeners, state); }
+    if (message.type === "font" && typeof message.family === "string" && message.data instanceof ArrayBuffer) {
+      try { const face = new FontFace(message.family, message.data, { weight: "100 900" }); document.fonts.add(face); face.load().catch(() => {}); } catch {}
+    }
     if (message.type === "command") {
       const run = actions.get(message.action);
       try {

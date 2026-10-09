@@ -309,6 +309,59 @@ const GESTURE_INTERVAL_MS = 1000;
 const MESSAGE_BURST = 40;
 const MESSAGES_PER_SECOND = 10;
 
+const UI_FONT_FAMILY = "Inter Variable";
+const LATIN_RANGE = "U+0000-00FF";
+let uiFont: Promise<ArrayBuffer | null> | null = null;
+
+function fontFaceRules(sheet: CSSStyleSheet): CSSFontFaceRule[] {
+  let rules: CSSRuleList;
+  try {
+    rules = sheet.cssRules;
+  } catch {
+    return [];
+  }
+  return Array.from(rules).flatMap((rule) => {
+    if (rule.type === CSSRule.IMPORT_RULE) {
+      const imported = (rule as CSSImportRule).styleSheet;
+      return imported ? fontFaceRules(imported) : [];
+    }
+    return rule.type === CSSRule.FONT_FACE_RULE
+      ? [rule as CSSFontFaceRule]
+      : [];
+  });
+}
+
+function loadUiFont(): Promise<ArrayBuffer | null> {
+  uiFont ??= (async () => {
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of fontFaceRules(sheet)) {
+        const family = rule.style
+          .getPropertyValue("font-family")
+          .replace(/["']/g, "")
+          .trim();
+        const range = rule.style
+          .getPropertyValue("unicode-range")
+          .toUpperCase();
+        if (
+          family !== UI_FONT_FAMILY ||
+          (range !== "" && !range.includes(LATIN_RANGE))
+        )
+          continue;
+        const url = /url\(\s*["']?([^"')]+)["']?\s*\)/.exec(
+          rule.style.getPropertyValue("src"),
+        )?.[1];
+        if (!url) continue;
+        const resolved = new URL(url, sheet.href ?? document.baseURI);
+        if (resolved.origin !== location.origin) return null;
+        const response = await fetch(resolved);
+        return response.ok ? await response.arrayBuffer() : null;
+      }
+    }
+    return null;
+  })().catch(() => null);
+  return uiFont;
+}
+
 function readTheme(): WidgetTheme {
   if (typeof document === "undefined") return fallbackTheme;
   const root = getComputedStyle(document.documentElement);
@@ -352,12 +405,16 @@ export function HtmlAnswerView({
       { source: WIDGET_MESSAGE_SOURCE, ...message },
       "*",
     );
+  const latestState = useRef<{ state: unknown } | null>(null);
   const live = useLiveAnswer({
     id,
     threadId,
     initial,
     actions,
-    onRemoteState: (state) => post({ type: "state", state }),
+    onRemoteState: (state) => {
+      latestState.current = { state };
+      post({ type: "state", state });
+    },
     onCommand: (action, args) =>
       new Promise((resolve, reject) => {
         const cmdId = crypto.randomUUID();
@@ -469,7 +526,10 @@ export function HtmlAnswerView({
         Number.isFinite(message.height)
       )
         setHeight(Math.min(4000, Math.max(40, Math.ceil(message.height))));
-      if (message.type === "state") save(message.state);
+      if (message.type === "state") {
+        latestState.current = { state: message.state };
+        save(message.state);
+      }
       if (
         message.type === "event" &&
         typeof message.name === "string" &&
@@ -544,6 +604,14 @@ export function HtmlAnswerView({
         sandbox="allow-scripts"
         loading="lazy"
         style={{ height }}
+        onLoad={() => {
+          if (latestState.current)
+            post({ type: "state", state: latestState.current.state });
+          post({ type: "theme", theme: readTheme() });
+          void loadUiFont().then((data) => {
+            if (data) post({ type: "font", family: UI_FONT_FAMILY, data });
+          });
+        }}
       />
       <AgentBadge agent={live.agent} />
     </div>

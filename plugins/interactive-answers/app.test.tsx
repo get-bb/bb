@@ -269,6 +269,25 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
       value: { step: 5 },
     }),
   );
+  backend.shared.state = { step: 7 };
+  backend.shared.version = 50;
+  await view.behavior.emitRealtime("state", {
+    id: answer.id,
+    threadId: answer.threadId,
+    version: 50,
+    by: "agent",
+  });
+  await waitFor(() =>
+    expect(posted).toContainEqual(
+      expect.objectContaining({ type: "state", state: { step: 7 } }),
+    ),
+  );
+  posted.length = 0;
+  fireEvent.load(frame);
+  expect(posted).toContainEqual(
+    expect.objectContaining({ type: "state", state: { step: 7 } }),
+  );
+  expect(posted).toContainEqual(expect.objectContaining({ type: "theme" }));
   send({ type: "send", label: "Synth take", data: { keys: [["C4", 0, 1]] } });
   expect(backend.calls.some((c) => c.method === "share")).toBe(false);
   Object.defineProperty(navigator, "userActivation", {

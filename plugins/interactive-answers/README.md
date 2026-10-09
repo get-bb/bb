@@ -62,5 +62,7 @@ from that frame's window:
   open through bb's URL handling and only for `http` and `https`.
 - Events and action lists are rate limited per frame. State, events, command
   results, and shared data are size limited on the server.
+- bb hands the frame the Inter font it already loaded, so answers make no
+  third-party font request.
 - Height is clamped to 4,000 px, frames load lazily, and data shared with the
   agent is framed as untrusted.
