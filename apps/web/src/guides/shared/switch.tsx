@@ -17,6 +17,7 @@ export type SwitchTool = {
   slug: string;
   name: string;
   conversations: string;
+  openIn: ReactNode;
   keepsWorking: string;
   setupStep: ReactNode;
 };
@@ -28,6 +29,12 @@ export const SWITCH_TOOLS = {
     name: "Claude Code",
     conversations:
       "Claude Code keeps each conversation as a .jsonl file in ~/.claude/projects/, in a folder named after the path it ran in.",
+    openIn: (
+      <>
+        Choose <strong>Project checkout</strong>, or{" "}
+        <strong>Worktree → Existing worktree</strong> if you worked in one.
+      </>
+    ),
     keepsWorking: "Claude Code keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
   },
@@ -37,6 +44,12 @@ export const SWITCH_TOOLS = {
     name: "Codex",
     conversations:
       "Codex keeps each conversation as a .jsonl file under ~/.codex/sessions/. The first line's payload.cwd is the folder it ran in.",
+    openIn: (
+      <>
+        Choose <strong>Project checkout</strong>, or{" "}
+        <strong>Worktree → Existing worktree</strong> if you worked in one.
+      </>
+    ),
     keepsWorking: "Codex keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
   },
@@ -46,6 +59,12 @@ export const SWITCH_TOOLS = {
     name: "Conductor",
     conversations:
       "Conductor runs Claude Code or Codex in its workspaces, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
+    openIn: (
+      <>
+        Under <strong>Worktree</strong>, choose{" "}
+        <strong>Existing worktree</strong> and pick the Conductor folder.
+      </>
+    ),
     keepsWorking: "Conductor keeps working while you try bb.",
     setupStep: (
       <>
@@ -61,6 +80,12 @@ export const SWITCH_TOOLS = {
     name: "Cursor",
     conversations:
       "Cursor saves agent transcripts in ~/.cursor/projects/<project>/agent-transcripts/. Only read those files; never open Cursor's state.vscdb databases.",
+    openIn: (
+      <>
+        Under <strong>Worktree</strong>, choose{" "}
+        <strong>Existing worktree</strong> and pick the Cursor folder.
+      </>
+    ),
     keepsWorking: "Cursor keeps working while you try bb.",
     setupStep: (
       <>
@@ -76,6 +101,12 @@ export const SWITCH_TOOLS = {
     name: "Superset",
     conversations:
       "Superset runs Claude Code or Codex in its worktrees, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
+    openIn: (
+      <>
+        Under <strong>Worktree</strong>, choose{" "}
+        <strong>Existing worktree</strong> and pick the Superset folder.
+      </>
+    ),
     keepsWorking: "Superset keeps working while you try bb.",
     setupStep: (
       <>
@@ -92,6 +123,12 @@ export const SWITCH_TOOLS = {
     name: "T3 Code",
     conversations:
       "T3 Code's Codex conversations are .jsonl files under ~/.codex/sessions/ with the originator t3code_desktop. The first line's payload.cwd is the folder it ran in.",
+    openIn: (
+      <>
+        Under <strong>Worktree</strong>, choose{" "}
+        <strong>Existing worktree</strong> and pick the T3 Code folder.
+      </>
+    ),
     keepsWorking: "T3 Code keeps working while you try bb.",
     setupStep: (
       <>
@@ -107,6 +144,12 @@ export const SWITCH_TOOLS = {
     name: "Vibe Kanban",
     conversations:
       "Vibe Kanban runs Claude Code or Codex in each attempt's worktree, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
+    openIn: (
+      <>
+        Under <strong>Worktree</strong>, choose{" "}
+        <strong>Existing worktree</strong> and pick the Vibe Kanban folder.
+      </>
+    ),
     keepsWorking:
       "Your local Vibe Kanban workspaces keep running while you try bb.",
     setupStep: (
@@ -141,8 +184,8 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
     requirement: null,
     steps: [
       {
-        id: "repos",
-        title: "Add your repos",
+        id: "project",
+        title: "Add your project",
         lead: "bb finds the repos you've been working in.",
         body: (
           <Substeps>
@@ -166,43 +209,19 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
         options: [],
       },
       {
-        id: "open",
-        title: "Open the task where you left off",
-        lead: `Start a thread in the folder ${oldTool} was working in, so your branch and unsaved changes are right there.`,
+        id: "thread",
+        title: "Start a thread and paste the prompt",
+        lead: `Your agent catches up on where ${oldTool} left off, then keeps going once you agree.`,
         body: (
           <Substeps>
             <li>
-              Choose <strong>New thread</strong>, pick the repo, and choose{" "}
-              <strong>Worktree</strong>.
+              Choose <strong>New thread</strong> and pick the repo.{" "}
+              {tool.openIn}
             </li>
-            <li>
-              In the branch menu, choose <strong>Existing worktree</strong> and
-              pick the folder {oldTool} used. If the work was in the repo's main
-              folder, choose <strong>Project checkout</strong> instead.
-            </li>
-          </Substeps>
-        ),
-        shot: {
-          src: "/guides/switch-to-bb/window-existing-worktree.png",
-          alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
-          width: 2048,
-          height: 1280,
-        },
-        options: [],
-      },
-      {
-        id: "handoff",
-        title: "Hand it to your agent",
-        lead: "It catches up on the old conversation, then keeps going once you agree.",
-        body: (
-          <Substeps>
             <li>
               Paste the prompt from <CopyPromptButton /> and send it. Your agent
-              asks which task, if it isn't clear.
-            </li>
-            <li>
-              Read its handoff: the goal, what's done, the decisions made, and
-              what's left. Reply to correct it, or say go.
+              writes a handoff: the goal, what's done, and what's left. Reply to
+              correct it, or say go.
             </li>
             <li>Do the same for each task you want to bring over.</li>
           </Substeps>
