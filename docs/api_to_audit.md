@@ -3054,6 +3054,13 @@ environment, Copy thread link, Mark read/unread, Pin/Unpin, Rename,
 Archive/Unarchive, and Delete. The
 thread-list plugin registers Move to section (`thread-list/move`) because the
 destinations depend on its organization and section-order preferences. The
+push-notifications plugin registers Notifications
+(`push-notifications/notifications`) in `3_settings`: its `useData` keeps an
+id-keyed cache of stored levels, fetches the `threadIds` it has not loaded in
+`threadNotifications.list` batches of up to 200 (built on
+`threads.experimental_listPluginMetadata`), applies its `threadNotifications`
+realtime channel, and refetches after a reconnect; `item` resolves the level
+with the plugin's shared resolver and `choices` sets it. The
 header menu, mobile recents, and both sidebar row menus render the host
 components; the row's hover quick actions read `experimental_useThreadActions`
 with `keys`; the thread archive keyboard command runs `bb--core/archive`.

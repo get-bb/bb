@@ -208,7 +208,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_ThreadActionsContextMenu",
           "experimental_THREAD_ACTION_GROUPS",
         ],
-        firstParty: ["Thread list"],
+        firstParty: ["Push notifications", "Thread list"],
         experimental: true,
       },
       {

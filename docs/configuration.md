@@ -315,7 +315,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
