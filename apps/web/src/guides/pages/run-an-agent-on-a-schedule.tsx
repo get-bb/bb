@@ -113,11 +113,22 @@ export const guide: Guide = {
       title: "Describe the job",
       lead: "Finish the sentence with what to do, when, and where the results go, then send it. Your agent sets it up.",
       body: (
-        <p>
-          Reports land in one thread, so you can follow what changed. For jobs
-          that change code, like a nightly test sweep, ask for a new worktree on
-          every run instead.
-        </p>
+        <>
+          <p>
+            Reports land in one thread, so you can follow what changed. For jobs
+            that change code, like a nightly test sweep, choose{" "}
+            <strong>Worktree</strong> in the dropdown under the message box, so
+            each run gets its own branch.
+          </p>
+          <p>
+            Does the job need a site you're signed in to, like Linear or your
+            analytics?{" "}
+            <a href="/guides/agent-browser#sign-ins">
+              Bring your browser sign-ins
+            </a>{" "}
+            into bb first.
+          </p>
+        </>
       ),
       shot: {
         src: "/guides/run-an-agent-on-a-schedule/window-compose.png",
@@ -150,13 +161,28 @@ export const guide: Guide = {
             <p>
               Ask for a single run, like “tomorrow at 9am, draft release notes
               from this week's pull requests.” It shows as One time in
-              Automations. Just want to send a message later? Use{" "}
-              <strong>+ → Send later…</strong> in the message box.
+              Automations.
             </p>
           ),
           shot: {
             src: "/guides/run-an-agent-on-a-schedule/window-once.png",
             alt: "A one-time automation in bb, Draft release notes, scheduled for tomorrow at 9:00 AM, with its prompt and a Run now button",
+            width: 2048,
+            height: 1280,
+          },
+        },
+        {
+          title: "Send one message later",
+          body: (
+            <p>
+              Type the message, then open the arrow next to the send button and
+              choose <strong>Send later…</strong>. It goes to the same thread at
+              the time you pick.
+            </p>
+          ),
+          shot: {
+            src: "/guides/run-an-agent-on-a-schedule/window-send-later.png",
+            alt: "A bb thread with a message typed and the menu next to the send button open, showing Save draft and Send later",
             width: 2048,
             height: 1280,
           },
@@ -205,7 +231,8 @@ export const guide: Guide = {
           </li>
           <li>
             For your phone, keep <strong>Mobile notifications</strong> on and
-            pair the bb app in <strong>Settings → Mobile</strong>.
+            pair the bb app in <strong>Settings → Mobile</strong>. See{" "}
+            <a href="/guides/work-from-anywhere">Work from anywhere</a>.
           </li>
           <li>
             Check that a notification arrives the next time a run finishes.
