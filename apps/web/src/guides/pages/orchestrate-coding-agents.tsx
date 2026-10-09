@@ -56,7 +56,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Have one agent build and another review, keep a manager for work you repeat, or fan out big changes to many at once. You can step in at any time, or coordinate with just one.",
+    "Have one agent build and another review, keep a manager for work you repeat, or fan out big changes to many agents at once. You can step in at any time, or coordinate with just one.",
   heroTop: null,
   concept: <SpawnTimeline />,
   agentPrompt: AGENT_PROMPT,
