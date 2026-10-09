@@ -8,9 +8,14 @@ panel's file search, and `bb thread open`.
 
 ## Features
 
-- **Edit and save.** <kbd>⌘S</kbd> writes the file. If it changed on disk
+- **Edit and save.** Tap the **Save** icon in the file bar, or press <kbd>⌘S</kbd>
+  (<kbd>Ctrl+S</kbd> on Linux and Windows), to write the file. Edits stay
+  unsaved until you save. If it changed on disk
   since you opened it — often because the agent edited it — the save stops and
-  offers Reload or Overwrite rather than clobbering the change.
+  offers **Keep disk version** or **Save my edits**. After keeping the disk
+  version, **Undo** restores your discarded draft without writing to disk.
+  The conflict choices return so saving the draft still requires an explicit
+  decision. Undo stays available until you edit, save, reload, or leave the file.
 - **Find in file** with <kbd>⌘F</kbd>, plus Monaco's usual editing: multiple
   cursors, block selection, bracket matching, code folding.
 - **Syntax highlighting** for ~86 common file types.

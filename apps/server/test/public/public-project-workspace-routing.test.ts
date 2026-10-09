@@ -1,7 +1,10 @@
 import { createProjectSource } from "@bb/db";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
+} from "../helpers/host-rpc.js";
 import { declaredNativeRootSet } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -213,6 +216,9 @@ describe("public project workspace routing", () => {
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [primaryCommand] } };
           }
+          if (request.command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
           if (request.command.type === "plugin.host.call") {
             return {
               ok: true,
@@ -261,6 +267,9 @@ describe("public project workspace routing", () => {
           }
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [remoteCommand] } };
+          }
+          if (request.command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
           }
           if (request.command.type === "plugin.host.call") {
             return {

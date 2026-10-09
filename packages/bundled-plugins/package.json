@@ -26,7 +26,6 @@
     "bb-plugin-github": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",
-    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-memory": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
     "bb-plugin-pdf-preview": "workspace:*",
@@ -47,6 +46,7 @@
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",
-    "bb-plugin-workflows": "workspace:*"
+    "bb-plugin-workflows": "workspace:*",
+    "bb-plugin-bb--storage-retention": "workspace:*"
   }
 }

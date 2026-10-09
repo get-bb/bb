@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_copyToClipboard,
   UrlLink as UrlLink,
   useRealtime,
   useRealtimeConnectionState,
@@ -334,17 +335,16 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
   }, []);
 
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(url).then(
-      () => {
-        setCopyState("copied");
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
-      },
-      () => {
+    void experimental_copyToClipboard({ text: url }).then((copied) => {
+      if (!copied) {
         selectUrl();
         setCopyState("manual");
-      },
-    );
+        return;
+      }
+      setCopyState("copied");
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+    });
   }, [url, selectUrl]);
 
   return (
@@ -395,14 +395,12 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
     [],
   );
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true);
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
+    void experimental_copyToClipboard({ text }).then((written) => {
+      if (!written) return;
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
   }, [text]);
   return (
     <Button
@@ -1302,13 +1300,9 @@ function NotPairedContent({
         <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
       ) : null}
 
-      <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
-        <Icon
-          name="AlertTriangle"
-          className="mt-px size-3.5 shrink-0 opacity-70"
-        />
-        Anyone signed in to your {dashboardHost} account gets full control of
-        this bb. Manage the account under Plugins → bb account.
+      <p className="text-xs text-subtle-foreground">
+        Only your {dashboardHost} account can open this bb. Manage the account
+        under Plugins → bb account.
       </p>
     </div>
   );

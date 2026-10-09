@@ -8,7 +8,6 @@ import {
 
 export const UNLISTED_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "account-pool",
-  "agent-annotations",
   "environment-git-worktree",
   "environment-personal-workspace",
   "environment-project-checkout",
@@ -30,10 +29,12 @@ export const INSTALL_ON_REQUEST_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
 ]);
 
 export const OFF_BY_DEFAULT_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
+  "agent-annotations",
   "ask-user-question",
   "monaco-editor",
   "plugin-api-docs",
   "prompt-library",
+  "storage-retention",
   "workflows",
 ]);
 

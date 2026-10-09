@@ -315,6 +315,20 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
   },
+  "host.read_workspace_agent_context": {
+    agentInstructions: "Prefer small commits.",
+    projectSkills: [
+      {
+        kind: "file",
+        directoryName: "review",
+        content: "---\nname: review\ndescription: Review\n---\n",
+      },
+      { kind: "oversized", directoryName: "huge", sizeBytes: 11_000_000 },
+      { kind: "budget-exceeded", directoryName: "later" },
+    ],
+    projectSkillsTruncated: false,
+    sharedSkills: [],
+  },
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
   },
@@ -441,6 +455,17 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       ],
     },
   },
+  "host.discover_repos": {
+    repos: [
+      {
+        path: "/home/user/projects/bb",
+        name: "bb",
+        lastActivityAt: "2026-08-05T00:00:00.000Z",
+        originUrl: "https://github.com/example/bb",
+      },
+    ],
+    truncated: false,
+  },
   "provider.installation.status": {
     executableName: "codex",
     executablePath: null,
@@ -546,7 +571,9 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.start": {
     providerThreadId: "provider-thread-123",
   },
-  "turn.submit": {},
+  "turn.submit": {
+    trace: { spans: [{ name: "bridge.turnStarted", atMs: 4.2 }] },
+  },
   "thread.stop": { providerCheckpointId: null },
   "thread.storage.delete": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
@@ -846,6 +873,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.project.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedSkillRoots.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedSkillRoots.user.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
@@ -1195,7 +1226,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(229);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(233);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

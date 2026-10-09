@@ -46,13 +46,13 @@ The native Windows host is alpha. It runs from the Windows desktop installer or
 
 ## Mobile app
 
-[`apps/mobile`](../apps/mobile) is a native phone client for a bb server
-(Expo / React Native). It runs no agents, host daemon, or plugins itself; it
-talks to a server over the same HTTP + WebSocket contract as the web app.
+[`apps/mobile`](../apps/mobile/README.md) is an Expo / React Native shell
+around the server's PWA in one WebView, connected through `@bb/mobile-bridge`.
+Pairing, saved servers, device, appearance and notification settings are native;
+threads, projects, server settings and plugin frontends run in the page.
+Agents, host daemons and plugin backends run on the server or enrolled hosts.
 
-- Platforms: iOS first (iPhone; iPad runs the phone layout). Android is
-  planned next; the code is platform-neutral but no Android build has been
-  produced or tested yet.
+- Platforms: iOS (iPhone; iPad runs the phone layout) and Android alpha.
 - Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
   (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
   `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
@@ -63,30 +63,28 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
   seven-day rolling sessions that end when the device is revoked; see
   [multiple-devices.md](multiple-devices.md).
-- Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
-  runtime) today; TestFlight / Play builds go through EAS once the Expo
-  account exists (see `apps/mobile/README.md`). No store release yet.
-- The built-in Push notifications plugin works on iOS when the bb server can
-  reach `exp.host`. The server needs no Apple or Google keys. Android push
-  support remains untested.
+- Distribution: iOS beta through TestFlight and Android alpha APKs from the
+  [Android testing release](https://github.com/get-bb/bb/releases/tag/android-testing).
+  EAS builds and developer builds from source are available; see the
+  [mobile README](../apps/mobile/README.md#release-eas). No public store release yet.
+- The built-in Push notifications plugin works on iOS and Android when the bb
+  server can reach `exp.host`. The server needs no Apple or Google keys.
+  Android builds need Firebase configuration and an FCM V1 credential in EAS;
+  see the [Android setup](../apps/mobile/README.md#android-production-setup).
 
-Not available on the phone (use the web app or desktop for these):
+Plugin nav panels, DOM settings pages and other web plugin surfaces render
+in the PWA; usability depends on their responsive UI and required capabilities.
 
-- Plugin **frontends**: nav panels (Automations, Tasks, Docs, GitHub), DOM
-  `settingsSection` pages (connect Remote access, memory, custom
-  instructions, keep-awake), composer customization, message-action callbacks,
-  content scripts, side-chat panels. Plugin backends (tools, CLI, mentions,
-  declarative settings, pending-interaction forms for `ask-user-question` and
-  `secrets`) work.
-- Provider sign-in (`codex login`, `claude /login`): still needs a terminal on
+Device boundaries:
+
+- Provider sign-in (`codex login --device-auth`, `claude auth login`): still needs a terminal on
   the host; the phone assumes a signed-in host.
 - Local editor integration, "Open in …", native folder picker, local daemon
   features: phones have no host daemon. The remote path browser works.
-- Custom CSS themes and plugin themes: only the built-in palettes map to the
-  native tokens.
-- Splits, drag reorder, the keyboard shortcut editor, desktop browser
-  automation. Text-selection quoting is per paragraph. KaTeX / Mermaid render
-  as source; video files open outside the app.
+- Web CSS and plugin themes apply to the page; native shell screens use the
+  native theme tokens and built-in palettes.
+- Desktop browser automation requires a desktop host. Page features use the
+  web app implementation, subject to touch layout and WebView/OS capabilities.
 
 ## Support Boundaries
 

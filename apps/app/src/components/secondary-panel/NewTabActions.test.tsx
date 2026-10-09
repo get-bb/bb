@@ -10,7 +10,13 @@ import {
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import { setCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
-import { NewTabActions } from "./NewTabActions";
+import {
+  matchNewTabActions,
+  NewTabActions,
+  useNewTabActions,
+  type NewTabAction,
+  type UseNewTabActionsArgs,
+} from "./NewTabActions";
 import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
@@ -33,6 +39,10 @@ function pluginAction(id: string, title: string): PluginPanelActionEntry {
 const sideChat = pluginAction("side-chat", "Start side chat");
 const quickstart = pluginAction("quickstart", "Quickstart");
 
+function ActionsHarness(props: UseNewTabActionsArgs) {
+  return <NewTabActions actions={useNewTabActions(props)} />;
+}
+
 function renderActions(
   storedOrder: string[],
   pluginActions: PluginPanelActionEntry[],
@@ -41,7 +51,7 @@ function renderActions(
   store.set(newTabActionOrderAtom, storedOrder);
   return render(
     <Provider store={store}>
-      <NewTabActions
+      <ActionsHarness
         onStartTerminal={() => undefined}
         pluginActions={pluginActions}
       />
@@ -65,12 +75,52 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("matchNewTabActions", () => {
+  const actions = [
+    "Open browser",
+    "Start terminal",
+    "Changes",
+    "PR",
+    "Review",
+    "Start side chat",
+  ].map(
+    (label): NewTabAction => ({
+      id: label,
+      icon: null,
+      label,
+      disabled: false,
+      shortcut: null,
+      trailing: null,
+      onSelect: () => undefined,
+    }),
+  );
+  const labels = (query: string) =>
+    matchNewTabActions(actions, query).map((action) => action.label);
+
+  it.each([
+    ["terminal", ["Start terminal"]],
+    ["REVIEW", ["Review"]],
+    ["start", ["Start terminal", "Start side chat"]],
+    ["chat side", ["Start side chat"]],
+    ["st ch", ["Start side chat"]],
+  ])("matches word prefixes of %j", (query, expected) => {
+    expect(labels(query)).toEqual(expected);
+  });
+
+  it.each(["src", "erminal", "  ", "terminal x"])(
+    "leaves file queries like %j to file search",
+    (query) => {
+      expect(labels(query)).toEqual([]);
+    },
+  );
+});
+
 describe("NewTabActions", () => {
   it("keeps a trailing terminal control separate from the terminal action", () => {
     const onSelectHost = vi.fn();
     const onStartTerminal = vi.fn();
     const { container } = render(
-      <NewTabActions
+      <ActionsHarness
         onStartTerminal={onStartTerminal}
         startTerminalTrailing={
           <button type="button" onClick={onSelectHost}>
@@ -156,7 +206,7 @@ describe("NewTabActions", () => {
 
     render(
       <Provider store={store}>
-        <NewTabActions
+        <ActionsHarness
           onStartTerminal={() => undefined}
           pluginActions={[sideChat]}
         />

@@ -13,8 +13,11 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
+  threadPendingInteractionsQueryKey,
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
+import type { PendingInteraction } from "@bb/domain";
+import type { ThreadPendingInteractionsResponse } from "@bb/server-contract";
 import type {
   ProjectArg,
   QueryClientArg,
@@ -253,6 +256,23 @@ export function invalidateThreadBannerQueries({
       }),
     ],
   });
+}
+
+export function applyResolvedThreadPendingInteraction({
+  interaction,
+  queryClient,
+}: QueryClientArg & { interaction: PendingInteraction }): void {
+  queryClient.setQueryData<ThreadPendingInteractionsResponse>(
+    threadPendingInteractionsQueryKey(interaction.threadId),
+    (current) =>
+      current?.flatMap((entry) => {
+        if (entry.id !== interaction.id) return [entry];
+        return interaction.status === "pending" ||
+          interaction.status === "resolving"
+          ? [interaction]
+          : [];
+      }),
+  );
 }
 
 export function invalidateThreadPendingInteractionResolutionQueries({

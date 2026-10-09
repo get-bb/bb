@@ -68,7 +68,7 @@ function installedApp(): Partial<PluginSdkApp> | undefined {
 function runtimeMember<Name extends keyof PluginSdkApp>(
   name: Name,
 ): PluginSdkApp[Name] {
-  const member = installedApp()?.[name];
+  const member = installedApp()?.[name] as PluginSdkApp[Name] | undefined;
   if (member === undefined) {
     throw new Error(
       `@get-bb/plugin-sdk/app: ${name} needs the bb app's plugin runtime. In tests, call installTestPluginRuntime() from @get-bb/plugin-sdk/testing/app first.`,
@@ -174,23 +174,31 @@ export const useComposerView = runtimeFunction("useComposerView");
 export const experimental_useSidebarThreads = runtimeFunction(
   "experimental_useSidebarThreads",
 );
+/** @internal Superseded by the thread action registry, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",
 );
+export const experimental_useThreadActions = runtimeFunction(
+  "experimental_useThreadActions",
+);
+export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
+  "experimental_useArchiveEnvironmentThreads",
+);
+export const experimental_useThreadActionRegistrations = runtimeFunction(
+  "experimental_useThreadActionRegistrations",
+);
+export const experimental_ThreadActionsMenu = runtimeComponent(
+  "experimental_ThreadActionsMenu",
+);
+export const experimental_ThreadActionsContextMenu = runtimeComponent(
+  "experimental_ThreadActionsContextMenu",
+);
+export { experimental_THREAD_ACTION_GROUPS } from "./thread-action-groups.js";
 export const experimental_useSidebarThreadPullRequest = runtimeFunction(
   "experimental_useSidebarThreadPullRequest",
 );
 export const experimental_useSidebarThreadSplit = runtimeFunction(
   "experimental_useSidebarThreadSplit",
-);
-export const experimental_useSidebarNavigation = runtimeFunction(
-  "experimental_useSidebarNavigation",
-);
-export const experimental_useSidebarNavigationSplit = runtimeFunction(
-  "experimental_useSidebarNavigationSplit",
-);
-export const experimental_SidebarNavigationIcon = runtimeComponent(
-  "experimental_SidebarNavigationIcon",
 );
 export const useSidebarThreadDraft = runtimeFunction("useSidebarThreadDraft");
 export const useSidebarThreadDraftIds = runtimeFunction(
@@ -207,6 +215,9 @@ export const useSidebarThreadShortcut = runtimeFunction(
   "useSidebarThreadShortcut",
 );
 export const ThreadTitle = runtimeComponent("ThreadTitle");
+export const experimental_ThreadStatusGlyph = runtimeComponent(
+  "experimental_ThreadStatusGlyph",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );
@@ -220,4 +231,9 @@ export const experimental_useProviders = runtimeFunction(
 // (experimental — see docs/api_to_audit.md).
 export const experimental_useCodeTheme = runtimeFunction(
   "experimental_useCodeTheme",
+);
+// bb's clipboard writer, the one bb's own copy actions use (experimental —
+// see docs/api_to_audit.md).
+export const experimental_copyToClipboard = runtimeFunction(
+  "experimental_copyToClipboard",
 );

@@ -197,12 +197,13 @@ export function invalidateSystemExecutionOptions({
 }
 
 export function invalidateGeneralSettingsDependencies({
+  includeSystemConfig,
   queryClient,
-}: QueryClientArg): void {
+}: QueryClientArg & { includeSystemConfig: boolean }): void {
   invalidateQueryKeys({
     queryClient,
     queryKeys: [
-      systemConfigQueryKey(),
+      ...(includeSystemConfig ? [systemConfigQueryKey()] : []),
       allThreadTimelineQueryKeyPrefix(),
       allThreadTimelineTurnSummaryDetailsQueryKeyPrefix(),
     ],

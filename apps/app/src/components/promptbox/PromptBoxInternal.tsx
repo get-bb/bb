@@ -15,8 +15,12 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
+import { CommandManager } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { useEditor, type Editor } from "@tiptap/react";
+import { nanoid } from "nanoid";
 import {
   useCallback,
   useContext,
@@ -120,7 +124,13 @@ import {
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
-import { AttachmentPreview } from "./AttachmentPreview";
+import { AttachmentPreview, isImageAttachment } from "./AttachmentPreview";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { isProjectAttachmentPath } from "@/lib/file-content-urls";
+import {
+  withAttachmentMentionSuggestions,
+  type AttachmentMentionSuggestion,
+} from "@/hooks/promptMentionCandidates";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
   ComposerPlusMenuSlot,
@@ -134,6 +144,10 @@ import {
 } from "./editor/prompt-decoration-extension";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
+import {
+  AttachmentHistory,
+  attachmentHistoryTransaction,
+} from "./editor/attachment-history";
 import {
   cancelPromptThreadLinkPaste,
   createPromptThreadLinkPasteExtension,
@@ -254,6 +268,38 @@ function mentionPillTrailingText(
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 const VOICE_ACTION_TRANSITION_MS = 180;
+const PASTED_TEXT_ATTACHMENT_MIN_LENGTH = 5_000;
+
+function uniqueAttachmentName(
+  name: string,
+  takenNames: ReadonlySet<string>,
+): string {
+  const extensionStart = name.lastIndexOf(".");
+  const stem = extensionStart > 0 ? name.slice(0, extensionStart) : name;
+  const extension = extensionStart > 0 ? name.slice(extensionStart) : "";
+  let candidate = name;
+  for (let index = 2; takenNames.has(candidate); index += 1) {
+    candidate = `${stem} ${index}${extension}`;
+  }
+  return candidate;
+}
+
+function withUniqueAttachmentNames(
+  files: readonly File[],
+  existingNames: ReadonlySet<string>,
+): File[] {
+  const takenNames = new Set(existingNames);
+  return files.map((file) => {
+    const name = uniqueAttachmentName(file.name, takenNames);
+    takenNames.add(name);
+    return name === file.name
+      ? file
+      : new File([file], name, {
+          type: file.type,
+          lastModified: file.lastModified,
+        });
+  });
+}
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
 export const DEFAULT_COMPOSER_SCOPE = {
@@ -479,9 +525,50 @@ export interface AttachmentsConfig {
   pendingUploads?: readonly PendingAttachmentUpload[];
   isAttaching?: boolean;
   error?: string | null;
-  onAttachFiles?: (files: File[]) => void | Promise<void>;
-  onRemove?: (path: string) => void;
+  onAttachFiles?: (files: File[]) => Promise<PromptDraftAttachment[]>;
+  onUpdate?: (
+    update: (attachments: PromptDraftAttachment[]) => PromptDraftAttachment[],
+  ) => void;
   projectId?: string;
+}
+
+interface AttachmentHistoryEntry {
+  attachments: PromptDraftAttachment[] | null;
+  draftKey: string | null;
+  positions: number[];
+  present: boolean;
+}
+
+function recordAttachmentHistory(
+  view: EditorView,
+  id: string,
+  present: boolean,
+): void {
+  view.dispatch(attachmentHistoryTransaction(view.state.tr, id, present));
+  view.dispatch(closeHistory(view.state.tr));
+}
+
+function recordPastedTextHistory(
+  editor: Editor,
+  id: string,
+  value: PromptEditorValue,
+): void {
+  const { view } = editor;
+  const insert = closeHistory(view.state.tr);
+  const from = view.state.selection.from;
+  new CommandManager({ editor })
+    .createChain(insert, true)
+    .insertContent(promptEditorInlineContentFromValue(value))
+    .run();
+  const inserted = view.state.applyTransaction(insert).state;
+  const replaced = inserted.applyTransaction(
+    attachmentHistoryTransaction(
+      inserted.tr.delete(insert.mapping.map(from, -1), inserted.selection.from),
+      id,
+      true,
+    ),
+  ).state;
+  view.updateState(replaced.applyTransaction(closeHistory(replaced.tr)).state);
 }
 
 interface PromptBoxCompactConfig {
@@ -1253,9 +1340,33 @@ export function PromptBoxInternal({
     isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
-    onRemove: onRemoveAttachment,
+    onUpdate: onUpdateAttachments,
     projectId: attachmentProjectId,
   } = attachmentConfig;
+  const openAttachment = useAttachmentOpener();
+  const resolveEditorMentionLink: PromptMentionLinkResolver = (resource) => {
+    if (resource.kind !== "attachment") {
+      return mentionResolveLink?.(resource) ?? null;
+    }
+    const attachment = attachments.find(
+      (item) => item.path === resource.path,
+    );
+    const projectId = attachment?.sourceProjectId ?? attachmentProjectId;
+    if (
+      !attachment ||
+      !openAttachment ||
+      !projectId ||
+      !isProjectAttachmentPath(attachment)
+    ) {
+      return null;
+    }
+    return () =>
+      openAttachment({
+        name: attachment.name,
+        path: attachment.path,
+        projectId,
+      });
+  };
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
@@ -1310,6 +1421,22 @@ export function PromptBoxInternal({
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   const syncTriggerStateRef = useRef<(editor: Editor) => void>(() => {});
   const onAttachFilesRef = useRef(onAttachFiles);
+  const attachmentNamesRef = useRef<ReadonlySet<string>>(new Set());
+  const attachmentItemsRef = useRef<PromptDraftAttachment[]>([]);
+  const onUpdateAttachmentsRef = useRef(onUpdateAttachments);
+  const attachmentDraftKeyRef = useRef<string | null>(null);
+  const attachmentHistoryRef = useRef(
+    new Map<string, AttachmentHistoryEntry>(),
+  );
+  const setAttachmentPresenceRef = useRef<
+    (id: string, present: boolean) => void
+  >(() => {});
+  const attachFilesWithHistoryRef = useRef<
+    (
+      files: File[],
+      recordHistory?: (id: string, editor: Editor) => void,
+    ) => void
+  >(() => {});
   const dismissedTriggerRef = useRef<DismissedTriggerRange | null>(null);
   const isRestoringAppliedMentionRef = useRef(false);
   const [composerMenu, setComposerMenuState] =
@@ -1543,6 +1670,137 @@ export function PromptBoxInternal({
     onAttachFilesRef.current = onAttachFiles;
   }, [onAttachFiles]);
 
+  useEffect(() => {
+    attachmentItemsRef.current = attachments;
+    attachmentNamesRef.current = new Set([
+      ...attachments.map((attachment) => attachment.name),
+      ...(pendingUploads ?? []).map((upload) => upload.file.name),
+    ]);
+  }, [attachments, pendingUploads]);
+
+  useEffect(() => {
+    onUpdateAttachmentsRef.current = onUpdateAttachments;
+  }, [onUpdateAttachments]);
+
+  useEffect(() => {
+    attachmentDraftKeyRef.current = pluginComposerHost?.textEffectKey ?? null;
+  }, [pluginComposerHost?.textEffectKey]);
+
+  const removeHistoryAttachments = useCallback(
+    (entry: AttachmentHistoryEntry, attachments: PromptDraftAttachment[]) => {
+      const update = onUpdateAttachmentsRef.current;
+      if (!update || attachments.length === 0) return;
+      const paths = new Set(attachments.map((attachment) => attachment.path));
+      entry.positions = attachments.map((attachment) =>
+        attachmentItemsRef.current.findIndex(
+          (item) => item.path === attachment.path,
+        ),
+      );
+      update((current) => current.filter((item) => !paths.has(item.path)));
+    },
+    [],
+  );
+
+  const restoreHistoryAttachments = useCallback(
+    (entry: AttachmentHistoryEntry, attachments: PromptDraftAttachment[]) => {
+      const update = onUpdateAttachmentsRef.current;
+      if (!update || attachments.length === 0) return;
+      const restored = attachments
+        .map((attachment, index) => ({
+          attachment,
+          position: entry.positions[index] ?? -1,
+        }))
+        .sort((left, right) => left.position - right.position);
+      update((current) => {
+        const next = current.filter(
+          (item) =>
+            !restored.some(({ attachment }) => attachment.path === item.path),
+        );
+        for (const { attachment, position } of restored) {
+          next.splice(
+            position < 0 ? next.length : Math.min(position, next.length),
+            0,
+            attachment,
+          );
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setAttachmentPresence = useCallback(
+    (id: string, present: boolean) => {
+      const entry = attachmentHistoryRef.current.get(id);
+      if (
+        !entry ||
+        entry.present === present ||
+        entry.draftKey !== attachmentDraftKeyRef.current
+      )
+        return;
+      entry.present = present;
+      if (entry.attachments === null) return;
+      if (present) restoreHistoryAttachments(entry, entry.attachments);
+      else removeHistoryAttachments(entry, entry.attachments);
+    },
+    [removeHistoryAttachments, restoreHistoryAttachments],
+  );
+
+  const attachFilesWithHistory = useCallback(
+    (files: File[], recordHistory?: (id: string, editor: Editor) => void) => {
+      const attach = onAttachFilesRef.current;
+      if (!attach || files.length === 0) return;
+      const id = nanoid();
+      const entry: AttachmentHistoryEntry = {
+        attachments: null,
+        draftKey: attachmentDraftKeyRef.current,
+        positions: [],
+        present: true,
+      };
+      attachmentHistoryRef.current.set(id, entry);
+      const currentEditor = editorRef.current;
+      if (currentEditor && !currentEditor.isDestroyed) {
+        if (recordHistory) recordHistory(id, currentEditor);
+        else recordAttachmentHistory(currentEditor.view, id, true);
+      }
+      void attach(
+        withUniqueAttachmentNames(files, attachmentNamesRef.current),
+      ).then((added) => {
+        entry.attachments = added;
+        if (!entry.present) removeHistoryAttachments(entry, added);
+      });
+    },
+    [removeHistoryAttachments],
+  );
+
+  const removeAttachment = useCallback(
+    (path: string) => {
+      const attachment = attachmentItemsRef.current.find(
+        (item) => item.path === path,
+      );
+      if (!attachment) return;
+      const id = nanoid();
+      const entry: AttachmentHistoryEntry = {
+        attachments: [attachment],
+        draftKey: attachmentDraftKeyRef.current,
+        positions: [],
+        present: false,
+      };
+      attachmentHistoryRef.current.set(id, entry);
+      removeHistoryAttachments(entry, [attachment]);
+      const currentEditor = editorRef.current;
+      if (currentEditor && !currentEditor.isDestroyed) {
+        recordAttachmentHistory(currentEditor.view, id, false);
+      }
+    },
+    [removeHistoryAttachments],
+  );
+
+  useEffect(() => {
+    setAttachmentPresenceRef.current = setAttachmentPresence;
+    attachFilesWithHistoryRef.current = attachFilesWithHistory;
+  }, [attachFilesWithHistory, setAttachmentPresence]);
+
   const revealEditorSelection = useCallback(() => {
     const currentEditor = editorRef.current;
     const scrollContainer = editorScrollContainerRef.current;
@@ -1743,6 +2001,10 @@ export function PromptBoxInternal({
         resolveThreads: (threadIds, signal) =>
           sdk.threads.resolveMentions({ threadIds, signal }),
       }),
+      AttachmentHistory.configure({
+        onChange: (id, present) =>
+          setAttachmentPresenceRef.current(id, present),
+      }),
     ],
     [],
   );
@@ -1918,7 +2180,7 @@ export function PromptBoxInternal({
               .run();
             if (attachFiles) {
               if (pastedFiles.length > 0) {
-                void attachFiles(pastedFiles);
+                attachFilesWithHistoryRef.current(pastedFiles);
               } else {
                 const editor = editorRef.current;
                 const href = window.location.href;
@@ -1935,7 +2197,7 @@ export function PromptBoxInternal({
                       editorRef.current === editor &&
                       window.location.href === href
                     )
-                      return attachFiles([file]);
+                      attachFilesWithHistoryRef.current([file]);
                   })
                   .catch(() => {
                     if (
@@ -1952,12 +2214,36 @@ export function PromptBoxInternal({
             return true;
           }
 
+          const plainText = event.clipboardData?.getData("text/plain") ?? "";
           if (attachFiles && pastedFiles.length > 0) {
             event.preventDefault();
-            void attachFiles(pastedFiles);
+            attachFilesWithHistoryRef.current(pastedFiles);
+          } else if (
+            attachFiles &&
+            plainText.length >= PASTED_TEXT_ATTACHMENT_MIN_LENGTH
+          ) {
+            event.preventDefault();
+            const file = new File([plainText], "Pasted text.txt", {
+              type: "text/plain",
+            });
+            attachFilesWithHistoryRef.current([file], (id, currentEditor) => {
+              const previousDoc = currentEditor.state.doc;
+              recordPastedTextHistory(
+                currentEditor,
+                id,
+                promptEditorValueFromPlainText(plainText, promptActions),
+              );
+              if (currentEditor.state.doc.eq(previousDoc)) return;
+              const nextValue = trimTrailingPromptNewlines(
+                promptEditorValueFromDoc(currentEditor.state.doc),
+              );
+              lastSyncedEditorValueRef.current = nextValue;
+              onChangeRef.current(nextValue.text, nextValue.mentions);
+            });
+            view.focus();
+            return true;
           }
 
-          const plainText = event.clipboardData?.getData("text/plain") ?? "";
           const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
           if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
             event.preventDefault();
@@ -2330,14 +2616,51 @@ export function PromptBoxInternal({
     () => orderCommandSuggestions(commandSuggestions, activeCommandQuery),
     [activeCommandQuery, commandSuggestions],
   );
+  const activeMentionQuery =
+    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
+  const isDefaultMentionTrigger =
+    activeTrigger?.kind === "mention" &&
+    activeTrigger.char === DEFAULT_PLUGIN_MENTION_TRIGGER;
+  const attachmentMentionSuggestions = useMemo(
+    () =>
+      attachments
+        .filter((attachment) => !isImageAttachment(attachment))
+        .map((attachment): AttachmentMentionSuggestion => ({
+          kind: "attachment",
+          path: attachment.path,
+          name: attachment.name,
+          replacement: `@${attachment.name}`,
+        })),
+    [attachments],
+  );
+  const composerMentionResults = useMemo(
+    () =>
+      isDefaultMentionTrigger
+        ? withAttachmentMentionSuggestions({
+            attachments: attachmentMentionSuggestions,
+            query: activeMentionQuery,
+            results: mentionResults,
+          })
+        : mentionResults,
+    [
+      activeMentionQuery,
+      attachmentMentionSuggestions,
+      isDefaultMentionTrigger,
+      mentionResults,
+    ],
+  );
   const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
     () =>
       activeTriggerKind === "command"
         ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
-          ? mentionResults.suggestions
+          ? composerMentionResults.suggestions
           : [],
-    [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
+    [
+      activeTriggerKind,
+      composerMentionResults.suggestions,
+      orderedCommandSuggestions,
+    ],
   );
   const selectedSuggestionIndex = useMemo(() => {
     if (selectedSuggestionKey === null) return -1;
@@ -2348,16 +2671,16 @@ export function PromptBoxInternal({
   }, [activeSuggestions, selectedSuggestionKey]);
   const selectedIndex = Math.max(0, selectedSuggestionIndex);
 
-  const activeMentionQuery =
-    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
   const mentionMenuState: MentionMenuState =
-    activeMentionQuery.length === 0
-      ? { kind: "hint" }
-      : mentionLoading
-        ? { kind: "loading" }
-        : mentionError
-          ? { kind: "error" }
-          : { kind: "results", results: mentionResults };
+    composerMentionResults !== mentionResults
+      ? { kind: "results", results: composerMentionResults }
+      : activeMentionQuery.length === 0
+        ? { kind: "hint" }
+        : mentionLoading
+          ? { kind: "loading" }
+          : mentionError
+            ? { kind: "error" }
+            : { kind: "results", results: mentionResults };
 
   const commandMenuState: CommandMenuState = commandLoading
     ? { kind: "loading" }
@@ -3027,14 +3350,6 @@ export function PromptBoxInternal({
       ? submitDisabledReason
       : submitTitle;
 
-  const emitAttachmentFiles = useCallback(
-    (files: File[]) => {
-      if (!onAttachFiles || files.length === 0) return;
-      void onAttachFiles(files);
-    },
-    [onAttachFiles],
-  );
-
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
@@ -3144,10 +3459,10 @@ export function PromptBoxInternal({
     (event: ChangeEvent<HTMLInputElement>) => {
       const fileList = event.target.files;
       if (!fileList || fileList.length === 0) return;
-      emitAttachmentFiles(Array.from(fileList));
+      attachFilesWithHistory(Array.from(fileList));
       event.target.value = "";
     },
-    [emitAttachmentFiles],
+    [attachFilesWithHistory],
   );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -3434,7 +3749,7 @@ export function PromptBoxInternal({
         event.preventDefault();
         if (!event.dataTransfer?.files || event.dataTransfer.files.length === 0)
           return;
-        emitAttachmentFiles(Array.from(event.dataTransfer.files));
+        attachFilesWithHistory(Array.from(event.dataTransfer.files));
       }}
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
@@ -3486,7 +3801,9 @@ export function PromptBoxInternal({
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
-              onRemoveAttachment={onRemoveAttachment}
+              onRemoveAttachment={
+                onUpdateAttachments ? removeAttachment : undefined
+              }
             />
           ) : null}
           <div
@@ -3547,7 +3864,7 @@ export function PromptBoxInternal({
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
               layout={editorLayout}
-              resolveMentionLink={mentionResolveLink}
+              resolveMentionLink={resolveEditorMentionLink}
             />
           </div>
 
@@ -3606,7 +3923,9 @@ export function PromptBoxInternal({
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
-                  onRemoveAttachment={onRemoveAttachment}
+                  onRemoveAttachment={
+                    onUpdateAttachments ? removeAttachment : undefined
+                  }
                 />
 
                 {attachmentError ? (

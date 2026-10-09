@@ -35,6 +35,11 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "storage-retention",
+    pluginId: "bb--storage-retention",
+    defaultEnabled: false,
+  },
+  {
     name: "bb-guide",
     pluginId: "bb-guide",
     defaultEnabled: true,
@@ -167,11 +172,6 @@ export const BUILTIN_PLUGINS = [
   {
     name: "thread-list",
     pluginId: "thread-list",
-    defaultEnabled: true,
-  },
-  {
-    name: "navigation",
-    pluginId: "navigation",
     defaultEnabled: true,
   },
   {

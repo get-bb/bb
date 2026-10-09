@@ -36,7 +36,11 @@ import type {
   QueuedMessageSendAction,
   QueuedMessagesListProps,
 } from "@/components/promptbox/banner/LazyQueuedMessagesList";
-import { getQueuedMessagesDrawerHeight } from "@/components/promptbox/banner/queued-messages-layout";
+import { QueuedMessagesCountPill } from "@/components/promptbox/banner/QueuedMessagesCountPill";
+import {
+  getQueuedMessagesDrawerHeight,
+  QUEUED_MESSAGES_COLLAPSED_HEIGHT,
+} from "@/components/promptbox/banner/queued-messages-layout";
 import {
   DndContext,
   KeyboardSensor,
@@ -138,7 +142,6 @@ interface QueuedMessageRowProps {
 }
 
 const GROUP_DIVIDER_ID = "__queued_message_group_divider__";
-const COLLAPSED_HEIGHT = 44;
 const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
@@ -170,7 +173,7 @@ export function getInlineEditorSurfaceMaxHeight({
     containerHeight - surfaceHeight,
   );
   return Math.max(
-    COLLAPSED_HEIGHT,
+    QUEUED_MESSAGES_COLLAPSED_HEIGHT,
     Math.floor(viewportHeight - occupiedHeightOutsideQueue),
   );
 }
@@ -644,7 +647,7 @@ function QueuedMessageWaitLine({
       ? null
       : formatQueuedMessageCountdown(countdownInstant - now);
   return (
-    <div
+    <span
       data-queued-message-wait=""
       data-queued-message-failed={failed ? "" : undefined}
       className={cn(
@@ -666,8 +669,62 @@ function QueuedMessageWaitLine({
       {countdown === null ? null : (
         <span className="shrink-0 tabular-nums">· {countdown}</span>
       )}
-    </div>
+    </span>
   );
+}
+
+function QueuedMessagesHeaderWait({
+  queuedMessages,
+}: {
+  queuedMessages: readonly ThreadQueuedMessage[];
+}) {
+  const newestFirst = [...queuedMessages].sort(
+    (first, second) => second.createdAt - first.createdAt,
+  );
+  const attentionMessage =
+    newestFirst.find((queuedMessage) => queuedMessage.failureReason !== null) ??
+    newestFirst.find(queuedMessageHasWaitLine);
+  const pluginDisplayName = usePluginDisplayName(
+    attentionMessage?.waitingOn?.kind === "plugin"
+      ? attentionMessage.waitingOn.pluginId
+      : "",
+  );
+  if (!attentionMessage) return null;
+  return (
+    <QueuedMessageWaitLine
+      pluginDisplayName={pluginDisplayName}
+      queuedMessage={attentionMessage}
+    />
+  );
+}
+
+function useQueuedMessageArrivals(
+  queuedMessages: readonly ThreadQueuedMessage[],
+): number {
+  const [tracker, setTracker] = useState(() => ({
+    arrivals: 0,
+    count: queuedMessages.length,
+    seenIds: new Set(queuedMessages.map((queuedMessage) => queuedMessage.id)),
+  }));
+  const hasUnseen = queuedMessages.some(
+    (queuedMessage) => !tracker.seenIds.has(queuedMessage.id),
+  );
+  if (hasUnseen || tracker.count !== queuedMessages.length) {
+    setTracker({
+      arrivals:
+        hasUnseen && queuedMessages.length > tracker.count
+          ? tracker.arrivals + 1
+          : tracker.arrivals,
+      count: queuedMessages.length,
+      seenIds: hasUnseen
+        ? new Set([
+            ...tracker.seenIds,
+            ...queuedMessages.map((queuedMessage) => queuedMessage.id),
+          ])
+        : tracker.seenIds,
+    });
+  }
+  return tracker.arrivals;
 }
 
 function QueuedMessageProcessingLine({ label }: { label: string }) {
@@ -1134,6 +1191,8 @@ export function QueuedMessagesList({
   onSetGroupBoundary,
   onEdit,
   onDelete,
+  expanded,
+  onExpandedChange,
 }: QueuedMessagesListProps) {
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const processingLabel =
@@ -1150,9 +1209,13 @@ export function QueuedMessagesList({
       coordinateGetter: sortableKeyboardCoordinates,
     }),
   );
-  const [mode, setMode] = useState<QueueSurfaceMode>(
-    queuedMessages.length > 0 ? "drawer" : "collapsed",
-  );
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const mode: QueueSurfaceMode = workspaceOpen
+    ? "workspace"
+    : expanded
+      ? "drawer"
+      : "collapsed";
+  const arrivals = useQueuedMessageArrivals(queuedMessages);
   const [expandedMobileActionsId, setExpandedMobileActionsId] = useState<
     string | null
   >(null);
@@ -1168,8 +1231,6 @@ export function QueuedMessagesList({
   const surfaceRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const wasInlineEditingRef = useRef(false);
-  const inlineEditorDismissModeRef = useRef<QueueSurfaceMode | null>(null);
-  const previousMessageCountRef = useRef(queuedMessages.length);
   useEffect(() => {
     if (expandedMobileActionsId === null) return;
 
@@ -1408,58 +1469,25 @@ export function QueuedMessagesList({
 
   useEffect(() => {
     if (inlineEditor) {
-      if (!wasInlineEditingRef.current) {
-        inlineEditorDismissModeRef.current = null;
-      }
-      setMode("workspace");
+      setWorkspaceOpen(true);
     } else if (wasInlineEditingRef.current) {
-      setMode(inlineEditorDismissModeRef.current ?? "drawer");
-      inlineEditorDismissModeRef.current = null;
+      setWorkspaceOpen(false);
     }
     wasInlineEditingRef.current = inlineEditor !== undefined;
   }, [inlineEditor]);
 
-  useEffect(() => {
-    const previousMessageCount = previousMessageCountRef.current;
-    previousMessageCountRef.current = queuedMessages.length;
-    if (inlineEditorActive) {
-      return;
-    }
-    if (
-      queuedMessages.length !== 0 &&
-      queuedMessages.length <= previousMessageCount
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      if (queuedMessages.length === 0) {
-        setMode("collapsed");
-        return;
-      }
-      setMode((currentMode) =>
-        currentMode === "collapsed" ? "drawer" : currentMode,
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [inlineEditorActive, queuedMessages.length]);
-
   const openWorkspace = useCallback(() => {
-    setMode("workspace");
+    setWorkspaceOpen(true);
   }, []);
   const collapseDrawer = useCallback(() => {
     setExpandedMobileActionsId(null);
-    setMode("collapsed");
-    inlineEditorDismissModeRef.current = "collapsed";
+    setWorkspaceOpen(false);
+    onExpandedChange(false);
     inlineEditor?.onDismiss();
-  }, [inlineEditor]);
+  }, [inlineEditor, onExpandedChange]);
   const showDrawer = useCallback(() => {
-    setMode("drawer");
-  }, []);
+    onExpandedChange(true);
+  }, [onExpandedChange]);
   const isExpanded = mode !== "collapsed";
   const focus = useDisclosureFocusHandoff(
     isExpanded,
@@ -1483,7 +1511,7 @@ export function QueuedMessagesList({
             queuedMessages,
             processingMessageId,
           })
-        : COLLAPSED_HEIGHT;
+        : QUEUED_MESSAGES_COLLAPSED_HEIGHT;
   const surfaceHeight =
     inlineEditor && inlineEditorMaxHeight !== null
       ? Math.min(
@@ -1596,9 +1624,13 @@ export function QueuedMessagesList({
           )}
         >
           <span className="font-normal">Queue</span>
-          <span className="-mr-1 ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-surface-recessed px-1 text-2xs leading-none tabular-nums text-subtle-foreground">
-            {queuedMessages.length}
-          </span>
+          {isExpanded ? null : (
+            <QueuedMessagesHeaderWait queuedMessages={queuedMessages} />
+          )}
+          <QueuedMessagesCountPill
+            arrivals={arrivals}
+            count={queuedMessages.length}
+          />
         </button>
       </header>
       <div
@@ -1622,7 +1654,7 @@ export function QueuedMessagesList({
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={sortableIds} strategy={sortingStrategy}>
-              <ul ref={listRef} className="group/queue py-1">
+              <ul ref={listRef} className="group/queue pt-1">
                 {queueItems}
               </ul>
             </SortableContext>
@@ -1652,7 +1684,7 @@ export function QueuedMessagesList({
             buttonRef={focus.collapseRef}
             className={cn(
               "rounded-none",
-              attachedToComposer && !inlineEditor && "-mb-3 min-h-9 pb-3",
+              attachedToComposer && !inlineEditor && "-mb-3 min-h-7.5 pb-3",
             )}
             controlsId={listId}
             label="Collapse queued messages"

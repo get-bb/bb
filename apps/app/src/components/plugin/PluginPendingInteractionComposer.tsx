@@ -29,6 +29,7 @@ interface PluginPendingInteractionComposerProps {
   request: PluginPendingInteractionRequest;
   origin: "plugin" | "provider";
   sourceThread?: PendingInteractionSourceThread;
+  collapsedByDefault: boolean;
 }
 
 export function PluginPendingInteractionComposer({
@@ -36,6 +37,7 @@ export function PluginPendingInteractionComposer({
   request,
   origin,
   sourceThread,
+  collapsedByDefault,
 }: PluginPendingInteractionComposerProps) {
   const { pendingInteractions } = usePluginSlots();
   const pluginName = usePluginDisplayName(request.pluginId);
@@ -63,10 +65,9 @@ export function PluginPendingInteractionComposer({
           value,
         });
       } catch (cause) {
+        setSubmitting(false);
         setError(cause instanceof Error ? cause.message : String(cause));
         throw cause;
-      } finally {
-        setSubmitting(false);
       }
     },
     [interaction.id, interaction.threadId],
@@ -85,10 +86,9 @@ export function PluginPendingInteractionComposer({
         });
       }
     } catch (cause) {
+      setSubmitting(false);
       setError(cause instanceof Error ? cause.message : String(cause));
       throw cause;
-    } finally {
-      setSubmitting(false);
     }
   }, [origin, interaction.id, interaction.threadId, stopThread]);
   const dismissLabel = origin === "plugin" ? "Cancel" : "Stop turn";
@@ -97,7 +97,7 @@ export function PluginPendingInteractionComposer({
     <PendingInteractionShell
       key={interaction.id}
       label={request.title}
-      initiallyExpanded
+      expandedByDefault={!collapsedByDefault}
       errorMessage={error}
       sourceThread={sourceThread}
       testId="plugin-interaction-shell"

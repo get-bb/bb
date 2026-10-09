@@ -92,14 +92,14 @@ posixOnly("process tree helpers", () => {
     const grandchildPid = Number(await readFirstLine(child.stdout));
     cleanupPids.push(child.pid ?? 0, grandchildPid);
 
-    const found = await listProcessesWithCwdUnder({ directory: dir });
+    const found = await listProcessesWithCwdUnder({ directories: [dir] });
     expect(found.map((entry) => entry.pid)).toEqual(
       expect.arrayContaining([child.pid, grandchildPid]),
     );
     expect(found.map((entry) => entry.pid)).not.toContain(process.pid);
 
     const killed = await killProcessesWithCwdUnder({
-      directory: dir,
+      directories: [dir],
       graceMs: 200,
     });
     expect(killed.map((entry) => entry.pid)).toEqual(
@@ -108,7 +108,7 @@ posixOnly("process tree helpers", () => {
     await waitFor(() => !isAlive(grandchildPid) && !isAlive(child.pid ?? 0));
 
     expect(
-      await listProcessesWithCwdUnder({ directory: `${dir}-other` }),
+      await listProcessesWithCwdUnder({ directories: [`${dir}-other`] }),
     ).toEqual([]);
   });
 
@@ -156,7 +156,7 @@ posixOnly("process tree helpers", () => {
     cleanupPids.push(child.pid ?? 0);
 
     const killed = await killProcessesWithCwdUnder({
-      directory: dir,
+      directories: [dir],
       graceMs: 500,
     });
 
@@ -165,7 +165,7 @@ posixOnly("process tree helpers", () => {
       cleanupPids.push(target.pid);
     }
     await waitFor(() => killed.every((target) => !isAlive(target.pid)));
-    expect(await listProcessesWithCwdUnder({ directory: dir })).toEqual([]);
+    expect(await listProcessesWithCwdUnder({ directories: [dir] })).toEqual([]);
   });
 
   it("does not follow a symlinked workspace root", async () => {
@@ -178,10 +178,12 @@ posixOnly("process tree helpers", () => {
     cleanupPids.push(child.pid ?? 0);
     await waitFor(() => (child.pid ?? 0) > 0);
 
-    expect(await listProcessesWithCwdUnder({ directory: target })).toEqual([
+    expect(await listProcessesWithCwdUnder({ directories: [target] })).toEqual([
       { pid: child.pid, cwd: target },
     ]);
-    expect(await listProcessesWithCwdUnder({ directory: link })).toEqual([]);
+    expect(await listProcessesWithCwdUnder({ directories: [link] })).toEqual(
+      [],
+    );
   });
 
   it("stops the leader first so it can shut its own child down", async () => {

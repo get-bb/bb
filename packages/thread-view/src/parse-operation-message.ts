@@ -10,6 +10,7 @@ import type {
 } from "@bb/domain";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
+  THREAD_CONTEXT_CLEARED_DETAIL,
   isApprovalInteractionLifecycle,
   isPluginInteractionLifecycle,
   isUserQuestionInteractionLifecycle,
@@ -678,7 +679,11 @@ export function parseOperationMessage(
       typeof decoded.metadata?.branch === "string"
         ? decoded.metadata.branch
         : undefined;
-    const messageDetail = decoded.message.trim();
+    const messageDetail =
+      decoded.operation === THREAD_CONTEXT_CLEAR_OPERATION &&
+      decoded.status === "completed"
+        ? THREAD_CONTEXT_CLEARED_DETAIL
+        : decoded.message.trim();
     const detailParts = [
       messageDetail.length > 0 && messageDetail !== title
         ? messageDetail

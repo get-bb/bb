@@ -311,8 +311,15 @@ export function registerSystemRoutes(
         settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
       showGitChanges: settings.showGitChanges ?? current.showGitChanges,
+      keepHistoryAfterContextClear:
+        settings.keepHistoryAfterContextClear ??
+        current.keepHistoryAfterContextClear,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      onboardingCompletedAt:
+        settings.onboardingCompletedAt === undefined
+          ? current.onboardingCompletedAt
+          : settings.onboardingCompletedAt,
       showDiagnosticEvents:
         diagnosticValue === undefined ||
         (showUnhandledProviderEvents !== undefined &&

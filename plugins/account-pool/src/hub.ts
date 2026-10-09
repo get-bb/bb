@@ -1,3 +1,8 @@
+import {
+  retryAvailabilitySchema,
+  type RetryAvailability,
+} from "./retry-contract.js";
+import { HUB_TOKEN_HEADER } from "./parent-pool.js";
 import type {
   Account,
   AccountPoolConfig,
@@ -1258,6 +1263,74 @@ export class AccountPoolHub {
     });
   }
 
+  async retryAvailability(
+    provider: PoolProvider,
+    family: ModelFamily,
+  ): Promise<RetryAvailability> {
+    const parent = this.options.getParentRoute();
+    if (parent !== null) {
+      try {
+        const response = await this.options.fetch(
+          `${parent.baseUrl}/retry-availability?provider=${provider}&family=${family}`,
+          {
+            headers: { [HUB_TOKEN_HEADER]: parent.token },
+            signal: AbortSignal.timeout(2_000),
+          },
+        );
+        if (response.ok)
+          return retryAvailabilitySchema.parse(await response.json());
+        await response.body?.cancel();
+      } catch {
+        return { kind: "unavailable", reason: "source-unavailable" };
+      }
+      return { kind: "unavailable", reason: "source-unavailable" };
+    }
+    const accounts = (await this.options.accounts.list()).filter(
+      (account) => account.provider === provider,
+    );
+    return this.accountAvailability(accounts, family);
+  }
+
+  private accountAvailability(
+    accounts: readonly Account[],
+    family: ModelFamily,
+  ): RetryAvailability {
+    const enabled = accounts.filter((account) => account.enabled);
+    if (enabled.length === 0)
+      return { kind: "unavailable", reason: "no-enabled-account" };
+    const now = this.options.now();
+    const threshold = this.options.getSettings().switchThreshold;
+    const resets: number[] = [];
+    let unknown = false;
+    for (const account of enabled) {
+      const quota = this.options.quotas.get(account.id);
+      if (quota.error !== null) continue;
+      if (isUsageRestricted(quota, now)) {
+        unknown = true;
+        continue;
+      }
+      const exhausted =
+        isQuotaExhausted(quota, family, threshold, now) &&
+        !hasExtraUsage(quota);
+      const resetAt = exhausted
+        ? blockingResetAt(quota, family, threshold, now)
+        : now;
+      if (resetAt === null) {
+        unknown = true;
+        continue;
+      }
+      const availableAt = Math.max(resetAt, quota.heldUntil ?? 0);
+      if (availableAt <= now) return { kind: "ready" };
+      resets.push(availableAt);
+    }
+    return resets.length > 0
+      ? { kind: "blocked", retryAt: Math.min(...resets) }
+      : {
+          kind: "unavailable",
+          reason: unknown ? "reset-unknown" : "authentication",
+        };
+  }
+
   private noEligibleResponse(
     accounts: readonly Account[],
     family: ModelFamily,
@@ -1270,32 +1343,18 @@ export class AccountPoolHub {
       );
     }
     const now = this.options.now();
-    const threshold = this.options.getSettings().switchThreshold;
-    const next = accounts
-      .filter((account) => account.enabled)
-      .flatMap((account) => {
-        const quota = this.options.quotas.get(account.id);
-        if (quota.error !== null) return [];
-        const quotaResetAt = hasExtraUsage(quota)
-          ? null
-          : blockingResetAt(quota, family, threshold, now);
-        if (
-          quotaResetAt === null &&
-          isQuotaExhausted(quota, family, threshold, now) &&
-          !hasExtraUsage(quota)
-        )
-          return [];
-        const resetAt = Math.max(quota.heldUntil ?? 0, quotaResetAt ?? 0);
-        return resetAt > now ? [resetAt] : [];
-      })
-      .sort((left, right) => left - right)[0];
+    const availability = this.accountAvailability(accounts, family);
+    const next =
+      availability.kind === "blocked" ? availability.retryAt : undefined;
     const retryAfter = Math.max(
       1,
       Math.ceil(((next ?? now + 1_000) - now) / 1_000),
     );
     return adapter.errorResponse(
       429,
-      "No Account Pooler account is currently eligible.",
+      next === undefined
+        ? "No Account Pooler account is currently eligible."
+        : `No Account Pooler account is currently eligible. Next account is expected to be available at ${new Date(next).toISOString()} (in ${retryAfter} seconds).`,
       { "retry-after": String(retryAfter) },
     );
   }

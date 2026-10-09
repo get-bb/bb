@@ -102,10 +102,6 @@
     "category": "thread-management",
     "screenshots": []
   },
-  "navigation": {
-    "category": "thread-management",
-    "screenshots": []
-  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []
@@ -175,6 +171,10 @@
   },
   "prompt-library": {
     "category": "memory-and-context",
+    "screenshots": []
+  },
+  "storage-retention": {
+    "category": "tasks-and-workflows",
     "screenshots": []
   }
 }

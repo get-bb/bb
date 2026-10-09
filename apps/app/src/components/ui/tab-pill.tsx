@@ -3,7 +3,7 @@ import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizin
 import { cn } from "@bb/shared-ui/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import type { ReactNode } from "react";
-import { CONTEXT_SELECTION_SURFACE_CLASS } from "./context-selection";
+import { CONTEXT_SELECTION_SURFACE_CLASS } from "@bb/shared-ui/context-selection";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";

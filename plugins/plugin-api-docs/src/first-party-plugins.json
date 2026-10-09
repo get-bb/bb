@@ -70,11 +70,6 @@
     "icon": "Brain"
   },
   {
-    "id": "navigation",
-    "name": "Navigation",
-    "icon": "PanelLeft"
-  },
-  {
     "id": "environment-modal-sandbox",
     "name": "Modal Sandbox [Experimental]",
     "icon": null
@@ -123,6 +118,11 @@
     "id": "side-chat",
     "name": "Side chat",
     "icon": "SideChat"
+  },
+  {
+    "id": "bb--storage-retention",
+    "name": "Storage & retention [Experimental]",
+    "icon": null
   },
   {
     "id": "tasks",

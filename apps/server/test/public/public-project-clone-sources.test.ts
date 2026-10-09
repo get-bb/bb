@@ -61,6 +61,10 @@ describe("project clone sources", () => {
       ]);
     try {
       await withTestHarness(async (harness) => {
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          machineGitCredentialsEnabled: true,
+        });
         const first = seedHostSession(harness.deps, { id: "host-source" });
         const machine = seedHostSession(harness.deps, { id: "host-machine" });
         seedPrimaryHost(harness.deps, first.host.id);
@@ -140,10 +144,6 @@ describe("project clone sources", () => {
       const first = seedHostSession(harness.deps, { id: "host-clone-first" });
       const second = seedHostSession(harness.deps, { id: "host-clone-second" });
       seedPrimaryHost(harness.deps, first.host.id);
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        machineGitCredentialsEnabled: false,
-      });
       setExperiments(harness.db, {
         ...defaultExperiments,
       });

@@ -5,13 +5,14 @@ import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { InfoList, InfoSection } from "./info-list";
 
-function renderList(count: number) {
+function renderList(count: number, revealIndex: number | null = null) {
   const items = Array.from({ length: count }, (_, index) => `item-${index}`);
   render(
     <InfoList
       items={items}
       getKey={(item) => item}
       renderItem={(item) => <li>{item}</li>}
+      revealIndex={revealIndex}
     />,
   );
 }
@@ -36,6 +37,12 @@ describe("InfoList", () => {
         .getByRole("button", { name: "Show less" })
         .getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("expands when the revealed item is past the limit", () => {
+    renderList(8, 6);
+    expect(screen.getAllByText(/^item-/)).toHaveLength(8);
+    expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
   });
 });
 

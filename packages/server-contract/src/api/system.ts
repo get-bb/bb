@@ -132,6 +132,7 @@ export type SystemVoiceTranscriptionResponse = z.infer<
 export const systemProviderStateSchema = providerHealthSchema.extend({
   providerId: z.string().min(1),
   displayName: z.string().min(1),
+  localLoginCommand: z.string().min(1).nullable(),
 });
 export type SystemProviderState = z.infer<typeof systemProviderStateSchema>;
 

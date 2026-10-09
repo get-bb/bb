@@ -258,6 +258,28 @@ describe("asking a question", () => {
     });
   });
 
+  it("keeps a question open for the configured timeout", async () => {
+    const host = createHost();
+    const first = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(30 * 60 * 1000);
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await first;
+
+    await host.harness.setSettings({ questionTimeout: "7 days" });
+    const second = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(
+      7 * 24 * 60 * 60 * 1000,
+    );
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await second;
+  });
+
   it("tells the model to carry on when the user dismisses the question", async () => {
     const host = createHost();
     const call = host.harness.callAgentTool(TOOL_NAME, { questions });
@@ -286,20 +308,18 @@ describe("asking a question", () => {
     expect(await resultText(result)).toContain("no answers");
   });
 
-  it("explains the collision when a second question races the first", async () => {
+  it("returns the reason when the question cannot be shown", async () => {
     const host = createFakePluginHost({ pluginId: "ask-user-question" });
     host.bb.ui.requestInput = () =>
-      Promise.reject(
-        new Error("Thread thr-test is already awaiting user interaction"),
-      );
+      Promise.reject(new Error("Thread does not exist"));
     plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
 
     const result = await host.harness.callAgentTool(TOOL_NAME, { questions });
 
     expect(result).toMatchObject({ isError: true });
     const text = await resultText(result);
-    expect(text).toContain("already awaiting user interaction");
-    expect(text).toContain("Only one prompt can await the user at a time");
+    expect(text).toContain("Thread does not exist");
+    expect(text).toContain("Continue with your best judgement");
   });
 
   it("rejects oversized previews before opening an interaction", async () => {

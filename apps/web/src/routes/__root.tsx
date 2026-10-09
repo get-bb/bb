@@ -1,6 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { carryUtmToDownloadLinks } from "../landing/download-utm";
 import { THEME_INIT, watchSystemTheme } from "../lib/theme";
 
 export const Route = createRootRoute({
@@ -53,6 +54,7 @@ const JS_INIT = `document.documentElement.classList.add("js")`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => watchSystemTheme(), []);
+  useEffect(() => carryUtmToDownloadLinks(), []);
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

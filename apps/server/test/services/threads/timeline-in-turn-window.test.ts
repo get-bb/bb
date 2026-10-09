@@ -27,7 +27,9 @@ import {
   buildTimelineTurnSummaryDetails as buildTurnDetailsPage,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
 } from "../../../src/services/threads/timeline.js";
+import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-preview.js";
 
 const LARGE_BUDGET = 1_000_000;
 const BYTE_WINDOW_ITEM_COUNT = 250;
@@ -403,13 +405,17 @@ function buildPage(
   cursor: TimelinePaginationCursor | null,
   segmentLimit = 20,
   responseByteBudget = THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  includeNestedRows = false,
+  deferContent = false,
 ) {
   return buildThreadTimelineWithProfile(db, thread, {
     completedTurnDisplay: "collapse",
+    deferContent,
     eventBudget,
     responseByteBudget,
+    includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
-    includeNestedRows: false,
+    includeNestedRows,
     maxInlineOutputChars: 32_000,
     maxSeq: 0,
     page: cursor
@@ -429,6 +435,7 @@ function buildNestedPage(
     completedTurnDisplay: "collapse",
     eventBudget,
     responseByteBudget,
+    includeClearedContextHistory: false,
     includeDiagnosticOperations: false,
     includeNestedRows: true,
     maxInlineOutputChars: 32_000,
@@ -439,10 +446,12 @@ function buildNestedPage(
   });
 }
 
-function buildTimelineTurnSummaryDetails(
+type TurnDetailsPageOptions = Parameters<typeof buildTurnDetailsPage>[2];
+
+function walkTurnDetailsPages(
   db: DbConnection,
   thread: Thread,
-  options: Parameters<typeof buildTurnDetailsPage>[2],
+  options: TurnDetailsPageOptions,
 ) {
   const response = buildTurnDetailsPage(db, thread, options);
   let rows = response.rows;
@@ -463,6 +472,89 @@ function buildTimelineTurnSummaryDetails(
   return { ...response, rows, olderCursor: null };
 }
 
+function expandDeferredDelegations(
+  db: DbConnection,
+  thread: Thread,
+  options: TurnDetailsPageOptions,
+  rows: TimelineRow[],
+): TimelineRow[] {
+  return rows.map((row): TimelineRow => {
+    if (row.kind === "turn" && row.children !== null) {
+      return {
+        ...row,
+        children: expandDeferredDelegations(db, thread, options, row.children),
+      };
+    }
+    if ("contentDeferred" in row && row.contentDeferred === true) {
+      const itemId =
+        row.kind === "work" && "callId" in row
+          ? row.callId
+          : row.kind === "system" && "reasoningId" in row
+            ? row.reasoningId
+            : undefined;
+      const loaded = walkTurnDetailsPages(db, thread, {
+        ...options,
+        itemId: itemId ?? null,
+        sourceSeqStart: row.sourceSeqStart,
+        sourceSeqEnd: row.sourceSeqEnd,
+      }).rows.find((candidate) => candidate.id === row.id);
+      if (loaded === undefined) {
+        throw new Error(`Expected deferred content for ${row.id}`);
+      }
+      return loaded;
+    }
+    if (row.kind !== "work" || row.workKind !== "delegation") {
+      return row;
+    }
+    if (row.childRows !== null) {
+      return {
+        ...row,
+        childRows: expandDeferredDelegations(
+          db,
+          thread,
+          options,
+          row.childRows,
+        ),
+      };
+    }
+    const scoped = walkTurnDetailsPages(db, thread, {
+      ...options,
+      itemId: row.callId,
+      sourceSeqStart: row.sourceSeqStart,
+      sourceSeqEnd: row.sourceSeqEnd,
+    }).rows[0];
+    if (
+      scoped?.kind !== "work" ||
+      scoped.workKind !== "delegation" ||
+      scoped.childRows === null
+    ) {
+      throw new Error(`Expected delegation ${row.callId} children`);
+    }
+    return {
+      ...row,
+      childRows: expandDeferredDelegations(
+        db,
+        thread,
+        options,
+        scoped.childRows,
+      ),
+    };
+  });
+}
+
+function buildTimelineTurnSummaryDetails(
+  db: DbConnection,
+  thread: Thread,
+  options: Omit<TurnDetailsPageOptions, "deferContent" | "itemId">,
+) {
+  const pageOptions = { ...options, deferContent: true, itemId: null };
+  const response = walkTurnDetailsPages(db, thread, pageOptions);
+  return {
+    ...response,
+    rows: expandDeferredDelegations(db, thread, pageOptions, response.rows),
+  };
+}
+
 function collectCommandCallIds(
   rows: readonly TimelineRow[],
   target: Set<string>,
@@ -472,7 +564,7 @@ function collectCommandCallIds(
       target.add(row.callId);
     }
     if (row.kind === "work" && row.workKind === "delegation") {
-      collectCommandCallIds(row.childRows, target);
+      collectCommandCallIds(row.childRows ?? [], target);
     }
     if (row.kind === "turn" && row.children !== null) {
       collectCommandCallIds(row.children, target);
@@ -491,6 +583,7 @@ function walkAllPages(
   thread: Thread,
   eventBudget: number,
   segmentLimit = 20,
+  includeNestedRows = false,
 ): WalkResult {
   let mergedRows: TimelineRow[] = [];
   const seenCursors = new Set<string>();
@@ -505,6 +598,8 @@ function walkAllPages(
       eventBudget,
       cursor,
       segmentLimit,
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      includeNestedRows,
     );
     pages += 1;
     maxEventRowCount = Math.max(maxEventRowCount, profile.eventRowCount);
@@ -1012,22 +1107,31 @@ describe("in-turn timeline windows", () => {
     if (turnRow?.kind !== "turn") {
       throw new Error("expected a turn row");
     }
-    const details = buildTimelineTurnSummaryDetails(db, thread, {
+    const details = walkTurnDetailsPages(db, thread, {
+      deferContent: false,
+      itemId: null,
       completedTurnDisplay: "collapse",
       includeDiagnosticOperations: false,
       sourceSeqEnd: turnRow.sourceSeqEnd,
       sourceSeqStart: turnRow.sourceSeqStart,
       turnId: turnRow.turnId,
     });
-    const commandOutputs = details.rows.flatMap((row) =>
-      row.kind === "work" && row.workKind === "command" ? [row.output] : [],
+    const commandRows = details.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row] : [],
     );
 
-    expect(commandOutputs).toHaveLength(150);
-    expect(commandOutputs.every((output) => output.length < 33_000)).toBe(true);
+    expect(commandRows).toHaveLength(150);
     expect(
-      commandOutputs.some((output) =>
-        output.includes("output truncated by retention policy"),
+      commandRows.every(
+        (row) =>
+          row.output.length < TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
+      ),
+    ).toBe(true);
+    expect(
+      commandRows.some(
+        (row) =>
+          row.outputPreview?.experimental_fullOutputAvailability ===
+          "detail-limit",
       ),
     ).toBe(true);
   });
@@ -1292,14 +1396,86 @@ describe("in-turn timeline windows", () => {
       itemsPerTurn: [300],
     });
 
-    const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
-    const budgeted = buildPage(db, thread, 100, null);
+    const unbudgeted = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const budgeted = buildNestedPage(db, thread, 100, null);
 
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(true);
     expect(budgeted.profile.eventRowCount).toBeGreaterThan(600);
-    expect(walkAllPages(db, thread, 100).rows).toEqual(
+    expect(walkAllPages(db, thread, 100, 20, true).rows).toEqual(
       unbudgeted.response.rows.map((row) => JSON.stringify(row)),
     );
+  });
+
+  it("returns a settled delegation in a running turn without its children, then loads them by call", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: false,
+      delegateLastTurn: true,
+      itemsPerTurn: [300],
+    });
+
+    const page = buildPage(
+      db,
+      thread,
+      100,
+      null,
+      20,
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      false,
+      true,
+    );
+    const delegation = page.response.rows.find(
+      (row) => row.kind === "work" && row.workKind === "delegation",
+    );
+    if (delegation?.kind !== "work" || delegation.workKind !== "delegation") {
+      throw new Error("expected a delegation row");
+    }
+    expect(delegation.status).toBe("completed");
+    expect(delegation.childRows).toBeNull();
+    expect(page.response.timelinePage.hasOlderRows).toBe(false);
+
+    const firstPage = buildTurnDetailsPage(db, thread, {
+      deferContent: true,
+      itemId: delegation.callId,
+      completedTurnDisplay: "collapse",
+      includeDiagnosticOperations: false,
+      sourceSeqEnd: delegation.sourceSeqEnd,
+      sourceSeqStart: delegation.sourceSeqStart,
+      turnId: delegation.turnId ?? "",
+    });
+    const [scoped] = firstPage.rows;
+    if (scoped?.kind !== "work" || scoped.workKind !== "delegation") {
+      throw new Error("expected the scoped delegation row");
+    }
+    expect(firstPage.rows).toHaveLength(1);
+    expect(scoped.callId).toBe(delegation.callId);
+    expect(scoped.childRows).toHaveLength(
+      TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
+    );
+    expect(firstPage.olderCursor).not.toBeNull();
+
+    const nested = buildNestedPage(db, thread, LARGE_BUDGET, null);
+    const nestedDelegation = nested.response.rows.find(
+      (row) => row.kind === "work" && row.workKind === "delegation",
+    );
+    if (
+      nestedDelegation?.kind !== "work" ||
+      nestedDelegation.workKind !== "delegation"
+    ) {
+      throw new Error("expected a nested delegation row");
+    }
+    const walked = buildTimelineTurnSummaryDetails(db, thread, {
+      completedTurnDisplay: "collapse",
+      includeDiagnosticOperations: false,
+      sourceSeqEnd: nestedDelegation.sourceSeqEnd,
+      sourceSeqStart: nestedDelegation.sourceSeqStart,
+      turnId: nestedDelegation.turnId ?? "",
+    }).rows;
+    expect(
+      walked.find(
+        (row) => row.kind === "work" && row.workKind === "delegation",
+      ),
+    ).toEqual(nestedDelegation);
   });
 
   it("gives an item straddling the cut to exactly one page, completed", () => {
@@ -1844,6 +2020,7 @@ describe("timeline inline output reads", () => {
     const capped = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: LARGE_BUDGET,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: 32_000,
@@ -1853,6 +2030,7 @@ describe("timeline inline output reads", () => {
     const uncapped = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: LARGE_BUDGET,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: false,
       maxInlineOutputChars: null,
@@ -2234,6 +2412,7 @@ describe("turn details for an item that finishes in a later turn", () => {
     const unfinishedLatest = buildThreadTimelineWithProfile(db, thread, {
       completedTurnDisplay: "collapse",
       eventBudget: LARGE_BUDGET,
+      includeClearedContextHistory: false,
       includeDiagnosticOperations: false,
       includeNestedRows: true,
       maxInlineOutputChars: 32_000,

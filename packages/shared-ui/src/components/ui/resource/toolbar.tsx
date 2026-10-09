@@ -291,9 +291,7 @@ export function ResourceToolbar({
             </div>
           </div>
           {showCombined ? (
-            <div data-resource-combined-controls>
-              {combinedControls}
-            </div>
+            <div data-resource-combined-controls>{combinedControls}</div>
           ) : null}
         </div>
       ) : null}
@@ -337,7 +335,10 @@ function ResourceOptionContent({
 }) {
   return (
     <span
-      className={cn("flex min-w-0 items-center gap-2", compact && "md:gap-1.5")}
+      className={cn(
+        "flex min-w-0 items-center gap-2",
+        compact && "md:gap-1.5 pointer-fine:gap-1.5",
+      )}
     >
       {option.leading ? (
         <span
@@ -491,7 +492,8 @@ export function ResourceMultiSelectMenuItems({
         <DropdownMenuLabel
           className={cn(
             "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
+            compact &&
+              "md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
           )}
         >
           {label}
@@ -502,7 +504,10 @@ export function ResourceMultiSelectMenuItems({
           key={option.id}
           checked={selected.has(option.id)}
           disabled={option.disabled}
-          className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+          className={cn(
+            compact &&
+              "md:py-1 pointer-fine:py-1 md:pl-1.5 pointer-fine:pl-1.5 md:pr-7 pointer-fine:pr-7",
+          )}
           onSelect={(event) => event.preventDefault()}
           onCheckedChange={(checked) => updateValue(option, checked === true)}
         >
@@ -520,7 +525,8 @@ export function ResourceMultiSelectMenuItems({
             }}
             className={cn(
               "text-xs text-muted-foreground",
-              compact && "md:px-1.5 md:py-1",
+              compact &&
+                "md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
             )}
           >
             Clear filter
@@ -581,7 +587,9 @@ export function ResourceMultiSelectMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle={label}
-        className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
+        className={cn(
+          compact ? "w-max max-w-64 md:p-0.5 pointer-fine:p-0.5" : "min-w-44",
+        )}
       >
         <ResourceMultiSelectMenuItems
           label={label}
@@ -645,7 +653,9 @@ export function ResourceFilterMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle="Filters"
-        className={cn(compact ? "w-max max-w-64 md:p-0.5" : "min-w-44")}
+        className={cn(
+          compact ? "w-max max-w-64 md:p-0.5 pointer-fine:p-0.5" : "min-w-44",
+        )}
       >
         {renderedGroups.map(({ group, selected }, groupIndex) => (
           <Fragment key={group.id}>
@@ -654,7 +664,8 @@ export function ResourceFilterMenu({
               <DropdownMenuLabel
                 className={cn(
                   "text-xs font-normal text-subtle-foreground",
-                  compact && "md:px-1.5 md:py-1",
+                  compact &&
+                    "md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
                 )}
               >
                 {group.label}
@@ -664,7 +675,10 @@ export function ResourceFilterMenu({
                   key={option.id}
                   checked={selected.has(option.id)}
                   disabled={option.disabled}
-                  className={cn(compact && "md:py-1 md:pl-1.5 md:pr-7")}
+                  className={cn(
+                    compact &&
+                      "md:py-1 pointer-fine:py-1 md:pl-1.5 pointer-fine:pl-1.5 md:pr-7 pointer-fine:pr-7",
+                  )}
                   onSelect={(event) => event.preventDefault()}
                   onCheckedChange={(checked) => {
                     const next = nextSelectedValues(
@@ -714,7 +728,8 @@ export function ResourceSortMenuItems({
         <DropdownMenuLabel
           className={cn(
             "text-xs font-normal text-subtle-foreground",
-            compact && "md:px-1.5 md:py-1",
+            compact &&
+              "md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
           )}
         >
           Sort
@@ -730,7 +745,8 @@ export function ResourceSortMenuItems({
           }}
           className={cn(
             "flex items-center justify-between gap-3",
-            compact && "md:gap-2 md:px-1.5 md:py-1",
+            compact &&
+              "md:gap-2 pointer-fine:gap-2 md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
           )}
         >
           {placeholderLabel}
@@ -759,7 +775,8 @@ export function ResourceSortMenuItems({
             }}
             className={cn(
               "flex items-center justify-between gap-3",
-              compact && "md:gap-2 md:px-1.5 md:py-1",
+              compact &&
+                "md:gap-2 pointer-fine:gap-2 md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
             )}
           >
             <ResourceOptionContent option={option} compact={compact} />
@@ -789,7 +806,8 @@ export function ResourceSortMenuItems({
             }}
             className={cn(
               "text-xs text-muted-foreground",
-              compact && "md:px-1.5 md:py-1",
+              compact &&
+                "md:px-1.5 pointer-fine:px-1.5 md:py-1 pointer-fine:py-1",
             )}
           >
             Clear sort
@@ -851,7 +869,7 @@ export function ResourceSortMenu({
       <DropdownMenuContent
         align="end"
         mobileTitle="Sort"
-        className={cn("min-w-40", compact && "md:p-0.5")}
+        className={cn("min-w-40", compact && "md:p-0.5 pointer-fine:p-0.5")}
       >
         <ResourceSortMenuItems
           value={value}

@@ -305,7 +305,7 @@ interface SystemRowBase extends TimelineRowBase {
 
 interface DelegationRowArgs extends RowBaseOverrideArgs {
   callId?: string;
-  childRows?: TimelineRow[];
+  childRows?: TimelineRow[] | null;
   description?: string | null;
   durationMs?: number | null;
   id?: string;

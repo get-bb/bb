@@ -350,6 +350,7 @@ function StaticQueuedMessagesList({
   processingMessageId,
   processingAction,
 }: StaticQueuedMessagesListProps) {
+  const [expanded, setExpanded] = useState(true);
   return (
     <QueuedMessagesList
       attachedToComposer={true}
@@ -364,6 +365,8 @@ function StaticQueuedMessagesList({
       onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
     />
   );
 }
@@ -371,6 +374,7 @@ function StaticQueuedMessagesList({
 function ReorderableQueuedMessagesList() {
   const [queuedMessages, setQueuedMessages] =
     useState<readonly ThreadQueuedMessage[]>(multipleMessages);
+  const [expanded, setExpanded] = useState(true);
   const handleReorder = useCallback((request: QueuedMessageReorderRequest) => {
     setQueuedMessages((currentQueuedMessages) =>
       applyStoryReorder(currentQueuedMessages, request),
@@ -402,6 +406,8 @@ function ReorderableQueuedMessagesList() {
       onSetGroupBoundary={handleSetGroupBoundary}
       onEdit={noop}
       onDelete={noop}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
     />
   );
 }

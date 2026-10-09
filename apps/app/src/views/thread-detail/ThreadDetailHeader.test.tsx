@@ -15,6 +15,12 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { sdk } from "@/lib/sdk";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
+import {
+  ThreadActionCollectors,
+  resetThreadActionRegistryForTest,
+} from "@/lib/thread-actions/thread-action-registry";
+import type { ThreadDetailHeaderActionsMenuArgs } from "./ThreadDetailHeader";
 
 const mocks = vi.hoisted(() => ({
   renameThreadAsync: vi.fn(),
@@ -49,6 +55,28 @@ vi.mock("@/components/layout/AppPageHeader", () => ({
 
 const viewportState = vi.hoisted(() => ({ isCompactViewport: false }));
 
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      keybindings: [
+        {
+          command: "thread.rename",
+          desktopOnly: false,
+          shortcut: {
+            key: "r",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+          when: { all: ["mainSurface"], none: ["modalOpen"] },
+        },
+      ],
+    },
+  }),
+}));
+
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.isCompactViewport,
 }));
@@ -72,6 +100,7 @@ const PANE_CONTEXT: PaneContextValue = {
 
 afterEach(() => {
   cleanup();
+  resetThreadActionRegistryForTest();
   viewportState.isCompactViewport = false;
   mocks.renameThreadAsync.mockReset();
   vi.restoreAllMocks();
@@ -210,7 +239,7 @@ describe("ThreadDetailHeader", () => {
     render(
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
-          actionsMenu={(includeResponsiveActions) => (
+          actionsMenu={({ includeResponsiveActions }) => (
             <>
               <span>Thread menu</span>
               {includeResponsiveActions ? (
@@ -269,7 +298,7 @@ describe("ThreadDetailHeader", () => {
     render(
       <PaneContext.Provider value={splitContext}>
         <ThreadDetailHeader
-          actionsMenu={(includeResponsiveActions) => (
+          actionsMenu={({ includeResponsiveActions }) => (
             <>
               <span>Thread menu</span>
               {includeResponsiveActions ? (
@@ -609,4 +638,86 @@ describe("ThreadDetailHeader", () => {
 
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });
+
+  function renderWithMenuArgs(focused = true) {
+    const menuArgs: { current: ThreadDetailHeaderActionsMenuArgs | null } = {
+      current: null,
+    };
+    const requestRenameDialog = vi.fn();
+    render(
+      <AppCommandProvider>
+        <ThreadActionCollectors
+          coreRegistrations={[]}
+          requestRename={requestRenameDialog}
+        />
+        <PaneContext.Provider value={{ ...PANE_CONTEXT, isFocused: focused }}>
+          <ThreadDetailHeader
+            actionsMenu={(args) => {
+              menuArgs.current = args;
+              return null;
+            }}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadId={THREAD_ID}
+            threadTitle="Focused thread"
+          />
+        </PaneContext.Provider>
+      </AppCommandProvider>,
+    );
+    return { menuArgs, requestRenameDialog };
+  }
+
+  it("renames inline from the actions menu once the menu has closed on desktop", async () => {
+    const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
+    menuArgs.current?.requestRename(THREAD_ID);
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    const closeEvent = new Event("focusout", { cancelable: true });
+    menuArgs.current?.onCloseAutoFocus(closeEvent);
+
+    expect(closeEvent.defaultPrevented).toBe(true);
+    expect(
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Focused thread");
+    expect(requestRenameDialog).not.toHaveBeenCalled();
+  });
+
+  it("opens the rename dialog from the actions menu at compact width", () => {
+    viewportState.isCompactViewport = true;
+    const { menuArgs, requestRenameDialog } = renderWithMenuArgs();
+    menuArgs.current?.requestRename(THREAD_ID);
+    const closeEvent = new Event("focusout", { cancelable: true });
+    menuArgs.current?.onCloseAutoFocus(closeEvent);
+
+    expect(requestRenameDialog).toHaveBeenCalledWith(THREAD_ID);
+    expect(closeEvent.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+  });
+
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    "starts the inline rename from the rename command when focused=%s",
+    async (focused, edits) => {
+      renderWithMenuArgs(focused);
+      fireEvent.keyDown(window, {
+        key: "R",
+        code: "KeyR",
+        ctrlKey: true,
+        shiftKey: true,
+      });
+      if (edits) {
+        expect(
+          await screen.findByRole("textbox", { name: "Thread name" }),
+        ).not.toBeNull();
+      } else {
+        expect(
+          screen.queryByRole("textbox", { name: "Thread name" }),
+        ).toBeNull();
+      }
+    },
+  );
 });

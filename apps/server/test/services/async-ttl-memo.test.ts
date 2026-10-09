@@ -86,6 +86,41 @@ describe("createAsyncTtlMemo", () => {
     },
   );
 
+  it("serves an expired result while one background lookup replaces it", async () => {
+    let now = 0;
+    const cache = createAsyncTtlMemo<string, string>({
+      ttlMs: 100,
+      now: () => now,
+      staleWhileRevalidate: true,
+    });
+    await cache.run("key", async () => "old");
+    now = 100;
+    const failed = deferred<string>();
+    const load = vi.fn(() => failed.promise);
+    expect(await cache.run("key", load)).toBe("old");
+    expect(await cache.run("key", load)).toBe("old");
+    expect(load).toHaveBeenCalledTimes(1);
+    failed.reject(new Error("offline"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const next = deferred<string>();
+    load.mockImplementation(() => next.promise);
+    expect(await cache.run("key", load)).toBe("old");
+    expect(load).toHaveBeenCalledTimes(2);
+    next.resolve("new");
+    await vi.waitFor(async () =>
+      expect(await cache.run("key", load)).toBe("new"),
+    );
+    now = 300;
+    const forced = deferred<string>();
+    load.mockImplementation(() => forced.promise);
+    const refreshed = cache.run("key", load, true);
+    const waiting = cache.run("key", load);
+    expect(load).toHaveBeenCalledTimes(3);
+    forced.resolve("forced");
+    expect(await refreshed).toBe("forced");
+    expect(await waiting).toBe("forced");
+  });
+
   it("retries rejected and synchronously throwing lookups", async () => {
     const cache = createAsyncTtlMemo<string, string>({ ttlMs: 100 });
     const failed = deferred<string>();

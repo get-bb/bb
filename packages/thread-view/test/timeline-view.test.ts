@@ -570,7 +570,7 @@ describe("buildTimelineViewRows", () => {
     ]);
 
     const delegation = expectDelegationWorkRow(rows[0]);
-    const childSummary = expectStepSummaryRow(delegation.childRows[0]);
+    const childSummary = expectStepSummaryRow(delegation.childRows?.[0]);
 
     expect(rows).toHaveLength(1);
     expect(delegation.childRows).toHaveLength(1);

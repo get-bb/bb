@@ -62,6 +62,7 @@ export type {
   BuildTimelineViewRowsOptions,
   ThreadTimelineViewRow,
   TimelineQuestionViewWorkRow,
+  TimelineViewDelegationWorkRow,
   TimelineViewTurnRow,
   TimelineViewWorkflowWorkRow,
   TimelineViewWorkRow,

@@ -981,6 +981,20 @@
       "when": 1791402653913,
       "tag": "0139_idle_lifecycle_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "6",
+      "when": 1791411660016,
+      "tag": "0140_stamp_onboarding_existing_installs",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "6",
+      "when": 1791414564985,
+      "tag": "0141_moaning_vector",
+      "breakpoints": true
     }
   ]
 }

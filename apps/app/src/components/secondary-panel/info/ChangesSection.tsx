@@ -1,6 +1,7 @@
 import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { directoryFromPath } from "@bb/thread-view";
 import {
   DiffSizeBar,
   DiffStatsTally,
@@ -11,13 +12,15 @@ import {
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import {
-  getFileNameFromPath,
-  getParentFolderNameFromPath,
-} from "../rightPanelFileVisuals";
+import { getFileNameFromPath } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
+
+function toFolderHint(path: string): string | null {
+  const folderPath = directoryFromPath(path);
+  return folderPath === "" ? null : `${folderPath}/`;
+}
 
 interface ChangedFilesHandlers {
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
@@ -127,7 +130,7 @@ function ChangedFileRow({
       }
       leadingLabel={glyph.label}
       name={fileName}
-      context={getParentFolderNameFromPath({ path: file.path })}
+      context={toFolderHint(file.path)}
       title={`${glyph.label} · ${file.path}`}
       target={
         onChangedFileClick
@@ -142,7 +145,7 @@ function ChangedFileRow({
           ? [
               {
                 icon: "ExternalLink",
-                label: "Open in tab",
+                label: "Open file in tab",
                 onSelect: () => onOpenChangedFile(file.path),
               },
             ]
@@ -150,12 +153,25 @@ function ChangedFileRow({
       }
       trailing={
         lineStats ? (
-          <span className="flex shrink-0 items-center">
-            <DiffSizeBar {...lineStats} className="group-hover:hidden" />
+          <span
+            onClick={
+              onChangedFileClick
+                ? () => onChangedFileClick({ file, section })
+                : undefined
+            }
+            className={cn(
+              "group/diff relative z-10 -mr-1 -ml-2 flex h-full min-w-16 shrink-0 items-center justify-end pr-1 pl-2",
+              onChangedFileClick && "cursor-pointer",
+            )}
+          >
+            <DiffSizeBar
+              {...lineStats}
+              className="group-hover/diff:hidden group-focus-within:hidden"
+            />
             <DiffStatsTally
               {...lineStats}
               hideZero
-              className="sr-only text-2xs tabular-nums group-hover:not-sr-only"
+              className="sr-only text-2xs tabular-nums group-hover/diff:not-sr-only group-focus-within:not-sr-only"
             />
           </span>
         ) : null

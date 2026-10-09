@@ -6,6 +6,7 @@ import {
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
 import type * as MonacoNs from "monaco-editor";
+import { Icon } from "@/components/ui/icon";
 import type { rpcContract } from "./server.js";
 import { CLAIMED_EXTENSIONS, languageForPath } from "./lib/languages.js";
 import {
@@ -28,10 +29,15 @@ import {
 
 type SaveState =
   | { kind: "clean" }
+  | {
+      kind: "reloaded";
+      discardedContent: string;
+      discardedSha256: string | null;
+    }
   | { kind: "dirty" }
   | { kind: "saving" }
   | { kind: "error"; message: string }
-  | { kind: "conflict" };
+  | { kind: "conflict"; currentSha256: string | null };
 
 function revealLineRange(
   editor: MonacoNs.editor.IStandaloneCodeEditor,
@@ -65,6 +71,7 @@ function MonacoFileOpener({
   const codeThemeRef = useRef(codeTheme);
   codeThemeRef.current = codeTheme;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const conflictNoticeRef = useRef<HTMLDivElement | null>(null);
   const monacoRef = useRef<typeof MonacoNs | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
 
@@ -119,7 +126,10 @@ function MonacoFileOpener({
           expectedSha256,
         });
         if (result.outcome === "conflict") {
-          setSaveState({ kind: "conflict" });
+          setSaveState({
+            kind: "conflict",
+            currentSha256: result.currentSha256,
+          });
           return;
         }
         sha256Ref.current = result.sha256;
@@ -136,6 +146,10 @@ function MonacoFileOpener({
 
   const save = useCallback(async () => {
     if (saveStateRef.current.kind === "saving") return;
+    if (saveStateRef.current.kind === "conflict") {
+      conflictNoticeRef.current?.focus();
+      return;
+    }
     await writeEditorContent(sha256Ref.current);
   }, [writeEditorContent]);
 
@@ -148,19 +162,42 @@ function MonacoFileOpener({
     setIsRefreshing(true);
     try {
       const file = await rpc.call("read", { path: activePath, source });
-      if (file.kind !== "text") return;
+      if (file.kind !== "text" || editorRef.current !== editor) return;
+      const discardedContent =
+        saveStateRef.current.kind === "conflict" ? editor.getValue() : null;
+      const discardedSha256 = sha256Ref.current;
       sha256Ref.current = file.sha256;
       editor.setValue(file.content);
-      setSaveState({ kind: "clean" });
+      setSaveState(
+        discardedContent === null
+          ? { kind: "clean" }
+          : { kind: "reloaded", discardedContent, discardedSha256 },
+      );
     } catch (error) {
+      if (editorRef.current !== editor) return;
       setSaveState({
         kind: "error",
         message: error instanceof Error ? error.message : "Reload failed",
       });
     } finally {
-      setIsRefreshing(false);
+      if (editorRef.current === editor) setIsRefreshing(false);
     }
   }, [activePath, rpc, setSaveState, source]);
+
+  const undoReload = useCallback(() => {
+    const current = saveStateRef.current;
+    const editor = editorRef.current;
+    if (current.kind !== "reloaded" || !editor) return;
+    const currentSha256 = sha256Ref.current;
+    sha256Ref.current = current.discardedSha256;
+    editor.setValue(current.discardedContent);
+    setSaveState({ kind: "conflict", currentSha256 });
+    editor.focus();
+  }, [setSaveState]);
+
+  useEffect(() => {
+    if (saveState.kind === "reloaded") conflictNoticeRef.current?.focus();
+  }, [saveState.kind]);
 
   const treeRequestedRef = useRef(false);
   useEffect(() => {
@@ -218,13 +255,18 @@ function MonacoFileOpener({
   }, [reloadFromDisk]);
 
   const overwrite = useCallback(async () => {
-    sha256Ref.current = null;
-    await writeEditorContent(null);
+    const current = saveStateRef.current;
+    if (current.kind !== "conflict") return;
+    await writeEditorContent(current.currentSha256);
   }, [writeEditorContent]);
 
   useEffect(() => {
     let disposed = false;
     setStatus({ kind: "loading" });
+    setIsRefreshing(false);
+    if (saveStateRef.current.kind === "reloaded") {
+      setSaveState({ kind: "clean" });
+    }
 
     void (async () => {
       try {
@@ -278,7 +320,10 @@ function MonacoFileOpener({
         setStatus({ kind: "ready" });
 
         editor.onDidChangeModelContent(() => {
-          if (saveStateRef.current.kind === "clean") {
+          if (
+            saveStateRef.current.kind === "clean" ||
+            saveStateRef.current.kind === "reloaded"
+          ) {
             setSaveState({ kind: "dirty" });
           }
         });
@@ -341,12 +386,19 @@ function MonacoFileOpener({
       <FileToolbar
         path={activePath}
         indicator={indicatorFor(saveState, status)}
+        saveConflict={saveState.kind === "conflict"}
+        saveDisabled={
+          status.kind !== "ready" || isRefreshing || saveState.kind === "saving"
+        }
+        onSave={() => void save()}
         isRefreshing={isRefreshing}
         onRefresh={requestRefresh}
         isFilesOpen={isFilesOpen}
         onToggleFiles={() => setIsFilesOpen((open) => !open)}
       />
       <Notice
+        conflictNoticeRef={conflictNoticeRef}
+        isRefreshing={isRefreshing}
         onDiscardCancel={() => setPendingDiscard(false)}
         onDiscardConfirm={() => {
           setPendingDiscard(false);
@@ -360,6 +412,7 @@ function MonacoFileOpener({
         }}
         onOverwrite={() => void overwrite()}
         onReload={() => void reloadFromDisk()}
+        onUndoReload={undoReload}
         pendingDiscard={pendingDiscard}
         pendingOpen={pendingOpen}
         saveState={saveState}
@@ -389,23 +442,29 @@ function indicatorFor(
 }
 
 function Notice({
+  conflictNoticeRef,
+  isRefreshing,
   onDiscardCancel,
   onDiscardConfirm,
   onOpenCancel,
   onOpenConfirm,
   onOverwrite,
   onReload,
+  onUndoReload,
   pendingDiscard,
   pendingOpen,
   saveState,
   status,
 }: {
+  conflictNoticeRef: React.RefObject<HTMLDivElement | null>;
+  isRefreshing: boolean;
   onDiscardCancel: () => void;
   onDiscardConfirm: () => void;
   onOpenCancel: () => void;
   onOpenConfirm: () => void;
   onOverwrite: () => void;
   onReload: () => void;
+  onUndoReload: () => void;
   pendingDiscard: boolean;
   pendingOpen: string | null;
   saveState: SaveState;
@@ -416,16 +475,46 @@ function Notice({
   }
   if (saveState.kind === "conflict") {
     return (
-      <NoticeRow tone="error">
-        This file changed on disk since you opened it.
-        <NoticeAction onClick={onReload}>Reload</NoticeAction>
-        <NoticeAction onClick={onOverwrite}>Overwrite</NoticeAction>
+      <NoticeRow
+        tone="warning"
+        compact
+        focusRef={conflictNoticeRef}
+        label="File changed on disk, edits not saved."
+      >
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-2">
+          <div className="flex min-w-0 max-w-full items-start gap-2">
+            <Icon
+              name="AlertTriangle"
+              className="mt-1 size-4 shrink-0 text-warning-text"
+              aria-hidden
+            />
+            <span className="min-w-0 text-left leading-6">
+              File changed on disk, edits not saved.
+            </span>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-6">
+            <NoticeAction
+              disabled={isRefreshing}
+              onClick={onReload}
+              title="Discard your edits and load the latest saved file"
+            >
+              Keep disk version
+            </NoticeAction>
+            <NoticeAction
+              disabled={isRefreshing}
+              onClick={onOverwrite}
+              title="Replace the saved file with your edits"
+            >
+              Save my edits
+            </NoticeAction>
+          </div>
+        </div>
       </NoticeRow>
     );
   }
   if (pendingOpen !== null) {
     return (
-      <NoticeRow tone="warning">
+      <NoticeRow tone="neutral">
         Open {pendingOpen.split("/").at(-1)} and discard your unsaved changes?
         <NoticeAction onClick={onOpenConfirm}>Discard and open</NoticeAction>
         <NoticeAction onClick={onOpenCancel}>Cancel</NoticeAction>
@@ -434,7 +523,7 @@ function Notice({
   }
   if (pendingDiscard) {
     return (
-      <NoticeRow tone="warning">
+      <NoticeRow tone="neutral">
         Reload from disk and discard your unsaved changes?
         <NoticeAction onClick={onDiscardConfirm}>Discard</NoticeAction>
         <NoticeAction onClick={onDiscardCancel}>Cancel</NoticeAction>
@@ -444,24 +533,55 @@ function Notice({
   if (saveState.kind === "error") {
     return <NoticeRow tone="error">{saveState.message}</NoticeRow>;
   }
+  if (saveState.kind === "reloaded") {
+    return (
+      <NoticeRow
+        tone="neutral"
+        compact
+        focusRef={conflictNoticeRef}
+        label="Disk version loaded."
+      >
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-6 @min-[32rem]/file-conflict:justify-start">
+          <span>Disk version loaded.</span>
+          <NoticeAction disabled={isRefreshing} onClick={onUndoReload}>
+            Undo
+          </NoticeAction>
+        </div>
+      </NoticeRow>
+    );
+  }
   return null;
 }
 
 function NoticeRow({
   children,
   tone,
+  compact = false,
+  focusRef,
+  label,
 }: {
   children: React.ReactNode;
-  tone: "error" | "warning";
+  tone: "error" | "warning" | "neutral";
+  compact?: boolean;
+  focusRef?: React.Ref<HTMLDivElement>;
+  label?: string;
 }) {
   return (
     <div
+      ref={focusRef}
       role="status"
+      aria-label={label}
+      tabIndex={focusRef ? 0 : undefined}
       className={cn(
-        "flex shrink-0 items-center gap-2 px-4 py-1.5 text-xs",
+        "flex shrink-0 items-center gap-2 px-4 text-xs",
+        compact
+          ? "@container/file-conflict py-0.5 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none [&_button]:min-h-6 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+          : "py-1.5",
         tone === "error"
           ? "bg-destructive/10 text-destructive"
-          : "bg-surface-recessed text-foreground",
+          : tone === "warning"
+            ? "bg-warning/10 text-foreground"
+            : "bg-surface-recessed text-foreground",
       )}
     >
       {children}
@@ -471,16 +591,22 @@ function NoticeRow({
 
 function NoticeAction({
   children,
+  disabled,
   onClick,
+  title,
 }: {
   children: React.ReactNode;
+  disabled?: boolean;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
-      className="cursor-pointer rounded-sm font-medium underline underline-offset-2 hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+      title={title}
+      className="cursor-pointer rounded-sm font-medium underline underline-offset-2 hover:opacity-80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
     >
       {children}
     </button>

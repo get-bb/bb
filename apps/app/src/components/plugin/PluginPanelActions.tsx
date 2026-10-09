@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   usePluginSlots,
   type PluginNewThreadPanelActionSlot,
@@ -26,7 +27,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 export interface PluginPanelActionEntry {
   id: string;
@@ -219,6 +220,10 @@ export function PluginPanelTabContent({
 }
 
 function UnavailableActionTab() {
+  const pluginsSettled = usePluginFrontendsSettled();
+  if (!pluginsSettled) {
+    return null;
+  }
   return (
     <div className="p-4">
       <EmptyStatePanel className="rounded-lg p-6 text-sm">

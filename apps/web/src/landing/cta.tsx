@@ -57,6 +57,9 @@ function DesktopDownloadIcon({ platform }: { platform: DesktopPlatform }) {
   if (platform === "linux") {
     return <LinuxIcon className="btn-ic" />;
   }
+  if (platform === "windows") {
+    return null;
+  }
   return <HugeiconsIcon icon={AppleSolidIcon} className="btn-ic" />;
 }
 

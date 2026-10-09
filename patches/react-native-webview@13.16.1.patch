@@ -42,7 +42,7 @@ index 80c6803..cc9dd10 100644
      @Override
      public boolean onTouchEvent(MotionEvent event) {
          if (this.nestedScrollEnabled) {
-@@ -130,6 +142,16 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -130,6 +142,36 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
          return super.onTouchEvent(event);
      }
 
@@ -56,10 +56,30 @@ index 80c6803..cc9dd10 100644
 +        return super.onApplyWindowInsets(adjusted);
 +    }
 +
++    // On large screens Chromium anchors a <select> dropdown to a child view it adds to this
++    // WebView (dropdown_popup_window). React Native drops layout requests from views it did
++    // not create, so that anchor stays at 0,0 and the dropdown opens at the top of the screen
++    // (react-native-webview#3424). Lay our own children out when one asks.
++    private final Runnable measureAndLayoutChildren = () -> {
++        measure(
++                MeasureSpec.makeMeasureSpec(getWidth(), MeasureSpec.EXACTLY),
++                MeasureSpec.makeMeasureSpec(getHeight(), MeasureSpec.EXACTLY));
++        layout(getLeft(), getTop(), getRight(), getBottom());
++    };
++
++    @Override
++    public void requestLayout() {
++        super.requestLayout();
++        // Called from the WebView constructor before field initializers run.
++        if (measureAndLayoutChildren != null) {
++            post(measureAndLayoutChildren);
++        }
++    }
++
      @Override
      protected void onSizeChanged(int w, int h, int ow, int oh) {
          super.onSizeChanged(w, h, ow, oh);
-@@ -325,6 +347,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -325,6 +367,7 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
      }
 
      public void onMessage(String message, String sourceUrl) {
@@ -67,7 +87,7 @@ index 80c6803..cc9dd10 100644
          ThemedReactContext reactContext = getThemedReactContext();
          RNCWebView mWebView = this;
 
-@@ -416,6 +439,8 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
+@@ -416,6 +459,8 @@ public class RNCWebView extends WebView implements LifecycleEventListener {
 
      @Override
      public void destroy() {

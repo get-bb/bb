@@ -984,13 +984,13 @@ export function PublicMarketplaceDetailPage({
                   }}
                 />
               )}
-              <MarketplaceLink
+              <a
                 className="marketplace-detail-source marketplace-detail-download"
                 href="/download/macos"
               >
                 Get it for macOS
                 <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </MarketplaceLink>
+              </a>
             </div>
           </div>
         </header>

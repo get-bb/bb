@@ -87,7 +87,6 @@ describe("ProvidersSettingsSection", () => {
     expect(control.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(control);
     expect(onChange).toHaveBeenCalledWith({
-      ...defaultAppSettings,
       allowFastServiceTier: true,
     });
   });
@@ -130,7 +129,6 @@ describe("ProvidersSettingsSection", () => {
     openActions("Gamma");
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Default" }));
     expect(onChange).toHaveBeenLastCalledWith({
-      ...defaultAppSettings,
       defaultProviderId: "gamma",
     });
   });
@@ -206,7 +204,6 @@ describe("ProvidersSettingsSection", () => {
 
     fireEvent.click(claudeSwitch);
     expect(onChange).toHaveBeenLastCalledWith({
-      ...defaultAppSettings,
       providerCompletedTurnDisplay: {
         codex: "flat",
         "claude-code": "collapse",
@@ -215,7 +212,6 @@ describe("ProvidersSettingsSection", () => {
 
     fireEvent.click(codexSwitch);
     expect(onChange).toHaveBeenLastCalledWith({
-      ...defaultAppSettings,
       providerCompletedTurnDisplay: {},
     });
   });

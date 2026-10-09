@@ -55,7 +55,9 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   environmentId: null,
   page: latestPage,
   includeNestedRows: false,
+  deferContent: false,
   summaryOnly: false,
+  includeClearedContextHistory: false,
   includeDiagnosticOperations: false,
   completedTurnDisplay: "collapse",
 };

@@ -31,7 +31,6 @@ const UNPREFIXED_BUNDLED_PLUGIN_IDS = [
   "keep-awake",
   "memory",
   "monaco-editor",
-  "navigation",
   "pdf-preview",
   "plugin-api-docs",
   "plugin-api-tester",

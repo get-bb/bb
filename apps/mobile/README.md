@@ -12,7 +12,9 @@ own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,
 reload the page, clear website data), push registration and notification
 taps, deep links, quick actions, share intents and the connection banner.
-The `Mobile E2E` GitHub workflow drives the shell flows.
+External links use the web app's `shellOpenExternal` helper and the native
+bridge to open through the OS URL handler. The `Mobile E2E` GitHub workflow
+drives the shell flows.
 
 ## Structure
 
@@ -371,7 +373,7 @@ as the first argument drives a dev client through Metro instead.
   waits for `/health`), runs `ci-run-flows.sh`, and uploads
   `e2e-artifacts/` (per-flow Maestro output, backend log, simulator log).
 
-## bb connect (Phase 5)
+## bb connect
 
 - Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
@@ -475,7 +477,7 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   response because their URL stays the same. Concurrent 410 responses update
   the profile once.
 
-## Push notifications and deep links (Phase 5)
+## Push notifications and deep links
 
 Android disables Firebase Messaging auto-initialization and Analytics collection
 in the generated manifest. The app requests a push token only for a server with

@@ -2,7 +2,13 @@
 
 import { resolve } from "node:path";
 import { useEffect, useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
@@ -150,6 +156,7 @@ describe("PluginPendingInteractionComposer", () => {
     const title = String.raw`Review /workspace/deep/path\.env.local`;
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -188,6 +195,7 @@ describe("PluginPendingInteractionComposer", () => {
     );
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -248,6 +256,7 @@ describe("PluginPendingInteractionComposer", () => {
     const composer = (id: string) => (
       <QueryClientProvider client={client}>
         <PluginPendingInteractionComposer
+          collapsedByDefault={false}
           interaction={{ ...interaction, id }}
           request={{
             pluginId: "secrets",
@@ -288,6 +297,7 @@ describe("PluginPendingInteractionComposer", () => {
       .mockRejectedValue(new Error("test response"));
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={{
           id: "pint_provider",
           threadId: "thr_test",
@@ -320,6 +330,56 @@ describe("PluginPendingInteractionComposer", () => {
     );
   });
 
+  it.each([
+    ["submit", "respond"],
+    ["cancel", "cancel"],
+  ] as const)(
+    "keeps the plugin form disabled after a successful %s and re-enables it after a failure",
+    async (action, sdkMethod) => {
+      function Renderer({ submit, cancel }: PluginPendingInteractionProps) {
+        return (
+          <button
+            type="button"
+            onClick={() =>
+              void (action === "submit" ? submit("value") : cancel()).catch(
+                () => {},
+              )
+            }
+          >
+            Send
+          </button>
+        );
+      }
+      setPluginSlotRegistrations(
+        "secrets",
+        registrations([{ id: "secret-request", component: Renderer }]),
+      );
+      const call = vi
+        .spyOn(sdk.threads.interactions, sdkMethod)
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce(undefined as never);
+      renderComposer(
+        <PluginPendingInteractionComposer
+          collapsedByDefault={false}
+          interaction={interaction}
+          request={secretsRequest}
+          origin="plugin"
+        />,
+      );
+      const send = () =>
+        screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+
+      fireEvent.click(send());
+      await vi.waitFor(() => expect(screen.getByText("offline")).toBeDefined());
+      expect(send().matches(":disabled")).toBe(false);
+
+      fireEvent.click(send());
+      await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+      await act(async () => {});
+      expect(send().matches(":disabled")).toBe(true);
+    },
+  );
+
   it("mounts only the renderer registered by the interaction's plugin", () => {
     function WrongRenderer() {
       return <div>wrong plugin renderer</div>;
@@ -340,6 +400,7 @@ describe("PluginPendingInteractionComposer", () => {
 
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",
@@ -368,6 +429,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const { rerender } = renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="provider"
@@ -382,6 +444,7 @@ describe("PluginPendingInteractionComposer", () => {
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <PluginPendingInteractionComposer
+          collapsedByDefault={false}
           interaction={interaction}
           request={request}
           origin="provider"
@@ -403,6 +466,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const composer = (
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="plugin"
@@ -438,6 +502,7 @@ describe("PluginPendingInteractionComposer", () => {
     };
     const composer = (
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={request}
         origin="plugin"
@@ -463,6 +528,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="plugin"
@@ -476,6 +542,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="plugin"
@@ -489,6 +556,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={secretsRequest}
         origin="provider"
@@ -513,6 +581,7 @@ describe("PluginPendingInteractionComposer", () => {
     );
     renderComposer(
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={interaction}
         request={{
           pluginId: "secrets",

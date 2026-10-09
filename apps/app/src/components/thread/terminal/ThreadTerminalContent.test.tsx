@@ -35,10 +35,8 @@ function controller(
 ): ThreadTerminalController {
   return {
     activeSession: session,
-    canCreateTerminal: true,
     handleActiveTerminalSessionChange: () => undefined,
     handleActiveTerminalTitleChange: () => undefined,
-    handleSelectTerminal: () => undefined,
     hasTerminalQueryError: false,
     isPanelOpen,
     shouldMountTerminalView,

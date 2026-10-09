@@ -509,7 +509,7 @@ export function UsageSettings() {
         const inventory = await rpc.call("getUsage", {
           force: false,
           machineIds: null,
-          providerId: null,
+          providerIds: [],
           maxAgeMs: 60_000,
         });
         if (disposed) return;
@@ -519,19 +519,24 @@ export function UsageSettings() {
           selectedId,
           null,
         );
-        if (selected && selected.status === "connected") {
-          for (const providerId of new Set(
-            selected.providers.map((provider) => provider.providerId),
-          )) {
-            const result = await rpc.call("getUsage", {
-              force,
-              machineIds: [selected.id],
-              providerId,
-              maxAgeMs: 60_000,
-            });
-            if (disposed) return;
-            setMachines(result.machines);
-          }
+        const providerIds = [
+          ...new Set(
+            selected?.providers.map((provider) => provider.providerId),
+          ),
+        ];
+        if (
+          selected &&
+          selected.status === "connected" &&
+          providerIds.length > 0
+        ) {
+          const result = await rpc.call("getUsage", {
+            force,
+            machineIds: [selected.id],
+            providerIds,
+            maxAgeMs: 60_000,
+          });
+          if (disposed) return;
+          setMachines(result.machines);
         }
       } catch {
         if (!disposed) setError(true);

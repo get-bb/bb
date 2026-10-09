@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList.js";
 import { SectionThreadDndProvider } from "../dnd/SectionThreadDndContext.js";

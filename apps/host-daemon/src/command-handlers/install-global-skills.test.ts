@@ -16,6 +16,8 @@ import {
   readGlobalSkillsStatus,
 } from "./install-global-skills.js";
 
+const logger = { debug: () => undefined, warn: () => undefined };
+
 const tempDirs: string[] = [];
 
 afterEach(async () => {
@@ -76,7 +78,7 @@ describe("install global skills", () => {
           { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
         ],
       },
-      { dataDir, fetchSkillTree: async () => payload, homeDir },
+      { dataDir, fetchSkillTree: async () => payload, homeDir, logger },
     );
 
     expect(result.installations.map((entry) => entry.path)).toEqual([
@@ -114,7 +116,7 @@ describe("install global skills", () => {
           { name: "bb-cli", treeHash: payload.treeHash, entryPath: "SKILL.md" },
         ],
       },
-      { dataDir, fetchSkillTree: async () => payload, homeDir },
+      { dataDir, fetchSkillTree: async () => payload, homeDir, logger },
     );
 
     await expect(
@@ -150,7 +152,7 @@ describe("install global skills", () => {
             },
           ],
         },
-        { dataDir, fetchSkillTree, homeDir },
+        { dataDir, fetchSkillTree, homeDir, logger },
       ),
     ).rejects.toThrow("offline");
 
@@ -186,6 +188,7 @@ describe("install global skills", () => {
         dataDir,
         fetchSkillTree: async () => payload,
         homeDir,
+        logger,
       });
 
       const after = await readGlobalSkillsStatus(statusCommand, { homeDir });

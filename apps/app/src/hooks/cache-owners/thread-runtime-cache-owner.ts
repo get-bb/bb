@@ -675,6 +675,7 @@ function buildOptimisticUserMessageRow({
           imageUrls: attachments.imageUrls ?? [],
           localImagePaths: attachments.localImagePaths ?? [],
           localFilePaths: attachments.localFilePaths ?? [],
+          localFileDetails: attachments.localFileDetails ?? [],
         }
       : null;
   return {

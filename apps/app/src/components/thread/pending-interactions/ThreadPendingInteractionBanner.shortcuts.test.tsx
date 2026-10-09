@@ -12,7 +12,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type PendingInteraction } from "@bb/domain";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
-import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -114,8 +114,8 @@ describe("ThreadPendingInteractionBanner question shortcuts", () => {
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
           <AppCommandProvider>
-            <ThreadPendingInteractionBanner
-              interaction={question}
+            <ThreadPendingInteractionBanners
+              interactions={[question]}
               threadId="thr_1"
             />
           </AppCommandProvider>
