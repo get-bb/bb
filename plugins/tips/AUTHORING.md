@@ -84,6 +84,22 @@ Every click marks the tip used and announces the result in the status line.
 
 Prefer `prompt`, then `open-plugin` or `open-page`. Use `learn-more` last.
 
+### Walkthrough prompts
+
+When a feature takes several setup steps (connecting the mobile app, turning
+on bb connect, building a first plugin, adding a second agent), use a `prompt`
+built with `walkthroughPrompt(goal)` in `catalog.ts` instead of opening a page.
+It is the only place the wording lives:
+
+> Walk me through `<goal>` in this bb, one step at a time, and check each step
+> with me. If the interactive_answer tool is available, show the steps as an
+> interactive answer; otherwise reply with plain numbered steps.
+
+Make the goal specific and about something bb ships. Tips never depend on the
+Interactive Answers plugin: the prompt asks for an interactive answer only when
+the tool is there, and plain numbered steps otherwise. Prompts that act on the
+person's own task, such as child threads, end with `Task: ` instead.
+
 ## Illustrations
 
 Build every drawing from the parts in `diagram-kit.tsx`, and check it in the

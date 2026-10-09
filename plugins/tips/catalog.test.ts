@@ -109,6 +109,30 @@ describe("tip catalog", () => {
     }
   });
 
+  it("walks people through multi-step setup with a conditional interactive answer", () => {
+    for (const id of ["phone", "remote-access", "build-plugin", "add-agent"]) {
+      const definition = TIP_CATALOG.find((candidate) => candidate.id === id);
+      const action = definition?.action;
+      expect(action?.kind, id).toBe("prompt");
+      if (action?.kind !== "prompt") continue;
+      expect(action.prompt, id).toMatch(
+        /^Walk me through .+ in this bb, one step at a time/u,
+      );
+      expect(action.prompt, id).toContain(
+        "If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.",
+      );
+    }
+    for (const id of ["child-threads", "another-agent"]) {
+      const action = TIP_CATALOG.find(
+        (candidate) => candidate.id === id,
+      )?.action;
+      expect(
+        action?.kind === "prompt" && action.prompt.endsWith("Task: "),
+        id,
+      ).toBe(true);
+    }
+  });
+
   it("keeps the agreed tiers", () => {
     const tierOf = (id: string) =>
       TIP_CATALOG.find((definition) => definition.id === id)?.tier;

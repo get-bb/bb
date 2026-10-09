@@ -10,7 +10,6 @@ export const ACCOUNT_POOL_PLUGIN_ID = "account-pool";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
 export const BROWSER_AUTOMATION_PLUGIN_ID = "browser-automation";
 export const PROVIDER_USAGE_PLUGIN_ID = "bb--provider-usage";
-export const CONNECT_PLUGIN_ID = "connect";
 
 export interface TipSignals {
   client: TipClient | null;
@@ -115,6 +114,10 @@ function usesAutomationsHere(signals: TipSignals): boolean {
   return signals.projectId === null
     ? signals.hasAutomationThread
     : signals.projectHasAutomationThread;
+}
+
+export function walkthroughPrompt(goal: string): string {
+  return `Walk me through ${goal} in this bb, one step at a time, and check each step with me. If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
 }
 
 type TipDefaults = "held" | "perVersion" | "retireWhen" | "boost";
@@ -227,9 +230,11 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     title: "Check on your agents from your phone",
     body: "The bb mobile app lets you follow threads and answer questions away from your desk.",
     action: {
-      kind: "open-page",
-      label: "Get the app",
-      path: "/settings/mobile",
+      kind: "prompt",
+      label: "Walk me through it",
+      prompt: walkthroughPrompt(
+        "connecting the bb mobile app on my phone so I can follow my threads from it",
+      ),
     },
     tier: 1,
     priority: 90,
@@ -275,8 +280,10 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     body: "Your agent can write bb plugins for you, from a dashboard page to a new panel or command.",
     action: {
       kind: "prompt",
-      label: "Try it",
-      prompt: "Build me a bb plugin that ",
+      label: "Walk me through it",
+      prompt: walkthroughPrompt(
+        "building and installing my own bb plugin, starting with a small page that shows something useful to me",
+      ),
     },
     tier: 1,
     priority: 75,
@@ -455,9 +462,11 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     title: "Open bb from another computer",
     body: "bb connect gives your bb a private web address, so you can reach it from any browser.",
     action: {
-      kind: "open-plugin",
-      label: "Set up bb connect",
-      pluginId: CONNECT_PLUGIN_ID,
+      kind: "prompt",
+      label: "Walk me through it",
+      prompt: walkthroughPrompt(
+        "turning on bb connect so I can open this bb from another computer or my phone's browser",
+      ),
     },
     tier: 2,
     priority: 95,
@@ -497,9 +506,11 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     title: "Add a second coding agent",
     body: "bb can run more than one agent, so you can compare them or keep working when one hits a limit.",
     action: {
-      kind: "open-page",
-      label: "Open Providers",
-      path: "/settings/providers",
+      kind: "prompt",
+      label: "Walk me through it",
+      prompt: walkthroughPrompt(
+        "installing and signing in to a second coding agent provider",
+      ),
     },
     tier: 2,
     priority: 80,

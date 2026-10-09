@@ -397,6 +397,35 @@ describe("bb tips", () => {
     expect(result.stdout).not.toContain("account-pool");
   });
 
+  it("offers the mobile app as a walkthrough prompt over RPC and in the CLI", async () => {
+    const host = await setup(NEW_USER);
+    const current = setResultSchema.parse(
+      await host.harness.behavior.callRpc("current", {
+        client: WEB_MAC,
+        projectId: null,
+        visit: true,
+      }),
+    );
+    expect(
+      current.tips.find((tip) => tip.id === "phone")?.action,
+    ).toMatchObject({
+      kind: "prompt",
+      prompt: expect.stringContaining(
+        "If the interactive_answer tool is available",
+      ),
+    });
+    const result = await host.harness.behavior.runCli(["--json"]);
+    const view = listResultSchema.parse(JSON.parse(result.stdout));
+    expect(
+      view.tips.find((entry) => entry.id === "phone")?.action,
+    ).toMatchObject({
+      kind: "prompt",
+      prompt: expect.stringMatching(
+        /^Walk me through connecting the bb mobile app/u,
+      ),
+    });
+  });
+
   it("prints JSON with every tip and its status when asked", async () => {
     const host = await setup(NEW_USER);
     const result = await host.harness.behavior.runCli(["--all", "--json"]);
