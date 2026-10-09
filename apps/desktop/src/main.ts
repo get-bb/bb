@@ -1,3 +1,4 @@
+import { registerServerChoiceIpc } from "./server-choice-ipc.js";
 import { randomUUID } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { arch, homedir, release, type as osType } from "node:os";
@@ -132,6 +133,7 @@ import {
   type ConnectServerRef,
   type ServerTargetStore,
 } from "./server-target.js";
+import { buildDesktopServerChoices, customServerId } from "./server-list.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
   createConnectServerSync,
@@ -203,6 +205,7 @@ import {
   BB_DESKTOP_ZOOM_COMMAND_CHANNEL,
 } from "./desktop-update-ipc.js";
 import {
+  BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
@@ -754,19 +757,6 @@ function getFocusedApplicationWindow(): BrowserWindow | null {
   return null;
 }
 
-function formatCustomServerName(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.host.length > 0 ? parsed.host : url;
-  } catch {
-    return url;
-  }
-}
-
-function connectServerMenuId(handle: string): string {
-  return `connect:${handle}`;
-}
-
 function listMenuConnectServers(): ConnectServerRef[] {
   const servers: ConnectServerRef[] = connectAccountServers.map((server) => ({
     handle: server.handle,
@@ -783,35 +773,14 @@ function listMenuConnectServers(): ConnectServerRef[] {
   return servers;
 }
 
-function buildMenuServerItems(connectServers: ConnectServerRef[]): Array<{
-  checked: boolean;
-  id: string;
-  name: string;
-}> {
-  const target = serverTargetStore?.getTarget() ?? { kind: "builtin" as const };
-  const items = [
-    {
-      checked: target.kind === "builtin",
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-    },
-  ];
-  for (const server of connectServers) {
-    items.push({
-      checked:
-        target.kind === "connect" && target.server.handle === server.handle,
-      id: connectServerMenuId(server.handle),
-      name: server.name,
-    });
-  }
-  for (const customUrl of serverTargetStore?.getCustomServerUrls() ?? []) {
-    items.push({
-      checked: target.kind === "custom" && target.url === customUrl,
-      id: `custom:${customUrl}`,
-      name: formatCustomServerName(customUrl),
-    });
-  }
-  return items;
+function listServerChoices() {
+  return buildDesktopServerChoices(serverTargetStore, listMenuConnectServers());
+}
+
+function buildMenuServerItems(connectServers: ConnectServerRef[]) {
+  return buildDesktopServerChoices(serverTargetStore, connectServers).map(
+    ({ active, id, name }) => ({ checked: active, id, name }),
+  );
 }
 
 function buildServerMenuArgs(): ServerMenuArgs {
@@ -840,6 +809,16 @@ function popupServerMenu(browserWindow: BrowserWindow | null): void {
 }
 
 function refreshApplicationMenu(): void {
+  const choices = listServerChoices();
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
+      sendToApplicationRenderer(
+        browserWindow,
+        BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+        choices,
+      );
+    }
+  }
   installApplicationMenu({
     ...buildServerMenuArgs(),
     accelerators: currentApplicationMenuAccelerators,
@@ -1902,7 +1881,12 @@ async function loadRemoteServerTarget(
 }
 
 async function setActiveServerTarget(serverId: string): Promise<void> {
-  if (serverTargetStore === null) {
+  if (
+    serverTargetStore === null ||
+    !listServerChoices().some(
+      (choice) => choice.id === serverId && !choice.active,
+    )
+  ) {
     return;
   }
   if (serverId.startsWith("connect:")) {
@@ -1919,27 +1903,17 @@ async function setActiveServerTarget(serverId: string): Promise<void> {
     return;
   }
   if (serverId.startsWith("custom:")) {
-    const url = serverId.slice("custom:".length);
-    if (!serverTargetStore.getCustomServerUrls().includes(url)) {
+    const url = serverTargetStore
+      .getCustomServerUrls()
+      .find((url) => customServerId(url) === serverId);
+    if (url === undefined) {
       return;
     }
     await serverTargetStore.setCustomServerUrl(url);
     await applyServerTarget();
     return;
   }
-  if (serverId !== "builtin" && serverId !== "custom") {
-    return;
-  }
-  if (serverId === "builtin") {
-    await selectBuiltinServer();
-    return;
-  }
-  const switched = await serverTargetStore.setTarget(serverId);
-  if (!switched) {
-    refreshApplicationMenu();
-    return;
-  }
-  await applyServerTarget();
+  if (serverId === "builtin") await selectBuiltinServer();
 }
 
 async function openSetServerUrlDialog(add = false): Promise<void> {
@@ -2249,6 +2223,14 @@ async function finishQuit(): Promise<void> {
 }
 
 function registerDesktopUpdateIpc(): void {
+  registerServerChoiceIpc({
+    applicationWindowWebContentsIds,
+    onListRequested: () => connectServerSync?.onListRequested(),
+    list: listServerChoices,
+    select: setActiveServerTarget,
+    onError: (error) =>
+      desktopLogger.error(`Could not switch server: ${String(error)}`),
+  });
   registerDesktopWindowFocusIpc(applicationWindowWebContentsIds);
   registerDesktopClipboardIpc(applicationWindowWebContentsIds);
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
