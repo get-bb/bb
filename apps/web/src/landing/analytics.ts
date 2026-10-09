@@ -21,7 +21,10 @@ type LandingEvent =
     }
   | {
       name: "guide_prompt_copied";
-      properties: { guide: string; placement: "hero" | "handoff" };
+      properties: {
+        guide: string;
+        placement: "hero" | "handoff" | "step";
+      };
     }
   | {
       name: "landing_email_subscribed";

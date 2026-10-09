@@ -3,7 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { BrowserConcept } from "../concepts";
-import { PromptBlock, Substeps } from "../guide-blocks";
+import { PromptBlock, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta, GuideFaq, GuideStep } from "../guide-types";
 
@@ -74,20 +74,20 @@ export const PLUGINS_STEP: GuideStep = {
 
 export const SIGN_INS_STEP: GuideStep = {
   id: "sign-ins",
-  title: "Bring your sign-ins",
-  lead: "bb's Browser can start signed in to the sites you already use.",
+  title: "Import your browser logins",
+  lead: "Your agent can open the sites you use already logged in as you.",
   body: (
     <Substeps>
       <li>
-        In the bb desktop app, open <strong>Settings → Browser</strong>.
+        In the bb desktop app, open <Ui icon="settings">Settings → Browser</Ui>.
       </li>
       <li>
         If a browser shows <strong>Running</strong>, quit it and choose{" "}
         <strong>Recheck</strong>.
       </li>
       <li>
-        Choose <strong>Import…</strong> and pick the profile. Safari first asks
-        for Full Disk Access: choose <strong>Grant access…</strong>.
+        Choose <strong>Import…</strong> next to your browser, like Chrome, and
+        pick a profile.
       </li>
     </Substeps>
   ),
@@ -141,7 +141,7 @@ export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
       <ol>
         <li>
           Check that the machine is connected in{" "}
-          <strong>Settings → Machines</strong>.
+          <Ui icon="settings">Settings → Machines</Ui>.
         </li>
         <li>
           The first run installs the browser tools on that machine, so it needs
@@ -163,8 +163,8 @@ export const BROWSER_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
           instead.
         </li>
         <li>
-          Import from <strong>Settings → Browser</strong> again. Importing
-          copies your sign-ins once, so newer sign-ins don't carry over.
+          Import from <Ui icon="settings">Settings → Browser</Ui> again.
+          Importing copies your logins once, so newer logins don't carry over.
         </li>
         <li>
           Still signed out? Sign in once in a Browser tab. It stays signed in.
@@ -216,7 +216,7 @@ export const BROWSER_FAQ: GuideFaq[] = [
       <p>
         Not for a fresh browser: your agent can open Chrome on any connected Mac
         or Linux machine, and you watch it in the thread. Browser tabs, your
-        sign-ins, and annotations need the desktop app.
+        logins, and annotations need the desktop app.
       </p>
     ),
   },
@@ -281,14 +281,14 @@ export const guide: Guide = {
     {
       title: "The bb desktop app",
       icon: ComputerIcon,
-      body: "For Browser tabs, your sign-ins, and annotations.",
+      body: "For Browser tabs, your logins, and annotations.",
     },
   ],
   steps: [
     PLUGINS_STEP,
     {
       ...SIGN_INS_STEP,
-      lead: "Skip this if your app has no login. Otherwise, your agent can work in a Browser tab with your sign-ins.",
+      lead: "Skip this if your app has no login. Otherwise, import your logins so your agent opens your app already logged in.",
     },
     {
       id: "check",
@@ -301,9 +301,8 @@ export const guide: Guide = {
             prompt="I just added status filters to the Orders page. Start the dev server, open the app in a browser, and try the filters at desktop and phone sizes. Fix anything broken, and show me screenshots."
           />
           <p>
-            Your agent starts the dev server, opens a browser next to it, and
-            clicks through the flow. A live preview in the thread lets you
-            watch.
+            Your agent starts the dev server, opens a browser, and clicks
+            through the flow. A live preview in the thread lets you watch.
           </p>
         </>
       ),
@@ -340,12 +339,13 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            In the thread's side panel (⌘ J), choose <strong>+</strong>, then{" "}
-            <strong>Open browser</strong>, and enter your app's address.
+            Open the side panel <Ui icon="side-panel" /> (⌘ J), choose{" "}
+            <Ui icon="plus" />, then <strong>Open browser</strong>, and enter
+            your app's address. Or ask your agent to open it.
           </li>
           <li>
-            Choose <strong>Annotate elements</strong> in the toolbar and click
-            the element.
+            Choose <Ui icon="annotate">Annotate elements</Ui> in the toolbar and
+            click the element.
           </li>
           <li>
             In the box, write your note and choose{" "}

@@ -15,7 +15,13 @@ import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { brandProse, faqJsonLd } from "../compare/compare-page";
 import { canonicalPath } from "../landing/content-links";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
-import { CopyToast, ProductShot, PROMPT_COPIED, useCopy } from "./guide-blocks";
+import {
+  CopyToast,
+  GuidePromptContext,
+  ProductShot,
+  PROMPT_COPIED,
+  useCopy,
+} from "./guide-blocks";
 import type { Guide, GuideFaq, GuidePicker, GuideStep } from "./guide-types";
 import { getGuide } from "./guides";
 import guidesCss from "./guides.css?url";
@@ -281,70 +287,74 @@ export function GuidePage({ guide }: { guide: Guide }) {
   useInitAnalytics();
 
   return (
-    <CopyToast>
-      <div className="wrap cmp-page gd-page">
-        <SiteNav current="guides" path={`/guides/${guide.slug}`} />
+    <GuidePromptContext.Provider
+      value={{ guide: guide.slug, prompt: guide.agentPrompt }}
+    >
+      <CopyToast>
+        <div className="wrap cmp-page gd-page">
+          <SiteNav current="guides" path={`/guides/${guide.slug}`} />
 
-        <GuideHero guide={guide} />
+          <GuideHero guide={guide} />
 
-        <section className="gd-plan">
-          {guide.steps.length > 0 ? (
-            <div className="gd-plan-grid">
-              <AgentHandoff guide={guide} />
-              <div>
-                <h2 className="gd-h2">Steps</h2>
-                <StepOverview steps={guide.steps} />
-              </div>
-            </div>
-          ) : (
-            <div className="gd-plan-solo">
-              <AgentHandoff guide={guide} />
-            </div>
-          )}
-        </section>
-
-        <div className="gd-main">
-          <section id="before">
-            <h2 className="gd-h2">Before you start</h2>
-            <InstallNote />
-            <div className="gd-needs">
-              {guide.needs.map((need) => (
-                <div key={need.title} className="gd-need">
-                  <div className="gd-need-title">
-                    <HugeiconsIcon icon={need.icon} className="gd-ic" />
-                    <span>{brandProse(need.title)}</span>
-                  </div>
-                  <p>{brandProse(need.body)}</p>
+          <section className="gd-plan">
+            {guide.steps.length > 0 ? (
+              <div className="gd-plan-grid">
+                <AgentHandoff guide={guide} />
+                <div>
+                  <h2 className="gd-h2">Steps</h2>
+                  <StepOverview steps={guide.steps} />
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="gd-plan-solo">
+                <AgentHandoff guide={guide} />
+              </div>
+            )}
           </section>
 
-          {guide.steps.map((step, index) => (
-            <StepSection key={step.id} step={step} number={index + 1} />
-          ))}
-
-          <section id="troubleshooting">
-            <h2 className="gd-h2">Troubleshooting</h2>
-            <FaqList items={guide.troubleshooting} />
-          </section>
-
-          {guide.faq.length > 0 ? (
-            <section id="faq">
-              <h2 className="gd-h2">FAQ</h2>
-              <FaqList items={guide.faq} />
+          <div className="gd-main">
+            <section id="before">
+              <h2 className="gd-h2">Before you start</h2>
+              <InstallNote />
+              <div className="gd-needs">
+                {guide.needs.map((need) => (
+                  <div key={need.title} className="gd-need">
+                    <div className="gd-need-title">
+                      <HugeiconsIcon icon={need.icon} className="gd-ic" />
+                      <span>{brandProse(need.title)}</span>
+                    </div>
+                    <p>{brandProse(need.body)}</p>
+                  </div>
+                ))}
+              </div>
             </section>
-          ) : null}
+
+            {guide.steps.map((step, index) => (
+              <StepSection key={step.id} step={step} number={index + 1} />
+            ))}
+
+            <section id="troubleshooting">
+              <h2 className="gd-h2">Troubleshooting</h2>
+              <FaqList items={guide.troubleshooting} />
+            </section>
+
+            {guide.faq.length > 0 ? (
+              <section id="faq">
+                <h2 className="gd-h2">FAQ</h2>
+                <FaqList items={guide.faq} />
+              </section>
+            ) : null}
+          </div>
+
+          <section className="closer">
+            <h2 className="sec-title">{brandProse(guide.closer.title)}</h2>
+            <p>{brandProse(guide.closer.body)}</p>
+            <InstallOptions placement="closer" />
+          </section>
+
+          <SiteFooter current={`/guides/${guide.slug}`} />
         </div>
-
-        <section className="closer">
-          <h2 className="sec-title">{brandProse(guide.closer.title)}</h2>
-          <p>{brandProse(guide.closer.body)}</p>
-          <InstallOptions placement="closer" />
-        </section>
-
-        <SiteFooter current={`/guides/${guide.slug}`} />
-      </div>
-    </CopyToast>
+      </CopyToast>
+    </GuidePromptContext.Provider>
   );
 }
