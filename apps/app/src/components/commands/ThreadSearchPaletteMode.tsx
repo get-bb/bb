@@ -58,6 +58,11 @@ import {
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import { PaletteThreadViewMenu } from "./PaletteThreadViewMenu";
 import {
+  PaletteStatusMessage,
+  THREAD_SEARCH_INPUT,
+  threadSearchModeChip,
+} from "./ThreadSearchPalettePlaceholder";
+import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
   PaletteShortcut,
@@ -395,7 +400,7 @@ export function ThreadSearchPaletteMode({
           ? `Use ${splitModifier}+Enter to open in split. Use Escape to return to commands.`
           : "Use Escape to return to commands."
       }
-      inputLabel="Search threads"
+      inputLabel={THREAD_SEARCH_INPUT.label}
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
           <PaletteThreadViewMenu
@@ -415,13 +420,7 @@ export function ThreadSearchPaletteMode({
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
-      modeChip={{
-        icon: "Search",
-        label: "Threads",
-        clearLabel: "Return to commands",
-        onClear: onExit,
-        hideShortcut: isCompact,
-      }}
+      modeChip={threadSearchModeChip(onExit, isCompact)}
       onInputChange={(value) => {
         setQuery(value);
         setHighlightedIndex(0);
@@ -431,7 +430,7 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Search title, project, or message…"
+      placeholder={THREAD_SEARCH_INPUT.placeholder}
       value={query}
     >
       {emptyMessage === null ? (
@@ -529,9 +528,7 @@ export function ThreadSearchPaletteMode({
           className="justify-center px-3 py-4"
         />
       ) : (
-        <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
+        <PaletteStatusMessage>{emptyMessage}</PaletteStatusMessage>
       )}
     </PaletteShell>
   );

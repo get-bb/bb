@@ -32,6 +32,7 @@ import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries"
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
 import { LazyCommandPaletteBody } from "./LazyCommandPaletteBody";
+import { ThreadSearchPalettePlaceholder } from "./ThreadSearchPalettePlaceholder";
 
 const ThreadSearchPaletteMode = defineSplit({
   id: "thread-search-palette-mode",
@@ -39,12 +40,8 @@ const ThreadSearchPaletteMode = defineSplit({
     import("./ThreadSearchPaletteMode").then(
       (module) => module.ThreadSearchPaletteMode,
     ),
-  loading: () => (
-    <p role="status" className="px-3 py-4 text-sm text-muted-foreground">
-      Loading threads
-    </p>
-  ),
-  tier: "intent",
+  loading: ({ onExit }) => <ThreadSearchPalettePlaceholder onExit={onExit} />,
+  tier: "preload",
 });
 
 const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");

@@ -71,7 +71,10 @@ import {
 import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
-import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
+import {
+  GitDiffLoadingSkeleton,
+  GitDiffTabContent,
+} from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -868,6 +871,9 @@ function ThreadSecondaryPanelContent({
                 isDiffFilesLoading || gitDiffTarget === undefined
               }
               stats={gitDiffStats}
+              isStatsLoading={
+                isDiffFilesLoading || gitDiffTarget === undefined
+              }
               totalFilesCount={diffFiles.length}
               isTruncated={isGitDiffTruncated}
               fileFilter={gitDiffFileFilter}
@@ -919,8 +925,8 @@ function ThreadSecondaryPanelContent({
               {fixedSurfaceContent}
             </div>
           ) : isSurfaceDiffEligibilityPending ? (
-            <EmptyStatePanel className="m-4 rounded-lg" role="status">
-              {resolvedGitDiffTabStatus === "error" ? (
+            resolvedGitDiffTabStatus === "error" ? (
+              <EmptyStatePanel className="m-4 rounded-lg" role="status">
                 <div className="flex flex-col items-center gap-3 text-center">
                   <span>
                     Could not determine whether this workspace uses Git.
@@ -936,10 +942,10 @@ function ThreadSecondaryPanelContent({
                     </Button>
                   ) : null}
                 </div>
-              ) : (
-                "Checking Git support…"
-              )}
-            </EmptyStatePanel>
+              </EmptyStatePanel>
+            ) : (
+              <GitDiffLoadingSkeleton />
+            )
           ) : isSurfaceDiffActive ? (
             <GitDiffTabContent
               environmentId={environmentId}
