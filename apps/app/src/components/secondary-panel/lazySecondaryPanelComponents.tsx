@@ -1,9 +1,5 @@
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
-import {
-  useEffect,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { useAtomValue } from "jotai";
 import { Panel } from "react-resizable-panels";
 import { Skeleton } from "@bb/shared-ui/skeleton";
@@ -284,7 +280,7 @@ export const LazyAttachmentFilePreviewTabContent = defineSplit({
     import("./ThreadSecondaryPanelTabContent").then(
       (module) => module.AttachmentFilePreviewTabContent,
     ),
-  loading: FilePreviewLoading,
+  loading: ({ name }) => <FilePreviewLoading path={name} copyPath={null} />,
   tier: "intent",
 });
 
