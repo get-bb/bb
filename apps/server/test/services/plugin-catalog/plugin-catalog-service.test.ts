@@ -2,16 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  createConnection,
   getPluginMarketplace,
   listPluginMarketplaceIcons,
   markInstalledPluginRemoved,
-  migrate,
   upsertPluginMarketplace,
   upsertInstalledPlugin,
   type DbConnection,
   type PluginSourceIntent,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   ROOT_PLUGIN_SOURCE_SELECTION,
@@ -109,8 +108,7 @@ describe("plugin catalog service", () => {
   let dataDir: string;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     installedNames = [];
     installedCatalogEntries = [];
     dataDir = await mkdtemp(join(tmpdir(), "bb-catalog-data-"));

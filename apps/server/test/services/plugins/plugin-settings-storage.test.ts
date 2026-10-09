@@ -15,12 +15,11 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   getPluginSettingsValues,
-  migrate,
   setPluginSettingsValues,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
 import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
@@ -81,8 +80,7 @@ describe("plugin settings + storage", () => {
   let systemBroadcasts: string[][];
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-storage-test-"));
     dataDir = join(workDir, "data");
     systemBroadcasts = [];

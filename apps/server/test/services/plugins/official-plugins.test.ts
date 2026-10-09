@@ -4,12 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   getInstalledPluginRegistration,
-  migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import { derivePluginId } from "@bb/domain";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -101,8 +100,7 @@ describe("store-installed official plugins", () => {
 
   beforeEach(async () => {
     delete globals.__builtinFixtureLoads;
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-community-plugins-"));
   });
 

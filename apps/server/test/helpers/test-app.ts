@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
 import {
-  createConnection,
+  ensurePersonalProject,
   getAppSettings,
   getDisabledProviderIds,
   listRunningThreads,
@@ -16,7 +16,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
-import { initDb } from "../../src/db.js";
+import { createMigratedConnection } from "@bb/db/testing";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
@@ -142,13 +142,10 @@ export function createTestDaemonHostKey(
   });
 }
 
-let migratedTemplate: Buffer | null = null;
-
 export function createTestDb(): DbConnection {
-  if (migratedTemplate === null) {
-    migratedTemplate = initDb(":memory:").$client.serialize();
-  }
-  return createConnection(migratedTemplate);
+  const db = createMigratedConnection();
+  ensurePersonalProject(db);
+  return db;
 }
 
 export async function createTestAppHarness(

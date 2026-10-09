@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
-  createConnection,
   getInstalledPlugin,
   getPluginMarketplace,
   getPluginMarketplaceIcon,
-  migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
@@ -81,8 +80,7 @@ describe("third-party marketplaces", () => {
   const restoreEnv: (() => void)[] = [];
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     installedCatalogEntries = [];
     dataDir = await mkdtemp(join(tmpdir(), "bb-marketplace-data-"));
     cleanup.push(dataDir);

@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { console as inspectorConsole } from "node:inspector";
-import { createConnection, migrate, setExperiments } from "@bb/db";
+import { setExperiments } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { startGatedPerformanceDiagnostics } from "../../src/services/system/performance-diagnostics.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 
@@ -403,8 +404,7 @@ describe("event loop stall monitor", () => {
     "identifies a slow CPU profile %s as a candidate in stall logs",
     async (phase) => {
       installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
-      const db = createConnection(":memory:");
-      migrate(db);
+      const db = createMigratedConnection();
       setExperiments(db, { performanceDiagnostics: true });
       const dataDir = await mkdtemp(join(tmpdir(), "bb-profile-attribution-"));
       const logger = { info: vi.fn(), warn: vi.fn() };

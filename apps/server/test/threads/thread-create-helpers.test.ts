@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  createConnection,
   createEnvironment,
   createProject,
   createThreadSection,
   deleteThreadSection,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { DEFAULT_MANAGED_BRANCH_PREFIX } from "@bb/domain";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -96,9 +95,8 @@ describe("createThreadRecord", () => {
   it.each([{}, { sendAt: Date.now() + 60_000 }])(
     "preserves placement at creation for %j",
     (mode) => {
-      const db = createConnection(":memory:");
+      const db = createMigratedConnection();
       try {
-        migrate(db);
         const host = upsertHost(db, noopNotifier, { name: "Test" });
         const { project } = createProject(db, noopNotifier, {
           name: "Test",
@@ -142,9 +140,8 @@ describe("createThreadRecord", () => {
   );
 
   it("returns section_not_found when the section is stale by create time", () => {
-    const db = createConnection(":memory:");
+    const db = createMigratedConnection();
     try {
-      migrate(db);
       const deps = { db, hub: noopNotifier };
       const host = upsertHost(db, noopNotifier, {
         name: "Test Host",

@@ -5,15 +5,14 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   createPluginArtifact,
   createPluginStateSnapshot,
   getInstalledPluginRegistration,
   listPluginArtifacts,
-  migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import {
   garbageCollectPluginArtifacts,
@@ -84,8 +83,7 @@ describe("plugin cache pruning", () => {
   let gitRepoCache: string;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     dataDir = await mkdtemp(join(tmpdir(), "bb-plugin-prune-"));
     gitRepoCache = join(
       dataDir,
@@ -383,8 +381,7 @@ describe("git plugin cache lifecycle", () => {
   }
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-cache-"));
     repo = join(workDir, "repo");
     await mkdir(repo, { recursive: true });

@@ -9,7 +9,7 @@ import {
   createThread,
   markThreadDeleted,
 } from "../../src/data/threads.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 /**
  * Two hosts, two projects and threads spread across both, so every grouping

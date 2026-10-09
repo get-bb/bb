@@ -2,7 +2,8 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import { createConnection, migrate, setExperiments } from "@bb/db";
+import { setExperiments } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { describe, expect, it } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { startGatedPerformanceDiagnostics } from "../../src/services/system/performance-diagnostics.js";
@@ -17,8 +18,7 @@ describe("performance diagnostics gates", () => {
   it.each([false, true])(
     "requires launch permission %s as well as the live experiment",
     async (allowed) => {
-      const db = createConnection(":memory:");
-      migrate(db);
+      const db = createMigratedConnection();
       const dataDir = await mkdtemp(join(tmpdir(), "bb-perf-gates-"));
       const hub = new NotificationHub();
       const messages: string[] = [];

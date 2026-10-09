@@ -7,6 +7,7 @@ import {
   getHost,
   setAppSettings,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   copyFile,
   mkdtemp,
@@ -153,10 +154,9 @@ it("gives every host user environment while forwarding automatic gh credentials 
 });
 
 it("forwards automatic gh credentials to every machine when the server has no local host daemon", async () => {
-  const db = createConnection(":memory:");
+  const db = createMigratedConnection();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-serverless-env-"));
   try {
-    migrate(db);
     upsertHost(db, noopNotifier, { id: "remote", name: "Remote" });
     const bin = join(dataDir, "bin");
     await mkdir(bin);

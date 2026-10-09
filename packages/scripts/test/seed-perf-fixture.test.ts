@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createConnection, migrate } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { parseStoredThreadEvent } from "@bb/domain";
 import { seedPerfFixture } from "../src/lib/seed-perf-fixture.js";
 
@@ -13,8 +13,7 @@ interface SeededEventRow {
 
 describe("seedPerfFixture", () => {
   it("seeds a consistent fixture into a migrated database", () => {
-    const db = createConnection(":memory:");
-    migrate(db);
+    const db = createMigratedConnection();
 
     const result = seedPerfFixture(db, {
       hostId: "host_seedtest01",
@@ -91,8 +90,7 @@ describe("seedPerfFixture", () => {
       .get();
     expect(ftsRow).toBeDefined();
 
-    const secondDb = createConnection(":memory:");
-    migrate(secondDb);
+    const secondDb = createMigratedConnection();
     const secondResult = seedPerfFixture(secondDb, {
       hostId: "host_seedtest01",
       workspacesRootPath: "/tmp/seed-workspaces",

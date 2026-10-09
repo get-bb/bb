@@ -11,7 +11,7 @@ import {
 } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { threads } from "../../src/schema.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 import type { ThreadStatus } from "@bb/domain";
 import type { TerminalSessionStatus } from "@bb/domain";
 
