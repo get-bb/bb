@@ -3,6 +3,10 @@ import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import {
+  useMessageActionRecents,
+  type MessageActionRole,
+} from "@/lib/message-action-recents";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   DropdownMenu,
@@ -43,6 +47,7 @@ function PluginActionIcon({
 }
 
 interface MessageActionBarProps {
+  messageRole: MessageActionRole;
   timestamp: number;
   messageText: string;
   alignment: "start" | "end";
@@ -63,7 +68,9 @@ interface MessageActionBarProps {
 interface MessageOverflowAction {
   icon: "Copy" | "Link" | "Edit" | "MessageSquarePlus" | "Fork";
   plugin?: { pluginId: string | null; icon: string | null };
-  key?: string;
+  key: string;
+  recencyKey?: string;
+  defaultOverflow?: boolean;
   label: string;
   onSelect: () => void;
   disabled?: boolean;
@@ -252,7 +259,7 @@ function MessageActionMenuItems({
 }) {
   return actions.map((action) => (
     <DropdownMenuItem
-      key={action.key ?? action.label}
+      key={action.key}
       disabled={action.disabled}
       onSelect={action.onSelect}
       textValue={action.label}
@@ -308,6 +315,7 @@ function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
 }
 
 export function MessageActionBar({
+  messageRole,
   timestamp,
   messageText,
   alignment,
@@ -334,6 +342,13 @@ export function MessageActionBar({
     enabled: !(isCompactTouch && mobileActionDisplay === "overflow"),
   });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const { recents, recordAction } = useMessageActionRecents(messageRole);
+  const [visibleRecents, setVisibleRecents] = useState(recents);
+  if (!isHovered && !isFocused && !isMenuOpen && visibleRecents !== recents) {
+    setVisibleRecents(recents);
+  }
   const slotRef = useCallback(
     (node: HTMLDivElement | null) => {
       measureRef(node);
@@ -353,10 +368,11 @@ export function MessageActionBar({
     }
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
-  const inlineCandidates: MessageOverflowAction[] = [
+  const actions: MessageOverflowAction[] = [
     ...(hasCopy
       ? [
           {
+            key: "copy",
             icon: "Copy" as const,
             label: "Copy message",
             onSelect: () => {
@@ -374,6 +390,7 @@ export function MessageActionBar({
     ...(onEdit
       ? [
           {
+            key: "edit",
             icon: "Edit" as const,
             label: "Edit message",
             onSelect: onEdit,
@@ -384,14 +401,26 @@ export function MessageActionBar({
       icon: "Copy" as const,
       plugin: { pluginId: action.pluginId, icon: action.icon },
       key: action.key,
+      recencyKey: action.recencyKey ?? action.key,
       label: action.label,
       onSelect: action.onSelect,
     })),
-  ];
-  const trailingMenuActions: MessageOverflowAction[] = [
+    ...(onCopyLink
+      ? [
+          {
+            key: "copy-link",
+            icon: "Link" as const,
+            label: "Copy link",
+            onSelect: onCopyLink,
+            defaultOverflow: true,
+          },
+        ]
+      : []),
     ...(hasAddToChat
       ? [
           {
+            key: "add-to-chat",
+            defaultOverflow: true,
             icon: "MessageSquarePlus" as const,
             label: "Add to chat",
             onSelect: handleAddToChat,
@@ -401,6 +430,8 @@ export function MessageActionBar({
     ...(onFork
       ? [
           {
+            key: "fork",
+            defaultOverflow: true,
             icon: "Fork" as const,
             label: "Fork into new thread",
             onSelect: onFork,
@@ -409,8 +440,25 @@ export function MessageActionBar({
         ]
       : []),
   ];
+  const rank = (action: MessageOverflowAction) => {
+    if (action.kind === "copy") return -1;
+    const index = visibleRecents.indexOf(action.recencyKey ?? action.key);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  const orderedActions = actions
+    .sort((left, right) => rank(left) - rank(right))
+    .map((action) => ({
+      ...action,
+      onSelect: () => {
+        if (action.disabled) return;
+        if (action.kind !== "copy") {
+          recordAction(action.recencyKey ?? action.key);
+        }
+        action.onSelect();
+      },
+    }));
   const layout = computeMessageActionRowLayout({
-    actionCount: inlineCandidates.length,
+    actionCount: actions.filter((action) => !action.defaultOverflow).length,
     availableWidth,
     actionWidth: isCompactTouch
       ? TOUCH_ACTION_WIDTH_PX
@@ -420,19 +468,10 @@ export function MessageActionBar({
     isCompactTouch && mobileActionDisplay === "overflow"
       ? 0
       : layout.inlineCount;
-  const menuActions = [
-    ...(onCopyLink
-      ? [
-          {
-            icon: "Link" as const,
-            label: "Copy link",
-            onSelect: onCopyLink,
-          },
-        ]
-      : []),
-    ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
-    ...trailingMenuActions,
-  ];
+  const inlineActions = orderedActions.slice(0, inlineCount);
+  const menuActions = orderedActions.filter(
+    (action) => isCompactViewport || !inlineActions.includes(action),
+  );
 
   const rowClass = cn(
     ACTION_ROW_CLASS,
@@ -450,23 +489,29 @@ export function MessageActionBar({
       <div
         ref={slotRef}
         className={cn(slotClass, "h-5 max-md:pointer-coarse:h-7")}
+        onPointerEnter={() => setIsHovered(true)}
+        onPointerLeave={() => setIsHovered(false)}
+        onFocusCapture={(event) => {
+          setIsFocused(event.currentTarget.contains(event.target));
+        }}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setIsFocused(false);
+          }
+        }}
       >
         <div className={rowClass} data-menu-open={isMenuOpen ? "" : undefined}>
           {isCompactTouch ? (
-            <MobileInlineActions
-              actions={inlineCandidates.slice(0, inlineCount)}
-            />
+            <MobileInlineActions actions={inlineActions} />
           ) : (
-            inlineCandidates
-              .slice(0, inlineCount)
-              .map((action) => (
-                <DesktopMessageAction
-                  key={action.key ?? action.label}
-                  action={action}
-                  className={cn(HOVER_REVEAL_CLASS, mobileDirectActionClass)}
-                  collisionBoundary={collisionBoundary}
-                />
-              ))
+            inlineActions.map((action) => (
+              <DesktopMessageAction
+                key={action.key}
+                action={action}
+                className={cn(HOVER_REVEAL_CLASS, mobileDirectActionClass)}
+                collisionBoundary={collisionBoundary}
+              />
+            ))
           )}
           <DropdownMenu onOpenChange={setIsMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -508,7 +553,7 @@ function MobileInlineActions({
   return actions.map((action) =>
     action.kind === "copy" ? (
       <CopyButton
-        key={action.key ?? action.label}
+        key={action.key}
         text={action.copyText ?? ""}
         imageUrl={action.copyImageUrl}
         label={action.label}
@@ -516,7 +561,7 @@ function MobileInlineActions({
       />
     ) : (
       <button
-        key={action.key ?? action.label}
+        key={action.key}
         type="button"
         className={cn(
           ACTION_BUTTON_CLASS,

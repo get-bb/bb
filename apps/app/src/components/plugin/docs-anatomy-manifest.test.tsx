@@ -239,6 +239,7 @@ describe("docs anatomy manifest", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <MessageActionBar
+          messageRole="assistant"
           timestamp={0}
           messageText="hello"
           alignment="start"

@@ -48,6 +48,7 @@ export type ThreadTimelineAddToChatHandler = (
 
 export interface ThreadTimelinePluginMessageAction {
   key: string;
+  recencyKey?: string;
   pluginId: string | null;
   icon: string | null;
   label: string;

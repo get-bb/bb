@@ -24,6 +24,7 @@ export function Overview() {
         <StoryRow label="main timeline" hint="Copy + menu">
           <HoverRevealStage>
             <MessageActionBar
+              messageRole="assistant"
               timestamp={STORY_TIMESTAMP}
               messageText="An agent message you can fork or reply to."
               alignment="end"
@@ -35,6 +36,7 @@ export function Overview() {
         <StoryRow label="user message" hint="Copy + menu">
           <HoverRevealStage>
             <MessageActionBar
+              messageRole="user"
               timestamp={STORY_TIMESTAMP}
               messageText="A user message you can quote into the composer."
               alignment="end"
@@ -46,6 +48,7 @@ export function Overview() {
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
             <MessageActionBar
+              messageRole="assistant"
               timestamp={STORY_TIMESTAMP}
               messageText="Fork/Reply greyed when the thread can't fork."
               alignment="end"

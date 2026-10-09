@@ -465,6 +465,7 @@ function UserConversationMessage({
             />
           </div>
           <MessageActionBar
+            messageRole="user"
             timestamp={timestamp}
             messageText={messageText}
             alignment="end"
@@ -623,6 +624,7 @@ function AssistantConversationMessage({
       />
       {showActions ? (
         <MessageActionBar
+          messageRole="assistant"
           timestamp={timestamp}
           messageText={text}
           alignment="start"

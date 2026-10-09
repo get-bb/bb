@@ -233,6 +233,16 @@ Inspecting:
     --timeout <duration>                   Seconds, or a duration with a unit: 90s, 20m, 4h (default: 1200s / 20 min)
     --poll-interval <duration>             Milliseconds, or a duration with a unit
 
+Message action order in the app:
+
+  Copy stays first and More stays last. Other message actions follow recent use,
+  with separate user-message and agent-message histories saved in this browser.
+  Inline and overflow actions share one order. Recent actions swap into the
+  existing visible slots; recency never increases the number of visible buttons.
+  The active row stays still while hovered, focused, or open; its new order
+  appears after leaving it. Unused actions retain their default order.
+  This only changes presentation; the existing CLI and SDK actions still work.
+
 Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.

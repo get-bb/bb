@@ -8,6 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { Provider } from "jotai";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
@@ -41,7 +42,12 @@ const toMarkup = (ui: ReactElement) =>
 const renderWithRouter = (
   ui: ReactElement,
   initialEntries: ComponentProps<typeof MemoryRouter>["initialEntries"] = ["/"],
-) => render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+) =>
+  render(
+    <Provider>
+      <MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>
+    </Provider>,
+  );
 
 function selectMessageMenuItem(name: string) {
   fireEvent.pointerDown(
@@ -260,6 +266,8 @@ function mockSelectionMenuMedia({
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem("bb.messageActionRecents.user");
+  window.localStorage.removeItem("bb.messageActionRecents.assistant");
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
 });

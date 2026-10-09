@@ -4,10 +4,12 @@ import {
   act,
   cleanup,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   within,
 } from "@testing-library/react";
+import { Provider } from "jotai";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetPluginLogoStoreForTest,
@@ -21,10 +23,16 @@ import {
   MessageActionBar,
 } from "./MessageActionBar";
 
+function render(ui: ReactNode) {
+  return renderComponent(ui, { wrapper: Provider });
+}
+
 const TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem("bb.messageActionRecents.user");
+  window.localStorage.removeItem("bb.messageActionRecents.assistant");
   resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -85,6 +93,145 @@ function openDesktopMenu() {
 }
 
 describe("MessageActionBar", () => {
+  it("keeps Copy fixed and shares recent actions only within the same message role", () => {
+    const actions = ["Summarize", "Translate"].map((label) => ({
+      key: label,
+      pluginId: null,
+      icon: null,
+      label,
+      onSelect: vi.fn(),
+    }));
+    const fixture = (
+      <>
+        {["user", "assistant", "assistant"].map((role, index) => (
+          <section key={index} data-testid={`row-${index}`}>
+            <MessageActionBar
+              messageRole={role === "user" ? "user" : "assistant"}
+              timestamp={TIMESTAMP}
+              messageText="Message"
+              alignment="start"
+              mobileActionDisplay="inline"
+              pluginActions={actions}
+            />
+          </section>
+        ))}
+      </>
+    );
+    const firstRender = render(fixture);
+    const row = (index: number) => screen.getByTestId(`row-${index}`);
+    const labels = (index: number) =>
+      within(row(index))
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"));
+    const bar = within(row(1))
+      .getByRole("button", { name: "Translate" })
+      .closest(".relative")!;
+    fireEvent.pointerEnter(bar);
+    fireEvent.click(within(row(1)).getByRole("button", { name: "Translate" }));
+    expect(labels(1)).toEqual([
+      "Copy message",
+      "Summarize",
+      "Translate",
+      "Message actions",
+    ]);
+    expect(labels(2)).toEqual([
+      "Copy message",
+      "Translate",
+      "Summarize",
+      "Message actions",
+    ]);
+    fireEvent.pointerLeave(bar);
+    expect(labels(1)).toEqual(labels(2));
+    expect(labels(0)).toEqual([
+      "Copy message",
+      "Summarize",
+      "Translate",
+      "Message actions",
+    ]);
+    firstRender.unmount();
+    render(fixture);
+    expect(labels(2)).toEqual([
+      "Copy message",
+      "Translate",
+      "Summarize",
+      "Message actions",
+    ]);
+    expect(labels(0)).toEqual([
+      "Copy message",
+      "Summarize",
+      "Translate",
+      "Message actions",
+    ]);
+  });
+
+  it("ranks inline and overflow actions together without growing the visible row", () => {
+    const resizeObserver = installControlledResizeObserver();
+    const onSelect = vi.fn();
+    const fixture = (generation: number) => (
+      <MessageActionBar
+        messageRole="assistant"
+        timestamp={TIMESTAMP}
+        messageText="Message"
+        alignment="start"
+        mobileActionDisplay="inline"
+        onEdit={vi.fn()}
+        onCopyLink={vi.fn()}
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+        pluginActions={[
+          {
+            key: `demo/translate/${generation}`,
+            recencyKey: "plugin/demo/translate",
+            pluginId: null,
+            icon: null,
+            label: "Translate",
+            onSelect,
+          },
+        ]}
+      />
+    );
+    const view = render(fixture(1));
+    resizeObserver.reportWidth(72);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    act(() => trigger.focus());
+    const translate = within(openDesktopMenu()).getByRole("menuitem", {
+      name: "Translate",
+    });
+    act(() => translate.focus());
+    fireEvent.click(translate);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Translate" })).toBeTruthy();
+    view.rerender(fixture(2));
+    expect(screen.getByRole("button", { name: "Translate" })).toBeTruthy();
+    fireEvent.click(
+      within(openDesktopMenu()).getByRole("menuitem", { name: "Copy link" }),
+    );
+    act(() => {
+      trigger.blur();
+    });
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Translate" })).toBeNull();
+    for (const name of ["Add to chat", "Fork into new thread"]) {
+      fireEvent.click(
+        within(openDesktopMenu()).getByRole("menuitem", { name }),
+      );
+      act(() => trigger.blur());
+      expect(screen.getByRole("button", { name })).toBeTruthy();
+      expect(screen.getAllByRole("button")).toHaveLength(3);
+    }
+    resizeObserver.reportWidth(300);
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Copy message",
+      "Fork into new thread",
+      "Add to chat",
+      "Message actions",
+    ]);
+  });
+
   it("uses the nearest thread window as the tooltip collision boundary", () => {
     const threadWindow = document.createElement("div");
     threadWindow.setAttribute("data-thread-window", "");
@@ -122,6 +269,7 @@ describe("MessageActionBar", () => {
     const onCopyLink = vi.fn();
     const { container } = render(
       <MessageActionBar
+        messageRole="assistant"
         timestamp={TIMESTAMP}
         messageText="An answer."
         alignment="start"
@@ -163,9 +311,7 @@ describe("MessageActionBar", () => {
         .map((item) => item.textContent),
     ).toEqual(["Copy link", "Add to chat", "Fork into new thread"]);
     expect(menu.getAttribute("data-side")).toBe("bottom");
-    fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "Copy link" }),
-    );
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
     expect(onCopyLink).toHaveBeenCalledTimes(1);
   });
 
@@ -173,6 +319,7 @@ describe("MessageActionBar", () => {
     const resizeObserver = installControlledResizeObserver();
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText="An answer."
         alignment="end"
@@ -210,9 +357,9 @@ describe("MessageActionBar", () => {
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
     ).toEqual([
-      "Copy link",
       "Summarize",
       "Translate",
+      "Copy link",
       "Add to chat",
       "Fork into new thread",
     ]);
@@ -222,6 +369,7 @@ describe("MessageActionBar", () => {
     const resizeObserver = installControlledResizeObserver();
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText="An answer."
         alignment="end"
@@ -249,6 +397,7 @@ describe("MessageActionBar", () => {
   it("shows a timestamp-only footer in the menu", () => {
     render(
       <MessageActionBar
+        messageRole="assistant"
         timestamp={TIMESTAMP}
         messageText="An answer."
         alignment="start"
@@ -272,6 +421,7 @@ describe("MessageActionBar", () => {
     render(
       <main data-testid="app-root">
         <MessageActionBar
+          messageRole="assistant"
           timestamp={TIMESTAMP}
           messageText="An answer."
           alignment="start"
@@ -343,6 +493,7 @@ describe("MessageActionBar", () => {
     const onCopyLink = vi.fn();
     render(
       <MessageActionBar
+        messageRole="assistant"
         timestamp={TIMESTAMP}
         messageText="An earlier answer."
         alignment="start"
@@ -363,9 +514,9 @@ describe("MessageActionBar", () => {
     });
     const menuItems = await within(drawer).findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
-      "Copy link",
       "Copy message",
       "Edit message",
+      "Copy link",
       "Add to chat",
       "Fork into new thread",
     ]);
@@ -385,6 +536,7 @@ describe("MessageActionBar", () => {
     };
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText="Quote this message."
         alignment="end"
@@ -412,6 +564,7 @@ describe("MessageActionBar", () => {
     };
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText=""
         alignment="end"
@@ -430,6 +583,7 @@ describe("MessageActionBar", () => {
   it("offers Copy for an image-only message", () => {
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText=""
         copyImageUrl="/attachments/screenshot.png"
@@ -444,6 +598,7 @@ describe("MessageActionBar", () => {
   it("marks the action row while the menu is open", () => {
     render(
       <MessageActionBar
+        messageRole="user"
         timestamp={TIMESTAMP}
         messageText="An answer."
         alignment="end"
