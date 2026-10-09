@@ -2149,17 +2149,6 @@ function buildTimelineTurnSummaryDetailsPage(
     ...acceptedInputRowsByTurn.requestedTurnRows,
   ]);
 
-  const hasTurnScopedRowsForRequestedTurn = eventRows.some(
-    (row) => row.scopeKind === "turn" && row.turnId === options.turnId,
-  );
-  if (!hasTurnScopedRowsForRequestedTurn) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
-    );
-  }
-
   const hasCurrentStartedRow = eventRows.some(
     (row) => row.type === "turn/started" && row.turnId === options.turnId,
   );
@@ -2181,10 +2170,24 @@ function buildTimelineTurnSummaryDetailsPage(
       `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} cannot resolve turn/started for ${options.turnId}`,
     );
   }
+  const turnContextRows = mergeStoredEventRowsById([
+    ...requestedTurnStartedRows,
+    ...eventRows,
+  ]);
+  const turnLifecycleRows = listStoredEventRows(db, {
+    threadId: thread.id,
+    afterSequence:
+      turnContextRows.reduce(
+        (minSequence, row) => Math.min(minSequence, row.sequence),
+        options.sourceSeqStart,
+      ) - 1,
+    beforeSequence: contextSequenceCutoff + 1,
+    types: ["turn/started", "turn/completed"],
+  });
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
     maxInlineOutputChars: detailsInlineOutputLimit,
-    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    rows: mergeStoredEventRowsById([...turnContextRows, ...turnLifecycleRows]),
     sequenceStart: detailsWindow.sequenceStart,
     threadId: thread.id,
   });
@@ -2278,7 +2281,9 @@ function buildTimelineTurnSummaryDetailsPage(
     };
   }
 
-  throw new Error(
-    `Timeline turn summary details could not match range ${options.sourceSeqStart}-${options.sourceSeqEnd}`,
+  throw new ApiError(
+    400,
+    "invalid_request",
+    `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
   );
 }

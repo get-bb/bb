@@ -1248,6 +1248,15 @@ export function buildThreadTimelineTurnDetailsFromEvents(
     threadName: args.options.threadName,
     turnMessageDetail: "full",
   });
+  const includesRequestedTurn = projection.entries.some(
+    (entry) =>
+      entry.kind === "turn" &&
+      entry.turn.turnId === args.options.turnId &&
+      entry.turn.sourceSeqEnd >= args.options.sourceSeqStart,
+  );
+  if (!includesRequestedTurn) {
+    return { kind: "missing-match" };
+  }
   const options: BuildTimelineRowsOptions = {
     completedTurnDisplay: args.options.completedTurnDisplay,
     includeNestedRows: true,
