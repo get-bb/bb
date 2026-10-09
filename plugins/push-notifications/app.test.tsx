@@ -274,4 +274,39 @@ describe("thread notifications action", () => {
     await waitFor(() => expect(summary()?.selected).toBe("all"));
     expect(listCalls()).toHaveLength(2);
   });
+
+  it("refetches threads that were off screen during a reconnect when they return", async () => {
+    const { view, show, summary, restore, listCalls } = renderNotifications(
+      {
+        thr_a: { own: "muted", ancestorCap: null },
+        thr_b: { own: "muted", ancestorCap: null },
+        thr_c: { own: "muted", ancestorCap: null },
+      },
+      ["thr_a", "thr_b", "thr_c"],
+    );
+    await waitFor(() =>
+      expect(summary({ id: "thr_c" })?.selected).toBe("muted"),
+    );
+    show(["thr_a"]);
+
+    restore({
+      thr_a: { own: "muted", ancestorCap: null },
+      thr_b: { own: "all", ancestorCap: null },
+    });
+    await view.behavior.setRealtimeConnectionState("reconnecting");
+    await view.behavior.setRealtimeConnectionState("connected");
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
+
+    show(["thr_a", "thr_b", "thr_c"]);
+    await waitFor(() =>
+      expect(summary({ id: "thr_b" })?.selected).toBe("all"),
+    );
+    expect(summary({ id: "thr_c" })?.selected).toBe("inherit");
+    expect(summary({ id: "thr_a" })?.selected).toBe("muted");
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_a", "thr_b", "thr_c"] },
+      { threadIds: ["thr_a"] },
+      { threadIds: ["thr_b", "thr_c"] },
+    ]);
+  });
 });

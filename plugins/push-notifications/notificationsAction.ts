@@ -127,6 +127,11 @@ function useThreadNotificationsData({
     previousConnection.current = connection;
     if (previous !== "reconnecting" || connection !== "connected") return;
     requested.current = new Set();
+    const shown = new Set(latestThreadIds.current);
+    setLevels((current) => {
+      const next = new Map([...current].filter(([id]) => shown.has(id)));
+      return next.size === current.size ? current : next;
+    });
     if (latestThreadIds.current.length > 0) {
       fetchLevels(latestThreadIds.current, true);
     }
