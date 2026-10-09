@@ -32,6 +32,7 @@ const mentionSchema = z.intersection(
       origin: z.enum(["builtin", "project", "user"]),
       argumentHint: z.string().nullable(),
     }),
+    z.object({ kind: z.literal("attachment"), path: z.string() }),
     z.object({
       kind: z.literal("plugin"),
       pluginId: z.string(),

@@ -73,7 +73,7 @@ import {
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
 import { OverflowFade } from "@/components/ui/overflow-fade";
@@ -471,6 +471,14 @@ function RowActions({ children }: { children: ReactNode }) {
 
 const CHANGELOG_INLINE_COMPONENTS: Components = {
   p: ({ children }) => <>{children}</>,
+  img: ({ src, alt }) => (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className="mt-4 h-auto w-full rounded-lg"
+    />
+  ),
   a: ({ children, href }) => (
     <a
       href={href}

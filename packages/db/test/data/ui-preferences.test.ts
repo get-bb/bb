@@ -46,24 +46,24 @@ describe("ui preferences data", () => {
   it("rejects stale writes and keeps the current value", () => {
     replaceStoredUiPreference(db, {
       expectedRevision: 0,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       valueJson: '["prj_1"]',
     });
     replaceStoredUiPreference(db, {
       expectedRevision: 1,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       valueJson: '["prj_1","prj_2"]',
     });
     expect(
       replaceStoredUiPreference(db, {
         expectedRevision: 1,
-        key: "sidebar.collapsedProjects",
+        key: "sidebar.hiddenFooterItems",
         valueJson: "[]",
       }),
     ).toEqual({ outcome: "conflict", revision: 2 });
     expect(listStoredUiPreferences(db)).toEqual([
       {
-        key: "sidebar.collapsedProjects",
+        key: "sidebar.hiddenFooterItems",
         revision: 2,
         valueJson: '["prj_1","prj_2"]',
       },

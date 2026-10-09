@@ -7,7 +7,7 @@ import type {
   CompareRow,
   Comparison,
   Mark,
-} from "./comparisons";
+} from "./compare-types";
 
 export function cell(mark: Mark | null, text = "", pro = false): CompareCell {
   return { mark, value: "", text, href: null, pro };
@@ -88,8 +88,8 @@ export const FAQ_GET_STARTED: CompareFaq = {
     <ol>
       <li>
         Download bb for <a href="/download/macos">macOS</a> (Apple Silicon),{" "}
-        <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (both alpha). On an Intel Mac, run{" "}
+        <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>, or{" "}
+        <a href="/download/linux">Linux (Alpha)</a>. On an Intel Mac, run{" "}
         <code>npx bb-app@latest</code>, which needs Node.js 22.19 or later.
       </li>
       <li>
@@ -218,7 +218,8 @@ export const FAQ_CODEX_TOGETHER: CompareFaq = {
       then fix what it finds.” It starts Codex in the same worktree, waits, and
       applies the fixes. Codex shows up as its own thread, so you can read the
       exact prompt Claude sent, watch it work, and message it mid-run. Any other
-      pair works the same way, like Cursor and OpenCode.
+      pair works the same way, like Cursor and OpenCode.{" "}
+      <a href="/guides/claude-code-and-codex-together">See how</a>.
     </p>
   ),
 };
@@ -272,7 +273,7 @@ export function faqPhone(contrast: ReactNode): CompareFaq {
         Yes, for free. Use the bb mobile app, a public beta on iPhone through
         TestFlight (Apple’s beta testing app) and in alpha on Android, or open
         bb in any browser through bb Connect, bb’s free remote access.{" "}
-        {contrast}
+        {contrast} <a href="/guides/work-from-anywhere">Set it up</a>.
       </p>
     ),
   };
@@ -300,8 +301,8 @@ export function faqPlatforms(contrast: ReactNode): CompareFaq {
       <p>
         Yes. Download the app for{" "}
         <a href="/download/macos">Apple Silicon Macs</a>,{" "}
-        <a href={WINDOWS_DOWNLOAD_URL}>Windows</a>, or{" "}
-        <a href="/download/linux">Linux</a> (both alpha), or run{" "}
+        <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>, or{" "}
+        <a href="/download/linux">Linux (Alpha)</a>, or run{" "}
         <code>npx bb-app@latest</code> on an Intel Mac. {contrast}
       </p>
     ),

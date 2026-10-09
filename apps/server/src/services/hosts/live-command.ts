@@ -24,6 +24,11 @@ import {
   callHostOnlineRpcForWork,
   isHostUnavailableApiError,
 } from "./online-rpc.js";
+import {
+  noteTurnTraceCommandFailed,
+  noteTurnTraceCommandSent,
+  noteTurnTraceCommandSettled,
+} from "../system/turn-trace.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -248,11 +253,13 @@ export async function runLiveHostCommand<
           }
         : {}),
     };
+    noteTurnTraceCommandSent({ command: sourceCommand, hostId: args.hostId });
     const result = await call(deps, {
       command,
       hostId: args.hostId,
       timeoutMs: args.timeoutMs,
     });
+    noteTurnTraceCommandSettled({ command: sourceCommand, result });
     await applyLiveHostCommandReport(deps, {
       command: args.command,
       execution,
@@ -267,6 +274,7 @@ export async function runLiveHostCommand<
   } catch (error) {
     const normalized =
       error instanceof Error ? error : new Error(String(error));
+    noteTurnTraceCommandFailed(args.command);
     if (
       args.preserveOnHostUnavailable === true &&
       isHostUnavailableApiError(normalized)

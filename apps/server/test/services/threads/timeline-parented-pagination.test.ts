@@ -304,7 +304,7 @@ function nestedRows(row: TimelineRow): readonly TimelineRow[] {
     return row.children ?? [];
   }
   if (row.kind === "work" && row.workKind === "delegation") {
-    return row.childRows;
+    return row.childRows ?? [];
   }
   return [];
 }

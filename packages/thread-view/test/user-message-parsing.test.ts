@@ -91,6 +91,29 @@ function acceptedClientRequest(
 }
 
 describe("user message parsing", () => {
+  it("retains original file names and byte sizes for compact history after reload", () => {
+    const input = [
+      { type: "text" as const, text: "inspect errors", mentions: [] },
+      {
+        type: "localFile" as const,
+        path: "Pasted-text-unique.txt",
+        name: "Pasted text.txt",
+        sizeBytes: 3_638_577,
+        mimeType: "text/plain; charset=utf-8",
+      },
+    ];
+    expect(parsePromptInput(input)).toMatchObject({
+      text: "inspect errors",
+      localFilePaths: ["Pasted-text-unique.txt"],
+      localFileDetails: [
+        {
+          path: "Pasted-text-unique.txt",
+          name: "Pasted text.txt",
+          sizeBytes: 3_638_577,
+        },
+      ],
+    });
+  });
   it("omits agent-only prompt input parts from timeline text and attachments", () => {
     const parsed = parsePromptInput([
       {
@@ -117,6 +140,7 @@ describe("user message parsing", () => {
       imageUrls: [],
       localImagePaths: [],
       localFilePaths: ["/tmp/visible.md"],
+      localFileDetails: [],
     });
   });
 

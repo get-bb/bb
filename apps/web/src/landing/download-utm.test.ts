@@ -64,4 +64,12 @@ describe("rememberLatestUtm", () => {
       "utm_source=google&utm_medium=cpc&utm_campaign=brand",
     );
   });
+
+  it("keeps the Google ad click id with the campaign tags", () => {
+    const storage = memoryStorage();
+    rememberLatestUtm(storage, "?utm_campaign=mods&gclid=abc&category=ai");
+    expect(addSavedUtmParams("?placement=hero", readSavedUtm(storage))).toBe(
+      "?placement=hero&utm_campaign=mods&gclid=abc",
+    );
+  });
 });

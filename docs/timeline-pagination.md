@@ -146,10 +146,50 @@ and must be benchmarked separately from cold opens and appended updates.
 `GET /api/v1/threads/:id/timeline/turn-summary-details` and
 `sdk.threads.timelineTurnSummaryDetails` retain the existing `turnId`,
 `sourceSeqStart`, and `sourceSeqEnd` inputs. A response can include an
-`olderCursor`; pass it as `beforeCursor` with the same inputs until it is null.
-These pages have their own `historySnapshot` and use the same recursive merge.
-The app loads the detail walk when expanding a summary. Tool output remains
-subject to the existing preview and retention rules.
+`olderCursor`; pass it as `beforeCursor` with the same inputs to read the next
+older page. These pages have their own `historySnapshot` and use the same
+recursive merge. A page holds at most 200 leaves and targets 1 MiB. The app
+loads the newest page when a summary is expanded and requests older pages only
+when the user asks for earlier activity.
+
+Without `itemId`, the response covers the whole turn and command and tool
+output longer than 4,000 characters is previewed. With `itemId`, pass the range
+of the row that carries that item: its `callId`, or `reasoningId` for a
+reasoning row. The response contains only the rows for that item, at the top
+level, with their full content subject to the retention rules. For a
+delegation it returns that delegation and its children, paged by the same
+cursor, with previews below it. The server widens the range to the item's own
+lifecycle events, so a row whose range starts after its item started still
+resolves. An item the range does not contain returns HTTP 400
+`invalid_request`.
+
+## Deferred content
+
+`deferContent=true` on the timeline and on `turn-summary-details` leaves out
+content that is only visible when a settled row is expanded. Without it,
+responses keep every row's content inline, as `bb thread log` and SDK callers
+expect. With it:
+
+- a delegation that is no longer pending and has children returns
+  `childRows: null`; an empty array still means it has no children;
+- a settled command whose command text and output exceed 1,000 characters
+  together returns an empty `output`, no `outputPreview`, and only the first
+  300 characters of `command`; activity intents still describe the whole
+  command;
+- a settled tool row whose output exceeds 1,000 characters returns an empty
+  `output` and no `outputPreview`;
+- a settled file change whose diff, stdout and stderr exceed 1,000 characters
+  together returns a null diff, stdout and stderr, keeping `diffStats`;
+- a settled reasoning row whose text exceeds 1,000 characters returns a null
+  `detail`.
+
+Each deferred row other than a delegation carries `contentDeferred: true`.
+Load the content with `turn-summary-details` using the row's `turnId`,
+`sourceSeqStart`, `sourceSeqEnd`, and `itemId`. Pending rows keep their
+content so the live frontier can stream and auto-expand; settled rows nested
+in them are still deferred. Rows without a turn are never deferred. The app
+sends `deferContent=true` on every timeline and detail request; cursors are
+bound to the setting, so keep it unchanged throughout a walk.
 
 Content pagination does not freeze completed turns, persist projections,
 perform a backfill, add database tables or triggers, or run work on event
@@ -157,7 +197,10 @@ ingestion. Appended events are interpreted when a new snapshot is requested.
 
 ## Conversation outline caching
 
-The conversation outline returns the full list of message previews. Exact
+The conversation outline returns the full list of message previews.
+`role=user` or `role=assistant` returns only that role's items; caching is
+shared across roles. The app requests user items while the table of contents
+is visible and assistant items only while its Agent messages tab is open. Exact
 revisions use an in-memory response cache and idle/error threads also persist
 their outline. When an active thread advances, a bounded per-database cache
 retains completed outline items and reprojects the tail from a safe turn

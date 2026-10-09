@@ -50,7 +50,7 @@ import {
   NEW_THREAD_NAVIGATION_ITEM_ID,
   type SidebarNavigationItem,
 } from "./sidebarNavigationItems";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
+import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 
 export interface NavRailCustomizeState {
   isOpen: boolean;
@@ -58,6 +58,7 @@ export interface NavRailCustomizeState {
 }
 
 const RAIL_ICON_CLASS = "size-(--bb-sidebar-control-icon-size)";
+const RAIL_MENU_SIDE_OFFSET = 12;
 
 const RAIL_BUTTON_CLASS = cn(
   "size-(--bb-sidebar-control-size) shrink-0 rounded-md p-0 text-muted-foreground ring-sidebar-ring",
@@ -200,18 +201,31 @@ function RailItem({
 
 function RailMoreMenu({
   buttonRef,
+  topItemRef,
   hidden,
   onCustomize,
   onMenuCloseAutoFocus,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
+  topItemRef: RefObject<HTMLButtonElement | null>;
   hidden: readonly SidebarNavigationItem[];
   onCustomize: () => void;
   onMenuCloseAutoFocus: (event: Event) => void;
 }) {
   const { actions } = useSidebarNavigation();
+  const [topItemOffset, setTopItemOffset] = useState(0);
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(isOpen) => {
+        const button = buttonRef.current;
+        const topItem = topItemRef.current;
+        if (!isOpen || button === null || topItem === null) return;
+        setTopItemOffset(
+          topItem.getBoundingClientRect().top -
+            button.getBoundingClientRect().top,
+        );
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <RailButton ref={buttonRef} label="More">
           <Icon name="MoreHorizontal" aria-hidden="true" />
@@ -220,6 +234,10 @@ function RailMoreMenu({
       <DropdownMenuContent
         side="right"
         align="start"
+        alignOffset={topItemOffset}
+        sticky="always"
+        sideOffset={RAIL_MENU_SIDE_OFFSET}
+        data-testid="nav-rail-more-menu"
         onCloseAutoFocus={onMenuCloseAutoFocus}
       >
         {hidden.map((item) => (
@@ -255,6 +273,7 @@ export function AppNavRail({
 }) {
   const { items, activeItemId } = useSidebarNavigation();
   const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const homeButtonRef = useRef<HTMLButtonElement>(null);
   const customizeAfterMenuCloseRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -296,6 +315,8 @@ export function AppNavRail({
       className={cn(
         "relative z-10 flex shrink-0 flex-col",
         NAV_RAIL_WIDTH_CLASS,
+        !isFramed &&
+          "-mt-[env(safe-area-inset-top)] -mb-[env(safe-area-inset-bottom)] bg-surface-recessed pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
       )}
     >
       {isFramed ? null : (
@@ -303,7 +324,7 @@ export function AppNavRail({
           aria-hidden="true"
           className={cn(
             CHROME_ROW_HEIGHT_CLASS,
-            "shrink-0 bg-surface-recessed",
+            "shrink-0",
             shouldUseMacosDesktopChrome(desktopInfo) && MACOS_WINDOW_DRAG_CLASS,
           )}
         />
@@ -311,8 +332,8 @@ export function AppNavRail({
       <nav
         aria-label="Primary navigation"
         className={cn(
-          "flex min-h-0 flex-1 flex-col items-center gap-2.5 pb-2.5",
-          isFramed ? "pt-2" : "bg-surface-recessed",
+          "flex min-h-0 flex-1 flex-col items-center gap-2.5",
+          isFramed ? "pt-2" : "pb-2.5",
         )}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
@@ -322,6 +343,7 @@ export function AppNavRail({
           >
             <PopoverAnchor asChild>
               <RailButton
+                ref={homeButtonRef}
                 label="Home"
                 active={isHomeActive}
                 onClick={() => {
@@ -341,6 +363,7 @@ export function AppNavRail({
             ))}
             <RailMoreMenu
               buttonRef={moreButtonRef}
+              topItemRef={homeButtonRef}
               hidden={hidden}
               onCustomize={
                 isCompactViewport
@@ -352,7 +375,7 @@ export function AppNavRail({
             <PopoverContent
               side="right"
               align="start"
-              sideOffset={12}
+              sideOffset={RAIL_MENU_SIDE_OFFSET}
               aria-label="Customize rail"
               mobileTitle="Customize rail"
               data-testid="nav-rail-customize"

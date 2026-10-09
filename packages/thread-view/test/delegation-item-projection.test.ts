@@ -163,7 +163,7 @@ describe("delegation item projection", () => {
       }),
     );
     expect(
-      row.childRows.map((child) =>
+      (row.childRows ?? []).map((child) =>
         child.kind === "conversation" ? child.text : child.kind,
       ),
     ).toContain("README says hello.");
@@ -305,7 +305,7 @@ describe("delegation item projection", () => {
         rows.flatMap((row) => {
           if (row.kind === "turn") return delegationRows(row.children ?? []);
           if (row.kind === "work" && row.workKind === "delegation") {
-            return [row, ...delegationRows(row.childRows)];
+            return [row, ...delegationRows(row.childRows ?? [])];
           }
           return [];
         });
@@ -317,7 +317,7 @@ describe("delegation item projection", () => {
         expect.objectContaining({ status, completedAt }),
       );
       const check = findDelegationRow(
-        findDelegationRow(timeline.rows, "review").childRows,
+        findDelegationRow(timeline.rows, "review").childRows ?? [],
         "check",
       );
       expect(check).toEqual(
@@ -327,7 +327,7 @@ describe("delegation item projection", () => {
         }),
       );
       expect(
-        check.childRows.flatMap((row) =>
+        (check.childRows ?? []).flatMap((row) =>
           row.kind === "conversation" ? [row.text] : [],
         ),
       ).toEqual(["check 0.0", "check 0.1", "check 1.0", "check 1.1"]);

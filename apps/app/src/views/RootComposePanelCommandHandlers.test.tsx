@@ -94,11 +94,13 @@ describe("RootComposePanelCommandHandlers", () => {
       <AppCommandProvider>
         <RootComposePanelCommandHandlers
           isFocused
+          isOpen={false}
           onClose={firstClose}
           onToggle={firstToggle}
         />
         <RootComposePanelCommandHandlers
           isFocused={false}
+          isOpen={false}
           onClose={secondClose}
           onToggle={secondToggle}
         />
@@ -122,11 +124,13 @@ describe("RootComposePanelCommandHandlers", () => {
       <AppCommandProvider>
         <RootComposePanelCommandHandlers
           isFocused={false}
+          isOpen={false}
           onClose={firstClose}
           onToggle={firstToggle}
         />
         <RootComposePanelCommandHandlers
           isFocused
+          isOpen={false}
           onClose={secondClose}
           onToggle={secondToggle}
         />

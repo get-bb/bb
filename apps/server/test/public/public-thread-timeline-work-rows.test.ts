@@ -35,7 +35,7 @@ function collectWorkKinds(
     }
     into.add(row.workKind);
     if (row.workKind === "delegation") {
-      collectWorkKinds(row.childRows, into);
+      collectWorkKinds(row.childRows ?? [], into);
     }
   }
   return into;

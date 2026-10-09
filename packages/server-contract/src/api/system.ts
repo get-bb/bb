@@ -199,26 +199,16 @@ const onboardingStepTelemetrySchema = z.enum([
   "plugins",
   "devices",
 ]);
-const onboardingEntryTelemetrySchema = z.enum(["first_run", "checklist"]);
+const onboardingEntryTelemetrySchema = z.enum(["first_run", "replay"]);
 const onboardingStepTelemetryPropertiesSchema = z
   .object({
     step: onboardingStepTelemetrySchema,
     entry: onboardingEntryTelemetrySchema,
   })
   .strict();
-export const setupChecklistItemIdSchema = z.enum([
-  "agent",
-  "projects",
-  "thread",
-  "plugins",
-  "devices",
-  "notifications",
-]);
-export type SetupChecklistItemId = z.infer<typeof setupChecklistItemIdSchema>;
 const notificationPromptTelemetryPropertiesSchema = z
-  .object({ surface: z.enum(["checklist", "sidebar"]) })
+  .object({ surface: z.enum(["sidebar"]) })
   .strict();
-const checklistCountSchema = z.number().int().min(0).max(10);
 
 export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
@@ -259,35 +249,8 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
         .strict(),
     })
     .strict(),
-  z
-    .object({
-      name: z.literal("setup_checklist_item_completed"),
-      properties: z
-        .object({
-          item: setupChecklistItemIdSchema,
-          optional: z.boolean(),
-          head_start: z.boolean(),
-        })
-        .strict(),
     })
     .strict(),
-  z
-    .object({
-      name: z.literal("setup_checklist_item_skipped"),
-      properties: z.object({ item: setupChecklistItemIdSchema }).strict(),
-    })
-    .strict(),
-  z
-    .object({
-      name: z.literal("setup_checklist_dismissed"),
-      properties: z
-        .object({
-          required_done: checklistCountSchema,
-          required_total: checklistCountSchema,
-          optional_done: checklistCountSchema,
-          optional_total: checklistCountSchema,
-        })
-        .strict(),
     })
     .strict(),
   z

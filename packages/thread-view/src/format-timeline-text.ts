@@ -258,7 +258,7 @@ function formatWorkBody(
     case "workflow":
       return lines;
     case "delegation":
-      if (row.childRows.length > 0) {
+      if (row.childRows !== null && row.childRows.length > 0) {
         lines.push(
           indentBlock(
             formatRows(row.childRows, nestedContext(context, row.childRows)),

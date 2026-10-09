@@ -6,7 +6,7 @@ export type NotificationPermissionState =
   | NotificationPermission
   | "unsupported";
 
-export type NotificationPromptSurface = "checklist" | "sidebar";
+export type NotificationPromptSurface = "sidebar";
 
 const listeners = new Set<() => void>();
 

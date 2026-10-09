@@ -4,6 +4,11 @@ import {
 } from "./conversation-outline-cache.js";
 import { paginateTimelineContents } from "./timeline-content-pagination.js";
 import {
+  deferSettledTimelineContent,
+  timelineRowItemId,
+} from "./timeline-deferred-content.js";
+import { previewTimelineRowOutputs } from "./timeline-output-preview.js";
+import {
   getTimelineGroupingContext,
   orderTimelineRowsUsingContext,
 } from "./timeline-context-order.js";
@@ -67,6 +72,7 @@ import {
   listStoredEventRowsByParentToolCallIds,
   listItemEventSpansByItems,
   listStoredBufferedTextDeltaRowsByItems,
+  getStoredItemLifecycleSequenceRange,
   listStoredItemLifecycleRowsByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestThreadStateEventRowsByThreadIds,
@@ -146,6 +152,7 @@ interface FilterExactEventRowsForRequestedTurnArgs {
 
 interface BuildThreadTimelineOptions {
   completedTurnDisplay: CompletedTurnDisplay;
+  deferContent?: boolean;
   eventBudget: number;
   responseByteBudget?: number;
   includeClearedContextHistory: boolean;
@@ -161,6 +168,8 @@ interface BuildThreadTimelineOptions {
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
   beforeCursor?: string;
+  deferContent: boolean;
+  itemId: string | null;
   completedTurnDisplay: CompletedTurnDisplay;
   includeDiagnosticOperations: boolean;
   providerDisplayName?: string;
@@ -172,6 +181,10 @@ const MAX_EMPTY_TIMELINE_WINDOWS = 8;
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
 export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
+
+export const TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT = 200;
+
+export const TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT = 1024 * 1024;
 
 type ThreadTimelineBuildProfileStage =
   | "event-query"
@@ -343,9 +356,13 @@ export function applyRetainedOutputPreviews(
         return row;
       }
       if (row.workKind === "delegation") {
-        const childRows = applyToRows(row.childRows);
+        const originalChildRows = row.childRows;
+        if (originalChildRows === null) {
+          return row;
+        }
+        const childRows = applyToRows(originalChildRows);
         const changed = childRows.some(
-          (child, index) => child !== row.childRows[index],
+          (child, index) => child !== originalChildRows[index],
         );
         return changed ? { ...row, childRows } : row;
       }
@@ -1260,6 +1277,7 @@ function buildThreadTimelineInternal(
       options.includeClearedContextHistory,
       options.includeDiagnosticOperations,
       options.includeNestedRows ?? false,
+      options.deferContent ?? false,
       options.maxInlineOutputChars,
       options.providerDisplayName ?? null,
       thread.title ?? thread.titleFallback ?? "",
@@ -1440,6 +1458,10 @@ function buildThreadTimelineInternal(
     "available",
   );
   profile.projectedRowCount = projectedTimelineRows.length;
+  const pageableTimelineRows =
+    (options.deferContent ?? false)
+      ? deferSettledTimelineContent(projectedTimelineRows)
+      : projectedTimelineRows;
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1453,7 +1475,7 @@ function buildThreadTimelineInternal(
         ownedSequenceEnd: eventSelection.ownedSequenceEnd,
         knownHasOlderSegments: eventSelection.knownHasOlderSegments,
         page: eventSelection.paginationPage,
-        rows: projectedTimelineRows,
+        rows: pageableTimelineRows,
       }),
   );
   profile.responseRowCount = paginatedTimeline.rows.length;
@@ -1945,13 +1967,92 @@ export function loadThreadConversationOutline(
   return response;
 }
 
+function collectTimelineItemRows(
+  rows: readonly TimelineRow[],
+  itemId: string,
+  matches: Map<string, TimelineRow>,
+): void {
+  for (const row of rows) {
+    if (timelineRowItemId(row) === itemId) {
+      if (!matches.has(row.id)) {
+        matches.set(row.id, row);
+      }
+      continue;
+    }
+    const nested =
+      row.kind === "turn"
+        ? row.children
+        : row.kind === "work" && row.workKind === "delegation"
+          ? row.childRows
+          : null;
+    if (nested !== null) {
+      collectTimelineItemRows(nested, itemId, matches);
+    }
+  }
+}
+
+function scopeTimelineTurnDetailsRows(
+  rows: TimelineRow[],
+  options: BuildTimelineTurnSummaryDetailsOptions,
+): TimelineRow[] | null {
+  const shorten = (nested: TimelineRow[]) =>
+    previewTimelineRowOutputs(
+      options.deferContent ? deferSettledTimelineContent(nested) : nested,
+    );
+  if (options.itemId === null) {
+    return shorten(rows);
+  }
+  const matches = new Map<string, TimelineRow>();
+  collectTimelineItemRows(rows, options.itemId, matches);
+  const matched = [...matches.values()];
+  const delegation = matched.find(
+    (row) => row.kind === "work" && row.workKind === "delegation",
+  );
+  if (
+    delegation?.kind === "work" &&
+    delegation.workKind === "delegation" &&
+    delegation.childRows !== null
+  ) {
+    return [{ ...delegation, childRows: shorten(delegation.childRows) }];
+  }
+  return matched.length === 0 ? null : matched;
+}
+
+function resolveTimelineTurnDetailsRange(
+  db: DbConnection,
+  thread: Thread,
+  options: BuildTimelineTurnSummaryDetailsOptions,
+): Pick<TimelineTurnSummarySelection, "sourceSeqEnd" | "sourceSeqStart"> {
+  const lifecycle =
+    options.itemId === null
+      ? null
+      : getStoredItemLifecycleSequenceRange(db, {
+          itemId: options.itemId,
+          threadId: thread.id,
+          turnId: options.turnId,
+        });
+  if (lifecycle === null) {
+    return {
+      sourceSeqEnd: options.sourceSeqEnd,
+      sourceSeqStart: options.sourceSeqStart,
+    };
+  }
+  return {
+    sourceSeqEnd: Math.max(options.sourceSeqEnd, lifecycle.last),
+    sourceSeqStart: Math.min(options.sourceSeqStart, lifecycle.first),
+  };
+}
+
 export function buildTimelineTurnSummaryDetails(
   db: DbConnection,
   thread: Thread,
   options: BuildTimelineTurnSummaryDetailsOptions,
 ): TimelineTurnSummaryDetailsResponse {
   return db.transaction(() =>
-    buildTimelineTurnSummaryDetailsPage(db, thread, options),
+    buildTimelineTurnSummaryDetailsPage(db, thread, {
+      ...options,
+      ...resolveTimelineTurnDetailsRange(db, thread, options),
+    }),
   );
 }
 
@@ -1986,6 +2087,8 @@ function buildTimelineTurnSummaryDetailsPage(
     JSON.stringify([
       "turn-details",
       options.turnId,
+      options.itemId,
+      options.deferContent,
       options.sourceSeqStart,
       options.sourceSeqEnd,
       options.includeDiagnosticOperations,
@@ -2046,17 +2149,6 @@ function buildTimelineTurnSummaryDetailsPage(
     ...acceptedInputRowsByTurn.requestedTurnRows,
   ]);
 
-  const hasTurnScopedRowsForRequestedTurn = eventRows.some(
-    (row) => row.scopeKind === "turn" && row.turnId === options.turnId,
-  );
-  if (!hasTurnScopedRowsForRequestedTurn) {
-    throw new ApiError(
-      400,
-      "invalid_request",
-      `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
-    );
-  }
-
   const hasCurrentStartedRow = eventRows.some(
     (row) => row.type === "turn/started" && row.turnId === options.turnId,
   );
@@ -2078,10 +2170,24 @@ function buildTimelineTurnSummaryDetailsPage(
       `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} cannot resolve turn/started for ${options.turnId}`,
     );
   }
+  const turnContextRows = mergeStoredEventRowsById([
+    ...requestedTurnStartedRows,
+    ...eventRows,
+  ]);
+  const turnLifecycleRows = listStoredEventRows(db, {
+    threadId: thread.id,
+    afterSequence:
+      turnContextRows.reduce(
+        (minSequence, row) => Math.min(minSequence, row.sequence),
+        options.sourceSeqStart,
+      ) - 1,
+    beforeSequence: contextSequenceCutoff + 1,
+    types: ["turn/started", "turn/completed"],
+  });
   const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
     beforeSequence: detailsWindow.beforeSequence,
     maxInlineOutputChars: detailsInlineOutputLimit,
-    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    rows: mergeStoredEventRowsById([...turnContextRows, ...turnLifecycleRows]),
     sequenceStart: detailsWindow.sequenceStart,
     threadId: thread.id,
   });
@@ -2136,15 +2242,26 @@ function buildTimelineTurnSummaryDetailsPage(
   });
 
   if (children.kind !== "missing-match") {
-    const contents = paginateTimelineContents(
+    const scopedRows = scopeTimelineTurnDetailsRows(
       applyRetainedOutputPreviews(
         children.rows,
         projectionEvents,
         "detail-limit",
       ),
+      options,
+    );
+    if (scopedRows === null) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include item ${options.itemId}`,
+      );
+    }
+    const contents = paginateTimelineContents(
+      scopedRows,
       contentCursor?.beforeLeaf,
-      1_500,
-      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
+      TIMELINE_TURN_DETAILS_PAGE_BYTE_LIMIT,
     );
     const cursor =
       contents.start === 0
@@ -2164,7 +2281,9 @@ function buildTimelineTurnSummaryDetailsPage(
     };
   }
 
-  throw new Error(
-    `Timeline turn summary details could not match range ${options.sourceSeqStart}-${options.sourceSeqEnd}`,
+  throw new ApiError(
+    400,
+    "invalid_request",
+    `Timeline turn summary details range ${options.sourceSeqStart}-${options.sourceSeqEnd} does not include turn ${options.turnId}`,
   );
 }

@@ -54,6 +54,7 @@ export function conversationRow(args: {
       imageUrls: [],
       localImagePaths: [],
       localFilePaths: [],
+      localFileDetails: [],
     },
     initiator: "user",
     senderThreadId: null,

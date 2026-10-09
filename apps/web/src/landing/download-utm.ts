@@ -1,4 +1,4 @@
-import { UTM_PARAM_NAMES } from "./site";
+import { CAMPAIGN_PARAM_NAMES } from "./site";
 
 const SAVED_UTM_KEY = "bb:landing-utm";
 const DOWNLOAD_PATH_PREFIX = "/download/";
@@ -9,7 +9,7 @@ type UtmStorage = Pick<Storage, "getItem" | "setItem">;
 export function pickUtmParams(search: string): URLSearchParams {
   const params = new URLSearchParams(search);
   const utm = new URLSearchParams();
-  for (const name of UTM_PARAM_NAMES) {
+  for (const name of CAMPAIGN_PARAM_NAMES) {
     const value = params.get(name);
     if (value) {
       utm.set(name, value);

@@ -2,12 +2,14 @@ import { SourceLoadingSkeleton } from "@/components/code/code-loading-skeletons"
 import {
   type CSSProperties,
   type ReactNode,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -41,7 +43,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatByteSize } from "@/lib/format-byte-size";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -57,6 +58,11 @@ import {
 } from "@/lib/code-overflow-mode";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SecondaryPanelSelectionActions } from "./SecondaryPanelSelectionActions.js";
+import {
+  FILE_PREVIEW_WRAPPER_STYLE,
+  FilePreviewHeaderFrame,
+  FilePreviewPath,
+} from "./FilePreviewChrome.js";
 import { useImageTabLightbox } from "./ImageTabLightboxContext.js";
 
 export interface FilePreviewFile {
@@ -157,11 +163,6 @@ interface FilePreviewLineWrapButtonProps {
   onLineOverflowModeChange: CodeOverflowModeChangeHandler;
 }
 
-interface FilePreviewPathProps {
-  path: string;
-  copyPath: string | null;
-}
-
 interface MarkdownFilePreviewProps {
   file: FilePreviewFile;
   onSelectionAddToChat?: (text: string) => void;
@@ -223,9 +224,6 @@ const CSV_PREVIEW_MAX_ROWS = 500;
 const CSV_PREVIEW_ROW_HEIGHT_PX = 29;
 const CSV_PREVIEW_OVERSCAN_ROWS = 8;
 
-const FILE_PREVIEW_WRAPPER_STYLE = {
-  "--md-content-w": "100cqi",
-} as CSSProperties;
 
 const HTML_FILE_PREVIEW_IFRAME_STYLE = {
   width: "100%",
@@ -681,8 +679,7 @@ function FilePreviewHeader({
   const copyFileContentsLabel = getFileContentsCopyLabel(toggleKind);
 
   return (
-    <div ref={headerRef} className="sticky top-0 z-10 bg-sidebar">
-      <div className="flex h-9 items-center gap-2 bg-surface-raised px-4 max-md:pointer-coarse:h-12 max-md:pointer-coarse:px-3">
+    <FilePreviewHeaderFrame headerRef={headerRef}>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {previewIcon}
           <FilePreviewPath path={path} copyPath={copyPath} />
@@ -924,43 +921,7 @@ function FilePreviewHeader({
             ) : null}
           </div>
         ) : null}
-      </div>
-    </div>
-  );
-}
-
-function FilePreviewPath({ path, copyPath }: FilePreviewPathProps) {
-  const copyTarget = copyPath ?? path;
-  const label = "Copy file path";
-  const className = cn(
-    "min-w-0 font-mono font-medium leading-5 text-file-accent",
-    COARSE_POINTER_TEXT_SM_CLASS,
-  );
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              className,
-              "cursor-pointer rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            )}
-            aria-label={label}
-            onClick={() => {
-              void copyToClipboardWithToast(copyTarget, {
-                successMessage: "File path copied",
-                errorMessage: "Failed to copy file path",
-              });
-            }}
-          >
-            <TruncateStart>{path}</TruncateStart>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">{label}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    </FilePreviewHeaderFrame>
   );
 }
 
@@ -1041,9 +1002,23 @@ function MarkdownFilePreview({
   onSelectionAddToChat,
   markdownLinkRouting,
 }: MarkdownFilePreviewProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollPosition = useContext(FilePreviewScrollPositionContext);
+  useLayoutEffect(() => {
+    const container = contentRef.current?.closest<HTMLElement>(
+      "[data-file-preview-scroll-container]",
+    );
+    if (!container || !scrollPosition) return;
+    container.scrollTop = scrollPosition.scrollTop;
+    const savePosition = () => {
+      scrollPosition.scrollTop = container.scrollTop;
+    };
+    container.addEventListener("scroll", savePosition);
+    return () => container.removeEventListener("scroll", savePosition);
+  }, [scrollPosition, file.name, file.contents]);
   return (
     <SecondaryPanelSelectionActions onSelectionAddToChat={onSelectionAddToChat}>
-      <div className="flex-auto bg-background px-4 py-4">
+      <div ref={contentRef} className="flex-auto bg-background px-4 py-4">
         <MarkdownPreview
           allowHtml
           content={file.contents}
@@ -1365,7 +1340,6 @@ function FilePreviewCode({
       overflow={lineOverflowMode}
       highlightedLines={highlightedLines}
       scrollToHighlightedLines
-      fallback={<SourceLoadingSkeleton />}
       onSelectionAddToChat={onSelectionAddToChat}
     />
   );

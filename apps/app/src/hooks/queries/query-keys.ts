@@ -18,6 +18,7 @@ const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 const PROJECTS_QUERY_KEY = "projects";
 const PROJECT_PATHS_QUERY_KEY = "projectPaths";
 const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
+const PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY = "projectAttachmentPreview";
 export const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
 const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
@@ -165,6 +166,11 @@ type ProjectFilePreviewQueryKey = readonly [
   string | null,
   string | null,
   string | null,
+];
+type ProjectAttachmentPreviewQueryKey = readonly [
+  typeof PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY,
+  string,
+  string,
 ];
 type ProjectSourceBranchesQueryKey = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
@@ -352,6 +358,7 @@ type ThreadTimelineQueryKey = readonly [
 type ThreadConversationOutlineQueryKey = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
   string,
+  ThreadConversationOutlineRole,
 ];
 type ThreadConversationOutlineQueryKeyPrefix = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
@@ -361,6 +368,7 @@ type AllThreadConversationOutlineQueryKeyPrefix = readonly [
   typeof THREAD_CONVERSATION_OUTLINE_QUERY_KEY,
 ];
 export interface ThreadTimelineTurnSummaryDetailsQueryIdentity {
+  itemId: string | null;
   sourceSeqEnd: number;
   sourceSeqStart: number;
   threadId: string;
@@ -372,6 +380,7 @@ type ThreadTimelineTurnSummaryDetailsQueryKey = readonly [
   string,
   number,
   number,
+  string | null,
 ];
 type ThreadTimelineQueryKeyPrefix = readonly [
   typeof THREAD_TIMELINE_QUERY_KEY,
@@ -600,6 +609,13 @@ export function projectFilePreviewQueryKey(
     hostId,
     path,
   ];
+}
+
+export function projectAttachmentPreviewQueryKey(
+  projectId: string,
+  path: string,
+): ProjectAttachmentPreviewQueryKey {
+  return [PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY, projectId, path];
 }
 
 export function allProjectPathsQueryKeyPrefix(): AllProjectPathsQueryKeyPrefix {
@@ -951,10 +967,13 @@ export function threadTimelineQueryKey(
   return [THREAD_TIMELINE_QUERY_KEY, threadId];
 }
 
+export type ThreadConversationOutlineRole = "user" | "assistant";
+
 export function threadConversationOutlineQueryKey(
   threadId: string,
+  role: ThreadConversationOutlineRole,
 ): ThreadConversationOutlineQueryKey {
-  return [THREAD_CONVERSATION_OUTLINE_QUERY_KEY, threadId];
+  return [THREAD_CONVERSATION_OUTLINE_QUERY_KEY, threadId, role];
 }
 
 export function threadConversationOutlineQueryKeyPrefix(
@@ -968,6 +987,7 @@ export function allThreadConversationOutlineQueryKeyPrefix(): AllThreadConversat
 }
 
 export function threadTimelineTurnSummaryDetailsQueryKey({
+  itemId,
   sourceSeqEnd,
   sourceSeqStart,
   threadId,
@@ -979,6 +999,7 @@ export function threadTimelineTurnSummaryDetailsQueryKey({
     turnId,
     sourceSeqStart,
     sourceSeqEnd,
+    itemId,
   ];
 }
 

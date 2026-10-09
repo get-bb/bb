@@ -26,7 +26,7 @@ import {
   PiIcon,
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS, WINDOWS_DOWNLOAD_URL } from "./site";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
@@ -67,9 +67,13 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            <a className="install-note-link" href={WINDOWS_DOWNLOAD_URL}>
-              Windows
-            </a>
+            <DownloadLink
+              placement={placement}
+              platform="windows"
+              className="install-note-link"
+            >
+              {DESKTOP_DOWNLOADS.windows.label}
+            </DownloadLink>
             , Intel Macs &amp; remote machines
           </span>
         </span>

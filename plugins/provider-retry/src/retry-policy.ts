@@ -1,3 +1,4 @@
+import type { RetryAvailability } from "./retry-contract.js";
 import type { PluginTurnFailedEvent } from "@get-bb/plugin-sdk";
 
 export const RESET_BUFFER_MS = 15_000;
@@ -15,7 +16,8 @@ export type RetryDeclineReason =
   | "no-rate-limit-state"
   | "not-resettable"
   | "beyond-maximum-wait"
-  | "attempts-exhausted";
+  | "attempts-exhausted"
+  | "pool-unavailable";
 
 export type RetryDecision =
   | { kind: "decline"; reason: RetryDeclineReason }
@@ -27,6 +29,7 @@ export type RetryDecision =
 
 export interface RetryPolicyInput {
   failure: PluginTurnFailedEvent;
+  availability: RetryAvailability;
   maximumWaitMs: number | null;
   now: number;
   random: number;
@@ -63,6 +66,13 @@ export function overloadedSendAtMs(args: {
   return args.now + delay + Math.floor(args.random * delay);
 }
 
+export function isRateLimitFailure(failure: PluginTurnFailedEvent): boolean {
+  return (
+    failure.errorInfo?.category === "rate-limit" ||
+    failure.errorInfo?.httpStatusCode === 429
+  );
+}
+
 export function decideRetry(input: RetryPolicyInput): RetryDecision {
   const { failure } = input;
   if (failure.attemptNumber >= MAX_RETRY_ATTEMPTS) {
@@ -79,8 +89,26 @@ export function decideRetry(input: RetryPolicyInput): RetryDecision {
       reason: "Provider overloaded",
     };
   }
-  if (failure.errorInfo?.category !== "rate-limit") {
+  if (!isRateLimitFailure(failure)) {
     return { kind: "decline", reason: "not-retryable" };
+  }
+  if (input.availability.kind !== "not-routed") {
+    if (input.availability.kind === "unavailable")
+      return { kind: "decline", reason: "pool-unavailable" };
+    const resetsAtMs =
+      input.availability.kind === "ready"
+        ? input.now
+        : input.availability.retryAt;
+    if (
+      input.maximumWaitMs !== null &&
+      resetsAtMs - input.now > input.maximumWaitMs
+    )
+      return { kind: "decline", reason: "beyond-maximum-wait" };
+    return {
+      kind: "retry",
+      sendAt: sendAtMs({ resetsAtMs, now: input.now, random: input.random }),
+      reason: "Rate limited",
+    };
   }
   const rateLimits = failure.rateLimits;
   if (rateLimits === null || rateLimits.status !== "blocked") {

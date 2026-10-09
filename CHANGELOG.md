@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.46.0
+
+A new navigation rail, better thread search, reusable prompts, and more control over notifications and storage.
+
+### Highlights
+
+- **Navigation rail:** Home, Plugins, Skills, Settings, and your chosen destinations now share one customizable rail, including inside the mobile sidebar.
+- **Find threads faster:** instant title and project matches, matching messages beneath their thread titles, and filter and sort controls in thread search.
+- **Prompt Library:** search previous prompts, preview them, star favorites, and insert them into your draft with **Ctrl+R**. Enable it in Settings → Plugins.
+- **Per-thread notifications:** choose All activity, Needs input only, or Muted. Quieting a parent thread also limits notifications from its children.
+- **Storage & retention (Experimental):** inspect storage across machines, reclaim thread and development files, and opt into automatic archiving or deletion. Disabled by default; automatic cleanup is off until configured.
+
+![The navigation rail beside the new-thread composer](https://getbb.app/changelog/0.46.0/navigation-rail.jpg)
+
+### Improvements
+
+- **Getting started:** a setup guide helps install and sign into agents, find projects, enable plugins, and connect devices. Existing installs can reopen it from Settings.
+- **Composer:** large text pastes become file attachments, attachments support undo and redo, and file pills open an in-app preview. Dictate custom question answers and keep partial answers while navigating.
+- **Conversations:** copy links to individual messages, paste thread links as mention pills, group sidebar threads by read status, and open links in a split with Cmd/Ctrl-click. Plan and permission approvals open automatically, and queued messages wait while you edit them.
+- **Files and panels:** an explicit Save button and clearer conflict recovery in File Editor, a redesigned Info panel with a storage folder tree, and remembered Markdown reading positions.
+- **Desktop and mobile:** switch desktop servers and reload the window from the command palette, recover browser tabs after relaunch, and use mobile terminal keyboard controls. Android gains image copy and paste.
+- **Performance:** less background database work, quicker page loading, deferred conversation details, and plugin installs and updates that run in the background.
+
+### Fixes
+
+- Fix timeline flicker, history loss, scroll shifts, sidebar drag-and-drop races, mobile picker transitions, and desktop repaint flashes.
+- Fix provider permission and model changes on follow-ups and steers, ACP session recovery, exhausted account-pool retries, and pooled Claude prompt caching.
+- Improve bb Connect request deadlines and reconnection, voice transcription retries, thread-title generation, and attachment handling so later files cannot overwrite earlier turns' attachments.
+
+### Plugins
+
+- Plugins can add thread-menu actions and customizable row buttons through the same registry as bb. The Plugin Guide is now available on getbb.app, and Agent Annotations has a public marketplace page.
+- **For plugin authors upgrading:** the experimental sidebar navigation and header slots and their related hooks and types have been removed, along with the built-in Navigation plugin. Plugins using those APIs need updating for the navigation rail.
+
+### Thanks
+
+Thank you to [@MayankBansal12](https://github.com/MayankBansal12), [@Willhong](https://github.com/Willhong), [@andrewkchan](https://github.com/andrewkchan), [@aotd1](https://github.com/aotd1), [@ariofrio](https://github.com/ariofrio), [@iipanda](https://github.com/iipanda), [@its-rosetta](https://github.com/its-rosetta), [@regutierrez](https://github.com/regutierrez), [@salemsayed](https://github.com/salemsayed), [@stefanroex](https://github.com/stefanroex), [@timurkhakhalev](https://github.com/timurkhakhalev), [@vburojevic](https://github.com/vburojevic), [@vznh](https://github.com/vznh), and [@yteruel31](https://github.com/yteruel31) for contributions to this release.
+
 ## 0.45.0
 
 Thread titles and voice transcription without a Codex login, faster conversations, and new platforms in alpha.

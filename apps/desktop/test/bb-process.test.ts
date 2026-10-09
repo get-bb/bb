@@ -275,7 +275,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
           if (
             error instanceof Error &&
             "code" in error &&
-            error.code === "ENOENT"
+            (error.code === "ENOENT" || error.code === "ESRCH")
           ) {
             return null;
           }
