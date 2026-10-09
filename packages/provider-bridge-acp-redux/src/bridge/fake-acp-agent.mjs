@@ -747,6 +747,8 @@ async function handlePrompt(message) {
         status: "in_progress",
       });
     }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("end-silently")) {
+    notifyUpdate({ sessionUpdate: "usage_update", used: 100, size: 1000 });
   } else if (text.includes("hang")) {
     // Stay pending until the client sends session/cancel.
     return;
@@ -920,6 +922,18 @@ async function handleMessage(message) {
         sessionId: activeSessionId,
         ...configState(),
       });
+      if (process.env.FAKE_ACP_STARTUP_BANNER !== undefined) {
+        notifyUpdate(
+          {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: process.env.FAKE_ACP_STARTUP_BANNER,
+            },
+          },
+          activeSessionId,
+        );
+      }
       return;
     case "session/load":
       if (!requireAuthenticated(message)) {

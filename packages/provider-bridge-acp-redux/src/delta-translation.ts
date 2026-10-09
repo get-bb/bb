@@ -1171,7 +1171,12 @@ export function createAcpDeltaTranslator(
     return injectedToolBindings.get(callKey({ threadId }, toolCallId));
   }
 
+  function closeTextStreams(): ThreadDelta[] {
+    return [closeThoughtStream(), closeAssistantStream()];
+  }
+
   return {
+    closeTextStreams,
     configureInjectedTools,
     getInjectedToolBinding,
     noteDelegationReport,

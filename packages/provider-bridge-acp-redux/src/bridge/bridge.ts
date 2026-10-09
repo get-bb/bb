@@ -230,6 +230,8 @@ interface AcpThreadSession {
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
+  heldPrePromptUpdates: unknown[] | null;
+  turnOutputCount: number;
 }
 
 type AcpDeferredStartEmitter = (
@@ -2144,6 +2146,7 @@ async function startAgentSession(
     promptWorkOpen: false,
     agentTurnQuietTimer: undefined,
     agentUpdateCount: 0,
+    turnOutputCount: 0,
     publishedThreadState: new Map(),
     capabilities: undefined,
     supportsImageInput: false,
@@ -2170,6 +2173,7 @@ async function startAgentSession(
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
+    heldPrePromptUpdates: [],
   };
   sessionsByBbThreadId.set(bbThreadId, session);
 
@@ -2670,6 +2674,20 @@ function emitSessionUpdate(
   const events = session.model.applySessionUpdate(rawUpdate);
   publishSessionStateEvents(session, events);
   session.agentUpdateCount += 1;
+  if (isTurnOutputUpdate(update)) {
+    session.turnOutputCount += 1;
+  }
+  const held = session.heldPrePromptUpdates;
+  if (
+    held !== null &&
+    session.activePromptKind === null &&
+    (held.length > 0 || startsAgentWork(events))
+  ) {
+    if (held.length < MAX_HELD_PRE_PROMPT_UPDATES) {
+      held.push(update);
+    }
+    return;
+  }
   if (session.activePromptKind === null && startsAgentWork(events)) {
     openAgentTurn(session);
   } else if (session.activePromptKind === "agent") {
@@ -2797,6 +2815,35 @@ async function waitForAgentQuiet(session: AcpThreadSession): Promise<boolean> {
   return false;
 }
 
+const MAX_HELD_PRE_PROMPT_UPDATES = 500;
+const TURN_OUTPUT_UPDATE_KINDS = new Set([
+  "agent_message_chunk",
+  "agent_thought_chunk",
+  "tool_call",
+  "tool_call_update",
+  "plan",
+]);
+
+function isTurnOutputUpdate(update: unknown): boolean {
+  const kind = isJsonObject(update) ? update["sessionUpdate"] : undefined;
+  return typeof kind === "string" && TURN_OUTPUT_UPDATE_KINDS.has(kind);
+}
+
+function flushHeldPrePromptUpdates(session: AcpThreadSession): void {
+  const held = session.heldPrePromptUpdates;
+  session.heldPrePromptUpdates = null;
+  if (held === null || held.length === 0) {
+    return;
+  }
+  for (const update of held) {
+    emitForSession(session, ACP_UPDATE_METHOD, {
+      threadId: session.bbThreadId,
+      update,
+    });
+  }
+  sendThreadDeltas(session.bbThreadId, session.translator.closeTextStreams());
+}
+
 function runTurn(
   session: AcpThreadSession,
   firstInput: AcpPendingTurnInput,
@@ -2808,6 +2855,8 @@ function runTurn(
       threadId: session.bbThreadId,
     });
   }
+  flushHeldPrePromptUpdates(session);
+  const outputBeforeTurn = session.turnOutputCount;
 
   session.turnSettled = (async () => {
     let pending = firstInput;
@@ -2835,6 +2884,7 @@ function runTurn(
           emitForSession(session, ACP_TURN_STARTED_METHOD, {
             threadId: session.bbThreadId,
           });
+          flushHeldPrePromptUpdates(session);
         }
         const prompt = buildPromptContentBlocks(session, pending.input);
         let inputAccepted = false;
@@ -2911,6 +2961,18 @@ function runTurn(
         }
       }
 
+      if (
+        stopReason === "end_turn" &&
+        !session.stopping &&
+        session.turnOutputCount === outputBeforeTurn
+      ) {
+        emitForSession(session, ACP_WARNING_METHOD, {
+          threadId: session.bbThreadId,
+          summary: "The agent ended the turn without replying",
+          details:
+            "The agent reported no error and sent nothing back. If this keeps happening, check that the agent runs and is signed in on the machine that hosts the thread.",
+        });
+      }
       finishTurn(session, stopReason);
       return;
     }
@@ -3069,6 +3131,7 @@ function startCompaction(
   pending: AcpPendingTurnInput,
 ): void {
   setActivePromptKind(session, "compaction");
+  session.heldPrePromptUpdates = null;
   session.compactionAgentMessage = "";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,

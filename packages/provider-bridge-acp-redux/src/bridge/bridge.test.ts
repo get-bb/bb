@@ -3671,7 +3671,7 @@ describe("acp bridge", () => {
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([]);
   });
 
-  it("holds an agent update written with the session/new response until thread/identity is out", async () => {
+  it("holds an agent update written with the session/new response until thread/identity is out, and what the agent said until the first prompt", async () => {
     const { bbThreadId } = await startThread({
       envVars: { FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1" },
     });
@@ -3687,7 +3687,8 @@ describe("acp bridge", () => {
     expect(firstDeltaIndex).toBeGreaterThan(identityIndex);
     const kinds = wire.flatMap(deltaKindsOf);
     expect(kinds[0]).toBe("session.reset");
-    expect(kinds).toContain("item.textDelta");
+    expect(kinds).not.toContain("item.textDelta");
+    expect(kinds).not.toContain("turn.open");
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([
       { used: 12_345, size: 200_000 },
     ]);
@@ -4284,6 +4285,37 @@ describe("acp bridge: work the agent starts on its own", () => {
   function turnStatuses(): unknown[] {
     return threadEventsOfType("turn/completed").map((event) => event.status);
   }
+
+  it("holds what an agent says before its first prompt and shows it at the start of that turn, without opening a turn that would block the prompt", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_STARTUP_BANNER: "fake agent v1\n\n## Skills" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(threadEventsOfType("turn/started")).toHaveLength(0);
+    expect(agentMessageTexts()).toEqual([]);
+
+    await runPromptedTurn(providerThreadId, "hello");
+
+    expect(threadEventsOfType("turn/started")).toHaveLength(1);
+    expect(turnStatuses()).toEqual(["completed"]);
+    const texts = agentMessageTexts();
+    expect(texts[0]).toBe("fake agent v1\n\n## Skills");
+    expect(texts.length).toBeGreaterThan(1);
+    expect(texts.slice(1).join("")).not.toContain("fake agent v1");
+  });
+
+  it("says so when the agent ends a prompted turn without sending anything, and stays quiet when it replied", async () => {
+    const { providerThreadId } = await startThread();
+
+    await runPromptedTurn(providerThreadId, "hello");
+    expect(threadEventsOfType("provider/warning")).toEqual([]);
+
+    await runPromptedTurn(providerThreadId, "end-silently");
+    expect(threadEventsOfType("provider/warning")).toMatchObject([
+      { summary: "The agent ended the turn without replying" },
+    ]);
+    expect(turnStatuses()).toEqual(["completed", "completed"]);
+  });
 
   it("opens a turn for unprompted output and closes it after a quiet window", async () => {
     const { providerThreadId } = await startThread();
