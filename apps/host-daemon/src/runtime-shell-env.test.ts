@@ -318,6 +318,62 @@ describe("createUserShellPathResolver", () => {
     ]);
   });
 
+  it("retries the interactive probe once before falling back to the non-interactive probe", async () => {
+    const interactivePath = "/home/me/.local/bin:/usr/bin";
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          error: new Error("Shell env probe timed out"),
+          signal: "SIGTERM",
+          status: null,
+        }),
+        createShellEnvSpawnResult({
+          stdout: createMarkedShellEnvOutput(interactivePath),
+        }),
+      ],
+    });
+
+    await expect(
+      createUserShellPathResolver({
+        env: { SHELL: "/bin/zsh", PATH: "/usr/bin" },
+        platform: "linux",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      })(),
+    ).resolves.toBe(interactivePath);
+
+    expect(fakeSpawn.calls.map((call) => call.args[0])).toEqual([
+      "-ilc",
+      "-ilc",
+    ]);
+  });
+
+  it("retries the interactive probe before using the non-interactive fallback", async () => {
+    const nonInteractivePath = "/usr/local/bin:/usr/bin";
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({ signal: "SIGTERM", status: null }),
+        createShellEnvSpawnResult({ signal: "SIGTERM", status: null }),
+        createShellEnvSpawnResult({
+          stdout: createMarkedShellEnvOutput(nonInteractivePath),
+        }),
+      ],
+    });
+
+    await expect(
+      createUserShellPathResolver({
+        env: { SHELL: "/bin/zsh", PATH: "/usr/bin" },
+        platform: "linux",
+        spawnUserShellEnv: fakeSpawn.spawn,
+      })(),
+    ).resolves.toBe(nonInteractivePath);
+
+    expect(fakeSpawn.calls.map((call) => call.args[0])).toEqual([
+      "-ilc",
+      "-ilc",
+      "-lc",
+    ]);
+  });
+
   it("retains the previous PATH when a refreshed interactive probe fails", async () => {
     const interactivePath = "/home/me/.local/bin:/usr/bin";
     const fakeSpawn = createFakeShellEnvSpawn({

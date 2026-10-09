@@ -551,28 +551,34 @@ async function resolveUserShellPathWithPrevious(
     options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
   const shellArgSets = userShellEnvArgSets(shell);
   for (const [index, shellArgs] of shellArgSets.entries()) {
-    const result = await spawnUserShellEnv({
-      command: shell,
-      args: shellArgs,
-      env,
-      timeoutMs: options.timeoutMs ?? USER_SHELL_ENV_TIMEOUT_MS,
-    });
-    if (
-      result.error !== undefined ||
-      result.signal !== null ||
-      result.status !== 0
-    ) {
+    const attempts = index === 0 ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const result = await spawnUserShellEnv({
+        command: shell,
+        args: shellArgs,
+        env,
+        timeoutMs: options.timeoutMs ?? USER_SHELL_ENV_TIMEOUT_MS,
+      });
+      if (
+        result.error !== undefined ||
+        result.signal !== null ||
+        result.status !== 0
+      ) {
+        if (index === 0 && previousPath !== null) {
+          return previousPath;
+        }
+        if (result.signal === null) {
+          break;
+        }
+        continue;
+      }
+      const path = parsePathFromUserShellEnv(result.stdout);
+      if (path !== null) {
+        return path;
+      }
       if (index === 0 && previousPath !== null) {
         return previousPath;
       }
-      continue;
-    }
-    const path = parsePathFromUserShellEnv(result.stdout);
-    if (path !== null) {
-      return path;
-    }
-    if (index === 0 && previousPath !== null) {
-      return previousPath;
     }
   }
 
