@@ -1434,7 +1434,7 @@ function findDelegationViewRow(
   return null;
 }
 
-function DeferredDelegationRowBody({
+function DeferredDelegationChildRows({
   fallbackRows,
   row,
 }: {
@@ -1452,64 +1452,50 @@ function DeferredDelegationRowBody({
         row.callId,
       )?.childRows ?? [])
     : null;
-  const childRows = loadedRows ?? fallbackRows;
+  const rows = loadedRows ?? fallbackRows;
 
-  if (childRows === null && !detail.isError) {
-    return <TimelineRowBodyPlaceholder shape="rows" />;
+  if (rows === null && detail.isError) {
+    return (
+      <TimelineDetailLoadError
+        horizontalPadding="default"
+        label="Failed to load subagent activity."
+        onRetry={detail.retry}
+      />
+    );
+  }
+  if (rows === null) {
+    return (
+      <TimelineStaticRowHeader>
+        <span className={PAST_ROW_DIM_CLASS_NAME}>
+          Loading subagent activity...
+        </span>
+      </TimelineStaticRowHeader>
+    );
   }
   return (
-    <DelegationRowBodyContent
-      row={row}
-      childRows={childRows ?? []}
-      leadingContent={
-        childRows === null ? (
-          <TimelineDetailLoadError
-            horizontalPadding="default"
-            label="Failed to load subagent activity."
-            onRetry={detail.retry}
-          />
-        ) : loadedRows !== null && detail.hasEarlierRows ? (
-          <LoadEarlierTimelineDetailRow
-            isLoading={detail.isLoadingEarlierRows}
-            onClick={detail.loadEarlier}
-          />
-        ) : null
-      }
-    />
+    <div className="flex flex-col gap-2">
+      {loadedRows !== null && detail.hasEarlierRows ? (
+        <LoadEarlierTimelineDetailRow
+          isLoading={detail.isLoadingEarlierRows}
+          onClick={detail.loadEarlier}
+        />
+      ) : null}
+      {rows.length > 0 ? (
+        <TimelineRowsList
+          rows={rows}
+          scopeActive={false}
+          showAssistantMessageActions={false}
+          compactActivityIntents={false}
+          spacing="nested"
+          unreadDividerAutoScroll={false}
+          unreadDividerPlacement={null}
+        />
+      ) : null}
+    </div>
   );
 }
 
 function DelegationRowBody({ row }: { row: TimelineViewDelegationWorkRow }) {
-  const [lastInlineChildRows, setLastInlineChildRows] = useState(row.childRows);
-  if (row.childRows !== null && row.childRows !== lastInlineChildRows) {
-    setLastInlineChildRows(row.childRows);
-  }
-  if (row.childRows === null) {
-    return (
-      <DeferredDelegationRowBody
-        fallbackRows={lastInlineChildRows}
-        row={row}
-      />
-    );
-  }
-  return (
-    <DelegationRowBodyContent
-      row={row}
-      childRows={row.childRows}
-      leadingContent={null}
-    />
-  );
-}
-
-function DelegationRowBodyContent({
-  childRows,
-  leadingContent,
-  row,
-}: {
-  childRows: readonly ThreadTimelineViewRow[];
-  leadingContent: ReactNode;
-  row: TimelineViewDelegationWorkRow;
-}) {
   const {
     onOpenLink,
     onOpenLocalFileLink,
@@ -1518,19 +1504,27 @@ function DelegationRowBodyContent({
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
   const delegationActive = row.status === "pending";
+  const [lastInlineChildRows, setLastInlineChildRows] = useState(row.childRows);
+  if (row.childRows !== null && row.childRows !== lastInlineChildRows) {
+    setLastInlineChildRows(row.childRows);
+  }
 
   return (
     <TimelineDetailScroll
       size="delegation"
       streaming={delegationActive}
-      contentKey={`${timelineRowsSignature(childRows)}|${row.output.length}`}
+      contentKey={`${row.childRows === null ? "deferred" : timelineRowsSignature(row.childRows)}|${row.output.length}`}
       className={NESTED_TIMELINE_GROUP_LINE_CLASS_NAME}
     >
       <div className="flex flex-col gap-3">
-        {leadingContent}
-        {childRows.length > 0 ? (
+        {row.childRows === null ? (
+          <DeferredDelegationChildRows
+            fallbackRows={lastInlineChildRows}
+            row={row}
+          />
+        ) : row.childRows.length > 0 ? (
           <TimelineRowsList
-            rows={childRows}
+            rows={row.childRows}
             scopeActive={delegationActive}
             showAssistantMessageActions={false}
             compactActivityIntents={false}
