@@ -8,6 +8,10 @@ import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { isRouteLoadingSkeletonMounted } from "@/components/ui/route-loading-skeleton";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
+import {
+  SHORT_LIVED_STATUS_DELAY_MS,
+  useSustainedFlag,
+} from "@/hooks/useSustainedFlag";
 import { ThreadTimelineLoadingSkeleton } from "./ThreadTimelineLoadingSkeleton.js";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
@@ -193,6 +197,13 @@ export function ThreadTimelineSurface({
     stoppingAnchorAt,
     threadId,
   });
+  const isOngoingIndicatorSustained = useSustainedFlag(
+    showOngoingIndicator,
+    SHORT_LIVED_STATUS_DELAY_MS,
+  );
+  const isOngoingIndicatorVisible =
+    showOngoingIndicator &&
+    (timelineRowsWithPendingStop.length > 0 || isOngoingIndicatorSustained);
   const showLoadOlderRows =
     hasOlderTimelineRows &&
     onLoadOlderRows !== undefined &&
@@ -256,7 +267,7 @@ export function ThreadTimelineSurface({
         <HeightTransition visible={showCatchUpIndicator}>
           {showCatchUpIndicator ? <DelayedCatchUpIndicator /> : null}
         </HeightTransition>
-        <HeightTransition visible={showOngoingIndicator}>
+        <HeightTransition visible={isOngoingIndicatorVisible}>
           <TimelineWorkingIndicator
             key={ongoingIndicatorKey}
             details={activeThinkingDetails}
