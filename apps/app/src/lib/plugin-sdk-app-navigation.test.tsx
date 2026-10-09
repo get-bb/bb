@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings } from "@bb/domain";
@@ -60,15 +61,17 @@ function renderProbe(
 ) {
   const results: boolean[] = [];
   render(
-    <MemoryRouter initialEntries={["/"]}>
-      <AppCommandProvider>
-        <PaletteHandler onRun={onPaletteOpen} />
-        <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-          <NavigateProbe action={action} results={results} />
-        </PluginSlotMount>
-        <LocationProbe />
-      </AppCommandProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={["/"]}>
+        <AppCommandProvider>
+          <PaletteHandler onRun={onPaletteOpen} />
+          <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+            <NavigateProbe action={action} results={results} />
+          </PluginSlotMount>
+          <LocationProbe />
+        </AppCommandProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Run" }));
   return results;
