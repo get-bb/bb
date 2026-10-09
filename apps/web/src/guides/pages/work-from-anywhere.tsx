@@ -16,7 +16,7 @@ const AGENT_PROMPT = withIntake(
   `Get this bb ready for me to use from my phone.
 Guide: https://getbb.app/guides/work-from-anywhere
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't change any other settings.
+Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't change any other settings.
 
 1. Check the account: run \`bb account status\`.
    Check: it shows a signed-in getbb.app account. If not, run \`bb account login\`, send me the link and code it prints, and ask me to approve it and claim a handle, then tell you "done". Then run \`bb account status\` again.

@@ -22,7 +22,7 @@ const AGENT_PROMPT = withIntake(
   `Run a dev server for each branch on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
+Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
 
 1. Find or add the machine. Run \`bb machine list\`. If the machine isn't there, add it without blocking this thread: bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual", then read the one-time install command from bb terminal output <terminal-id> and run it on that machine over SSH.
    Check: \`bb machine list\` shows the machine as connected. If you can't reach it over SSH, stop and send me the install command to run there.

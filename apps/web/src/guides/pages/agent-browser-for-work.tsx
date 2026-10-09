@@ -24,7 +24,7 @@ const AGENT_PROMPT = withIntake(
   `Use a real browser to do the web task above, and show me what you found.
 Guide: https://getbb.app/guides/agent-browser-for-work
 
-You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
+Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
 
 1. Set up browser access. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation if it's missing, or enable it with bb plugin enable browser-automation if it's off. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Then read bb guide browser and bb browser-automation --help.
    Check: both plugins are running.
