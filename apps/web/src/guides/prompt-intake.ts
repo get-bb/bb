@@ -3,20 +3,18 @@ export interface IntakeField {
   hint: string;
 }
 
-const FOR_AGENT = [
-  "--- For the agent ---",
-  "Read the lines above first. Treat a line as blank if it still has only its [bracketed hint]. For each blank line, interview me: ask one short question at a time, suggest a sensible default, and wait for my answer. If no line is blank, skip the questions. Either way, restate the plan in three bullets and wait for my go before step 1.",
+const AFTER_QUESTIONS = [
+  "Skip any question I've already answered in this thread. Then restate the plan in three bullets and wait for my go before step 1.",
   "Use my answers exactly. If an answer conflicts with a step below, my answer wins, and skip any step an answer turns off.",
   "When you wait on a thread or a run, a timeout isn't a failure: wait again, up to three times.",
 ].join("\n");
 
 export function withIntake(fields: IntakeField[], prompt: string): string {
-  const lines = fields.map((field) => `${field.label}: [${field.hint}]`);
+  const questions = fields.map((field) => `- ${field.label} (${field.hint})`);
   return [
-    "Fill in what you know below, replacing the brackets. Leave the rest for the agent to ask you about.",
-    ...lines,
-    "",
-    FOR_AGENT,
+    "First, ask me about each of these, one question at a time. Suggest a sensible default and wait for my answer.",
+    ...questions,
+    AFTER_QUESTIONS,
     "",
     prompt,
   ].join("\n");

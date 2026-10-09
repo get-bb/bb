@@ -259,7 +259,7 @@ export const guide: Guide = {
   concept: <BrowserConcept scene="code" />,
   picker: null,
   handoffNote:
-    "Fill in your app's address and what to check, or leave them and your agent asks. It opens a browser, tries the change, and shows you screenshots.",
+    "Your agent asks what to check, then tries it in a browser and shows you screenshots.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

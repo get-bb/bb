@@ -63,7 +63,7 @@ export const guide: Guide = {
   concept: <AgentSplit />,
   picker: null,
   handoffNote:
-    "Fill in your task at the top, or leave it and Claude Code asks. It builds it, has Codex review, and stops after two rounds.",
+    "Claude Code asks for your task, builds it, and has Codex review it.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
@@ -94,14 +94,14 @@ export const guide: Guide = {
             <strong>Opus 5.5</strong>, and choose <strong>Worktree</strong>.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong>, and fill in
-            your task at the top.
+            Paste the prompt from <strong>Copy for agent</strong> and send it.
+            Claude Code asks for your task.
           </li>
         </Substeps>
       ),
       shot: {
-        src: "/guides/claude-code-and-codex-together/window-start.png",
-        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test.",
+        src: "/guides/claude-code-and-codex-together/window-start-interview.png",
+        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, starting with the questions the agent asks: your task.",
         width: 2048,
         height: 1280,
       },

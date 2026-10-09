@@ -182,7 +182,7 @@ Check: bb automation list --project <project id> shows each one, paused. Show me
         hint: "default: every repo and all unfinished work",
       },
       { label: "Skip", hint: "repos or worktrees to leave out" },
-      { label: "Anything else", hint: "e.g. a repo your agents never touched" },
+      { label: "Anything else", hint: "other repos I used with my old tool" },
     ],
     `Move every project and all my unfinished work from ${from} into bb.
 Guide: ${url}
@@ -201,7 +201,7 @@ Step 1. Find every repo.
    git -C <folder> rev-parse --path-format=absolute --git-common-dir
    The repo is that path without the trailing /.git. Skip folders that aren't in a Git repo.
 1c. For each repo, run git -C <repo> worktree list to find its other worktrees.
-1d. Add any repos from the "Anything else" line. If that line is blank, ask me whether I used any other repos with my old tool, and add them. Drop anything on the Skip line.
+1d. Add any repos from my "Anything else" answer, and drop anything from my Skip answer.
 Check: show me a table of repos and how many folders each has. Wait for me to confirm the list, and drop any repo I say to skip.
 
 Step 2. Add each repo as a bb project.
@@ -214,7 +214,7 @@ Step 3. List the work to bring over. Make one table with these rows:
 - One row for each worktree from step 1c that has uncommitted changes or commits not on the default branch, unless a conversation row already uses that folder.
 - One row for each open pull request from gh pr list --author @me --state open, run inside each repo's folder, unless an earlier row already uses that branch. Skip pull requests from forks.
 Columns: repo, folder or branch, last activity, first request or pull request title, and source (conversation, worktree, or pull request).
-Check: show me the table and ask which rows to bring over, unless the "Work to bring over" line already says. If there are more than 20 rows, group them by repo, and ask before starting more than 10 threads.
+Check: show me the table and ask which rows to bring over, unless my "Work to bring over" answer already says. If there are more than 20 rows, group them by repo, and ask before starting more than 10 threads.
 
 Step 4. Start one bb thread for each row I picked.
 4a. First, tell me the threads may share the old tool's folders, and wait for my OK. Then make a temp folder with mktemp -d, outside every repo, and write a new prompt file for the row there. Its first line is the conversation file path for a conversation row, the pull request URL for a pull request row, or empty for a worktree row. After that line, copy the text between the === markers at the end of this message.
@@ -266,7 +266,7 @@ export function guideVariant(variant: string | null): Guide {
         ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
       ],
     },
-    handoffNote: `Paste it into a new bb thread. Fill in the top lines, or leave them and your agent asks. It checks with you before it starts any threads. ${keepsWorking}`,
+    handoffNote: `Paste it into a new bb thread. Your agent asks what to bring over. ${keepsWorking}`,
     agentPrompt: switchPrompt(tool),
     needs: [
       {

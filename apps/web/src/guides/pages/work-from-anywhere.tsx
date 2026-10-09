@@ -47,7 +47,7 @@ export const guide: Guide = {
   concept: <AnywhereConcept />,
   picker: null,
   handoffNote:
-    "Fill in the lines at the top, or leave them and your agent asks. It sets everything up and sends you your address.",
+    "Your agent asks a few questions, sets everything up, and sends you your address.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {

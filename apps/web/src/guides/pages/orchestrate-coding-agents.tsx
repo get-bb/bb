@@ -19,7 +19,7 @@ const AGENT_PROMPT = withIntake(
     { label: "Task", hint: "what to build or fix" },
     {
       label: "Reviewer",
-      hint: "a different agent from the one you paste this into, e.g. Codex",
+      hint: "a different agent from you, e.g. Codex",
     },
   ],
   `Build the task, have a different agent review it in its own thread, talk it through with the reviewer, and stop after two review rounds.
@@ -33,7 +33,7 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 2. Build the task and commit your work.
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
-3. Start the reviewer in its own thread, in this worktree. Use the Reviewer line; if it's blank, use Codex if you're Claude Code, and Claude Code otherwise. Get provider IDs from bb provider list.
+3. Start the reviewer in its own thread, in this worktree. Use my Reviewer answer. The default is Codex if you're Claude Code, and Claude Code otherwise. Get provider IDs from bb provider list.
    bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider <provider-id> --title "<task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
    Check: the spawn returns a thread ID. If the reviewer fails to start, stop and ask me to sign in to that agent on this computer.
 
@@ -67,7 +67,7 @@ export const guide: Guide = {
   concept: <SpawnTimeline />,
   picker: null,
   handoffNote:
-    "Fill in your task at the top, or leave it and your agent asks. It builds it, brings in a second agent to review, and stops after two rounds.",
+    "Your agent asks for your task, builds it, and has a second agent review it.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
@@ -98,14 +98,14 @@ export const guide: Guide = {
             <strong>Worktree</strong> so the work gets its own branch.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong>, and fill in
-            your task and reviewer at the top.
+            Paste the prompt from <strong>Copy for agent</strong> and send it.
+            Your agent asks for your task and reviewer.
           </li>
         </Substeps>
       ),
       shot: {
-        src: "/guides/orchestrate-coding-agents/window-start.png",
-        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted with the task filled in at the top: add per-user rate limiting to the upload endpoint, with a test, and Codex as the reviewer.",
+        src: "/guides/orchestrate-coding-agents/window-start-interview.png",
+        alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, starting with the questions the agent asks: your task and reviewer.",
         width: 2048,
         height: 1280,
       },

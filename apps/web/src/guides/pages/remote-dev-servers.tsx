@@ -37,7 +37,7 @@ You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order an
 4. Give each branch its own ports. In each branch's worktree, if there's no \`.env.local\`, pick two free ports and write WEB_PORT and API_PORT to \`.env.local\` there. Don't commit it. (A committed \`.bb-env-setup.sh\` that does this only runs for branches that already contain it.)
    Check: every worktree's \`.env.local\` has different ports.
 
-5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using the Dev server command line. Pass the host and port as environment variables, since many dev commands ignore extra flags (npm scripts need \`--\` before flags):
+5. Start each dev server in a bb terminal, listening on 127.0.0.1 at its WEB_PORT, using my Dev server command answer. Pass the host and port as environment variables, since many dev commands ignore extra flags (npm scripts need \`--\` before flags):
    bb terminal create --thread <thread-id> --title "Dev server" --command 'set -a; . ./.env.local; set +a; HOST=127.0.0.1 PORT="$WEB_PORT" <dev server command>'
    Check: \`bb terminal output <terminal-id>\` shows the server listening on 127.0.0.1 at that port, not on all interfaces. If it isn't, stop and ask me before changing the app's code.
 
@@ -68,7 +68,7 @@ export const guide: Guide = {
   concept: <RemoteServersConcept />,
   picker: null,
   handoffNote:
-    "Fill in your branches and machine at the top, or leave them and your agent asks. It runs every step and stops if it needs you.",
+    "Your agent asks which branches to run, then starts a dev server for each.",
   agentPrompt: AGENT_PROMPT,
   needs: [
     {
