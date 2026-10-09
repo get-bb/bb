@@ -18,6 +18,7 @@ import {
   useFileOpenerPreference,
 } from "@/lib/file-opener-preference";
 import { usePluginSlots, type PluginFileOpenerSlot } from "@/lib/plugin-slots";
+import { usePluginDisplayNames } from "@/lib/plugin-logos";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SETTINGS_DROPDOWN_CONTENT_CLASS,
@@ -84,18 +85,19 @@ function ExtensionOpenerControl({
   openers: PluginFileOpenerSlot[];
   preference: string;
 }) {
+  const getPluginName = usePluginDisplayNames();
   const automaticOpener = openers[0];
   if (automaticOpener === undefined) return null;
 
   const options = [
     {
       key: AUTOMATIC_FILE_OPENER_PREFERENCE,
-      label: `Automatic (${automaticOpener.title})`,
+      label: `Automatic (${getPluginName(automaticOpener.pluginId)})`,
     },
     { key: BUILT_IN_FILE_OPENER_PREFERENCE, label: BUILTIN_LABEL },
     ...openers.map((opener) => ({
       key: buildFileOpenerRef(opener),
-      label: `${opener.title} (${opener.pluginId})`,
+      label: `${getPluginName(opener.pluginId)} (${opener.title})`,
     })),
   ];
   const selected =

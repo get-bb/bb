@@ -202,6 +202,7 @@ import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tab
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginDisplayNames } from "@/lib/plugin-logos";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
@@ -681,6 +682,7 @@ function ThreadDetailViewInternal(
     fileOpeners: pluginFileOpeners,
     threadPanelActions: pluginThreadPanelActions,
   } = usePluginSlots();
+  const getPluginName = usePluginDisplayNames();
   useThreadOpenFileSignal({
     threadId,
     environmentId: thread?.environmentId,
@@ -2080,7 +2082,7 @@ function ThreadDetailViewInternal(
           },
           ...matching.map((opener) => ({
             id: `${opener.pluginId}:${opener.id}`,
-            label: `Open with ${opener.title}`,
+            label: `Open with ${getPluginName(opener.pluginId)} (${opener.title})`,
             onSelect: () => {
               handleOpenTimelineLocalFileLink(link, {
                 viewer: { pluginId: opener.pluginId, openerId: opener.id },
@@ -2121,6 +2123,7 @@ function ThreadDetailViewInternal(
       handleOpenTimelineLocalFileLink,
       openPathInFileTarget,
       pluginFileOpeners,
+      getPluginName,
     ],
   );
   const handleOpenFilePreview = useCallback<OpenFilePreviewHandler>(
