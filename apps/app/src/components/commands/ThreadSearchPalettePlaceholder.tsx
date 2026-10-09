@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
+import { useId, type ReactNode } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
+import { PaletteShell } from "./PaletteShell";
 
 export const THREAD_SEARCH_INPUT = {
   label: "Search threads",
@@ -25,22 +26,41 @@ export function PaletteStatusMessage({ children }: { children: ReactNode }) {
   );
 }
 
-export function ThreadSearchPalettePlaceholder() {
+export function ThreadSearchPalettePlaceholder({
+  query,
+  onQueryChange,
+  onExit,
+}: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  onExit: () => void;
+}) {
+  const listId = useId();
+  const isCompact = useIsCompactViewport();
   return (
-    <>
-      <PaletteInputBand>
-        <Skeleton className="h-6 w-20 shrink-0 rounded-md" />
-        <input
-          autoFocus
-          readOnly
-          aria-label={THREAD_SEARCH_INPUT.label}
-          className={PALETTE_INPUT_CLASS}
-          placeholder={THREAD_SEARCH_INPUT.placeholder}
-        />
-      </PaletteInputBand>
-      <div role="status" className="rounded-b-[inherit] bg-background p-1">
-        <PaletteStatusMessage>Loading threads</PaletteStatusMessage>
-      </div>
-    </>
+    <PaletteShell
+      inputDescription="Use Escape to return to commands."
+      inputLabel={THREAD_SEARCH_INPUT.label}
+      listId={listId}
+      listLabel="Threads"
+      modeChip={threadSearchModeChip(onExit, isCompact)}
+      inputAccessory={<span aria-hidden className="w-8 shrink-0" />}
+      onInputChange={onQueryChange}
+      onInputKeyDown={(event) => {
+        if (event.nativeEvent.isComposing) return;
+        if (
+          event.key === "Escape" ||
+          (event.key === "Backspace" && query.length === 0)
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          onExit();
+        }
+      }}
+      placeholder={THREAD_SEARCH_INPUT.placeholder}
+      value={query}
+    >
+      <ListLoadingPlaceholder label="Loading threads" />
+    </PaletteShell>
   );
 }

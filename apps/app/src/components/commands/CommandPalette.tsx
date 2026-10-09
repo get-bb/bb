@@ -1,3 +1,4 @@
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { defineSplit } from "@/lib/define-split";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -40,7 +41,7 @@ const ThreadSearchPaletteMode = defineSplit({
     import("./ThreadSearchPaletteMode").then(
       (module) => module.ThreadSearchPaletteMode,
     ),
-  loading: () => <ThreadSearchPalettePlaceholder />,
+  loading: (props) => <ThreadSearchPalettePlaceholder {...props} />,
   tier: "preload",
 });
 
@@ -61,6 +62,7 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
+  const isCompact = useIsCompactViewport();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
 
@@ -250,7 +252,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       <DialogContent
         hideCloseButton
         aria-describedby={undefined}
-        className="top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl"
+        compactContentClassName="h-[min(32rem,80dvh)]"
+        className={`top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl ${isCompact ? "min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)]" : ""}`}
         onAfterCloseAutoFocus={handleAfterCloseAutoFocus}
         onKeyDownCapture={(event) => {
           if (
@@ -295,6 +298,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
           />
         ) : (
           <ThreadSearchPaletteMode
+            query={query}
+            onQueryChange={setQuery}
             onExit={exitMode}
             runAfterClose={runAfterClose}
           />

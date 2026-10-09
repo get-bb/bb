@@ -4,7 +4,9 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
@@ -66,6 +68,7 @@ export function PaletteShell({
   placeholder,
   value,
 }: PaletteShellProps) {
+  const isCompact = useIsCompactViewport();
   const inputDescriptionId = useId();
   const overflow = useScrollOverflowState<HTMLDivElement>({
     measureOverflow: true,
@@ -95,7 +98,7 @@ export function PaletteShell({
           aria-label={inputLabel}
           autoComplete="off"
           spellCheck={false}
-          className={PALETTE_INPUT_CLASS}
+          className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
           placeholder={placeholder}
           value={value}
           onChange={(event) => onInputChange(event.target.value)}
@@ -115,7 +118,7 @@ export function PaletteShell({
           id={listId}
           role="listbox"
           aria-label={listLabel}
-          className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1"
+          className={`${isCompact ? "h-full" : "max-h-[min(24rem,50dvh)]"} overflow-y-auto p-1`}
           style={{
             WebkitMaskImage: resultsMask,
             maskImage: resultsMask,

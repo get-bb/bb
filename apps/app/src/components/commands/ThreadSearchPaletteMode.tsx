@@ -83,9 +83,13 @@ function optionKey(option: ThreadSearchOption): string {
 }
 
 export function ThreadSearchPaletteMode({
+  query,
+  onQueryChange: setQuery,
   onExit,
   runAfterClose,
 }: {
+  query: string;
+  onQueryChange: (query: string) => void;
   onExit: () => void;
   runAfterClose: (run: () => void) => void;
 }) {
@@ -108,10 +112,11 @@ export function ThreadSearchPaletteMode({
   const [sortDirection, setSortDirection] = useAtom(
     paletteThreadSortDirectionAtom,
   );
-  const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>(
+    [],
+  );
   const [shownCounts, setShownCounts] = useState<
     Partial<Record<ThreadArchiveFilter, number>>
   >({});
@@ -569,7 +574,11 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
                   className="mr-1 inline-block size-3.5 align-text-bottom"
                   aria-hidden
                 />
-                {highlightedText(row.projectName, 0, row.projectHighlightRanges)}
+                {highlightedText(
+                  row.projectName,
+                  0,
+                  row.projectHighlightRanges,
+                )}
                 {" · "}
               </>
             )}
