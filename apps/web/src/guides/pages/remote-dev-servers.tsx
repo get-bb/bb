@@ -55,6 +55,7 @@ export const guide: Guide = {
   ...meta,
   description:
     "Every agent's branch gets its own dev server and port, reloading as the agent codes. Access them via private link from a browser or your phone.",
+  heroTop: null,
   concept: <RemoteServersConcept />,
   agentPrompt: AGENT_PROMPT,
   requirement: null,

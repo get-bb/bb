@@ -50,6 +50,7 @@ export const guide: Guide = {
   ...meta,
   description:
     "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch.",
+  heroTop: null,
   concept: <BrowserConcept scene="work" />,
   agentPrompt: AGENT_PROMPT,
   requirement: "the bb desktop app for sites you're logged in to",

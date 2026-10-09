@@ -57,6 +57,7 @@ export const guide: Guide = {
   ...meta,
   description:
     "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
+  heroTop: null,
   concept: <SpawnTimeline />,
   agentPrompt: AGENT_PROMPT,
   requirement: "two or more agents signed in, like Claude Code and Codex",
