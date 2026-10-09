@@ -51,7 +51,6 @@ export const guide: Guide = {
   description:
     "Your agent compares pricing pages, pulls numbers from your dashboards, and fills in forms, in a browser you can watch.",
   concept: <BrowserConcept scene="work" />,
-  heroBadge: null,
   agentPrompt: AGENT_PROMPT,
   requirement: "the bb desktop app for sites you're logged in to",
   steps: [
