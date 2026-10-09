@@ -10,8 +10,8 @@ export const NESTED_SHOT: GuideShot = {
 };
 
 export const SPLIT_SHOT: GuideShot = {
-  src: "/guides/claude-code-and-codex-together/window-split.png",
-  alt: "bb split into two panes. On the left, the Claude Code thread caps the rate limiter's memory and sums up Codex's second review. On the right, the Codex reviewer gets its message, finds no serious issues, and flags one minor one.",
+  src: "/guides/claude-code-and-codex-together/window-split-oneround.png",
+  alt: "bb in split view: on the left, the Claude Code thread sums up what it built, what Codex's single review found, and what it fixed; on the right, the Codex reviewer's child thread lists one serious and two minor issues.",
   width: 2048,
   height: 1280,
 };
