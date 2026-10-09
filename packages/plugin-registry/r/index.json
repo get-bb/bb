@@ -6,6 +6,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "action-menu-items",
+      "type": "registry:ui"
+    },
+    {
       "name": "activity-row-styles",
       "type": "registry:ui"
     },
@@ -78,7 +82,19 @@
       "type": "registry:ui"
     },
     {
+      "name": "compact-long-press-menu",
+      "type": "registry:ui"
+    },
+    {
+      "name": "confirm-delete-dialog",
+      "type": "registry:ui"
+    },
+    {
       "name": "context-menu",
+      "type": "registry:ui"
+    },
+    {
+      "name": "context-selection",
       "type": "registry:ui"
     },
     {
@@ -115,6 +131,14 @@
     },
     {
       "name": "icon",
+      "type": "registry:ui"
+    },
+    {
+      "name": "inline-rename",
+      "type": "registry:ui"
+    },
+    {
+      "name": "inline-rename-editor",
       "type": "registry:ui"
     },
     {
@@ -198,6 +222,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "rename-dialog",
+      "type": "registry:ui"
+    },
+    {
       "name": "resizable",
       "type": "registry:ui"
     },
@@ -262,11 +290,31 @@
       "type": "registry:ui"
     },
     {
+      "name": "sidebar-customize-panel",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sidebar-hover-actions",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sidebar-row-classes",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sidebar-visibility-customize",
+      "type": "registry:ui"
+    },
+    {
       "name": "skeleton",
       "type": "registry:ui"
     },
     {
       "name": "slider",
+      "type": "registry:ui"
+    },
+    {
+      "name": "sortable-motion",
       "type": "registry:ui"
     },
     {
@@ -283,6 +331,10 @@
     },
     {
       "name": "textarea",
+      "type": "registry:ui"
+    },
+    {
+      "name": "thread-list-empty-state",
       "type": "registry:ui"
     },
     {
@@ -306,12 +358,28 @@
       "type": "registry:hook"
     },
     {
+      "name": "use-dialog-state",
+      "type": "registry:ui"
+    },
+    {
+      "name": "use-drag-click-suppression",
+      "type": "registry:ui"
+    },
+    {
       "name": "use-media-query",
       "type": "registry:hook"
     },
     {
       "name": "use-pointer-coarse",
       "type": "registry:hook"
+    },
+    {
+      "name": "use-reorder-dnd",
+      "type": "registry:ui"
+    },
+    {
+      "name": "use-sidebar-reorder-dnd",
+      "type": "registry:ui"
     },
     {
       "name": "utils",

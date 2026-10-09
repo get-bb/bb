@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   defaultUiPreferences,
   PERSONAL_PROJECT_ID,
@@ -17,7 +18,10 @@ import {
   type ThreadStatus,
 } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
-import { makeHost, makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeHost,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
 import {
   hostsQueryKey,
@@ -25,11 +29,25 @@ import {
   uiPreferencesQueryKey,
 } from "@/hooks/queries/query-keys";
 import { updateCachedThreadListStatusState } from "@/hooks/cache-owners/query-cache";
-import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
 import { isPluginAppDefinition } from "@/lib/plugin-app-definition";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
-import type { PluginThreadListSlot } from "@/lib/plugin-slots";
+import {
+  setPluginSlotRegistrations,
+  type PluginThreadListSlot,
+} from "@/lib/plugin-slots";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import {
+  resetThreadActionRegistryForTest,
+  ThreadActionCollectors,
+  ThreadActionSurfaceVisibility,
+} from "@/lib/thread-actions/thread-action-registry";
+import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { PluginThreadList } from "./PluginThreadList";
 
@@ -64,42 +82,79 @@ vi.mock("@/lib/ws", () => ({
   ),
 }));
 
+const notificationListRequests: string[][] = [];
+
 function stubPluginRpcFetch(): void {
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    if (!url.includes("/rpc/")) {
-      return new Response("{}", { status: 404 });
-    }
-    const method = url.split("/rpc/")[1] ?? "";
-    let result: unknown = null;
-    if (method === "listPreferences") {
-      result = { preferences: {} };
-    } else if (method === "setPreference" || method === "resetPreference") {
-      result = JSON.parse(String(init?.body ?? "{}"));
-    }
-    return new Response(JSON.stringify({ ok: true, result }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  });
+  vi.stubGlobal(
+    "fetch",
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes("/rpc/")) {
+        return new Response("{}", { status: 404 });
+      }
+      const method = url.split("/rpc/")[1] ?? "";
+      let result: unknown = null;
+      if (method === "listPreferences") {
+        result = { preferences: {} };
+      } else if (method === "threadNotifications.list") {
+        const { threadIds } = z
+          .object({ threadIds: z.array(z.string()) })
+          .parse(JSON.parse(String(init?.body)));
+        notificationListRequests.push(threadIds);
+        result = {
+          threads: Object.fromEntries(
+            threadIds.flatMap((id) => {
+              const level = CONFIGURED_NOTIFICATION_LEVELS.get(id);
+              return level === undefined ? [] : [[id, level]];
+            }),
+          ),
+        };
+      } else if (method === "setPreference" || method === "resetPreference") {
+        result = JSON.parse(String(init?.body ?? "{}"));
+      }
+      return new Response(JSON.stringify({ ok: true, result }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  );
 }
 
-const THREAD_LIST_APP_MODULE = resolve(
-  __dirname,
-  "../../../../../plugins/thread-list/app.tsx",
+const CONFIGURED_NOTIFICATION_LEVELS = new Map(
+  Array.from({ length: 100 }, (_, index) => [
+    `thr_${index * 13}`,
+    { own: index % 2 === 0 ? "muted" : "input-only", ancestorCap: null },
+  ]),
 );
 
-async function loadPluginThreadListReplacement(): Promise<
-  ResolvedReplacement<PluginThreadListSlot>
-> {
+async function loadPluginAppThreadActions(pluginId: string) {
   installPluginRuntime();
   const module: { default?: unknown } = await import(
-    /* @vite-ignore */ THREAD_LIST_APP_MODULE
+    /* @vite-ignore */ resolve(
+      __dirname,
+      `../../../../../plugins/${pluginId}/app.tsx`,
+    )
   );
   if (!isPluginAppDefinition(module.default)) {
-    throw new Error("thread-list's app.tsx exports no plugin app definition");
+    throw new Error(`${pluginId}'s app.tsx exports no plugin app definition`);
   }
   const collected = collectPluginAppRegistrations(module.default);
+  setPluginSlotRegistrations(
+    pluginId,
+    makePluginRegistrationSet({ threadActions: collected.threadActions }),
+  );
+  return collected;
+}
+
+async function loadPluginThreadListReplacement({
+  withNotifications,
+}: {
+  withNotifications: boolean;
+}): Promise<ResolvedReplacement<PluginThreadListSlot>> {
+  if (withNotifications) {
+    await loadPluginAppThreadActions("push-notifications");
+  }
+  const collected = await loadPluginAppThreadActions("thread-list");
   const registration = collected.threadLists[0];
   if (registration === undefined) {
     throw new Error("thread-list plugin registered no thread list");
@@ -159,7 +214,9 @@ function buildBootstrap(threadCount: number): SidebarBootstrapResponse {
   for (let index = 0; index < threadCount; index += 1) {
     const projectIndex = index % (PROJECT_COUNT + 1);
     const project =
-      projectIndex === PROJECT_COUNT ? personalProject : projects[projectIndex]!;
+      projectIndex === PROJECT_COUNT
+        ? personalProject
+        : projects[projectIndex]!;
     const isChild = index % 10 === 9 && roots.length > 0;
     const parent = isChild ? roots[roots.length - 1]! : null;
     const status = STATUSES[index % STATUSES.length]!;
@@ -170,7 +227,9 @@ function buildBootstrap(threadCount: number): SidebarBootstrapResponse {
       titleFallback: `Thread ${index}`,
       parentThreadId: parent?.id ?? null,
       sectionId:
-        parent === null && index % 2 === 0 ? `sec_${index % SECTION_COUNT}` : null,
+        parent === null && index % 2 === 0
+          ? `sec_${index % SECTION_COUNT}`
+          : null,
       pinnedAt: parent === null && index % 150 === 0 ? 1_000 + index : null,
       status,
       runtime: { displayStatus: status },
@@ -187,9 +246,10 @@ function buildBootstrap(threadCount: number): SidebarBootstrapResponse {
         index % 4 !== 0 ? "managed-worktree" : "other",
     });
     if (parent === null) roots.push(thread);
-    const target = thread.projectId === PERSONAL_PROJECT_ID
-      ? personalProject
-      : projects.find((candidate) => candidate.id === thread.projectId)!;
+    const target =
+      thread.projectId === PERSONAL_PROJECT_ID
+        ? personalProject
+        : projects.find((candidate) => candidate.id === thread.projectId)!;
     target.threads.push(thread);
   }
   return { sections, projects, personalProject };
@@ -232,7 +292,9 @@ function installViewport(): () => void {
   Object.defineProperty(HTMLElement.prototype, "clientHeight", {
     configurable: true,
     get(this: HTMLElement) {
-      return this.matches('[data-sidebar="content"]') ? VIEWPORT_HEIGHT : ROW_HEIGHT;
+      return this.matches('[data-sidebar="content"]')
+        ? VIEWPORT_HEIGHT
+        : ROW_HEIGHT;
     },
   });
   const originalRect = HTMLElement.prototype.getBoundingClientRect;
@@ -262,7 +324,13 @@ function installViewport(): () => void {
   return () => {
     globalThis.IntersectionObserver = originalObserver;
     if (heightDescriptor) {
-      Object.defineProperty(HTMLElement.prototype, "clientHeight", heightDescriptor);
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "clientHeight",
+        heightDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
     }
     HTMLElement.prototype.getBoundingClientRect = originalRect;
   };
@@ -279,13 +347,18 @@ interface BenchResults {
   statusPatchMs: number;
   membershipRefetchMs: number;
   pinMs: number;
+  queryObservers: number;
+  queryObserversPerRow: number;
 }
 
-function seedQueryClient(): QueryClient {
+function seedQueryClient(threadCount = THREAD_COUNT): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
-  queryClient.setQueryData(sidebarNavigationQueryKey(), buildBootstrap(THREAD_COUNT));
+  queryClient.setQueryData(
+    sidebarNavigationQueryKey(),
+    buildBootstrap(threadCount),
+  );
   queryClient.setQueryData(uiPreferencesQueryKey(), {
     preferences: Object.fromEntries(
       UI_PREFERENCE_KEYS.map((key) => [
@@ -338,6 +411,10 @@ async function runScenario(
     "[data-sidebar-windowed-item]",
   ).length;
   expect(renderedRows).toBeGreaterThan(0);
+  const queryObservers = queryClient
+    .getQueryCache()
+    .getAll()
+    .reduce((total, query) => total + query.getObserversCount(), 0);
 
   const patchSamples: number[] = [];
   const refetchSamples: number[] = [];
@@ -432,6 +509,9 @@ async function runScenario(
     statusPatchMs: Math.round(median(patchSamples)),
     membershipRefetchMs: Math.round(median(refetchSamples)),
     pinMs: Math.round(median(pinSamples)),
+    queryObservers,
+    queryObserversPerRow:
+      Math.round((queryObservers / renderedRows) * 100) / 100,
   };
   process.stdout.write(`SIDEBAR_BENCH ${JSON.stringify(results)}\n`);
   return results;
@@ -440,21 +520,128 @@ async function runScenario(
 describe.skipIf(!BENCH_ENABLED)("sidebar thread list benchmark", () => {
   const collected: BenchResults[] = [];
 
-  it(`mounts and updates the plugin list with ${THREAD_COUNT} threads`, { timeout: 180_000 }, async () => {
-    stubPluginRpcFetch();
-    const replacement = await loadPluginThreadListReplacement();
-    collected.push(
-      await runScenario(
-        "plugin",
-        seedQueryClient(),
-        <PluginThreadList replacement={replacement} onNavigate={() => {}} />,
-      ),
-    );
-    vi.unstubAllGlobals();
-  });
+  it(
+    `mounts and updates the plugin list with ${THREAD_COUNT} threads`,
+    { timeout: 180_000 },
+    async () => {
+      stubPluginRpcFetch();
+      const replacement = await loadPluginThreadListReplacement({
+        withNotifications: true,
+      });
+      collected.push(
+        await runScenario(
+          "plugin",
+          seedQueryClient(),
+          <>
+            <ThreadActionCollectors
+              coreRegistrations={CORE_THREAD_ACTIONS}
+              requestRename={() => {}}
+            />
+            <PluginThreadList replacement={replacement} onNavigate={() => {}} />
+          </>,
+        ),
+      );
+      const requestedIds = notificationListRequests.flat();
+      expect(notificationListRequests.length).toBeGreaterThan(0);
+      expect(new Set(requestedIds).size).toBe(requestedIds.length);
+      process.stdout.write(
+        `SIDEBAR_BENCH_NOTIFICATIONS ${JSON.stringify({
+          listCalls: notificationListRequests.length,
+          idsRequested: requestedIds.length,
+        })}\n`,
+      );
+      vi.unstubAllGlobals();
+    },
+  );
 
   it("writes the comparison", () => {
     const out = process.env.BB_SIDEBAR_BENCH_OUT;
     if (out) writeFileSync(out, `${JSON.stringify(collected, null, 2)}\n`);
+  });
+});
+
+describe("hidden sidebar thread list", () => {
+  it("mounts no rows and subscribes no thread ids", async () => {
+    resetThreadActionRegistryForTest();
+    stubPluginRpcFetch();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+        takeRecords() {
+          return [];
+        }
+      },
+    );
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const replacement = await loadPluginThreadListReplacement({
+      withNotifications: false,
+    });
+    const seen: (readonly string[])[] = [];
+    setPluginSlotRegistrations(
+      "recorder",
+      makePluginRegistrationSet({
+        threadActions: [
+          {
+            id: "recorder",
+            title: "Recorder",
+            icon: "Notification",
+            group: "9_test",
+            useData: ({ threadIds }) => {
+              if (seen.at(-1) !== threadIds) seen.push(threadIds);
+              return null;
+            },
+            item: () => null,
+          },
+        ],
+      }),
+    );
+    const rendered = render(
+      <TooltipProvider>
+        <JotaiProvider store={createStore()}>
+          <QueryClientProvider client={seedQueryClient(250)}>
+            <MemoryRouter>
+              <SidebarProvider>
+                <Sidebar>
+                  <SidebarContent>
+                    <ThreadActionCollectors
+                      coreRegistrations={CORE_THREAD_ACTIONS}
+                      requestRename={() => {}}
+                    />
+                    <ThreadActionSurfaceVisibility visible={false}>
+                      <PluginThreadList
+                        replacement={replacement}
+                        onNavigate={() => {}}
+                      />
+                    </ThreadActionSurfaceVisibility>
+                  </SidebarContent>
+                </Sidebar>
+              </SidebarProvider>
+            </MemoryRouter>
+          </QueryClientProvider>
+        </JotaiProvider>
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(
+      rendered.container.querySelectorAll("[data-sidebar-windowed-item]")
+        .length,
+    ).toBeGreaterThan(100);
+    expect(
+      rendered.container.querySelectorAll("[data-sidebar-thread-id]"),
+    ).toHaveLength(0);
+    expect(seen.every((ids) => ids.length === 0)).toBe(true);
+    vi.unstubAllGlobals();
   });
 });

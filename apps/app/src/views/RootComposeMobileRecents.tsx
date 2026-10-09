@@ -3,9 +3,10 @@ import { useAtom } from "jotai";
 import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
-import { ThreadActionsLongPressMenu } from "@/components/thread/ThreadActionsMenu";
-import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
-import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { ThreadActionsContextMenu } from "@/components/thread/ThreadActionsMenu";
+import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { getSidebarThreadRowPaddingLeft } from "@bb/shared-ui/sidebar-row-classes";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
@@ -43,7 +44,7 @@ import { getProviderIconInfo } from "@/lib/provider-icon";
 import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
-import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
 export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
@@ -312,7 +313,7 @@ function MobileRecentThreadRow({
     </span>
   );
   return (
-    <ThreadActionsLongPressMenu thread={thread}>
+    <ThreadActionsContextMenu thread={threadListEntryActionTarget(thread)}>
       <li
         onTouchStart={(event) => {
           const touch = event.touches[0];
@@ -404,12 +405,12 @@ function MobileRecentThreadRow({
           </span>
           {indicatorKind !== "none" ? (
             <span className="flex size-6 shrink-0 items-center justify-center">
-              <ThreadStatusGlyph {...trailingIndicatorState} />
+              <ThreadStatusGlyph indicator={indicatorKind} />
             </span>
           ) : null}
         </RouteAnchor>
       </li>
-    </ThreadActionsLongPressMenu>
+    </ThreadActionsContextMenu>
   );
 }
 
@@ -421,7 +422,7 @@ export function RootComposeMobileRecents({
   threads,
 }: RootComposeMobileRecentsProps) {
   const [collapsedThreadIdList, setCollapsedThreadIdList] = useAtom(
-    collapsedThreadIdsAtom,
+    mobileRecentsCollapsedThreadIdsAtom,
   );
   const collapsedThreadIds = useMemo(
     () => new Set(collapsedThreadIdList),

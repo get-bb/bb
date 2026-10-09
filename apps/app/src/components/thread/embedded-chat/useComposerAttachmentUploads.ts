@@ -19,12 +19,12 @@ interface UseComposerAttachmentUploadsArgs {
 interface UseComposerAttachmentUploadsResult {
   bottomAttachmentError: string | null;
   setBottomAttachmentError: (error: string | null) => void;
-  handleAttachBottomFiles: (files: File[]) => Promise<void>;
+  handleAttachBottomFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingBottomFiles: boolean;
   bottomPendingUploads: readonly PendingAttachmentUpload[];
   inlineAttachmentError: string | null;
   setInlineAttachmentError: (error: string | null) => void;
-  handleAttachInlineFiles: (files: File[]) => Promise<void>;
+  handleAttachInlineFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingInlineFiles: boolean;
   inlinePendingUploads: readonly PendingAttachmentUpload[];
 }
@@ -42,7 +42,7 @@ interface UseDraftAttachmentUploadsArgs {
 interface UseDraftAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
-  handleAttachFiles: (files: File[]) => Promise<void>;
+  handleAttachFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingFiles: boolean;
   pendingUploads: readonly PendingAttachmentUpload[];
 }
@@ -83,9 +83,10 @@ export function useDraftAttachmentUploads({
   });
   const targetKey = target?.key ?? null;
   const isCurrentOperation = operation.targetKey === targetKey;
-  const { pendingUploads, startUploads, finishUploads } = usePendingAttachmentUploads(
-    targetKey === null ? null : `${projectId}\0${targetKey}`,
-  );
+  const { pendingUploads, startUploads, finishUploads } =
+    usePendingAttachmentUploads(
+      targetKey === null ? null : `${projectId}\0${targetKey}`,
+    );
 
   const setAttachmentError = useCallback(
     (error: string | null) => {
@@ -101,7 +102,7 @@ export function useDraftAttachmentUploads({
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
       const activeTarget = targetRef.current;
-      if (!activeTarget || files.length === 0) return;
+      if (!activeTarget || files.length === 0) return [];
       const capturedTargetKey = activeTarget.key;
       setOperation((current) => ({
         error: null,
@@ -112,6 +113,7 @@ export function useDraftAttachmentUploads({
         targetKey: capturedTargetKey,
       }));
       const uploads = startUploads(files);
+      const added: PromptDraftAttachment[] = [];
       const failedFiles: string[] = [];
       let rejectionReason: string | null = null;
       try {
@@ -124,6 +126,7 @@ export function useDraftAttachmentUploads({
             const currentTarget = targetRef.current;
             if (currentTarget?.key === capturedTargetKey) {
               currentTarget.addAttachment(uploaded);
+              added.push(uploaded);
             }
           } catch (error) {
             failedFiles.push(upload.file.name);
@@ -147,6 +150,7 @@ export function useDraftAttachmentUploads({
             : current,
         );
       }
+      return added;
     },
     [projectId, uploadPromptAttachment, startUploads, finishUploads],
   );

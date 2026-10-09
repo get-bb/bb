@@ -2100,7 +2100,7 @@ describe("plugin thread panel actions", () => {
     expect(screen.queryByText("Set up thread")).toBeNull();
   });
 
-  it("degrades to a placeholder when the tab's action is gone", () => {
+  it("degrades to a placeholder once plugins settle without the tab's action", () => {
     const tab = createPluginPanelFixedPanelTab({
       actionId: "issue",
       paramsJson: null,
@@ -2113,6 +2113,10 @@ describe("plugin thread panel actions", () => {
         context={{ kind: "thread", threadId: "thr_9" }}
       />,
     );
+    expect(screen.queryByText(/This plugin tab is not available/)).toBeNull();
+
+    act(() => markPluginFrontendsSettled());
+
     expect(screen.getByText(/This plugin tab is not available/)).toBeDefined();
   });
 

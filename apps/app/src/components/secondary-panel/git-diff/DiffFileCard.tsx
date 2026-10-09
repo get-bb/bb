@@ -575,6 +575,7 @@ function DiffFileCardRenderedBody({
     changeKind: entry.changeKind,
     onRequestFileContents,
     patchText,
+    renderBeforeVisible: false,
   });
   return (
     <>

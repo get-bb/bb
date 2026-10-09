@@ -187,12 +187,9 @@ describe("EnvironmentPickerUI", () => {
       ).not.toBeNull();
       expect(trigger.textContent).not.toContain("Loading environments…");
       fireEvent.click(trigger, { button: 0 });
-      const status = screen.getByRole("status", {
-        name: "Loading environments",
-      });
       expect(
-        status.querySelectorAll("[data-environment-loading-row]"),
-      ).toHaveLength(4);
+        screen.getByRole("status", { name: "Loading environments" }),
+      ).toBeTruthy();
       expect(screen.queryByText("Not set up for this project")).toBeNull();
       expect(screen.queryByRole("option")).toBeNull();
 

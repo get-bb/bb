@@ -1,7 +1,8 @@
-import type {
-  HostDaemonCommand,
-  HostDaemonOnlineRpcRequestMessage,
-  HostDaemonOnlineRpcResponseMessage,
+import {
+  parseHostDaemonCommandResultForCommand,
+  type HostDaemonCommand,
+  type HostDaemonOnlineRpcRequestMessage,
+  type HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
 import { WorkspaceError } from "@bb/host-workspace";
 import {
@@ -277,6 +278,36 @@ describe("CommandRouter", () => {
     const turnResponse = await turnTask;
     expect(turnResponse.ok).toBe(true);
     expect(harness.runtimeState.ranTurnText).toBe("after destroy");
+  });
+
+  it("returns turn.submit spans recorded across the execution lanes", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const router = createRouter(harness);
+
+    const command = createTurnSubmitCommand();
+    const response = await runRouterCommand({
+      command,
+      requestId: "turn-trace-env-router",
+      router,
+    });
+
+    if (!response.ok) {
+      throw new Error("Expected a successful turn.submit response");
+    }
+    const { spans } = parseHostDaemonCommandResultForCommand(
+      command,
+      response.result,
+    ).trace;
+    expect(spans.map((span) => span.name)).toEqual([
+      "lanes.entered",
+      "skills.staged",
+      "runtime.ready",
+      "input.staged",
+      "bridge.turnStarted",
+      "events.flushed",
+    ]);
+    const offsets = spans.map((span) => span.atMs);
+    expect(offsets).toEqual([...offsets].sort((left, right) => left - right));
   });
 
   it("orders thread.stop after an in-flight thread.start handoff", async () => {

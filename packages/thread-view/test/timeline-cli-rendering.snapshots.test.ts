@@ -1192,10 +1192,10 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(rootTurn).toBeDefined();
     expect(delegation).toBeDefined();
-    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+    expect(delegation?.childRows?.some((row) => row.kind === "turn")).toBe(
       false,
     );
-    expect(delegation?.childRows.length ?? 0).toBeGreaterThan(0);
+    expect(delegation?.childRows?.length ?? 0).toBeGreaterThan(0);
     for (const childRow of delegation?.childRows ?? []) {
       expect(childRow.id.startsWith(`${delegation?.id}:child:`)).toBe(true);
     }
@@ -1291,7 +1291,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
     expect(
       delegations.some((delegation) =>
-        delegation.childRows.some((row) => row.kind === "turn"),
+        delegation.childRows?.some((row) => row.kind === "turn"),
       ),
     ).toBe(false);
   });
@@ -1478,7 +1478,7 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+    expect(delegation?.childRows?.some((row) => row.turnId === "turn-2")).toBe(
       false,
     );
     expect(rootFollowUp).toMatchObject({
@@ -1743,7 +1743,7 @@ describe("timeline CLI rendering snapshots", () => {
       ]),
     );
     expect(
-      delegation?.childRows.some((row) => row.turnId === "follow-up-turn"),
+      delegation?.childRows?.some((row) => row.turnId === "follow-up-turn"),
     ).toBe(false);
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
@@ -1844,7 +1844,7 @@ describe("timeline CLI rendering snapshots", () => {
       ]),
     );
     expect(
-      delegation?.childRows.some((row) => row.turnId === "follow-up-turn"),
+      delegation?.childRows?.some((row) => row.turnId === "follow-up-turn"),
     ).toBe(false);
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
@@ -2005,7 +2005,7 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+    expect(delegation?.childRows?.some((row) => row.turnId === "turn-2")).toBe(
       false,
     );
     expect(rootFollowUp).toMatchObject({
@@ -2053,10 +2053,10 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(delegation).toBeDefined();
     expect(delegation?.status).toBe("pending");
-    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+    expect(delegation?.childRows?.some((row) => row.kind === "turn")).toBe(
       false,
     );
-    expect(delegation?.childRows.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(delegation?.childRows?.length ?? 0).toBeGreaterThanOrEqual(3);
     expect(timeline.text).not.toContain("Worked for");
     expect(timeline.text).not.toContain("Working for");
   });

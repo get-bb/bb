@@ -326,7 +326,22 @@ export async function resolveCreateThreadEnvironment(
     if (!parentThread.environmentId) {
       throw new Error("Personal parent thread is missing an environment");
     }
-    return { type: "reuse", environmentId: parentThread.environmentId };
+    const requestedEnvironment = args.requestedEnvironment;
+    const requestedMachine: ProviderEnvironmentArgs["machine"] =
+      requestedEnvironment.type === "provider"
+        ? requestedEnvironment.machine
+        : requestedEnvironment.type === "host" &&
+            requestedEnvironment.hostId !== undefined
+          ? { type: "existing", hostId: requestedEnvironment.hostId }
+          : undefined;
+    if (
+      requestedMachine === undefined ||
+      (requestedMachine.type === "existing" &&
+        getEnvironment(deps.db, parentThread.environmentId)?.hostId ===
+          requestedMachine.hostId)
+    ) {
+      return { type: "reuse", environmentId: parentThread.environmentId };
+    }
   }
   if (
     hasLiveParent &&

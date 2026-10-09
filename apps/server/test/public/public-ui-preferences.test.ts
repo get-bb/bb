@@ -408,14 +408,14 @@ describe("public ui preferences", () => {
 
       const invalidList = await putPreference(
         harness,
-        "sidebar.collapsedThreads",
+        "sidebar.hiddenFooterItems",
         { expectedRevision: 0, value: ["thr_1", 2] },
       );
       expect(invalidList.status).toBe(400);
 
       const missingValue = await putPreference(
         harness,
-        "sidebar.collapsedThreads",
+        "sidebar.hiddenFooterItems",
         { expectedRevision: 0, value: undefined },
       );
       expect(missingValue.status).toBe(400);

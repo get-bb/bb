@@ -224,6 +224,7 @@ function agentSubline(state: AgentSetupState): string {
 interface AgentRowHandlers {
   onSignIn: (id: string) => void;
   onInstall: (id: string) => void;
+  onViewInstallLog: (id: string) => void;
   onCancelSignIn: (id: string) => void;
 }
 
@@ -231,6 +232,7 @@ function AgentRow({
   agent,
   onSignIn,
   onInstall,
+  onViewInstallLog,
   onCancelSignIn,
 }: AgentRowHandlers & { agent: OnboardingAgent }) {
   const { state } = agent;
@@ -272,6 +274,15 @@ function AgentRow({
         {state.status === "signIn" && state.canSignIn ? (
           <Button size="sm" onClick={() => onSignIn(agent.id)}>
             Sign in
+          </Button>
+        ) : null}
+        {state.status === "installFailed" ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onViewInstallLog(agent.id)}
+          >
+            View log
           </Button>
         ) : null}
         {(state.status === "install" ||

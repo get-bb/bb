@@ -72,6 +72,41 @@ export function listThreadPluginMetadataRows(
     .all();
 }
 
+export function listPluginThreadMetadata(
+  db: DbQueryConnection,
+  pluginId: string,
+  threadIds: readonly string[],
+): {
+  threads: Array<{ threadId: string; metadata: JsonObject }>;
+  corruptThreadIds: string[];
+} {
+  if (threadIds.length === 0) return { threads: [], corruptThreadIds: [] };
+  const rows = db
+    .select({
+      threadId: threadPluginMetadata.threadId,
+      metadataJson: threadPluginMetadata.metadataJson,
+    })
+    .from(threadPluginMetadata)
+    .where(
+      and(
+        eq(threadPluginMetadata.pluginId, pluginId),
+        inArray(threadPluginMetadata.threadId, [...threadIds]),
+      ),
+    )
+    .all();
+  const result: Array<{ threadId: string; metadata: JsonObject }> = [];
+  const corruptThreadIds: string[] = [];
+  for (const row of rows) {
+    const metadata = parsePersistedPluginMetadata(row.metadataJson);
+    if (metadata === undefined) {
+      corruptThreadIds.push(row.threadId);
+    } else {
+      result.push({ threadId: row.threadId, metadata });
+    }
+  }
+  return { threads: result, corruptThreadIds };
+}
+
 export function insertThreadPluginMetadata(
   db: DbConnection | DbTransaction,
   input: { threadId: string; pluginId: string; metadata: JsonObject },

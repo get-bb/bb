@@ -12,6 +12,7 @@ import {
   price,
 } from "../compare-content";
 import { AGENTS_COPY, agentsSection } from "../compare-sections";
+import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import { TaskLedger, TasksBoard, type BrandLogo } from "../compare-visuals";
 
 const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
@@ -145,8 +146,8 @@ export const comparison: Comparison = {
             <ol>
               <li>
                 Download bb for <a href="/download/macos">macOS</a> (Apple
-                Silicon), Windows, or <a href="/download/linux">Linux</a> (both
-                alpha).
+                Silicon), <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>, or{" "}
+                <a href="/download/linux">Linux (Alpha)</a>.
               </li>
               <li>
                 Install and sign in to a coding agent, like Claude Code, Codex,

@@ -107,18 +107,19 @@ describe("useChildThreadPendingAttention", () => {
       expect(result.current).toHaveLength(1);
     });
     const settled = result.current;
-    expect(settled[0]?.interaction.id).toBe("pi_1");
+    expect(settled[0]?.interactions.map(({ id }) => id)).toEqual(["pi_1"]);
 
     rerender({ items: children });
     rerender({ items: children });
     expect(result.current).toBe(settled);
   });
 
-  it("reports only children that still have a pending interaction, with their latest one", async () => {
+  it("reports only children that still have a pending interaction, oldest first", async () => {
+    const oldest = makeApproval("pi_old", 10);
     const latest = makeApproval("pi_new", 20);
     mocks.list.mockImplementation(async ({ threadId }: { threadId: string }) =>
       threadId === "thr_blocked"
-        ? [makeApproval("pi_old", 10), latest]
+        ? [latest, oldest]
         : threadId === "thr_working"
           ? [makeApproval("pi_ignored", 30)]
           : [],
@@ -150,7 +151,7 @@ describe("useChildThreadPendingAttention", () => {
           childThreadId: "thr_blocked",
           childTitle: "Install tools",
           href: "/threads/thr_blocked",
-          interaction: latest,
+          interactions: [oldest, latest],
         },
       ]);
     });

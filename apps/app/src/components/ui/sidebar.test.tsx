@@ -370,16 +370,40 @@ describe("framed desktop sidebar", () => {
     );
 
     const inset = screen.getByTestId("inset");
+    const body = screen.getByTestId("body");
     expect(screen.getByTestId("framed-probe").textContent).toBe("true");
     expect(screen.getByTestId("wrapper").dataset.framed).toBe("");
-    expect(screen.getByTestId("body").classList.contains("rounded-tl-xl")).toBe(
-      true,
-    );
+    expect(body.classList.contains("rounded-tl-xl")).toBe(true);
+    expect(body.classList.contains("rounded-bl-xl")).toBe(true);
     expect(inset.classList.contains("rounded-tl-xl")).toBe(false);
+    expect(inset.classList.contains("rounded-bl-xl")).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
     expect(inset.classList.contains("rounded-tl-xl")).toBe(true);
+    expect(inset.classList.contains("rounded-bl-xl")).toBe(true);
+  });
+
+  it("keeps a lip of window frame beside and below the card", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider framed data-testid="wrapper">
+          <Sidebar data-testid="panel">Sidebar content</Sidebar>
+          <SidebarInset data-testid="inset" />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const wrapper = screen.getByTestId("wrapper");
+    const inset = screen.getByTestId("inset");
+    expect(wrapper.classList.contains("pr-(--bb-window-frame-lip)")).toBe(true);
+    expect(wrapper.classList.contains("pb-(--bb-window-frame-lip)")).toBe(true);
+    expect(screen.getByTestId("panel").className).toContain(
+      "var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip)",
+    );
+    for (const edge of ["rounded-tr-xl", "rounded-br-xl", "border-r"]) {
+      expect(inset.classList.contains(edge)).toBe(true);
+    }
   });
 
   it("leaves compact viewports and unframed sidebars as they were", () => {

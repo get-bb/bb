@@ -35,7 +35,7 @@ function extractText(input: PromptInput[]): string | undefined {
 
 it("preserves local file paths with and without text", () => {
   const path = "/workspace/notes.md";
-  const marker = `[Attached file: ${path}]`;
+  const marker = `[Attached file "notes.md": ${path}]`;
   const file = {
     type: "localFile" as const,
     path,

@@ -204,7 +204,9 @@ function joinOlderTimelineRowChildren(
     older.kind === "work" &&
     older.workKind === "delegation" &&
     loaded.kind === "work" &&
-    loaded.workKind === "delegation"
+    loaded.workKind === "delegation" &&
+    older.childRows !== null &&
+    loaded.childRows !== null
   ) {
     const childRows = prependOlderTimelineRows({
       olderRows: older.childRows,

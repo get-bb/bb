@@ -94,8 +94,8 @@ export function makeAttachmentsConfig(
   const base: AttachmentsConfig = {
     items: [],
     projectId: PROJECT_IDS.bb,
-    onAttachFiles: noop,
-    onRemove: noop,
+    onAttachFiles: async () => [],
+    onUpdate: noop,
     isAttaching: false,
     error: null,
   };

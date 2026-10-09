@@ -1366,7 +1366,9 @@ describe("buildThreadTimelineFromEvents", () => {
       throw new Error("Expected a delegation row");
     }
     expect(
-      collectWorkflowRows(delegation.childRows).map((row) => row.taskType),
+      collectWorkflowRows(delegation.childRows ?? []).map(
+        (row) => row.taskType,
+      ),
     ).toEqual(["local_workflow"]);
     expect(delegation.childRows).toEqual(
       expect.arrayContaining([
@@ -3148,7 +3150,7 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
     ]),
   );
   const [delegation] = collectDelegationRows(rows);
-  const completed = delegation?.childRows.find((row) => row.kind === "system");
+  const completed = delegation?.childRows?.find((row) => row.kind === "system");
   expect(live.activeThinking?.id).toBeTruthy();
   expect(completed).toMatchObject({
     reasoningId: live.activeThinking?.id,

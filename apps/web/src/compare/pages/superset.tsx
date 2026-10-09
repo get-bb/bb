@@ -230,7 +230,7 @@ export const comparison: Comparison = {
               Superset charges $15 per user a month for teams, billed yearly. bb
               includes phone and browser access, remote machines, and
               automations at no cost, and runs on{" "}
-              <a href={WINDOWS_DOWNLOAD_URL}>Windows</a> (alpha). When one agent
+              <a href={WINDOWS_DOWNLOAD_URL}>Windows (Alpha)</a>. When one agent
               starts another, the new agent gets its own thread (one
               conversation with one agent) that you can open and message.
             </p>

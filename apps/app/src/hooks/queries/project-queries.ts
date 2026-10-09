@@ -9,11 +9,15 @@ import type {
 } from "@bb/server-contract";
 import type { FilePreview } from "@bb/client-core";
 import { loadFilePreview } from "@/lib/api";
-import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
+import {
+  buildProjectAttachmentContentUrl,
+  buildProjectFileContentUrl,
+} from "@/lib/file-content-urls";
 import { readProjectBranchOptions } from "@/lib/project-branch-options";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
+  projectAttachmentPreviewQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
   projectPathsQueryKey,
@@ -32,6 +36,7 @@ import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+  SESSION_STATIC_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
 
@@ -314,5 +319,28 @@ export function useProjectCommands(
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     staleTime: 0,
+  });
+}
+
+export function useProjectAttachmentPreview(
+  projectId: string,
+  path: string,
+  name: string,
+  options?: QueryOptions,
+) {
+  return useQuery<FilePreview>({
+    queryKey: projectAttachmentPreviewQueryKey(projectId, path),
+    queryFn: ({ signal }) =>
+      loadFilePreview(
+        {
+          name,
+          path: name,
+          url: buildProjectAttachmentContentUrl(projectId, path),
+        },
+        signal,
+      ),
+    enabled: options?.enabled ?? true,
+    ...SESSION_STATIC_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

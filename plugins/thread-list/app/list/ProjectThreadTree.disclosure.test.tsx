@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import { cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { SidebarThread } from "../model/sidebar-thread.js";
@@ -18,7 +19,9 @@ const { ProjectThreadTree } = await import("./ProjectRow.js");
 function Slot({ children }: { children: ReactNode }) {
   return (
     <TooltipProvider>
-      <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      <ThreadRowNavigationProvider>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </ThreadRowNavigationProvider>
     </TooltipProvider>
   );
 }
