@@ -666,6 +666,37 @@ describe("configuration", () => {
     ).toEqual(["thought_level", ACP_LEGACY_MODE_CONFIG_ID]);
   });
 
+  it("keeps the repeated modes hidden after a model switch shortens the agent's thinking levels", () => {
+    const thinking = (levels: string[]) => ({
+      id: "thought_level",
+      name: "Thinking",
+      category: "thought_level",
+      type: "select",
+      currentValue: levels[0],
+      options: levels.map((value) => ({ value, name: value })),
+    });
+    const session = model();
+    session.applySessionSetup({
+      configOptions: [thinking(["off", "low", "high"])],
+      modes: {
+        currentModeId: "high",
+        availableModes: [{ id: "off" }, { id: "low" }, { id: "high" }],
+      },
+    });
+    const [event] = session.applyConfigOptions([thinking(["off", "low"])]);
+    expect(
+      event?.type === "configOptions"
+        ? event.configOptions.map((option) => option.id)
+        : [],
+    ).toEqual(["thought_level"]);
+    expect(
+      session.applySessionUpdate({
+        sessionUpdate: "current_mode_update",
+        currentModeId: "low",
+      })[0],
+    ).toMatchObject({ configOptions: [{ id: "thought_level" }] });
+  });
+
   it("replaces the whole option list when the agent pushes a change", () => {
     const session = model();
     session.applySessionSetup({ configOptions: [modelOption] });

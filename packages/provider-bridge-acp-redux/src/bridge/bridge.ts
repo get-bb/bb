@@ -230,7 +230,7 @@ interface AcpThreadSession {
   pendingToolCalls: Set<AbortController>;
   cursorMcpApproval: CursorMcpApproval | undefined;
   deferStartEmit: AcpDeferredStartEmitter | undefined;
-  heldPrePromptUpdates: unknown[] | null;
+  awaitingFirstPrompt: boolean;
   turnOutputCount: number;
 }
 
@@ -2173,7 +2173,7 @@ async function startAgentSession(
     pendingToolCalls: new Set(),
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
-    heldPrePromptUpdates: [],
+    awaitingFirstPrompt: true,
   };
   sessionsByBbThreadId.set(bbThreadId, session);
 
@@ -2671,22 +2671,19 @@ function emitSessionUpdate(
   update: unknown,
   rawUpdate: unknown,
 ): void {
+  const turnOutput = isTurnOutputUpdate(update);
+  if (
+    turnOutput &&
+    session.awaitingFirstPrompt &&
+    session.activePromptKind === null
+  ) {
+    return;
+  }
   const events = session.model.applySessionUpdate(rawUpdate);
   publishSessionStateEvents(session, events);
   session.agentUpdateCount += 1;
-  if (isTurnOutputUpdate(update)) {
+  if (turnOutput) {
     session.turnOutputCount += 1;
-  }
-  const held = session.heldPrePromptUpdates;
-  if (
-    held !== null &&
-    session.activePromptKind === null &&
-    (held.length > 0 || startsAgentWork(events))
-  ) {
-    if (held.length < MAX_HELD_PRE_PROMPT_UPDATES) {
-      held.push(update);
-    }
-    return;
   }
   if (session.activePromptKind === null && startsAgentWork(events)) {
     openAgentTurn(session);
@@ -2815,7 +2812,6 @@ async function waitForAgentQuiet(session: AcpThreadSession): Promise<boolean> {
   return false;
 }
 
-const MAX_HELD_PRE_PROMPT_UPDATES = 500;
 const TURN_OUTPUT_UPDATE_KINDS = new Set([
   "agent_message_chunk",
   "agent_thought_chunk",
@@ -2829,21 +2825,6 @@ function isTurnOutputUpdate(update: unknown): boolean {
   return typeof kind === "string" && TURN_OUTPUT_UPDATE_KINDS.has(kind);
 }
 
-function flushHeldPrePromptUpdates(session: AcpThreadSession): void {
-  const held = session.heldPrePromptUpdates;
-  session.heldPrePromptUpdates = null;
-  if (held === null || held.length === 0) {
-    return;
-  }
-  for (const update of held) {
-    emitForSession(session, ACP_UPDATE_METHOD, {
-      threadId: session.bbThreadId,
-      update,
-    });
-  }
-  sendThreadDeltas(session.bbThreadId, session.translator.closeTextStreams());
-}
-
 function runTurn(
   session: AcpThreadSession,
   firstInput: AcpPendingTurnInput,
@@ -2855,7 +2836,7 @@ function runTurn(
       threadId: session.bbThreadId,
     });
   }
-  flushHeldPrePromptUpdates(session);
+  session.awaitingFirstPrompt = false;
   const outputBeforeTurn = session.turnOutputCount;
 
   session.turnSettled = (async () => {
@@ -2884,7 +2865,7 @@ function runTurn(
           emitForSession(session, ACP_TURN_STARTED_METHOD, {
             threadId: session.bbThreadId,
           });
-          flushHeldPrePromptUpdates(session);
+          session.awaitingFirstPrompt = false;
         }
         const prompt = buildPromptContentBlocks(session, pending.input);
         let inputAccepted = false;
@@ -3131,7 +3112,7 @@ function startCompaction(
   pending: AcpPendingTurnInput,
 ): void {
   setActivePromptKind(session, "compaction");
-  session.heldPrePromptUpdates = null;
+  session.awaitingFirstPrompt = false;
   session.compactionAgentMessage = "";
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,

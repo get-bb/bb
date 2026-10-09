@@ -3671,7 +3671,7 @@ describe("acp bridge", () => {
     expect(contextWindowDeltasFor(bbThreadId)).toEqual([]);
   });
 
-  it("holds an agent update written with the session/new response until thread/identity is out, and what the agent said until the first prompt", async () => {
+  it("holds an agent update written with the session/new response until thread/identity is out, and leaves out what the agent said before any prompt", async () => {
     const { bbThreadId } = await startThread({
       envVars: { FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE: "1" },
     });
@@ -4286,22 +4286,21 @@ describe("acp bridge: work the agent starts on its own", () => {
     return threadEventsOfType("turn/completed").map((event) => event.status);
   }
 
-  it("holds what an agent says before its first prompt and shows it at the start of that turn, without opening a turn that would block the prompt", async () => {
+  it("does not show what an agent says before its first prompt, and does not open a turn that would block the prompt", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_STARTUP_BANNER: "fake agent v1\n\n## Skills" },
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(threadEventsOfType("turn/started")).toHaveLength(0);
-    expect(agentMessageTexts()).toEqual([]);
 
     await runPromptedTurn(providerThreadId, "hello");
 
     expect(threadEventsOfType("turn/started")).toHaveLength(1);
     expect(turnStatuses()).toEqual(["completed"]);
+    expect(threadEventsOfType("provider/warning")).toEqual([]);
     const texts = agentMessageTexts();
-    expect(texts[0]).toBe("fake agent v1\n\n## Skills");
-    expect(texts.length).toBeGreaterThan(1);
-    expect(texts.slice(1).join("")).not.toContain("fake agent v1");
+    expect(texts).toHaveLength(1);
+    expect(texts.join("")).not.toContain("fake agent v1");
   });
 
   it("says so when the agent ends a prompted turn without sending anything, and stays quiet when it replied", async () => {

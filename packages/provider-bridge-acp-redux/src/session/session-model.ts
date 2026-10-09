@@ -119,11 +119,19 @@ export function createAcpSessionModel(
   let currentMessage: AcpMessageEntity | null = null;
   let synthesizedMessageCount = 0;
 
-  function legacyModeRepeatsThoughtLevels(mode: AcpConfigOption): boolean {
-    if (mode.type !== "select" || mode.values.length === 0) {
-      return false;
+  let legacyModeRepeatsThoughtLevels = false;
+
+  function noteLegacyModeOverlap(): void {
+    const mode = legacyMode;
+    if (
+      legacyModeRepeatsThoughtLevels ||
+      mode === null ||
+      mode.type !== "select" ||
+      mode.values.length === 0
+    ) {
+      return;
     }
-    return agentConfigOptions.some(
+    legacyModeRepeatsThoughtLevels = agentConfigOptions.some(
       (option) =>
         option.category === "thought_level" &&
         option.type === "select" &&
@@ -139,9 +147,7 @@ export function createAcpSessionModel(
     return [
       ...agentConfigOptions,
       ...(legacyModel && !hasCategory("model") ? [legacyModel] : []),
-      ...(legacyMode &&
-      !hasCategory("mode") &&
-      !legacyModeRepeatsThoughtLevels(legacyMode)
+      ...(legacyMode && !hasCategory("mode") && !legacyModeRepeatsThoughtLevels
         ? [legacyMode]
         : []),
     ];
@@ -590,6 +596,7 @@ export function createAcpSessionModel(
       return [];
     }
     agentConfigOptions = decoded;
+    noteLegacyModeOverlap();
     return [configOptionsEvent()];
   }
 
@@ -630,6 +637,8 @@ export function createAcpSessionModel(
       agentConfigOptions = decodeConfigOptions(setup.configOptions) ?? [];
       legacyMode = decodeLegacyModes(setup.modes);
       legacyModel = decodeLegacyModels(setup.models);
+      legacyModeRepeatsThoughtLevels = false;
+      noteLegacyModeOverlap();
       return [configOptionsEvent()];
     },
 
