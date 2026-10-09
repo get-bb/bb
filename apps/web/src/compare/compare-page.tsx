@@ -28,7 +28,7 @@ import type {
   CompareHighlight,
   Comparison,
   Mark,
-} from "./comparisons";
+} from "./compare-types";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
 import {
   PLUGINS_COPY,

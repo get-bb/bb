@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
@@ -30,10 +31,10 @@ interface ChevronProps {
   className?: string;
 }
 
-const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
+export const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
 const COLLAPSIBLE_HEADER_EXPANDED_TONE_CLASS = "text-foreground";
 export const COLLAPSIBLE_HEADER_STATIC_TONE_CLASS = "text-muted-foreground";
-const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
+export const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
   "inline-flex max-w-full items-center gap-1 overflow-hidden py-0.5 text-left text-sm";
 const COLLAPSIBLE_HEADER_TEXT_CLASS = "min-w-0 truncate";
 
@@ -120,7 +121,13 @@ export function CollapsibleHeader({
   );
 }
 
+export type ExpandablePanelIntentHandlers = Pick<
+  HTMLAttributes<HTMLDivElement>,
+  "onFocus" | "onPointerDown" | "onPointerEnter" | "onPointerLeave"
+>;
+
 interface ExpandablePanelProps {
+  intentHandlers?: ExpandablePanelIntentHandlers;
   isExpanded: boolean;
   summaryContent: ReactNode;
   headerToneClass: string;
@@ -227,6 +234,7 @@ function AnimatedExpandablePanelContent({
 }
 
 export function ExpandablePanel({
+  intentHandlers,
   isExpanded,
   summaryContent,
   headerToneClass,
@@ -310,7 +318,10 @@ export function ExpandablePanel({
       : null;
 
   return (
-    <div className={cn("rounded-md text-muted-foreground", className)}>
+    <div
+      className={cn("rounded-md text-muted-foreground", className)}
+      {...intentHandlers}
+    >
       {}
       <div className="group/timeline-row">
         <CollapsibleHeader

@@ -48,6 +48,9 @@ const updateThreadFake = vi.fn(
     }),
 );
 
+const pinThreadFake = vi.fn(async () => undefined as never);
+const unpinThreadFake = vi.fn(async () => undefined as never);
+
 function resolveUpdateThread(value: unknown): void {
   updateThreadDeferred?.resolve(value as never);
 }
@@ -142,7 +145,15 @@ function renderSectionThreadDnd(
   const slot = renderSlot(
     { component: Harness },
     { rootItems: initialRootItems },
-    { sdk: { threads: { update: updateThreadFake } } },
+    {
+      sdk: {
+        threads: {
+          update: updateThreadFake,
+          pin: pinThreadFake,
+          unpin: unpinThreadFake,
+        },
+      },
+    },
   );
   return {
     inspection: slot.inspection,
@@ -152,7 +163,7 @@ function renderSectionThreadDnd(
 }
 
 describe("useSectionThreadDnd pin mutations", () => {
-  it("routes drag pinning through the optimistic sidebar action", async () => {
+  it("pins a dropped thread through the plugin SDK", async () => {
     const { inspection, result } = renderSectionThreadDnd();
     const props = () => result.current!.dndContextProps;
 
@@ -160,16 +171,12 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd("loose", "pinned")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "loose", pinned: true },
+    expect(inspection.sdkCalls).toEqual([
+      { method: "threads.pin", args: [{ threadId: "loose" }] },
     ]);
-    expect(inspection.sdkCalls).not.toContainEqual({
-      method: "threads.pin",
-      args: [{ threadId: "loose" }],
-    });
   });
 
-  it("routes drag unpinning through the optimistic sidebar action", async () => {
+  it("unpins a dropped thread through the plugin SDK", async () => {
     const pinned = createThread({
       id: "pinned-thread",
       pinnedAt: 42,
@@ -182,10 +189,7 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd(pinned.id, "section:a")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: pinned.id, pinned: false },
-    ]);
-    expect(inspection.sdkCalls).not.toContainEqual({
+    expect(inspection.sdkCalls).toContainEqual({
       method: "threads.unpin",
       args: [{ threadId: pinned.id }],
     });
@@ -245,7 +249,9 @@ describe("useSectionThreadDnd pin mutations", () => {
     expect(
       inspection.sdkCalls.filter((call) => call.method === "threads.update"),
     ).toHaveLength(2);
-    expect(inspection.sidebarActionCalls).toEqual([]);
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.pin"),
+    ).toEqual([]);
     expect(result.current!.activeItemId).toBeNull();
   });
 
@@ -272,9 +278,11 @@ describe("useSectionThreadDnd pin mutations", () => {
         },
       ]),
     );
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "first", pinned: true },
-      { method: "setPinned", threadId: "second", pinned: true },
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.pin"),
+    ).toEqual([
+      { method: "threads.pin", args: [{ threadId: "first" }] },
+      { method: "threads.pin", args: [{ threadId: "second" }] },
     ]);
   });
 
@@ -320,9 +328,11 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd(activeId, "section:b")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "first", pinned: false },
-      { method: "setPinned", threadId: "second", pinned: false },
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.unpin"),
+    ).toEqual([
+      { method: "threads.unpin", args: [{ threadId: "first" }] },
+      { method: "threads.unpin", args: [{ threadId: "second" }] },
     ]);
     expect(inspection.sdkCalls).toEqual(
       expect.arrayContaining([
@@ -411,7 +421,6 @@ describe("useSectionThreadDnd project drop targets", () => {
       act(() => props().onDragEnd?.(dragEnd("dragged", targetId)));
       await flushTasks();
       expect(result.current?.activeThread).toBeNull();
-      expect(inspection.sidebarActionCalls).toEqual([]);
       expect(inspection.sdkCalls).toEqual([]);
     },
   );

@@ -62,7 +62,9 @@ function SidebarHistoryNavButton({
       </TooltipTrigger>
       <TooltipContent className="px-1.5 py-1">
         {shortcut ? (
-          <kbd className="font-sans leading-4 tabular-nums">{shortcut.label}</kbd>
+          <kbd className="font-sans leading-4 tabular-nums">
+            {shortcut.label}
+          </kbd>
         ) : (
           label
         )}

@@ -797,6 +797,27 @@ cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
 
+### Turn traces
+
+While both gates are on, every message sent through the send API also writes
+one `Turn trace` info line once its first streamed output is stored and
+broadcast. `turnTrace.spans` holds milliseconds since the server received the
+send: `dispatch.checkpoint.done`, `runtimeConfig.*` (runtime configuration
+assembly, including the daemon reads it waits on), `command.sent`,
+`send.responded`, `command.settled`, and `firstOutput.batchReceived`,
+`firstOutput.committed`, `firstOutput.notified` for the first event batch that
+carries an agent message, reasoning, or plan delta. `turnTrace.rpcs` lists every
+daemon RPC the send awaited with its start offset and duration.
+`turnTrace.daemon.spans` are the daemon's own offsets from receiving
+`turn.submit`: `lanes.entered`, `skills.staged`, `runtime.ready`,
+`input.staged`, `bridge.turnStarted`, and `events.flushed`. Server and daemon
+offsets use different clocks, so compare durations rather than offsets:
+`command.settled - command.sent - daemon events.flushed` is the round trip
+spent on the network. `outcome` is `output`, `not-sent` (queued or refused),
+`command-failed`, `completed-without-output`, `superseded` by a newer traced
+send on the thread, or `no-output` after two minutes. Queue drains, retries,
+and other server-initiated dispatches are not traced.
+
 ### Diagnose a captured stall
 
 1. Record the affected request path and approximate UTC time. Find its
@@ -827,3 +848,23 @@ The launch flag only grants permission and still requires a restart to change.
 4. Repeat with a small control workload. Expected long polls can generate
    slow-request records without blocking the event loop; require corroborating
    loop delay, stage timings or sampled execution before calling them stalls.
+
+### Workspace context read limits
+
+The server supplies `host.read_workspace_agent_context` with project skill
+read policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
+`SKILL.md`, and 32 MiB total JSON-encoded content strings. The aggregate budget
+allows several large skills in one catalog while bounding retained content.
+It is a pragmatic starting policy, not a measured catalog-size requirement or
+a transport ceiling. JSON quotes and escapes count toward this budget;
+directory metadata, shared skill discovery, and workspace instructions do not.
+The daemon reads files sequentially with bounded buffers. Oversized files and
+files exceeding the remaining budget are skipped with server warnings; smaller
+later files can still fit. Enumeration remains sorted and reports count
+truncation separately. Only exact-case `SKILL.md` files are eligible, and
+symlinked skill directories/files and roots escaping the workspace are rejected
+or skipped before their contents are read.
+
+Command lookup sets `includeAgentInstructions: false`, so an invalid
+`.bb/AGENTS.md` cannot break the command catalog. Turn preparation sets it to
+`true` and continues to report instruction-read errors.

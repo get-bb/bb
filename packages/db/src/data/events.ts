@@ -1808,6 +1808,35 @@ export function listItemEventSpansByItems(
     .all();
 }
 
+export interface GetStoredItemLifecycleSequenceRangeArgs {
+  itemId: string;
+  threadId: string;
+  turnId: string;
+}
+
+export function getStoredItemLifecycleSequenceRange(
+  db: DbQueryConnection,
+  args: GetStoredItemLifecycleSequenceRangeArgs,
+): { first: number; last: number } | null {
+  const [range] = db.all<{ first: number | null; last: number | null }>(sql`
+    SELECT MIN(lifecycle.sequence) AS first, MAX(lifecycle.sequence) AS last
+    FROM ${events} AS lifecycle
+      INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE lifecycle.thread_id = ${args.threadId}
+      AND lifecycle.item_id = ${args.itemId}
+      AND lifecycle.type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND lifecycle.turn_id = ${args.turnId}
+  `);
+  if (range === undefined || range.first === null || range.last === null) {
+    return null;
+  }
+  return { first: range.first, last: range.last };
+}
+
 export interface ListStoredItemLifecycleRowsByItemsArgs {
   items: readonly ScopedItemRef[];
   maxInlineOutputChars: InlineOutputCharLimit;

@@ -14,4 +14,21 @@ describe("MachineLabel", () => {
     expect(screen.getByText("MacBook Pro")).toBeTruthy();
     expect(container.querySelector('[data-icon="Laptop"]')).not.toBeNull();
   });
+
+  it("uses a registered icon for an ephemeral machine whose provider is not loaded", () => {
+    const { container } = render(
+      <MachineLabel
+        host={makeHost({
+          name: "Sandbox ugxe6e",
+          type: "ephemeral",
+          machineProviderId: "unloaded-provider",
+        })}
+      />,
+    );
+
+    expect(
+      container.querySelector('[data-icon="ComputerCloud"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-icon="Zap"]')).toBeNull();
+  });
 });

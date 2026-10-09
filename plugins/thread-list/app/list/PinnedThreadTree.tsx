@@ -12,8 +12,10 @@ import {
 import {
   useSidebarSortable,
   type SidebarSortableDragBindings,
-} from "../rows/sortableMotion.js";
-import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
+} from "@/components/ui/sortable-motion";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
+import { useSidebarListShown } from "./useSidebarListShown.js";
 import type {
   ProjectThreadItem,
   ProjectThreadNode,
@@ -237,7 +239,10 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
     onReorder: handleReorderPinnedRoot,
   });
   const { dndContextProps, consumeClickSuppression, onClickCapture } =
-    useSidebarReorderDnd({ onDragEnd: handleSortableDragEnd });
+    useSidebarReorderDnd({
+      onDragEnd: handleSortableDragEnd,
+      touchSensor: SidebarTouchSensor,
+    });
   const chronologicalRootNodes = useMemo(() => {
     if (!chronologicalDnd) return rootNodes;
     const nodesById = new Map(
@@ -254,12 +259,13 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   const hasEnvironmentGroups = rootItems.some(
     (item) => item.kind === "environment",
   );
+  const shown = useSidebarListShown();
   const { setNodeRef: setPinnedParentRef } = useDroppable({
     id: PINNED_THREAD_PARENT_KEY,
     disabled: chronologicalDnd === null,
   });
 
-  if (rootItems.length === 0) {
+  if (rootItems.length === 0 || !shown) {
     return null;
   }
 

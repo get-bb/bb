@@ -1,5 +1,8 @@
 import type { Thread, ThreadListEntry } from "@bb/domain";
-import { threadListIndicatorStateForThread } from "@bb/client-core";
+import {
+  resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
+} from "@bb/client-core";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { useThreads } from "@/hooks/queries/thread-queries";
@@ -33,7 +36,9 @@ export function RelatedThreadsSection({
               leading={
                 <span className="flex items-center text-subtle-foreground [&_[data-icon-root]]:size-3">
                   <ThreadStatusGlyph
-                    {...threadListIndicatorStateForThread(relatedThread, false)}
+                    indicator={resolveThreadListIndicator(
+                      threadListIndicatorStateForThread(relatedThread, false),
+                    )}
                     size="compact"
                   />
                 </span>

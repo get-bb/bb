@@ -6,6 +6,7 @@ import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHor
 import AudioWave01Icon from "@hugeicons/core-free-icons/AudioWave01Icon";
 import BellDotIcon from "@hugeicons/core-free-icons/BellDotIcon";
 import Book02Icon from "@hugeicons/core-free-icons/Book02Icon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
 import BrowserIcon from "@hugeicons/core-free-icons/BrowserIcon";
 import Calendar03Icon from "@hugeicons/core-free-icons/Calendar03Icon";
@@ -83,6 +84,7 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Lock: LockIcon,
   Mail: Mail02Icon,
   MessageQuestion: MessageQuestionIcon,
+  MessageSquarePlus: BubbleChatAddIcon,
   News01: News01Icon,
   Palette: PaintBoardIcon,
   PanelLeft: SidebarLeftIcon,

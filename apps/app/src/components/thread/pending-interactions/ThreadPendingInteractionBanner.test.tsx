@@ -25,7 +25,7 @@ import {
   resetPluginFrontendBootStateForTest,
 } from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
-import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -167,8 +167,8 @@ const commandApproval: PendingInteraction = {
 
 function bannerElement(interaction: PendingInteraction) {
   return (
-    <ThreadPendingInteractionBanner
-      interaction={interaction}
+    <ThreadPendingInteractionBanners
+      interactions={[interaction]}
       threadId="thr_1"
     />
   );
@@ -619,8 +619,8 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
-          <ThreadPendingInteractionBanner
-            interaction={commandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[commandApproval]}
             sourceThread={{
               href: "/threads/thr_child",
               title: "Install tools",
@@ -692,5 +692,66 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(mocks.stopMutateAsync).toHaveBeenCalledWith("thr_1");
+  });
+});
+
+describe("ThreadPendingInteractionBanners", () => {
+  function questionCard(id: string, prompt: string): PendingInteraction {
+    return {
+      id,
+      threadId: "thr_1",
+      turnId: "turn_1",
+      providerId: "claude-code",
+      providerThreadId: "pt_1",
+      providerRequestId: id,
+      status: "pending",
+      statusReason: null,
+      createdAt: 1,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "path",
+            prompt,
+            multiSelect: false,
+            allowFreeText: true,
+            options: [],
+          },
+        ],
+      },
+    };
+  }
+
+  function cards(interactions: PendingInteraction[]) {
+    return (
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadPendingInteractionBanners
+            interactions={interactions}
+            threadId="thr_1"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  }
+
+  function expandedStates(): boolean[] {
+    return screen
+      .getAllByTestId("user-question-banner")
+      .map((banner) => banner.hasAttribute("data-expanded"));
+  }
+
+  it("expands the next card once the cards above it are answered", () => {
+    const first = questionCard("pint_first", "First?");
+    const second = questionCard("pint_second", "Second?");
+    const view = render(cards([first, second]));
+
+    expect(expandedStates()).toEqual([true, false]);
+
+    view.rerender(cards([second]));
+
+    expect(expandedStates()).toEqual([true]);
   });
 });

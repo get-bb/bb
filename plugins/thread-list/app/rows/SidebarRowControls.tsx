@@ -11,7 +11,7 @@ import {
 import {
   SIDEBAR_CONTROL_PAIR_GAP_CLASS,
   SIDEBAR_CONTROL_PRIMARY_BUTTON_CLASS,
-} from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 
 export function SidebarRowControls({
   primaryAction,

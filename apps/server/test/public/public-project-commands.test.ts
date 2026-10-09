@@ -89,8 +89,17 @@ function registerCommandRpc(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: (request) => {
-      if (request.command.type === "host.list_files") {
-        return { ok: true, result: { files: [], truncated: false } };
+      if (request.command.type === "host.read_workspace_agent_context") {
+        stub.skillRequests.push(request);
+        return {
+          ok: true,
+          result: {
+            agentInstructions: null,
+            projectSkills: [],
+            projectSkillsTruncated: false,
+            sharedSkills: args.skills ?? [],
+          },
+        };
       }
       if (request.command.type === "plugin.host.call") {
         if (request.command.method !== "resolveNativeRoots") {
@@ -199,17 +208,13 @@ describe("public project command typeahead route", () => {
           description: "Review code from one shared source.",
           argumentHint: null,
         });
-        expect(stub.skillRequests[0]?.command).toEqual({
-          type: "host.list_skills",
-          providerId: "bb-shared",
-          cwd: "/tmp/shared-skills",
-          nativeRoots: {
-            skills: {
-              user: [root(".agents/skills")],
-              project: [root(".agents/skills")],
-            },
-            commands: { user: [], project: [] },
-            resolved: NO_RESOLVED_ROOTS,
+        expect(stub.skillRequests[0]?.command).toMatchObject({
+          includeAgentInstructions: false,
+          type: "host.read_workspace_agent_context",
+          rootPath: "/tmp/shared-skills",
+          sharedSkillRoots: {
+            user: [root(".agents/skills")],
+            project: [root(".agents/skills")],
           },
         });
       },

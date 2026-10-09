@@ -45,7 +45,7 @@ import {
   type FooterItem,
   type BuiltinFooterId,
 } from "@/components/sidebar/sidebarFooterPreferences";
-import { SIDEBAR_FOOTER_ACTION_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;

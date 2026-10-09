@@ -475,6 +475,7 @@ const singleImageAttachments: TimelineConversationAttachments = {
   imageUrls: [],
   localImagePaths: ["https://placecats.com/300/200"],
   localFilePaths: [],
+  localFileDetails: [],
 };
 
 const mixedAttachments: TimelineConversationAttachments = {
@@ -487,6 +488,7 @@ const mixedAttachments: TimelineConversationAttachments = {
     "https://placecats.com/320/200",
   ],
   localFilePaths: ["docs/refactor-notes.md"],
+  localFileDetails: [],
 };
 
 const mentionedMessageText =

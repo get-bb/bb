@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 import { ProjectRow } from "./ProjectRow.js";
 import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow.js";
-import { useSidebarSortable } from "../rows/sortableMotion.js";
+import { useSidebarSortable } from "@/components/ui/sortable-motion";
 
 export interface ProjectListRowModel {
   project: SidebarProject;

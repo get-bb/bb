@@ -15,7 +15,10 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { threadListIndicatorStateForThread } from "@bb/client-core";
+import {
+  resolveThreadListIndicator,
+  threadListIndicatorStateForThread,
+} from "@bb/client-core";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
   highlightedText,
@@ -46,7 +49,7 @@ import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
   NO_THREADS_MESSAGE,
   ThreadListEmptyState,
-} from "@/components/thread/ThreadListEmptyState";
+} from "@bb/shared-ui/thread-list-empty-state";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -57,6 +60,11 @@ import {
 } from "@/lib/command-palette/palette-thread-search";
 import { windowPaletteThreadSearchText } from "@/lib/command-palette/palette-thread-search-window";
 import { PaletteThreadViewMenu } from "./PaletteThreadViewMenu";
+import {
+  PaletteStatusMessage,
+  THREAD_SEARCH_INPUT,
+  threadSearchModeChip,
+} from "./ThreadSearchPalettePlaceholder";
 import {
   PALETTE_SECTION_LABEL_CLASS,
   PaletteShell,
@@ -78,9 +86,13 @@ function optionKey(option: ThreadSearchOption): string {
 }
 
 export function ThreadSearchPaletteMode({
+  query,
+  onQueryChange: setQuery,
   onExit,
   runAfterClose,
 }: {
+  query: string;
+  onQueryChange: (query: string) => void;
   onExit: () => void;
   runAfterClose: (run: () => void) => void;
 }) {
@@ -103,10 +115,11 @@ export function ThreadSearchPaletteMode({
   const [sortDirection, setSortDirection] = useAtom(
     paletteThreadSortDirectionAtom,
   );
-  const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<ThreadArchiveFilter[]>(
+    [],
+  );
   const [shownCounts, setShownCounts] = useState<
     Partial<Record<ThreadArchiveFilter, number>>
   >({});
@@ -395,7 +408,7 @@ export function ThreadSearchPaletteMode({
           ? `Use ${splitModifier}+Enter to open in split. Use Escape to return to commands.`
           : "Use Escape to return to commands."
       }
-      inputLabel="Search threads"
+      inputLabel={THREAD_SEARCH_INPUT.label}
       inputAccessory={
         <div className="max-w-[45%] shrink-0">
           <PaletteThreadViewMenu
@@ -415,13 +428,7 @@ export function ThreadSearchPaletteMode({
       listId={listId}
       listLabel="Threads"
       listRef={listRef}
-      modeChip={{
-        icon: "Search",
-        label: "Threads",
-        clearLabel: "Return to commands",
-        onClear: onExit,
-        hideShortcut: isCompact,
-      }}
+      modeChip={threadSearchModeChip(onExit, isCompact)}
       onInputChange={(value) => {
         setQuery(value);
         setHighlightedIndex(0);
@@ -431,7 +438,7 @@ export function ThreadSearchPaletteMode({
         if (listRef.current !== null) listRef.current.scrollTop = 0;
       }}
       onInputKeyDown={handleInputKeyDown}
-      placeholder="Search title, project, or message…"
+      placeholder={THREAD_SEARCH_INPUT.placeholder}
       value={query}
     >
       {emptyMessage === null ? (
@@ -529,9 +536,7 @@ export function ThreadSearchPaletteMode({
           className="justify-center px-3 py-4"
         />
       ) : (
-        <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-          {emptyMessage}
-        </p>
+        <PaletteStatusMessage>{emptyMessage}</PaletteStatusMessage>
       )}
     </PaletteShell>
   );
@@ -572,7 +577,11 @@ function ThreadSearchPaletteRow({ row }: { row: PaletteThreadSearchRow }) {
                   className="mr-1 inline-block size-3.5 align-text-bottom"
                   aria-hidden
                 />
-                {highlightedText(row.projectName, 0, row.projectHighlightRanges)}
+                {highlightedText(
+                  row.projectName,
+                  0,
+                  row.projectHighlightRanges,
+                )}
                 {" · "}
               </>
             )}
@@ -638,12 +647,11 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
     projectId: row.projectId,
     threadId: row.threadId,
   });
-  const state = threadListIndicatorStateForThread(
-    row.thread,
-    hasUnsubmittedDraft,
+  const indicator = resolveThreadListIndicator(
+    threadListIndicatorStateForThread(row.thread, hasUnsubmittedDraft),
   );
-  const pluginStatus = usePluginThreadRowStatus(row.threadId);
-  const { accessibleLabel: label } = resolveThreadStatus(state, pluginStatus);
+  const rowStatus = usePluginThreadRowStatus(row.threadId);
+  const { accessibleLabel: label } = resolveThreadStatus(indicator, rowStatus);
   if (label === null) return null;
   return (
     <>
@@ -663,8 +671,8 @@ function ThreadSearchPaletteStatus({ row }: { row: PaletteThreadSearchRow }) {
             data-palette-thread-status
           >
             <ThreadStatusGlyph
-              {...state}
-              pluginStatus={pluginStatus}
+              indicator={indicator}
+              rowStatus={rowStatus}
               size="compact"
             />
           </span>

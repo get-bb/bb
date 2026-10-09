@@ -28,6 +28,7 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  providerNativeRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_EXCLUDE_NAME_MAX_LENGTH,
@@ -746,6 +747,49 @@ const hostListSkillsCommandSchema = z
   })
   .strict();
 
+const hostReadWorkspaceAgentContextCommandSchema = z
+  .object({
+    type: z.literal("host.read_workspace_agent_context"),
+    includeAgentInstructions: z.boolean(),
+    projectSkillRead: z
+      .object({
+        limit: z.number().int().positive(),
+        maxFileBytes: z.number().int().positive(),
+        maxContentBytes: z.number().int().positive(),
+        excludeNames: z.array(z.string()),
+      })
+      .strict(),
+    rootPath: z.string().min(1),
+    sharedSkillRoots: providerNativeRootsSchema,
+  })
+  .strict();
+
+const workspaceProjectSkillFileSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("budget-exceeded"),
+      directoryName: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("file"),
+      directoryName: z.string().min(1),
+      content: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("oversized"),
+      directoryName: z.string().min(1),
+      sizeBytes: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type WorkspaceProjectSkillFile = z.infer<
+  typeof workspaceProjectSkillFileSchema
+>;
+
 export const deletableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
@@ -1157,6 +1201,15 @@ const skillListResultSchema = z.object({
   skills: z.array(discoveredSkillSchema),
 });
 
+const hostReadWorkspaceAgentContextResultSchema = z
+  .object({
+    agentInstructions: z.string().nullable(),
+    projectSkills: z.array(workspaceProjectSkillFileSchema),
+    projectSkillsTruncated: z.boolean(),
+    sharedSkills: z.array(discoveredSkillSchema),
+  })
+  .strict();
+
 const deleteSkillResultSchema = z.object({
   deletedPath: z.string(),
 });
@@ -1226,6 +1279,31 @@ const threadStopResultSchema = z
   })
   .strict();
 const emptyCommandResultSchema = z.object({});
+const turnSubmitTraceSpanNameSchema = z.enum([
+  "lanes.entered",
+  "skills.staged",
+  "runtime.ready",
+  "input.staged",
+  "bridge.turnStarted",
+  "events.flushed",
+]);
+export type TurnSubmitTraceSpanName = z.infer<
+  typeof turnSubmitTraceSpanNameSchema
+>;
+const turnSubmitTraceSchema = z
+  .object({
+    spans: z.array(
+      z
+        .object({
+          name: turnSubmitTraceSpanNameSchema,
+          atMs: z.number().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type TurnSubmitTrace = z.infer<typeof turnSubmitTraceSchema>;
+const turnSubmitResultSchema = z.object({ trace: turnSubmitTraceSchema });
 const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
 const projectInspectResultSchema = projectPathResultSchema
   .extend({ gitRemoteUrl: z.string().min(1).nullable() })
@@ -1473,7 +1551,7 @@ export const hostDaemonCommandRegistry = {
   "turn.submit": defineHostDaemonCommandDescriptor({
     type: "turn.submit",
     schema: turnSubmitCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: turnSubmitResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,
@@ -1755,6 +1833,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.list_skills",
     schema: hostListSkillsCommandSchema,
     resultSchema: skillListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.read_workspace_agent_context": defineHostDaemonCommandDescriptor({
+    type: "host.read_workspace_agent_context",
+    schema: hostReadWorkspaceAgentContextCommandSchema,
+    resultSchema: hostReadWorkspaceAgentContextResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

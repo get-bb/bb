@@ -68,7 +68,7 @@ function installedApp(): Partial<PluginSdkApp> | undefined {
 function runtimeMember<Name extends keyof PluginSdkApp>(
   name: Name,
 ): PluginSdkApp[Name] {
-  const member = installedApp()?.[name];
+  const member = installedApp()?.[name] as PluginSdkApp[Name] | undefined;
   if (member === undefined) {
     throw new Error(
       `@get-bb/plugin-sdk/app: ${name} needs the bb app's plugin runtime. In tests, call installTestPluginRuntime() from @get-bb/plugin-sdk/testing/app first.`,
@@ -174,9 +174,26 @@ export const useComposerView = runtimeFunction("useComposerView");
 export const experimental_useSidebarThreads = runtimeFunction(
   "experimental_useSidebarThreads",
 );
+/** @internal Superseded by the thread action registry, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",
 );
+export const experimental_useThreadActions = runtimeFunction(
+  "experimental_useThreadActions",
+);
+export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
+  "experimental_useArchiveEnvironmentThreads",
+);
+export const experimental_useThreadActionRegistrations = runtimeFunction(
+  "experimental_useThreadActionRegistrations",
+);
+export const experimental_ThreadActionsMenu = runtimeComponent(
+  "experimental_ThreadActionsMenu",
+);
+export const experimental_ThreadActionsContextMenu = runtimeComponent(
+  "experimental_ThreadActionsContextMenu",
+);
+export { experimental_THREAD_ACTION_GROUPS } from "./thread-action-groups.js";
 export const experimental_useSidebarThreadPullRequest = runtimeFunction(
   "experimental_useSidebarThreadPullRequest",
 );
@@ -198,6 +215,9 @@ export const useSidebarThreadShortcut = runtimeFunction(
   "useSidebarThreadShortcut",
 );
 export const ThreadTitle = runtimeComponent("ThreadTitle");
+export const experimental_ThreadStatusGlyph = runtimeComponent(
+  "experimental_ThreadStatusGlyph",
+);
 export const useEnvironmentProviders = runtimeFunction(
   "useEnvironmentProviders",
 );

@@ -13,7 +13,7 @@ function children(row: TimelineRow): readonly TimelineRow[] | null {
   if (
     row.kind === "work" &&
     row.workKind === "delegation" &&
-    row.childRows.length
+    row.childRows?.length
   )
     return row.childRows;
   return null;

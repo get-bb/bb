@@ -12,7 +12,11 @@ Read `testing.md` for examples and fidelity limits.
 - `NavigateCall`
 - `ExperimentalFixedTabOpenCall`
 - `ComposerLog`
-- `SidebarActionCall`
+- `SidebarActionCall` — deprecated, runtime-only for older plugins' tests of
+  `experimental_useSidebarThreadActions`
+- `TestThreadActionsResolver` — what `renderSlot` `options.threadActions` returns for
+  `experimental_useThreadActions(thread)` and the fake thread menus; receives
+  the caller's `requestRename`
 - `installTestPluginRuntime`
 - `CapturedPluginApp`
 - `PluginAppSource`

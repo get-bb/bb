@@ -296,8 +296,8 @@ const attachmentsBase: AttachmentsConfig = {
   projectId: "proj_demo",
   isAttaching: false,
   error: null,
-  onAttachFiles: noop,
-  onRemove: noop,
+  onAttachFiles: async () => [],
+  onUpdate: noop,
 };
 
 const historyEntries = [

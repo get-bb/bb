@@ -150,6 +150,11 @@ const canonicalPromptMentionResourceSchema = z.discriminatedUnion("kind", [
     itemId: z.string(),
     label: z.string(),
   }),
+  z.object({
+    kind: z.literal("attachment"),
+    path: z.string(),
+    label: z.string(),
+  }),
 ]);
 
 function normalizeLegacyPromptMentionResource(value: unknown): unknown {

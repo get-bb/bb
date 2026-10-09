@@ -19,9 +19,6 @@ every window and client sees the same value.
   or skipped; `null` means the guide is showing.
 - `bb settings replay-onboarding` clears it. Settings → General → Setup guide
   has the same button.
-- `setupChecklistVisible` shows the "Finish setting up bb" checklist on the
-  home screen. Turn it off with
-  `bb settings general setupChecklistVisible false`.
 - `bb project discover [--machine <id-or-name>]` lists the git repositories the
   guide offers to import; add one with `bb project create --name <name> --root <path>`.
 

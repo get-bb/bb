@@ -27,7 +27,7 @@ function flattenTimelineRows(rows: readonly TimelineRow[]): TimelineRow[] {
         }
         break;
       case "work":
-        if (row.workKind === "delegation") {
+        if (row.workKind === "delegation" && row.childRows !== null) {
           flattened.push(...flattenTimelineRows(row.childRows));
         }
         break;

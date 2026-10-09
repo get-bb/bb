@@ -325,8 +325,6 @@ export function registerSystemRoutes(
         settings.onboardingCompletedAt === undefined
           ? current.onboardingCompletedAt
           : settings.onboardingCompletedAt,
-      setupChecklistVisible:
-        settings.setupChecklistVisible ?? current.setupChecklistVisible,
       showDiagnosticEvents:
         diagnosticValue === undefined ||
         (showUnhandledProviderEvents !== undefined &&

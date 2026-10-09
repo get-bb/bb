@@ -29,7 +29,7 @@ export interface TimelineViewDelegationWorkRow extends Omit<
   TimelineDelegationWorkRow,
   "childRows"
 > {
-  childRows: ThreadTimelineViewRow[];
+  childRows: ThreadTimelineViewRow[] | null;
   inClosedStep?: boolean;
 }
 
@@ -943,7 +943,10 @@ function toTimelineViewWorkRow(
   const closedScope = row.status !== "pending";
   return {
     ...row,
-    childRows: buildTimelineViewRows(row.childRows, { cache, closedScope }),
+    childRows:
+      row.childRows === null
+        ? null
+        : buildTimelineViewRows(row.childRows, { cache, closedScope }),
   };
 }
 

@@ -537,6 +537,57 @@ export const threadPluginMetadataQuerySchema = z
 export type ThreadPluginMetadataQuery = z.infer<
   typeof threadPluginMetadataQuerySchema
 >;
+export const PLUGIN_THREAD_METADATA_LIST_MAX_IDS = 200;
+
+export const pluginThreadMetadataListRequestSchema = z
+  .object({
+    pluginId: pluginIdSchema,
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(PLUGIN_THREAD_METADATA_LIST_MAX_IDS),
+  })
+  .strict();
+export type PluginThreadMetadataListRequest = z.infer<
+  typeof pluginThreadMetadataListRequestSchema
+>;
+export const pluginThreadMetadataListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), metadata: pluginMetadataSchema })
+        .strict(),
+    ),
+  })
+  .strict();
+export type PluginThreadMetadataListResponse = z.infer<
+  typeof pluginThreadMetadataListResponseSchema
+>;
+export const THREAD_ANCESTORS_LIST_MAX_IDS = 200;
+
+export const threadAncestorsListRequestSchema = z
+  .object({
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(THREAD_ANCESTORS_LIST_MAX_IDS),
+  })
+  .strict();
+export type ThreadAncestorsListRequest = z.infer<
+  typeof threadAncestorsListRequestSchema
+>;
+export const threadAncestorsListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), ancestorIds: z.array(z.string()) })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ThreadAncestorsListResponse = z.infer<
+  typeof threadAncestorsListResponseSchema
+>;
 export const updateThreadPluginMetadataRequestSchema = z
   .object({
     pluginId: pluginIdSchema,
@@ -918,6 +969,7 @@ export const threadTimelineQuerySchema = z
     beforeAnchorId: z.string().min(1),
     summaryOnly: z.enum(["true", "false"]),
     afterSequence: z.string().regex(/^\d+$/),
+    deferContent: z.enum(["true", "false"]),
   })
   .partial()
   .superRefine((query, context) => {
@@ -938,6 +990,8 @@ export type ThreadTimelineQuery = z.infer<typeof threadTimelineQuerySchema>;
 
 export const timelineTurnSummaryDetailsQuerySchema = z.object({
   beforeCursor: z.string().min(1).optional(),
+  deferContent: z.enum(["true", "false"]).optional(),
+  itemId: z.string().min(1).optional(),
   turnId: z.string().min(1),
   sourceSeqStart: z.string().regex(/^\d+$/),
   sourceSeqEnd: z.string().regex(/^\d+$/),
@@ -1081,6 +1135,15 @@ export const threadConversationOutlineItemSchema = z
   .strict();
 export type ThreadConversationOutlineItem = z.infer<
   typeof threadConversationOutlineItemSchema
+>;
+
+export const threadConversationOutlineQuerySchema = z
+  .object({
+    role: z.enum(["user", "assistant"]),
+  })
+  .partial();
+export type ThreadConversationOutlineQuery = z.infer<
+  typeof threadConversationOutlineQuerySchema
 >;
 
 export const threadConversationOutlineResponseSchema = z

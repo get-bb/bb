@@ -300,6 +300,12 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadActions,
+      "thread-action",
+      "Adds an action to thread menus.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.browserToolbarActions,
       "browser-toolbar",
       "Adds an action to Browser tab toolbars.",

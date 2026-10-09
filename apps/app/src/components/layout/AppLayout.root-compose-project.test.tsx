@@ -57,9 +57,7 @@ vi.mock("@/components/project/ProjectActionsProvider", () => ({
   ),
 }));
 
-vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
-  useMoveThreadToSection: () => vi.fn(),
-}));
+vi.mock("@/hooks/mutations/thread-state-mutations", () => ({}));
 
 vi.mock("@/components/thread/ThreadActionsProvider", () => ({
   ThreadActionsProvider: ({ children }: { children: ReactNode }) => (
@@ -162,7 +160,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreadDetailBootstrap: (...args: unknown[]) =>
     mockUseThreadDetailBootstrap(...args),
   useThreadPendingInteractions: () => ({ data: undefined }),
-  getLatestPendingInteraction: () => null,
 }));
 
 describe("AppLayout root compose project preference", () => {

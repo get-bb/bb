@@ -117,7 +117,7 @@ import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/Se
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
   CONTEXT_SELECTION_SURFACE_CLASS,
-} from "@/components/ui/context-selection";
+} from "@bb/shared-ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { wsManager } from "@/lib/ws";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";

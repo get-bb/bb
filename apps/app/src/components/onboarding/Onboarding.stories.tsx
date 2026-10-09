@@ -14,10 +14,6 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import {
-  SetupChecklistBanner,
-  type SetupChecklistItem,
-} from "./SetupChecklistHost";
 import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
@@ -300,6 +296,7 @@ function AgentFrame({
   signInVariant = "guided",
   onSignIn = noop,
   onInstall = noop,
+  onViewInstallLog = noop,
   onCancelSignIn = noop,
   onRecheck = noop,
   ...chrome
@@ -310,6 +307,7 @@ function AgentFrame({
   signInVariant?: SignInVariant;
   onSignIn?: (id: string) => void;
   onInstall?: (id: string) => void;
+  onViewInstallLog?: (id: string) => void;
   onCancelSignIn?: (id: string) => void;
   onRecheck?: () => void;
 }) {
@@ -336,6 +334,7 @@ function AgentFrame({
         agents={loading ? null : buildAgents(states, signInVariant)}
         onSignIn={onSignIn}
         onInstall={onInstall}
+        onViewInstallLog={onViewInstallLog}
         onCancelSignIn={onCancelSignIn}
         onRecheck={onRecheck}
       />
@@ -487,66 +486,9 @@ function DevicesFrame({
   );
 }
 
-function checklistItems(done: {
-  agent: boolean;
-  projects: boolean;
-  plugins: boolean;
-  devices: boolean;
-}): SetupChecklistItem[] {
-  return [
-    {
-      id: "agent",
-      title: "Connect a coding agent",
-      detail: done.agent
-        ? "Ready on this computer"
-        : "Needed before a thread can start",
-      done: done.agent,
-      actionLabel: "Set up",
-    },
-    {
-      id: "projects",
-      title: "Add your projects",
-      detail: done.projects
-        ? "3 added"
-        : "Import the repos you've used recently",
-      done: done.projects,
-      actionLabel: "Review",
-    },
-    {
-      id: "plugins",
-      title: "Pick some plugins",
-      detail: done.plugins
-        ? "2 turned on"
-        : "Browser automation, workflows, and more",
-      done: done.plugins,
-      actionLabel: "Browse",
-    },
-    {
-      id: "devices",
-      title: "Use bb from anywhere",
-      detail: done.devices ? CONNECT_URL : "Phone, browser, other machines",
-      done: done.devices,
-      actionLabel: "Set up",
-    },
-  ];
-}
-
-function HomeFrame({
-  items,
-  agentMissing,
-  onOpen = noop,
-  onDismiss = noop,
-}: {
-  items: SetupChecklistItem[] | null;
-  agentMissing: boolean;
-  onOpen?: (step: OnboardingStepId) => void;
-  onDismiss?: () => void;
-}) {
+function HomeFrame() {
   return (
     <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
-      <SetupChecklistBanner
-        checklist={{ items, agentMissing, open: onOpen, dismiss: onDismiss }}
-      />
       <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
         The usual bb home composer goes here.
       </p>
@@ -584,12 +526,10 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   const [selectedRepoIds, setSelectedRepoIds] = useState<ReadonlySet<string>>(
     () => new Set(DEFAULT_REPO_IDS),
   );
-  const [imported, setImported] = useState(false);
   const [enabledPluginIds, setEnabledPluginIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
-  const [checklistDismissed, setChecklistDismissed] = useState(false);
   const timers = useRef<number[]>([]);
 
   const later = (delayMs: number, run: () => void) => {
@@ -637,20 +577,9 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   };
 
   if (view === "home") {
-    const items = checklistItems({
-      agent: anyReady(states),
-      projects: imported,
-      plugins: enabledPluginIds.size > 0,
-      devices: false,
-    });
     return (
       <StoryWindow>
-        <HomeFrame
-          items={checklistDismissed ? null : items}
-          agentMissing={!anyReady(states)}
-          onOpen={setView}
-          onDismiss={() => setChecklistDismissed(true)}
-        />
+        <HomeFrame />
       </StoryWindow>
     );
   }
@@ -706,10 +635,7 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
             )
           }
           onSelectNone={() => setSelectedRepoIds(new Set())}
-          onPrimary={() => {
-            setImported(selectedRepoIds.size > 0);
-            setView("plugins");
-          }}
+          onPrimary={() => setView("plugins")}
           onSecondary={() => setView("plugins")}
           onBack={() => setView("agent")}
         />
@@ -870,7 +796,7 @@ export function Step1AgentStates() {
       </Captioned>
       <Captioned
         label="Installing, failed, update needed, unknown"
-        hint="Install and Update reuse the provider CLI install action. Unknown health never blocks or nags."
+        hint="Install and Update reuse the provider CLI install action. A failed install offers its log. Unknown health never blocks or nags."
       >
         <StoryWindow>
           <AgentFrame
@@ -878,7 +804,7 @@ export function Step1AgentStates() {
               "claude-code": { status: "installing" },
               codex: {
                 status: "installFailed",
-                message: "Install failed. Check the log, then retry.",
+                message: "Install failed",
                 canInstall: true,
               },
               pi: {
@@ -1034,35 +960,11 @@ export function HomeAfterSkipping() {
   return (
     <Gallery>
       <Captioned
-        label="Home after Skip setup, no agent ready"
-        hint="The home composer leads with the missing agent. Dismissing the checklist also stops this notice."
+        label="Home after Skip setup"
+        hint="The home composer is ready."
       >
         <StoryWindow>
-          <HomeFrame
-            agentMissing
-            items={checklistItems({
-              agent: false,
-              projects: true,
-              plugins: false,
-              devices: false,
-            })}
-          />
-        </StoryWindow>
-      </Captioned>
-      <Captioned
-        label="Home with an agent ready and steps left"
-        hint="A one-line checklist names the next open step; Continue reopens the guide there."
-      >
-        <StoryWindow>
-          <HomeFrame
-            agentMissing={false}
-            items={checklistItems({
-              agent: true,
-              projects: true,
-              plugins: false,
-              devices: false,
-            })}
-          />
+          <HomeFrame />
         </StoryWindow>
       </Captioned>
     </Gallery>
