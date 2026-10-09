@@ -38,9 +38,9 @@ Custom environments.
 
 const PUBLISHED = parseChangelog(`# Changelog
 
-## 0.46.0
+## 0.99.0
 
-Forty-six.
+Ninety-nine.
 `);
 
 function request(
@@ -138,10 +138,10 @@ describe("getReleaseNotes", () => {
   });
 
   it("reads a newer release from the published changelog", async () => {
-    const result = await request({ version: "0.46.0" });
+    const result = await request({ version: "0.99.0" });
 
     expect(result.releases[0]).toMatchObject({
-      version: "0.46.0",
+      version: "0.99.0",
       headline: null,
       date: null,
       visual: null,
@@ -152,7 +152,7 @@ describe("getReleaseNotes", () => {
   it("reports unavailable notes when the published changelog cannot be loaded", async () => {
     const error = await rejection(
       request({
-        version: "0.46.0",
+        version: "0.99.0",
         fetchPublished: vi.fn(async () => {
           throw new Error("fetch failed");
         }),
