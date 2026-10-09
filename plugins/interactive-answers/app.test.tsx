@@ -278,6 +278,10 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
     args: [{ bpm: 90, lead: { wave: "saw" } }],
   });
   expect(view.getByText("Agent · play")).toBeTruthy();
+  const play = posted.find(
+    (m) => (m as { action?: string }).action === "play",
+  ) as { cmdId: string };
+  send({ type: "result", cmdId: play.cmdId, ok: true, value: null });
   backend.shared.state = { step: 7 };
   backend.shared.version = 50;
   await view.behavior.emitRealtime("state", {
