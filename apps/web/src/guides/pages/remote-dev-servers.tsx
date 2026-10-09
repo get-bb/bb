@@ -6,7 +6,7 @@ import {
   Substeps,
   Ui,
 } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
+import { skillOffer, withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
   COST_FAQ,
@@ -43,7 +43,7 @@ If a step fails, stop and tell me what you saw. Don't open firewall ports, send 
 5. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
 6. Share each port with \`bb connect expose <port> --host <machine>\`, and check that \`bb connect shares --host <machine>\` lists them all.
 
-Reply with a table of branch, port, and link. Then offer to save these steps as a bb skill in .bb/skills/preview-branches/SKILL.md, with my machine and dev server command filled in, so next time I can just ask to preview branches.`,
+Reply with a table of branch, port, and link. ${skillOffer("preview-branches", "my machine and dev server command")}`,
 );
 
 const SETUP_SCRIPT = `#!/usr/bin/env bash
@@ -382,12 +382,14 @@ export const guide: Guide = {
       ),
     },
     {
-      question: "My dev boxes are created on demand. Does this work?",
+      question:
+        "My company gives me a new dev box when I need one. Does this work?",
       answer: (
         <p>
-          bb adds a machine once and keeps it. A box that's deleted and
-          recreated has to be added again. For machines made fresh for each
-          thread, use a machine provider plugin, like Modal Sandbox below.
+          Yes. When you get a new box, paste the prompt again: your agent adds
+          the box to bb over SSH and points the project at its checkout. When a
+          box goes away, remove it in{" "}
+          <Ui icon="settings">Settings → Machines</Ui>.
         </p>
       ),
     },

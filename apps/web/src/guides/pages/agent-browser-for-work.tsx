@@ -36,7 +36,9 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
    Check: you have the information or result I asked for, with the page each fact came from.
 
 4. Report and leave the tab for feedback. If you used a desktop Browser tab, stop controlling it with bb browser-automation stop <session-id> so it stays open on the most relevant page, and tell me I can choose Annotate elements to point at anything to change or dig into. If you used headless Chrome, close it with bb browser-automation close <session-id> and give me the page URLs instead.
-   Check: reply with the result in the format from my Bring back answer (by default, a table with a source per row), a source link for each fact, screenshots of anything I should look at, and what you couldn't do.`,
+   Check: reply with the result in the format from my Bring back answer (by default, a table with a source per row), a source link for each fact, screenshots of anything I should look at, and what you couldn't do.
+
+If it's a task I'll want again, offer to save these steps as a bb skill in .bb/skills/<short-name>/SKILL.md with my answers filled in, or as a bb automation if it should run on a schedule.`,
 );
 
 export const meta: GuideMeta = {

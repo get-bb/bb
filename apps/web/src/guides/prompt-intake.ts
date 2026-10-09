@@ -18,3 +18,7 @@ export function withIntake(fields: IntakeField[], prompt: string): string {
     prompt,
   ].join("\n");
 }
+
+export function skillOffer(name: string, filledIn: string): string {
+  return `Then offer to save these steps as a bb skill in .bb/skills/${name}/SKILL.md, with ${filledIn} filled in, so next time I can just ask for it.`;
+}

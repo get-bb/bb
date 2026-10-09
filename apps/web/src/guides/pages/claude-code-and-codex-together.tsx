@@ -1,6 +1,6 @@
 import { AgentSplit } from "../../compare/compare-visuals";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
+import { skillOffer, withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
   NESTED_SHOT,
@@ -39,7 +39,7 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
 
 6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what the review found, what you fixed, and what's left for me.`,
+Reply with what you built, what the review found, what you fixed, and what's left for me. ${skillOffer("build-and-review", "the reviewer")}`,
 );
 
 export const meta: GuideMeta = {

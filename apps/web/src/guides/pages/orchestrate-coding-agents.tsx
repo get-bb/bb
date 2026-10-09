@@ -1,6 +1,6 @@
 import { SpawnTimeline } from "../../compare/compare-visuals";
 import { CopyPromptButton, PromptBlock, Substeps, Ui } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
+import { skillOffer, withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
   NESTED_SHOT,
@@ -43,7 +43,7 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 
 6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what the review found, what you fixed, and what's left for me.`,
+Reply with what you built, what the review found, what you fixed, and what's left for me. ${skillOffer("build-and-review", "my reviewer")}`,
 );
 
 export const meta: GuideMeta = {
