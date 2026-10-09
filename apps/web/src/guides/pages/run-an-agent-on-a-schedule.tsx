@@ -1,9 +1,9 @@
 import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
-import { withQuestions } from "../prompt-intake";
+import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 
-const AGENT_PROMPT = withQuestions(
+const AGENT_PROMPT = withIntake(
   [
     {
       label: "Job",
