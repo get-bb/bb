@@ -7,24 +7,33 @@ import {
 } from "./site";
 import { handleDownload, handleSubscribe } from "./endpoints";
 
-describe("marketing download redirect", () => {
+describe("marketing download", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("redirects macOS downloads to the current dmg asset", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          files: [
-            { url: "bb-0.0.26-arm64.zip" },
-            { url: "bb-0.0.26-arm64.dmg" },
-          ],
-        }),
-      );
-    });
+  function stubReleaseFetch(feedFiles: string[], installer: () => Response) {
+    const fetchMock = vi.fn(
+      async (input: Parameters<typeof fetch>[0], _init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith(".json")) {
+          return new Response(
+            JSON.stringify({ files: feedFiles.map((name) => ({ url: name })) }),
+          );
+        }
+        return installer();
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("serves the current macOS dmg from getbb.app as an attachment", async () => {
+    const fetchMock = stubReleaseFetch(
+      ["bb-0.0.26-arm64.zip", "bb-0.0.26-arm64.dmg"],
+      () => new Response("dmg-bytes", { headers: { "content-length": "9" } }),
+    );
 
     const response = await handleDownload(
       "macos",
@@ -37,24 +46,24 @@ describe("marketing download redirect", () => {
       DESKTOP_DOWNLOADS.macos.versionFeedUrl,
       { headers: { accept: "application/json" } },
     );
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
+    expect(fetchMock).toHaveBeenCalledWith(
       `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/bb-0.0.26-arm64.dmg`,
+      undefined,
     );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="bb-0.0.26-arm64.dmg"',
+    );
+    expect(response.headers.get("Content-Length")).toBe("9");
+    expect(await response.text()).toBe("dmg-bytes");
   });
 
-  it("redirects Linux downloads to the AppImage from the Linux feed", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response(
-        JSON.stringify({
-          files: [
-            { url: "bb-0.42.1-x86_64.AppImage" },
-            { url: "bb-0.42.1-x86_64.AppImage.blockmap" },
-          ],
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("serves the AppImage from the Linux feed", async () => {
+    const fetchMock = stubReleaseFetch(
+      ["bb-0.42.1-x86_64.AppImage", "bb-0.42.1-x86_64.AppImage.blockmap"],
+      () => new Response("appimage-bytes"),
+    );
 
     const response = await handleDownload(
       "linux",
@@ -67,21 +76,60 @@ describe("marketing download redirect", () => {
       DESKTOP_DOWNLOADS.linux.versionFeedUrl,
       { headers: { accept: "application/json" } },
     );
-    expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe(
-      `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/bb-0.42.1-x86_64.AppImage`,
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="bb-0.42.1-x86_64.AppImage"',
     );
   });
 
-  it("never serves a macOS installer for a Linux request", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(
-          JSON.stringify({ files: [{ url: "bb-0.42.1-arm64.dmg" }] }),
-        );
-      }),
+  it("resumes a partial download without counting it again", async () => {
+    const fetchMock = stubReleaseFetch(
+      ["bb-0.0.26-arm64.dmg"],
+      () =>
+        new Response("tail", {
+          headers: { "content-range": "bytes 100-103/104" },
+          status: 206,
+        }),
     );
+    const waitUntil = vi.fn<(promise: Promise<void>) => void>();
+
+    const response = await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos", {
+        headers: { range: "bytes=100-" },
+      }),
+      { LANDING_POSTHOG_KEY: "phc_test" },
+      waitUntil,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/bb-0.0.26-arm64.dmg`,
+      { headers: { range: "bytes=100-" } },
+    );
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe("bytes 100-103/104");
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the release page when the installer fetch fails", async () => {
+    stubReleaseFetch(
+      ["bb-0.0.26-arm64.dmg"],
+      () => new Response("missing", { status: 404 }),
+    );
+
+    const response = await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos"),
+      {},
+      vi.fn(),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(DOWNLOAD_FALLBACK_URL);
+  });
+
+  it("never serves a macOS installer for a Linux request", async () => {
+    stubReleaseFetch(["bb-0.42.1-arm64.dmg"], () => new Response("dmg"));
 
     const response = await handleDownload(
       "linux",
@@ -94,12 +142,7 @@ describe("marketing download redirect", () => {
   });
 
   it("falls back to the release page when the feed has no dmg", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ files: [{ url: "notes.txt" }] }));
-      }),
-    );
+    stubReleaseFetch(["notes.txt"], () => new Response("unused"));
 
     const response = await handleDownload(
       "macos",
