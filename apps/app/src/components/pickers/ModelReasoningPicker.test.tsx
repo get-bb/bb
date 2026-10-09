@@ -1487,30 +1487,37 @@ describe("ModelReasoningPicker service tiers", () => {
     expect(onAgentOptionChange).toHaveBeenLastCalledWith("depth", "shallow");
   });
 
-  it("lets a long ladder of provider-named reasoning levels wrap inside the picker", () => {
-    renderPicker({
-      pickerReasoningOptions: [
-        "off",
-        "minimal",
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-      ].map((level) => ({ value: level, label: `Thinking: ${level}` })),
-      reasoningValue: "medium",
-      serviceTierOptions: [fast, ultrafast],
-      serviceTierValue: "default",
-    });
-    openPicker();
+  it("keeps up to six reasoning levels on one wrapping row and lays a longer ladder out as an even grid", () => {
+    const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+    const layoutOf = (
+      pickerReasoningOptions: readonly PickerOption<ReasoningLevel>[],
+    ) => {
+      renderPicker({
+        pickerReasoningOptions,
+        reasoningValue: "medium",
+        serviceTierOptions: [fast, ultrafast],
+        serviceTierValue: "default",
+      });
+      openPicker();
+      const classes = [
+        ...screen.getByRole("radiogroup", { name: "Reasoning" }).classList,
+      ].filter((name) => /^(flex|grid)/.test(name));
+      const speedWraps = screen
+        .getByRole("radiogroup", { name: "Speed" })
+        .classList.contains("flex-wrap");
+      cleanup();
+      return [classes.join(" "), speedWraps];
+    };
 
-    for (const name of ["Reasoning", "Speed"]) {
-      const group = screen.getByRole("radiogroup", { name });
-      expect(group.classList.contains("flex-wrap")).toBe(true);
-    }
-    expect(screen.getAllByRole("radio", { name: /^Thinking: / })).toHaveLength(
-      7,
-    );
+    expect(layoutOf(reasoningOptions)).toEqual(["flex flex-wrap", true]);
+    expect(
+      layoutOf(levels.map((level) => ({ value: level, label: level }))),
+    ).toEqual(["grid grid-cols-4", true]);
+    expect(
+      layoutOf(
+        levels.map((level) => ({ value: level, label: `Thinking: ${level}` })),
+      ),
+    ).toEqual(["grid grid-cols-3", true]);
   });
 
   it("shows no agent options when the provider reports none", () => {

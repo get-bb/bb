@@ -83,6 +83,22 @@ export interface ModelReasoningMenuProps {
   onStartHandoff: (() => void) | null;
 }
 
+const SINGLE_ROW_REASONING_LEVELS = 6;
+const WIDE_REASONING_LABEL_LENGTH = 12;
+
+function reasoningLadderClassName(
+  options: readonly PickerOption<ReasoningLevel>[],
+): string {
+  if (options.length <= SINGLE_ROW_REASONING_LEVELS) {
+    return "flex flex-wrap gap-1";
+  }
+  return options.some(
+    (option) => option.label.length > WIDE_REASONING_LABEL_LENGTH,
+  )
+    ? "grid grid-cols-3 gap-1"
+    : "grid grid-cols-4 gap-1";
+}
+
 export function ModelReasoningMenu({
   listRef,
   providerId,
@@ -263,7 +279,7 @@ export function ModelReasoningMenu({
                   if (option) onReasoningSelect(option.value);
                 }}
                 disabled={selectionBlocked}
-                className="flex flex-wrap gap-1"
+                className={reasoningLadderClassName(reasoningOptions)}
               >
                 {reasoningOptions.map((option) => (
                   <ToggleGroupItem
@@ -276,7 +292,9 @@ export function ModelReasoningMenu({
                       LIST_HOVER_TRANSITION,
                     )}
                   >
-                    {option.label}
+                    <span className="min-w-0 truncate" title={option.label}>
+                      {option.label}
+                    </span>
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>

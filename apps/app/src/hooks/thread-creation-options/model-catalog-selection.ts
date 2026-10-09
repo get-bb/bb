@@ -12,7 +12,7 @@ import {
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import {
-  reasoningLevelLabel,
+  reasoningLadderLabels,
   type ReasoningLabelSource,
 } from "@/lib/reasoning-labels";
 
@@ -160,16 +160,21 @@ export function resolveModelCatalogSelection({
     availableModels.find((model) => model.isDefault) ??
     availableModels[0];
 
-  const reasoningOptions: PickerOption<ReasoningLevel>[] = [];
   const seenReasoningLevels = new Set<ReasoningLevel>();
-  for (const effort of activeModel?.supportedReasoningEfforts ?? []) {
-    if (seenReasoningLevels.has(effort.reasoningEffort)) continue;
+  const reasoningEfforts = (
+    activeModel?.supportedReasoningEfforts ?? []
+  ).filter((effort) => {
+    if (seenReasoningLevels.has(effort.reasoningEffort)) return false;
     seenReasoningLevels.add(effort.reasoningEffort);
-    reasoningOptions.push({
+    return true;
+  });
+  const reasoningLabels = reasoningLadderLabels(reasoningEfforts, provider);
+  const reasoningOptions: PickerOption<ReasoningLevel>[] = reasoningEfforts.map(
+    (effort, index) => ({
       value: effort.reasoningEffort,
-      label: reasoningLevelLabel(effort.reasoningEffort, provider, effort),
-    });
-  }
+      label: reasoningLabels[index] ?? effort.reasoningEffort,
+    }),
+  );
 
   const preferredLevel = preferredReasoningLevel ?? "medium";
   const reasoningLevel = resolveModelReasoningLevel(
