@@ -17,7 +17,14 @@ import {
 const AGENT_PROMPT = withIntake(
   [
     { label: "Branches", hint: "the branches to preview" },
-    { label: "Machine", hint: "the remote machine to run them on" },
+    {
+      label: "Machine",
+      hint: "your dev box or another remote machine to run them on",
+    },
+    {
+      label: "Checkout",
+      hint: "the repo's folder on that machine, if it has one",
+    },
     {
       label: "Dev server command",
       hint: "check package.json, e.g. npm run dev",
@@ -29,7 +36,7 @@ Guide: https://getbb.app/guides/remote-dev-servers
 If a step fails, stop and tell me what you saw. Don't open firewall ports, send localhost links, or share ports I didn't ask for.
 
 1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it.
-2. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\`.
+2. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --path <checkout> --machine <machine>\` for my existing checkout, or \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\` if there isn't one.
 3. For each branch, start a thread on the machine that starts its own server, all at once:
    bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if there's no remote> --title "<branch>" --prompt "Install dependencies if they're missing, then start this branch's dev server. Pick a free port, save it as WEB_PORT in .env.local (don't commit it), and run <dev server command> with HOST=127.0.0.1 and PORT set to that port in a bb terminal titled Dev server. Reply with the port once it's listening on 127.0.0.1, or with the error."
 4. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
@@ -62,8 +69,8 @@ export const guide: Guide = {
   steps: [
     {
       id: "step-1",
-      title: "Add a machine",
-      lead: "Run servers on a box with room for all of them, not on your laptop. bb keeps it connected through reboots and updates.",
+      title: "Add your dev box",
+      lead: "Run servers on a dev box, a remote machine you already develop on, with room for all of them. bb keeps it connected through reboots and updates.",
       body: (
         <Substeps>
           <li>
@@ -80,7 +87,10 @@ export const guide: Guide = {
             choose <strong>Copy</strong>, and run the command on the machine
             over SSH.
           </li>
-          <li>Sign in to your agents on that machine once.</li>
+          <li>
+            On the dev box, sign in to the agents you use, and run{" "}
+            <code>gh auth login</code> so they can push and open pull requests.
+          </li>
           <li>
             Check that the machine shows as Online in{" "}
             <Ui icon="settings">Settings → Machines</Ui>.
@@ -98,7 +108,7 @@ export const guide: Guide = {
     {
       id: "step-2",
       title: "Put your project on it",
-      lead: "Give the machine its own copy of the repo, and give every branch its own ports.",
+      lead: "Point bb at the checkout already on your dev box, and give every branch its own ports.",
       body: (
         <>
           <Substeps>
@@ -108,7 +118,12 @@ export const guide: Guide = {
             </li>
             <li>
               Under <strong>Checkouts</strong>, choose <strong>Set up</strong>{" "}
-              next to the new machine.
+              next to the dev box.
+            </li>
+            <li>
+              Choose <strong>Use an existing folder</strong> and pick your
+              checkout, or <strong>Clone from the project remote</strong> if
+              there isn't one.
             </li>
           </Substeps>
           <p>
@@ -346,7 +361,27 @@ export const guide: Guide = {
       ),
     },
     {
-      question: "Don't have a machine?",
+      question: "What should already be on my dev box?",
+      answer: (
+        <p>
+          Your repo, the tools it builds with, and any <code>.env</code> files.
+          List untracked files every branch needs in a{" "}
+          <code>.worktreeinclude</code>, and bb copies them from your checkout
+          into each new worktree. bb's install command adds what bb needs.
+        </p>
+      ),
+    },
+    {
+      question: "Can I keep working in my checkout over SSH?",
+      answer: (
+        <p>
+          Yes. Agents work in their own worktrees, so your checkout, editor, and
+          terminals stay as they are.
+        </p>
+      ),
+    },
+    {
+      question: "Don't have a dev box?",
       answer: (
         <p>
           bb can run machines in your own Modal account. Install the{" "}
