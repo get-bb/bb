@@ -166,7 +166,7 @@ export const guide: Guide = {
     ...BROWSER_FAQ,
   ],
   closer: {
-    title: "Let your agent try the app",
+    title: "Let your agent check its own work",
     body: "Free and open source. Use the agents you already have.",
   },
 };
