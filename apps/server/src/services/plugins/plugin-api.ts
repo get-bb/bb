@@ -116,6 +116,7 @@ import type {
 import type {
   BbSdk,
   ThreadForkArgs,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
@@ -365,6 +366,14 @@ function wrapSdkForPlugin(
         return sdk.threads.getPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      async experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId">,
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
+          ...args,
+          pluginId,
         });
       },
       async updatePluginMetadata(

@@ -657,6 +657,19 @@ describe("plugin bb.sdk against a running server", () => {
       await expect(
         api.sdk.threads.getPluginMetadata({ threadId: thread.id }),
       ).resolves.toEqual({ a: 1, nested: { old: true } });
+      const boundToCaller: unknown = {
+        threadIds: [thread.id],
+        pluginId: "cross",
+      };
+      await expect(
+        api.sdk.threads.experimental_listPluginMetadata(
+          boundToCaller as { threadIds: string[] },
+        ),
+      ).resolves.toEqual({
+        threads: [
+          { threadId: thread.id, metadata: { a: 1, nested: { old: true } } },
+        ],
+      });
       await expect(
         api.sdk.threads.getPluginMetadata({
           threadId: thread.id,

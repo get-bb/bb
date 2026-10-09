@@ -13,6 +13,7 @@ import {
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   listLifecycleThreadTree,
+  listPluginThreadMetadata,
   searchThreadsWithPendingInteractionState,
   updateThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
@@ -29,6 +30,7 @@ import {
   type ThreadIncludeOption,
   type ThreadChildSummaryResponse,
   type ThreadCountResponse,
+  type PluginThreadMetadataListResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -252,6 +254,20 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       ...(result.groups !== undefined ? { groups: result.groups } : {}),
     };
     return context.json(response);
+  });
+
+  post(routes.pluginMetadata.list, (context, payload) => {
+    const { threads, corruptThreadIds } = listPluginThreadMetadata(
+      deps.db,
+      payload.pluginId,
+      payload.threadIds,
+    );
+    for (const threadId of corruptThreadIds) {
+      deps.logger.warn(
+        `Ignoring corrupt plugin metadata for thread ${threadId}, plugin ${payload.pluginId}`,
+      );
+    }
+    return context.json({ threads } satisfies PluginThreadMetadataListResponse);
   });
 
   get(routes.running, (context) => {

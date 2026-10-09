@@ -2,6 +2,7 @@ import type {
   BbSdkAreas,
   ThreadForkArgs,
   ThreadMutationResult,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
@@ -382,6 +383,14 @@ export function bindSdkToPlugin(
         return sdk.threads.getPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId">,
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
+          ...args,
+          pluginId,
         });
       },
       updatePluginMetadata(

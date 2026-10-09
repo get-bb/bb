@@ -1295,6 +1295,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Keep plugin data with the thread it belongs to, hidden from the model",
           "Seed it when spawning or forking a thread",
           "Read it when configuring that thread's agent",
+          "List every live thread holding your data in one call",
         ],
         apiSymbols: [
           "PluginBbSdk",
@@ -1302,7 +1303,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ReadonlyJsonValue",
           "BbPluginApi",
         ],
-        firstParty: ["Workflows"],
+        firstParty: ["Push notifications", "Workflows"],
       },
       {
         id: "desktop-browsers",
