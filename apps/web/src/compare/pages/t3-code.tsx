@@ -86,7 +86,7 @@ export const comparison: Comparison = {
         {
           feature: "Message a subagent",
           bb: cell("yes", "Mid-run, from any device"),
-          competitor: cell("no"),
+          competitor: cell("partial", "Through its MCP tools"),
         },
         {
           ...BB_ROWS.accountSwitch,

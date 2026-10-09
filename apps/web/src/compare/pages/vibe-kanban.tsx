@@ -38,8 +38,8 @@ export const comparison: Comparison = {
   ...meta,
   title: "Vibe Kanban Alternative: Get Your Board Back in bb",
   description:
-    "Vibe Kanban shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any task to Claude Code, Codex, or another agent in its own Git worktree.",
-  headline: "Vibe Kanban shut down. Get your board back in bb.",
+    "Vibe Kanban’s cloud shut down. bb is a free, open-source app whose Tasks plugin gives you a local board: hand any task to Claude Code, Codex, or another agent in its own Git worktree.",
+  headline: "Vibe Kanban’s cloud shut down. Get your board back in bb.",
   sub: "Hand any task to Claude Code, Codex, or another agent on a local board, in an app that ships a release every week.",
   heroVisual: <TasksBoard compact={false} />,
   tailored: LEDGER_HIGHLIGHT,

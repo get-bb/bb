@@ -47,6 +47,7 @@ describe("marketplace routes", () => {
     expect(marketplace).toEqual({ status: "unavailable" });
     expect(marketplaceResponseStatus("/marketplace", [marketplace])).toBe(503);
     expect(marketplaceHtmlCacheControl("/marketplace", 503)).toBe("no-store");
+    expect(marketplaceHtmlCacheControl("/marketplace", 200)).toBe("no-cache");
     expect(marketplaceIndexMeta(false)).toContainEqual({
       name: "robots",
       content: "noindex",

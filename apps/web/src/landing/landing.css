@@ -3050,7 +3050,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer-brand .footer-legal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 10px;
+}
+
+.footer-brand .footer-legal a {
+  white-space: nowrap;
 }
 
 .footer-title {
