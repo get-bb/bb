@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useAtomValue } from "jotai";
 import { Icon } from "@/components/ui/icon";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import {
   Tooltip,
   TooltipContent,
@@ -423,6 +425,8 @@ function ThreadRowComponent({
     },
   });
   const customizeRowActions = useCustomizeThreadRowActions();
+  const isCompactViewport = useIsCompactViewport();
+  const pendingMenuCustomize = useRef<(() => void) | null>(null);
   const inlineMenuActions: PluginThreadActionsInlineItem[] =
     customizeRowActions === null
       ? []
@@ -433,7 +437,11 @@ function ThreadRowComponent({
             action: {
               label: "Customize row actions",
               icon: "FilterHorizontal",
-              run: () => customizeRowActions(thread.id),
+              run: () => {
+                const begin = () => customizeRowActions(thread.id);
+                if (isCompactViewport) begin();
+                else pendingMenuCustomize.current = begin;
+              },
             },
           },
         ];
@@ -543,6 +551,13 @@ function ThreadRowComponent({
   );
 
   const rowLinkRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (isCustomizingActions) {
+      focusFirstRowActionSlot(
+        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
+      );
+    }
+  }, [isCustomizingActions]);
   const handleRowClick = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
       if (event.target !== event.currentTarget) {
@@ -555,11 +570,11 @@ function ThreadRowComponent({
     [],
   );
   const handleActionsMenuCloseAutoFocus = (event: Event) => {
-    if (isCustomizingActions) {
+    const begin = pendingMenuCustomize.current;
+    if (begin) {
+      pendingMenuCustomize.current = null;
       event.preventDefault();
-      focusFirstRowActionSlot(
-        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
-      );
+      begin();
       return;
     }
     rename.onCloseAutoFocus(event);
