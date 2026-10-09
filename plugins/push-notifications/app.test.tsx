@@ -140,6 +140,11 @@ function renderNotifications(
     return action === null
       ? null
       : {
+          detail: action.detail ?? null,
+          icon: action.icon,
+          inheritLabel:
+            action.choices?.items.find((choice) => choice.id === "inherit")
+              ?.label ?? null,
           hint: action.choices?.hint ?? null,
           selected:
             action.choices?.items.find((choice) => choice.selected)?.id ?? null,
@@ -179,27 +184,48 @@ describe("thread notifications action", () => {
       ["thr_child", "thr_grandchild", "thr_new", "thr_other", "thr_top"],
     );
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
-    expect(summary()).toEqual({ hint: null, selected: "muted" });
+    expect(summary()).toEqual({
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (All activity)",
+      hint: null,
+      selected: "muted",
+    });
     expect(summary({ id: "thr_child", parentThreadId: "thr_top" })).toEqual({
-      hint: "Limited by parent (Muted)",
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (Needs input only)",
+      hint: "Limited by a parent thread",
       selected: "inherit",
     });
     expect(
       summary({ id: "thr_grandchild", parentThreadId: "thr_child" }),
     ).toEqual({
-      hint: "Limited by an ancestor (Muted)",
+      detail: "Muted",
+      icon: "push-notifications/off",
+      inheritLabel: "Default (Needs input only)",
+      hint: "Limited by an ancestor thread",
       selected: "inherit",
     });
     expect(summary({ id: "thr_other", parentThreadId: "thr_top" })).toEqual({
-      hint: "Child-thread default (Needs input only)",
+      detail: "Needs input only",
+      icon: "BellDot",
+      inheritLabel: "Default (Needs input only)",
+      hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_new" })).toEqual({
-      hint: "Default (All activity)",
+      detail: "All activity",
+      icon: "push-notifications/ringing",
+      inheritLabel: "Default (All activity)",
+      hint: null,
       selected: "inherit",
     });
     expect(summary({ id: "thr_unshown" })).toEqual({
-      hint: "Default (All activity)",
+      detail: "All activity",
+      icon: "push-notifications/ringing",
+      inheritLabel: "Default (All activity)",
+      hint: null,
       selected: "inherit",
     });
     expect(summary({ archivedAt: 1 })).toBeNull();

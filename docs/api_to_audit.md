@@ -3039,11 +3039,15 @@ Placement is static: a registration carries `group` and `order?`, and the
 host keeps registrations sorted by `group` (string compare), then `order`
 (unset sorts last), then registration order, so menus (with a separator
 between groups) and the quick-action picker share one order. An evaluated
-action is `{ label, icon, variant?, disabled?, choices?, run }`. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
+action is `{ label, detail?, icon, variant?, disabled?, choices?, run }`;
+`detail` is a muted second line under the label (and follows the label in a
+quick-action tooltip), such as a choice list's current value. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
 `2_organize`, `3_settings`, `4_lifecycle`); any other string forms its own
 group. `choices` is data (heading, hint, items): a submenu on desktop, a drawer
 step with Back at compact width, a popover from a row quick-action button; the
-picked id reaches `run` as `value`. `run` also receives `requestRename`, the
+picked id reaches `run` as `value`. `heading` (default: the label) titles the
+drawer step and the popover; desktop submenus show none because their trigger
+names them. `hint` is a footnote below the choices. `run` also receives `requestRename`, the
 surface's own rename editor or bb's dialog.
 
 bb's own actions are registrations of the same shape under the reserved
@@ -3058,7 +3062,9 @@ id-keyed cache of stored levels, fetches the `threadIds` it has not loaded in
 `threadNotifications.list` batches of up to 200 (built on
 `threads.experimental_listPluginMetadata`), applies its `threadNotifications`
 realtime channel, and refetches after a reconnect; `item` resolves the level
-with the plugin's shared resolver and `choices` sets it. The
+with the plugin's shared resolver, shows it as `detail` with a per-level icon
+(declared `push-notifications/ringing` and `push-notifications/off`, built-in
+`BellDot`), and `choices` sets it. The
 header menu, mobile recents, and both sidebar row menus render the host
 components; the row's hover quick actions read `experimental_useThreadActions`
 with `keys`; the thread archive keyboard command runs `bb--core/archive`.

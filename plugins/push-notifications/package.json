@@ -12,7 +12,11 @@
     "name": "Push notifications",
     "description": "Notifications for threads that need attention on mobile, web, and desktop",
     "branding": {
-      "icon": "BellDot"
+      "icon": "BellDot",
+      "experimental_icons": {
+        "ringing": "./icons/ringing.svg",
+        "off": "./icons/off.svg"
+      }
     },
     "server": "./server.ts",
     "app": "./app.tsx"

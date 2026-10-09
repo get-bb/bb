@@ -21,6 +21,7 @@ import {
   resolveThreadNotifications,
   UNSET_THREAD_NOTIFICATIONS,
   type NotificationDefaults,
+  type NotificationLevel,
   type OwnNotificationLevel,
   type StoredThreadNotifications,
   type ThreadNotifications,
@@ -167,13 +168,16 @@ function useThreadNotificationsData({
   );
 }
 
-function describeLevel(row: ThreadNotifications): string | null {
-  const label = NOTIFICATION_LEVEL_LABELS[row.effective];
-  if (row.source === "self") return null;
-  if (row.source === "parent") return `Limited by parent (${label})`;
-  if (row.source === "ancestor") return `Limited by an ancestor (${label})`;
-  if (row.source === "child-default") return `Child-thread default (${label})`;
-  return `Default (${label})`;
+const LEVEL_ICONS: Record<NotificationLevel, string> = {
+  all: "push-notifications/ringing",
+  "input-only": "BellDot",
+  muted: "push-notifications/off",
+};
+
+function capHint(row: ThreadNotifications): string | undefined {
+  if (row.source === "parent") return "Limited by a parent thread";
+  if (row.source === "ancestor") return "Limited by an ancestor thread";
+  return undefined;
 }
 
 export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNotificationsData> =
@@ -186,25 +190,37 @@ export const notificationsThreadAction: PluginThreadActionRegistration<ThreadNot
     item: ({ thread, data }) => {
       if (thread.archivedAt !== null) return null;
       const stored = data.levels.get(thread.id) ?? UNSET_THREAD_NOTIFICATIONS;
-      const hint =
+      const resolved =
         data.defaults === null
           ? null
-          : describeLevel(
-              resolveThreadNotifications(
+          : {
+              row: resolveThreadNotifications(
                 stored,
                 { parentThreadId: thread.parentThreadId },
                 data.defaults,
               ),
-            );
+              fallback: resolveThreadNotifications(
+                UNSET_THREAD_NOTIFICATIONS,
+                { parentThreadId: thread.parentThreadId },
+                data.defaults,
+              ).effective,
+            };
+      const hint = resolved === null ? undefined : capHint(resolved.row);
       return {
         label: "Notifications",
-        icon: "BellDot",
+        ...(resolved === null
+          ? {}
+          : { detail: NOTIFICATION_LEVEL_LABELS[resolved.row.effective] }),
+        icon:
+          resolved === null ? "BellDot" : LEVEL_ICONS[resolved.row.effective],
         choices: {
-          heading: "Notifications",
-          ...(hint === null ? {} : { hint }),
+          ...(hint === undefined ? {} : { hint }),
           items: ownNotificationLevelSchema.options.map((id) => ({
             id,
-            label: NOTIFICATION_LEVEL_LABELS[id],
+            label:
+              id === "inherit" && resolved !== null
+                ? `${NOTIFICATION_LEVEL_LABELS.inherit} (${NOTIFICATION_LEVEL_LABELS[resolved.fallback]})`
+                : NOTIFICATION_LEVEL_LABELS[id],
             selected: id === stored.own,
           })),
         },

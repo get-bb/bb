@@ -10,7 +10,7 @@ Click a notification to open its thread; on Linux desktop the click also restore
 
 ## Thread menu
 
-Every thread menu (header, sidebar row, right-click, compact drawer, optional row quick action) has a **Notifications** entry for unarchived threads: Default, All activity, Needs input only, Muted. The hint names what sets or limits the level. Thread plugin metadata stores `{ "notifications": { "own", "ancestorCap" } }`; menus fetch levels for the threads on screen in batches and update live.
+Every thread menu (header, sidebar row, right-click, compact drawer, optional row quick action) has a **Notifications** entry for unarchived threads: Default, All activity, Needs input only, Muted. The entry shows the current level; Default names its fallback; a footnote says when a parent limits it. Thread plugin metadata stores `{ "notifications": { "own", "ancestorCap" } }`; menus fetch levels for the threads on screen in batches and update live.
 
 ## Settings
 

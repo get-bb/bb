@@ -1403,8 +1403,12 @@ export interface PluginThreadActionChoice {
  * button. `run` receives the picked choice's `id` as `value`.
  */
 export interface PluginThreadActionChoices {
+  /**
+   * Title of the drawer step and the quick-action popover; defaults to the
+   * action's label. Desktop submenus show none: their trigger names them.
+   */
   heading?: string;
-  /** Secondary text under the heading, e.g. where the current value comes from. */
+  /** Footnote below the choices, e.g. why the current value differs from the pick. */
   hint?: string;
   items: readonly PluginThreadActionChoice[];
 }
@@ -1424,6 +1428,11 @@ export interface PluginThreadActionRunInput {
 /** One evaluated thread action: what a registration shows for one thread. */
 export interface PluginThreadAction {
   label: string;
+  /**
+   * Short secondary text on a muted second line under the label, e.g. the
+   * current value of a choice list.
+   */
+  detail?: string;
   icon: BbIconName;
   variant?: "default" | "destructive";
   disabled?: boolean;

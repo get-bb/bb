@@ -176,7 +176,9 @@ example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
 of bb's groups through `experimental_THREAD_ACTION_GROUPS` or name your own. `choices` renders as a submenu, a drawer step with Back, or
-a popover; the picked id reaches `run` as `value`.
+a popover; the picked id reaches `run` as `value`. Set `detail` to show the
+current value on a muted line under the label, and `choices.hint` for a footnote below the
+choices.
 
 ```tsx
 app.slots.experimental_threadAction({
@@ -187,6 +189,7 @@ app.slots.experimental_threadAction({
   useData: ({ threadIds }) => useNotificationLevels(threadIds),
   item: ({ thread, data, sdk }) => ({
     label: "Notifications",
+    detail: data.get(thread.id) === "muted" ? "Muted" : "All activity",
     icon: "Notification",
     choices: {
       items: [

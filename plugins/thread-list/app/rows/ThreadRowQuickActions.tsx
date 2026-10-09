@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
@@ -98,7 +99,11 @@ function ThreadQuickActionChoices({
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{action.label}</TooltipContent>
+        <TooltipContent side="bottom">
+          {action.detail === undefined
+            ? action.label
+            : `${action.label}: ${action.detail}`}
+        </TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         side="right"
@@ -107,11 +112,6 @@ function ThreadQuickActionChoices({
         className="max-h-[min(24rem,calc(100vh-2rem))] min-w-44 overflow-y-auto"
       >
         <DropdownMenuLabel>{choices.heading ?? action.label}</DropdownMenuLabel>
-        {choices.hint !== undefined ? (
-          <div className="px-2 pb-1 text-xs text-muted-foreground">
-            {choices.hint}
-          </div>
-        ) : null}
         {choices.items.map((choice) => (
           <DropdownMenuItem
             key={choice.id}
@@ -131,6 +131,14 @@ function ThreadQuickActionChoices({
             ) : null}
           </DropdownMenuItem>
         ))}
+        {choices.hint !== undefined ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="max-w-56 px-2 py-1 text-xs text-muted-foreground">
+              {choices.hint}
+            </div>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
