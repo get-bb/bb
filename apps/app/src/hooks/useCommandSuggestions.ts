@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
-import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
   toProviderCommandSuggestion,
@@ -26,6 +25,7 @@ interface UseCommandSuggestionsArgs {
 }
 
 const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
+const COMMAND_CATALOG_PREFETCH_DELAY_MS = 400;
 
 interface UseCommandSuggestionsResult {
   triggers: readonly PromptMentionCommandTrigger[];
@@ -132,10 +132,8 @@ export function useCommandSuggestions(
     { enabled: isActive },
   );
   const queryClient = useQueryClient();
-  const isPointerCoarse = usePointerCoarse();
   const shouldPrefetchCatalog =
     args.composerFocused === true &&
-    isPointerCoarse &&
     args.projectId !== undefined &&
     args.providerId !== undefined &&
     args.skillsTriggers.length > 0;
@@ -147,16 +145,19 @@ export function useCommandSuggestions(
     if (!shouldPrefetchCatalog) {
       return;
     }
-    void queryClient.prefetchQuery({
-      ...projectCommandsQueryOptions({
-        projectId: prefetchProjectId,
-        providerId: prefetchProviderId,
-        environmentId: prefetchEnvironmentId,
-        hostId: prefetchHostId,
-      }),
-      retry: false,
-      staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
-    });
+    const timer = setTimeout(() => {
+      void queryClient.prefetchQuery({
+        ...projectCommandsQueryOptions({
+          projectId: prefetchProjectId,
+          providerId: prefetchProviderId,
+          environmentId: prefetchEnvironmentId,
+          hostId: prefetchHostId,
+        }),
+        retry: false,
+        staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
+      });
+    }, COMMAND_CATALOG_PREFETCH_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [
     prefetchEnvironmentId,
     prefetchHostId,
