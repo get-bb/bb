@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { cn } from "@bb/shared-ui/lib/utils";
 
 const KEPT_TAIL_SEGMENTS = 2;
 const ELLIPSIS = "…";
@@ -17,11 +16,6 @@ export function splitPathForMiddleTruncation(path: string): {
     if (splitIndex <= 0) return { head: "", tail: path };
   }
   return { head: path.slice(0, splitIndex), tail: path.slice(splitIndex) };
-}
-
-function rootPrefixLength(head: string): number {
-  const separator = head.slice(1).search(/[\\/]/);
-  return separator === -1 ? 0 : separator + 2;
 }
 
 function longestFitting(
@@ -51,15 +45,28 @@ export function fitPathMiddle(
   if (measure(path) <= availableWidth) return path;
   const { head, tail } = splitPathForMiddleTruncation(path);
   const fits = (text: string) => measure(text) <= availableWidth;
-  const root = head.slice(0, rootPrefixLength(head));
-  const headLength = longestFitting(root.length, head.length - 1, (length) =>
-    fits(head.slice(0, length) + ELLIPSIS + tail),
+  const separator = tail.startsWith("\\") ? "\\" : "/";
+  const boundaries: number[] = [];
+  for (let index = 1; index < head.length; index += 1) {
+    if (head[index] === "/" || head[index] === "\\") boundaries.push(index);
+  }
+  for (let index = boundaries.length - 1; index >= 0; index -= 1) {
+    const candidate =
+      head.slice(0, boundaries[index]) + separator + ELLIPSIS + tail;
+    if (fits(candidate)) return candidate;
+  }
+  const root = head.slice(0, boundaries[0] ?? head.length);
+  const prefix = root + (root ? separator : "") + ELLIPSIS;
+  const lastSegment = tail.slice(
+    Math.max(tail.lastIndexOf("/"), tail.lastIndexOf("\\")),
   );
-  if (headLength !== null) return head.slice(0, headLength) + ELLIPSIS + tail;
+  if (lastSegment !== tail && fits(prefix + lastSegment)) {
+    return prefix + lastSegment;
+  }
   const tailLength = longestFitting(1, tail.length - 1, (length) =>
-    fits(root + ELLIPSIS + tail.slice(-length)),
+    fits(prefix + tail.slice(-length)),
   );
-  return root + ELLIPSIS + (tailLength === null ? "" : tail.slice(-tailLength));
+  return prefix + (tailLength === null ? "" : tail.slice(-tailLength));
 }
 
 let measureContext: CanvasRenderingContext2D | null = null;
@@ -72,45 +79,29 @@ function measureTextWidth(text: string, element: HTMLElement): number {
   return measureContext.measureText(text).width;
 }
 
-export function TruncatePathMiddle({
-  path,
-  className,
-}: {
-  path: string;
-  className?: string;
-}) {
-  const boxRef = useRef<HTMLSpanElement>(null);
+export function useFittedPathMiddle<T extends HTMLElement>(
+  path: string,
+  reservedWidth: number,
+) {
+  const containerRef = useRef<T>(null);
   const [fitted, setFitted] = useState(path);
 
   useLayoutEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
+    const container = containerRef.current;
+    if (!container) return;
     const fit = () =>
       setFitted(
-        box.scrollWidth <= box.clientWidth
-          ? path
-          : fitPathMiddle(path, box.getBoundingClientRect().width - 0.5, (text) =>
-              measureTextWidth(text, box),
-            ),
+        fitPathMiddle(
+          path,
+          container.getBoundingClientRect().width - reservedWidth - 0.5,
+          (text) => measureTextWidth(text, container),
+        ),
       );
     fit();
     const observer = new ResizeObserver(fit);
-    observer.observe(box);
+    observer.observe(container);
     return () => observer.disconnect();
-  }, [path]);
+  }, [path, reservedWidth]);
 
-  return (
-    <span
-      ref={boxRef}
-      className={cn(
-        "relative block min-w-0 overflow-hidden whitespace-pre",
-        className,
-      )}
-    >
-      <span aria-hidden className="invisible">
-        {path}
-      </span>
-      <span className="absolute inset-y-0 left-0">{fitted}</span>
-    </span>
-  );
+  return { containerRef, fitted };
 }

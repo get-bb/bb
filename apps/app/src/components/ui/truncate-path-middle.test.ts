@@ -37,17 +37,27 @@ describe("fitPathMiddle", () => {
     expect(fitPathMiddle(path, path.length, measure)).toBe(path);
   });
 
-  it("cuts the middle and keeps the root and last two segments", () => {
-    expect(fitPathMiddle(path, 22, measure)).toBe("~/.bb/pl…/thr_abc-1/bb");
+  it("replaces whole middle segments with an ellipsis segment", () => {
+    expect(fitPathMiddle(path, 28, measure)).toBe(
+      "~/.bb/plugins/…/thr_abc-1/bb",
+    );
+    expect(fitPathMiddle(path, 22, measure)).toBe("~/.bb/…/thr_abc-1/bb");
   });
 
-  it("cuts the start of the kept segments once only the root is left", () => {
-    expect(fitPathMiddle(path, 10, measure)).toBe("~/…bc-1/bb");
+  it("keeps only the last segment once only the root is left", () => {
+    expect(fitPathMiddle(path, 10, measure)).toBe("~/…/bb");
+  });
+
+  it("cuts the start of the last segment as a final fallback", () => {
+    expect(fitPathMiddle("~/a/b/long-segment", 8, measure)).toBe("~/…gment");
   });
 
   it("keeps the root of paths outside home and on Windows", () => {
-    expect(fitPathMiddle("/tmp/qa/run/external-root", 19, measure)).toBe(
-      "/tmp/…external-root",
+    expect(fitPathMiddle("/tmp/qa/run/external-root", 24, measure)).toBe(
+      "/tmp/…/run/external-root",
+    );
+    expect(fitPathMiddle("/tmp/qa/run/external-root", 20, measure)).toBe(
+      "/tmp/…/external-root",
     );
     expect(fitPathMiddle("C:\\Users\\me\\Code\\bb", 12, measure)).toBe(
       "C:\\…\\Code\\bb",
