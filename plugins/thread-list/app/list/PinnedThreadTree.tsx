@@ -14,6 +14,7 @@ import {
   type SidebarSortableDragBindings,
 } from "../rows/sortableMotion.js";
 import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
+import { useSidebarListShown } from "./useSidebarListShown.js";
 import type {
   ProjectThreadItem,
   ProjectThreadNode,
@@ -254,12 +255,13 @@ export const PinnedThreadTree = memo(function PinnedThreadTree({
   const hasEnvironmentGroups = rootItems.some(
     (item) => item.kind === "environment",
   );
+  const shown = useSidebarListShown();
   const { setNodeRef: setPinnedParentRef } = useDroppable({
     id: PINNED_THREAD_PARENT_KEY,
     disabled: chronologicalDnd === null,
   });
 
-  if (rootItems.length === 0) {
+  if (rootItems.length === 0 || !shown) {
     return null;
   }
 
