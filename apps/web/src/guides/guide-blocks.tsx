@@ -122,7 +122,7 @@ export function Ui({
       >
         <HugeiconsIcon icon={app.icon} aria-hidden="true" />
       </span>
-      {children}
+      {children ? <span>{children}</span> : null}
     </strong>
   );
 }

@@ -52,7 +52,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
-  vertical-align: -5px;
+  vertical-align: middle;
   color: var(--heading);
 }
 
