@@ -470,6 +470,9 @@ export function createPushNotificationsPlugin(
     bb.events.on("thread.failed", (payload) => {
       sender.onThreadFailed(payload);
     });
+    bb.events.on("experimental_thread.events", ({ thread }) =>
+      preferences.followParent(thread),
+    );
     bb.background.service("push-sender", {
       async start(signal) {
         await sender.start();

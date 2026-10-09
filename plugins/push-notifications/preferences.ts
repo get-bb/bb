@@ -162,6 +162,10 @@ export interface NotificationPreferences {
     id: string;
     parentThreadId: string | null;
   }): Promise<NotificationLevel>;
+  followParent(thread: {
+    id: string;
+    parentThreadId: string | null;
+  }): Promise<void>;
 }
 
 export function createNotificationPreferences(args: {
@@ -170,6 +174,11 @@ export function createNotificationPreferences(args: {
   publish(threadId: string, inputs: ThreadNotificationInputs | null): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
+  const knownParents = new Map<string, string | null>();
+
+  function rememberParent(threadId: string, parentThreadId: string | null) {
+    if (!knownParents.has(threadId)) knownParents.set(threadId, parentThreadId);
+  }
 
   async function readOwnLevels(
     threadIds: readonly string[],
@@ -207,6 +216,9 @@ export function createNotificationPreferences(args: {
     ]);
     const resolved = new Map<string, ResolvedThreadInputs>();
     for (const { threadId, ancestorIds } of ancestry) {
+      [threadId, ...ancestorIds].forEach((id, index) =>
+        rememberParent(id, ancestorIds[index] ?? null),
+      );
       let ancestorCap: ThreadNotificationInputs["ancestorCap"] = null;
       for (const ancestorId of ancestorIds) {
         const level = levels.get(ancestorId);
@@ -229,6 +241,10 @@ export function createNotificationPreferences(args: {
     const resolved = (await resolveInputs([threadId])).get(threadId);
     if (resolved === undefined) throw new Error("Thread not found");
     return resolved;
+  }
+
+  function publishInputs(threadId: string, inputs: ThreadNotificationInputs) {
+    publish(threadId, isUnset(inputs) ? null : inputs);
   }
 
   return {
@@ -254,7 +270,7 @@ export function createNotificationPreferences(args: {
           : { threadId, set: { [NOTIFICATIONS_METADATA_KEY]: { own: level } } },
       );
       const { inputs } = await requireInputs(threadId);
-      publish(threadId, isUnset(inputs) ? null : inputs);
+      publishInputs(threadId, inputs);
       return inputs;
     },
     async effectiveLevel(thread) {
@@ -267,6 +283,13 @@ export function createNotificationPreferences(args: {
         { parentThreadId: thread.parentThreadId },
         defaults,
       ).effective;
+    },
+    async followParent(thread) {
+      const known = knownParents.get(thread.id);
+      knownParents.set(thread.id, thread.parentThreadId);
+      if (known === undefined || known === thread.parentThreadId) return;
+      const resolved = (await resolveInputs([thread.id])).get(thread.id);
+      if (resolved !== undefined) publishInputs(thread.id, resolved.inputs);
     },
   };
 }

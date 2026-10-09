@@ -107,6 +107,7 @@ function renderNotifications(
     itemFor = next;
   };
   let current = stored;
+  let held: Promise<void> | null = null;
   const listInput =
     pushNotificationsRpcContract["threadNotifications.list"].input;
   const view = renderSlot(
@@ -115,15 +116,17 @@ function renderNotifications(
     {
       settings: { defaultLevel: "all", childLevel: "input-only" },
       rpc: {
-        "threadNotifications.list": (input) => ({
-          threads: Object.fromEntries(
+        "threadNotifications.list": async (input) => {
+          const threads = Object.fromEntries(
             listInput
               .parse(input)
               .threadIds.flatMap((id) =>
                 current[id] === undefined ? [] : [[id, current[id]]],
               ),
-          ),
-        }),
+          );
+          await held;
+          return { threads };
+        },
         "threadNotifications.set": (input) => ({
           own: pushNotificationsRpcContract[
             "threadNotifications.set"
@@ -163,6 +166,19 @@ function renderNotifications(
         .map((call) => call.input),
     restore(next: Record<string, ThreadNotificationInputs>) {
       current = next;
+    },
+    holdReads() {
+      let release = () => {};
+      held = new Promise((resolve) => {
+        release = () => {
+          held = null;
+          resolve();
+        };
+      });
+      return async () => {
+        release();
+        await act(async () => {});
+      };
     },
   };
 }
@@ -298,7 +314,118 @@ describe("thread notifications action", () => {
     await view.behavior.setRealtimeConnectionState("reconnecting");
     await view.behavior.setRealtimeConnectionState("connected");
     await waitFor(() => expect(summary()?.selected).toBe("all"));
-    expect(listCalls()).toHaveLength(2);
+    expect(listCalls()).toHaveLength(3);
+  });
+
+  it("keeps a level cleared to Default when a read from before the clear lands", async () => {
+    const muted = { own: "muted", ancestorCap: null } as const;
+    const { view, show, item, summary, restore, listCalls, holdReads } =
+      renderNotifications({ thr_a: muted, thr_b: muted }, []);
+    const release = holdReads();
+    show(["thr_a", "thr_b"]);
+    await waitFor(() => expect(listCalls()).toHaveLength(1));
+
+    restore({ thr_b: muted });
+    await act(() =>
+      item({ id: "thr_a" })!.run({ value: "inherit", requestRename: () => {} }),
+    );
+    restore({});
+    await view.behavior.emitRealtime("threadNotifications", {
+      threadId: "thr_b",
+      notifications: null,
+    });
+    await release();
+
+    expect(summary({ id: "thr_a" })?.selected).toBe("inherit");
+    expect(summary({ id: "thr_b" })?.selected).toBe("inherit");
+  });
+
+  it("re-reads shown rows when a parent's level changes", async () => {
+    const { view, summary, restore, listCalls } = renderNotifications({}, [
+      "thr_child",
+      "thr_top",
+    ]);
+    await waitFor(() => expect(listCalls()).toHaveLength(1));
+    const child = { id: "thr_child", parentThreadId: "thr_top" };
+    expect(summary(child)?.detail).toBe("Needs input only");
+
+    const muted = { own: "muted", ancestorCap: null } as const;
+    restore({
+      thr_top: muted,
+      thr_child: {
+        own: "inherit",
+        ancestorCap: { level: "muted", threadId: "thr_top" },
+      },
+    });
+    await view.behavior.emitRealtime("threadNotifications", {
+      threadId: "thr_top",
+      notifications: muted,
+    });
+    await waitFor(() =>
+      expect(summary(child)).toMatchObject({
+        detail: "Muted",
+        hint: "Limited by a parent thread",
+      }),
+    );
+    expect(summary()?.selected).toBe("muted");
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_child", "thr_top"] },
+      { threadIds: ["thr_child", "thr_top"] },
+    ]);
+  });
+
+  it("sends no request for rows already seen, including reads still in flight", async () => {
+    const { view, show, listCalls, holdReads } = renderNotifications({}, []);
+    const release = holdReads();
+    show(["thr_a", "thr_b"]);
+    await waitFor(() => expect(listCalls()).toHaveLength(1));
+    show(["thr_b", "thr_c"]);
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
+    await release();
+
+    await view.behavior.emitRealtime("threadNotifications", {
+      threadId: "thr_elsewhere",
+      notifications: null,
+    });
+    await waitFor(() => expect(listCalls()).toHaveLength(3));
+    show(["thr_c"]);
+    show(["thr_b", "thr_c"]);
+    await act(async () => {});
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_a", "thr_b"] },
+      { threadIds: ["thr_c"] },
+      { threadIds: ["thr_b", "thr_c"] },
+    ]);
+  });
+
+  it("re-reads rows that were off screen during an update when they are shown again", async () => {
+    const muted = { own: "muted", ancestorCap: null } as const;
+    const { view, show, summary, restore, listCalls } = renderNotifications(
+      { thr_a: muted, thr_b: muted },
+      ["thr_a", "thr_b"],
+    );
+    await waitFor(() =>
+      expect(summary({ id: "thr_b" })?.selected).toBe("muted"),
+    );
+    show(["thr_a"]);
+
+    restore({ thr_a: muted, thr_b: { own: "all", ancestorCap: null } });
+    await view.behavior.emitRealtime("threadNotifications", {
+      threadId: "thr_elsewhere",
+      notifications: null,
+    });
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
+
+    show(["thr_a", "thr_b"]);
+    await waitFor(() =>
+      expect(summary({ id: "thr_b" })?.selected).toBe("all"),
+    );
+    expect(summary({ id: "thr_a" })?.selected).toBe("muted");
+    expect(listCalls()).toEqual([
+      { threadIds: ["thr_a", "thr_b"] },
+      { threadIds: ["thr_a"] },
+      { threadIds: ["thr_b"] },
+    ]);
   });
 
   it("refetches threads that were off screen during a reconnect when they return", async () => {

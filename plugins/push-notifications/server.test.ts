@@ -1002,6 +1002,47 @@ describe("thread notification levels", () => {
     }
   });
 
+  it("publishes a listed thread's row when its parent changes", async () => {
+    const host = await setup();
+    try {
+      const muted = host.setThread({ id: "muted" });
+      const worker = host.setThread({ id: "worker" });
+      host.setThread({ id: "sub-worker", parentThreadId: worker.id });
+      const unlisted = host.setThread({ id: "unlisted" });
+      await host.setLevel(muted.id, "muted");
+      await host.listLevels(["sub-worker"]);
+      const published = host.levelUpdates().length;
+      const emitEvents = (threadId: string) =>
+        host.harness.behavior.emitThreadEvent("experimental_thread.events", {
+          thread: host.threads.get(threadId)!,
+          sequence: 1,
+        });
+
+      await emitEvents(worker.id);
+      host.moveThread(unlisted.id, muted.id);
+      await emitEvents(unlisted.id);
+      expect(host.levelUpdates()).toHaveLength(published);
+
+      host.moveThread(worker.id, muted.id);
+      await emitEvents(worker.id);
+      await emitEvents(worker.id);
+      host.moveThread(unlisted.id, null);
+      await emitEvents(unlisted.id);
+      expect(host.levelUpdates().slice(published)).toEqual([
+        {
+          threadId: worker.id,
+          notifications: {
+            own: "inherit",
+            ancestorCap: { level: "muted", threadId: muted.id },
+          },
+        },
+        { threadId: unlisted.id, notifications: null },
+      ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
   it("lists resolved levels in one call and publishes the written thread", async () => {
     const host = await setup();
     try {
