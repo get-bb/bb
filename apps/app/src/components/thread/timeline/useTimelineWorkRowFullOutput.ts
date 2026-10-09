@@ -59,16 +59,24 @@ function findPreviewableWorkRow(
   return null;
 }
 
+export function shouldLoadTimelineWorkRowFullOutput(
+  row: TimelinePreviewableWorkRow,
+): boolean {
+  return (
+    row.outputPreview !== undefined &&
+    row.outputPreview.experimental_fullOutputAvailability !==
+      "retention-expired" &&
+    row.turnId !== null &&
+    row.status !== "pending"
+  );
+}
+
 export function useTimelineWorkRowFullOutput(
   row: TimelinePreviewableWorkRow,
 ): TimelineWorkRowFullOutput {
   const outputPreview = row.outputPreview;
   const isPreview = outputPreview !== undefined;
-  const shouldLoad =
-    isPreview &&
-    outputPreview.experimental_fullOutputAvailability !== "retention-expired" &&
-    row.turnId !== null &&
-    row.status !== "pending";
+  const shouldLoad = shouldLoadTimelineWorkRowFullOutput(row);
   const { data, isError, refetch } = useThreadTimelineTurnSummaryDetails(
     {
       itemId: row.callId,

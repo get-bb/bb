@@ -35,6 +35,8 @@ export function ThreadDetailWorkerPoolProvider({
   const [requested, setRequested] = useState(false);
   const [loaded, setLoaded] = useState<LoadedPool | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [initializedPool, setInitializedPool] =
+    useState<WorkerPoolManager | null>(null);
   const request = useCallback(() => {
     setRequested(true);
   }, []);
@@ -69,12 +71,21 @@ export function ThreadDetailWorkerPoolProvider({
 
   useEffect(() => {
     if (loaded === null) return;
+    let cancelled = false;
+    const markInitialized = () => {
+      if (!cancelled) setInitializedPool(loaded.pool);
+    };
+    void loaded.pool.initialize().then(markInitialized, markInitialized);
     return () => {
+      cancelled = true;
       loaded.module.releasePierreWorkerPool();
     };
   }, [loaded]);
 
-  const ready = !canUseWorkers || loaded !== null || loadFailed;
+  const ready =
+    !canUseWorkers ||
+    loadFailed ||
+    (loaded !== null && initializedPool === loaded.pool);
   const pool = loaded?.pool;
   const gate = useMemo<PierreWorkerPoolGate>(
     () => ({ ready, pool, request }),

@@ -14,7 +14,7 @@ import {
 
 const DIFF_RENDERER_SLOT_KIND = "diffRenderer";
 
-const BbDiffSplit = defineSplit<BbDiffProps & { fallback: ReactNode }>({
+export const BbDiffSplit = defineSplit<BbDiffProps & { fallback: ReactNode }>({
   id: "bb-diff",
   load: () => import("./BbDiff").then((module) => module.default),
   loading: ({ fallback }) => fallback,

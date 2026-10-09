@@ -220,6 +220,7 @@ interface UseGitDiffCardBodyArgs {
   changeKind: GitDiffFileChangeKind;
   onRequestFileContents: RequestDiffFileContents | undefined;
   patchText?: string;
+  renderBeforeVisible: boolean;
 }
 
 interface GitDiffCardBodyState {
@@ -243,6 +244,7 @@ export function useGitDiffCardBody({
   changeKind,
   onRequestFileContents,
   patchText,
+  renderBeforeVisible,
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
   const isDeletedFile = changeKind === "deleted";
   const isImageCard = isImagePreviewCard(fileDiff, onRequestFileContents);
@@ -268,7 +270,8 @@ export function useGitDiffCardBody({
     status: "idle",
   });
   const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
-  const [hasBodyEnteredViewport, setHasBodyEnteredViewport] = useState(false);
+  const [hasBodyEnteredViewport, setHasBodyEnteredViewport] =
+    useState(renderBeforeVisible);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
   const [contextRequestVersion, setContextRequestVersion] = useState(0);
   const isPointerCoarse = usePointerCoarse();
