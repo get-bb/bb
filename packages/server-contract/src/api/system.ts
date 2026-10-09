@@ -222,7 +222,7 @@ const checklistCountSchema = z.number().int().min(0).max(10);
 export const TIP_TELEMETRY_IDS = [
   "whats-new",
   "account-pool",
-  "subthreads",
+  "child-threads",
   "set-up-for-me",
   "phone",
   "browser-automation",

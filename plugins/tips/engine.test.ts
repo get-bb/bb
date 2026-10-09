@@ -82,7 +82,7 @@ function testTip(
     id,
     title: `Title ${id}`,
     body: `Body ${id}.`,
-    illustration: "subthreads",
+    illustration: "child-threads",
     tone: "blue",
     action: { kind: "prompt", label: "Try it", prompt: `Prompt ${id}` },
     source: { kind: "feature", ref: id },
@@ -325,7 +325,7 @@ describe("contextual ranking", () => {
         createTipsState(START, "1.0.0"),
         signals({ ...context, ...overrides }),
       ).map((definition) => definition.id);
-    expect(ranked({}).slice(0, 2)).toEqual(["account-pool", "subthreads"]);
+    expect(ranked({}).slice(0, 2)).toEqual(["account-pool", "child-threads"]);
     expect(ranked({ recentlyRateLimited: true })[0]).toBe("account-pool");
     expect(
       ranked({ recentlyRateLimited: true, waitingThreadCount: 4 }).slice(0, 2),
@@ -369,21 +369,21 @@ describe("what's new", () => {
 });
 
 describe("catalog predicates", () => {
-  it("offers subthreads only where they are not in use yet", () => {
-    const subthreads = catalogTip("subthreads");
+  it("offers child threads only where they are not in use yet", () => {
+    const childThreads = catalogTip("child-threads");
     const finished = { hasFinishedThread: true };
-    expect(subthreads.eligible(signals())).toBe(false);
-    expect(subthreads.eligible(signals(finished))).toBe(true);
+    expect(childThreads.eligible(signals())).toBe(false);
+    expect(childThreads.eligible(signals(finished))).toBe(true);
     expect(
-      subthreads.eligible(signals({ ...finished, hasChildThread: true })),
+      childThreads.eligible(signals({ ...finished, hasChildThread: true })),
     ).toBe(false);
     expect(
-      subthreads.eligible(
+      childThreads.eligible(
         signals({ ...finished, hasChildThread: true, projectId: "proj_new" }),
       ),
     ).toBe(true);
     expect(
-      subthreads.eligible(
+      childThreads.eligible(
         signals({
           ...finished,
           projectId: "proj_busy",
@@ -391,7 +391,7 @@ describe("catalog predicates", () => {
         }),
       ),
     ).toBe(false);
-    expect(subthreads.action.kind).toBe("prompt");
+    expect(childThreads.action.kind).toBe("prompt");
   });
 
   it("offers the waiting-threads tip only when two or more threads need you", () => {

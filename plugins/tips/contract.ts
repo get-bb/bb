@@ -12,7 +12,7 @@ export type TipClient = z.infer<typeof tipClientSchema>;
 export const TIP_IDS = [
   "whats-new",
   "account-pool",
-  "subthreads",
+  "child-threads",
   "set-up-for-me",
   "phone",
   "browser-automation",

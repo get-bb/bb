@@ -7,15 +7,15 @@ import type { TipView } from "./contract.js";
 const app = await loadPluginApp(() => import("./app"));
 
 const PROMPT_TIP: TipView = {
-  id: "subthreads",
-  illustration: "subthreads",
+  id: "child-threads",
+  illustration: "child-threads",
   tone: "blue",
   title: "Run work in parallel",
-  body: "Ask bb to spin up subthreads that try three approaches at once.",
+  body: "Ask bb to spin up child threads that try three approaches at once.",
   action: {
     kind: "prompt",
     label: "Try it",
-    prompt: "Spin up three subthreads. Task: ",
+    prompt: "Spin up three child threads. Task: ",
   },
 };
 
@@ -156,7 +156,7 @@ describe("Tips homepage section", () => {
       slot.getByRole("button", {
         name: /Run work in parallel.*Adds prompt to composer$/u,
       }),
-    ).toBe(tile(slot, "subthreads"));
+    ).toBe(tile(slot, "child-threads"));
     expect(slot.getByRole("button", { name: /Opens Get the app$/u })).toBe(
       tile(slot, "phone"),
     );
@@ -222,7 +222,7 @@ describe("Tips homepage section", () => {
     expect(telemetry(slot)).toEqual([
       {
         name: "tip_shown",
-        properties: { tip_id: "subthreads", position: 1, action: "prompt" },
+        properties: { tip_id: "child-threads", position: 1, action: "prompt" },
       },
       {
         name: "tip_shown",
@@ -266,18 +266,18 @@ describe("Tips homepage section", () => {
   it("previews a prompt tip as the composer placeholder on hover and focus", async () => {
     const slot = renderTips();
     await slot.findByText("Run work in parallel");
-    fireEvent.mouseEnter(tile(slot, "subthreads"));
+    fireEvent.mouseEnter(tile(slot, "child-threads"));
     await waitFor(() =>
       expect(slot.composer.placeholderPreview).toBe(
-        "Spin up three subthreads. Task:",
+        "Spin up three child threads. Task:",
       ),
     );
-    fireEvent.mouseLeave(tile(slot, "subthreads"));
+    fireEvent.mouseLeave(tile(slot, "child-threads"));
     await waitFor(() => expect(slot.composer.placeholderPreview).toBeNull());
     fireEvent.focus(tile(slot, "phone"));
     await Promise.resolve();
     expect(slot.composer.placeholderPreview).toBeNull();
-    fireEvent.focus(tile(slot, "subthreads"));
+    fireEvent.focus(tile(slot, "child-threads"));
     await waitFor(() =>
       expect(slot.composer.placeholderPreview).not.toBeNull(),
     );
@@ -289,9 +289,9 @@ describe("Tips homepage section", () => {
     const slot = renderTips();
     await slot.findByText("Run work in parallel");
     await slot.setComposerText("  fix the flaky login test ");
-    fireEvent.click(tile(slot, "subthreads"));
+    fireEvent.click(tile(slot, "child-threads"));
     expect(slot.composer.text).toBe(
-      "Spin up three subthreads. Task: fix the flaky login test",
+      "Spin up three child threads. Task: fix the flaky login test",
     );
     expect(slot.composer.focusCount).toBe(1);
     expect(slot.inspection.navigateCalls).toEqual([]);
@@ -302,7 +302,7 @@ describe("Tips homepage section", () => {
     await waitFor(() =>
       expect(slot.inspection.rpcCalls.at(-1)).toEqual({
         method: "act",
-        input: { id: "subthreads" },
+        input: { id: "child-threads" },
       }),
     );
   });
@@ -310,8 +310,8 @@ describe("Tips homepage section", () => {
   it("fills an empty composer with the prompt alone", async () => {
     const slot = renderTips();
     await slot.findByText("Run work in parallel");
-    fireEvent.click(tile(slot, "subthreads"));
-    expect(slot.composer.text).toBe("Spin up three subthreads. Task: ");
+    fireEvent.click(tile(slot, "child-threads"));
+    expect(slot.composer.text).toBe("Spin up three child threads. Task: ");
   });
 
   it("opens a bb page for a route tip", async () => {

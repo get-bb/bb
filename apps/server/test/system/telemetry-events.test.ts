@@ -55,7 +55,7 @@ describe("client telemetry events", () => {
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
       const shown = {
         name: "tip_shown",
-        properties: { tip_id: "subthreads", position: 1, action: "prompt" },
+        properties: { tip_id: "child-threads", position: 1, action: "prompt" },
       };
       const used = {
         name: "tip_used",
@@ -74,16 +74,20 @@ describe("client telemetry events", () => {
         }),
         await post(harness, {
           name: "tip_used",
-          properties: { tip_id: "subthreads", position: 4, action: "prompt" },
+          properties: {
+            tip_id: "child-threads",
+            position: 4,
+            action: "prompt",
+          },
         }),
         await post(harness, {
           name: "tip_used",
-          properties: { tip_id: "subthreads", position: 1, action: "share" },
+          properties: { tip_id: "child-threads", position: 1, action: "share" },
         }),
         await post(harness, {
           name: "tip_shown",
           properties: {
-            tip_id: "subthreads",
+            tip_id: "child-threads",
             position: 1,
             action: "prompt",
             projectId: "proj_123",

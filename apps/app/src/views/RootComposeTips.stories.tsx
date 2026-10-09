@@ -60,7 +60,7 @@ const STORY_SIGNALS = {
   appVersion: "0.42.0",
 };
 
-const CARD_TIPS = ["subthreads", "set-up-for-me", "phone"].flatMap((id) => {
+const CARD_TIPS = ["child-threads", "set-up-for-me", "phone"].flatMap((id) => {
   const definition = catalog.TIP_CATALOG.find((entry) => entry.id === id);
   return definition === undefined
     ? []

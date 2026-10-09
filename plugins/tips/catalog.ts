@@ -101,7 +101,7 @@ function noBoost(): number {
   return 0;
 }
 
-function usesSubthreadsHere(signals: TipSignals): boolean {
+function usesChildThreadsHere(signals: TipSignals): boolean {
   return signals.projectId === null
     ? signals.hasChildThread
     : signals.projectHasChildThread;
@@ -173,23 +173,23 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     boost: (signals) => (signals.recentlyRateLimited ? RATE_LIMIT_BOOST : 0),
   }),
   tip({
-    id: "subthreads",
-    illustration: "subthreads",
+    id: "child-threads",
+    illustration: "child-threads",
     tone: "blue",
-    source: { kind: "feature", ref: "subthreads" },
+    source: { kind: "feature", ref: "child-threads" },
     addedAt: "0.46.0",
     reviewedAt: "0.46.0",
     title: "Run work in parallel",
-    body: "Ask bb to try three approaches at once in subthreads, or to have one review this work.",
+    body: "Ask bb to try three approaches at once in child threads, or to have one review this work.",
     action: {
       kind: "prompt",
       label: "Try it",
       prompt:
-        "Spin up three subthreads that each try a different approach to this task, then compare their results and recommend one. Task: ",
+        "Spin up three child threads that each try a different approach to this task, then compare their results and recommend one. Task: ",
     },
     priority: 110,
     eligible: (signals) =>
-      signals.hasFinishedThread && !usesSubthreadsHere(signals),
+      signals.hasFinishedThread && !usesChildThreadsHere(signals),
   }),
   tip({
     id: "set-up-for-me",

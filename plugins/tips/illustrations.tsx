@@ -115,7 +115,7 @@ export const ILLUSTRATIONS: Record<string, Illustration> = {
       </Part>
     </>
   ),
-  subthreads: (accent) => (
+  "child-threads": (accent) => (
     <>
       <Node cx={8} cy={24} />
       <Branch start={[12.5, 24]} end={[24, 12]} />

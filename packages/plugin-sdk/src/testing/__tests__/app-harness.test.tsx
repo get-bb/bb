@@ -710,9 +710,9 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.experimental_clipboardWrites).toEqual([
       { text: "plain", html: "<b>rich</b>" },
     ]);
-    await expect(
-      experimental_copyToClipboard({ text: "later" }),
-    ).resolves.toBe(false);
+    await expect(experimental_copyToClipboard({ text: "later" })).resolves.toBe(
+      false,
+    );
 
     const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
     await expect(
@@ -2015,8 +2015,10 @@ describe("renderSlot", () => {
     const setters = capturedComposerVisualSetters;
     if (setters === null) throw new Error("composer setters were not captured");
 
-    setters.experimental_setPlaceholderPreview("Spin up three subthreads");
-    expect(slot.composer.placeholderPreview).toBe("Spin up three subthreads");
+    setters.experimental_setPlaceholderPreview("Spin up three child threads");
+    expect(slot.composer.placeholderPreview).toBe(
+      "Spin up three child threads",
+    );
     setters.experimental_setPlaceholderPreview(null);
     expect(slot.composer.placeholderPreview).toBeNull();
     setters.experimental_setPlaceholderPreview("Build me a bb plugin");
@@ -2025,7 +2027,7 @@ describe("renderSlot", () => {
     expect(slot.composer.placeholderPreview).toBeNull();
     setters.experimental_setPlaceholderPreview("late preview");
     expect(slot.composer.placeholderPreviewCalls).toEqual([
-      "Spin up three subthreads",
+      "Spin up three child threads",
       null,
       "Build me a bb plugin",
     ]);

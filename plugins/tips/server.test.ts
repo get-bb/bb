@@ -117,7 +117,7 @@ async function setup(fixture: Fixture = {}) {
 
 const NEW_USER = { threadCount: 1, finishedThreadCount: 1 };
 const REGULAR = { threadCount: 10, finishedThreadCount: 3 };
-const NEW_USER_SET = ["subthreads", "set-up-for-me", "phone"];
+const NEW_USER_SET = ["child-threads", "set-up-for-me", "phone"];
 
 describe("tips plugin registration", () => {
   it("declares a Show tips switch and the bb tips command", async () => {
@@ -195,26 +195,26 @@ describe("current tips", () => {
     expect(await host.current()).toEqual(NEW_USER_SET);
   });
 
-  it("offers subthreads only in projects that have none yet", async () => {
-    const subthreadCreated = {
+  it("offers child threads only in projects that have none yet", async () => {
+    const childThreadCreated = {
       thread: makeThreadResponse({ parentThreadId: "thread-parent" }),
     };
     const fresh = await setup(NEW_USER);
     await fresh.harness.behavior.emitThreadEvent(
       "thread.created",
-      subthreadCreated,
+      childThreadCreated,
     );
-    expect(await fresh.current("proj_new")).toContain("subthreads");
+    expect(await fresh.current("proj_new")).toContain("child-threads");
     const host = await setup(NEW_USER);
     await host.harness.behavior.emitThreadEvent(
       "thread.created",
-      subthreadCreated,
+      childThreadCreated,
     );
-    expect(await host.current()).not.toContain("subthreads");
+    expect(await host.current()).not.toContain("child-threads");
     const list = await host.listAll();
-    expect(list.tips.find((entry) => entry.id === "subthreads")?.status).toBe(
-      "not-applicable",
-    );
+    expect(
+      list.tips.find((entry) => entry.id === "child-threads")?.status,
+    ).toBe("not-applicable");
   });
 
   it("retires queue-or-steer once a follow-up is queued behind a running turn", async () => {
@@ -312,17 +312,19 @@ describe("dismissing and acting", () => {
   it("dismisses a tip for good and adds another at the top", async () => {
     const host = await setup(NEW_USER);
     expect(await host.current()).toEqual(NEW_USER_SET);
-    await host.harness.behavior.callRpc("dismiss", { id: "subthreads" });
+    await host.harness.behavior.callRpc("dismiss", { id: "child-threads" });
     const refilled = await host.current();
     expect(refilled).toHaveLength(3);
-    expect(refilled).not.toContain("subthreads");
+    expect(refilled).not.toContain("child-threads");
     expect(refilled.slice(1)).toEqual(["set-up-for-me", "phone"]);
     expect(host.harness.realtimeSignals).toContainEqual({
       channel: "tips-changed",
       payload: {},
     });
     const list = await host.listAll();
-    expect(list.tips.find((entry) => entry.id === "subthreads")).toMatchObject({
+    expect(
+      list.tips.find((entry) => entry.id === "child-threads"),
+    ).toMatchObject({
       status: "dismissed",
       dismissed: true,
     });
@@ -334,16 +336,16 @@ describe("dismissing and acting", () => {
       vi.setSystemTime(Date.UTC(2026, 9, 5, 12));
       const host = await setup(NEW_USER);
       expect(await host.current()).toEqual(NEW_USER_SET);
-      await host.harness.behavior.callRpc("act", { id: "subthreads" });
+      await host.harness.behavior.callRpc("act", { id: "child-threads" });
       expect(await host.current(null, false)).toEqual(NEW_USER_SET);
       const list = await host.listAll();
       expect(
-        list.tips.find((entry) => entry.id === "subthreads"),
+        list.tips.find((entry) => entry.id === "child-threads"),
       ).toMatchObject({ status: "in-feed", acted: true, retiredReason: null });
       vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 11));
       const next = await host.current();
       expect(next).toHaveLength(3);
-      expect(next).not.toContain("subthreads");
+      expect(next).not.toContain("child-threads");
       expect(next.slice(1)).toEqual(["set-up-for-me", "phone"]);
     } finally {
       vi.useRealTimers();
@@ -360,7 +362,7 @@ describe("dismissing and acting", () => {
       expect(await host.current()).toEqual(NEW_USER_SET);
       vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 20));
       const next = await host.current();
-      expect(next.slice(1)).toEqual(["subthreads", "set-up-for-me"]);
+      expect(next.slice(1)).toEqual(["child-threads", "set-up-for-me"]);
       expect(next[0]).not.toBe("phone");
     } finally {
       vi.useRealTimers();
@@ -398,9 +400,9 @@ describe("bb tips", () => {
     expect(view.tips.find((entry) => entry.id === "account-pool")?.status).toBe(
       "not-applicable",
     );
-    expect(view.tips.find((entry) => entry.id === "subthreads")?.status).toBe(
-      "eligible",
-    );
+    expect(
+      view.tips.find((entry) => entry.id === "child-threads")?.status,
+    ).toBe("eligible");
   });
 
   it("hides tips for today and undoes it", async () => {
@@ -423,14 +425,14 @@ describe("bb tips", () => {
     const host = await setup(NEW_USER);
     const dismissed = await host.harness.behavior.runCli([
       "dismiss",
-      "subthreads",
+      "child-threads",
     ]);
     expect(dismissed).toMatchObject({
       exitCode: 0,
-      stdout: "Dismissed subthreads.",
+      stdout: "Dismissed child-threads.",
     });
     expect((await host.harness.behavior.runCli(["list"])).stdout).not.toContain(
-      "subthreads",
+      "child-threads",
     );
     const unknown = await host.harness.behavior.runCli(["dismiss", "nope"]);
     expect(unknown.exitCode).toBe(1);
@@ -440,8 +442,8 @@ describe("bb tips", () => {
   it("resets dismissed tips so they can show again", async () => {
     const host = await setup(NEW_USER);
     await host.current();
-    await host.harness.behavior.runCli(["dismiss", "subthreads"]);
-    expect(await host.current()).not.toContain("subthreads");
+    await host.harness.behavior.runCli(["dismiss", "child-threads"]);
+    expect(await host.current()).not.toContain("child-threads");
     const reset = await host.harness.behavior.runCli(["reset"]);
     expect(reset).toMatchObject({ exitCode: 0, stdout: "Tips reset." });
     expect(await host.current()).toEqual(NEW_USER_SET);
