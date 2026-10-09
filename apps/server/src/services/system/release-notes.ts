@@ -2,6 +2,7 @@ import {
   compareChangelogVersions,
   parseChangelog,
   RELEASE_META,
+  type ChangelogBlock,
   type ChangelogEntry,
 } from "@bb/domain/changelog";
 import type {
@@ -35,23 +36,60 @@ export async function fetchPublishedReleaseEntries(): Promise<
   return parseChangelog(await response.text());
 }
 
+const IMAGE_PARAGRAPH = /^!\[([^\]]*)\]\((\S+)\)$/;
+
+type ReleaseImage = { src: string; alt: string };
+
+function releaseImage(block: ChangelogBlock): ReleaseImage | null {
+  if (block.kind !== "paragraph") {
+    return null;
+  }
+  const match = IMAGE_PARAGRAPH.exec(block.text);
+  return match?.[2] === undefined
+    ? null
+    : { src: match[2], alt: match[1] ?? "" };
+}
+
+function withoutImages(blocks: readonly ChangelogBlock[]): ChangelogBlock[] {
+  return blocks.filter((block) => releaseImage(block) === null);
+}
+
+function firstImage(entry: ChangelogEntry): ReleaseImage | null {
+  for (const block of [
+    ...entry.lede,
+    ...entry.sections.flatMap((section) => section.blocks),
+  ]) {
+    const image = releaseImage(block);
+    if (image !== null) {
+      return image;
+    }
+  }
+  return null;
+}
+
 function toReleaseNotes(entry: ChangelogEntry): ReleaseNotes {
   const meta = RELEASE_META[entry.version];
+  const image = firstImage(entry);
   return {
     version: entry.version,
     date: meta?.date ?? null,
     headline: meta?.headline ?? null,
     visual: meta?.visual ?? null,
     hero:
-      meta?.hero === undefined
-        ? null
-        : {
+      meta?.hero !== undefined
+        ? {
             src: meta.hero.src,
             darkSrc: meta.hero.darkSrc ?? null,
             alt: meta.hero.alt,
-          },
-    lede: entry.lede,
-    sections: entry.sections,
+          }
+        : image === null
+          ? null
+          : { src: image.src, darkSrc: null, alt: image.alt },
+    lede: withoutImages(entry.lede),
+    sections: entry.sections.map((section) => ({
+      title: section.title,
+      blocks: withoutImages(section.blocks),
+    })),
   };
 }
 

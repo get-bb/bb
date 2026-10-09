@@ -13,6 +13,8 @@ Windows, tiers, and speed.
 
 - Native Windows support.
 
+![Windows desktop](https://getbb.app/changelog/0.45.0/windows.jpg)
+
 ## 0.44.0
 
 Diff filtering.
@@ -80,6 +82,22 @@ describe("getReleaseNotes", () => {
     expect(
       result.releases[0]?.sections.map((section) => section.title),
     ).toEqual(["Highlights", "Fixes"]);
+  });
+
+  it("moves a release's changelog image out of its notes and into hero", async () => {
+    const result = await request({ version: "0.45.0" });
+
+    expect(result.releases[0]?.hero).toEqual({
+      src: "https://getbb.app/changelog/0.45.0/windows.jpg",
+      darkSrc: null,
+      alt: "Windows desktop",
+    });
+    expect(result.releases[0]?.sections).toEqual([
+      {
+        title: "Highlights",
+        blocks: [{ kind: "list", items: ["Native Windows support."] }],
+      },
+    ]);
   });
 
   it("falls back to the newest bundled release for a prerelease or dev build", async () => {

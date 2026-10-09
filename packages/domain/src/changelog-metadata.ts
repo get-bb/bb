@@ -5,6 +5,7 @@ export type ReleaseHero = {
 };
 
 export type ReleaseVisualId =
+  | "navigation-rail"
   | "native-windows"
   | "diff-filter"
   | "saved-drafts"
@@ -34,6 +35,7 @@ export const RELEASE_META: Record<string, ReleaseMeta> = {
   "0.46.0": {
     date: "October 9, 2026",
     headline: "Navigation rail, reusable prompts, and notification controls",
+    visual: "navigation-rail",
   },
   "0.45.0": {
     date: "October 2, 2026",

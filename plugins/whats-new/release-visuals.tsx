@@ -54,6 +54,43 @@ function Spoke({
 }
 
 export const RELEASE_VISUALS = {
+  "navigation-rail": {
+    tone: "amber",
+    draw: (accent) => (
+      <>
+        <Window x={4} y={7} width={40} height={34} />
+        <path {...LINE} strokeOpacity={0.4} d="M13.5 13v28" />
+        <Highlight
+          x={6.5}
+          y={16}
+          width={4.5}
+          height={4.5}
+          rx={1}
+          opacity={0.3}
+        />
+        <Highlight
+          x={6.5}
+          y={23}
+          width={4.5}
+          height={4.5}
+          rx={1}
+          color={accent}
+          opacity={1}
+        />
+        <Highlight
+          x={6.5}
+          y={30}
+          width={4.5}
+          height={4.5}
+          rx={1}
+          opacity={0.3}
+        />
+        <Rule x={18} y={19} width={18} />
+        <Rule x={18} y={24} width={12} soft />
+        <Panel x={18} y={30} width={22} height={7} rx={3.5} fill={0} />
+      </>
+    ),
+  },
   "native-windows": {
     tone: "blue",
     draw: (accent) => (
