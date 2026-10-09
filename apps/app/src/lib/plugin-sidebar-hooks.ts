@@ -20,6 +20,7 @@ import type {
   PluginSidebarThreadShortcut,
   PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk";
+import { sdk } from "@/lib/sdk";
 import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/components/sidebar/sidebarThreadShortcuts";
 import {
   useThreadTitleMentionResources,
@@ -283,6 +284,16 @@ export function lookupCachedThread(
   >(archivedThreadsListQueryKey({}));
   return (
     archived?.pages.flat().find((thread) => thread.id === threadId) ?? null
+  );
+}
+
+export async function resolveThread(
+  queryClient: QueryClient,
+  threadId: string,
+): Promise<Thread> {
+  return (
+    lookupCachedThread(queryClient, threadId) ??
+    (await sdk.threads.get({ threadId }))
   );
 }
 

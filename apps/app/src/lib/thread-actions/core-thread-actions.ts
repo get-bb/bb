@@ -11,7 +11,7 @@ import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRouteState } from "@/hooks/useRouteState";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
-import { lookupCachedThread } from "@/lib/plugin-sidebar-hooks";
+import { resolveThread } from "@/lib/plugin-sidebar-hooks";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { countPanes, listPanes } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
@@ -74,8 +74,8 @@ function afterMenuCloses(run: () => void): void {
 }
 
 interface LifecycleHandlers {
-  archive: (threadId: string) => void;
-  requestDelete: (threadId: string) => void;
+  archive: (threadId: string) => Promise<void>;
+  requestDelete: (threadId: string) => Promise<void>;
 }
 
 function useLifecycleHandlers(): LifecycleHandlers {
@@ -87,13 +87,29 @@ function useLifecycleHandlers(): LifecycleHandlers {
   });
   return useMemo(
     () => ({
-      archive: (threadId: string) => {
-        const thread = lookupCachedThread(queryClient, threadId);
-        if (thread !== null) latest.current.requestArchive(thread);
+      archive: async (threadId: string) => {
+        try {
+          latest.current.requestArchive(
+            await resolveThread(queryClient, threadId),
+          );
+        } catch (error) {
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to archive thread.",
+          });
+        }
       },
-      requestDelete: (threadId: string) => {
-        const thread = lookupCachedThread(queryClient, threadId);
-        if (thread !== null) latest.current.requestDelete(thread);
+      requestDelete: async (threadId: string) => {
+        try {
+          latest.current.requestDelete(
+            await resolveThread(queryClient, threadId),
+          );
+        } catch (error) {
+          showMutationErrorToast({
+            error,
+            fallbackMessage: "Failed to delete thread.",
+          });
+        }
       },
     }),
     [queryClient],
@@ -245,7 +261,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
           icon: isArchived ? "ArchiveRestore" : "Archive",
           run: async () => {
             if (!isArchived) {
-              afterMenuCloses(() => data.archive(thread.id));
+              afterMenuCloses(() => void data.archive(thread.id));
               return;
             }
             try {
@@ -270,7 +286,7 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
         label: "Delete",
         icon: "Trash2",
         variant: "destructive",
-        run: () => afterMenuCloses(() => data.requestDelete(thread.id)),
+        run: () => afterMenuCloses(() => void data.requestDelete(thread.id)),
       }),
     }),
   ];

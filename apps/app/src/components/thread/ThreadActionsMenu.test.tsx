@@ -38,6 +38,7 @@ import {
   useThreadActionRegistrationInfos,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { usePublishThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
@@ -54,6 +55,7 @@ const sdkThreads = vi.hoisted(() => ({
   markUnread: vi.fn(),
   unarchive: vi.fn(),
   update: vi.fn(),
+  get: vi.fn(),
 }));
 const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
 
@@ -229,20 +231,33 @@ function twoPaneLayout(focusedPaneId: string): SplitLayout {
   };
 }
 
+interface HostState {
+  route?: string;
+  layout?: SplitLayout | null;
+  cached?: boolean;
+  threadActions?: readonly PluginThreadActionRegistration[];
+}
+
 function renderSurface(
   surface: Surface,
   options: SurfaceOptions,
-  route = "/",
-  layout: SplitLayout | null = null,
+  {
+    route = "/",
+    layout = null,
+    cached = true,
+    threadActions = [],
+  }: HostState = {},
 ) {
   const queryClient = new QueryClient();
   const store = createStore();
   if (layout !== null) store.set(splitLayoutAtom, layout);
-  queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
+  if (cached) {
+    queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
+  }
   setPluginSlotRegistrations(
     "fixture",
     makePluginRegistrationSet({
-      threadActions: [moveAction, pluginGroupAction],
+      threadActions: [moveAction, pluginGroupAction, ...threadActions],
     }),
   );
   return render(
@@ -498,7 +513,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
   ])(
     "lists the items for $state",
     async ({ thread, route, layout, desktop, compact }) => {
-      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, route, layout);
+      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, { route, layout });
       await surface.open();
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
     },
@@ -720,5 +735,73 @@ describe("thread action registrations", () => {
       "bb--core/delete",
       "fixture/notify",
     ]);
+  });
+});
+
+describe("thread actions outside bb's own surfaces", () => {
+  const [surface] = SURFACES;
+  if (surface === undefined) throw new Error("no surface");
+
+  it("fetches a thread bb has not cached before archiving or deleting it", async () => {
+    sdkThreads.get.mockResolvedValue(baseThread);
+    renderSurface(surface, { thread: baseThread }, { cached: false });
+
+    await surface.open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
+    await waitFor(() =>
+      expect(hostActions.requestArchive).toHaveBeenCalledWith(
+        expect.objectContaining({ id: baseThread.id }),
+      ),
+    );
+
+    await surface.open();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await waitFor(() =>
+      expect(hostActions.requestDelete).toHaveBeenCalledWith(
+        expect.objectContaining({ id: baseThread.id }),
+      ),
+    );
+    expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
+  });
+
+  it("opens a plugin's thread panel in the focused thread view", async () => {
+    const opener = vi.fn(() => true);
+    const opened = vi.fn();
+    function FocusedThreadView() {
+      usePublishThreadPanelOpener(opener, true);
+      return null;
+    }
+    render(<FocusedThreadView />);
+    renderSurface(
+      surface,
+      { thread: baseThread },
+      {
+        threadActions: [
+          {
+            id: "details",
+            title: "Open details",
+            icon: "Info",
+            group: "5_plugin",
+            item: ({ navigate }) => ({
+              label: "Open details",
+              icon: "Info",
+              run: () => {
+                opened(navigate.openThreadPanel({ actionId: "details" }));
+              },
+            }),
+          },
+        ],
+      },
+    );
+
+    await surface.open();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Open details" }),
+    );
+    await waitFor(() => expect(opened).toHaveBeenCalledWith(true));
+    expect(opener).toHaveBeenCalledWith({
+      actionId: "details",
+      pluginId: "fixture",
+    });
   });
 });

@@ -1435,7 +1435,11 @@ export interface PluginThreadActionItemInput<Data> {
   data: Data;
   /** The registering plugin's `useSdk()` client. */
   sdk: PluginBrowserBbSdk;
-  /** The registering plugin's `useBbNavigate()`. */
+  /**
+   * The registering plugin's `useBbNavigate()`. Thread menus are not inside a
+   * side panel, so `openThreadPanel` opens in the focused thread view, as
+   * plugin commands do, and returns false when no thread view is open.
+   */
   navigate: BbNavigate;
 }
 
@@ -3384,7 +3388,7 @@ export interface BbNavigate {
    * Open one of this plugin's registered panel actions in the current
    * surface's side panel: a `threadPanelAction` in a thread, or an
    * `experimental_newThreadPanelAction` on the New thread screen. Plugin
-   * commands use the same opener. Returns false when the surface has no side
+   * commands and thread actions use the focused thread view's opener. Returns false when the surface has no side
    * panel actions (plugin pages) or the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;

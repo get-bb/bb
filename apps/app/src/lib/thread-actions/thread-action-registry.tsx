@@ -18,6 +18,7 @@ import type {
   PluginThreadActionsOptions,
 } from "@get-bb/plugin-sdk";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { useBbNavigate, useSdk } from "@/lib/plugin-sdk-hooks";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
@@ -124,7 +125,7 @@ function reportFailure(key: string, phase: string, error: unknown): void {
   console.error(`thread action "${key}" failed in ${phase}`, error);
 }
 
-function useLatestNavigate(navigate: BbNavigate): BbNavigate {
+function useLatestNavigate(navigate: BbNavigate, pluginId: string): BbNavigate {
   const latest = useRef(navigate);
   useLayoutEffect(() => {
     latest.current = navigate;
@@ -134,7 +135,8 @@ function useLatestNavigate(navigate: BbNavigate): BbNavigate {
     toProject: (...args) => latest.current.toProject(...args),
     toPluginPanel: (...args) => latest.current.toPluginPanel(...args),
     toCompose: (...args) => latest.current.toCompose(...args),
-    openThreadPanel: (...args) => latest.current.openThreadPanel(...args),
+    openThreadPanel: (options) =>
+      getActiveThreadPanelOpener()?.({ ...options, pluginId }) ?? false,
     openUrl: (...args) => latest.current.openUrl(...args),
     experimental_openFilePreview: (...args) =>
       latest.current.experimental_openFilePreview(...args),
@@ -153,7 +155,7 @@ function ThreadActionCollector({
 }) {
   const data = record.registration.useData?.();
   const sdk = useSdk();
-  const navigate = useLatestNavigate(useBbNavigate());
+  const navigate = useLatestNavigate(useBbNavigate(), record.pluginId);
   useLayoutEffect(() => {
     publishCollected(record.key, { data, sdk, navigate });
   }, [data, navigate, record.key, sdk]);
