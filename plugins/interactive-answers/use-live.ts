@@ -19,11 +19,19 @@ type Options = {
 const SAVE_DELAY_MS = 300;
 const HEARTBEAT_MS = 10_000;
 const AGENT_BADGE_MS = 3200;
+const isPrimitive = (value: unknown) =>
+  typeof value === "string" ||
+  typeof value === "number" ||
+  typeof value === "boolean";
 const describe = (action: string, args: unknown[]) => {
   const first = args[0];
   const detail =
     first && typeof first === "object" && !Array.isArray(first)
-      ? Object.keys(first).slice(0, 2)
+      ? Object.values(first).every(isPrimitive)
+        ? Object.entries(first)
+            .slice(0, 2)
+            .flatMap(([key, value]) => [key, String(value)])
+        : []
       : args
           .filter((a) => typeof a === "string" || typeof a === "number")
           .slice(0, 2)

@@ -136,7 +136,7 @@ it("applies state changed elsewhere and runs agent commands in the copy they tar
     args: [{ people: 3 }],
   });
   await view.findByText("$48.00", { selector: "dd" });
-  expect(view.getByText("Agent · set people")).toBeTruthy();
+  expect(view.getByText("Agent · set people 3")).toBeTruthy();
   await waitFor(() =>
     expect(
       backend.calls.find((c) => c.method === "result")?.input,
@@ -269,6 +269,15 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
       value: { step: 5 },
     }),
   );
+  await view.behavior.emitRealtime("command", {
+    cmdId: "8c1b0c47-7f2a-4a39-9d29-4e7a8a0b9a15",
+    id: answer.id,
+    threadId: answer.threadId,
+    clientId: backend.clientId(),
+    action: "play",
+    args: [{ bpm: 90, lead: { wave: "saw" } }],
+  });
+  expect(view.getByText("Agent · play")).toBeTruthy();
   backend.shared.state = { step: 7 };
   backend.shared.version = 50;
   await view.behavior.emitRealtime("state", {
