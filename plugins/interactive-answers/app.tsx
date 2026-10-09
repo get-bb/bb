@@ -310,7 +310,7 @@ const MESSAGE_BURST = 40;
 const MESSAGES_PER_SECOND = 10;
 
 const UI_FONT_FAMILY = "Inter Variable";
-const LATIN_RANGE = "U+0000-00FF";
+const LATIN_CODE_POINT = 0x41;
 let uiFont: Promise<ArrayBuffer | null> | null = null;
 
 function fontFaceRules(sheet: CSSStyleSheet): CSSFontFaceRule[] {
@@ -331,6 +331,16 @@ function fontFaceRules(sheet: CSSStyleSheet): CSSFontFaceRule[] {
   });
 }
 
+function coversCodePoint(range: string, codePoint: number): boolean {
+  if (range.trim() === "") return true;
+  return range.split(",").some((part) => {
+    const [start, end = start] = part.trim().replace(/^U\+/i, "").split("-");
+    const low = Number.parseInt((start ?? "").replaceAll("?", "0"), 16);
+    const high = Number.parseInt(end.replaceAll("?", "F"), 16);
+    return low <= codePoint && codePoint <= high;
+  });
+}
+
 function loadUiFont(): Promise<ArrayBuffer | null> {
   uiFont ??= (async () => {
     for (const sheet of Array.from(document.styleSheets)) {
@@ -344,7 +354,7 @@ function loadUiFont(): Promise<ArrayBuffer | null> {
           .toUpperCase();
         if (
           family !== UI_FONT_FAMILY ||
-          (range !== "" && !range.includes(LATIN_RANGE))
+          !coversCodePoint(range, LATIN_CODE_POINT)
         )
           continue;
         const url = /url\(\s*["']?([^"')]+)["']?\s*\)/.exec(
