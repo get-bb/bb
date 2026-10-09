@@ -422,7 +422,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain(">1<");
     expect(markup).toContain('data-icon="ChildThread"');
     expect(markup).toContain("animate-shine-icon");
-    expect(markup).toContain("animate-shine font-medium");
+    expect(markup).toMatch(/animate-shine[^"]*font-normal/);
     expect(markup).not.toContain("running");
   });
 
