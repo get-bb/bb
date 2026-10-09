@@ -199,10 +199,11 @@ it("starts a thread with Daybreak on, asks for the model's Daybreak program each
   ]);
 }, 30_000);
 
-it("saves a mid-thread change on the Codex thread and asks for the standard program once Daybreak is off", async () => {
+it("leaves the program to Codex until the thread has a Daybreak choice, then saves each change and asks for the matching program", async () => {
   useScript({ modelList: DAYBREAK_CATALOG });
 
   const providerThreadId = await startThread();
+  await vi.waitFor(() => expect(publishedDaybreakValues()).toHaveLength(1));
   await startTurn(providerThreadId, "gpt-6-sol");
   await startTurn(providerThreadId, "gpt-6-sol", { daybreak: true });
   await startTurn(providerThreadId, "gpt-6-sol", { daybreak: false });
@@ -217,7 +218,7 @@ it("saves a mid-thread change on the Codex thread and asks for the standard prog
   ).toEqual([true, false]);
   expect(
     childRequests("turn/start").map((params) => params.cyberAccessProgram),
-  ).toEqual(["standard", "daybreakBlue", "standard"]);
+  ).toEqual([undefined, "daybreakBlue", "standard"]);
   expect(
     publishedDaybreakValues().map(
       (payload) =>
@@ -271,4 +272,17 @@ it("sends no program and reports no switch for an account without Daybreak", asy
     "cyberAccessProgram",
   );
   expect(publishedDaybreakValues()).toEqual([]);
+}, 30_000);
+
+it("does not hold a turn for the model list on a thread with no Daybreak choice", async () => {
+  useScript({ modelList: DAYBREAK_CATALOG, modelListDelayMs: 3_000 });
+
+  const providerThreadId = await startThread();
+  const startedAt = Date.now();
+  await startTurn(providerThreadId, "gpt-6-sol");
+
+  expect(Date.now() - startedAt).toBeLessThan(2_000);
+  expect(childRequests("turn/start")[0]).not.toHaveProperty(
+    "cyberAccessProgram",
+  );
 }, 30_000);

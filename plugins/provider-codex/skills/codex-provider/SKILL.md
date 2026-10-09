@@ -39,7 +39,9 @@ model picker, with `bb thread spawn --option daybreak=true`, or on an existing
 thread with `bb thread options --set daybreak=true`; it applies from the next
 turn and Codex stores the choice on its own thread. With it on, each turn asks
 for the selected model's Daybreak program (blue when the model lists it,
-otherwise red); with it off, each turn asks for the standard program.
+otherwise red); once it has been turned off, each turn asks for the standard
+program. A thread where Daybreak was never set sends no program and leaves the
+choice to Codex.
 `bb provider models codex` lists the option, and `--json` shows per model
 whether it runs with Daybreak, without it, or both (`sessionOptions`, where
 `fixed: true` means only the listed value). A model that cannot run in the

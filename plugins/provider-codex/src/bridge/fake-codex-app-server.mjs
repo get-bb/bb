@@ -433,7 +433,10 @@ async function handleRequest(message) {
         return;
       }
       if (script?.modelList) {
-        respond(id, script.modelList);
+        setTimeout(
+          () => respond(id, script.modelList),
+          script.modelListDelayMs ?? 0,
+        );
         return;
       }
       respond(id, {

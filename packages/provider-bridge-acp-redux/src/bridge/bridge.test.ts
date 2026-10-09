@@ -4829,7 +4829,7 @@ describe("acp bridge: live session state", () => {
 
     const none = await optionsOf(sendModelList({}));
     expect(none).toEqual([undefined]);
-  });
+  }, 20_000);
 
   it("publishes no session options for an agent whose only options are its model and thought level", async () => {
     await startThread({

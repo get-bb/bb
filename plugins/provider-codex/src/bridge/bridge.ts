@@ -1109,6 +1109,9 @@ async function resolveTurnCyberAccessProgram(
       decoded.daybreak,
     );
   }
+  if (session.daybreakEnabled === null) {
+    return null;
+  }
   const catalog = await session.modelCatalog;
   publishDaybreakState(session, catalog);
   const model = decoded.sessionOptions.model;
@@ -1117,7 +1120,7 @@ async function resolveTurnCyberAccessProgram(
   }
   return cyberProgramForTurn(
     catalog.cyberProgramsByModel.get(model) ?? [],
-    session.daybreakEnabled ?? false,
+    session.daybreakEnabled,
   );
 }
 
