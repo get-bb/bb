@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
   appendFileSync,
   copyFileSync,
@@ -15,6 +16,33 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
+
+const backgroundBus = new EventEmitter();
+const extensionEvents = {
+  on(name, listener) {
+    backgroundBus.on(name, listener);
+    return () => backgroundBus.off(name, listener);
+  },
+  emit(name, data) {
+    backgroundBus.emit(name, data);
+  },
+};
+let snapshotSequence = 0;
+backgroundBus.on("bb:background-task:request", () => {
+  if (process.env.FAKE_PI_BACKGROUND_REQUEST_LOG) {
+    appendFileSync(
+      process.env.FAKE_PI_BACKGROUND_REQUEST_LOG,
+      `${sessionFile ?? "helper"}\n`,
+    );
+  }
+  if (process.env.FAKE_PI_BACKGROUND_SNAPSHOT) {
+    const snapshot = JSON.parse(process.env.FAKE_PI_BACKGROUND_SNAPSHOT);
+    extensionEvents.emit("bb:background-task", {
+      ...snapshot,
+      sequence: ++snapshotSequence,
+    });
+  }
+});
 
 const args = process.argv.slice(2);
 if (args.includes("--version")) {
@@ -174,6 +202,7 @@ let holdAbort = null;
 const followUp = [];
 const steering = [];
 const extensionUiWaiters = new Map();
+let startupUiCounter = 0;
 let endedWithStreamingFlag = false;
 
 let heldLine = null;
@@ -294,6 +323,9 @@ async function loadExtension(path) {
   }
   const module = await import(pathToFileURL(loadPath).href);
   module.default({
+    ...(process.env.FAKE_PI_NO_EVENT_BUS === "1"
+      ? {}
+      : { events: extensionEvents }),
     registerTool(tool) {
       extensionTools.set(tool.name, tool);
       if (process.env.FAKE_PI_TOOLS_DUMP) {
@@ -313,8 +345,37 @@ async function loadExtension(path) {
       activeTools = [...names];
     },
   });
+  if (process.env.FAKE_PI_STARTUP_MARKER)
+    writeFileSync(process.env.FAKE_PI_STARTUP_MARKER, "starting");
+  if (process.env.FAKE_PI_STARTUP_UI === "1") {
+    startupUiCounter += 1;
+    const uiId = `startup-ui-${startupUiCounter}`;
+    const response = await new Promise((resolve) => {
+      extensionUiWaiters.set(uiId, resolve);
+      send({
+        type: "extension_ui_request",
+        id: uiId,
+        method: "confirm",
+        title: "Startup UI",
+        message: "Allow startup?",
+      });
+      const abortMs = Number(process.env.FAKE_PI_STARTUP_UI_ABORT_MS);
+      if (Number.isFinite(abortMs) && abortMs > 0) {
+        setTimeout(() => {
+          if (extensionUiWaiters.delete(uiId)) exit();
+        }, abortMs);
+      }
+    });
+    if (response === undefined) return;
+  }
   if (process.env.FAKE_PI_NO_SESSION_START !== "1") {
     await emitExtensionEvent("session_start");
+    if (process.env.FAKE_PI_BACKGROUND_INITIAL) {
+      extensionEvents.emit(
+        "bb:background-task",
+        JSON.parse(process.env.FAKE_PI_BACKGROUND_INITIAL),
+      );
+    }
   }
 }
 
@@ -421,8 +482,53 @@ async function runPrompt(text) {
     isStreaming = false;
     return;
   }
+  if (text.startsWith("/background-event ")) {
+    extensionEvents.emit(
+      "bb:background-task",
+      JSON.parse(text.slice("/background-event ".length)),
+    );
+  }
+  if (text.startsWith("/background-later ")) {
+    const script = JSON.parse(text.slice("/background-later ".length));
+    setTimeout(
+      () => extensionEvents.emit("bb:background-task", script.event),
+      script.delay,
+    );
+  }
+  if (text === "/background-reload") {
+    await emitExtensionEvent("session_shutdown");
+    extensionHandlers.clear();
+    await loadExtension(extensionPath);
+  }
+  if (text === "/background-shutdown") {
+    await emitExtensionEvent("session_shutdown");
+    writeFileSync(
+      3,
+      `${JSON.stringify({ kind: "background-task", event: { v: 1, source: "late", sourceId: "one", sequence: 1, kind: "upsert", task: { id: "late", label: "Late", taskType: "local_agent", status: "running" } } })}\n`,
+    );
+    extensionEvents.emit("bb:background-task", {
+      v: 1,
+      source: "shutdown",
+      sourceId: "one",
+      sequence: 1,
+      kind: "upsert",
+      task: {
+        id: "leaked",
+        label: "Leaked",
+        taskType: "local_agent",
+        status: "running",
+      },
+    });
+  }
   if (text === "/die") {
     process.exit(0);
+  }
+  if (text.startsWith("/background-gated-ui ")) {
+    const gate = text.slice("/background-gated-ui ".length);
+    const deadline = Date.now() + 5000;
+    while (!existsSync(gate) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    text = '/ui {"method":"confirm","title":"Old session UI"}';
   }
   const uiMatch = text.match(/^\/ui (\{.*\})$/su);
   if (uiMatch) {
