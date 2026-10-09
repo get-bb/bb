@@ -45,7 +45,7 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from the bb app on your phone.",
+    "Your agents keep running on your computer while you're out. Check in, answer them, and start new work from a browser or the bb mobile app.",
   heroTop: null,
   concept: <AnywhereConcept />,
   agentPrompt: AGENT_PROMPT,
