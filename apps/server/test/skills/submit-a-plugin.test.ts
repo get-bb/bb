@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { derivePluginId } from "@bb/domain";
+import { makeTempDir } from "@bb/test-helpers";
 
 const skillRoot = fileURLToPath(
   new URL(
@@ -24,7 +24,6 @@ const skillReferencePaths = [
   "plugin-release.md",
   "pull-request.md",
 ].map((name) => path.join(skillRoot, "references", name));
-const tempDirs: string[] = [];
 
 async function readSkillTree(): Promise<string> {
   return (
@@ -32,12 +31,6 @@ async function readSkillTree(): Promise<string> {
       [skillPath, ...skillReferencePaths].map((file) => readFile(file, "utf8")),
     )
   ).join("\n");
-}
-
-async function makeTempDir(): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), "bb-submit-plugin-"));
-  tempDirs.push(directory);
-  return directory;
 }
 
 async function deriveWithSkill(packageName: string): Promise<string> {
@@ -48,14 +41,6 @@ async function deriveWithSkill(packageName: string): Promise<string> {
     encoding: "utf8",
   }).trim();
 }
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-});
 
 describe("submit-a-plugin skill", () => {
   it("derives dotted and underscored package ids with the product algorithm", async () => {

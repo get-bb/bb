@@ -21,7 +21,6 @@ import {
   createMemoryRouter,
   MemoryRouter,
   RouterProvider,
-  useLocation,
 } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -491,10 +490,6 @@ function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
   return composer.renderPromptBox({ mentionMenuPlacement: "bottom" });
 }
 
-function LocationProbe() {
-  return <output data-testid="location-path">{useLocation().pathname}</output>;
-}
-
 function composerElement(
   seed: NewThreadRequest,
   onSubmit: (request: NewThreadRequest) => void,
@@ -502,7 +497,6 @@ function composerElement(
 ) {
   return (
     <MemoryRouter>
-      <LocationProbe />
       <PluginNewThreadComposer
         draftKey={draftKey}
         defaultProjectId={seed.projectId}
@@ -2296,7 +2290,6 @@ describe("NewThreadComposer environment providers", () => {
   ) {
     return render(
       <MemoryRouter>
-        <LocationProbe />
         <PluginNewThreadComposer
           draftKey={draftKey}
           defaultProjectId={projectId}
@@ -2386,7 +2379,6 @@ describe("NewThreadComposer environment providers", () => {
     mocks.extraProjects = [{ ...project, sources: [PROJECT.sources[0]] }];
     rendered.rerender(
       <MemoryRouter>
-        <LocationProbe />
         <PluginNewThreadComposer
           draftKey="checkout-disappears"
           defaultProjectId={project.id}
@@ -2491,7 +2483,6 @@ describe("NewThreadComposer environment providers", () => {
     mocks.serverAccessReady = true;
     rendered.rerender(
       <MemoryRouter>
-        <LocationProbe />
         <PluginNewThreadComposer
           draftKey="live-access"
           defaultProjectId="proj_1"
@@ -2507,7 +2498,6 @@ describe("NewThreadComposer environment providers", () => {
     mocks.serverAccessReady = false;
     rendered.rerender(
       <MemoryRouter>
-        <LocationProbe />
         <PluginNewThreadComposer
           draftKey="live-access"
           defaultProjectId="proj_1"

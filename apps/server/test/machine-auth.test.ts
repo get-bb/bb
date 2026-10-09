@@ -1,13 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { authApiKeys, authUsers } from "@bb/db";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMigratedConnection } from "@bb/db/testing";
 import { createMachineAuthService } from "../src/services/machine-auth.js";
-
-const tempDirs: string[] = [];
 
 const testLogger = {
   debug(): void {},
@@ -15,12 +11,6 @@ const testLogger = {
   info(): void {},
   warn(): void {},
 };
-
-async function makeTempDir(): Promise<string> {
-  const dataDir = await mkdtemp(join(tmpdir(), "bb-machine-auth-"));
-  tempDirs.push(dataDir);
-  return dataDir;
-}
 
 async function createMachineAuthHarness() {
   const dataDir = await makeTempDir();
@@ -38,11 +28,8 @@ async function createMachineAuthHarness() {
   };
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.useRealTimers();
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
 });
 
 describe("machine auth service", () => {

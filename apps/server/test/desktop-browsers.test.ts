@@ -23,18 +23,11 @@ import {
   seedThreadFixture,
 } from "./helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "./helpers/test-app.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const leaseSchema = desktopBrowserScopeSchema
   .extend(desktopBrowserLeaseSchema.shape)
   .extend({ tabIds: z.array(z.string()) });
-
-function deferred<T>() {
-  let resolve: (value: T) => void = () => {};
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
 
 function fixture(harness: TestAppHarness) {
   const seeded = seedThreadFixture(harness);
@@ -741,8 +734,8 @@ describe("desktop browser public API", () => {
         (await test.post("connection", test.leaseRequest(lease.leaseId)))
           .status,
       ).toBe(409);
-      const gate = deferred<HostRpcHandlerResult>();
-      const started = deferred<void>();
+      const gate = createDeferredPromise<HostRpcHandlerResult>();
+      const started = createDeferredPromise<void>();
       test.intercept(({ command }) => {
         if (command.type !== "desktop.browser.acquire_control") return null;
         started.resolve();
@@ -785,8 +778,8 @@ describe("desktop browser public API", () => {
 
   it("a stop during the tab lookup cancels the pending acquisition before any native grant", async () => {
     await withBrowserTest(async (test) => {
-      const gate = deferred<HostRpcHandlerResult>();
-      const started = deferred<void>();
+      const gate = createDeferredPromise<HostRpcHandlerResult>();
+      const started = createDeferredPromise<void>();
       test.intercept(({ command }) => {
         if (command.type !== "desktop.browser.list_tabs") return null;
         started.resolve();
@@ -887,8 +880,8 @@ describe("desktop browser public API", () => {
   });
   it("revokes native control when acquisition completes after its deadline", async () => {
     await withBrowserTest(async (test) => {
-      const gate = deferred<HostRpcHandlerResult>();
-      const started = deferred<void>();
+      const gate = createDeferredPromise<HostRpcHandlerResult>();
+      const started = createDeferredPromise<void>();
       test.intercept(({ command }) => {
         if (command.type !== "desktop.browser.acquire_control") return null;
         started.resolve();
@@ -948,7 +941,7 @@ describe("desktop browser public API", () => {
       await withBrowserTest(async (test) => {
         const tab = test.tab();
         test.change({ instanceId: "closed-window" }, [tab]);
-        const listed = deferred<HostRpcHandlerResult>();
+        const listed = createDeferredPromise<HostRpcHandlerResult>();
         const list = vi.fn(() => listed.promise);
         test.intercept(({ command }) =>
           command.type === "desktop.browser.list_instances" ? list() : null,
@@ -1065,7 +1058,7 @@ describe("desktop browser public API", () => {
     await withBrowserTest(async (test) => {
       const tab = test.tab();
       test.change({ instanceId: "closed-window" }, [tab]);
-      const listed = deferred<HostRpcHandlerResult>();
+      const listed = createDeferredPromise<HostRpcHandlerResult>();
       const list = vi.fn(() => listed.promise);
       const closed = vi.fn();
       test.intercept(({ command }) => {

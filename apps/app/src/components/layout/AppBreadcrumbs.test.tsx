@@ -1,17 +1,12 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
+import { LocationProbe } from "@/test/location-probe";
 
 afterEach(cleanup);
-
-function LocationProbe() {
-  return (
-    <output aria-label="Current location">{useLocation().pathname}</output>
-  );
-}
 
 describe("AppBreadcrumbs", () => {
   it("navigates through ancestors while keeping the resource passive", () => {
@@ -45,7 +40,7 @@ describe("AppBreadcrumbs", () => {
     expect(screen.queryByRole("link", { name: "Weekly review" })).toBeNull();
 
     fireEvent.click(screen.getByRole("link", { name: "Installed" }));
-    expect(screen.getByLabelText("Current location").textContent).toBe(
+    expect(screen.getByTestId("location").textContent).toBe(
       "/plugins/automations/automations",
     );
   });

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import {
   collectLogPayloads,
   runCommand,
@@ -11,14 +11,6 @@ import {
 } from "../helpers/command-output-harness.js";
 import type { CommandRegistrar } from "../helpers/command-output-harness.js";
 import { registerServerCommands } from "../../commands/server.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "bb-cli-server-export-"));
-  tempDirs.push(dir);
-  return dir;
-}
 
 function streamOf(chunks: readonly Uint8Array[], failure?: Error) {
   let index = 0;
@@ -65,14 +57,6 @@ const UNENCRYPTED_EXPORT_WARNING =
 
 describe("bb server export", () => {
   setupCommandOutputTestEnvironment();
-
-  afterEach(async () => {
-    await Promise.all(
-      tempDirs
-        .splice(0)
-        .map((dir) => rm(dir, { force: true, recursive: true })),
-    );
-  });
 
   const register: CommandRegistrar = (program) =>
     registerServerCommands(

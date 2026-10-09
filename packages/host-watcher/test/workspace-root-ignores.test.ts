@@ -1,17 +1,15 @@
 import { execFile } from "node:child_process";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
-import { createDeferredPromise } from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { watchWorkspaceStatus } from "../src/watch-status.js";
 import type { WorkspaceStatusChangeEvent } from "../src/watch-status-types.js";
 
 const execFileAsync = promisify(execFile);
-const tempDirs: string[] = [];
 const realParcelSubscribe = parcelWatcher.subscribe.bind(parcelWatcher);
 
 const NESTED_REPOS = 4;
@@ -23,16 +21,6 @@ async function git(cwd: string, ...args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd, encoding: "utf8" });
 }
 
-async function initRepo(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
-  await git(dir, "init", "-q", "-b", "main");
-  await git(dir, "config", "user.name", "BB Tests");
-  await git(dir, "config", "user.email", "bb@example.com");
-  await fs.writeFile(path.join(dir, "README.md"), "hello\n");
-  await git(dir, "add", "README.md");
-  await git(dir, "commit", "-q", "-m", "init");
-}
-
 async function buildUmbrellaRoot(args: {
   gitRoot: boolean;
   nestedRepos?: number;
@@ -41,8 +29,7 @@ async function buildUmbrellaRoot(args: {
   root: string;
   nestedDirCount: number;
 }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-1779-umbrella-"));
-  tempDirs.push(root);
+  const root = await makeTempDir("bb-1779-umbrella-");
   if (args.gitRoot) {
     await initRepo(root);
   }
@@ -52,6 +39,7 @@ async function buildUmbrellaRoot(args: {
   let nestedDirCount = 0;
   for (let i = 0; i < nestedRepos; i += 1) {
     const child = path.join(root, "apps", `child-${i}`);
+    await fs.mkdir(child, { recursive: true });
     await initRepo(child);
     await fs.writeFile(path.join(child, ".gitignore"), "node_modules/\n");
     await git(child, "add", ".gitignore");
@@ -122,11 +110,8 @@ async function measureWorkspaceRootWatch(root: string): Promise<{
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  for (const dir of tempDirs.splice(0)) {
-    await fs.rm(dir, { force: true, recursive: true });
-  }
 });
 
 describe.skipIf(process.platform !== "linux")(

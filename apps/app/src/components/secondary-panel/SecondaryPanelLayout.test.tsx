@@ -15,13 +15,10 @@ import {
   SecondaryPanelLayout,
   type SecondaryPanelRenderArgs,
 } from "./SecondaryPanelLayout";
+import { panelGroupState } from "@/test/react-resizable-panels-stub";
 
 type DrawerShellCallback = (open: boolean) => void;
 
-const panelGroupState = vi.hoisted(() => ({
-  getLayout: vi.fn(() => [60, 40]),
-  setLayout: vi.fn(),
-}));
 const drawerShellState = vi.hoisted(() => ({
   onContentAnimationEnd: undefined as DrawerShellCallback | undefined,
 }));
@@ -35,37 +32,10 @@ vi.mock("jotai", async (importOriginal) => ({
   useAtomValue: () => 40,
 }));
 
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<
-    {
-      getLayout: () => number[];
-      setLayout: (layout: number[]) => void;
-    },
-    { children?: ReactNode }
-  >(({ children, ...props }, ref) => {
-    React.useImperativeHandle(
-      ref,
-      () => ({
-        getLayout: panelGroupState.getLayout,
-        setLayout: panelGroupState.setLayout,
-      }),
-      [],
-    );
-    return React.createElement(
-      "div",
-      { ...props, "data-testid": "panel-group" },
-      children,
-    );
-  });
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: { children?: ReactNode }) =>
-    React.createElement("div", { "data-testid": "main-panel" }, children);
-
-  return { Panel, PanelGroup };
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-stub"),
+);
 
 vi.mock("./CompactSecondaryPanelShelf", async () => {
   const React = await import("react");

@@ -11,22 +11,19 @@ import {
   type ClientTurnRequestId,
   type PromptInput,
 } from "@bb/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import { CommandDispatchError } from "../../src/command-dispatch-support.js";
 import type { FetchProjectAttachment } from "../../src/project-attachments.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import {
-  cleanupTempDirs,
   createFakeRuntime,
   createFakeWorkspace,
   createHarness,
   makeDispatchOptions,
-  makeTempDir,
   DISPATCH_TEST_BRIDGE_LAUNCH,
 } from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
 
 let nextClientRequestIdValue = 1;
 

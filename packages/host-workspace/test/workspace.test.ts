@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { WorkspaceChangeStats } from "@bb/domain";
-import { createDeferredPromise } from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import {
   ProcessLocalQueuedLockTimeoutError,
   withProcessLocalQueuedLocks,
@@ -13,8 +13,6 @@ import { WorkspaceError } from "../src/git.js";
 import { runGit } from "../src/git.js";
 import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 
-const tempDirs: string[] = [];
-
 type DiffStats = {
   filesCount: number;
   insertions: number;
@@ -23,23 +21,6 @@ type DiffStats = {
 
 function waitForLockContention(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 100));
-}
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-async function initRepo(): Promise<string> {
-  const repoPath = await makeTempDir("bb-workspace-repo-");
-  await runGit(["init", "-b", "main"], { cwd: repoPath });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
-  await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
-  await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
-  await runGit(["add", "README.md"], { cwd: repoPath });
-  await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
-  return repoPath;
 }
 
 function parseFirstIntegerMatch(text: string, pattern: RegExp): number {
@@ -69,7 +50,7 @@ type PrimaryAndFeatureWorktree = {
 };
 
 async function createPrimaryAndFeatureWorktree(): Promise<PrimaryAndFeatureWorktree> {
-  const primaryRepo = await initRepo();
+  const primaryRepo = await initRepo(await makeTempDir("bb-workspace-repo-"));
   const worktreeParent = await makeTempDir(
     "bb-workspace-squash-worktree-parent-",
   );
@@ -93,22 +74,9 @@ async function mergeFeatureIntoMainWithSquash(
   });
 }
 
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) =>
-      fs.rm(dir, {
-        recursive: true,
-        force: true,
-        maxRetries: 10,
-        retryDelay: 100,
-      }),
-    ),
-  );
-});
-
 describe("Workspace", () => {
   it("reports clean, dirty, untracked-only, and mixed workspace states", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     expect((await workspace.getStatus()).workingTree.state).toBe("clean");
@@ -146,7 +114,7 @@ describe("Workspace", () => {
   });
 
   it("reports deleted tracked files as dirty file changes", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     await fs.rm(path.join(repoPath, "README.md"));
@@ -164,7 +132,7 @@ describe("Workspace", () => {
   });
 
   it("joins per-file numstat to a rename+modify under the new path", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     await runGit(["mv", "README.md", "NOTES.md"], { cwd: repoPath });
@@ -188,7 +156,7 @@ describe("Workspace", () => {
   });
 
   it("reports null per-file stats for binary changes and excludes them from totals", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const binaryPath = path.join(repoPath, "data.bin");
     await fs.writeFile(binaryPath, Buffer.from([0, 1, 2, 3, 0xff, 0xfe]));
     await runGit(["add", "data.bin"], { cwd: repoPath });
@@ -223,7 +191,7 @@ describe("Workspace", () => {
   });
 
   it("changes the local state fingerprint when local checkout state changes", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     const initialFingerprint = await workspace.getLocalStateFingerprint();
@@ -238,7 +206,7 @@ describe("Workspace", () => {
   });
 
   it("fingerprints an untracked path without reading its contents", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
     const initialFingerprint = await workspace.getLocalStateFingerprint();
 
@@ -253,7 +221,7 @@ describe("Workspace", () => {
   });
 
   it("changes the shared git refs fingerprint only when refs change", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     const initialFingerprint = await workspace.getSharedGitRefsFingerprint();
@@ -268,7 +236,7 @@ describe("Workspace", () => {
   });
 
   it("returns grouped status details only when merge-base data is requested", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
     await runGit(["add", "README.md"], { cwd: repoPath });
@@ -364,7 +332,7 @@ describe("Workspace", () => {
   });
 
   it("reports untracked files plus committed unmerged changes as dirty_and_committed_unmerged", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
     await runGit(["add", "README.md"], { cwd: repoPath });
@@ -399,7 +367,7 @@ describe("Workspace", () => {
   });
 
   it("reports branches that are only behind their merge base as clean", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await runGit(["checkout", "main"], { cwd: repoPath });
     await fs.writeFile(
@@ -614,7 +582,7 @@ describe("Workspace", () => {
   });
 
   it("returns diff content for each supported target", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
     await runGit(["add", "README.md"], { cwd: repoPath });
@@ -665,7 +633,7 @@ describe("Workspace", () => {
   });
 
   it("aligns committed-only status stats with all and committed diffs", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
     await runGit(["add", "README.md"], { cwd: repoPath });
@@ -693,7 +661,7 @@ describe("Workspace", () => {
   });
 
   it("marks status line stats incomplete when untracked content is omitted", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(
       path.join(repoPath, "README.md"),
       "hello\npending\n",
@@ -730,7 +698,7 @@ describe("Workspace", () => {
   });
 
   it("enriches small untracked status snapshots within file and byte budgets", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(
       path.join(repoPath, "README.md"),
       "hello\npending\n",
@@ -772,7 +740,7 @@ describe("Workspace", () => {
   });
 
   it("keeps tracked deletion stats separate from an untracked replacement at the same path", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(
       path.join(repoPath, "replacement.txt"),
       "one\ntwo\nthree\n",
@@ -811,7 +779,7 @@ describe("Workspace", () => {
   });
 
   it("enriches eligible untracked files when another entry is a nested repository", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(path.join(repoPath, "notes.txt"), "one\ntwo\n", "utf8");
     const nestedRepoPath = path.join(repoPath, "vendor");
     await fs.mkdir(nestedRepoPath);
@@ -845,7 +813,7 @@ describe("Workspace", () => {
   });
 
   it("leaves untracked status stats unknown when either enrichment budget is exceeded", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(path.join(repoPath, "one.txt"), "one\n", "utf8");
     await fs.writeFile(path.join(repoPath, "two.txt"), "two\n", "utf8");
     const workspace = new Workspace(repoPath);
@@ -870,7 +838,7 @@ describe("Workspace", () => {
   });
 
   it("keeps tracked status totals explicitly incomplete in a mixed workspace", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "README.md"), "feature\n", "utf8");
     await runGit(["add", "README.md"], { cwd: repoPath });
@@ -902,7 +870,7 @@ describe("Workspace", () => {
   });
 
   it("truncates large git diff output before the process buffer fails", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
     await fs.writeFile(
       path.join(repoPath, "README.md"),
@@ -926,7 +894,7 @@ describe("Workspace", () => {
   });
 
   it("includes untracked files in one combined diff", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     await Promise.all(
@@ -949,7 +917,7 @@ describe("Workspace", () => {
   });
 
   it("bounds full-diff untracked content and reports truncation", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     await fs.writeFile(path.join(repoPath, "a.txt"), "first\n", "utf8");
     await fs.writeFile(path.join(repoPath, "b.txt"), "second\n", "utf8");
 
@@ -966,7 +934,7 @@ describe("Workspace", () => {
   });
 
   it("commits staged work", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     await fs.writeFile(path.join(repoPath, "README.md"), "commit me\n", "utf8");
@@ -981,7 +949,7 @@ describe("Workspace", () => {
   });
 
   it("throws a typed no_changes error when there is nothing to commit", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
 
     await expect(
@@ -1000,7 +968,7 @@ describe("Workspace", () => {
   });
 
   it("serializes same-checkout mutations", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const workspace = new Workspace(repoPath);
     await fs.writeFile(path.join(repoPath, "README.md"), "pending\n", "utf8");
 
@@ -1030,7 +998,7 @@ describe("Workspace", () => {
   });
 
   it("does not serialize different linked worktree checkout mutations", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(await makeTempDir("bb-workspace-repo-"));
     const worktreeParent = await makeTempDir("bb-workspace-lock-worktrees-");
     const worktreePath = path.join(worktreeParent, "feature");
     await runGit(["worktree", "add", "-b", "feature", worktreePath, "main"], {

@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, symlink } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { listServerOwnedEntries } from "../src/index.js";
 import {
   fixtureBody,
@@ -9,22 +9,6 @@ import {
   SERVER_OWNED_FIXTURE_PATHS,
   writeFixtureFile,
 } from "./data-dir-fixtures.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-server-inventory-"));
-  tempDirs.push(tempDir);
-  return tempDir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => rm(tempDir, { force: true, recursive: true })),
-  );
-});
 
 describe("listServerOwnedEntries", () => {
   it("includes server-owned files and excludes host-owned, cache, and unknown entries", async () => {

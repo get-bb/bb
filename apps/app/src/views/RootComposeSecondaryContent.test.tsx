@@ -12,23 +12,11 @@ import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
+import { panelGroupState } from "@/test/react-resizable-panels-stub";
 
 type RootComposeSecondaryContentProps = ComponentProps<
   typeof RootComposeSecondaryContent
 >;
-
-interface PanelGroupHandle {
-  getLayout: () => number[];
-  setLayout: (layout: number[]) => void;
-}
-
-interface PanelGroupProps {
-  children?: ReactNode;
-}
-
-interface PanelProps {
-  children?: ReactNode;
-}
 
 interface RenderRootComposeArgs {
   isCompactViewport: boolean;
@@ -39,11 +27,6 @@ interface RenderRootComposeArgs {
 type TestDesktopWindow = {
   bbDesktop?: { platform: "macos" };
 };
-
-const panelGroupState = vi.hoisted(() => ({
-  getLayout: vi.fn(() => [60, 40]),
-  setLayout: vi.fn(),
-}));
 
 const noop = () => {};
 
@@ -60,33 +43,10 @@ vi.mock("jotai", async (importOriginal) => ({
   useAtomValue: () => 40,
 }));
 
-vi.mock("react-resizable-panels", async () => {
-  const React = await import("react");
-
-  const PanelGroup = React.forwardRef<PanelGroupHandle, PanelGroupProps>(
-    ({ children }, ref) => {
-      React.useImperativeHandle(
-        ref,
-        () => ({
-          getLayout: panelGroupState.getLayout,
-          setLayout: panelGroupState.setLayout,
-        }),
-        [],
-      );
-      return React.createElement(
-        "div",
-        { "data-testid": "panel-group" },
-        children,
-      );
-    },
-  );
-  PanelGroup.displayName = "MockPanelGroup";
-
-  const Panel = ({ children }: PanelProps) =>
-    React.createElement("div", { "data-testid": "panel" }, children);
-
-  return { Panel, PanelGroup };
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-stub"),
+);
 
 vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
   const React = await import("react");
