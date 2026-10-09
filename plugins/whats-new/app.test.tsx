@@ -512,6 +512,107 @@ describe("What's new in Settings → Updates", () => {
   });
 });
 
+const SHOW_ME_RELEASE: ReleaseNotes = {
+  ...FIVE,
+  sections: [
+    {
+      title: "Highlights",
+      blocks: [
+        {
+          kind: "list",
+          items: [
+            "**Faster threads:** switch instantly.",
+            "**Safer archiving.** Undo within 30 seconds.",
+            "**Filter the diff panel** with globs like `*.md`.",
+            "Plugin [safe mode](https://example.test/safe) in one step.",
+          ],
+        },
+      ],
+    },
+    {
+      title: "Fixes",
+      blocks: [{ kind: "list", items: ["Fix a five-specific crash."] }],
+    },
+  ],
+};
+
+function walkthrough(subject: string) {
+  return `Walk me through ${subject} in this bb, one step at a time, and check each step with me. If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
+}
+
+async function expandedShowMeNotes() {
+  const slot = renderNotes({ installed: SHOW_ME_RELEASE });
+  fireEvent.click(
+    await slot.findByRole("button", { name: "Show all changes" }),
+  );
+  return slot;
+}
+
+describe("Show me on What's new highlights", () => {
+  it("offers a walkthrough prompt for each highlight and none for other sections", async () => {
+    const slot = await expandedShowMeNotes();
+
+    const prompts = slot
+      .getAllByRole("button", { name: /^Show me / })
+      .map((button) => {
+        fireEvent.click(button);
+        const call = slot.navigateCalls.at(-1);
+        return call?.method === "toCompose"
+          ? call.options?.initialPrompt
+          : null;
+      });
+
+    expect(prompts).toEqual([
+      walkthrough("Faster threads: switch instantly"),
+      walkthrough("Safer archiving: Undo within 30 seconds"),
+      walkthrough(
+        "Filter the diff panel: Filter the diff panel with globs like *.md",
+      ),
+      walkthrough("Plugin safe mode in one step"),
+    ]);
+    const fix = slot.getByText("Fix a five-specific crash.");
+    expect(within(fix).queryByRole("button")).toBeNull();
+  });
+
+  it("opens the new-thread composer filled and focused without changing seen state", async () => {
+    window.localStorage.setItem(SEEN_KEY, "0.4.0");
+    const slot = await expandedShowMeNotes();
+    await slot.findByText("bb 0.5.0 · October 2, 2026 · Updated from 0.4.0");
+    const seen = window.localStorage.getItem(SEEN_KEY);
+    const previous = window.localStorage.getItem(PREVIOUS_KEY);
+
+    fireEvent.click(
+      slot.getByRole("button", { name: "Show me Faster threads" }),
+    );
+
+    expect(slot.navigateCalls).toEqual([
+      {
+        method: "toCompose",
+        options: {
+          initialPrompt: walkthrough("Faster threads: switch instantly"),
+          focusPrompt: true,
+        },
+      },
+    ]);
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe(seen);
+    expect(window.localStorage.getItem(PREVIOUS_KEY)).toBe(previous);
+  });
+
+  it("is a focusable native button, so Enter and Space activate it", async () => {
+    const slot = await expandedShowMeNotes();
+    const action = slot.getByRole("button", {
+      name: "Show me Safer archiving",
+    });
+
+    expect(action.tagName).toBe("BUTTON");
+    expect(action.getAttribute("type")).toBe("button");
+    expect(action.tabIndex).toBe(0);
+    expect(action.textContent).toBe("Show me");
+    action.focus();
+    expect(document.activeElement).toBe(action);
+  });
+});
+
 describe("version records", () => {
   it("compares numerically and ignores prerelease suffixes", () => {
     expect(compareVersions("0.10.0", "0.9.9")).toBeGreaterThan(0);

@@ -5,6 +5,7 @@ See what changed after each bb update. What's new shows a small card above the s
 - After bb updates, a card above the sidebar footer names the new version, shows its headline and a small drawing, and links to the full notes. A brand-new install shows no card until its first update.
 - Click the card to open Settings → Updates at What's new. Dismiss it with × to hide it until the next release. Opening Settings → Updates hides it too.
 - Settings → Updates shows What's new below the update rows: a one-line summary of the installed release with **Show all changes** for the full notes, the releases you skipped since you last looked, and the notes for an available update.
+- Each highlight in the full notes has a **Show me** link. It fills the new-thread composer with a prompt asking the agent to walk you through that feature one step at a time, as an interactive answer when the Interactive Answers plugin is installed or as numbered steps otherwise. Nothing is sent until you press Send.
 - The card hides while the sidebar is collapsed and follows the sidebar into the drawer on phones.
 
 ## Turn it off

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { InlineMarkdown } from "./inline-markdown.js";
 import { ReleaseVisual } from "./release-visual.js";
 import { WHATS_NEW_SECTION_ID } from "./seen.js";
+import { ShowMeAction } from "./show-me.js";
 import {
   changelogUrl,
   type ReleaseNotes,
@@ -21,7 +22,13 @@ export interface WhatsNewNotesData {
 
 type ReleaseSection = ReleaseNotes["sections"][number];
 
-function Blocks({ blocks }: { blocks: readonly ReleaseNotesBlock[] }) {
+function Blocks({
+  blocks,
+  itemAction,
+}: {
+  blocks: readonly ReleaseNotesBlock[];
+  itemAction?: (item: string) => ReactNode;
+}) {
   return blocks.map((block, index) =>
     block.kind === "list" ? (
       <ul key={index} className="mt-3 flex flex-col gap-2 first:mt-0">
@@ -31,6 +38,7 @@ function Blocks({ blocks }: { blocks: readonly ReleaseNotesBlock[] }) {
             className="relative pl-5 text-sm leading-relaxed text-muted-foreground before:absolute before:left-0.5 before:top-[0.62em] before:size-1.5 before:rounded-xs before:bg-subtle-foreground/40"
           >
             <InlineMarkdown text={item} />
+            {itemAction?.(item)}
           </li>
         ))}
       </ul>
@@ -101,7 +109,14 @@ function SectionList({ sections }: { sections: readonly ReleaseSection[] }) {
   return sections.map((section) => (
     <div key={section.title} className="mt-5 first:mt-3">
       <SectionTitle title={section.title} />
-      <Blocks blocks={section.blocks} />
+      <Blocks
+        blocks={section.blocks}
+        itemAction={
+          section.title === "Highlights"
+            ? (item) => <ShowMeAction item={item} />
+            : undefined
+        }
+      />
     </div>
   ));
 }
