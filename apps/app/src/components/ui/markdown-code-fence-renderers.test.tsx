@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useEffect, type ComponentType } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalCodeFenceRendererProps } from "@get-bb/plugin-sdk";
 import { MemoryRouter } from "react-router-dom";
@@ -148,6 +148,45 @@ describe("code fence renderers in assistant messages", () => {
     expect(first.getAttribute("data-project-id")).toBe("proj_a");
     expect(view.container.textContent).toContain("const between = 1;");
     expect(view.container.textContent).not.toContain("{ first }");
+  });
+
+  it("delivers claims through the sanitized HTML pipeline when the message contains HTML", async () => {
+    const registry = buildCodeFenceRendererRegistry([
+      slot(UiFence, { languages: ["ui", "app"] }),
+    ]);
+    const view = render(
+      assistantMessage(
+        registry,
+        [
+          "Intro with <b>inline HTML</b>.",
+          "",
+          "```app",
+          "<!doctype html><html><body><h1>Demo</h1></body></html>",
+          "```",
+          "",
+          "```app",
+          "<div>open",
+        ].join("\n"),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Loading embedded HTML")).toBeNull(),
+    );
+    expect(view.container.querySelector("b")?.textContent).toBe("inline HTML");
+    expect(renderedFences()).toEqual([
+      {
+        code: "<!doctype html><html><body><h1>Demo</h1></body></html>",
+        complete: "true",
+        index: "0",
+      },
+      { code: "<div>open", complete: "false", index: "1" },
+    ]);
+    expect(
+      screen
+        .getAllByTestId("ui-fence")
+        .map((node) => node.getAttribute("data-language")),
+    ).toEqual(["app", "app"]);
   });
 
   it("renders the same fence as BB's code block in a user message", () => {

@@ -46,6 +46,11 @@ const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
           "title",
           "ariaLabel",
         ],
+        code: [
+          ...(defaultSchema.attributes?.code ?? []),
+          "dataCodeFenceIndex",
+          "dataCodeFenceComplete",
+        ],
         "bb-thread-mention": [
           "dataThreadId",
           "dataRawThreadId",
