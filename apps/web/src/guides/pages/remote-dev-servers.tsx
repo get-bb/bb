@@ -18,7 +18,10 @@ const AGENT_PROMPT = withIntake(
   [
     { label: "Branches", hint: "the branches to preview" },
     { label: "Machine", hint: "the remote machine to run them on" },
-    { label: "Dev server command", hint: "e.g. pnpm dev" },
+    {
+      label: "Dev server command",
+      hint: "check package.json, e.g. npm run dev",
+    },
   ],
   `Run a dev server for each branch on a remote bb machine, and share each one at its own getbb.app link.
 Guide: https://getbb.app/guides/remote-dev-servers
@@ -28,7 +31,7 @@ If a step fails, stop and tell me what you saw. Don't open firewall ports, send 
 1. Check what's needed first. If \`bb connect status\` shows remote access off, ask me to turn on bb connect in Settings. If \`bb machine list\` doesn't show the machine, run \`bb terminal create --thread "$BB_THREAD_ID" --title "Add machine" --command "bb machine create --provider manual"\`, take the install command from \`bb terminal output <terminal-id>\`, and run it on the machine over SSH, or send it to me if you can't reach it.
 2. If \`bb project show "$BB_PROJECT_ID"\` has no source on the machine, run \`bb project source add "$BB_PROJECT_ID" --clone --machine <machine>\`.
 3. For each branch, start a thread on the machine that starts its own server, all at once:
-   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if there's no remote> --title "<branch>" --prompt "Start this branch's dev server. Pick a free port, save it as WEB_PORT in .env.local (don't commit it), and run <dev server command> with HOST=127.0.0.1 and PORT set to that port in a bb terminal titled Dev server. Reply with the port once it's listening on 127.0.0.1, or with the error."
+   bb thread spawn --json --project "$BB_PROJECT_ID" --machine <machine> --new-environment worktree --base-branch <origin/branch, or the local branch if there's no remote> --title "<branch>" --prompt "Install dependencies if they're missing, then start this branch's dev server. Pick a free port, save it as WEB_PORT in .env.local (don't commit it), and run <dev server command> with HOST=127.0.0.1 and PORT set to that port in a bb terminal titled Dev server. Reply with the port once it's listening on 127.0.0.1, or with the error."
 4. Wait for each thread with \`bb thread wait\` and read its port with \`bb thread output\`. If a server listens on all interfaces, stop and ask me before changing the app's code.
 5. Share each port with \`bb connect expose <port> --host <machine>\`, and check that \`bb connect shares --host <machine>\` lists them all.
 
