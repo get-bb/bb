@@ -101,6 +101,9 @@ function GuideHero({ guide }: { guide: Guide }) {
   return (
     <header className="hero cmp-hero gd-hero">
       <h1>{brandProse(guide.title)}</h1>
+      {guide.heroBadge ? (
+        <div className="gd-hero-badge">{guide.heroBadge}</div>
+      ) : null}
       <p className="sub">{brandProse(guide.description)}</p>
       <div className="gd-hero-actions">
         <CopyForAgent
@@ -179,7 +182,7 @@ function StepSection({ step, number }: { step: GuideStep; number: number }) {
         <span className="gd-num">{number}</span>
         <h2>{step.title}</h2>
       </div>
-      <p className="gd-lead">{brandProse(step.lead)}</p>
+      {step.lead ? <p className="gd-lead">{brandProse(step.lead)}</p> : null}
       {brandProse(step.body)}
       <ProductShot shot={step.shot} />
       {step.options.map((option) => (
