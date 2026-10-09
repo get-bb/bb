@@ -50,6 +50,12 @@ describe("buildAcpModelListParams", () => {
         cwd: "/agent-home",
         envVars: { CUSTOM_AGENT_TOKEN: "token" },
       },
+      optionsAgent: {
+        command: "custom-agent",
+        args: ["serve"],
+        cwd: "/agent-home",
+        envVars: { CUSTOM_AGENT_TOKEN: "token" },
+      },
       primaryModels: ["model-a"],
       reasoningProbePriorityModelIds: [],
       parameterizedModelPicker: false,
@@ -80,6 +86,7 @@ describe("buildAcpModelListParams", () => {
       ),
     ).toEqual({
       agent: { command: "custom-agent", args: ["serve"] },
+      optionsAgent: { command: "custom-agent", args: ["serve"] },
       primaryModels: [],
       reasoningProbePriorityModelIds: [],
       parameterizedModelPicker: false,
@@ -112,6 +119,7 @@ describe("buildAcpModelListParams", () => {
 
       expect(params).toEqual({
         agent: { command: "custom-agent", args: ["serve"] },
+        optionsAgent: { command: "custom-agent", args: ["serve"] },
         primaryModels: [],
         reasoningProbePriorityModelIds: [],
         parameterizedModelPicker: false,
@@ -136,6 +144,7 @@ describe("buildAcpModelListParams", () => {
       ),
     ).toEqual({
       agent: { command: "cursor-agent", args: ["acp"] },
+      optionsAgent: { command: "cursor-agent", args: ["acp"] },
       parameterizedModelPicker: true,
       primaryModels: ["default", "composer-2.5", "grok-4.6"],
       reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],

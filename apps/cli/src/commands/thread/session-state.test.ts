@@ -3,6 +3,7 @@ import {
   formatThreadProviderCommands,
   formatThreadSessionOptions,
   parseSessionOptionAssignments,
+  parseSpawnSessionOptions,
 } from "./session-state.js";
 
 describe("thread session state output", () => {
@@ -99,5 +100,18 @@ describe("thread session state output", () => {
         clear: ["web"],
       }),
     ).toThrow("cannot be both set and cleared");
+  });
+
+  it("turns spawn --option assignments into choices, reading true and false as on and off", () => {
+    expect(
+      parseSpawnSessionOptions(["daybreak=true", "web=false", "mode=plan=x"]),
+    ).toEqual({ daybreak: true, web: false, mode: "plan=x" });
+    expect(parseSpawnSessionOptions([])).toEqual({});
+    expect(() => parseSpawnSessionOptions(["daybreak"])).toThrow(
+      "Expected <option-id>=<value>",
+    );
+    expect(() => parseSpawnSessionOptions(["mode="])).toThrow(
+      "Expected <option-id>=<value>",
+    );
   });
 });

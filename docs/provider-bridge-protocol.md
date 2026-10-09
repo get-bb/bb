@@ -323,9 +323,18 @@ range is what gates a bridge: every bridge in this repo reports
   stays silent when it has not. A third kind, `bb/session-option-selections`,
   is written only by the server and refused from a bridge: it holds the
   choices a user made that the provider has not applied yet.
+- **Options before a session exists**: each model in a `model/list` result may
+  carry `sessionOptions`, the same option shape as `bb/session-options`, with
+  `value` as the provider's default. A `select` lists only the values that
+  model supports; a `boolean` with `fixed: true` says the model runs only with
+  that value. bb shows the union across models in the new-thread composer,
+  disables a model the current choices rule out, and sends the choices as
+  `sessionOptions` on the thread's first commands.
 - **`sessionOptions` execution option**: `{ [optionId]: string | boolean }` on
-  `turn/start`, present only while a user's choice differs from the value the
-  bridge last published. The bridge applies each entry before the prompt,
+  `thread/start` and `turn/start`. Before the bridge has published any
+  `bb/session-options` state for the thread it carries every choice made at
+  creation; afterwards it is present only while a user's choice differs from
+  the value the bridge last published. The bridge applies each entry before the prompt,
   skips an option or value it does not offer, and publishes the new
   `bb/session-options` snapshot; that publication is what clears the choice on
   the server, so an option the provider later changes on its own is not forced

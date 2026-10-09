@@ -25,6 +25,7 @@ interface ThreadStateSnapshot {
 
 interface ThreadSessionOptionState {
   options: ThreadSessionOption[];
+  optionsReported: boolean;
   providerThreadId: string | null;
   selections: SessionOptionSelections;
 }
@@ -72,6 +73,7 @@ function readThreadSessionOptionState(
   );
   return {
     options: options.success ? options.data.options : [],
+    optionsReported: optionsSnapshot !== null,
     providerThreadId: optionsSnapshot?.providerThreadId ?? null,
     selections: selections.success ? selections.data.selections : {},
   };
@@ -88,6 +90,21 @@ function sameSelections(
       (key) => Object.hasOwn(right, key) && left[key] === right[key],
     )
   );
+}
+
+export function seedThreadSessionOptionSelections(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: { thread: Thread; selections: SessionOptionSelections },
+): void {
+  if (Object.keys(args.selections).length === 0) {
+    return;
+  }
+  writeThreadSessionOptionSelections(deps, {
+    threadId: args.thread.id,
+    environmentId: args.thread.environmentId,
+    providerThreadId: "",
+    selections: args.selections,
+  });
 }
 
 function writeThreadSessionOptionSelections(
@@ -117,7 +134,9 @@ export function resolvePendingThreadSessionOptions(
   threadId: string,
 ): SessionOptionSelections {
   const state = readThreadSessionOptionState(db, threadId);
-  return pendingSessionOptionSelections(state.options, state.selections);
+  return state.optionsReported
+    ? pendingSessionOptionSelections(state.options, state.selections)
+    : state.selections;
 }
 
 export function applyThreadSessionOptionPatch(

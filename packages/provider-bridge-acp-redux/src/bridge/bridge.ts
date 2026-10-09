@@ -13,6 +13,7 @@ import type {
   PromptInput,
   ReasoningLevel,
   SessionOptionSelections,
+  ThreadSessionOption,
 } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
 import {
@@ -866,6 +867,130 @@ async function loadAgentModelCatalog(
   return catalog;
 }
 
+let cachedDeclaredSessionOptions: {
+  key: string;
+  options: ThreadSessionOption[];
+  fetchedAt: number;
+} | null = null;
+
+function declaredSessionOptionsKey(
+  agent: AcpAgentCommandParam,
+  parameterizedModelPicker: boolean,
+): string {
+  return JSON.stringify({ agent, parameterizedModelPicker });
+}
+
+function rememberDeclaredSessionOptions(
+  key: string,
+  sessionSetup: unknown,
+): void {
+  const model = createAcpSessionModel({ generation: 1 });
+  if (isJsonObject(sessionSetup)) {
+    model.applySessionSetup(sessionSetup);
+  }
+  cachedDeclaredSessionOptions = {
+    key,
+    options: toThreadSessionOptionsState(model.snapshot().configOptions)
+      .options,
+    fetchedAt: Date.now(),
+  };
+}
+
+function freshDeclaredSessionOptions(
+  key: string,
+): ThreadSessionOption[] | null {
+  return cachedDeclaredSessionOptions?.key === key &&
+    Date.now() - cachedDeclaredSessionOptions.fetchedAt <
+      SESSION_MODEL_DISCOVERY_TTL_MS
+    ? cachedDeclaredSessionOptions.options
+    : null;
+}
+
+async function loadDeclaredSessionOptions(
+  agent: AcpAgentCommandParam,
+  parameterizedModelPicker: boolean,
+): Promise<ThreadSessionOption[]> {
+  const key = declaredSessionOptionsKey(agent, parameterizedModelPicker);
+  const cached = freshDeclaredSessionOptions(key);
+  if (cached !== null) {
+    return cached;
+  }
+  const childEnv = {
+    ...withoutBridgeRuntimeEnv(process.env),
+    ...(agent.envVars ?? {}),
+  };
+  const connection = createAcpAgentConnection({
+    command: agent.command,
+    args: agent.args,
+    cwd: agent.cwd ?? process.cwd(),
+    env: childEnv,
+    recordThreadId: null,
+    onResponse: (method, result) => {
+      if (method === "session/new") {
+        rememberDeclaredSessionOptions(key, result);
+      }
+    },
+    onNotification: () => {},
+    onRequest: (_method, _params, responder) => {
+      responder.error(-32601, "ACP option discovery does not support requests");
+    },
+    onExit: () => {},
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutReached = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      connection.kill();
+      reject(
+        new Error(
+          `ACP option discovery timed out after ${MODEL_LIST_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, MODEL_LIST_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([
+      (async () => {
+        const capabilities = await requestAcpInitialize(connection, {
+          parameterizedModelPicker,
+          fsAccess: false,
+        });
+        await authenticateAcpAgent({
+          connection,
+          env: childEnv,
+          capabilities,
+        });
+        await connection.request({
+          method: "session/new",
+          params: { cwd: agent.cwd ?? process.cwd(), mcpServers: [] },
+          resultSchema: z.unknown(),
+        });
+      })(),
+      timeoutReached,
+    ]);
+  } catch (error) {
+    process.stderr.write(
+      `acp bridge: ACP option discovery for "${agent.command}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    await connection.kill();
+  }
+  return settleDeclaredSessionOptions(key);
+}
+
+function settleDeclaredSessionOptions(key: string): ThreadSessionOption[] {
+  const discovered = freshDeclaredSessionOptions(key);
+  if (discovered !== null) {
+    return discovered;
+  }
+  cachedDeclaredSessionOptions = { key, options: [], fetchedAt: Date.now() };
+  return [];
+}
+
 async function loadSessionDiscoveredModels(
   agent: AcpAgentCommandParam,
   reasoningProbePriorityModelIds: readonly string[],
@@ -894,6 +1019,14 @@ async function loadSessionDiscoveredModels(
     cwd: agent.cwd ?? process.cwd(),
     env: childEnv,
     recordThreadId: null,
+    onResponse: (method, result) => {
+      if (method === "session/new") {
+        rememberDeclaredSessionOptions(
+          declaredSessionOptionsKey(agent, parameterizedModelPicker),
+          result,
+        );
+      }
+    },
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(-32601, "ACP model discovery does not support requests");
@@ -982,6 +1115,9 @@ async function loadSessionDiscoveredModels(
       clearTimeout(timeout);
     }
     await connection.kill();
+    settleDeclaredSessionOptions(
+      declaredSessionOptionsKey(agent, parameterizedModelPicker),
+    );
   }
 }
 
@@ -3135,14 +3271,32 @@ async function handleModelList(
   params: AcpModelListParams,
   dialectId: string | undefined,
 ): Promise<void> {
-  function sendModels(models: readonly AvailableModel[]): void {
+  const declaredOptions = (): Promise<ThreadSessionOption[]> =>
+    params.optionsAgent
+      ? loadDeclaredSessionOptions(
+          params.optionsAgent,
+          params.parameterizedModelPicker,
+        )
+      : Promise.resolve([]);
+  function withDeclaredOptions(
+    models: readonly AvailableModel[],
+    options: readonly ThreadSessionOption[],
+  ): AvailableModel[] {
+    return options.length === 0
+      ? [...models]
+      : models.map((model) => ({ ...model, sessionOptions: [...options] }));
+  }
+  async function sendModels(models: readonly AvailableModel[]): Promise<void> {
     sendResult(
       id,
       splitPrimaryModels(
-        applyConfiguredReasoningToModels(models, {
-          reasoningCli: params.reasoningCli,
-          nativeReasoning: params.nativeReasoning,
-        }),
+        withDeclaredOptions(
+          applyConfiguredReasoningToModels(models, {
+            reasoningCli: params.reasoningCli,
+            nativeReasoning: params.nativeReasoning,
+          }),
+          await declaredOptions(),
+        ),
         params.primaryModels,
       ),
     );
@@ -3152,7 +3306,7 @@ async function handleModelList(
     ? await loadAgentModelCatalog(params.listCommand)
     : null;
   if (catalog) {
-    sendModels(
+    await sendModels(
       params.parameterizedModelPicker && dialectId === "cursor"
         ? buildCursorParameterizedModelCatalog(catalog.models)
         : catalog.models,
@@ -3168,16 +3322,19 @@ async function handleModelList(
         )
       : null;
   if (sessionDiscoveredModels) {
-    sendModels(sessionDiscoveredModels);
+    await sendModels(sessionDiscoveredModels);
     return;
   }
   sendResult(id, {
-    models: [
-      applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
-        reasoningCli: params.reasoningCli,
-        nativeReasoning: params.nativeReasoning,
-      }),
-    ],
+    models: withDeclaredOptions(
+      [
+        applyConfiguredReasoningToModel(ACP_DEFAULT_MODEL, {
+          reasoningCli: params.reasoningCli,
+          nativeReasoning: params.nativeReasoning,
+        }),
+      ],
+      await declaredOptions(),
+    ),
     selectedOnlyModels: [],
   });
 }

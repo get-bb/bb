@@ -59,6 +59,25 @@ export function parseSessionOptionAssignments(args: {
   return patch;
 }
 
+export function parseSpawnSessionOptions(
+  assignments: readonly string[],
+): Record<string, string | boolean> {
+  const selections: Record<string, string | boolean> = {};
+  for (const assignment of assignments) {
+    const separator = assignment.indexOf("=");
+    const optionId = separator === -1 ? "" : assignment.slice(0, separator);
+    const raw = assignment.slice(separator + 1);
+    if (optionId === "" || raw === "") {
+      throw new Error(
+        `Invalid --option '${assignment}'. Expected <option-id>=<value>.`,
+      );
+    }
+    selections[optionId] =
+      raw === "true" ? true : raw === "false" ? false : raw;
+  }
+  return selections;
+}
+
 export function formatThreadProviderCommands(
   commands: readonly ProviderCommand[] | null,
 ): string[] {

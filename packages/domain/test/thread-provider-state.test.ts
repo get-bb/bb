@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   applySessionOptionSelectionPatch,
+  collectDeclaredSessionOptions,
   coreThreadStateSchema,
+  describeSessionOptionConflict,
+  effectiveSessionOptionSelections,
+  modelSessionOptionConflict,
   pendingSessionOptionSelections,
   type ThreadSessionOption,
 } from "../src/thread-provider-state.js";
@@ -98,5 +102,73 @@ describe("session option selections", () => {
     expect(coreThreadStateSchema("bb/provider-commands")).not.toBeNull();
     expect(coreThreadStateSchema("bb/session-option-selections")).toBeNull();
     expect(coreThreadStateSchema("toString")).toBeNull();
+  });
+});
+
+describe("options declared by a provider's models", () => {
+  const daybreak = (value: boolean, fixed?: boolean): ThreadSessionOption => ({
+    type: "boolean",
+    id: "daybreak",
+    label: "Daybreak",
+    value,
+    ...(fixed === undefined ? {} : { fixed }),
+  });
+  const mode = (ids: string[]): ThreadSessionOption => ({
+    type: "select",
+    id: "mode",
+    label: "Mode",
+    value: ids[0] ?? "",
+    values: ids.map((id) => ({ id, label: id })),
+  });
+  const standardOnly = { sessionOptions: [daybreak(false, true)] };
+  const either = { sessionOptions: [daybreak(false), mode(["build", "plan"])] };
+  const daybreakOnly = { sessionOptions: [daybreak(true, true)] };
+  const askOnly = { sessionOptions: [mode(["ask"])] };
+
+  it("offers each option once, switchable when any model allows both values, with every value some model lists", () => {
+    expect(
+      collectDeclaredSessionOptions([
+        standardOnly,
+        either,
+        daybreakOnly,
+        askOnly,
+      ]),
+    ).toEqual([daybreak(false), mode(["build", "plan", "ask"])]);
+    expect(collectDeclaredSessionOptions([daybreakOnly, standardOnly])).toEqual(
+      [daybreak(false, false)],
+    );
+    expect(collectDeclaredSessionOptions([{}, { sessionOptions: [] }])).toEqual(
+      [],
+    );
+  });
+
+  it("names the choice that rules a model out, and nothing for a model that can run", () => {
+    expect(modelSessionOptionConflict(either, { daybreak: true })).toBeNull();
+    expect(modelSessionOptionConflict({}, { daybreak: true })).toBeNull();
+    expect(modelSessionOptionConflict(standardOnly, {})).toBeNull();
+
+    const on = modelSessionOptionConflict(standardOnly, { daybreak: true });
+    expect(on).toMatchObject({ optionId: "daybreak", selected: true });
+    expect(on && describeSessionOptionConflict(on)).toBe(
+      "Turn off Daybreak to use this model",
+    );
+    const off = modelSessionOptionConflict(daybreakOnly, { daybreak: false });
+    expect(off && describeSessionOptionConflict(off)).toBe(
+      "Turn on Daybreak to use this model",
+    );
+    const select = modelSessionOptionConflict(askOnly, { mode: "plan" });
+    expect(select && describeSessionOptionConflict(select)).toBe(
+      "Not available with Mode set to plan",
+    );
+  });
+
+  it("keeps only choices the declared options accept", () => {
+    expect(
+      effectiveSessionOptionSelections([daybreak(false), mode(["build"])], {
+        daybreak: true,
+        mode: "plan",
+        gone: "x",
+      }),
+    ).toEqual({ daybreak: true });
   });
 });

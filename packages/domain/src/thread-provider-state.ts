@@ -53,6 +53,7 @@ export const threadSessionOptionSchema = z.discriminatedUnion("type", [
     ...threadSessionOptionBaseShape,
     type: z.literal("boolean"),
     value: z.boolean(),
+    fixed: z.boolean().optional(),
   }),
 ]);
 export type ThreadSessionOption = z.infer<typeof threadSessionOptionSchema>;
@@ -111,6 +112,132 @@ export function pendingSessionOptionSelections(
     }
   }
   return pending;
+}
+
+export interface SessionOptionConflict {
+  optionId: string;
+  optionLabel: string;
+  selected: SessionOptionValue;
+  selectedLabel: string;
+  kind: "boolean" | "select";
+}
+
+interface SessionOptionModelSource {
+  sessionOptions?: readonly ThreadSessionOption[] | undefined;
+}
+
+function mergeDeclaredOption(
+  existing: ThreadSessionOption,
+  declared: ThreadSessionOption,
+): ThreadSessionOption {
+  if (existing.type === "boolean" && declared.type === "boolean") {
+    if (existing.fixed !== true) {
+      return existing;
+    }
+    if (declared.fixed !== true) {
+      return declared;
+    }
+    return existing.value === declared.value
+      ? existing
+      : { ...existing, value: false, fixed: false };
+  }
+  if (existing.type === "select" && declared.type === "select") {
+    const known = new Set(existing.values.map((value) => value.id));
+    return {
+      ...existing,
+      values: [
+        ...existing.values,
+        ...declared.values.filter((value) => !known.has(value.id)),
+      ],
+    };
+  }
+  return existing;
+}
+
+export function collectDeclaredSessionOptions(
+  models: readonly SessionOptionModelSource[],
+): ThreadSessionOption[] {
+  const byId = new Map<string, ThreadSessionOption>();
+  for (const model of models) {
+    for (const option of model.sessionOptions ?? []) {
+      const existing = byId.get(option.id);
+      byId.set(
+        option.id,
+        existing === undefined ? option : mergeDeclaredOption(existing, option),
+      );
+    }
+  }
+  return [...byId.values()].map((option) =>
+    option.type === "boolean" && option.fixed !== undefined
+      ? { ...option, fixed: false }
+      : option,
+  );
+}
+
+export function modelSessionOptionConflict(
+  model: SessionOptionModelSource,
+  selections: SessionOptionSelections,
+): SessionOptionConflict | null {
+  for (const option of model.sessionOptions ?? []) {
+    if (!Object.hasOwn(selections, option.id)) {
+      continue;
+    }
+    const selected = selections[option.id];
+    if (option.type === "boolean") {
+      if (
+        typeof selected === "boolean" &&
+        option.fixed === true &&
+        selected !== option.value
+      ) {
+        return {
+          optionId: option.id,
+          optionLabel: option.label,
+          selected,
+          selectedLabel: selected ? "On" : "Off",
+          kind: "boolean",
+        };
+      }
+      continue;
+    }
+    if (
+      typeof selected === "string" &&
+      !option.values.some((value) => value.id === selected)
+    ) {
+      return {
+        optionId: option.id,
+        optionLabel: option.label,
+        selected,
+        selectedLabel: selected,
+        kind: "select",
+      };
+    }
+  }
+  return null;
+}
+
+export function describeSessionOptionConflict(
+  conflict: SessionOptionConflict,
+): string {
+  return conflict.kind === "boolean"
+    ? `Turn ${conflict.selected === true ? "off" : "on"} ${conflict.optionLabel} to use this model`
+    : `Not available with ${conflict.optionLabel} set to ${conflict.selectedLabel}`;
+}
+
+export function effectiveSessionOptionSelections(
+  declared: readonly ThreadSessionOption[],
+  selections: SessionOptionSelections,
+): SessionOptionSelections {
+  const effective: SessionOptionSelections = {};
+  for (const option of declared) {
+    if (!Object.hasOwn(selections, option.id)) {
+      continue;
+    }
+    const selected = selections[option.id];
+    if (sessionOptionAcceptsValue(option, selected)) {
+      effective[option.id] = selected;
+    }
+  }
+  return effective;
 }
 
 export function applySessionOptionSelectionPatch(args: {

@@ -36,6 +36,12 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
 
 Use these before spawning threads if you are unsure which provider or model to use.
 
+When a provider's models declare options (a mode, an on/off switch), `bb provider
+models` lists them under the table with their ids, values and defaults; `--json`
+carries them per model as `sessionOptions`. Choose values at creation with
+`bb thread spawn --option <id>=<value>` and on an existing thread with
+`bb thread options --set <id>=<value>`.
+
 Service tiers are provider-defined ids. `bb provider list --json` reports each
 provider's `serviceTiers` ({id, label, description?}); `default` always means
 the provider's standard tier. A model may narrow that list: `bb provider

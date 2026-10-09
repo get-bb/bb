@@ -4742,6 +4742,46 @@ describe("acp bridge: live session state", () => {
     ]);
   });
 
+  it("lists the agent's options on every model before any thread exists, whichever way the models were found", async () => {
+    const expected = [
+      {
+        id: "approach",
+        label: "Approach",
+        description: "How the agent works on a task",
+        category: "mode",
+        type: "select",
+        value: "build",
+        values: [
+          { id: "build", label: "Build" },
+          { id: "plan", label: "Plan", description: "Read only" },
+        ],
+      },
+      { id: "web", label: "Web search", type: "boolean", value: false },
+    ];
+    const optionsOf = async (id: number) =>
+      (
+        (await waitForResponse(id)).result as {
+          models: { id: string; sessionOptions?: unknown }[];
+        }
+      ).models.map((model) => model.sessionOptions);
+
+    const fromSession = await optionsOf(
+      sendModelList({ envVars: { FAKE_ACP_SESSION_OPTIONS: "1" } }),
+    );
+    expect(fromSession).toEqual([expected]);
+
+    const fromListCommand = await optionsOf(
+      sendModelList({
+        modelLines: "alpha - Alpha\nbeta - Beta",
+        envVars: { FAKE_ACP_SESSION_OPTIONS: "1" },
+      }),
+    );
+    expect(fromListCommand).toEqual([expected, expected]);
+
+    const none = await optionsOf(sendModelList({}));
+    expect(none).toEqual([undefined]);
+  });
+
   it("publishes no session options for an agent whose only options are its model and thought level", async () => {
     await startThread({
       envVars: {

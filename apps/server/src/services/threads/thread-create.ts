@@ -1,4 +1,5 @@
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
+import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
   markThreadDeleted,
@@ -405,6 +406,10 @@ async function createPendingThreadAndAttemptFirstDispatch(
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   try {
+    seedThreadSessionOptionSelections(deps, {
+      thread,
+      selections: args.request.sessionOptions ?? {},
+    });
     if (
       args.fork !== null &&
       args.fork.historyEndSequence !== null &&

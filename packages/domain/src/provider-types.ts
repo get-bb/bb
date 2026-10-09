@@ -7,6 +7,7 @@ import {
   serviceTierSchema,
 } from "./shared-types.js";
 import { extensionKindSchema } from "./provider-extension-kind.js";
+import { threadSessionOptionSchema } from "./thread-provider-state.js";
 import { threadEventItemPresentationSchema } from "./item-presentation.js";
 
 export const modelReasoningEffortSchema = z.object({
@@ -32,6 +33,7 @@ export const availableModelSchema = z.object({
   supportedReasoningEfforts: z.array(modelReasoningEffortSchema),
   defaultReasoningEffort: reasoningLevelSchema,
   supportedServiceTiers: z.array(modelServiceTierSchema).optional(),
+  sessionOptions: z.array(threadSessionOptionSchema).max(64).optional(),
   isDefault: z.boolean(),
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;

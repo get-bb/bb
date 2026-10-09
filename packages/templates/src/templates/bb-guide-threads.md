@@ -47,6 +47,9 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
+    --option <option=value>        Choose a value for an option the provider's model lists, applied
+                                   before the first message; true or false for an on/off option
+                                   (repeatable; see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
