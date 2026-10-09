@@ -1,7 +1,3 @@
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
-import UserAccountIcon from "@hugeicons/core-free-icons/UserAccountIcon";
-
 import { AnywhereConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
@@ -47,23 +43,7 @@ export const guide: Guide = {
   concept: <AnywhereConcept />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "A computer that stays on",
-      icon: ComputerIcon,
-      body: "bb on macOS, Windows, or Linux (alpha). It runs your bb server and your agents.",
-    },
-    {
-      title: "A getbb.app account",
-      icon: UserAccountIcon,
-      body: "Free. It gives your bb a private address only you can open.",
-    },
-    {
-      title: "Your phone",
-      icon: SmartPhone01Icon,
-      body: "Any browser works. Add the iOS or Android app for notifications.",
-    },
-  ],
+  requirement: null,
   steps: [
     {
       id: "step-1",

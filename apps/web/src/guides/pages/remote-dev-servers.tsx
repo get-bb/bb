@@ -1,7 +1,3 @@
-import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import ServerStack01Icon from "@hugeicons/core-free-icons/ServerStack01Icon";
-
 import { RemoteServersConcept } from "../concepts";
 import {
   CommandBlock,
@@ -69,23 +65,8 @@ export const guide: Guide = {
   concept: <RemoteServersConcept />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "A machine for your servers",
-      icon: ServerStack01Icon,
-      body: "Any Linux or macOS computer you can SSH into, or Windows with Node.js 22.19+. Your own computer works too.",
-    },
-    {
-      title: "A getbb.app account",
-      icon: CloudIcon,
-      body: "Free. It gives every shared port a private link that only you can open.",
-    },
-    {
-      title: "A bb that stays on",
-      icon: ComputerIcon,
-      body: "Machines connect to your bb server, so keep the computer running it awake.",
-    },
-  ],
+  requirement:
+    "a Linux or macOS machine you can SSH into, or Windows with Node.js 22.19+, and a free getbb.app account",
   steps: [
     {
       id: "step-1",

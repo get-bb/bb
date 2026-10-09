@@ -1,7 +1,3 @@
-import AiMagicIcon from "@hugeicons/core-free-icons/AiMagicIcon";
-import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
-import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
-
 import { BrowserConcept } from "../concepts";
 import { BulletList, PromptBlock } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
@@ -57,23 +53,7 @@ export const guide: Guide = {
   concept: <BrowserConcept scene="work" />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
-  needs: [
-    {
-      title: "The bb desktop app",
-      icon: ComputerIcon,
-      body: "Your agent works in a Browser tab you can watch, logged in as you.",
-    },
-    {
-      title: "An agent you're signed in to",
-      icon: AiMagicIcon,
-      body: "Claude Code, Codex, or another agent.",
-    },
-    {
-      title: "The sites to use",
-      icon: InternetIcon,
-      body: "Public pages, or the dashboards and tools you sign in to.",
-    },
-  ],
+  requirement: "the bb desktop app for sites you're logged in to",
   steps: [
     PLUGINS_STEP,
     {
