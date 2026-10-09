@@ -163,7 +163,7 @@ describe("thread-timeline realtime push", () => {
     });
   });
 
-  it("starts a fresh subscription with a full window instead of a stale delta", async () => {
+  it("resumes a dropped socket with a full window instead of a stale delta", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
       const target: ThreadTimelineSubscriptionTarget = {
@@ -172,7 +172,7 @@ describe("thread-timeline realtime push", () => {
         segmentLimit: null,
         deferContent: false,
       };
-      const socket = createMockHubSocket();
+      let socket = createMockHubSocket();
       const appendAndPush = async (sequence: number) => {
         seedEvent(harness.deps, {
           threadId: thread.id,
@@ -191,9 +191,10 @@ describe("thread-timeline realtime push", () => {
       harness.deps.hub.subscribe(socket, target);
       expect((await appendAndPush(1))[0]?.afterSequence).toBeNull();
       expect((await appendAndPush(2))[0]?.afterSequence).toBe(1);
-      harness.deps.hub.unsubscribe(socket, target);
+      harness.deps.hub.unregisterClient(socket);
       expect(await appendAndPush(3)).toEqual([]);
-      harness.deps.hub.subscribe(socket, target);
+      socket = createMockHubSocket();
+      harness.deps.hub.subscribe(socket, { ...target });
       const [resumed] = await appendAndPush(4);
       expect(resumed?.afterSequence).toBeNull();
       expect(resumed?.timeline.rows).toEqual(
