@@ -3,6 +3,7 @@ import type { PluginProviderReasoningLevel } from "@get-bb/plugin-sdk";
 import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
 import type { AcpLaunchSpec } from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
 import type { AcpNativeRootsResolver } from "./native-roots/resolver.js";
+import { registryAgentIcon } from "./registry-icons.js";
 
 export const ACP_FAMILY = "acp";
 
@@ -69,7 +70,7 @@ export function customAcpAgentDefinition(
   return {
     id: formatCustomAcpProviderId(agent.id),
     displayName: agent.displayName,
-    icon: CUSTOM_AGENT_GLYPH,
+    icon: registryAgentIcon(agent.id) ?? CUSTOM_AGENT_GLYPH,
     launch: {
       displayName: agent.displayName,
       command: agent.command,

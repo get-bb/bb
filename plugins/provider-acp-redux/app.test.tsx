@@ -32,6 +32,7 @@ function agent(
     providerId: `acp-${id}`,
     status,
     command: `npx -y ${id}@1.0.0`,
+    icon: null,
     ...overrides,
   };
 }

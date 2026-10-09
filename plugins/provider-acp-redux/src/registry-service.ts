@@ -55,6 +55,7 @@ const registryAgentViewSchema = registryAgentSchema.extend({
     "manual-install",
   ]),
   command: z.string().nullable(),
+  icon: z.string().nullable(),
 });
 
 const registryViewSchema = z.object({

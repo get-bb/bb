@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { formatCustomAcpProviderId } from "./agents.js";
+import { registryAgentIcon } from "./registry-icons.js";
 
 export const ACP_REGISTRY_URL =
   "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
@@ -170,6 +171,7 @@ export interface AcpRegistryAgentView extends AcpRegistryAgent {
   providerId: string;
   status: AcpRegistryAgentStatus;
   command: string | null;
+  icon: string | null;
 }
 
 function parseSettingEntries(settingValue: string): unknown[] {
@@ -242,7 +244,13 @@ export function describeRegistryAgents(args: {
     } else {
       status = custom === null ? "manual-install" : "available";
     }
-    return { ...agent, providerId, status, command };
+    return {
+      ...agent,
+      providerId,
+      status,
+      command,
+      icon: registryAgentIcon(agent.id) ?? null,
+    };
   });
 }
 
