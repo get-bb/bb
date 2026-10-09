@@ -147,6 +147,7 @@ describe("createAgentRuntime process lifecycle", () => {
         identityRegistry.createProviderState({ providerId }),
       env: args.env,
       getNextRequestId: () => nextRequestId++,
+      handleDeferredEvents: () => {},
       handleStdoutLine: ({ line, providerProcess }) => {
         args.handleStdoutLine?.(line, providerProcess.child.pid);
         const parsed = parseJsonRpcLine(line);

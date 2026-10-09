@@ -142,7 +142,9 @@ Consumer (host-daemon)
        ├─ BridgeProtocolAdapter        The one adapter: builds canonical
        │   ├─ buildCommandPlan()       Provider Bridge Protocol requests,
        │   ├─ translateEvent()         assembles `thread/delta` notifications
-       │   └─ decodeToolCallRequest()  into ThreadEvents, decodes tool calls
+       │   ├─ onDeferredEvents()       into ThreadEvents (text windows that
+       │   └─ decodeToolCallRequest()  flush on a timer arrive through
+       │                               onDeferredEvents), decodes tool calls
        │                               and interactive requests
        │
        └─ Bridge Process               The plugin-delivered bridge artifact,
