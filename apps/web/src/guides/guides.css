@@ -764,6 +764,23 @@
   transform: translateX(-50%);
 }
 
+.gd-shot-phone .cmp-phone {
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.gd-shot-phone .cmp-phone-screen {
+  padding: 0;
+}
+
+.gd-shot-phone .cmp-phone-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
 .gd-shot-frame {
   position: relative;
   margin: 0 auto;
