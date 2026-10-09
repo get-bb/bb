@@ -368,7 +368,7 @@ export function registerSpawnCommand(
     )
     .option(
       "--reasoning-level <level>",
-      "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
+      "Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id",
     )
     .option("--title <title>", "Thread title")
     .option("--service-tier <tier>", SERVICE_TIER_HELP)

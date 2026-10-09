@@ -1,4 +1,9 @@
-import { reasoningLevelValues, type ReasoningLevel } from "./shared-types.js";
+import {
+  standardReasoningLevelRank,
+  type ReasoningLevel,
+} from "./shared-types.js";
+
+const UNRANKED_PREVIOUS_LEVEL: ReasoningLevel = "medium";
 
 export function reconcileReasoningLevel(
   previous: ReasoningLevel,
@@ -14,26 +19,25 @@ export function reconcileReasoningLevel(
   const effectivePrevious = previous === "ultracode" ? "xhigh" : previous;
   if (supported.includes(effectivePrevious)) return effectivePrevious;
 
-  const previousRank = reasoningRank(effectivePrevious);
-  let bestLevel = supported[0];
-  let bestDistance = Math.abs(reasoningRank(bestLevel) - previousRank);
-  for (const candidate of supported.slice(1)) {
-    const distance = Math.abs(reasoningRank(candidate) - previousRank);
-    if (distance < bestDistance) {
-      bestLevel = candidate;
-      bestDistance = distance;
+  const previousRank =
+    standardReasoningLevelRank(effectivePrevious) ??
+    standardReasoningLevelRank(UNRANKED_PREVIOUS_LEVEL) ??
+    0;
+  let best: { level: ReasoningLevel; rank: number; distance: number } | null =
+    null;
+  for (const candidate of supported) {
+    const rank = standardReasoningLevelRank(candidate);
+    if (rank === null) {
       continue;
     }
+    const distance = Math.abs(rank - previousRank);
     if (
-      distance === bestDistance &&
-      reasoningRank(candidate) > reasoningRank(bestLevel)
+      best === null ||
+      distance < best.distance ||
+      (distance === best.distance && rank > best.rank)
     ) {
-      bestLevel = candidate;
+      best = { level: candidate, rank, distance };
     }
   }
-  return bestLevel;
-}
-
-function reasoningRank(level: ReasoningLevel): number {
-  return reasoningLevelValues.indexOf(level);
+  return best?.level ?? supported[0];
 }

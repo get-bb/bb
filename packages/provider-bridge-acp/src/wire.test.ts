@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  acpInitializeResultSchema,
   acpRequestPermissionParamsSchema,
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
@@ -54,19 +53,6 @@ describe("acpToolCallUpdateEventSchema", () => {
       rawKind: "deploy",
       status: "pending",
     });
-  });
-});
-
-describe("acpInitializeResultSchema", () => {
-  it("exposes the unstable session fork capability", () => {
-    const parsed = acpInitializeResultSchema.parse({
-      protocolVersion: 1,
-      agentCapabilities: {
-        sessionCapabilities: { fork: {} },
-      },
-    });
-
-    expect(parsed.agentCapabilities?.sessionCapabilities?.fork).toEqual({});
   });
 });
 

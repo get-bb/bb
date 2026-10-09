@@ -406,6 +406,7 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `experimental_acpLaunchSpecSchema`
 - `experimental_acpProviderBridge`
 - `experimental_probeAcpAgent`
+- `experimental_registerAcpDialect`
 - `AcpAgentModelCatalog`
 - `AcpAgentProbe`
 - `AcpAgentProbeRequest`

@@ -286,9 +286,11 @@ For an ACP agent, use `@get-bb/plugin-sdk/provider-bridge/acp`. Re-export
 `experimental_acpProviderBridge` as `experimental_providerBridge`. Supply a
 validated `acpLaunchSpec` and an ACP dialect in the static bridge options. The
 public ACP entrypoint includes the bridge, launch schema, agent probe, model
-catalog, tool, and dialect contracts. It supports the `generic`, `cursor`, and
-`grok` dialects. Read `provider-bridge-api-index.md` for the complete export
-list.
+catalog, tool, and dialect contracts. It ships the `acp` (generic), `cursor`,
+`grok`, `omp`, and `opencode` dialects. To read an agent's own side channels,
+call `experimental_registerAcpDialect({ id, ...hooks })` at module load in the
+host artifact and name that id as `acpDialect`; a built-in id cannot be
+replaced. Read `provider-bridge-api-index.md` for the complete export list.
 
 **Conformance.** Ship a test that drives the published kit,
 `@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge

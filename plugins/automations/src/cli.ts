@@ -125,9 +125,10 @@ const AGENT_OPTIONS = {
     description: "Model id the provider accepts",
   },
   reasoning: {
-    type: "enum",
-    values: reasoningLevelSchema.options,
-    description: "Reasoning level; new automations default to medium",
+    type: "string",
+    placeholder: "level",
+    description:
+      "Reasoning level id the model lists, for example low, medium, or high; new automations default to medium",
   },
   "service-tier": {
     type: "string",

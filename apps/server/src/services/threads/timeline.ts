@@ -28,7 +28,12 @@ import {
   type AcceptedClientRequestContext,
   type ThreadEventWithMeta,
 } from "@bb/thread-view";
-import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
+import {
+  LEGACY_CODEX_GOAL_EXTENSION_KIND,
+  THREAD_PROVIDER_COMMANDS_STATE_KIND,
+  THREAD_SESSION_OPTIONS_STATE_KIND,
+  THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
+} from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
 import type {
   ClientTurnRequestId,
@@ -920,6 +925,18 @@ function listLatestTimelineHeadStateRows(
       threadIds: [threadId],
       kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
     }),
+    ...listLatestThreadStateEventRowsByThreadIds(db, {
+      threadIds: [threadId],
+      kind: THREAD_PROVIDER_COMMANDS_STATE_KIND,
+    }),
+    ...listLatestThreadStateEventRowsByThreadIds(db, {
+      threadIds: [threadId],
+      kind: THREAD_SESSION_OPTIONS_STATE_KIND,
+    }),
+    ...listLatestThreadStateEventRowsByThreadIds(db, {
+      threadIds: [threadId],
+      kind: THREAD_SESSION_OPTION_SELECTIONS_STATE_KIND,
+    }),
     ...listTodoSnapshotEventRowsForThread(db, { threadId }),
   ]);
 }
@@ -1496,6 +1513,8 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activeBackgroundCommands : [],
     pendingTodos: timeline.pendingTodos,
     goal: timeline.goal,
+    providerCommands: timeline.providerCommands,
+    sessionOptions: timeline.sessionOptions,
     modelFallback:
       options.page.kind === "latest" ? timeline.modelFallback : null,
     contextWindowUsage:

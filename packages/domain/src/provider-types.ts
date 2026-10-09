@@ -11,6 +11,7 @@ import { threadEventItemPresentationSchema } from "./item-presentation.js";
 
 export const modelReasoningEffortSchema = z.object({
   reasoningEffort: reasoningLevelSchema,
+  label: z.string().min(1).optional(),
   description: z.string(),
 });
 export type ModelReasoningEffort = z.infer<typeof modelReasoningEffortSchema>;

@@ -1399,13 +1399,17 @@ export interface PluginProviderFallbackModel {
   /** Picker display name ("Opus 5 (1M)"). */
   displayName: string;
   description: string;
-  /** Reasoning levels this model supports, lowest to highest. Non-empty. */
+  /** Reasoning levels this model supports, lowest to highest. Non-empty.
+   * `reasoningEffort` is a standard ladder entry or any provider-specific id
+   * the bridge accepts back as `reasoningLevel`; `label` names a
+   * provider-specific id in the picker. */
   supportedReasoningEfforts: readonly {
-    reasoningEffort: PluginProviderReasoningLevel;
+    reasoningEffort: PluginProviderReasoningLevel | (string & {});
+    label?: string;
     description: string;
   }[];
   /** Must be one of `supportedReasoningEfforts`. */
-  defaultReasoningEffort: PluginProviderReasoningLevel;
+  defaultReasoningEffort: PluginProviderReasoningLevel | (string & {});
   /** Exactly one entry in the list is the default. */
   isDefault: boolean;
 }

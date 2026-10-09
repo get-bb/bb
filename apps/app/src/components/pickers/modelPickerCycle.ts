@@ -1,4 +1,8 @@
-import { reasoningLevelValues, type ReasoningLevel } from "@bb/domain";
+import {
+  compareReasoningLevels,
+  standardReasoningLevelRank,
+  type ReasoningLevel,
+} from "@bb/domain";
 import type { PickerOption } from "./OptionPicker";
 
 export function nextCycleValue<T extends string>(
@@ -24,28 +28,28 @@ export function cycleReasoningValue(
   current: ReasoningLevel,
   direction: "forward" | "backward",
 ): ReasoningLevel | null {
-  const supported = new Set(options.map((option) => option.value));
-  const orderedOptions = reasoningLevelValues.filter((level) =>
-    supported.has(level),
-  );
-  const currentRank = reasoningLevelValues.indexOf(current);
+  const currentRank = standardReasoningLevelRank(current);
+  if (
+    currentRank === null ||
+    options.some((option) => standardReasoningLevelRank(option.value) === null)
+  ) {
+    return direction === "forward"
+      ? nextCycleValue(options, current)
+      : previousCycleValue(options, current);
+  }
+  const orderedOptions = options
+    .map((option) => option.value)
+    .sort(compareReasoningLevels);
+  const rankOf = (level: ReasoningLevel) =>
+    standardReasoningLevelRank(level) ?? -1;
   let candidate: ReasoningLevel | undefined;
   if (direction === "forward") {
-    candidate = orderedOptions.find(
-      (level) => reasoningLevelValues.indexOf(level) > currentRank,
-    );
+    candidate = orderedOptions.find((level) => rankOf(level) > currentRank);
     candidate ??= orderedOptions[0];
   } else {
-    for (let index = orderedOptions.length - 1; index >= 0; index -= 1) {
-      const level = orderedOptions[index];
-      if (
-        level !== undefined &&
-        reasoningLevelValues.indexOf(level) < currentRank
-      ) {
-        candidate = level;
-        break;
-      }
-    }
+    candidate = [...orderedOptions]
+      .reverse()
+      .find((level) => rankOf(level) < currentRank);
     candidate ??= orderedOptions.at(-1);
   }
   if (candidate === undefined || candidate === current) return null;

@@ -30,11 +30,28 @@
  * agent from another lives beside the protocol: grok stamps
  * `_meta["x.ai/tool"]` on every tool event, Cursor reports sub-agents
  * through a vendor `cursor/task` request. A dialect is a small module that
- * reads those channels; the bridge ships `generic`, `cursor` and `grok`,
- * named by id in the registration's bridge options (`acpDialect`). The
- * dialect registry itself is not public yet: no plugin has needed to supply
- * one, and its shape (process-global, unversioned hooks) is still open — see
- * docs/api_to_audit.md.
+ * reads those channels; the bridge ships `acp` (the generic one), `cursor`,
+ * `grok`, `omp` and `opencode`, named by id in the registration's bridge
+ * options (`acpDialect`). A plugin supplies its own with
+ * `experimental_registerAcpDialect`, called at module load in the same
+ * `bb.host` artifact that re-exports the bridge:
+ *
+ * ```ts
+ * // host.ts
+ * import {
+ *   experimental_registerAcpDialect,
+ * } from "@get-bb/plugin-sdk/provider-bridge/acp";
+ *
+ * experimental_registerAcpDialect({
+ *   id: "amp",
+ *   toolIdentity: (event) => readAmpToolName(event),
+ * });
+ * ```
+ *
+ * The registration then names it: `acpDialect: "amp"`. A built-in id cannot
+ * be replaced, and an id nothing registered falls back to the generic
+ * dialect. The registry is one per host artifact, and a dialect's hooks are
+ * unversioned — see docs/api_to_audit.md.
  *
  * Curated by hand — named exports only, never `export *`. Value exports
  * carry the `experimental_` prefix every new plugin API member ships with
@@ -45,6 +62,13 @@
 import type { AcpLaunchSpec } from "@bb/provider-bridge-acp";
 
 export { acpProviderBridge as experimental_acpProviderBridge } from "@bb/provider-bridge-acp";
+/**
+ * Add an agent dialect to the bridge in this host artifact. Call it at
+ * module load, before the bridge handles a command. Throws for an empty id
+ * and for the id of a dialect the bridge ships; registering the same id
+ * again replaces the earlier registration.
+ */
+export { registerAcpDialect as experimental_registerAcpDialect } from "@bb/provider-bridge-acp";
 export type {
   AcpClassifiedToolCall,
   AcpClientRequestOutcome,

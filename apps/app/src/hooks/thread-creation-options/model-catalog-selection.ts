@@ -122,7 +122,7 @@ export function resolveModelCatalogSelection({
     seenReasoningLevels.add(effort.reasoningEffort);
     reasoningOptions.push({
       value: effort.reasoningEffort,
-      label: reasoningLevelLabel(effort.reasoningEffort, provider),
+      label: reasoningLevelLabel(effort.reasoningEffort, provider, effort),
     });
   }
 

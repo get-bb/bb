@@ -65,6 +65,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { applyThreadSessionOptionPatch } from "../../services/threads/thread-session-options.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -431,6 +432,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             ? { reasoningLevel: payload.reasoningLevel }
             : {}),
         },
+      });
+    }
+
+    if (payload.sessionOptions !== undefined) {
+      applyThreadSessionOptionPatch(deps, {
+        thread,
+        patch: payload.sessionOptions,
       });
     }
 

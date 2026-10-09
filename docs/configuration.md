@@ -794,7 +794,15 @@ CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
 listed.
 
-Add your own agent through the ACP providers plugin's `customAgents` setting,
+Agents listed in the official ACP registry need no JSON: the plugin's settings
+page lists them with an Add button, and `bb acp registry`, `bb acp add
+<agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding one
+writes a `customAgents` entry that runs the registry's `npx` or `uvx` package
+on the thread's host, so the host needs Node.js or uv. Agents the registry
+ships only as a downloadable binary are listed but must be installed by hand
+and added as a custom agent.
+
+Add any other agent through the ACP providers plugin's `customAgents` setting,
 which holds a JSON array. In the app it is the multi-line editor on the
 plugin's settings page (Settings → Plugins → ACP providers); from the CLI:
 

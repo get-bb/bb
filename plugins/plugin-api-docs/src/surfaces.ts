@@ -1180,6 +1180,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "AcpLaunchSpec",
           "experimental_acpLaunchSpecSchema",
           "experimental_probeAcpAgent",
+          "experimental_registerAcpDialect",
           "AcpDialect",
           "experimental_nativeRootsHostContract",
           "experimental_filterResolvedNativeRoots",

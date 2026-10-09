@@ -32,18 +32,7 @@ function mapCodexReasoningLevelToBb(value: unknown): ReasoningLevel | null {
 export function mapBbReasoningLevelToCodex(
   level: ReasoningLevel,
 ): string | null {
-  switch (level) {
-    case "ultracode":
-      return null;
-    case "none":
-    case "low":
-    case "medium":
-    case "high":
-    case "xhigh":
-    case "max":
-    case "ultra":
-      return level;
-  }
+  return level === "ultracode" ? null : level;
 }
 
 function cloneDefaultReasoningEfforts(): ModelReasoningEffort[] {

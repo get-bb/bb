@@ -923,18 +923,35 @@ policy at the server boundary before making the helper stable.
 
 ## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
 
-**Kept experimental (2026-08-22).** Four members remain, each with an open
-question below; the fourteen exports no plugin consumed (the dialect
-registry and ids, the raw line handler, the protocol constants, the launch
-profile and the model-catalog helpers) left the public surface in the
-stabilization audit — the kit grows with a consumer, not ahead of one.
+**Kept experimental (2026-08-22).** Five members remain, each with an open
+question below; the thirteen exports no plugin consumed (the dialect ids,
+the raw line handler, the protocol constants, the launch profile and the
+model-catalog helpers) left the public surface in the stabilization audit —
+the kit grows with a consumer, not ahead of one.
+
+**`experimental_registerAcpDialect` (2026-10-08).** Published again by owner
+decision so a third-party plugin can describe an agent bb does not ship. A
+plugin calls it at module load in its `bb.host` artifact with an
+`AcpDialect` (`id` plus the optional hooks `toolIdentity`,
+`classifyToolCall`, `commandResult`, `normalizeCommandEvent`,
+`clientRequestMethods` with `handleClientRequest`, and `maintenance`) and
+names the id as `acpDialect` in its registration. It throws for an empty id
+and for a built-in id (`acp`, `cursor`, `grok`, `omp`, `opencode`); a second
+registration of the same id replaces the first; an id nothing registered
+resolves to the generic dialect. Core uses the same path: the bridge resolves
+every dialect, shipped or registered, through the one registry
+(`packages/provider-bridge-acp/src/dialect.ts`, `resolveAcpDialect`), and the
+first-party ACP plugin names its dialects by id the way a third-party plugin
+does. Stabilize after the open questions below are settled: hook versioning,
+naming a dialect by value instead of by id, and whether registration should
+belong to a bridge factory instead of a module-level registry.
 
 **What it does.** Publishes bb's generic Agent Client Protocol bridge so any
 plugin can add an ACP agent without bb-side code. `experimental_acpProviderBridge`
 is the bridge a plugin re-exports from its `bb.host` artifact; the agent to
 launch arrives per command in `providerOptions.acpLaunchSpec`, so one
-implementation serves every agent. The bridge ships three dialects
-(`generic`, `cursor`, `grok`) — version 1 of the protocol has no sub-agent
+implementation serves every agent. The bridge ships five dialects
+(`acp`, `cursor`, `grok`, `omp`, `opencode`) — version 1 of the protocol has no sub-agent
 concept and standardizes nothing about `rawInput`, so each agent's vendor
 side channels are read by a small module named by id in the registration's
 bridge options (`acpDialect`). `experimental_probeAcpAgent` asks one

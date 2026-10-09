@@ -76,16 +76,7 @@ import { prepareWorkflowSource } from "./workflow-input.js";
 
 const executionValuesSchema = z.object({
   model: z.string().min(1),
-  reasoningLevel: z.enum([
-    "none",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "ultracode",
-    "max",
-    "ultra",
-  ]),
+  reasoningLevel: z.string().min(1),
   permissionMode: z.enum(["accept-edits", "auto", "full"]),
 });
 

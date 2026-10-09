@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseModelsResponse } from "./models.js";
+import { mapBbReasoningLevelToCodex, parseModelsResponse } from "./models.js";
 
 describe("parseModelsResponse", () => {
   it("parses a live-shaped Codex payload with max and ultra", () => {
@@ -49,7 +49,7 @@ describe("parseModelsResponse", () => {
     expect(models[1]?.defaultReasoningEffort).toBe("low");
   });
 
-  it("skips unknown reasoning efforts without rejecting the model", () => {
+  it("keeps reasoning efforts outside the standard ladder under the ids Codex gave them", () => {
     const models = parseModelsResponse({
       data: [
         {
@@ -68,8 +68,9 @@ describe("parseModelsResponse", () => {
     expect(models).toHaveLength(1);
     expect(
       models[0]?.supportedReasoningEfforts.map((e) => e.reasoningEffort),
-    ).toEqual(["low", "high"]);
-    expect(models[0]?.defaultReasoningEffort).toBe("low");
+    ).toEqual(["low", "quantum", "high"]);
+    expect(models[0]?.defaultReasoningEffort).toBe("quantum");
+    expect(mapBbReasoningLevelToCodex("quantum")).toBe("quantum");
   });
 
   it("skips effort entries without a string level and defaults to the first effort when none is named", () => {
@@ -93,16 +94,17 @@ describe("parseModelsResponse", () => {
     expect(models[0]?.defaultReasoningEffort).toBe("high");
   });
 
-  it("falls back to default efforts when every effort is unknown", () => {
+  it("falls back to default efforts when no effort carries a usable id", () => {
     const models = parseModelsResponse({
       data: [
         {
           id: "odd-model",
           model: "odd-model",
           supportedReasoningEfforts: [
-            { reasoningEffort: "quantum", description: "Brand new" },
+            { reasoningEffort: "", description: "Blank" },
+            { reasoningEffort: 7, description: "Numeric" },
           ],
-          defaultReasoningEffort: "quantum",
+          defaultReasoningEffort: "",
         },
       ],
     });

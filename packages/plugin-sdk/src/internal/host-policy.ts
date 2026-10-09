@@ -1061,7 +1061,7 @@ function validateProviderFallbackModels(
           `provider "${providerId}" ${field}.supportedReasoningEfforts must be a non-empty array`,
         );
       }
-      const levels = new Set<PluginProviderReasoningLevel>();
+      const levels = new Set<string>();
       const supportedReasoningEfforts = efforts.map(
         (
           effort,
@@ -1076,18 +1076,12 @@ function validateProviderFallbackModels(
               `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}] must be { reasoningEffort, description }`,
             );
           }
-          const reasoningEffort = Reflect.get(effort, "reasoningEffort");
-          if (
-            typeof reasoningEffort !== "string" ||
-            !(
-              PLUGIN_PROVIDER_REASONING_LEVEL_VALUES as readonly string[]
-            ).includes(reasoningEffort)
-          ) {
-            throw new Error(
-              `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}].reasoningEffort must be one of ${PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.join(", ")}`,
-            );
-          }
-          const level = reasoningEffort as PluginProviderReasoningLevel;
+          const level = requireNonBlankString({
+            providerId,
+            field: `${field}.supportedReasoningEfforts[${effortIndex}].reasoningEffort`,
+            value: Reflect.get(effort, "reasoningEffort"),
+          });
+          const label: unknown = Reflect.get(effort, "label");
           if (levels.has(level)) {
             throw new Error(
               `provider "${providerId}" ${field}.supportedReasoningEfforts repeats ${JSON.stringify(level)}`,
@@ -1096,6 +1090,15 @@ function validateProviderFallbackModels(
           levels.add(level);
           return Object.freeze({
             reasoningEffort: level,
+            ...(label === undefined
+              ? {}
+              : {
+                  label: requireNonBlankString({
+                    providerId,
+                    field: `${field}.supportedReasoningEfforts[${effortIndex}].label`,
+                    value: label,
+                  }),
+                }),
             description: requireNonBlankString({
               providerId,
               field: `${field}.supportedReasoningEfforts[${effortIndex}].description`,
@@ -1107,7 +1110,7 @@ function validateProviderFallbackModels(
       const defaultReasoningEffort = record.defaultReasoningEffort;
       if (
         typeof defaultReasoningEffort !== "string" ||
-        !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
+        !levels.has(defaultReasoningEffort)
       ) {
         throw new Error(
           `provider "${providerId}" ${field}.defaultReasoningEffort must be one of its supportedReasoningEfforts`,
@@ -1124,8 +1127,7 @@ function validateProviderFallbackModels(
         displayName,
         description,
         supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
-        defaultReasoningEffort:
-          defaultReasoningEffort as PluginProviderReasoningLevel,
+        defaultReasoningEffort,
         isDefault: record.isDefault,
       });
     },
@@ -2406,9 +2408,7 @@ export interface NormalizedPluginEnvironmentProvider {
     PluginEnvironmentProviderDeclaration["experimental_existingPath"]
   > | null;
   create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<
-    PluginEnvironmentProviderDeclaration["restore"]
-  > | null;
+  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }

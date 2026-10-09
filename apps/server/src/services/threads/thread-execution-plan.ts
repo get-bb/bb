@@ -1,6 +1,7 @@
 import { getAppSettings, getProjectExecutionDefaults, getThread } from "@bb/db";
 import {
   DEFAULT_SERVICE_TIER,
+  isStandardReasoningLevel,
   providerServiceTierOptions,
   reconcileServiceTier,
   type CallerExecutionInputSource,
@@ -223,7 +224,8 @@ function validateProviderReasoningLevel(
   );
   if (
     supportedLevels.length === 0 ||
-    supportedLevels.includes(reasoningLevel)
+    supportedLevels.includes(reasoningLevel) ||
+    !isStandardReasoningLevel(reasoningLevel)
   ) {
     return;
   }

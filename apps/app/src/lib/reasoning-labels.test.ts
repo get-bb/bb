@@ -23,6 +23,17 @@ describe("declared provider labels", () => {
     expect(reasoningLevelLabel("xhigh", undefined)).toBe("Extra High");
   });
 
+  it("labels a provider-specific level from the model's own name, else a readable form of its id", () => {
+    expect(
+      reasoningLevelLabel("think-hard", declared, { label: "Think Harder" }),
+    ).toBe("Think Harder");
+    expect(reasoningLevelLabel("low", declared, { label: "Lite" })).toBe(
+      "Lite",
+    );
+    expect(reasoningLevelLabel("think_hard", declared)).toBe("Think Hard");
+    expect(reasoningLevelLabel("minimal", undefined)).toBe("Minimal");
+  });
+
   it("paints the declared icon tint per theme and refuses non-colour values", () => {
     expect(getProviderIconTintStyle(declared)).toEqual({
       color: "light-dark(#111827, #F5F5F5)",

@@ -35,6 +35,8 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  ProviderCommand,
+  ThreadTimelineSessionOption,
   PullRequestMergeMethod,
   SendMessageRequest,
   ThreadTimelineResponse,
@@ -76,6 +78,8 @@ import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/Thre
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
+import { SessionOptionsMenu } from "@/components/pickers/SessionOptionsMenu";
+import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -215,6 +219,8 @@ interface ThreadDetailPromptAreaProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   activePromptMode: ThreadTimelineActivePromptMode | null;
   goal: ThreadTimelineGoal | null;
+  providerCommands: readonly ProviderCommand[] | null;
+  sessionOptions: readonly ThreadTimelineSessionOption[] | null;
   modelFallback: ThreadTimelineModelFallback | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
@@ -430,6 +436,8 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   activePromptMode,
   goal,
+  providerCommands,
+  sessionOptions,
   modelFallback,
   activeWorkflows,
   activeBackgroundCommands,
@@ -734,6 +742,10 @@ export function ThreadDetailPromptArea({
     overriddenFallbackIdentity: string | null;
   } | null>(null);
   const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
+  const sessionOptionChoices = useThreadSessionOptionChoices({
+    threadId: thread.id,
+    options: sessionOptions,
+  });
   const isFallbackModelActive =
     !isHandoffSelection &&
     selectedProviderId === thread.providerId &&
@@ -879,6 +891,8 @@ export function ThreadDetailPromptArea({
     environmentId: thread.environmentId,
     currentThreadId: thread.id,
     selectedProviderComposerActions,
+    threadProviderCommands:
+      selectedProviderId === thread.providerId ? providerCommands : null,
     resolveMentionLink,
   });
   const {
@@ -893,6 +907,7 @@ export function ThreadDetailPromptArea({
     selectedProviderComposerActions: providers.find(
       (provider) => provider.id === thread.providerId,
     )?.composerActions,
+    threadProviderCommands: providerCommands,
     resolveMentionLink,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
@@ -2322,6 +2337,15 @@ export function ThreadDetailPromptArea({
     ],
   );
 
+  const sessionOptionsControl =
+    isHandoffSelection || sessionOptions === null ? null : (
+      <SessionOptionsMenu
+        options={sessionOptions}
+        choices={sessionOptionChoices.choices}
+        onChange={sessionOptionChoices.choose}
+      />
+    );
+
   const bottomContent = (
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
@@ -2341,6 +2365,7 @@ export function ThreadDetailPromptArea({
       contextWindowUsage={contextWindowUsage ?? null}
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
+      sessionOptionsControl={sessionOptionsControl}
       typeahead={typeaheadConfig}
       promptActions={promptActions}
     />
