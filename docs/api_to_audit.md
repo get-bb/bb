@@ -1190,6 +1190,29 @@ the ids it has not cached yet.
 2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
    attributes layer replaces per-registration reads.
 
+## `PluginSettingDescriptor.experimental_optionLabels`
+
+**What it does.** A `type: "select"` setting descriptor field
+(`bb.settings.define`): a record from option value to display label. The
+settings form shows the label in the picker and as the current value; an
+option without a label shows its value, as before. Stored values, defaults,
+`settings.get()` and `bb plugin config <id> set <key> <value>` keep using the
+option values, so a plugin can rename a label without migrating stored data.
+A label keyed by something that is not one of `options` is refused at define
+time. The field travels in the settings view (`GET /plugins/:id/settings`)
+like `experimental_multiline`. First consumer: push-notifications'
+`defaultLevel` and `childLevel` (`all` shows as "All activity").
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide between this parallel record and `options` accepting
+   `{ value, label, description? }` objects; the object form keeps labels
+   beside their values and makes per-option descriptions possible, but every
+   reader of `options` (host policy, server contract, CLI, settings form) has
+   to handle both forms.
+2. **CLI.** `bb plugin config <id>` still lists raw option values, which is
+   what `set` accepts; decide whether it should also print labels.
+
 ## `bb.server.experimental_dataDir`
 
 **Kept experimental (2026-08-22).** A bare data-directory path does not

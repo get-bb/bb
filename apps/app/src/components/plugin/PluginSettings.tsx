@@ -161,9 +161,13 @@ function PluginSettingField({
         ariaDescribedBy={ariaDescribedBy}
         ariaInvalid={ariaInvalid}
         ariaLabel={descriptor.label}
-        valueLabel={value.length > 0 ? value : "Select…"}
+        valueLabel={
+          value.length > 0
+            ? (descriptor.experimental_optionLabels?.[value] ?? value)
+            : "Select…"
+        }
         options={descriptor.options.map((option) => ({
-          label: option,
+          label: descriptor.experimental_optionLabels?.[option] ?? option,
           value: option,
         }))}
         onSelect={onChange}

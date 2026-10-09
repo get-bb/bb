@@ -108,6 +108,8 @@ export type PluginSettingDescriptor =
       label: string;
       description?: string;
       options: string[];
+      /** Display labels keyed by option value; options without one show the value itself. */
+      experimental_optionLabels?: Record<string, string>;
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
