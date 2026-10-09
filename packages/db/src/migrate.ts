@@ -1166,19 +1166,32 @@ function skipEventLargeValuesRoundTripForInlineEvents(
   markMigrationApplied(db, restoreMigration);
 }
 
-function applyQueuedMessageGroupingSchema(db: DbConnection): void {
+function stageQueuedMessageGroups(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  const sqlite = db.$client;
+  sqlite.exec(
+    "CREATE TEMP TABLE IF NOT EXISTS bb_migration_queued_message_groups (id TEXT PRIMARY KEY, group_with_next INTEGER NOT NULL)",
+  );
+  sqlite.exec("DELETE FROM bb_migration_queued_message_groups");
   if (
+    !tableExists(db, "__drizzle_migrations") ||
     !tableExists(db, "queued_thread_messages") ||
-    columnExists(db, "queued_thread_messages", "group_with_next")
+    !columnExists(db, "queued_thread_messages", "group_with_next")
   ) {
     return;
   }
-
-  db.$client
-    .prepare(
-      "ALTER TABLE queued_thread_messages ADD COLUMN group_with_next integer DEFAULT 0 NOT NULL",
-    )
-    .run();
+  const migration = requireExpectedAppliedMigration(
+    readExpectedAppliedMigrations(migrationsFolder),
+    "0143_queued_message_state",
+  );
+  if (readAppliedMigrationCreatedAts(db).has(migration.createdAt)) {
+    return;
+  }
+  sqlite.exec(
+    "INSERT INTO bb_migration_queued_message_groups (id, group_with_next) SELECT id, group_with_next FROM queued_thread_messages",
+  );
 }
 
 const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
@@ -1433,6 +1446,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
     assertNoDuplicatePendingInteractionProviderRequests(db);
     applyDeferredDestructiveLegacyCleanup(db, migrationsFolder);
     skipEventLargeValuesRoundTripForInlineEvents(db, migrationsFolder);
+    stageQueuedMessageGroups(db, migrationsFolder);
     const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
       db,
       migrationsFolder,
@@ -1447,7 +1461,6 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
         restoreStagedThreadStorageDeletedAtColumn(db);
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
-    applyQueuedMessageGroupingSchema(db);
     seedKeepAwakePluginConfiguration(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");

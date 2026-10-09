@@ -54,8 +54,9 @@
 [--wait-holder plugin:<plugin-id>]`, `bb thread queue send <thread-id>
 <message-id>` (send it now, bypassing every plugin wait and its schedule), and
   `bb thread queue delete <thread-id> <message-id>` (discard it). Omitting the
-  thread lists every queued row in the workspace. The list shows `Waiting on`
-  and `Send at` columns. Several queued rows on one thread are normal. The SDK
+  thread lists every queued row in the workspace. The list shows `State`,
+  `Waiting on`, and `Send at` columns; `state` is one of `queued`, `scheduled`,
+  `waiting`, `failed_retrying`, `failed_exhausted`, or `claimed`. Several queued rows on one thread are normal. The SDK
   equivalents are `threads.queue.list` (cross-thread) and
   `threads.queuedMessages.list/send/update/delete` (one thread).
 - Failed queue rows show the failure reason and an exact recovery command.

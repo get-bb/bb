@@ -21,6 +21,7 @@ import {
 } from "@bb/db";
 import {
   flattenPromptInputGroups,
+  isQueuedMessageFailedState,
   queuedMessageSystemNoticeSchema,
 } from "@bb/domain";
 import type {
@@ -140,7 +141,8 @@ export function createAutomaticQueuedMessageGroupEligibility(
   const activeTurnId = getActiveTurnId(deps, args.thread.id);
   return (group) =>
     group.every((member) => {
-      if (member.failureReason !== null && !args.retryingFailure) return false;
+      if (isQueuedMessageFailedState(member.state) && !args.retryingFailure)
+        return false;
       const waitingOn = parseStoredQueuedThreadMessageWaitingOn(member);
       switch (waitingOn?.kind) {
         case undefined:

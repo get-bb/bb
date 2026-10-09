@@ -76,6 +76,7 @@ describe("queued message waits", () => {
     const { db, thread } = setup();
     const row = queue(db, thread.id);
 
+    expect(row.state).toBe("queued");
     expect(row.sendAt).toBeNull();
     expect(row.waitingOn).toBeNull();
     expect(row.waitHolder).toBeNull();
@@ -204,6 +205,7 @@ describe("queued message waits", () => {
       id: row.id,
       threadId: thread.id,
     });
+    expect(cleared?.state).toBe("queued");
     expect(cleared?.waitingOn).toBeNull();
     expect(cleared?.waitHolder).toBeNull();
     expect(cleared?.sendAt).toBeNull();

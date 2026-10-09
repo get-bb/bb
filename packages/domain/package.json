@@ -29,6 +29,11 @@
       "types": "./src/thread-origin-kind.ts",
       "default": "./src/thread-origin-kind.ts"
     },
+    "./queued-message-lifecycle": {
+      "source": "./src/queued-message-lifecycle.ts",
+      "types": "./src/queued-message-lifecycle.ts",
+      "default": "./src/queued-message-lifecycle.ts"
+    },
     "./thread-visibility": {
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",

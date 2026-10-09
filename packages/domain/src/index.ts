@@ -40,6 +40,7 @@ export * from "./prompt-attachment-limits.js";
 export * from "./prompt-history.js";
 export * from "./protocol-ids.js";
 export * from "./queued-message.js";
+export * from "./queued-message-lifecycle.js";
 export * from "./system-message.js";
 export * from "./provider-event.js";
 export * from "./thread-provider-state.js";

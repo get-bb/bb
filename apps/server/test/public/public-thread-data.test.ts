@@ -4690,7 +4690,7 @@ describe("public thread data routes", () => {
           serviceTier: "default",
           reasoningLevel: "medium",
           permissionMode: "full",
-          claimedAt: null,
+          state: "queued",
           sortKey: "V",
           createdAt: now,
           updatedAt: now,

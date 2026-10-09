@@ -7,6 +7,7 @@ import {
   queuedMessagePayloadSchema,
   queuedMessageWaitingOnSchema,
 } from "./queued-message.js";
+import { queuedMessageStateSchema } from "./queued-message-lifecycle.js";
 import {
   promptInputSchema,
   permissionModeSchema,
@@ -360,11 +361,10 @@ export const threadQueuedMessageSchema = z.object({
    * eligible as soon as its other waits clear.
    */
   sendAt: z.number().int().nonnegative().nullable(),
+  state: queuedMessageStateSchema,
   /**
-   * Why this row is queued, or null for a plain queued row that is simply
-   * next in line behind the running turn. Null rather than a
-   * `{ kind: "thread-busy" }` default because rows written before waits were
-   * typed carry no reason at all, and inventing one for them would be a lie.
+   * Why this row is queued, or null for a `queued` row that is simply next in
+   * line behind the running turn.
    */
   waitingOn: queuedMessageWaitingOnSchema.nullable(),
   /**

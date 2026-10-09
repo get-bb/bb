@@ -29,6 +29,7 @@ function queuedMessage(
     serviceTier: "default",
     groupWithNext: false,
     sendAt: null,
+    state: "queued",
     waitingOn: null,
     failureReason: null,
     payload: { kind: "inline" },
@@ -272,6 +273,7 @@ describe("bb thread organization commands", () => {
         "The provider bridge is unavailable while the plugin is still building";
       const list = vi.fn(async () => [
         queuedMessage({
+          state: "failed_exhausted",
           waitingOn: { kind: "host-offline", hostName: "Michael-M4" },
           failureReason,
         }),
@@ -289,6 +291,7 @@ describe("bb thread organization commands", () => {
         .mocked(console.log)
         .mock.calls.map((args) => args.join(" "))
         .join("\n");
+      expect(output).toContain("failed_exhausted");
       expect(output).toContain(`Failed queued-1: ${failureReason}`);
       expect(output).toContain("bb thread queue send thread-1 queued-1");
       expect(output).not.toContain("waiting for Michael-M4 to reconnect");

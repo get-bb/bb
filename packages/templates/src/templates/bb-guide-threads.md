@@ -392,6 +392,12 @@ Queued messages:
   queued row in the workspace; `--wait-holder plugin:<plugin-id>` narrows it to
   the rows one plugin is holding.
 
+  The `State` column (`state` in the SDK and `--json`) is one of `queued` (next
+  behind the running turn), `scheduled` (goes at `Send at`), `waiting` (held by
+  its typed reason), `failed_retrying` (an automatic retry is booked),
+  `failed_exhausted` (retries spent; waits for you), or `claimed` (a dispatch
+  attempt is sending it).
+
   Failed rows show their failure reason instead of their previous wait, followed
   by a recovery command: `bb thread queue send <thread-id> <message-id>`.
   Use it to retry immediately, including after automatic retries are exhausted.

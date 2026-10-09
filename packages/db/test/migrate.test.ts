@@ -9,6 +9,7 @@ import {
   rewindThreadPruningWork,
   dropMarketplaceSourceGitSubdirectoryColumn,
   dropQueuedMessageEditHeldUntilColumn,
+  rewindQueuedMessageStateMigration,
 } from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
@@ -767,6 +768,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
 }
 
 function dropQueuedMessageAttemptColumns(db: DbConnection): void {
+  rewindQueuedMessageStateMigration(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
     .all();
