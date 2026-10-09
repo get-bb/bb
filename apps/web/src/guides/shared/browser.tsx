@@ -47,8 +47,9 @@ export const PLUGINS_STEP: GuideStep = {
   lead: (
     <>
       The <a href="/marketplace/browser-automation">Browser Automation</a>{" "}
-      plugin gives your agent a browser. The Agent Annotations plugin lets you
-      point at what you mean.
+      plugin gives your agent a browser. The{" "}
+      <a href="/marketplace/agent-annotations">Agent Annotations</a> plugin lets
+      you point at what you mean.
     </>
   ),
   body: (
@@ -78,7 +79,7 @@ export const PLUGINS_STEP: GuideStep = {
 export const SIGN_INS_STEP: GuideStep = {
   id: "sign-ins",
   title: "Import your browser logins",
-  lead: "Your agent can open the sites you use already logged in as you.",
+  lead: "Your agent can open the sites you use, logged in as you.",
   body: (
     <Substeps>
       <li>
