@@ -180,7 +180,3 @@ export function pluginsSection(copy: SectionCopy): CompareHighlight {
     body: copy.body,
   };
 }
-
-export function textOnly(section: CompareHighlight): CompareHighlight {
-  return { ...section, visual: null, wide: true };
-}

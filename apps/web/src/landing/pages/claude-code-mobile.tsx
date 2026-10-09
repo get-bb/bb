@@ -9,8 +9,8 @@ import {
   LIMITS_COPY,
   anywhereSection,
   limitsSection,
-  textOnly,
 } from "../../compare/compare-sections";
+import { textOnly } from "../../compare/compare-page";
 import { AnywhereVisual, FleetVisual } from "../../compare/compare-visuals";
 import {
   CODEX_SECTION,

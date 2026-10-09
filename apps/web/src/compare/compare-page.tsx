@@ -34,7 +34,6 @@ import {
   PLUGINS_COPY,
   pluginsSection,
   type SectionCopy,
-  textOnly,
 } from "./compare-sections";
 import figmaLogo from "../assets/company-logos/figma.svg";
 import mapboxLogo from "../assets/company-logos/mapbox.svg";
@@ -279,6 +278,10 @@ function CompareTable({ comparison }: { comparison: Comparison }) {
       </table>
     </>
   );
+}
+
+export function textOnly(section: CompareHighlight): CompareHighlight {
+  return { ...section, visual: null, wide: true };
 }
 
 function showsPlugins(node: ReactNode): boolean {

@@ -13,9 +13,9 @@ import {
 
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
-  COMPARE_LINKS,
-  GUIDE_FOOTER_LINKS,
-  GUIDE_MENU,
+  compareLinks,
+  guideFooterLinks,
+  guideMenu,
   type ContentLink,
 } from "./content-links";
 import {
@@ -122,7 +122,7 @@ function GuidesMenu({
   path?: string;
 }) {
   const [openGroup, setOpenGroup] = useState(
-    GUIDE_MENU.find(
+    guideMenu().find(
       (item) =>
         "links" in item && item.links.some((link) => link.href === path),
     )?.label ?? null,
@@ -134,7 +134,7 @@ function GuidesMenu({
   }, []);
   return (
     <NavMenu label="Guides" inSection={current === "guides"}>
-      {GUIDE_MENU.map((group) => {
+      {guideMenu().map((group) => {
         if (!("links" in group)) {
           return (
             <a
@@ -307,10 +307,10 @@ export function SiteFooter({ current }: { current?: string }) {
         </li>
       </FooterColumn>
       <FooterColumn title="Guides">
-        <FooterLinks links={GUIDE_FOOTER_LINKS} current={current} />
+        <FooterLinks links={guideFooterLinks()} current={current} />
       </FooterColumn>
       <FooterColumn title="Compare">
-        <FooterLinks links={COMPARE_LINKS} current={current} />
+        <FooterLinks links={compareLinks()} current={current} />
       </FooterColumn>
       <FooterColumn title="Community">
         <li>

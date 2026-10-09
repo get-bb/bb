@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { GUIDE_MENU } from "./content-links";
+import { guideMenu } from "./content-links";
 import { SiteFooter, SiteNav } from "./site-chrome";
 
 describe("site navigation", () => {
@@ -11,7 +11,7 @@ describe("site navigation", () => {
     const links = [...navLinks.matchAll(/<a [^>]*>/gu)].map(
       (match) => match[0],
     );
-    const guideLinks = GUIDE_MENU.flatMap((item) =>
+    const guideLinks = guideMenu().flatMap((item) =>
       "links" in item ? item.links : [item],
     );
     expect(links).toHaveLength(7 + guideLinks.length);

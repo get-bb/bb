@@ -4,14 +4,14 @@ import { COMPARISONS } from "../compare/comparisons";
 import { GUIDES } from "../guides/guides";
 import {
   canonicalPath,
-  CONTENT_PATHS,
-  GUIDE_LINKS,
-  GUIDE_MENU,
+  contentPaths,
+  guideLinks,
+  guideMenu,
 } from "./content-links";
 import { LANDING_PAGES } from "./landing-pages";
 import { landingPagePath } from "./landing-template";
 
-describe("CONTENT_PATHS", () => {
+describe("contentPaths", () => {
   it("links every comparison, guide, and landing page exactly once", () => {
     const pages = [
       ...COMPARISONS.map((comparison) => `/compare/${comparison.slug}`),
@@ -20,21 +20,21 @@ describe("CONTENT_PATHS", () => {
       ),
       ...LANDING_PAGES.map(landingPagePath),
     ];
-    expect([...CONTENT_PATHS].sort()).toEqual(pages.sort());
+    expect([...contentPaths()].sort()).toEqual(pages.sort());
   });
 
   it("names each guide link with the guide's title", () => {
-    for (const link of GUIDE_LINKS) {
+    for (const link of guideLinks()) {
       const guide = GUIDES.find((item) => `/guides/${item.slug}` === link.href);
       expect(link.label).toBe(guide?.title);
     }
   });
 
   it("puts every guide in the header's Guides menu", () => {
-    const menuHrefs = GUIDE_MENU.flatMap((item) =>
+    const menuHrefs = guideMenu().flatMap((item) =>
       "links" in item ? item.links.map((link) => link.href) : [item.href],
     );
-    for (const link of GUIDE_LINKS) {
+    for (const link of guideLinks()) {
       expect(menuHrefs).toContain(link.href);
     }
   });
