@@ -10,7 +10,6 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import RefreshIcon from "@hugeicons/core-free-icons/RefreshIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link } from "@tanstack/react-router";
 import type { CSSProperties } from "react";
 
 import conductorIcon from "../assets/competitors/conductor.png";
@@ -122,58 +121,33 @@ const SWITCH_FROM: SwitchFrom[] = [
   { id: "vibe-kanban", name: "Vibe Kanban", src: vibeKanbanIcon },
 ];
 
-export function SwitchConcept({ selected }: { selected: string | null }) {
+export function SwitchConcept({ tool }: { tool: string }) {
   return (
-    <>
-      <div className="cmp-logos gd-switch">
-        {SWITCH_FROM.filter(
-          (tool) => selected === null || tool.id === selected,
-        ).map((tool) => (
-          <Link
-            key={tool.id}
-            to="/guides/$slug"
-            params={{ slug: "switch-to-bb" }}
-            search={{ from: tool.id }}
-            replace
-            resetScroll={false}
-            aria-label={`Switch from ${tool.name}`}
-            aria-current={selected === tool.id ? "true" : undefined}
-            className="cmp-logo-item gd-switch-tool"
-          >
-            {"glyph" in tool ? (
-              <span
-                aria-hidden="true"
-                className={`cmp-logo gd-switch-glyph ${tool.tone}`}
-              >
-                <tool.glyph className="gd-switch-glyph-ic" />
-              </span>
-            ) : (
-              <BrandMark
-                logo={{ kind: "image", src: tool.src }}
-                className="cmp-logo"
-              />
-            )}
-            <span className="gd-switch-name">{tool.name}</span>
-          </Link>
-        ))}
-        <HugeiconsIcon icon={ArrowRight01Icon} className="gd-switch-arrow" />
-        <span className="cmp-logo-item">
-          <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
-          <span className="gd-switch-name">bb</span>
+    <div className="cmp-logos gd-switch">
+      {SWITCH_FROM.filter((item) => item.id === tool).map((item) => (
+        <span key={item.id} className="cmp-logo-item">
+          {"glyph" in item ? (
+            <span
+              aria-hidden="true"
+              className={`cmp-logo gd-switch-glyph ${item.tone}`}
+            >
+              <item.glyph className="gd-switch-glyph-ic" />
+            </span>
+          ) : (
+            <BrandMark
+              logo={{ kind: "image", src: item.src }}
+              className="cmp-logo"
+            />
+          )}
+          <span className="gd-switch-name">{item.name}</span>
         </span>
-      </div>
-      {selected === null ? null : (
-        <Link
-          to="/guides/$slug"
-          params={{ slug: "switch-to-bb" }}
-          replace
-          resetScroll={false}
-          className="gd-switch-other"
-        >
-          Coming from another tool?
-        </Link>
-      )}
-    </>
+      ))}
+      <HugeiconsIcon icon={ArrowRight01Icon} className="gd-switch-arrow" />
+      <span className="cmp-logo-item">
+        <BrandMark logo={{ kind: "bb" }} className="cmp-logo" />
+        <span className="gd-switch-name">bb</span>
+      </span>
+    </div>
   );
 }
 

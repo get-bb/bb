@@ -114,18 +114,6 @@
   transition: opacity 0.2s ease;
 }
 
-.gd-switch-tool {
-  color: inherit;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.gd-switch-tool:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-  border-radius: 12px;
-}
-
 .gd-switch-glyph {
   display: grid;
   place-items: center;
@@ -140,92 +128,6 @@
 .gd-switch-glyph-ic {
   width: 34px;
   height: 34px;
-}
-
-.gd-pick {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-top: 40px;
-}
-
-.gd-pick .gd-switch {
-  margin-top: 22px;
-}
-
-.gd-pick + .gd-hero-actions {
-  margin-top: 48px;
-}
-
-.gd-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  color: var(--dim);
-}
-
-.gd-picker-control {
-  position: relative;
-  display: inline-flex;
-}
-
-.gd-picker-size,
-.gd-picker select {
-  padding: 6px 30px 6px 13px;
-  border: 1px solid transparent;
-  font-weight: 600;
-}
-
-.gd-picker-size {
-  visibility: hidden;
-  white-space: nowrap;
-}
-
-.gd-picker select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  appearance: none;
-  border-color: var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  font: inherit;
-  font-weight: 600;
-  color: var(--heading);
-  cursor: pointer;
-}
-
-.gd-picker select:hover {
-  border-color: var(--ink);
-}
-
-.gd-picker select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.gd-picker-chev {
-  position: absolute;
-  top: 50%;
-  right: 11px;
-  width: 14px;
-  height: 14px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--subtle);
-}
-
-.gd-switch-other {
-  display: block;
-  width: fit-content;
-  margin: 14px auto 0;
-  font-size: 14px;
-  color: var(--dim);
-  text-align: center;
-  text-decoration: underline;
-  text-decoration-color: var(--border);
-  text-underline-offset: 3px;
 }
 
 .gd-switch-arrow {
@@ -1013,12 +915,6 @@
   .gd-hero-actions {
     flex-direction: column;
     align-items: stretch;
-  }
-  .gd-pick {
-    margin-top: 32px;
-  }
-  .gd-pick + .gd-hero-actions {
-    margin-top: 36px;
   }
   .gd-hero-actions .btn {
     justify-content: center;

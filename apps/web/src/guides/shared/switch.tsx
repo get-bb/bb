@@ -4,7 +4,6 @@ import { SwitchConcept } from "../concepts";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import type { Guide, GuideMeta } from "../guide-types";
 
-const GUIDE_URL = "https://getbb.app/guides/switch-to-bb";
 const GENERIC_SETUP_STEP = (
   <>
     Put your setup commands in a <code>.bb-env-setup.sh</code> at the repo root,
@@ -15,31 +14,35 @@ const GENERIC_SETUP_STEP = (
 
 export type SwitchTool = {
   id: string;
+  slug: string;
   name: string;
   conversations: string;
   keepsWorking: string;
   setupStep: ReactNode;
 };
 
-export const SWITCH_TOOLS: SwitchTool[] = [
-  {
+export const SWITCH_TOOLS = {
+  claude: {
     id: "claude",
+    slug: "switch-from-claude-code",
     name: "Claude Code",
     conversations:
       "Claude Code keeps each conversation as a .jsonl file in ~/.claude/projects/, in a folder named after the path it ran in.",
     keepsWorking: "Claude Code keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
   },
-  {
+  "codex-app": {
     id: "codex-app",
+    slug: "switch-from-codex",
     name: "Codex",
     conversations:
       "Codex keeps each conversation as a .jsonl file under ~/.codex/sessions/. The first line's payload.cwd is the folder it ran in.",
     keepsWorking: "Codex keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
   },
-  {
+  conductor: {
     id: "conductor",
+    slug: "switch-from-conductor",
     name: "Conductor",
     conversations:
       "Conductor runs Claude Code or Codex in its workspaces, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
@@ -52,8 +55,9 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       </>
     ),
   },
-  {
+  cursor: {
     id: "cursor",
+    slug: "switch-from-cursor",
     name: "Cursor",
     conversations:
       "Cursor saves agent transcripts in ~/.cursor/projects/<project>/agent-transcripts/. Only read those files; never open Cursor's state.vscdb databases.",
@@ -66,8 +70,9 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       </>
     ),
   },
-  {
+  superset: {
     id: "superset",
+    slug: "switch-from-superset",
     name: "Superset",
     conversations:
       "Superset runs Claude Code or Codex in its worktrees, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
@@ -81,8 +86,9 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       </>
     ),
   },
-  {
+  "t3-code": {
     id: "t3-code",
+    slug: "switch-from-t3-code",
     name: "T3 Code",
     conversations:
       "T3 Code's Codex conversations are .jsonl files under ~/.codex/sessions/ with the originator t3code_desktop. The first line's payload.cwd is the folder it ran in.",
@@ -95,8 +101,9 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       </>
     ),
   },
-  {
+  "vibe-kanban": {
     id: "vibe-kanban",
+    slug: "switch-from-vibe-kanban",
     name: "Vibe Kanban",
     conversations:
       "Vibe Kanban runs Claude Code or Codex in each attempt's worktree, so look in ~/.claude/projects/ and ~/.codex/sessions/ for this folder's path.",
@@ -110,56 +117,26 @@ export const SWITCH_TOOLS: SwitchTool[] = [
       </>
     ),
   },
-];
+} satisfies Record<string, SwitchTool>;
 
-export function switchTool(id: string | null): SwitchTool | null {
-  return SWITCH_TOOLS.find((tool) => tool.id === id) ?? null;
-}
-
-const ANY_TOOL_CONVERSATIONS =
-  "Claude Code keeps conversations in ~/.claude/projects/, Codex in ~/.codex/sessions/, and Cursor in ~/.cursor/projects/<project>/agent-transcripts/. Tools like Conductor, Superset, T3 Code, and Vibe Kanban run Claude Code or Codex, so their conversations are in those folders too.";
-
-export function switchPrompt(tool: SwitchTool | null): string {
-  const from = tool ? tool.name : "my old tool";
-  const url = tool ? `${GUIDE_URL}?from=${tool.id}` : GUIDE_URL;
+export function switchPrompt(tool: SwitchTool): string {
+  const from = tool.name;
+  const url = `https://getbb.app/guides/${tool.slug}`;
   return `Pick up the task I was working on in ${from}, in this folder, and keep going here. If it isn't clear which task, ask me first.
 Guide: ${url}
 
 1. See where the work stands: git log, git status, and git diff against the base branch. If I named a pull request, read it and its comments with gh pr view <url> --comments.
-2. Find the conversation where the task was being done, if there is one. ${tool ? tool.conversations : ANY_TOOL_CONVERSATIONS} Pick the latest one for this folder or branch, skipping this conversation and any that only hit errors, and only read it.
+2. Find the conversation where the task was being done, if there is one. ${tool.conversations} Pick the latest one for this folder or branch, skipping this conversation and any that only hit errors, and only read it.
 3. Write me a short handoff: the goal, what's done, the decisions made, and what's left. Wait for my OK.
 4. Continue with what's left. Don't change anything outside this folder, and don't push.`;
 }
 
-export const meta: GuideMeta = {
-  slug: "switch-to-bb",
-  title: "Switch to bb",
-  nav: { group: null, label: "Switch to bb", order: 7 },
-  canonical: null,
-};
-
-export function guideVariant(variant: string | null): Guide {
-  const tool = switchTool(variant);
-  const oldTool = tool ? tool.name : "your old tool";
-  const keepsWorking = tool
-    ? tool.keepsWorking
-    : "Your old tool keeps working while you try bb.";
+export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
+  const oldTool = tool.name;
   return {
     ...meta,
-    title: tool ? `Switch from ${tool.name} to bb` : meta.title,
     description: `Pick up where ${oldTool} left off. Open the task where it was, and your agent reads the old conversation, tells you where things stand, and keeps going.`,
-    concept: <SwitchConcept selected={tool ? tool.id : null} />,
-    picker: tool
-      ? null
-      : {
-          label: "Switching from",
-          placeholder: "Pick your tool",
-          selected: "",
-          options: [
-            { id: "", label: "Pick your tool" },
-            ...SWITCH_TOOLS.map((item) => ({ id: item.id, label: item.name })),
-          ],
-        },
+    concept: <SwitchConcept tool={tool.id} />,
     agentPrompt: switchPrompt(tool),
     requirement: `bb on the computer where ${oldTool} keeps your work`,
     steps: [
@@ -286,11 +263,11 @@ export function guideVariant(variant: string | null): Guide {
     ],
     faq: [
       {
-        question: `Will bb change anything in ${tool ? tool.name : "my old tool"}?`,
+        question: `Will bb change anything in ${tool.name}?`,
         answer: (
           <p>
             No. bb works in your worktrees where they are and doesn't move or
-            delete anything. {keepsWorking}
+            delete anything. {tool.keepsWorking}
           </p>
         ),
       },
@@ -316,7 +293,7 @@ export function guideVariant(variant: string | null): Guide {
       },
       {
         question: "Do my setup scripts come along?",
-        answer: tool ? <p>{tool.setupStep}</p> : <p>{GENERIC_SETUP_STEP}</p>,
+        answer: <p>{tool.setupStep}</p>,
       },
       {
         question: "Do my automations come along?",
@@ -335,5 +312,3 @@ export function guideVariant(variant: string | null): Guide {
     },
   };
 }
-
-export const guide: Guide = guideVariant(null);

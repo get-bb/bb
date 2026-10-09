@@ -135,10 +135,7 @@ export const comparison: Comparison = {
               your machine, so a bb agent can add the repo and open each
               worktree as a thread. If you exported your Vibe Kanban issues, it
               can turn each one into a task on your board.{" "}
-              <a href="/guides/switch-to-bb?from=vibe-kanban">
-                Copy the prompt
-              </a>
-              .
+              <a href="/guides/switch-from-vibe-kanban">Copy the prompt</a>.
             </p>
           ),
         },

@@ -202,7 +202,7 @@ export const comparison: Comparison = {
               agent can add your repo and open each unfinished worktree or
               branch as a thread. Your AGENTS.md, CLAUDE.md, skills, and MCP
               servers come along, and Cursor keeps working while you try bb.{" "}
-              <a href="/guides/switch-to-bb?from=cursor">Copy the prompt</a>.
+              <a href="/guides/switch-from-cursor">Copy the prompt</a>.
             </p>
           ),
         },
