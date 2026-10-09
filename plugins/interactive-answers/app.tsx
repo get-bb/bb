@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   definePluginApp,
   useBbNavigate,
@@ -47,17 +54,30 @@ function readInputs(
   return values;
 }
 
-function AgentBadge({
+function AgentHost({
   agent,
+  maxWidth,
+  children,
 }: {
   agent: { label: string; key: number } | null;
+  maxWidth?: number;
+  children: ReactNode;
 }) {
-  return agent ? (
-    <span key={agent.key} className="ia-agent" role="status">
-      <i aria-hidden="true" />
-      Agent · {agent.label}
-    </span>
-  ) : null;
+  return (
+    <div
+      className="ia-host"
+      data-agent={agent ? "" : undefined}
+      style={maxWidth ? { maxWidth } : undefined}
+    >
+      {children}
+      {agent && (
+        <span key={agent.key} className="ia-agent" role="status">
+          <i aria-hidden="true" />
+          Agent · {agent.label}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function Input({
@@ -390,7 +410,7 @@ function readTheme(): WidgetTheme {
   };
 }
 
-export function HtmlAnswerView({
+function HtmlAnswerView({
   id,
   threadId,
   widget,
@@ -485,8 +505,8 @@ export function HtmlAnswerView({
   gestures.current = { send, open };
   const src = useMemo(
     () =>
-      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: live.initialState, theme: readTheme() }))}`,
-    [id, threadId, live.initialState],
+      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, theme: readTheme() }))}`,
+    [id, threadId, initial.state],
   );
   useEffect(() => {
     const budgets = {
@@ -603,37 +623,35 @@ export function HtmlAnswerView({
     };
   }, [id, save, emit, active]);
   return (
-    <div
-      className="ia-widget"
-      style={widget.width ? { maxWidth: widget.width } : undefined}
-    >
-      <iframe
-        ref={frame}
-        title={widget.title}
-        src={src}
-        sandbox="allow-scripts"
-        loading="lazy"
-        style={{ height }}
-        onLoad={() => {
-          if (latestState.current)
-            post({ type: "state", state: latestState.current.state });
-          post({ type: "theme", theme: readTheme() });
-          void loadUiFont().then((data) => {
-            if (data) post({ type: "font", family: UI_FONT_FAMILY, data });
-          });
-        }}
-      />
-      <AgentBadge agent={live.agent} />
-    </div>
+    <AgentHost agent={live.agent} maxWidth={widget.width}>
+      <div className="ia-widget">
+        <iframe
+          ref={frame}
+          title={widget.title}
+          src={src}
+          sandbox="allow-scripts"
+          loading="lazy"
+          style={{ height }}
+          onLoad={() => {
+            if (latestState.current)
+              post({ type: "state", state: latestState.current.state });
+            post({ type: "theme", theme: readTheme() });
+            void loadUiFont().then((data) => {
+              if (data) post({ type: "font", family: UI_FONT_FAMILY, data });
+            });
+          }}
+        />
+      </div>
+    </AgentHost>
   );
 }
 
-export function AnswerView({
+function AnswerView({
   answer,
-  initial = { state: null, version: 0 },
+  initial,
 }: {
   answer: Answer;
-  initial?: LiveSnapshot;
+  initial: LiveSnapshot;
 }) {
   if (answer.kind === "html")
     return (
@@ -708,7 +726,7 @@ function DocumentAnswerView({
       return summary(current.current);
     },
   });
-  const shown = inputs ?? readInputs(doc, live.initialState);
+  const shown = inputs ?? readInputs(doc, initial.state);
   current.current = shown;
   const values = computedValues(doc, shown);
   function save(next: Values) {
@@ -716,136 +734,140 @@ function DocumentAnswerView({
     live.save(next);
   }
   return (
-    <article
-      className="ia-answer"
-      aria-label={doc.title}
-      onPointerDownCapture={live.active}
-      onKeyDownCapture={live.active}
-    >
-      <header>
-        <div>
-          <span className="ia-eyebrow">Explore</span>
-          <h3>{doc.title}</h3>
-        </div>
-        {doc.controls.length > 0 && (
-          <button
-            type="button"
-            className="ia-reset"
-            title="Reset inputs"
-            aria-label="Reset inputs"
-            onClick={() => {
-              save(defaultValues(doc));
-              setResetCount((n) => n + 1);
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              aria-hidden="true"
+    <AgentHost agent={live.agent}>
+      <article
+        className="ia-answer"
+        aria-label={doc.title}
+        onPointerDownCapture={live.active}
+        onKeyDownCapture={live.active}
+      >
+        <header>
+          <div>
+            <span className="ia-eyebrow">Explore</span>
+            <h3>{doc.title}</h3>
+          </div>
+          {doc.controls.length > 0 && (
+            <button
+              type="button"
+              className="ia-reset"
+              title="Reset inputs"
+              aria-label="Reset inputs"
+              onClick={() => {
+                save(defaultValues(doc));
+                setResetCount((n) => n + 1);
+              }}
             >
-              <path d="M3 10a9 9 0 1 1 2 8M3 4v6h6" />
-            </svg>
-          </button>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                aria-hidden="true"
+              >
+                <path d="M3 10a9 9 0 1 1 2 8M3 4v6h6" />
+              </svg>
+            </button>
+          )}
+        </header>
+        {doc.description && <p className="ia-description">{doc.description}</p>}
+        {doc.controls.length > 0 && (
+          <div className="ia-controls" key={resetCount}>
+            {doc.controls.map((c) => (
+              <Input
+                key={c.id}
+                control={c}
+                value={shown[c.id]}
+                onChange={(value) => save({ ...shown, [c.id]: value })}
+              />
+            ))}
+          </div>
         )}
-      </header>
-      {doc.description && <p className="ia-description">{doc.description}</p>}
-      {doc.controls.length > 0 && (
-        <div className="ia-controls" key={resetCount}>
-          {doc.controls.map((c) => (
-            <Input
-              key={c.id}
-              control={c}
-              value={shown[c.id]}
-              onChange={(value) => save({ ...shown, [c.id]: value })}
-            />
-          ))}
-        </div>
-      )}
-      <div className="ia-blocks">
-        {doc.blocks.map((b, i) => {
-          if (b.when && shown[b.when.control] !== b.when.equals) return null;
-          switch (b.type) {
-            case "diagram":
-              return (
-                <Diagram
-                  key={i}
-                  block={b}
-                  values={values}
-                  onChoose={(control, value) =>
-                    save({ ...shown, [control]: value })
-                  }
-                />
-              );
-            case "text":
-              return (
-                <section key={i}>
-                  {b.title && <h4>{b.title}</h4>}
-                  <p>{b.text}</p>
-                </section>
-              );
-            case "metrics":
-              return (
-                <dl className="ia-metrics" key={i} aria-live="polite">
-                  {b.items.map((m, j) => (
-                    <div key={j}>
-                      <dt>{m.label}</dt>
-                      <dd>
-                        {formatValue(evaluate(m.value, values), m.format)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              );
-            case "chart":
-              return <Chart key={i} block={b} values={values} />;
-            case "details":
-              return (
-                <details key={i}>
-                  <summary>{b.title}</summary>
-                  <p>{b.text}</p>
-                </details>
-              );
-            case "table":
-              return (
-                <section key={i}>
-                  <div className="ia-table-scroll">
-                    <table>
-                      <caption>{b.title}</caption>
-                      <thead>
-                        <tr>
-                          {b.columns.map((c, j) => (
-                            <th key={j} scope="col">
-                              {c}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {b.rows.map((row, j) => (
-                          <tr key={j}>
-                            {row.map((v, k) => (
-                              <td key={k}>
-                                {typeof v === "string"
-                                  ? v
-                                  : formatValue(evaluate(v, values), b.format)}
-                              </td>
+        <div className="ia-blocks">
+          {doc.blocks.map((b, i) => {
+            if (b.when && shown[b.when.control] !== b.when.equals) return null;
+            switch (b.type) {
+              case "diagram":
+                return (
+                  <Diagram
+                    key={i}
+                    block={b}
+                    values={values}
+                    onChoose={(control, value) =>
+                      save({ ...shown, [control]: value })
+                    }
+                  />
+                );
+              case "text":
+                return (
+                  <section key={i}>
+                    {b.title && <h4>{b.title}</h4>}
+                    <p>{b.text}</p>
+                  </section>
+                );
+              case "metrics":
+                return (
+                  <dl className="ia-metrics" key={i} aria-live="polite">
+                    {b.items.map((m, j) => (
+                      <div key={j}>
+                        <dt>{m.label}</dt>
+                        <dd>
+                          {formatValue(evaluate(m.value, values), m.format)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                );
+              case "chart":
+                return <Chart key={i} block={b} values={values} />;
+              case "details":
+                return (
+                  <details key={i}>
+                    <summary>{b.title}</summary>
+                    <p>{b.text}</p>
+                  </details>
+                );
+              case "table":
+                return (
+                  <section key={i}>
+                    <div className="ia-table-scroll">
+                      <table>
+                        <caption>{b.title}</caption>
+                        <thead>
+                          <tr>
+                            {b.columns.map((c, j) => (
+                              <th key={j} scope="col">
+                                {c}
+                              </th>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              );
-          }
-        })}
-      </div>
-      <AgentBadge agent={live.agent} />
-    </article>
+                        </thead>
+                        <tbody>
+                          {b.rows.map((row, j) => (
+                            <tr key={j}>
+                              {row.map((v, k) => (
+                                <td key={k}>
+                                  {typeof v === "string"
+                                    ? v
+                                    : formatValue(
+                                        evaluate(v, values),
+                                        b.format,
+                                      )}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                );
+            }
+          })}
+        </div>
+      </article>
+    </AgentHost>
   );
 }
 

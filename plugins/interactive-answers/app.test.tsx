@@ -136,7 +136,7 @@ it("applies state changed elsewhere and runs agent commands in the copy they tar
     args: [{ people: 3 }],
   });
   await view.findByText("$48.00", { selector: "dd" });
-  expect(view.getByText("Agent · set")).toBeTruthy();
+  expect(view.getByText("Agent · set people")).toBeTruthy();
   await waitFor(() =>
     expect(
       backend.calls.find((c) => c.method === "result")?.input,

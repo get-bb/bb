@@ -1,11 +1,9 @@
 .ia-answer {
-  position: relative;
   color: var(--foreground);
   background: var(--card, var(--background));
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
-  margin: 12px 0;
   font-family: inherit;
   font-size: 13px;
   line-height: 1.5;
@@ -241,11 +239,6 @@
   font-weight: 500;
   color: var(--muted-foreground);
 }
-.ia-answer footer {
-  margin-top: 16px;
-  font-size: 10px;
-  color: var(--muted-foreground);
-}
 .ia-error p {
   margin-bottom: 8px;
 }
@@ -294,8 +287,6 @@
   }
 }
 .ia-widget {
-  position: relative;
-  margin: 12px 0;
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--card, var(--background));
@@ -307,26 +298,46 @@
   border: 0;
   background: transparent;
 }
+.ia-host {
+  position: relative;
+  margin: 20px 0 12px;
+}
+.ia-host > .ia-widget,
+.ia-host > .ia-answer {
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.ia-host[data-agent] > .ia-widget,
+.ia-host[data-agent] > .ia-answer {
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 1px var(--foreground);
+}
 .ia-agent {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  left: 16px;
+  top: 0;
+  translate: 0 -50%;
   z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px 5px 8px;
+  max-width: calc(100% - 32px);
+  padding: 4px 10px 4px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--foreground) 88%, transparent);
+  background: var(--foreground);
   color: var(--background);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
-  backdrop-filter: blur(8px);
-  animation: ia-agent 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: ia-agent 3.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 .ia-agent i {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -341,10 +352,10 @@
 @keyframes ia-agent {
   0% {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(3px);
   }
   8%,
-  82% {
+  85% {
     opacity: 1;
     transform: none;
   }

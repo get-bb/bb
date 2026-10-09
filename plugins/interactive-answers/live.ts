@@ -134,7 +134,7 @@ export function createLive(
       .run(id, threadId, kind, JSON.stringify(data ?? null), Date.now());
     const seq = Number(lastInsertRowid);
     db.prepare(
-      "DELETE FROM answer_events WHERE answer_id = ? AND seq <= (SELECT seq FROM answer_events WHERE answer_id = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)",
+      "DELETE FROM answer_events WHERE answer_id = ? AND kind <> 'shared' AND seq <= (SELECT seq FROM answer_events WHERE answer_id = ? AND kind <> 'shared' ORDER BY seq DESC LIMIT 1 OFFSET ?)",
     ).run(id, id, EVENTS_KEPT);
     emitter.emit(id);
     return seq;

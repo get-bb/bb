@@ -182,6 +182,83 @@ Use only these steps (Inter is bb's font; keep `var(--font)`):
 - Respect `prefers-reduced-motion` (the kit shortens animations) and never use
   motion as the only signal.
 
+### 3D tier
+
+Use a real-time 3D scene when the answer is about space or material under
+light: a room to repaint, furniture in a space, a product to turn around, a
+site or terrain. Use 2D for everything else; 3D costs downloads and battery.
+
+- **Stack.** Three.js pinned by version through an import map
+  (`https://unpkg.com/three@0.170.0/...`) and `<script type="module" async>`.
+  Without `async`, the card keeps its default height until every import
+  downloads. The sandboxed frame cannot reuse cached files, so this happens
+  on every load. `WebGLRenderer` with ACES filmic
+  tone mapping, sRGB output, soft shadows (`PCFSoftShadowMap`), and pixel ratio
+  capped at 2. Post-process through an `EffectComposer` whose render target is
+  `{ samples: 4, type: HalfFloatType }` (without it edges alias and gradients
+  band): `RenderPass` → `GTAOPass` (contact shadows in corners) → a faint
+  `UnrealBloomPass` (strength ≤ 0.1, threshold ≥ 0.95) → optional `BokehPass` →
+  `OutputPass`.
+- **Light like a photographer.** Image-based fill from `RoomEnvironment`
+  through `PMREMGenerator` (no download), kept low (0.05–0.3). One shadowed key
+  light whose shadow tells the story, inside the frame: sun through a window
+  landing as a window-shaped patch, or a product's soft contact shadow. A
+  `RectAreaLight` for each large soft source (a window, a softbox, open sky). Practical lights (lamps)
+  pair an emissive mesh with a point light. Exposure 0.8–1.5.
+- **Presets are data.** Each time-of-day or mood preset sets sun direction,
+  color and intensity, sky colors, fill, lamps, and exposure. Ease every value
+  over ~900ms, including paint colors. Re-check each preset by eye; a low sun
+  often lands outside the view, so aim it where the camera can see it.
+- **Assets.** Build simple structure procedurally with real thickness: for a
+  room, walls with openings, frames, sills, baseboards, crown, and door panels;
+  for a product or site, its plinth, ground, or terrain. Use Poly Haven CC0
+  assets for everything organic or detailed. They are CORS-open and in meters:
+  - Textures: `dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/<name>/<name>_{diff,nor_gl,rough}_1k.jpg`.
+    Use 1k, set the diffuse to sRGB, repeat, and anisotropy 8.
+  - Models: `.../Models/gltf/1k/<name>/<name>_1k.gltf`. Their textures live under
+    `.../Models/jpg/1k/<name>/`, so remap them with
+    `LoadingManager.setURLModifier`.
+  - Placement: ground each model and stand it against walls with a `Box3`.
+    Check artwork maps, because some are grey placeholders; draw your own art
+    to a `CanvasTexture` instead.
+  - Size: keep the total under ~15 MB.
+- **Depth of field** is a toggle. Use a narrow aperture (~0.001,
+  `maxblur` ≤ 0.005), and set focus each frame to the subject's distance. Wide
+  apertures blur everything and leave dotted halos on edges.
+- **Interface over the canvas.** Put the controls on the canvas in
+  frosted-glass pills: `backdrop-filter: blur(14px) saturate(1.4)`,
+  translucent white, inner highlight. Use small chips with a colored dot or
+  icon, and a solid dark fill when pressed. Keep the domain controls
+  (swatches, items) below the canvas, following the rules above. Add a fading
+  "Drag to look around" hint, constrained `OrbitControls` (no zoom or pan,
+  limited angles, damping), and a slow camera drift that stops after a few
+  seconds.
+- **Cost.** Render on demand, only while easing, dragging, or drifting. Draw
+  the procedural shell on the first frame and stream models and textures in
+  with a short fade as they arrive. The sandboxed frame re-downloads every
+  asset on each view (about 1.5 s for a furnished room), so never block the
+  first render on them. Show a plain message if WebGL is unavailable. Turn
+  off drift and easing for reduced motion.
+- **Check every preset at 2×** and fix these first:
+  - Jagged edges: the composer needs MSAA.
+  - Dotted edges: the depth-of-field aperture is too wide.
+  - Striped shadows: raise `bias` and `normalBias`.
+  - A flat, washed-out look: lower the fill and exposure, and strengthen the key light.
+  - Light you can't see: aim the key light into the frame.
+
+What an agent cannot match without assets made for the scene, such as the
+Blender models in launch-quality scenes:
+
+- **Bespoke hero objects and sculpted terrain:** a specific house, a stone tunnel, a creek bed.
+- **One consistent art direction:** library assets mix styles and scales, so scenes look assembled.
+- **Baked or global illumination:** light bounce and color bleed beyond ambient occlusion and fill lights.
+- **Scene-specific effects:** water with caustics and sparkle, wind in foliage, dense scattered vegetation.
+- **Animated characters.**
+
+Say so in the answer when it matters, and keep 3D to what library assets and
+procedural geometry can make convincing: interiors, products on a plinth, and
+simple sites.
+
 ### Behavior
 
 - `window.answer.state` is the answer's shared state: the last value passed to

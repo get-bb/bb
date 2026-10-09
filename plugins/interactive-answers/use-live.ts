@@ -18,7 +18,18 @@ type Options = {
 };
 const SAVE_DELAY_MS = 300;
 const HEARTBEAT_MS = 10_000;
-const AGENT_BADGE_MS = 2600;
+const AGENT_BADGE_MS = 3200;
+const describe = (action: string, args: unknown[]) => {
+  const first = args[0];
+  const detail =
+    first && typeof first === "object" && !Array.isArray(first)
+      ? Object.keys(first).slice(0, 2)
+      : args
+          .filter((a) => typeof a === "string" || typeof a === "number")
+          .slice(0, 2)
+          .map(String);
+  return [action, ...detail].join(" ").slice(0, 40);
+};
 
 export function useLiveAnswer({
   id,
@@ -30,7 +41,6 @@ export function useLiveAnswer({
 }: Options) {
   const rpc = useRpc<typeof rpcContract>();
   const [clientId] = useState(() => crypto.randomUUID());
-  const [initialState] = useState(() => initial.state);
   const version = useRef(initial.version);
   const pending = useRef<{ state: unknown } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -149,7 +159,7 @@ export function useLiveAnswer({
     )
       return;
     const cmdId = p.cmdId;
-    showAgent(p.action);
+    showAgent(describe(p.action, Array.isArray(p.args) ? p.args : []));
     const reply = (outcome: {
       ok: boolean;
       value?: unknown;
@@ -174,7 +184,6 @@ export function useLiveAnswer({
 
   return {
     clientId,
-    initialState,
     agent,
     save,
     active: useCallback(() => ping(true), [ping]),
