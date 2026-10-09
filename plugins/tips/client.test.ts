@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { detectTipClient, type TipClientEnvironment } from "./client.js";
+import {
+  detectTipClient,
+  hasNotificationNudge,
+  type TipClientEnvironment,
+} from "./client.js";
 
 const MAC_SAFARI =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
@@ -64,4 +68,20 @@ describe("detectTipClient", () => {
       os: "macos",
     });
   });
+});
+
+describe("hasNotificationNudge", () => {
+  it.each([
+    ["default", "answered", true],
+    ["default", "shown", false],
+    ["default", null, false],
+    ["granted", "answered", false],
+    ["denied", "answered", false],
+    [null, "answered", false],
+  ])(
+    "permission %s with the sidebar prompt %s gives %s",
+    (permission, promptState, expected) => {
+      expect(hasNotificationNudge({ permission, promptState })).toBe(expected);
+    },
+  );
 });

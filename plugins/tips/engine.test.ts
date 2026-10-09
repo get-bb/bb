@@ -391,7 +391,7 @@ describe("tier ranking", () => {
       "decision-buttons",
     ]);
     expect(ids[5]).toBe("automations");
-    expect(ids.at(-1)).toBe("queue-or-steer");
+    expect(ids.slice(-2)).toEqual(["queue-or-steer", "browse-plugins"]);
     expect(ranked({ recentlyRateLimited: true })[5]?.id).toBe("account-pool");
     expect(ranked({ waitingThreadCount: 4 })[5]?.id).toBe(
       "open-threads-that-need-me",
@@ -501,6 +501,65 @@ describe("catalog predicates", () => {
       ),
     ).toBe(false);
     expect(phone.retireWhen(signals({ usedMobileApp: true }))).toBe(true);
+  });
+
+  it("offers notifications only after the sidebar prompt was answered while permission is still undecided", () => {
+    const notifications = catalogTip("notifications");
+    const pushOn = { installedPlugins: { "push-notifications": true } };
+    const nudged = {
+      client: {
+        surface: "web" as const,
+        os: "macos" as const,
+        notificationNudge: true,
+      },
+    };
+    expect(notifications.eligible(signals({ ...pushOn, ...nudged }))).toBe(
+      true,
+    );
+    expect(notifications.eligible(signals(pushOn))).toBe(false);
+    expect(
+      notifications.eligible(
+        signals({
+          ...pushOn,
+          client: { surface: "web", os: "macos", notificationNudge: false },
+        }),
+      ),
+    ).toBe(false);
+    expect(notifications.eligible(signals({ ...pushOn, client: null }))).toBe(
+      false,
+    );
+    expect(
+      notifications.eligible(
+        signals({
+          ...nudged,
+          installedPlugins: { "push-notifications": false },
+        }),
+      ),
+    ).toBe(false);
+    expect(notifications.action).toEqual({
+      kind: "open-plugin",
+      label: "Turn on notifications",
+      pluginId: "push-notifications",
+    });
+  });
+
+  it("points to the plugin store after a finished thread, away from phones", () => {
+    const browse = catalogTip("browse-plugins");
+    expect(browse.eligible(signals())).toBe(false);
+    expect(browse.eligible(signals({ hasFinishedThread: true }))).toBe(true);
+    expect(
+      browse.eligible(
+        signals({
+          hasFinishedThread: true,
+          client: { surface: "mobile-app", os: "ios" },
+        }),
+      ),
+    ).toBe(false);
+    expect(browse.action).toMatchObject({
+      kind: "open-page",
+      path: "/plugins",
+    });
+    expect(`${browse.title} ${browse.body}`).not.toMatch(/Tasks|ACP/u);
   });
 
   it("never offers Browser Automation on Windows and retires it once enabled", () => {

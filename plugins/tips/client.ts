@@ -66,6 +66,36 @@ export function detectTipClient(environment: TipClientEnvironment): TipClient {
   };
 }
 
+export const SIDEBAR_NOTIFICATION_PROMPT_KEY = "bb.sidebar.notificationPrompt";
+
+export interface NotificationEnvironment {
+  permission: string | null;
+  promptState: string | null;
+}
+
+export function hasNotificationNudge(
+  environment: NotificationEnvironment,
+): boolean {
+  return (
+    environment.permission === "default" &&
+    environment.promptState === "answered"
+  );
+}
+
+export function readNotificationEnvironment(): NotificationEnvironment {
+  let promptState: string | null;
+  try {
+    promptState = window.localStorage.getItem(SIDEBAR_NOTIFICATION_PROMPT_KEY);
+  } catch {
+    promptState = null;
+  }
+  return {
+    permission:
+      typeof Notification === "undefined" ? null : Notification.permission,
+    promptState,
+  };
+}
+
 export function readTipClientEnvironment(): TipClientEnvironment {
   return {
     bbDesktop: Reflect.get(window, "bbDesktop"),

@@ -17,7 +17,12 @@ import {
   useSettings,
   type PluginHomepageSectionProps,
 } from "@get-bb/plugin-sdk/app";
-import { detectTipClient, readTipClientEnvironment } from "./client.js";
+import {
+  detectTipClient,
+  hasNotificationNudge,
+  readNotificationEnvironment,
+  readTipClientEnvironment,
+} from "./client.js";
 import { runTipAction } from "./actions.js";
 import type { TipView, tipsRpcContract } from "./contract.js";
 import { TipsGallery, TipsHiddenNotice } from "./gallery.js";
@@ -190,7 +195,13 @@ function TipsHomepageSection({
   projectId,
   experimental_setupComplete,
 }: PluginHomepageSectionProps) {
-  const client = useMemo(() => detectTipClient(readTipClientEnvironment()), []);
+  const client = useMemo(
+    () => ({
+      ...detectTipClient(readTipClientEnvironment()),
+      notificationNudge: hasNotificationNudge(readNotificationEnvironment()),
+    }),
+    [],
+  );
   const onPhone =
     client.surface === "mobile-app" || client.surface === "mobile-web";
   const compact = useCompactLayout();

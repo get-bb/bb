@@ -43,6 +43,10 @@ const FIXTURES: readonly TipSignals[] = [
   signals(),
   signals({ availableProviderCount: 1 }),
   signals({
+    client: { surface: "desktop", os: "macos", notificationNudge: true },
+    installedPlugins: { "push-notifications": true },
+  }),
+  signals({
     installedPlugins: {
       "account-pool": false,
       automations: true,
@@ -148,6 +152,8 @@ describe("tip catalog", () => {
       expect(tierOf(id), id).toBe(2);
     }
     expect(tierOf("queue-or-steer")).toBe(3);
+    expect(tierOf("browse-plugins")).toBe(3);
+    expect(tierOf("notifications")).toBe("unranked");
     const unranked = TIP_CATALOG.filter(
       (definition) => definition.tier === "unranked",
     ).sort((left, right) => right.priority - left.priority);

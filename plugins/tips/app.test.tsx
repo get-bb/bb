@@ -168,7 +168,11 @@ describe("Tips homepage section", () => {
     expect(slot.inspection.rpcCalls[0]).toEqual({
       method: "current",
       input: {
-        client: { surface: "web", os: expect.any(String) },
+        client: {
+          surface: "web",
+          os: expect.any(String),
+          notificationNudge: false,
+        },
         projectId: "proj_1",
         visit: true,
       },

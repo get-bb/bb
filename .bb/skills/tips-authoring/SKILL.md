@@ -19,7 +19,7 @@ orders the work.
    fail when the three lists differ.
 3. **Choose one action type.** Use `open-plugin` only for plugins in
    `apps/server/src/services/plugins/builtin-registry.ts`, and `open-page` only
-   for core Settings routes. For multi-step setup, use a walkthrough prompt
+   for the plugin store or core Settings routes. For multi-step setup, use a walkthrough prompt
    from `walkthroughPrompt(goal)`; AUTHORING.md's Walkthrough prompts section
    has the wording and rules.
 4. **Draw the illustration** in `plugins/tips/illustrations.tsx` from

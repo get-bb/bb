@@ -10,6 +10,7 @@ export const ACCOUNT_POOL_PLUGIN_ID = "account-pool";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
 export const BROWSER_AUTOMATION_PLUGIN_ID = "browser-automation";
 export const PROVIDER_USAGE_PLUGIN_ID = "bb--provider-usage";
+export const PUSH_NOTIFICATIONS_PLUGIN_ID = "push-notifications";
 
 export interface TipSignals {
   client: TipClient | null;
@@ -232,9 +233,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     action: {
       kind: "prompt",
       label: "Walk me through it",
-      prompt: walkthroughPrompt(
-        "connecting the bb mobile app on my phone so I can follow my threads from it",
-      ),
+      prompt: walkthroughPrompt("connecting the bb mobile app on my phone"),
     },
     tier: 1,
     priority: 90,
@@ -281,9 +280,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     action: {
       kind: "prompt",
       label: "Walk me through it",
-      prompt: walkthroughPrompt(
-        "building and installing my own bb plugin, starting with a small page that shows something useful to me",
-      ),
+      prompt: walkthroughPrompt("building and installing my first bb plugin"),
     },
     tier: 1,
     priority: 75,
@@ -464,9 +461,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     action: {
       kind: "prompt",
       label: "Walk me through it",
-      prompt: walkthroughPrompt(
-        "turning on bb connect so I can open this bb from another computer or my phone's browser",
-      ),
+      prompt: walkthroughPrompt("turning on bb connect"),
     },
     tier: 2,
     priority: 95,
@@ -508,14 +503,55 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     action: {
       kind: "prompt",
       label: "Walk me through it",
-      prompt: walkthroughPrompt(
-        "installing and signing in to a second coding agent provider",
-      ),
+      prompt: walkthroughPrompt("setting up a second coding agent"),
     },
     tier: 2,
     priority: 80,
     eligible: (signals) =>
       signals.hasFinishedThread && signals.availableProviderCount < 2,
+  }),
+  tip({
+    id: "notifications",
+    illustration: "notifications",
+    tone: "amber",
+    source: { kind: "feature", ref: "push-notifications plugin" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Know when an agent needs you",
+    body: "Turn on notifications to see when a thread finishes or asks you a question.",
+    action: {
+      kind: "open-plugin",
+      label: "Turn on notifications",
+      pluginId: PUSH_NOTIFICATIONS_PLUGIN_ID,
+    },
+    tier: "unranked",
+    priority: 140,
+    eligible: (signals) =>
+      signals.client?.notificationNudge === true &&
+      isEnabled(signals, PUSH_NOTIFICATIONS_PLUGIN_ID),
+  }),
+  tip({
+    id: "browse-plugins",
+    illustration: "browse-plugins",
+    tone: "green",
+    source: { kind: "feature", ref: "plugin store" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Find plugins that fit your work",
+    body: "Browse bb's plugins, like Browser Automation, which lets the agent test your app in a real browser.",
+    action: {
+      kind: "open-page",
+      label: "Browse plugins",
+      path: "/plugins",
+    },
+    tier: 3,
+    priority: 30,
+    eligible: (signals) =>
+      signals.hasFinishedThread &&
+      onClient(
+        signals,
+        (client) => client.surface === "desktop" || client.surface === "web",
+      ),
   }),
   tip({
     id: "provider-usage",

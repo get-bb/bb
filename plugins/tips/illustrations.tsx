@@ -366,6 +366,37 @@ export const ILLUSTRATIONS: Record<string, Illustration> = {
       </Part>
     </>
   ),
+  notifications: (accent) => (
+    <>
+      <Panel x={5} y={6} width={38} height={36} rx={4} soft fill={0} />
+      <Part animate="rise" stagger={1}>
+        <Panel x={9} y={11} width={30} height={13} rx={3} />
+        <Dot cx={15} cy={17.5} r={2} color={accent} />
+        <Rule x={20} y={15.5} width={14} />
+        <Rule x={20} y={19.5} width={10} soft />
+      </Part>
+      <Rule x={10} y={31} width={26} soft />
+      <Rule x={10} y={36} width={18} soft />
+    </>
+  ),
+  "browse-plugins": (accent) => (
+    <>
+      <Panel x={5} y={6} width={17} height={17} />
+      <Rule x={9} y={14.5} width={9} soft />
+      <Panel x={26} y={6} width={17} height={17} />
+      <Rule x={30} y={14.5} width={9} soft />
+      <Panel x={5} y={27} width={17} height={17} />
+      <Rule x={9} y={35.5} width={9} soft />
+      <Part animate="pop" stagger={1}>
+        <Panel x={26} y={27} width={17} height={17} />
+        <path
+          {...LINE}
+          d="M34.5 31.5v8M30.5 35.5h8"
+          style={{ stroke: accent }}
+        />
+      </Part>
+    </>
+  ),
   "provider-usage": (accent) => (
     <>
       <ChartAxes x={5} y={6} width={38} height={36} limit={13} />

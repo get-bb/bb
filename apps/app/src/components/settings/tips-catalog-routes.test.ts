@@ -19,13 +19,14 @@ const catalogPath = resolve(
 );
 
 describe("Tips catalog routes", () => {
-  it("points every open-page tip at a core route", async () => {
+  it("points every open-page tip at the plugin store or a core Settings route", async () => {
     const { TIP_CATALOG } = catalogModuleSchema.parse(
       await import(pathToFileURL(catalogPath).href),
     );
     for (const tip of TIP_CATALOG) {
       if (tip.action.kind !== "open-page") continue;
       const { pathname } = new URL(tip.action.path ?? "", "http://bb.local");
+      if (pathname === "/plugins") continue;
       const [, root, section, pluginId] = pathname.split("/");
       expect(root, tip.id).toBe("settings");
       if (section === undefined) continue;

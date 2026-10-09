@@ -74,13 +74,13 @@ words; never put metrics, percentages, or sample sizes in this repository.
 Every click marks the tip used and announces the result in the status line.
 `actions.ts` implements each type once.
 
-| Type          | Use it when                                                                                      | Click                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `prompt`      | bb can do it if asked. End the prompt with `Task: ` when the person's draft belongs after it.    | Fills the composer, moves the draft into the `Task: ` slot, focuses the caret at the end. |
-| `open-page`   | A core page explains or sets it up. `path` must be `/settings` or a real Settings section.       | Opens the in-app route.                                                                   |
-| `run-command` | A command does it: `palette.open`, `thread.search`, or `settings.open`.                          | Runs the command as its shortcut would.                                                   |
-| `open-plugin` | A built-in plugin does it. `pluginId` must be in `builtin-registry.ts`; never a personal plugin. | Opens the plugin's detail tab.                                                            |
-| `learn-more`  | Only an `https://` release note, blog post, or guide explains it.                                | Opens the link with the person's browser preference.                                      |
+| Type          | Use it when                                                                                                                | Click                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `prompt`      | bb can do it if asked. End the prompt with `Task: ` when the person's draft belongs after it.                              | Fills the composer, moves the draft into the `Task: ` slot, focuses the caret at the end. |
+| `open-page`   | A core page explains or sets it up. `path` must be `/plugins` (the plugin store), `/settings`, or a real Settings section. | Opens the in-app route.                                                                   |
+| `run-command` | A command does it: `palette.open`, `thread.search`, or `settings.open`.                                                    | Runs the command as its shortcut would.                                                   |
+| `open-plugin` | A built-in plugin does it. `pluginId` must be in `builtin-registry.ts`; never a personal plugin.                           | Opens the plugin's detail tab.                                                            |
+| `learn-more`  | Only an `https://` release note, blog post, or guide explains it.                                                          | Opens the link with the person's browser preference.                                      |
 
 Prefer `prompt`, then `open-plugin` or `open-page`. Use `learn-more` last.
 

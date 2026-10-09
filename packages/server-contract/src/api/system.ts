@@ -239,6 +239,8 @@ export const TIP_TELEMETRY_IDS = [
   "remote-access",
   "bb-cli",
   "add-agent",
+  "browse-plugins",
+  "notifications",
 ] as const;
 const tipTelemetryPropertiesSchema = z
   .object({

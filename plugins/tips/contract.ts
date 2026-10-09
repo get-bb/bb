@@ -5,6 +5,7 @@ export const tipClientSchema = z
   .object({
     surface: z.enum(["desktop", "web", "mobile-app", "mobile-web"]),
     os: z.enum(["macos", "windows", "linux", "ios", "android", "unknown"]),
+    notificationNudge: z.boolean().optional(),
   })
   .strict();
 export type TipClient = z.infer<typeof tipClientSchema>;
@@ -29,6 +30,8 @@ export const TIP_IDS = [
   "remote-access",
   "bb-cli",
   "add-agent",
+  "browse-plugins",
+  "notifications",
 ] as const;
 export const tipIdSchema = z.enum(TIP_IDS);
 export type TipId = z.infer<typeof tipIdSchema>;
