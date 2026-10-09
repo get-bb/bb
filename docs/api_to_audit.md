@@ -2997,6 +2997,23 @@ surface pays one subscription and one pure `item` call per registration; a
 throw from `useData` drops that registration, a throw from `item` drops it for
 that thread, and `run` errors are logged and contained.
 
+`useData` receives `{ threadIds }`: every thread some surface currently
+evaluates actions for (`experimental_useThreadActions` callers, so sidebar
+rows on screen, the open thread's header, and open menus), reference-counted
+in the registry, sorted and deduplicated. A change is published once the set
+has been quiet for 32 ms, at most 100 ms after the first change, so rows that
+mount a frame apart during a scroll step arrive in one change. A surface
+counts only while it is visible: the app sidebar wraps the thread list in
+`ThreadActionSurfaceVisibility`, visible when its body is shown and the
+sidebar (or the compact drawer) is open, so a hidden sidebar on a settings
+route contributes no ids even if a plugin list mounts rows. It lives in
+its own store read only by the collectors, so a change re-renders one
+collector per registration, never the rows. Registrations without per-thread
+state ignore it. This is the recommended pattern for per-thread data until an
+attributes layer lands: keep an id-keyed cache, fetch only the ids not in it
+in one batch, apply realtime updates per id, and fetch nothing for an empty
+list.
+
 Placement is static: a registration carries `group` and `order?`, and the
 host keeps registrations sorted by `group` (string compare), then `order`
 (unset sorts last), then registration order, so menus (with a separator
@@ -3043,9 +3060,10 @@ menu surface against the same registrations.
 
 **Audit before stabilizing.**
 
-1. **Per-thread data.** `useData` has no visible-id batching; a plugin with
-   per-thread state loads its whole map once. Decide whether the host should
-   pass visible thread ids before a plugin needs paging.
+1. **Per-thread data.** `threadIds` makes each registration fetch and cache
+   per-thread state itself. Decide whether a host attributes layer should
+   batch those reads across registrations, and whether `useData` should move
+   onto `experimental_useRpcQuery`.
 2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.

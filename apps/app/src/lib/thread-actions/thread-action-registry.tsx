@@ -1,5 +1,8 @@
 import {
   Component,
+  createContext,
+  useContext,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -107,8 +110,91 @@ function publishRecords(
   setSnapshot({ ...snapshot, records });
 }
 
+const subscribedThreadCounts = new Map<string, number>();
+let subscribedThreadIds: readonly string[] = [];
+const threadIdListeners = new Set<() => void>();
+
+function subscribeThreadIds(listener: () => void): () => void {
+  threadIdListeners.add(listener);
+  return () => {
+    threadIdListeners.delete(listener);
+  };
+}
+
+function getSubscribedThreadIds(): readonly string[] {
+  return subscribedThreadIds;
+}
+
+const THREAD_IDS_QUIET_MS = 32;
+const THREAD_IDS_MAX_WAIT_MS = 100;
+let threadIdsFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let threadIdsPendingSince: number | null = null;
+
+function cancelThreadIdsFlush(): void {
+  if (threadIdsFlushTimer !== null) clearTimeout(threadIdsFlushTimer);
+  threadIdsFlushTimer = null;
+  threadIdsPendingSince = null;
+}
+
+function flushSubscribedThreadIds(): void {
+  cancelThreadIdsFlush();
+  const next = [...subscribedThreadCounts.keys()].sort();
+  if (
+    next.length === subscribedThreadIds.length &&
+    next.every((id, index) => id === subscribedThreadIds[index])
+  ) {
+    return;
+  }
+  subscribedThreadIds = next;
+  for (const listener of threadIdListeners) listener();
+}
+
+function scheduleSubscribedThreadIdsFlush(): void {
+  const now = performance.now();
+  threadIdsPendingSince ??= now;
+  if (threadIdsFlushTimer !== null) clearTimeout(threadIdsFlushTimer);
+  const remaining = THREAD_IDS_MAX_WAIT_MS - (now - threadIdsPendingSince);
+  threadIdsFlushTimer = setTimeout(
+    flushSubscribedThreadIds,
+    Math.max(0, Math.min(THREAD_IDS_QUIET_MS, remaining)),
+  );
+}
+
+function retainThreadId(threadId: string): () => void {
+  subscribedThreadCounts.set(
+    threadId,
+    (subscribedThreadCounts.get(threadId) ?? 0) + 1,
+  );
+  scheduleSubscribedThreadIdsFlush();
+  return () => {
+    const count = subscribedThreadCounts.get(threadId) ?? 0;
+    if (count <= 1) subscribedThreadCounts.delete(threadId);
+    else subscribedThreadCounts.set(threadId, count - 1);
+    scheduleSubscribedThreadIdsFlush();
+  };
+}
+
+const ThreadActionSurfaceVisibleContext = createContext(true);
+
+export function ThreadActionSurfaceVisibility({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <ThreadActionSurfaceVisibleContext.Provider value={visible}>
+      {children}
+    </ThreadActionSurfaceVisibleContext.Provider>
+  );
+}
+
 export function resetThreadActionRegistryForTest(): void {
   reportedFailures.clear();
+  subscribedThreadCounts.clear();
+  subscribedThreadIds = [];
+  cancelThreadIdsFlush();
   setSnapshot({
     records: [],
     collected: new Map(),
@@ -153,7 +239,11 @@ function ThreadActionCollector({
 }: {
   record: ThreadActionRegistrationRecord;
 }) {
-  const data = record.registration.useData?.();
+  const threadIds = useSyncExternalStore(
+    subscribeThreadIds,
+    getSubscribedThreadIds,
+  );
+  const data = record.registration.useData?.({ threadIds });
   const sdk = useSdk();
   const navigate = useLatestNavigate(useBbNavigate(), record.pluginId);
   useLayoutEffect(() => {
@@ -345,6 +435,11 @@ export function useThreadActionEntries(
   options?: PluginThreadActionsOptions,
 ): readonly PluginThreadActionEntry[] {
   const registry = useSyncExternalStore(subscribe, getSnapshot);
+  const surfaceVisible = useContext(ThreadActionSurfaceVisibleContext);
+  useEffect(
+    () => (surfaceVisible ? retainThreadId(thread.id) : undefined),
+    [surfaceVisible, thread.id],
+  );
   return evaluateThreadActions(registry, thread, options);
 }
 

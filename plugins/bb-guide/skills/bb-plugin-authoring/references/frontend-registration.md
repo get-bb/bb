@@ -167,7 +167,10 @@ sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 
 `useData` is a hook the host runs once for the whole app, never per row: read
-your preferences, a batched per-thread map, or a realtime channel there.
+your preferences or a realtime channel there. It receives `{ threadIds }`, the
+sorted ids of every thread on screen or in an open menu; for per-thread state,
+keep an id-keyed cache and fetch only the ids not in it, in one batch (for
+example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
 `useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
@@ -181,7 +184,7 @@ app.slots.experimental_threadAction({
   title: "Notifications",
   icon: "Notification",
   group: experimental_THREAD_ACTION_GROUPS.settings,
-  useData: () => useNotificationLevels(),
+  useData: ({ threadIds }) => useNotificationLevels(threadIds),
   item: ({ thread, data, sdk }) => ({
     label: "Notifications",
     icon: "Notification",

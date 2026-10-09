@@ -195,6 +195,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: [
           "PluginThreadActionRegistration",
+          "PluginThreadActionDataInput",
           "PluginThreadActionItemInput",
           "PluginThreadActionTarget",
           "PluginThreadAction",

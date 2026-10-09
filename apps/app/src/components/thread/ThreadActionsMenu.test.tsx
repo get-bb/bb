@@ -34,7 +34,9 @@ import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import {
   ThreadActionCollectors,
+  ThreadActionSurfaceVisibility,
   resetThreadActionRegistryForTest,
+  useThreadActionEntries,
   useThreadActionRegistrationInfos,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -803,5 +805,93 @@ describe("thread actions outside bb's own surfaces", () => {
       actionId: "details",
       pluginId: "fixture",
     });
+  });
+});
+
+describe("thread action data input", () => {
+  function Row({ id }: { id: string }) {
+    useThreadActionEntries(
+      threadListEntryActionTarget({ ...baseThread, id }),
+      {},
+    );
+    return null;
+  }
+
+  function renderRecorder() {
+    const seen: (readonly string[])[] = [];
+    const recorder: PluginThreadActionRegistration<null> = {
+      id: "recorder",
+      title: "Recorder",
+      icon: "Notification",
+      group: "5_plugin",
+      useData: ({ threadIds }) => {
+        if (seen.at(-1) !== threadIds) seen.push(threadIds);
+        return null;
+      },
+      item: () => null,
+    };
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({ threadActions: [recorder] }),
+    );
+    const queryClient = new QueryClient();
+    function Surface({
+      ids,
+      visible = true,
+    }: {
+      ids: readonly string[];
+      visible?: boolean;
+    }) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ThreadActionCollectors
+              coreRegistrations={[]}
+              requestRename={defaultRequestRename}
+            />
+            <ThreadActionSurfaceVisibility visible={visible}>
+              {ids.map((id, index) => (
+                <Row key={`${id}-${index}`} id={id} />
+              ))}
+            </ThreadActionSurfaceVisibility>
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+    }
+    return { seen, Surface };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+  it("passes the union of subscribed thread ids and drops released ones", async () => {
+    const { seen, Surface } = renderRecorder();
+    const view = render(<Surface ids={["thr_b", "thr_a", "thr_c", "thr_a"]} />);
+    await waitFor(() =>
+      expect(seen.at(-1)).toEqual(["thr_a", "thr_b", "thr_c"]),
+    );
+    view.rerender(<Surface ids={["thr_b", "thr_a"]} />);
+    await waitFor(() => expect(seen.at(-1)).toEqual(["thr_a", "thr_b"]));
+    view.rerender(<Surface ids={["thr_a", "thr_b"]} />);
+    await settle();
+    expect(seen).toEqual([[], ["thr_a", "thr_b", "thr_c"], ["thr_a", "thr_b"]]);
+  });
+
+  it("coalesces rows that mount a moment apart into one change", async () => {
+    const { seen, Surface } = renderRecorder();
+    const view = render(<Surface ids={["thr_a", "thr_b"]} />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    view.rerender(<Surface ids={["thr_a", "thr_b", "thr_c"]} />);
+    await settle();
+    expect(seen).toEqual([[], ["thr_a", "thr_b", "thr_c"]]);
+  });
+
+  it("counts no ids from a hidden surface until it is shown", async () => {
+    const { seen, Surface } = renderRecorder();
+    const ids = Array.from({ length: 250 }, (_, index) => `thr_${index}`);
+    const view = render(<Surface ids={ids} visible={false} />);
+    await settle();
+    expect(seen).toEqual([[]]);
+    view.rerender(<Surface ids={ids.slice(0, 2)} visible />);
+    await waitFor(() => expect(seen.at(-1)).toEqual(["thr_0", "thr_1"]));
   });
 });
