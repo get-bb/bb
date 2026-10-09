@@ -39,7 +39,10 @@ function orderedCategories(
 }
 
 export function pluginCategoryFilterOptions(
-  entries: readonly Pick<PluginCatalogSearchEntry, "categoryId" | "category">[],
+  entries: readonly Pick<
+    PluginCatalogSearchEntry,
+    "categoryId" | "category" | "categoryIds"
+  >[],
   selected: readonly string[],
   categories: readonly PluginMarketplaceCategory[] = [],
 ): PluginBrowseCategoryOption[] {
@@ -48,15 +51,21 @@ export function pluginCategoryFilterOptions(
   const counts = new Map<string, number>();
   const unknownIds: string[] = [];
   for (const entry of entries) {
-    const id = pluginCategoryFilterId(entry);
-    if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID) continue;
-    if (!labels.has(id)) {
-      labels.set(id, entry.category ?? id);
-      if (!knownCategories.has(id)) {
-        unknownIds.push(id);
+    for (const id of pluginCategoryFilterIds(entry)) {
+      if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID) continue;
+      if (!labels.has(id)) {
+        labels.set(
+          id,
+          (id === entry.categoryId ? entry.category : undefined) ??
+            knownCategories.get(id)?.displayName ??
+            id,
+        );
+        if (!knownCategories.has(id)) {
+          unknownIds.push(id);
+        }
       }
+      counts.set(id, (counts.get(id) ?? 0) + 1);
     }
-    counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   for (const id of selected) {
     if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID || labels.has(id)) continue;
@@ -127,18 +136,22 @@ export function pluginBrowseShelves({
   const unknownCategoryOrder: string[] = [];
   for (const entry of entries) {
     if (!isCategorized(entry)) continue;
-    const categoryId = entry.categoryId;
-    const categoryLabel = entry.category;
-    if (categoryId === undefined || categoryLabel === undefined) continue;
-    const categoryEntries = entriesByCategory.get(categoryId);
-    if (categoryEntries === undefined) {
-      entriesByCategory.set(categoryId, [entry]);
-      categoryLabels.set(categoryId, categoryLabel);
-      if (!knownCategories.has(categoryId)) {
-        unknownCategoryOrder.push(categoryId);
+    for (const categoryId of pluginCategoryFilterIds(entry)) {
+      const categoryLabel =
+        (categoryId === entry.categoryId ? entry.category : undefined) ??
+        knownCategories.get(categoryId)?.displayName ??
+        categoryId;
+      if (categoryLabel === undefined) continue;
+      const categoryEntries = entriesByCategory.get(categoryId);
+      if (categoryEntries === undefined) {
+        entriesByCategory.set(categoryId, [entry]);
+        categoryLabels.set(categoryId, categoryLabel);
+        if (!knownCategories.has(categoryId)) {
+          unknownCategoryOrder.push(categoryId);
+        }
+      } else {
+        categoryEntries.push(entry);
       }
-    } else {
-      categoryEntries.push(entry);
     }
   }
   const categoryOrder = [...knownCategories.keys(), ...unknownCategoryOrder];
@@ -179,6 +192,17 @@ export function pluginCategoryFilterId(
   return isCategorized(entry)
     ? (entry.categoryId ?? UNCATEGORIZED_PLUGIN_CATEGORY_ID)
     : UNCATEGORIZED_PLUGIN_CATEGORY_ID;
+}
+
+export function pluginCategoryFilterIds(
+  entry: Pick<
+    PluginCatalogSearchEntry,
+    "categoryId" | "category" | "categoryIds"
+  >,
+): string[] {
+  const primary = pluginCategoryFilterId(entry);
+  if (primary === UNCATEGORIZED_PLUGIN_CATEGORY_ID) return [primary];
+  return [...new Set([primary, ...(entry.categoryIds ?? [])])];
 }
 
 function compareOptionalNumbers(

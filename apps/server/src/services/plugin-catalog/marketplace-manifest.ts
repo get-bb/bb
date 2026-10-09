@@ -584,6 +584,7 @@ export function catalogEntryMetadata(args: {
 }): {
   categoryId?: string;
   category?: string;
+  categoryIds?: string[];
   screenshots: string[];
   publishedAt?: string;
   updatedAt?: string;
@@ -595,7 +596,16 @@ export function catalogEntryMetadata(args: {
       ? { category: legacyMarketplaceCategory(entry.tags ?? []) }
       : category === undefined
         ? {}
-        : { categoryId: category.id, category: category.displayName }),
+        : {
+            categoryId: category.id,
+            category: category.displayName,
+            categoryIds: [
+              category.id,
+              ...("secondaryCategories" in entry
+                ? (entry.secondaryCategories ?? [])
+                : []),
+            ],
+          }),
     screenshots: entryScreenshotUrls(entry, args.base, args.warn),
     ...("publishedAt" in entry && typeof entry.publishedAt === "string"
       ? { publishedAt: entry.publishedAt }

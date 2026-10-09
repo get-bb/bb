@@ -29,7 +29,7 @@ import { PluginCreateButton } from "../PluginCreateButton";
 import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
 import {
   pluginBrowseShelves,
-  pluginCategoryFilterId,
+  pluginCategoryFilterIds,
   pluginCategoryFilterOptions,
   sortPluginEntries,
   type PluginBrowseShelf,
@@ -134,7 +134,8 @@ export function BrowsePluginsTab({
         : null;
     return shelfEntries.filter(
       (entry) =>
-        (selected.size === 0 || selected.has(pluginCategoryFilterId(entry))) &&
+        (selected.size === 0 ||
+          pluginCategoryFilterIds(entry).some((id) => selected.has(id))) &&
         (matchingSearch === null ||
           matchingSearch.has(`${entry.marketplace}/${entry.entryId}`)),
     );

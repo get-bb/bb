@@ -18,7 +18,7 @@ import { PluginCatalogGrid } from "./PluginCatalogCard";
 import { PluginAuthorAvatar } from "./PluginAuthorAvatar";
 import { PluginCollectionToolbar } from "./PluginBrowseControls";
 import {
-  pluginCategoryFilterId,
+  pluginCategoryFilterIds,
   pluginCategoryFilterOptions,
   sortPluginEntries,
 } from "./plugin-browse-discovery";
@@ -112,7 +112,8 @@ export function PluginAuthorPage({
       authorKey,
     ).filter(
       (entry) =>
-        selected.size === 0 || selected.has(pluginCategoryFilterId(entry)),
+        selected.size === 0 ||
+        pluginCategoryFilterIds(entry).some((id) => selected.has(id)),
     );
     return sort === null
       ? filtered

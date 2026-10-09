@@ -496,7 +496,10 @@ uses a local path. It never uses the network. `bb marketplace list` shows it
 first. You cannot add or remove it.
 
 The plugins appear in the first Browse shelf, BB Official. They also appear in
-their category shelves. Install a plugin by its bare name or its qualified name.
+their category shelves. A v2 marketplace entry can list additional
+`secondaryCategories`; BB shows the same plugin in each listed category shelf
+and includes each category in Browse filters. Older entries with only `category`
+keep their existing placement. Install a plugin by its bare name or its qualified name.
 For example, use
 `bb plugin install docs` or `bb plugin install docs@bb-official`. bb copies the
 plugin from the app bundle. An app update also updates the bundled copy.

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   BUNDLED_MARKETPLACE_NAME,
+  catalogEntryMetadata,
   entryOverview,
   entryScreenshotUrls,
   entryRepositoryUrl,
@@ -311,6 +312,30 @@ describe("marketplace manifest schema", () => {
       expect(marketplaceEntryCategory(parsed, parsedEntry)).toMatchObject({
         id: "security",
         displayName: "Security",
+      });
+    });
+
+    it("passes primary and secondary categories to catalog clients", () => {
+      const parsed = parseMarketplaceManifest(
+        manifestV2([
+          entry({
+            category: "memory-and-context",
+            secondaryCategories: ["token-usage-and-limits"],
+          }),
+        ]),
+        "manifest",
+      );
+      const parsedEntry = parsed.plugins[0];
+      if (parsedEntry === undefined) throw new Error("entry missing");
+      expect(
+        catalogEntryMetadata({
+          manifest: parsed,
+          entry: parsedEntry,
+          base: { kind: "url", manifestUrl: MANIFEST_V2_URL },
+        }),
+      ).toMatchObject({
+        categoryId: "memory-and-context",
+        categoryIds: ["memory-and-context", "token-usage-and-limits"],
       });
     });
 

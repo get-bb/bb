@@ -145,6 +145,7 @@ export const marketplaceEntryV2Schema = z.object({
   description: z.string().min(1),
   icon: marketplaceIconSchema(),
   category: pluginCatalogCategoryIdSchema.optional(),
+  secondaryCategories: z.array(pluginCatalogCategoryIdSchema).max(3).optional(),
   screenshots: z
     .array(marketplaceScreenshotSchema)
     .max(MARKETPLACE_MAX_SCREENSHOTS)

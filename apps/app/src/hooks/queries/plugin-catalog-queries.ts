@@ -226,6 +226,7 @@ export interface PluginCatalogSearchEntry {
   iconTinted: boolean;
   categoryId?: string;
   category?: string;
+  categoryIds?: string[];
   screenshots: string[];
   overview?: string;
   collections: PluginCatalogCollectionMembership[];
@@ -259,6 +260,9 @@ function toPluginCatalogSearchEntry(
     iconTinted: data.iconTinted,
     ...(data.categoryId === undefined ? {} : { categoryId: data.categoryId }),
     ...(data.category === undefined ? {} : { category: data.category }),
+    ...(data.categoryIds === undefined
+      ? {}
+      : { categoryIds: data.categoryIds }),
     screenshots: data.screenshots,
     ...(data.overview === undefined ? {} : { overview: data.overview }),
     collections: data.collections,

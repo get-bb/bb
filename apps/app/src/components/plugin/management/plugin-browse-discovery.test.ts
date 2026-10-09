@@ -5,6 +5,7 @@ import type {
 } from "@/hooks/queries/plugin-catalog-queries";
 import {
   pluginBrowseShelves,
+  pluginCategoryFilterIds,
   pluginCategoryFilterOptions,
 } from "./plugin-browse-discovery";
 
@@ -43,6 +44,47 @@ function entry(
 }
 
 describe("plugin browse shelves", () => {
+  it("shows one plugin in its primary and secondary category shelves and filters", () => {
+    const trace = entry("trace-mcp", {
+      categoryId: "memory-and-context",
+      category: "Memory & Context",
+      categoryIds: ["memory-and-context", "token-usage-and-limits"],
+    });
+    const categories = [
+      {
+        id: "memory-and-context",
+        displayName: "Memory & Context",
+        description: "",
+      },
+      {
+        id: "token-usage-and-limits",
+        displayName: "Token Usage & Limits",
+        description: "",
+      },
+    ];
+    const shelves = pluginBrowseShelves({
+      entries: [trace],
+      collections: [],
+      categories,
+    });
+    expect(shelves.map(({ label }) => label)).toEqual([
+      "Memory & Context",
+      "Token Usage & Limits",
+    ]);
+    expect(shelves.every(({ entries }) => entries[0] === trace)).toBe(true);
+    expect(pluginCategoryFilterIds(trace)).toEqual([
+      "memory-and-context",
+      "token-usage-and-limits",
+    ]);
+    expect(
+      pluginCategoryFilterOptions([trace], [], categories).map(
+        ({ id, count }) => [id, count],
+      ),
+    ).toEqual([
+      ["memory-and-context", 1],
+      ["token-usage-and-limits", 1],
+    ]);
+  });
   it("keeps the server collection order before category shelves", () => {
     const official = entry("official", {
       collections: [{ id: "z-server-first", rank: 0 }],
