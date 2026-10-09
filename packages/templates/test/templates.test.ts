@@ -73,6 +73,26 @@ describe("@bb/templates", () => {
     );
   });
 
+  it("asks nested parents to raise unresolved child blockers with the user", () => {
+    const rendered = renderTemplate("systemMessageChildThreadNeedsAttention", {
+      blockerSummary: "Blocked on user question:\nWhich color should I use?",
+      parentIsChildThread: "true",
+      threadMention: "@thread:thr_child",
+    });
+
+    expect(rendered).toBe(
+      [
+        "[bb system]",
+        "",
+        "@thread:thr_child needs help.",
+        "Blocked on user question:",
+        "Which color should I use?",
+        "",
+        "Review the blocker. If you can resolve it from existing context, reply to the thread with guidance. Otherwise, ask the user for the missing decision.",
+      ].join("\n"),
+    );
+  });
+
   it("renders child thread ownership messages", () => {
     expect(
       renderTemplate("systemMessageThreadOwnershipAssigned", {

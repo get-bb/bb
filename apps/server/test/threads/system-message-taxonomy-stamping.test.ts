@@ -148,6 +148,7 @@ describe("Family B emit-site discriminator stamping", () => {
 
       await queueChildThreadNeedsAttentionNotificationBestEffort(harness.deps, {
         childThread: child,
+        parentIsChildThread: false,
         parentThreadId: fixture.parentThreadId,
         blockerSummary: null,
       });
