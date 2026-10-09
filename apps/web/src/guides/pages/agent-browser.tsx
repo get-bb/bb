@@ -1,6 +1,6 @@
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Ui } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
+import { skillOffer, withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
   annotateStep,
@@ -38,7 +38,9 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
    Check: the flow behaves as requested, the layout works at each size, and any console errors are explained. Report what you actually exercised and show the screenshots; don't call a screenshot alone a passing interaction test.
 
 4. Leave the app ready for feedback. Close the automation session with bb browser-automation close and keep the preview server running. In desktop bb, use bb browser create with the selected host, instance, generation, current thread, URL, and --reveal to leave a Browser tab open for annotations. If no desktop instance is connected, explain that element annotations require the desktop app and give me the app URL. Tell me to choose Annotate elements, click the element, write the change, and choose Add to prompt. When I send an annotation, use its element context to make the change and verify it in a new browser session.
-   Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.`,
+   Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.
+
+${skillOffer("check-in-browser", "my App URL, dev server command, sign-in, Screen sizes, and browser machine")}`,
 );
 
 export const meta: GuideMeta = {
