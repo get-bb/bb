@@ -6,6 +6,7 @@ import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
 import {
   createDeferredPromise,
+  makeTempDir,
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
@@ -24,7 +25,6 @@ import {
   type TerminalPtyProcess,
 } from "./terminal-manager.js";
 
-const tempDirs: string[] = [];
 const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
 
 interface ResizeCall {
@@ -78,12 +78,6 @@ type TerminalOutputChunk = Extract<
 
 type SteerTurnResult = Awaited<ReturnType<AgentRuntime["steerTurn"]>>;
 
-async function makeTempDir(prefix: string): Promise<string> {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(tempDir);
-  return tempDir;
-}
-
 async function writeEmptyFile(filePath: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "");
@@ -96,14 +90,6 @@ function createFakeLogger(): HostDaemonLogger {
     info: vi.fn(),
     warn: vi.fn(),
   };
-}
-
-async function cleanupTempDirs(): Promise<void> {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => fs.rm(tempDir, { force: true, recursive: true })),
-  );
 }
 
 class FakeTerminalPty implements TerminalPtyProcess {
@@ -478,10 +464,9 @@ function textChunk(text: string, seq: number): TerminalOutputChunk {
 }
 
 describe("TerminalManager", () => {
-  afterEach(async () => {
+  afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
-    await cleanupTempDirs();
   });
 
   it("opens a PTY in the workspace and keeps the environment active", async () => {

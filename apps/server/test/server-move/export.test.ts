@@ -1,14 +1,6 @@
 import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createConnection, getHost, setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
@@ -17,18 +9,11 @@ import {
   extractServerArchive,
   serverMovedFileSchema,
 } from "@bb/server-archive";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportServerArchive } from "../../src/services/server-move/export.js";
 import { seedHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "bb-server-move-export-"));
-  tempDirs.push(dir);
-  return dir;
-}
 
 async function writeDataFile(
   dataDir: string,
@@ -40,11 +25,8 @@ async function writeDataFile(
   await writeFile(path, content);
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
 });
 
 describe("server archive export", () => {

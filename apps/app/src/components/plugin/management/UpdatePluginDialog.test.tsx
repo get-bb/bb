@@ -33,13 +33,6 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
   });
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 const queryClients: QueryClient[] = [];
 
 function createDialogTestHarness() {
@@ -129,7 +122,7 @@ describe("UpdatePluginDialog", () => {
 
   it("opens persisted failure details and retries an available update", async () => {
     const fetchMock = vi.fn(async () =>
-      jsonResponse(
+      Response.json(
         {
           job: {
             id: "update-1",
@@ -139,7 +132,7 @@ describe("UpdatePluginDialog", () => {
             phase: "preparing",
           },
         },
-        202,
+        { status: 202 },
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -209,7 +202,9 @@ describe("UpdatePluginDialog", () => {
       state: "running",
       phase: "checking",
     };
-    const fetchMock = vi.fn(async () => jsonResponse({ job }, 202));
+    const fetchMock = vi.fn(async () =>
+      Response.json({ job }, { status: 202 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const { wrapper, queryClient } = createDialogTestHarness();
     const onOpenChange = vi.fn();
@@ -232,7 +227,10 @@ describe("UpdatePluginDialog", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        jsonResponse({ error: "plugin source is unavailable" }, 502),
+        Response.json(
+          { error: "plugin source is unavailable" },
+          { status: 502 },
+        ),
       ),
     );
     const { wrapper } = createDialogTestHarness();
@@ -261,7 +259,7 @@ describe("UpdatePluginDialog", () => {
   it("treats a malformed 2xx update response as an error, never success", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => jsonResponse({ status: "ok" })),
+      vi.fn(async () => Response.json({ status: "ok" })),
     );
     const { wrapper } = createDialogTestHarness();
     render(

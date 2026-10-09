@@ -14,17 +14,10 @@ import {
   useSecondaryPanelMinimum,
 } from "./secondaryPanelSizing";
 
-vi.mock("react-resizable-panels", async () => {
-  const { createRequire } = await import("node:module");
-  const { dirname, join } = await import("node:path");
-  const require = createRequire(import.meta.url);
-  return require(
-    join(
-      dirname(require.resolve("react-resizable-panels/package.json")),
-      "dist/react-resizable-panels.browser.development.cjs.js",
-    ),
-  );
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-browser"),
+);
 
 function SecondaryPanelSizingProvider({ children }: { children: ReactNode }) {
   const { ref, minimum } = useSecondaryPanelSizing();

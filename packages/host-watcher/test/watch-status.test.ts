@@ -1,12 +1,11 @@
 import { execFile } from "node:child_process";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDeferredPromise } from "@bb/test-helpers";
+import { createDeferredPromise, initRepo, makeTempDir } from "@bb/test-helpers";
 import { watchWorkspaceStatus as watchWorkspaceStatusImpl } from "../src/watch-status.js";
 
 type WatchWorkspaceStatus = typeof watchWorkspaceStatusImpl;
@@ -52,7 +51,6 @@ interface ManualWorkspaceEventsImport extends WatchWorkspaceStatusImport {
 type Sleep = (durationMs: number) => Promise<void>;
 
 const execFileAsync = promisify(execFile);
-const tempDirs: string[] = [];
 const WATCH_READY_SETTLE_MS = 100;
 const WATCH_TEST_TIMEOUT_MS = 2_000;
 const FSEVENTS_DROPPED_EVENTS_ERROR_MESSAGE =
@@ -81,28 +79,10 @@ async function runGit(
   });
 }
 
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return fs.realpath(dir);
-}
-
-async function initRepo(): Promise<string> {
-  const repoPath = await makeTempDir("bb-workspace-repo-");
-  await runGit({ args: ["init", "-b", "main"], cwd: repoPath });
-  await runGit({ args: ["config", "user.name", "BB Tests"], cwd: repoPath });
-  await runGit({
-    args: ["config", "user.email", "bb@example.com"],
-    cwd: repoPath,
-  });
-  await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
-  await runGit({ args: ["add", "README.md"], cwd: repoPath });
-  await runGit({ args: ["commit", "-m", "Initial commit"], cwd: repoPath });
-  return repoPath;
-}
-
 async function addDetachedWorktree(repoPath: string): Promise<string> {
-  const worktreeParent = await makeTempDir("bb-workspace-worktree-");
+  const worktreeParent = await fs.realpath(
+    await makeTempDir("bb-workspace-worktree-"),
+  );
   const worktreePath = path.join(worktreeParent, "env");
   await runGit({
     args: ["worktree", "add", "--detach", worktreePath, "HEAD"],
@@ -113,7 +93,9 @@ async function addDetachedWorktree(repoPath: string): Promise<string> {
 
 async function replaceDotGitWithSymlink(repoPath: string): Promise<void> {
   const originalDotGitPath = path.join(repoPath, ".git");
-  const gitDirParent = await makeTempDir("bb-workspace-gitdir-");
+  const gitDirParent = await fs.realpath(
+    await makeTempDir("bb-workspace-gitdir-"),
+  );
   const movedGitDirPath = path.join(gitDirParent, "gitdir");
   await fs.rename(originalDotGitPath, movedGitDirPath);
   await fs.symlink(movedGitDirPath, originalDotGitPath, "dir");
@@ -382,16 +364,13 @@ async function importWatchWorkspaceStatusWithManualRootEvents(
 afterEach(async () => {
   await settleAsyncWatchWork();
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 describe.sequential("watchWorkspaceStatus", () => {
   it("starts watching before git init and promotes the repository watch", async () => {
-    const workspacePath = await makeTempDir("bb-workspace-plain-");
+    const workspacePath = await fs.realpath(
+      await makeTempDir("bb-workspace-plain-"),
+    );
     const workspaceRootCallbacks: ParcelWatcherCallback[] = [];
     const workspaceRootOptions: ParcelWatcherSubscribeOptions[] = [];
     const ready = createDeferredPromise<void>();
@@ -448,7 +427,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("watches workspace status changes without duplicate callbacks for the same burst", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];
@@ -484,7 +465,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("flushes sustained workspace event bursts at max wait", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];
@@ -525,7 +508,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("reports change callback failures and continues watching", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     let callbackCount = 0;
@@ -573,7 +558,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("rescans after dropped FSEvents errors and after watcher recovery", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const {
       emitWorkspaceRootError,
       getWorkspaceRootSubscriptionCount,
@@ -624,7 +611,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("does not retry workspace subscriptions after Parcel inotify poll interruptions", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const {
       emitWorkspaceRootError,
       getWorkspaceRootSubscriptionCount,
@@ -663,7 +652,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("does not emit callbacks when a clean workspace watch starts", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];
@@ -683,7 +674,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("uses Git ignored directories for workspace root subscription ignores", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     await fs.writeFile(
       path.join(repoPath, ".gitignore"),
       "node_modules/\n.turbo/\ncoverage/\n",
@@ -742,7 +735,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("falls back to a live root watch when Git ignored directory discovery fails", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     await fs.rm(path.join(repoPath, ".git"), { force: true, recursive: true });
     await fs.writeFile(
       path.join(repoPath, ".git"),
@@ -799,7 +794,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("keeps workspace root watching when git metadata watch resolution fails", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     await replaceDotGitWithSymlink(repoPath);
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
@@ -826,7 +823,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("detects branch-ref updates through metadata watches", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const gitDirPath = normalizeWatchPath(
       path.resolve(
         repoPath,
@@ -874,7 +873,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("retries workspace subscriptions when setup fails", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithTransientWorkspaceSubscriptionFailure(
         repoPath,
@@ -912,7 +913,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("reports persistent workspace watch startup failures once while retries continue", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const {
       getWorkspaceSubscriptionAttemptCount,
       ready,
@@ -954,7 +957,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("settles stop and cleans up a late workspace subscription", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const rootPaths: string[] = [];
     const subscriptionDeferred =
       createDeferredPromise<ParcelWatcherSubscribeResult>();
@@ -998,7 +1003,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("ignores shared common-dir index updates for detached worktree environments", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const worktreePath = await addDetachedWorktree(repoPath);
     const expectedRootPaths = await resolveExpectedWatchRootPaths(worktreePath);
     const commonDirPath = path.resolve(
@@ -1040,7 +1047,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("detects namespaced branch ref updates for detached worktree environments", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const initialHead = (
       await runGit({ args: ["rev-parse", "HEAD"], cwd: repoPath })
     ).stdout.trim();
@@ -1110,7 +1119,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("classifies direct checkout ref updates as shared git ref changes", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const gitDirPath = normalizeWatchPath(
       path.resolve(
         repoPath,
@@ -1158,7 +1169,9 @@ describe.sequential("watchWorkspaceStatus", () => {
   });
 
   it("stops emitting callbacks after watch teardown", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];

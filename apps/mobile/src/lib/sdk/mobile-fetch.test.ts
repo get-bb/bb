@@ -14,13 +14,6 @@ const MOVED_BODY = {
   },
 };
 
-function jsonResponse(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 function setup(response: () => Response) {
   const baseFetch = vi.fn<typeof fetch>(async () => response());
   const onAuthFailure = vi.fn<(status: number) => void>();
@@ -35,7 +28,7 @@ function setup(response: () => Response) {
 describe("createMobileFetch", () => {
   it("reports a server_moved 410 and leaves the body readable for the caller", async () => {
     const { mobileFetch, onAuthFailure, onServerMoved } = setup(() =>
-      jsonResponse(MOVED_BODY, 410),
+      Response.json(MOVED_BODY, { status: 410 }),
     );
 
     const response = await mobileFetch("http://192.168.1.20:38886/api/v1/x");
@@ -56,16 +49,20 @@ describe("createMobileFetch", () => {
     ],
     [
       "another 410 code",
-      () => jsonResponse({ ...MOVED_BODY, code: "gone" }, 410),
+      () => Response.json({ ...MOVED_BODY, code: "gone" }, { status: 410 }),
     ],
     [
       "missing details",
-      () => jsonResponse({ code: "server_moved", message: "moved" }, 410),
+      () =>
+        Response.json(
+          { code: "server_moved", message: "moved" },
+          { status: 410 },
+        ),
     ],
     [
       "a non-http address",
       () =>
-        jsonResponse(
+        Response.json(
           {
             ...MOVED_BODY,
             details: {
@@ -73,31 +70,31 @@ describe("createMobileFetch", () => {
               serverUrl: "javascript:alert(1)",
             },
           },
-          410,
+          { status: 410 },
         ),
     ],
     [
       "an address without a scheme",
       () =>
-        jsonResponse(
+        Response.json(
           {
             ...MOVED_BODY,
             details: { ...MOVED_BODY.details, serverUrl: "studio.local:38886" },
           },
-          410,
+          { status: 410 },
         ),
     ],
     [
       "an empty host name",
       () =>
-        jsonResponse(
+        Response.json(
           { ...MOVED_BODY, details: { ...MOVED_BODY.details, toHostName: "" } },
-          410,
+          { status: 410 },
         ),
     ],
     [
       "a server_moved body on another status",
-      () => jsonResponse(MOVED_BODY, 503),
+      () => Response.json(MOVED_BODY, { status: 503 }),
     ],
   ])("ignores %s", async (_label, response) => {
     const { mobileFetch, onServerMoved } = setup(response);
@@ -110,7 +107,7 @@ describe("createMobileFetch", () => {
 
   it("still reports auth failures and tags the app surface", async () => {
     const { baseFetch, mobileFetch, onAuthFailure, onServerMoved } = setup(() =>
-      jsonResponse({ code: "unauthorized" }, 401),
+      Response.json({ code: "unauthorized" }, { status: 401 }),
     );
 
     await mobileFetch("https://bee.getbb.app/api/v1/x", {
@@ -134,7 +131,7 @@ describe("profile client registry server moves", () => {
     const registry = createProfileClientRegistry({
       onServerMoved,
       sdk: {
-        fetch: async () => jsonResponse(MOVED_BODY, 410),
+        fetch: async () => Response.json(MOVED_BODY, { status: 410 }),
         realtime: {
           socketFactory: createFakeSocketFactory(),
           onInvalidMessage: () => {},

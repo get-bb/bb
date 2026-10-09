@@ -1,41 +1,13 @@
-import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { initRepo, makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { provisionWorkspace } from "../src/index.js";
 import { runGit } from "../src/git.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-async function initRepo(): Promise<string> {
-  const repoPath = await makeTempDir("bb-provision-repo-");
-  await runGit(["init", "-b", "main"], { cwd: repoPath });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
-  await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
-  await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
-  await runGit(["add", "."], { cwd: repoPath });
-  await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
-  return repoPath;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
-});
 
 describe("provisionWorkspace", () => {
   describe("unmanaged", () => {
     it("provisions an unmanaged git repo and discovers properties", async () => {
-      const repoPath = await initRepo();
+      const repoPath = await initRepo(await makeTempDir("bb-provision-repo-"));
 
       const ws = await provisionWorkspace({
         path: repoPath,
@@ -59,7 +31,7 @@ describe("provisionWorkspace", () => {
     });
 
     it("detects a worktree as isWorktree=true", async () => {
-      const repoPath = await initRepo();
+      const repoPath = await initRepo(await makeTempDir("bb-provision-repo-"));
       const parentDir = await makeTempDir("bb-provision-wt-parent-");
       const wtPath = path.join(parentDir, "wt");
       await runGit(["worktree", "add", "-B", "feature", wtPath], {
@@ -75,7 +47,7 @@ describe("provisionWorkspace", () => {
     });
 
     it("resolves external git metadata roots for unmanaged worktrees", async () => {
-      const repoPath = await initRepo();
+      const repoPath = await initRepo(await makeTempDir("bb-provision-repo-"));
       const parentDir = await makeTempDir("bb-provision-unmanaged-wt-roots-");
       const wtPath = path.join(parentDir, "wt");
       await runGit(["worktree", "add", "-B", "feature", wtPath], {

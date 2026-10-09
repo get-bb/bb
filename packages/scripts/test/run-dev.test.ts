@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +6,7 @@ import {
   resolveInheritedDevSkillsRootPaths,
   toDevProcessEnv,
 } from "@bb/config/runtime";
+import { makeTempDir } from "@bb/test-helpers";
 import {
   createStartWorktreeCommand,
   resolveDevCloud,
@@ -22,14 +22,6 @@ import {
   expectedDevServerUrl,
 } from "./dev-instance-expectations.js";
 
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
 async function pathExists(pathToCheck: string): Promise<boolean> {
   try {
     await fs.access(pathToCheck);
@@ -42,13 +34,8 @@ async function pathExists(pathToCheck: string): Promise<boolean> {
   }
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.restoreAllMocks();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 describe("run-dev", () => {

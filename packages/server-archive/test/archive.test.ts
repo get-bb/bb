@@ -2,20 +2,18 @@ import { createHash, randomBytes } from "node:crypto";
 import {
   chmod,
   mkdir,
-  mkdtemp,
   readdir,
   readFile,
-  rm,
   stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { Header } from "tar/header";
 import type { EntryTypeName } from "tar/types";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import {
   extractServerArchive,
   SERVER_ARCHIVE_VERSION,
@@ -25,22 +23,6 @@ import {
   type ServerArchiveSourceFile,
   writeServerArchive,
 } from "../src/index.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-server-archive-"));
-  tempDirs.push(tempDir);
-  return tempDir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => rm(tempDir, { force: true, recursive: true })),
-  );
-});
 
 const MANIFEST_INPUT: ServerArchiveManifestInput = {
   createdAt: Date.UTC(2026, 8, 15, 12, 0, 0),

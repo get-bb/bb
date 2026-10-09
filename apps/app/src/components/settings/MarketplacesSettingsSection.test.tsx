@@ -9,13 +9,6 @@ import {
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { MarketplacesSettingsSection } from "./MarketplacesSettingsSection";
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 const OFFICIAL = {
   name: "bb-community",
   displayName: "BB Community",
@@ -46,7 +39,7 @@ interface RecordedRequest {
 
 function stubFetch(
   marketplaces: unknown[],
-  addResponse = jsonResponse({ ok: true, marketplace: ACME }),
+  addResponse = Response.json({ ok: true, marketplace: ACME }),
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
@@ -54,7 +47,7 @@ function stubFetch(
     vi.fn(async (url: string, init?: RequestInit) => {
       requests.push({ url, init });
       if (url === "/api/v1/marketplaces" && init?.method !== "POST") {
-        return jsonResponse({ marketplaces });
+        return Response.json({ marketplaces });
       }
       if (url === "/api/v1/marketplaces") {
         return addResponse;
@@ -63,9 +56,9 @@ function stubFetch(
         url.startsWith("/api/v1/marketplaces/") &&
         init?.method === "DELETE"
       ) {
-        return jsonResponse({ ok: true, convertedPluginIds: ["notes"] });
+        return Response.json({ ok: true, convertedPluginIds: ["notes"] });
       }
-      return jsonResponse({ error: "not found" }, 404);
+      return Response.json({ error: "not found" }, { status: 404 });
     }),
   );
   return requests;
@@ -104,7 +97,10 @@ describe("MarketplacesSettingsSection", () => {
   it("retains one alert when adding a marketplace fails", async () => {
     stubFetch(
       [OFFICIAL],
-      jsonResponse({ error: "marketplace directory does not exist" }, 400),
+      Response.json(
+        { error: "marketplace directory does not exist" },
+        { status: 400 },
+      ),
     );
     const { wrapper } = createQueryClientTestHarness();
     render(<MarketplacesSettingsSection />, { wrapper });

@@ -1,20 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { GitHostPullRequest } from "@bb/domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import {
   dispatchCommand,
   dispatchOnlineRpcCommand,
 } from "../../src/command-dispatch.js";
 import {
-  cleanupTempDirs,
   createFakeWorkspace,
   createHarness,
-  makeTempDir,
   runGitCommand,
 } from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
 
 describe("workspace command dispatch", () => {
   it("covers workspace git commands", async () => {

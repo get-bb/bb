@@ -19,15 +19,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { splitWidthLimits } from "@/lib/split-layout/sizing";
 import { usePanelResizeSnap } from "./usePanelResizeSnap";
 
-vi.mock("react-resizable-panels", async () => {
-  const { createRequire } = await import("node:module");
-  const { dirname, join } = await import("node:path");
-  const require = createRequire(import.meta.url);
-  const root = dirname(require.resolve("react-resizable-panels/package.json"));
-  return require(
-    join(root, "dist/react-resizable-panels.browser.development.cjs.js"),
-  );
-});
+vi.mock(
+  "react-resizable-panels",
+  () => import("@/test/react-resizable-panels-browser"),
+);
 
 const frames = new Map<number, FrameRequestCallback>();
 let nextFrameId = 0;

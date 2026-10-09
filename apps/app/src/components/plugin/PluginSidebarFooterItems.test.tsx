@@ -20,7 +20,7 @@ import type {
   ExperimentalSidebarFooterActionContext,
   ExperimentalSidebarFooterDisclosureController,
 } from "@get-bb/plugin-sdk";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SidebarMenu, SidebarProvider } from "@/components/ui/sidebar.js";
@@ -43,6 +43,7 @@ import {
   collectPluginAppRegistrations,
   definePluginApp,
 } from "@/lib/plugin-app-definition";
+import { LocationProbe } from "@/test/location-probe";
 
 function registrationSet(
   overrides: Partial<PluginRegistrationSet>,
@@ -57,16 +58,6 @@ function registrationSet(
     messageDirectives: [],
     ...overrides,
   };
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <output aria-label="Current path">
-      {location.pathname}
-      {location.hash}
-    </output>
-  );
 }
 
 function renderWithProviders(ui: ReactNode, store = createStore()) {
@@ -344,7 +335,7 @@ describe("PluginSidebarFooterItems", () => {
     renderWithProviders(<FooterHarness />);
     fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
 
-    expect(screen.getByLabelText("Current path").textContent).toBe(
+    expect(screen.getByTestId("location").textContent).toBe(
       "/settings/plugins/remote",
     );
   });
@@ -372,7 +363,7 @@ describe("PluginSidebarFooterItems", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remote access" }));
 
     expect(onActivate).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText("Current path").textContent).toBe(
+    expect(screen.getByTestId("location").textContent).toBe(
       "/settings/plugins/connect",
     );
   });
@@ -559,7 +550,7 @@ describe("PluginSidebarFooterItems", () => {
       await screen.findByRole("menuitem", { name: "Customize footer" }),
     );
     await waitFor(() => expect(onCustomize).toHaveBeenCalledTimes(1));
-    expect(screen.getByLabelText("Current path").textContent).toBe("/");
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(screen.getByRole("button", { name: "Provider usage" }));
     expect(screen.getByText("Usage detail")).toBeDefined();
     act(() => store.set(sidebarFooterCapacityAtom, 3));
@@ -570,7 +561,7 @@ describe("PluginSidebarFooterItems", () => {
       await screen.findByRole("menuitem", { name: "Customize footer" }),
       { button: 2, pointerType: "mouse" },
     );
-    expect(screen.getByLabelText("Current path").textContent).toBe("/");
+    expect(screen.getByTestId("location").textContent).toBe("/");
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Hide from footer" }),
     );

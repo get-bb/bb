@@ -1,12 +1,11 @@
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import { createDaemon } from "./daemon.js";
 import { acquireDaemonLock, DAEMON_LOCK_FILE_NAME } from "./lock.js";
 
-const tempDirs: string[] = [];
 type SignalListener = () => void;
 
 class FakeSignalSource {
@@ -29,12 +28,6 @@ class FakeSignalSource {
   }
 }
 
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
 function createLogger() {
   return {
     debug: vi.fn(),
@@ -43,14 +36,6 @@ function createLogger() {
     error: vi.fn(),
   };
 }
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
-});
 
 describe("daemon lifecycle", () => {
   it("prevents a second instance from acquiring the lock", async () => {

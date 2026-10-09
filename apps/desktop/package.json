@@ -45,6 +45,7 @@
     "@bb/domain": "workspace:*",
     "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/test-helpers": "workspace:*",
     "@bb/text-utils": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^24.9.0",
