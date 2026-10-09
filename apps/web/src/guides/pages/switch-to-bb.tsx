@@ -187,7 +187,7 @@ Check: bb automation list --project <project id> shows each one, paused. Show me
     `Move every project and all my unfinished work from ${from} into bb.
 Guide: ${url}
 
-You're in a bb thread, so the bb CLI is on your PATH. Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or change ${folders} or the old tool's own data and settings, and never push. Threads you start can keep working inside its worktrees, so both tools may edit the same folder.
+Follow the steps in order. Run each check. If a check fails, stop and tell me what you saw. Never delete, move, or change ${folders} or the old tool's own data and settings, and never push. Threads you start can keep working inside its worktrees, so both tools may edit the same folder.
 
 Notes about my old tool:
 ${notes}

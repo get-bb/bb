@@ -19,7 +19,7 @@ const AGENT_PROMPT = withIntake(
   `Build the task, have Codex review it in its own thread, talk it through with Codex, and stop after two review rounds.
 Guide: https://getbb.app/guides/claude-code-and-codex-together
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
+Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
 
 If you aren't Claude Code, tell me to paste this into a Claude Code thread instead, and stop.
 

@@ -25,7 +25,7 @@ import { trackLandingEvent } from "../landing/analytics";
 import type { GuideShot } from "./guide-types";
 import { copyPlainText } from "../lib/copy-plain-text";
 
-export const PROMPT_COPIED = "Prompt copied. Paste it into a bb thread.";
+export const PROMPT_COPIED = "Prompt copied. Paste it into your agent.";
 const TEXT_COPIED = "Copied to clipboard";
 const COPIED_MS = 1600;
 

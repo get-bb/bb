@@ -25,7 +25,7 @@ const AGENT_PROMPT = withIntake(
   `Build the task, have a different agent review it in its own thread, talk it through with the reviewer, and stop after two review rounds.
 Guide: https://getbb.app/guides/orchestrate-coding-agents
 
-You're in a bb thread, so the bb CLI is on your PATH. Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
+Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
 
 1. Get a branch. If you're on the repo's default branch, create a new branch first. Run \`BASE=$(git rev-parse HEAD)\` and keep the value.
    Check: \`git branch --show-current\` isn't the default branch.
