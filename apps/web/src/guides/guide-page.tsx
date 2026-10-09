@@ -22,16 +22,15 @@ import {
   PROMPT_COPIED,
   useCopy,
 } from "./guide-blocks";
-import type { Guide, GuideFaq, GuidePicker, GuideStep } from "./guide-types";
+import type { Guide, GuideFaq, GuideStep } from "./guide-types";
 import { getGuide } from "./guides";
 import guidesCss from "./guides.css?url";
 
-export function loadGuide(slug: string, variant: string | null) {
-  const guide = getGuide(slug, variant);
-  if (!guide) {
+export function loadGuide(slug: string) {
+  if (!getGuide(slug)) {
     throw notFound();
   }
-  return { slug, variant };
+  return { slug };
 }
 
 export function guideHead(guide: Guide | undefined) {
@@ -97,70 +96,12 @@ function CopyForAgent({
   );
 }
 
-function GuidePickerField({
-  picker,
-  slug,
-}: {
-  picker: GuidePicker;
-  slug: string;
-}) {
-  const navigate = useNavigate();
-  const selectedLabel =
-    picker.options.find((option) => option.id === picker.selected)?.label ??
-    picker.placeholder;
-  return (
-    <label className="gd-picker">
-      <span>{picker.label}</span>
-      <span className="gd-picker-control">
-        <span className="gd-picker-size" aria-hidden="true">
-          {selectedLabel}
-        </span>
-        <select
-          value={picker.selected ?? ""}
-          onChange={(event) => {
-            const value = event.target.value;
-            void navigate({
-              to: "/guides/$slug",
-              params: { slug },
-              search: value ? { from: value } : {},
-              replace: true,
-              resetScroll: false,
-            });
-          }}
-        >
-          {picker.selected !== null ? null : (
-            <option value="" disabled hidden>
-              {picker.placeholder}
-            </option>
-          )}
-          {picker.options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <HugeiconsIcon
-          icon={ArrowDown01Icon}
-          className="gd-picker-chev"
-          aria-hidden="true"
-        />
-      </span>
-    </label>
-  );
-}
-
 function GuideHero({ guide }: { guide: Guide }) {
   const platform = useDesktopPlatform();
   return (
     <header className="hero cmp-hero gd-hero">
       <h1>{brandProse(guide.title)}</h1>
       <p className="sub">{brandProse(guide.description)}</p>
-      {guide.picker ? (
-        <div className="gd-pick">
-          <GuidePickerField picker={guide.picker} slug={guide.slug} />
-          {guide.concept}
-        </div>
-      ) : null}
       <div className="gd-hero-actions">
         <CopyForAgent
           prompt={guide.agentPrompt}
@@ -180,7 +121,7 @@ function GuideHero({ guide }: { guide: Guide }) {
           You'll need {brandProse(guide.requirement)}.
         </p>
       ) : null}
-      {guide.picker ? null : guide.concept}
+      {guide.concept}
     </header>
   );
 }

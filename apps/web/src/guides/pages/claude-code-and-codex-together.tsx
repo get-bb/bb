@@ -12,7 +12,7 @@ import {
 
 const AGENT_PROMPT = withIntake(
   [{ label: "Task", hint: "what to build or fix" }],
-  `Build the task, have Codex review it in its own thread, talk it through with Codex, and stop after two review rounds.
+  `Build the task, have Codex review it in its own thread, talk it through with Codex. One review round, then stop.
 Guide: https://getbb.app/guides/claude-code-and-codex-together
 
 Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
@@ -34,13 +34,10 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
    bb thread output <codex-thread-id>
    Check: the output lists issues or says there are none.
 
-5. If the review found no serious issues, skip to step 6. Otherwise:
-   - If a finding is unclear, ask: bb thread tell <codex-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Questions don't count as review rounds.
-   - Fix every serious issue and commit.
-   - Ask for one more pass: bb thread tell <codex-thread-id> "I fixed the serious issues in the latest commit. Review git diff <BASE>..HEAD again, read-only."
-   Check: bb thread wait and bb thread output return the second review.
+5. Fix every serious issue and commit. If a finding is unclear, ask first: bb thread tell <codex-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Don't ask for a second review.
+   Check: \`git status\` is clean and each serious issue has a fix.
 
-6. Stop after the second review, even if issues remain. Leave the reviewer's thread open so I can read it; don't archive it.
+6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
 Reply with what you built, what each review found, what you fixed, and what's left for me.`,
 );
@@ -57,7 +54,6 @@ export const guide: Guide = {
   description:
     "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
   concept: <AgentSplit />,
-  picker: null,
   agentPrompt: AGENT_PROMPT,
   requirement: "Claude Code and Codex, each signed in once",
   steps: [
@@ -103,7 +99,7 @@ export const guide: Guide = {
     {
       id: "step-3",
       title: "Watch them side by side",
-      lead: "Claude Code hears back as soon as Codex finishes, fixes what's serious, and asks for one more pass.",
+      lead: "Claude Code hears back as soon as Codex finishes, and fixes what's serious.",
       body: (
         <Substeps>
           <li>

@@ -197,7 +197,7 @@ export const BB_VS_CONDUCTOR: Comparison = {
               or branch as a thread. Your CLAUDE.md, skills, MCP servers, slash
               commands, and agent sign-ins come along, and Conductor keeps
               working while you try bb.{" "}
-              <a href="/guides/switch-to-bb?from=conductor">Copy the prompt</a>.
+              <a href="/guides/switch-from-conductor">Copy the prompt</a>.
             </p>
           ),
         },

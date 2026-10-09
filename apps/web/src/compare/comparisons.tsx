@@ -330,8 +330,8 @@ const BB_VS_SUPERSET: Comparison = {
               Ask bb to do it. Your repo and Superset’s worktrees are plain Git
               on your machine, so a bb agent can add the repo and open each
               unfinished worktree as a thread. Superset keeps working while you
-              try bb.{" "}
-              <a href="/guides/switch-to-bb?from=superset">Copy the prompt</a>.
+              try bb. <a href="/guides/switch-from-superset">Copy the prompt</a>
+              .
             </p>
           ),
         },

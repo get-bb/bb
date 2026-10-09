@@ -42,22 +42,9 @@ export interface GuideFaq {
   answer: ReactNode;
 }
 
-export interface GuidePickerOption {
-  id: string;
-  label: string;
-}
-
-export interface GuidePicker {
-  label: string;
-  placeholder: string;
-  selected: string | null;
-  options: GuidePickerOption[];
-}
-
 export interface Guide extends GuideMeta {
   description: string;
   concept: ReactNode;
-  picker: GuidePicker | null;
   agentPrompt: string;
   requirement: string | null;
   steps: GuideStep[];

@@ -63,7 +63,6 @@ export const guide: Guide = {
   description:
     "Every agent's branch gets its own dev server and port, reloading as the agent codes. Open any of them from your phone at a private link only you can open.",
   concept: <RemoteServersConcept />,
-  picker: null,
   agentPrompt: AGENT_PROMPT,
   requirement:
     "a Linux or macOS machine you can SSH into, or Windows with Node.js 22.19+, and a free getbb.app account",

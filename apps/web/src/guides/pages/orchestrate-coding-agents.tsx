@@ -15,10 +15,10 @@ const AGENT_PROMPT = withIntake(
     { label: "Task", hint: "what to build or fix" },
     {
       label: "Reviewer",
-      hint: "a different agent from you, e.g. Codex",
+      hint: "a different agent from you",
     },
   ],
-  `Build the task, have a different agent review it in its own thread, talk it through with the reviewer, and stop after two review rounds.
+  `Build the task, have a different agent review it in its own thread, talk it through with the reviewer. One review round, then stop.
 Guide: https://getbb.app/guides/orchestrate-coding-agents
 
 Do these steps in order and run each check. If a check fails, stop and tell me what you saw. Don't push, open a pull request, or merge unless I ask.
@@ -29,7 +29,7 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 2. Build the task and commit your work.
    Check: \`git status\` is clean and \`git log -1\` shows your commit.
 
-3. Start the reviewer in its own thread, in this worktree. Use my Reviewer answer. The default is Codex if you're Claude Code, and Claude Code otherwise. Get provider IDs from bb provider list.
+3. Start the reviewer in its own thread, in this worktree. Use my Reviewer answer. By default, pick a signed-in agent other than you from bb provider list.
    bb thread spawn --json --project "$BB_PROJECT_ID" --environment "$BB_ENVIRONMENT_ID" --parent-self --provider <provider-id> --title "<task>" --prompt "Task: <task>. Review git diff <BASE>..HEAD read-only. Don't edit files or commit. List each issue as serious or minor, with file and line."
    Check: the spawn returns a thread ID. If the reviewer fails to start, stop and ask me to sign in to that agent on this computer.
 
@@ -38,13 +38,10 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
    bb thread output <reviewer-thread-id>
    Check: the output lists issues or says there are none.
 
-5. If the review found no serious issues, skip to step 6. Otherwise:
-   - If a finding is unclear, ask: bb thread tell <reviewer-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Questions don't count as review rounds.
-   - Fix every serious issue and commit.
-   - Ask for one more pass: bb thread tell <reviewer-thread-id> "I fixed the serious issues in the latest commit. Review git diff <BASE>..HEAD again, read-only."
-   Check: bb thread wait and bb thread output return the second review.
+5. Fix every serious issue and commit. If a finding is unclear, ask first: bb thread tell <reviewer-thread-id> "<your question>", then read the answer with bb thread wait and bb thread output. Don't ask for a second review.
+   Check: \`git status\` is clean and each serious issue has a fix.
 
-6. Stop after the second review, even if issues remain. Leave the reviewer's thread open so I can read it; don't archive it.
+6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
 Reply with what you built, what each review found, what you fixed, and what's left for me.`,
 );
@@ -61,7 +58,6 @@ export const guide: Guide = {
   description:
     "Have one agent build and another review, keep a manager for the work you repeat, and fan out big changes to many workers. Every agent has its own thread, so you can step in anywhere or just talk to the one in charge.",
   concept: <SpawnTimeline />,
-  picker: null,
   agentPrompt: AGENT_PROMPT,
   requirement: "two or more agents signed in, like Claude Code and Codex",
   steps: [
@@ -107,7 +103,7 @@ export const guide: Guide = {
     {
       id: "step-3",
       title: "Watch them talk it through",
-      lead: "The agents message each other the way you message them. Your agent hears back as soon as a review is done, fixes what's serious, and asks for one more pass.",
+      lead: "The agents message each other the way you message them. Your agent hears back as soon as a review is done, and fixes what's serious.",
       body: (
         <Substeps>
           <li>
