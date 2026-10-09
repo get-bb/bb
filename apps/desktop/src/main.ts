@@ -3154,6 +3154,9 @@ async function runDesktopApp(): Promise<void> {
     createWindowStateKey() {
       return `window-${randomUUID()}`;
     },
+    shouldUseDarkColors() {
+      return nativeTheme.shouldUseDarkColors;
+    },
     displayWorkAreas: null,
     icon: nativeImage.createFromPath(iconPath),
     isLinuxTransparent: hasLinuxWindowArgument({
