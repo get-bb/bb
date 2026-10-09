@@ -536,8 +536,9 @@ const SHOW_ME_RELEASE: ReleaseNotes = {
   ],
 };
 
-function walkthrough(subject: string) {
-  return `Walk me through ${subject} in this bb, one step at a time, and check each step with me. If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
+function walkthrough(title: string, text?: string) {
+  const context = text === undefined ? "" : ` (What's new: ${text})`;
+  return `Walk me through ${title} in this bb, one step at a time, and check each step with me.${context} If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
 }
 
 async function expandedShowMeNotes() {
@@ -563,10 +564,11 @@ describe("Show me on What's new highlights", () => {
       });
 
     expect(prompts).toEqual([
-      walkthrough("Faster threads: switch instantly"),
-      walkthrough("Safer archiving: Undo within 30 seconds"),
+      walkthrough("Faster threads", "switch instantly"),
+      walkthrough("Safer archiving", "Undo within 30 seconds"),
       walkthrough(
-        "Filter the diff panel: Filter the diff panel with globs like *.md",
+        "Filter the diff panel",
+        "Filter the diff panel with globs like *.md",
       ),
       walkthrough("Plugin safe mode in one step"),
     ]);
@@ -589,7 +591,7 @@ describe("Show me on What's new highlights", () => {
       {
         method: "toCompose",
         options: {
-          initialPrompt: walkthrough("Faster threads: switch instantly"),
+          initialPrompt: walkthrough("Faster threads", "switch instantly"),
           focusPrompt: true,
         },
       },
