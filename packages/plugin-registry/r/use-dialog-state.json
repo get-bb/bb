@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-dialog-state",
+  "type": "registry:ui",
+  "title": "use-dialog-state",
+  "description": "BB ui \"use-dialog-state\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/use-dialog-state.ts",
+      "content": "import { useCallback, useMemo, useState } from \"react\";\n\nexport function useDialogState<T>() {\n  const [target, setTarget] = useState<T | null>(null);\n\n  const onOpen = useCallback((nextTarget: T) => {\n    setTarget(nextTarget);\n  }, []);\n\n  const onClose = useCallback(() => {\n    setTarget(null);\n  }, []);\n\n  const onOpenChange = useCallback((open: boolean) => {\n    if (!open) {\n      setTarget(null);\n    }\n  }, []);\n\n  return useMemo(\n    () => ({\n      isOpen: target !== null,\n      onClose,\n      onOpen,\n      onOpenChange,\n      setTarget,\n      target,\n    }),\n    [onClose, onOpen, onOpenChange, setTarget, target],\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/use-dialog-state.ts"
+    }
+  ]
+}

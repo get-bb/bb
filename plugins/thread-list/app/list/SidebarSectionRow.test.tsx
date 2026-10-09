@@ -14,7 +14,7 @@ import {
 import {
   SIDEBAR_CONTROL_STATE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 
 installTestPluginRuntime();
 const { SidebarSectionRow } = await import("./SidebarSectionRow.js");

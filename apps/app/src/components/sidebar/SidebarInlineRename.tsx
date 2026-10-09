@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useInlineRename,
+  useRenameController,
+  type InlineRenameArgs,
+  type InlineRenameEditorProps,
+} from "@bb/shared-ui/inline-rename";
 import { defineSplit } from "@/lib/define-split";
 
-const loadRenameEditor = () => import("./SidebarRenameEditor");
-
-const SidebarRenameEditor = defineSplit<{
-  session: RenameSession;
-  controller: RenameController;
-}>({
+const InlineRenameEditor = defineSplit<InlineRenameEditorProps>({
   id: "sidebar-rename-editor",
-  load: () => loadRenameEditor().then((module) => module.default),
+  load: () =>
+    import("@bb/shared-ui/inline-rename-editor").then(
+      (module) => module.InlineRenameEditor,
+    ),
   loading: ({ session }) => (
     <span role="status" className="min-w-0 flex-1 truncate">
       {session.name}
@@ -17,141 +20,11 @@ const SidebarRenameEditor = defineSplit<{
   tier: "intent",
 });
 
-interface SidebarRenameArgs {
-  kind: "thread";
-  id: string;
-  name: string;
-  label: string;
-  onSave: (name: string) => Promise<unknown>;
-  placeholder?: string;
-  ownerKey?: string;
-}
-
-export interface RenameSession extends SidebarRenameArgs {
-  ownerKey: string;
-  draft: string;
-  pending: Promise<boolean> | null;
-  error: string | null;
-  cannotRetry: boolean;
-}
-
-function useRenameController() {
-  const [session, setSession] = useState<RenameSession | null>(null);
-  const sessionRef = useRef<RenameSession | null>(null);
-  const startRequestRef = useRef(0);
-  const update = useCallback((next: RenameSession | null) => {
-    sessionRef.current = next;
-    setSession(next);
-  }, []);
-
-  const save = useCallback((): Promise<boolean> => {
-    const current = sessionRef.current;
-    if (!current) return Promise.resolve(false);
-    if (current.pending) return current.pending;
-    if (current.cannotRetry) return Promise.resolve(false);
-    const value = current.draft.trim();
-    if (!value) {
-      update({ ...current, error: "Name cannot be empty." });
-      return Promise.resolve(false);
-    }
-    if (value === current.name.trim()) {
-      update(null);
-      return Promise.resolve(true);
-    }
-    const pending = Promise.resolve()
-      .then(() => current.onSave(value))
-      .then(
-        () => {
-          update(null);
-          return true;
-        },
-        async (error: unknown) => {
-          const { renameError } = await loadRenameEditor();
-          update({
-            ...current,
-            pending: null,
-            ...renameError(error),
-          });
-          return false;
-        },
-      );
-    update({ ...current, pending, error: null });
-    return pending;
-  }, [update]);
-
-  const start = useCallback(
-    async (args: SidebarRenameArgs & { ownerKey: string }) => {
-      const request = ++startRequestRef.current;
-      const current = sessionRef.current;
-      if (
-        current?.ownerKey === args.ownerKey &&
-        current.kind === args.kind &&
-        current.id === args.id
-      )
-        return;
-      if (current && !(await save())) return;
-      if (request !== startRequestRef.current) return;
-      update({
-        ...args,
-        draft: args.name,
-        pending: null,
-        error: null,
-        cannotRetry: false,
-      });
-    },
-    [save, update],
-  );
-
-  const cancel = useCallback(() => {
-    if (sessionRef.current?.pending) return;
-    ++startRequestRef.current;
-    update(null);
-  }, [update]);
-
-  return {
-    session,
-    start,
-    save,
-    cancel,
-    change: (draft: string) => {
-      const current = sessionRef.current;
-      if (current && !current.pending) {
-        update({ ...current, draft, error: null, cannotRetry: false });
-      }
-    },
-  };
-}
-
-export type RenameController = ReturnType<typeof useRenameController>;
-
-export function useSidebarRename(args: SidebarRenameArgs) {
+export function useSidebarRename(args: InlineRenameArgs) {
   const controller = useRenameController();
-  const generatedOwnerKey = useId();
-  const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const { session, start, cancel } = controller;
-  const isEditing =
-    session?.ownerKey === ownerKey &&
-    session.kind === args.kind &&
-    session.id === args.id;
-  const startEditing = useCallback(() => {
-    void start({ ...args, ownerKey });
-  }, [args, start, ownerKey]);
-
-  useEffect(() => {
-    if (session && (session.kind !== args.kind || session.id !== args.id)) {
-      cancel();
-    }
-  }, [args.id, args.kind, cancel, session]);
-
-  return {
-    editor: isEditing ? (
-      <SidebarRenameEditor
-        key={session.ownerKey}
-        session={session}
-        controller={controller}
-      />
-    ) : null,
-    isEditing,
-    startEditing,
-  };
+  return useInlineRename(args, {
+    controller,
+    Editor: InlineRenameEditor,
+    fitEditorToContent: true,
+  });
 }

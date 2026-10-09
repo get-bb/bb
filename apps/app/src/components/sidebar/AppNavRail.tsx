@@ -50,7 +50,7 @@ import {
   NEW_THREAD_NAVIGATION_ITEM_ID,
   type SidebarNavigationItem,
 } from "./sidebarNavigationItems";
-import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "./sidebarRowClasses";
+import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 
 export interface NavRailCustomizeState {
   isOpen: boolean;

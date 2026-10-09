@@ -24,7 +24,7 @@ import {
   useSidebarRename,
   useSidebarRenameState,
 } from "../rows/SidebarInlineRename.js";
-import { useDialogState } from "../ui/useDialogState.js";
+import { useDialogState } from "@/components/ui/use-dialog-state";
 import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import {
   buildProjectThreadGroups,
@@ -43,7 +43,7 @@ import { ThreadSectionCreateDialog } from "./ThreadSectionCreateDialog.js";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "../ui/ConfirmDeleteDialog.js";
+} from "@/components/ui/confirm-delete-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {

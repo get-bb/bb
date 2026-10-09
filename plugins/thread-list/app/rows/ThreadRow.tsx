@@ -67,8 +67,8 @@ import {
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "../ui/sidebar-hover-actions.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+} from "@/components/ui/sidebar-hover-actions";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
@@ -83,13 +83,13 @@ import {
   SIDEBAR_STATUS_GLYPH_BOX_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
-} from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import type {
   SidebarNestTargetState,
   SidebarReorderPlacement,
   ThreadRowNestDrop,
 } from "./sidebarThreadRowDroppable.js";
-import type { SidebarSortableDragBindings } from "./sortableMotion.js";
+import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
 import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
 import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";

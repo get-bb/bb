@@ -43,7 +43,7 @@ import {
   type OverflowFadeTone,
 } from "@/components/ui/overflow-fade";
 import { TabPill } from "@/components/ui/tab-pill";
-import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
+import { useDragClickSuppression } from "@bb/shared-ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   MACOS_APP_REGION_NO_DRAG_CLASS,

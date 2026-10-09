@@ -14,7 +14,7 @@ import {
   useDeleteProject,
   useUpdateProject,
 } from "@/hooks/mutations/project-mutations";
-import { useDialogState } from "@/hooks/useDialogState";
+import { useDialogState } from "@bb/shared-ui/use-dialog-state";
 import {
   useLocalPathPicker,
   type LocalPathSubmitParams,

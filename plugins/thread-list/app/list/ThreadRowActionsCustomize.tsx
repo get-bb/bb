@@ -29,9 +29,10 @@ import {
 import { THREAD_ROW_ACTION_LIMIT } from "../../shared/preferences.js";
 import { arrayMove } from "../model/array-move.js";
 import { threadRowActionsAtom } from "../preferences/atoms.js";
-import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
-import { useSidebarSortable } from "../rows/sortableMotion.js";
-import { SIDEBAR_CONTROL_BUTTON_CLASS } from "../rows/sidebarRowClasses.js";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
+import { useSidebarSortable } from "@/components/ui/sortable-motion";
+import { SIDEBAR_CONTROL_BUTTON_CLASS } from "@/components/ui/sidebar-row-classes";
 
 type RowActionSlot = string | null;
 
@@ -124,6 +125,7 @@ export function ThreadRowActionsEditor({
     onDragEnd: handleDragEnd,
     collisionDetection: closestCenter,
     axis: "free",
+    touchSensor: SidebarTouchSensor,
   });
 
   return (

@@ -22,7 +22,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ActionMenuItem,
   ActionMenuSeparator,
-} from "@/components/ui/action-menu-items";
+} from "@bb/shared-ui/action-menu-items";
 import {
   bindThreadAction,
   useDefaultRequestRename,

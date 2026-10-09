@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDefaultStore } from "jotai";
 import { DndContext, useDraggable } from "@dnd-kit/core";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarRenameProvider } from "./SidebarInlineRename.js";
 import type {
@@ -38,7 +39,7 @@ import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-} from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import type { ThreadRowOptions } from "./ThreadRow.js";
 import {
   preferenceValueAtom,
@@ -1617,6 +1618,7 @@ describe("ThreadRow", () => {
       const { dndContextProps } = useSidebarReorderDnd({
         onDragStart,
         onDragEnd: vi.fn(),
+        touchSensor: SidebarTouchSensor,
       });
       return (
         <CompactViewportOverrideProvider isCompactViewport>

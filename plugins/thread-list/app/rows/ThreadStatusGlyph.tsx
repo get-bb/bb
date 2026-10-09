@@ -12,7 +12,7 @@ import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-} from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 
 const WORKING_ACTIVITY_ICONS = {
   workflow: "Workflow",

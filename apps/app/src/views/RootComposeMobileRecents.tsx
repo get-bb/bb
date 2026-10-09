@@ -5,8 +5,8 @@ import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadActionsContextMenu } from "@/components/thread/ThreadActionsMenu";
 import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
-import { getSidebarThreadRowPaddingLeft } from "@/components/sidebar/sidebarRowClasses";
-import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { getSidebarThreadRowPaddingLeft } from "@bb/shared-ui/sidebar-row-classes";
+import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   COARSE_POINTER_ICON_SIZE_CLASS,
