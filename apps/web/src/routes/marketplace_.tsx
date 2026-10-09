@@ -46,10 +46,7 @@ export const Route = createFileRoute("/marketplace_")({
     if (!isIndex) return { links: sharedLinks };
     return {
       meta: marketplaceIndexMeta(available),
-      links: [
-        ...sharedLinks,
-        { rel: "canonical", href: "https://getbb.app/marketplace" },
-      ],
+      links: sharedLinks,
     };
   },
   notFoundComponent: PublicMarketplaceNotFoundPage,

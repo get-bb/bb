@@ -4,6 +4,7 @@ import { GuidePage, guideHead, loadGuide } from "../guides/guide-page";
 import { getGuide } from "../guides/guides";
 
 export const Route = createFileRoute("/guides/$slug")({
+  staticData: { ownsCanonical: true },
   loader: ({ params }) => loadGuide(params.slug),
   head: ({ loaderData }) =>
     guideHead(loaderData ? getGuide(loaderData.slug) : undefined),

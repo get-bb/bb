@@ -1,4 +1,4 @@
-import { isNotFound } from "@tanstack/react-router";
+import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { stringifySiteSearch } from "../lib/search-serialization.js";
@@ -53,17 +53,73 @@ describe("marketplace routes", () => {
     });
   });
 
-  it("returns notFound for an unknown plugin and author", () => {
+  it.each([
+    {
+      name: "an unknown plugin",
+      select: () =>
+        marketplacePluginRouteEntry(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/missing",
+        ),
+      location: { to: "/marketplace" },
+    },
+    {
+      name: "an unknown author",
+      select: () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/author/missing",
+        ),
+      location: { to: "/marketplace" },
+    },
+    {
+      name: "an author in non-canonical case",
+      select: () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "Acme-Tools",
+          "/marketplace/author/Acme-Tools",
+        ),
+      location: {
+        to: "/marketplace/author/$github",
+        params: { github: "acme-tools" },
+      },
+    },
+  ])("permanently redirects $name", ({ select, location }) => {
+    let thrown: unknown;
+    try {
+      select();
+    } catch (error) {
+      thrown = error;
+    }
+    if (!isRedirect(thrown)) throw new Error("The route did not redirect");
+    expect(thrown.options).toMatchObject({ ...location, statusCode: 301 });
+  });
+
+  it("returns notFound for paths deeper than a plugin or author", () => {
     for (const select of [
-      () => marketplacePluginRouteEntry(AVAILABLE_MARKETPLACE, "missing"),
-      () => marketplaceAuthorRouteEntries(AVAILABLE_MARKETPLACE, "missing"),
+      () =>
+        marketplacePluginRouteEntry(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/missing/extra",
+        ),
+      () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/author/missing/extra",
+        ),
     ]) {
+      let thrown: unknown;
       try {
         select();
-        throw new Error("The route did not return notFound");
       } catch (error) {
-        expect(isNotFound(error)).toBe(true);
+        thrown = error;
       }
+      expect(isNotFound(thrown)).toBe(true);
     }
   });
 

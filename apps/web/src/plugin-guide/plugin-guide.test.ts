@@ -1,8 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import { pluginPageHref } from "./plugin-directory";
+import { PluginGuideOutline } from "./plugin-guide-outline";
 
 const pluginsDir = new URL("../../../../plugins/", import.meta.url);
 const guideSourceDir = new URL("plugin-api-docs/src/", pluginsDir);
@@ -28,7 +31,9 @@ function guideSource(): string {
 
 function definedTokens(namespace: string): Set<string> {
   const pattern = new RegExp(`--${namespace}-([a-z0-9-]+):`, "gu");
-  return new Set(Array.from(webTheme.matchAll(pattern), (match) => match[1] ?? ""));
+  return new Set(
+    Array.from(webTheme.matchAll(pattern), (match) => match[1] ?? ""),
+  );
 }
 
 function utilitySuffixes(source: string, prefixes: string): Set<string> {
@@ -36,7 +41,9 @@ function utilitySuffixes(source: string, prefixes: string): Set<string> {
     `(?<![\\w-])(?:[a-z0-9@&_\\[\\]-]+:)*(?:${prefixes})-([a-z0-9][a-z0-9-]*)(?:/[\\d.]+)?(?![\\w-])`,
     "gu",
   );
-  return new Set(Array.from(source.matchAll(pattern), (match) => match[1] ?? ""));
+  return new Set(
+    Array.from(source.matchAll(pattern), (match) => match[1] ?? ""),
+  );
 }
 
 describe("Plugin Guide on the web", () => {
@@ -85,12 +92,32 @@ describe("Plugin Guide on the web", () => {
         };
         return manifest.bb?.name ? [manifest.bb.name] : [];
       });
-    const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+    const duplicates = names.filter(
+      (name, index) => names.indexOf(name) !== index,
+    );
     expect(duplicates).toEqual([]);
 
     const unlinked = SURFACE_GROUPS.flatMap((group) => group.surfaces)
       .flatMap((surface) => surface.firstParty ?? [])
       .filter((name) => pluginPageHref(name) === null);
     expect([...new Set(unlinked)]).toEqual([]);
+  });
+
+  it("server-renders every slide and surface as plain text", () => {
+    const html = renderToStaticMarkup(createElement(PluginGuideOutline));
+    const escape = (text: string) =>
+      text
+        .replace(/&/gu, "&amp;")
+        .replace(/</gu, "&lt;")
+        .replace(/>/gu, "&gt;")
+        .replace(/"/gu, "&quot;")
+        .replace(/'/gu, "&#x27;");
+    const surfaces = SURFACE_GROUPS.flatMap((group) => group.surfaces);
+    const missing = [
+      ...SURFACE_GROUPS.map((group) => `<h2>${escape(group.title)}</h2>`),
+      ...surfaces.map((surface) => `>${escape(surface.title)}</h`),
+    ].filter((fragment) => !html.includes(fragment));
+    expect(missing).toEqual([]);
+    expect(html).not.toMatch(/`|\]\(|\{experimental\}/u);
   });
 });
