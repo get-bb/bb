@@ -175,9 +175,9 @@ export const guide: Guide = {
           title: "Send one message later",
           body: (
             <p>
-              Type the message, then open the arrow next to the send button and
-              choose <strong>Send later…</strong>. It goes to the same thread at
-              the time you pick.
+              Type the message, open the arrow next to the send button, and
+              choose <strong>Send later…</strong> to pick when it goes to this
+              thread.
             </p>
           ),
           shot: {
