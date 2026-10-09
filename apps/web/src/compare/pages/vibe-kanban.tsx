@@ -1,9 +1,4 @@
-import vibeKanbanIcon from "../../assets/competitors/vibe-kanban.png";
-import type {
-  CompareHighlight,
-  CompareMeta,
-  Comparison,
-} from "../compare-types";
+import type { CompareHighlight, Comparison } from "../compare-types";
 import {
   BB_ROWS,
   FAQ_AGENTS,
@@ -13,9 +8,8 @@ import {
 } from "../compare-content";
 import { AGENTS_COPY, agentsSection } from "../compare-sections";
 import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
-import { TaskLedger, TasksBoard, type BrandLogo } from "../compare-visuals";
-
-const VIBE_KANBAN_LOGO: BrandLogo = { kind: "image", src: vibeKanbanIcon };
+import { TaskLedger, TasksBoard } from "../compare-visuals";
+import { VIBE_KANBAN_LOGO, meta } from "./vibe-kanban.meta";
 
 const LEDGER_HIGHLIGHT: CompareHighlight = {
   title: "See the agents on every task",
@@ -27,11 +21,6 @@ const LEDGER_HIGHLIGHT: CompareHighlight = {
       requests.
     </p>
   ),
-};
-
-export const meta: CompareMeta = {
-  slug: "vibe-kanban-alternative",
-  competitor: { name: "Vibe Kanban", logo: VIBE_KANBAN_LOGO },
 };
 
 export const comparison: Comparison = {

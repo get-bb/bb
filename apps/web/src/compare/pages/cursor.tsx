@@ -1,5 +1,4 @@
-import cursorIcon from "../../assets/competitors/cursor.png";
-import type { CompareMeta, Comparison } from "../compare-types";
+import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -30,9 +29,8 @@ import {
   SPAWN_COPY,
   spawnSection,
 } from "../compare-sections";
-import { AgentSplit, UsageVisual, type BrandLogo } from "../compare-visuals";
-
-const CURSOR_LOGO: BrandLogo = { kind: "image", src: cursorIcon };
+import { AgentSplit, UsageVisual } from "../compare-visuals";
+import { CURSOR_LOGO, meta } from "./cursor.meta";
 
 const PLANS_SECTION = {
   title: "Every agent on its own subscription",
@@ -47,11 +45,6 @@ const PLANS_SECTION = {
       </p>
     </>
   ),
-};
-
-export const meta: CompareMeta = {
-  slug: "cursor-alternative",
-  competitor: { name: "Cursor", logo: CURSOR_LOGO },
 };
 
 export const comparison: Comparison = {

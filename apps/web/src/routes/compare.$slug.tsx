@@ -1,19 +1,14 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 
-import { ComparePage, compareHead } from "../compare/compare-page";
+import { ComparePage } from "../compare/compare-page";
 import { getComparison } from "../compare/comparisons";
 
 export const Route = createFileRoute("/compare/$slug")({
-  loader: ({ params }) => {
-    if (!getComparison(params.slug)) {
-      throw notFound();
-    }
-    return { slug: params.slug };
-  },
-  head: ({ loaderData }) => {
-    const comparison = loaderData ? getComparison(loaderData.slug) : undefined;
-    return comparison ? compareHead(comparison) : { meta: [{ title: "bb" }] };
-  },
+  loader: async ({ params }) =>
+    (await import("../compare/compare-route-data")).compareRouteData(
+      params.slug,
+    ),
+  head: ({ loaderData }) => loaderData?.head ?? { meta: [{ title: "bb" }] },
   component: CompareRoute,
 });
 

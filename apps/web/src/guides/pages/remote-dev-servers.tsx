@@ -7,12 +7,13 @@ import {
   Ui,
 } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   COST_FAQ,
   LINK_ACCESS_FAQ,
   MACHINE_DISCONNECTED_TROUBLESHOOTING,
 } from "../shared/faq";
+import { meta } from "./remote-dev-servers.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -51,13 +52,6 @@ set -euo pipefail
 pnpm install
 free_port() { node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 printf 'WEB_PORT=%s\\nAPI_PORT=%s\\n' "$(free_port)" "$(free_port)" > .env.local`;
-
-export const meta: GuideMeta = {
-  slug: "remote-dev-servers",
-  title: "Run a dev server for every branch",
-  nav: { group: "Remote & mobile", label: "Run dev servers", order: 5 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

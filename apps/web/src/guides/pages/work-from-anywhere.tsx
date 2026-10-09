@@ -1,13 +1,14 @@
 import { AnywhereConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   COST_FAQ,
   LINK_ACCESS_FAQ,
   MACHINE_DISCONNECTED_TROUBLESHOOTING,
   SLEEP_TROUBLESHOOTING,
 } from "../shared/faq";
+import { meta } from "./work-from-anywhere.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -34,13 +35,6 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 
 Reply with my getbb.app address (I can also open it in any browser), whether my phone is connected, and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep.`,
 );
-
-export const meta: GuideMeta = {
-  slug: "work-from-anywhere",
-  title: "Keep working from anywhere",
-  nav: { group: "Remote & mobile", label: "Work from anywhere", order: 6 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

@@ -1,8 +1,9 @@
 import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import { AGENTS_FAQ } from "../shared/faq";
+import { meta } from "./run-an-agent-on-a-schedule.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -32,13 +33,6 @@ Default Job: morning issue triage on weekdays at 9am, with reports in one thread
 
 Reply with the automation ID, schedule, next run, and what the test produced.`,
 );
-
-export const meta: GuideMeta = {
-  slug: "run-an-agent-on-a-schedule",
-  title: "Run an agent on a schedule",
-  nav: { group: "Automate", label: "Schedule agents", order: 2 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

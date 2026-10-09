@@ -1,7 +1,7 @@
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Ui } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   annotateStep,
   BROWSER_FAQ,
@@ -9,6 +9,7 @@ import {
   PLUGINS_STEP,
   SIGN_INS_STEP,
 } from "../shared/browser";
+import { meta } from "./agent-browser.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -42,13 +43,6 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
 
 ${skillOffer("check-in-browser", "my App URL, dev server command, sign-in, Screen sizes, and browser machine")}`,
 );
-
-export const meta: GuideMeta = {
-  slug: "agent-browser",
-  title: "Let your coding agent use a browser",
-  nav: { group: "Automate", label: "Test web apps", order: 3 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

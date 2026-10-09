@@ -1,7 +1,7 @@
 import { SpawnTimeline } from "../../compare/compare-visuals";
 import { CopyPromptButton, PromptBlock, Substeps, Ui } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   NESTED_SHOT,
   SPLIT_SHOT,
@@ -9,6 +9,7 @@ import {
   TEAM_FAQ,
   TEAM_TROUBLESHOOTING,
 } from "../shared/agent-teams";
+import { meta } from "./orchestrate-coding-agents.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -45,13 +46,6 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 
 Reply with what you built, what the review found, what you fixed, and what's left for me. ${skillOffer("build-and-review", "my reviewer")}`,
 );
-
-export const meta: GuideMeta = {
-  slug: "orchestrate-coding-agents",
-  title: "Orchestrate your coding agents",
-  nav: { group: null, label: "Orchestrate agents", order: 1 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

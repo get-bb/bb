@@ -1,7 +1,7 @@
 import { BrowserConcept } from "../concepts";
 import { BulletList, PromptBlock } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   annotateStep,
   BROWSER_FAQ,
@@ -9,6 +9,7 @@ import {
   PLUGINS_STEP,
   SIGN_INS_STEP,
 } from "../shared/browser";
+import { meta } from "./agent-browser-for-work.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -40,13 +41,6 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
 
 If it's a task I'll want again, offer to save these steps as a bb skill in .bb/skills/<short-name>/SKILL.md with my answers filled in, or as a bb automation if it should run on a schedule.`,
 );
-
-export const meta: GuideMeta = {
-  slug: "agent-browser-for-work",
-  title: "Get research and reports from any site",
-  nav: { group: "Automate", label: "Automate browser tasks", order: 4 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,

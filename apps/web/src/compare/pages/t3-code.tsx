@@ -1,5 +1,4 @@
-import t3CodeIcon from "../../assets/competitors/t3-code.png";
-import type { CompareMeta, Comparison } from "../compare-types";
+import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -31,9 +30,8 @@ import {
   LIMITS_COPY,
   limitsSection,
 } from "../compare-sections";
-import { AgentSplit, type BrandLogo } from "../compare-visuals";
-
-const T3_CODE_LOGO: BrandLogo = { kind: "image", src: t3CodeIcon };
+import { AgentSplit } from "../compare-visuals";
+import { T3_CODE_LOGO, meta } from "./t3-code.meta";
 
 const PLUGINS_COPY_T3: SectionCopy = {
   title: "Customize everything in the app with plugins",
@@ -51,11 +49,6 @@ const PLUGINS_COPY_T3: SectionCopy = {
       </p>
     </>
   ),
-};
-
-export const meta: CompareMeta = {
-  slug: "t3-code-alternatives",
-  competitor: { name: "T3 Code", logo: T3_CODE_LOGO },
 };
 
 export const comparison: Comparison = {
