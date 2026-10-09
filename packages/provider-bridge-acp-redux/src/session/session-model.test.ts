@@ -622,6 +622,50 @@ describe("configuration", () => {
     ).toEqual(["model", ACP_LEGACY_MODE_CONFIG_ID]);
   });
 
+  it("drops legacy modes that only repeat the agent's thinking levels, and keeps modes that add anything else", () => {
+    const thinking = {
+      id: "thought_level",
+      name: "Thinking",
+      category: "thought_level",
+      type: "select",
+      currentValue: "high",
+      options: [
+        { value: "off", name: "Off" },
+        { value: "low", name: "Low" },
+        { value: "high", name: "High" },
+      ],
+    };
+    const optionIds = (modes: unknown) => {
+      const [event] = model().applySessionSetup({
+        configOptions: [thinking],
+        modes,
+      });
+      return event?.type === "configOptions"
+        ? event.configOptions.map((option) => option.id)
+        : [];
+    };
+
+    expect(
+      optionIds({
+        currentModeId: "high",
+        availableModes: [
+          { id: "off", name: "Thinking: off" },
+          { id: "low", name: "Thinking: low" },
+          { id: "high", name: "Thinking: high" },
+        ],
+      }),
+    ).toEqual(["thought_level"]);
+    expect(
+      optionIds({
+        currentModeId: "high",
+        availableModes: [
+          { id: "high", name: "Thinking: high" },
+          { id: "plan", name: "Plan" },
+        ],
+      }),
+    ).toEqual(["thought_level", ACP_LEGACY_MODE_CONFIG_ID]);
+  });
+
   it("replaces the whole option list when the agent pushes a change", () => {
     const session = model();
     session.applySessionSetup({ configOptions: [modelOption] });

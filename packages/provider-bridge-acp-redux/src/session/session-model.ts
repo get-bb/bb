@@ -119,13 +119,31 @@ export function createAcpSessionModel(
   let currentMessage: AcpMessageEntity | null = null;
   let synthesizedMessageCount = 0;
 
+  function legacyModeRepeatsThoughtLevels(mode: AcpConfigOption): boolean {
+    if (mode.type !== "select" || mode.values.length === 0) {
+      return false;
+    }
+    return agentConfigOptions.some(
+      (option) =>
+        option.category === "thought_level" &&
+        option.type === "select" &&
+        mode.values.every((modeValue) =>
+          option.values.some((level) => level.value === modeValue.value),
+        ),
+    );
+  }
+
   function effectiveConfigOptions(): AcpConfigOption[] {
     const hasCategory = (category: string) =>
       agentConfigOptions.some((option) => option.category === category);
     return [
       ...agentConfigOptions,
       ...(legacyModel && !hasCategory("model") ? [legacyModel] : []),
-      ...(legacyMode && !hasCategory("mode") ? [legacyMode] : []),
+      ...(legacyMode &&
+      !hasCategory("mode") &&
+      !legacyModeRepeatsThoughtLevels(legacyMode)
+        ? [legacyMode]
+        : []),
     ];
   }
 
