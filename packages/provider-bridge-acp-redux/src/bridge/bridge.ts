@@ -2215,7 +2215,9 @@ async function startAgentSession(
           })
         : null;
     if (typed instanceof AcpAuthRequiredError && guidance !== null) {
-      throw new AcpAuthRequiredError(`${typed.message} ${guidance}`);
+      throw new AcpAuthRequiredError(
+        `${typed.message.replace(/[\s.!?:;]*$/u, "")}. ${guidance}`,
+      );
     }
     throw error;
   }

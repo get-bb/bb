@@ -10,7 +10,7 @@
   },
   "bb": {
     "name": "ACP providers (new adapter)",
-    "description": "Preview of the rebuilt ACP adapter: agent options, live slash commands, the official agent registry. Turning it on turns the original ACP providers plugin off.",
+    "description": "Preview of the rebuilt ACP adapter. Turning it on turns ACP providers off.",
     "branding": {
       "icon": "./icons/acp.svg",
       "experimental_icons": {

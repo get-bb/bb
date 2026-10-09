@@ -1992,7 +1992,7 @@ describe("acp bridge", () => {
 
     const named = await start({ FAKE_ACP_AUTH_METHODS: "agent.login" });
     expect(named.error?.message).toMatch(
-      /^Authentication required.* The agent offers these ways to sign in: Sign in \(agent\.login\)\. Sign in with the agent's own command/u,
+      /^Authentication required[^.]*\. The agent offers these ways to sign in: Sign in \(agent\.login\)\. Sign in with the agent's own command/u,
     );
 
     const terminal = await start({

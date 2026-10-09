@@ -8,6 +8,7 @@ const UNRANKED_PREVIOUS_LEVEL: ReasoningLevel = "medium";
 export function reconcileReasoningLevel(
   previous: ReasoningLevel,
   supported: readonly ReasoningLevel[],
+  unrankedFallback?: ReasoningLevel,
 ): ReasoningLevel {
   if (supported.length === 0) {
     throw new Error(
@@ -39,5 +40,10 @@ export function reconcileReasoningLevel(
       best = { level: candidate, rank, distance };
     }
   }
-  return best?.level ?? supported[0];
+  if (best !== null) {
+    return best.level;
+  }
+  return unrankedFallback !== undefined && supported.includes(unrankedFallback)
+    ? unrankedFallback
+    : supported[0];
 }

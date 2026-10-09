@@ -42,6 +42,7 @@ export function resolveModelReasoningLevel(
     : reconcileReasoningLevel(
         preferredReasoningLevel,
         supportedReasoningLevels,
+        model?.defaultReasoningEffort,
       );
 }
 
