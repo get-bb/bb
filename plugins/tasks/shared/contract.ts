@@ -569,6 +569,46 @@ export const tasksRpcContract = defineRpcContract({
     input: z.object({ labelId: idSchema }).strict(),
     output: z.object({ deleted: z.boolean() }).strict(),
   },
+  listLabelsForProjects: {
+    input: z.object({ projectIds: z.array(idSchema) }).strict(),
+    output: z.object({ labels: z.array(labelSchema) }).strict(),
+  },
+  taskMetadata: {
+    input: z
+      .object({
+        taskIds: z.array(idSchema),
+        includeAttachmentCounts: z.boolean().default(false),
+      })
+      .strict(),
+    output: z
+      .object({
+        items: z.array(
+          z
+            .object({
+              taskId: idSchema,
+              taskThreads: z.array(taskThreadSchema),
+              attachmentCount: z.number().int().nonnegative().nullable(),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
+  activityFeed: {
+    input: z.object({ taskId: idSchema }).strict(),
+    output: z
+      .object({
+        entries: z.array(
+          z
+            .object({
+              comment: displayCommentSchema,
+              attachments: z.array(attachmentSchema),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+  },
   listLabels: {
     input: z.object({ projectId: idSchema }).strict(),
     output: z.object({ labels: z.array(labelSchema) }).strict(),
@@ -596,7 +636,6 @@ export const tasksRpcContract = defineRpcContract({
     input: z.union([
       z.object({ taskId: idSchema }).strict(),
       z.object({ commentId: idSchema }).strict(),
-      z.object({ commentsOfTaskId: idSchema }).strict(),
     ]),
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },
@@ -673,16 +712,6 @@ export const tasksRpcContract = defineRpcContract({
     input: z.null(),
     output: z.object({ presets: z.array(presetSchema) }).strict(),
   },
-  listMachines: {
-    input: z.object({}).strict(),
-    output: z
-      .object({
-        machines: z.array(
-          z.object({ id: z.string(), name: z.string() }).strict(),
-        ),
-      })
-      .strict(),
-  },
   searchThreads: {
     input: z
       .object({
@@ -699,18 +728,6 @@ export const tasksRpcContract = defineRpcContract({
               title: z.string(),
               status: threadSearchStatusSchema,
             })
-            .strict(),
-        ),
-      })
-      .strict(),
-  },
-  listBbProjects: {
-    input: z.null(),
-    output: z
-      .object({
-        bbProjects: z.array(
-          z
-            .object({ id: z.string().startsWith("proj_"), name: z.string() })
             .strict(),
         ),
       })
@@ -756,9 +773,6 @@ export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;
-export type BbProjectOption = z.infer<
-  (typeof tasksRpcContract)["listBbProjects"]["output"]
->["bbProjects"][number];
 export type SidebarProjectSummary = z.infer<
   (typeof tasksRpcContract)["sidebarSummary"]["output"]
 >["projects"][number];

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
+import { cleanup, fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
+afterEach(cleanup);
 
 describe("GitHub app navigation", () => {
   it("registers the GitHub nav panel with header content and the PR thread tab", () => {
@@ -153,12 +155,13 @@ describe("GitHub app navigation", () => {
             },
           }),
           listLinks: () => ({ links: {} }),
+          listItems: () => ({ items: [] }),
         },
       },
     );
 
     await act(async () => {});
-    const removedFile = slot.getByText("removed.ts");
+    const removedFile = await slot.findByText("removed.ts");
     const modifiedFile = slot.getByText("modified.ts");
     expect(removedFile.closest("a")).toBeNull();
     expect(modifiedFile.closest("a")?.getAttribute("href")).toBe(
@@ -178,6 +181,55 @@ describe("GitHub app navigation", () => {
     expect(diffToggle.getAttribute("aria-label")).toBe(
       "Collapse removed.ts diff",
     );
+    fireEvent.click(slot.getByRole("button", { name: /All PRs/ }));
+    await slot.findByText("No open pull requests in the tracked repos.");
     slot.lifecycle.unmount();
+  });
+  it("refreshes cached issue details after posting a comment without a change signal", async () => {
+    const comments: Array<{ author: string; body: string; createdAt: string }> =
+      [];
+    const read = vi.fn(() => ({
+      issue: {
+        repo: "get-bb/bb",
+        number: 42,
+        title: "Comment refresh",
+        state: "OPEN",
+        author: "octocat",
+        body: "Issue body",
+        url: "https://github.com/get-bb/bb/issues/42",
+        updatedAt: "2026-09-28T00:00:00Z",
+        labels: [],
+        assignees: [],
+        comments: [...comments],
+      },
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "issues/get-bb/bb/42" },
+      {
+        rpc: {
+          getIssue: read,
+          listLinks: () => ({ links: {} }),
+          viewer: () => ({ login: "octocat" }),
+          commentIssue: () => {
+            comments.push({
+              author: "octocat",
+              body: "New comment from the server",
+              createdAt: "2026-09-28T00:01:00Z",
+            });
+            return { ok: true };
+          },
+        },
+      },
+    );
+    await slot.findByText("Issue body");
+    fireEvent.change(slot.getByPlaceholderText("Leave a comment…"), {
+      target: { value: "New comment from the server" },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Comment" }));
+    await slot.findByText("New comment from the server");
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(slot.container.querySelector("textarea")?.value).toBe("");
+    slot.unmount();
   });
 });

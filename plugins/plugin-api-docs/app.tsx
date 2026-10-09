@@ -1,10 +1,10 @@
 import { PluginBrandIcon } from "@/components/ui/plugin-icon";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   definePluginApp,
   useBbNavigate,
-  useSdk,
-  type PluginBrowserBbSdk,
+  experimental_usePlugins,
+  experimental_usePluginCatalogSearch,
 } from "@get-bb/plugin-sdk/app";
 import { copyPluginSurfaceAgentReference } from "./src/agent-reference";
 import { firstPartyPluginId } from "./src/plugin-icons";
@@ -17,52 +17,37 @@ export interface PluginReference {
   iconTinted: boolean;
 }
 
-export async function loadPluginReferences(
-  sdk: Pick<PluginBrowserBbSdk, "plugins">,
-  signal: AbortSignal,
-): Promise<ReadonlyMap<string, PluginReference>> {
-  const [installed, catalog] = await Promise.all([
-    sdk.plugins
-      .list({ signal })
-      .then((response) =>
-        response.plugins.map((plugin): PluginReference => ({
-          id: plugin.id,
-          icon: plugin.icon,
-          iconUrl: plugin.iconUrl,
-          iconTinted: true,
-        })),
-      )
-      .catch((): PluginReference[] => []),
-    sdk.plugins.catalog
-      .search({ query: "", signal })
-      .then((response) =>
-        response.results.map((result): PluginReference => ({
-          id: result.pluginId,
-          icon: result.icon,
-          iconUrl: result.iconUrl,
-          iconTinted: result.iconTinted,
-        })),
-      )
-      .catch((): PluginReference[] => []),
-  ]);
-  return new Map(
-    [...catalog, ...installed].map((plugin) => [plugin.id, plugin]),
-  );
-}
-
 function usePluginReferences(): ReadonlyMap<string, PluginReference> {
-  const sdk = useSdk();
-  const [plugins, setPlugins] = useState<ReadonlyMap<string, PluginReference>>(
-    () => new Map(),
+  const installed = experimental_usePlugins();
+  const catalog = experimental_usePluginCatalogSearch({ query: "" });
+  return useMemo(
+    () =>
+      new Map([
+        ...(catalog.data?.results ?? []).map(
+          (plugin): [string, PluginReference] => [
+            plugin.pluginId,
+            {
+              id: plugin.pluginId,
+              icon: plugin.icon,
+              iconUrl: plugin.iconUrl,
+              iconTinted: plugin.iconTinted,
+            },
+          ],
+        ),
+        ...(installed.data?.plugins ?? []).map(
+          (plugin): [string, PluginReference] => [
+            plugin.id,
+            {
+              id: plugin.id,
+              icon: plugin.icon,
+              iconUrl: plugin.iconUrl,
+              iconTinted: true,
+            },
+          ],
+        ),
+      ]),
+    [installed.data, catalog.data],
   );
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadPluginReferences(sdk, controller.signal).then((references) => {
-      if (!controller.signal.aborted) setPlugins(references);
-    });
-    return () => controller.abort();
-  }, [sdk]);
-  return plugins;
 }
 
 function PluginApiMapPage({ subPath }: { subPath: string }) {

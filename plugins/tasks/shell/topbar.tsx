@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Project, Task } from "../shared/contract.js";
 import { groupTasksByStatus } from "../views/list/lib.js";
-import { listAllTasks, useTasksQuery } from "./data.js";
+import { useAllTasks } from "./data.js";
 import type { ResolvedTasksRoute, TaskViewMode, TasksRoute } from "./routes.js";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -48,14 +48,9 @@ function TaskPager({
   projectId: string | null;
   onNavigate: (route: TasksRoute) => void;
 }) {
-  const siblings = useTasksQuery(
-    async (rpc) =>
-      listAllTasks(rpc, {
-        ...(projectId === null ? {} : { projectId }),
-        parentTaskId: null,
-      }),
-    ["tasks:changed"],
-    [projectId],
+  const siblings = useAllTasks(
+    { ...(projectId === null ? {} : { projectId }), parentTaskId: null },
+    ["tasks:changed", "threads:changed"],
   );
   const position = useMemo(
     () => (siblings.data ? pagerPosition(siblings.data, taskKey) : null),

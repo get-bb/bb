@@ -1,3 +1,4 @@
+import { useCoreQueryResult } from "@get-bb/plugin-sdk/internal/rpc-query-hooks";
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
   infiniteQueryOptions,
@@ -661,16 +662,29 @@ export function useThreadSearch({
   };
 }
 
-export function useThread(id: string, options?: QueryOptions) {
+export function fetchThreadDetail(
+  queryClient: QueryClient,
+  threadId: string,
+): Promise<ThreadResponse> {
+  return queryClient.fetchQuery({
+    queryKey: threadQueryKey(threadId),
+    queryFn: ({ signal }) => sdk.threads.get({ threadId, signal }),
+    staleTime: THREAD_DETAIL_STALE_TIME_MS,
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
+  });
+}
+
+export function useThread(id: string | null, options?: QueryOptions) {
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   useThreadDetailRealtimeSubscription(id, { enabled });
 
-  return useQuery<ThreadResponse>({
-    queryKey: threadQueryKey(id),
+  const query = useQuery<ThreadResponse>({
+    queryKey: threadQueryKey(id ?? ""),
     queryFn: ({ signal }) =>
       sdk.threads.get({
-        threadId: requireThreadId(id, "useThread"),
+        threadId: requireThreadId(id ?? "", "useThread"),
         signal,
       }),
     enabled,
@@ -679,12 +693,17 @@ export function useThread(id: string, options?: QueryOptions) {
     retry: shouldRetryTransientReadQuery,
     retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
     placeholderData: (previousData, previousQuery) =>
-      resolveThreadPlaceholder(previousData, previousQuery?.queryKey, id) ??
+      resolveThreadPlaceholder(
+        previousData,
+        previousQuery?.queryKey,
+        id ?? "",
+      ) ??
       liftThreadListPlaceholder(
-        getCachedThreadListPlaceholder(queryClient, id) ??
-          findSidebarNavigationThreadPlaceholder(queryClient, id),
+        getCachedThreadListPlaceholder(queryClient, id ?? "") ??
+          findSidebarNavigationThreadPlaceholder(queryClient, id ?? ""),
       ),
   });
+  return useCoreQueryResult(query, enabled);
 }
 
 function liftThreadListPlaceholder(

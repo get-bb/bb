@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withReadBatches } from "./read-test-fixtures.js";
 
 import { act, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,9 +19,9 @@ describe("Tasks nav panel sidebar accessory", () => {
       { component: Accessory! },
       {},
       {
-        rpc: {
+        rpc: withReadBatches({
           sidebarOpenTaskCount: () => ({ openTaskCount }),
-        },
+        }),
       },
     );
 
@@ -52,9 +53,9 @@ describe("Tasks nav panel sidebar accessory", () => {
       { component: Accessory! },
       {},
       {
-        rpc: {
+        rpc: withReadBatches({
           sidebarOpenTaskCount: () => ({ openTaskCount }),
-        },
+        }),
       },
     );
 
@@ -97,12 +98,12 @@ describe("Tasks nav panel sidebar accessory", () => {
       { component: Accessory! },
       {},
       {
-        rpc: {
+        rpc: withReadBatches({
           sidebarOpenTaskCount: () => {
             calls += 1;
             return calls === 1 ? firstRequest : { openTaskCount: 13 };
           },
-        },
+        }),
       },
     );
 

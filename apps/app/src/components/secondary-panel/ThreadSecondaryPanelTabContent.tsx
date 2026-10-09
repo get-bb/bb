@@ -1,3 +1,4 @@
+import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { type ReactNode, useEffect, useMemo } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { DiffPresentation } from "@/components/code/code-rendering";
@@ -10,7 +11,6 @@ import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
-  useEnvironment,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
 import {
@@ -342,7 +342,6 @@ export function WorkspaceFilePreviewTabContent({
       environmentId !== null &&
       environmentId !== undefined &&
       markdownLinkRouting?.localImage === undefined,
-    staleTime: 5_000,
   });
   const workspaceFilePreviewQuery = useEnvironmentFilePreview(
     environmentId,

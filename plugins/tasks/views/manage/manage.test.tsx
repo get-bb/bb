@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { withReadBatches } from "../../read-test-fixtures.js";
+import { makeBbProject } from "../../test-fixtures.js";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -200,19 +202,19 @@ describe("NewTaskDialog", () => {
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
           createTask: (raw: unknown) => {
             const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
-        },
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
@@ -235,19 +237,19 @@ describe("NewTaskDialog", () => {
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
           createTask: (raw: unknown) => {
             const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
-        },
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
@@ -280,19 +282,19 @@ describe("NewTaskDialog", () => {
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
           createTask: (raw: unknown) => {
             const input = rpcInput(raw);
             createCalls.push(input);
             return { ok: true, task: createdTask(input) };
           },
-        },
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
@@ -312,12 +314,12 @@ describe("NewTaskDialog", () => {
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
           createTask: () => ({
             ok: false,
@@ -326,7 +328,7 @@ describe("NewTaskDialog", () => {
               message: "Sub-tasks cannot have their own sub-tasks",
             },
           }),
-        },
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
@@ -344,12 +346,12 @@ describe("NewTaskDialog", () => {
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({
             labels: [
               {
@@ -372,7 +374,7 @@ describe("NewTaskDialog", () => {
               },
             };
           },
-        },
+        }),
       },
     );
     fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
@@ -561,7 +563,9 @@ describe("NewTaskDialog drafts", () => {
       );
       fireEvent.click(await slot.findByRole("button", { name: /New task/ }));
       await slot.findByLabelText("Task title");
-      fireEvent.click(slot.getByRole("button", { name: "Create task" }));
+      const create = slot.getByRole("button", { name: "Create task" });
+      await waitFor(() => expect(create.hasAttribute("disabled")).toBe(false));
+      fireEvent.click(create);
       await waitFor(() => expect(createCalls).toHaveLength(1));
       expect(createCalls[0]).toMatchObject({
         projectId: removed === "project" ? otherProject.id : PROJECT_ID,
@@ -657,7 +661,7 @@ describe("NewTaskDialog attachments", () => {
     listFolders: () => ({ folders: [] }),
     listPresets: () => ({ presets: [] }),
     sidebarSummary: () => ({ projects: [] }),
-    listTasks: () => ({ tasks: [] }),
+    listTasks: () => ({ tasks: [], nextCursor: null }),
     listLabels: () => ({ labels: [] }),
     createTask: (input: unknown) => ({
       ok: true,
@@ -682,7 +686,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "With files");
     pasteFile(titleInput, new File(["png"], "shot.png", { type: "image/png" }));
@@ -718,7 +722,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "Partial failure");
     pasteFile(titleInput, new File(["ok"], "good.png", { type: "image/png" }));
@@ -757,7 +761,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "Too big");
     const big = new File(["x"], "big.bin", { type: "application/zip" });
@@ -797,7 +801,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "In flight");
     pasteFile(titleInput, new File(["x"], "slow.png", { type: "image/png" }));
@@ -831,7 +835,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "Sticky recovery");
     pasteFile(
@@ -863,7 +867,7 @@ describe("NewTaskDialog attachments", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: PROJECT_ID },
-      { rpc: dialogRpc() },
+      { rpc: withReadBatches(dialogRpc()) },
     );
     const titleInput = await openDialogWithTitle(slot, "Retry once");
     pasteFile(
@@ -1022,16 +1026,38 @@ describe("PresetDialog environment section", () => {
       app.navPanels[0]!,
       { subPath: "manage" },
       {
-        rpc: {
+        sdk: {
+          hosts: {
+            list: async () =>
+              MACHINES.map((machine) => ({
+                type: "persistent",
+                status: "connected",
+                machineProviderId: null,
+                lifecycle: {
+                  phase: "active",
+                  suspendedAt: null,
+                  message: null,
+                  pendingLog: "",
+                  teardown: null,
+                },
+                lastSeenAt: null,
+                maxPermissionMode: "full",
+                lastRejectedProtocolVersion: null,
+                createdAt: 0,
+                updatedAt: 0,
+                ...machine,
+              })),
+          },
+        },
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [project] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
-          listMachines: () => ({ machines: MACHINES }),
           ...rpcOverrides,
-        },
+        }),
       },
     );
   }
@@ -1146,17 +1172,17 @@ describe("Manage folders", () => {
       app.navPanels[0]!,
       { subPath: "manage" },
       {
-        rpc: {
+        rpc: withReadBatches({
           listProjects: () => ({
             projects: [{ ...project, folderId: parentFolder.id }],
           }),
           listFolders: () => ({ folders: [parentFolder, childFolder] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           listLabels: () => ({ labels: [] }),
           ...overrides,
-        },
+        }),
       },
     );
   }
@@ -1331,19 +1357,23 @@ describe("Manage folders", () => {
 });
 
 describe("NewProjectDialog", () => {
-  function renderEmptyState(overrides: Record<string, unknown> = {}) {
+  function renderEmptyState(
+    overrides: Record<string, unknown> = {},
+    bbProjects = [makeBbProject("proj_personal", "Personal", "personal")],
+  ) {
     return renderSlot(
       app.navPanels[0]!,
       { subPath: "" },
       {
-        rpc: {
+        sdk: { projects: { list: async () => bbProjects } },
+        rpc: withReadBatches({
           listProjects: () => ({ projects: [] }),
           listFolders: () => ({ folders: [] }),
           listPresets: () => ({ presets: [] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: () => ({ tasks: [] }),
+          listTasks: () => ({ tasks: [], nextCursor: null }),
           ...overrides,
-        },
+        }),
       },
     );
   }
@@ -1401,9 +1431,6 @@ describe("NewProjectDialog", () => {
   it("links the personal project from the discovered project picker", async () => {
     const createCalls: Array<Record<string, unknown>> = [];
     const slot = renderEmptyState({
-      listBbProjects: () => ({
-        bbProjects: [{ id: "proj_personal", name: "Personal" }],
-      }),
       createProject: (input: Record<string, unknown>) => {
         createCalls.push(input);
         return { project: { ...project, ...input, id: PROJECT_ID } };

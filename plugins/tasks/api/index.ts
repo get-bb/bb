@@ -578,6 +578,38 @@ async function listTaskPullRequests(
   };
 }
 
+async function listDisplayComments(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  taskId: string,
+) {
+  const comments = store.tasks.listComments(taskId);
+  const threadInfo = await resolveAgentThreadInfo(bb, comments);
+  const providerBadges = await resolveProviderBadges(bb, threadInfo);
+  return {
+    comments: comments.map((comment) => {
+      const info =
+        comment.kind === "agent" && comment.threadId !== null
+          ? threadInfo.get(comment.threadId)
+          : undefined;
+      return {
+        ...comment,
+        threadTitle: info?.title ?? null,
+        provider:
+          info === undefined
+            ? null
+            : (providerBadges.get(info.providerId) ?? {
+                id: info.providerId,
+                name: info.providerId,
+                logoUrl: null,
+                icon: null,
+                strings: { iconTint: null },
+              }),
+      };
+    }),
+  };
+}
+
 export function registerHandlers(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -877,42 +909,42 @@ export function registerHandlers(
       });
       return { comment };
     },
-    async listComments(input) {
-      const comments = store.tasks.listComments(input.taskId);
-      const threadInfo = await resolveAgentThreadInfo(bb, comments);
-      const providerBadges = await resolveProviderBadges(bb, threadInfo);
+    listComments(input) {
+      return listDisplayComments(bb, store, input.taskId);
+    },
+    async activityFeed({ taskId }) {
+      const { comments } = await listDisplayComments(bb, store, taskId);
+      const attachments = store.tasks.listAttachmentsForTaskComments(taskId);
+      const byComment = new Map<
+        string,
+        ReturnType<typeof attachmentMetadata>[]
+      >();
+      for (const attachment of attachments) {
+        if (attachment.commentId === null) continue;
+        const items = byComment.get(attachment.commentId) ?? [];
+        items.push(attachmentMetadata(attachment));
+        byComment.set(attachment.commentId, items);
+      }
       return {
-        comments: comments.map((comment) => {
-          const info =
-            comment.kind === "agent" && comment.threadId !== null
-              ? threadInfo.get(comment.threadId)
-              : undefined;
-          return {
-            ...comment,
-            threadTitle: info?.title ?? null,
-            provider:
-              info === undefined
-                ? null
-                : (providerBadges.get(info.providerId) ?? {
-                    id: info.providerId,
-                    name: info.providerId,
-                    logoUrl: null,
-                    icon: null,
-                    strings: { iconTint: null },
-                  }),
-          };
-        }),
+        entries: comments.map((comment) => ({
+          comment,
+          attachments: byComment.get(comment.id) ?? [],
+        })),
+      };
+    },
+    listLabelsForProjects({ projectIds }) {
+      return { labels: store.tasks.listLabelsForProjects(projectIds) };
+    },
+    taskMetadata({ taskIds, includeAttachmentCounts }) {
+      return {
+        items: store.tasks.taskMetadata(taskIds, includeAttachmentCounts),
       };
     },
     listAttachments(input) {
       const attachments =
         "taskId" in input
           ? store.tasks.listAttachmentsForTask(input.taskId)
-          : "commentId" in input
-            ? store.tasks.listAttachmentsForComment(input.commentId)
-            : store.tasks.listAttachmentsForTaskComments(
-                input.commentsOfTaskId,
-              );
+          : store.tasks.listAttachmentsForComment(input.commentId);
       return {
         attachments: attachments.map(attachmentMetadata),
       };
@@ -977,15 +1009,6 @@ export function registerHandlers(
     listPresets() {
       return { presets: store.tasks.listPresets() };
     },
-    async listMachines() {
-      const machines = await bb.sdk.hosts.list();
-      return {
-        machines: machines.map((machine) => ({
-          id: machine.id,
-          name: machine.name,
-        })),
-      };
-    },
     async searchThreads(input) {
       const query = input.query.trim();
       const limit = Math.min(input.limit ?? MAX_THREAD_SEARCH_RESULTS, 10);
@@ -1020,15 +1043,6 @@ export function registerHandlers(
             title: thread.title ?? thread.titleFallback ?? "Untitled thread",
             status: thread.status,
           })),
-      };
-    },
-    async listBbProjects() {
-      const projects = await bb.sdk.projects.list({ includePersonal: true });
-      return {
-        bbProjects: projects.map((project) => ({
-          id: project.id,
-          name: project.name,
-        })),
       };
     },
     sidebarOpenTaskCount() {

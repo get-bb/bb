@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withReadBatches } from "../read-test-fixtures.js";
 import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -35,7 +36,7 @@ const project = {
 
 function task(key: string, status: Task["status"], position: number) {
   return makeTask({
-    id: `01HZZZZZZZZZZZZZZZZZZZZ${key.replace("-", "")}`,
+    id: `01HZZZZZZZZZZZZZZZZZZZZZT${position}`,
     projectId: PROJECT_ID,
     number: position,
     key,
@@ -114,7 +115,7 @@ describe("incremental task list updates", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },
-      { rpc: trackedRpc(store, calls) },
+      { rpc: withReadBatches(trackedRpc(store, calls)) },
     );
     await slot.findByText("TSK-1 title");
     await waitFor(() => expect(calls.listTasks).toBeGreaterThan(0));
@@ -141,7 +142,7 @@ describe("incremental task list updates", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },
-      { rpc: trackedRpc(store, calls) },
+      { rpc: withReadBatches(trackedRpc(store, calls)) },
     );
     await slot.findByText("TSK-2 title");
     await waitFor(() => expect(calls.listTasks).toBeGreaterThan(0));
@@ -163,7 +164,7 @@ describe("incremental task list updates", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "all" },
-      { rpc: trackedRpc(store, calls) },
+      { rpc: withReadBatches(trackedRpc(store, calls)) },
     );
     await slot.findByText("TSK-1 title");
     await waitFor(() => expect(calls.listTasks).toBeGreaterThan(0));
@@ -186,7 +187,7 @@ describe("incremental board updates", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: `${PROJECT_ID}?view=board` },
-      { rpc: trackedRpc(store, calls) },
+      { rpc: withReadBatches(trackedRpc(store, calls)) },
     );
     await slot.findByText("TSK-2 title");
     const settledList = calls.listTasks;
@@ -214,7 +215,7 @@ describe("incremental board updates", () => {
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: `${PROJECT_ID}?view=board` },
-      { rpc: trackedRpc(store, calls) },
+      { rpc: withReadBatches(trackedRpc(store, calls)) },
     );
     await slot.findByText("TSK-1 title");
     const settledList = calls.listTasks;

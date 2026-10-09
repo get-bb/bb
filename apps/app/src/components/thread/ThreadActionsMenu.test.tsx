@@ -744,7 +744,7 @@ describe("thread actions outside bb's own surfaces", () => {
   const [surface] = SURFACES;
   if (surface === undefined) throw new Error("no surface");
 
-  it("fetches a thread bb has not cached before archiving or deleting it", async () => {
+  it("fetches a thread bb has not cached once, then reuses it for later actions", async () => {
     sdkThreads.get.mockResolvedValue(baseThread);
     renderSurface(surface, { thread: baseThread }, { cached: false });
 
@@ -763,7 +763,10 @@ describe("thread actions outside bb's own surfaces", () => {
         expect.objectContaining({ id: baseThread.id }),
       ),
     );
-    expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
+    expect(sdkThreads.get).toHaveBeenCalledTimes(1);
+    expect(sdkThreads.get).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: baseThread.id }),
+    );
   });
 
   it("opens a plugin's thread panel in the focused thread view", async () => {

@@ -20,7 +20,6 @@ import type {
   PluginSidebarThreadShortcut,
   PluginSidebarThreadsState,
 } from "@get-bb/plugin-sdk";
-import { sdk } from "@/lib/sdk";
 import { useSidebarThreadShortcut as useHostSidebarThreadShortcut } from "@/components/sidebar/sidebarThreadShortcuts";
 import {
   useThreadTitleMentionResources,
@@ -41,7 +40,10 @@ import {
   useEnvironmentPullRequest,
 } from "@/hooks/queries/environment-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
-import { useArchivedThreads } from "@/hooks/queries/thread-queries";
+import {
+  fetchThreadDetail,
+  useArchivedThreads,
+} from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   archivedThreadsListQueryKey,
@@ -293,7 +295,7 @@ export async function resolveThread(
 ): Promise<Thread> {
   return (
     lookupCachedThread(queryClient, threadId) ??
-    (await sdk.threads.get({ threadId }))
+    (await fetchThreadDetail(queryClient, threadId))
   );
 }
 

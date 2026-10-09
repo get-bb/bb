@@ -866,7 +866,7 @@ export function AutomationDetailView({
         </ResourceDefinitionSection>
 
         <ResourceActivitySection label="Runs">
-          {runsState.error !== null ? (
+          {runsState.error !== null && runsState.runs.length === 0 ? (
             <ResourceDetailCollection>
               <div
                 data-automation-runs-state="error"
@@ -926,7 +926,22 @@ export function AutomationDetailView({
                   <RunRow key={run.id} run={run} onOpenThread={onOpenThread} />
                 ))}
               </ResourceDetailCollection>
-              {runsState.nextCursor !== null ? (
+              {runsState.error !== null ? (
+                <div
+                  role="alert"
+                  className="flex items-center justify-center gap-3 pt-2 text-sm text-muted-foreground"
+                >
+                  Could not refresh runs.
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={runsState.retry}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : runsState.nextCursor !== null ? (
                 <div className="flex justify-center pt-1">
                   <Button
                     type="button"
