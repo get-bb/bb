@@ -1,5 +1,6 @@
 import { Ui } from "../guide-blocks";
 import type { GuideFaq, GuideShot } from "../guide-types";
+import { AGENTS_FAQ, COST_FAQ, SLEEP_TROUBLESHOOTING } from "./faq";
 
 export const NESTED_SHOT: GuideShot = {
   src: "/guides/claude-code-and-codex-together/window-nested.png",
@@ -100,10 +101,13 @@ export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
     question: "The reviewer can't see the changes",
     answer: (
       <ol>
-        <li>It's working in a different worktree.</li>
         <li>
-          Ask your agent to start the reviewer in its own worktree, and to
-          commit before asking for a review.
+          It started in a separate worktree, so it can't see work that isn't
+          committed.
+        </li>
+        <li>
+          Ask your agent to commit, then start the reviewer in this same
+          worktree, as the prompt from <strong>Copy for agent</strong> does.
         </li>
       </ol>
     ),
@@ -111,34 +115,14 @@ export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
   {
     question: "The reviewer's thread disappeared",
     answer: (
-      <ol>
-        <li>
-          Agents often archive a thread when its work is done. Open{" "}
-          <Ui icon="settings">Settings → Archived threads</Ui> and choose{" "}
-          <strong>Unarchive</strong>.
-        </li>
-        <li>
-          To keep it, ask your agent to leave the reviewer's thread open, as the
-          prompt from <strong>Copy for agent</strong> does.
-        </li>
-      </ol>
+      <p>
+        If it was archived, open{" "}
+        <Ui icon="settings">Settings → Archived threads</Ui> and choose{" "}
+        <strong>Unarchive</strong>.
+      </p>
     ),
   },
-  {
-    question: "A thread stopped when my computer went to sleep",
-    answer: (
-      <ol>
-        <li>
-          Once the computer is back, send that thread a message to pick up where
-          it left off. Your agent is told the thread was interrupted.
-        </li>
-        <li>
-          To keep a Mac awake while bb runs, open{" "}
-          <Ui icon="settings">Settings → Keep Awake</Ui> and turn it on.
-        </li>
-      </ol>
-    ),
-  },
+  SLEEP_TROUBLESHOOTING,
 ];
 
 export const TEAM_FAQ: GuideFaq[] = [
@@ -161,15 +145,7 @@ export const TEAM_FAQ: GuideFaq[] = [
       </>
     ),
   },
-  {
-    question: "Which agents can work together?",
-    answer: (
-      <p>
-        Any agent you use in bb, including Claude Code, Codex, Cursor, OpenCode,
-        and Pi. Any of them can be the one in charge, and any can be brought in.
-      </p>
-    ),
-  },
+  AGENTS_FAQ,
   {
     question: "How do agents reach each other?",
     answer: (
@@ -191,12 +167,5 @@ export const TEAM_FAQ: GuideFaq[] = [
       </p>
     ),
   },
-  {
-    question: "Does this cost extra?",
-    answer: (
-      <p>
-        bb is free. Each agent uses its own plan or API key, as it does now.
-      </p>
-    ),
-  },
+  COST_FAQ,
 ];

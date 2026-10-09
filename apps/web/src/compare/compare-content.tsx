@@ -328,9 +328,8 @@ export function faqTeam(contrast: ReactNode): CompareFaq {
       <p>
         Yes, free at any team size{contrast}. Teams can share one bb on an
         always-on machine, so everyone sees the same projects and threads, or
-        each person can run their own and share work through Git as usual.{" "}
-        <a href="/guides/remote-dev-servers#team">See how</a>. bb doesn’t offer
-        team plans, SSO, or a support SLA.
+        each person can run their own and share work through Git as usual. bb
+        doesn’t offer team plans, SSO, or a support SLA.
       </p>
     ),
   };

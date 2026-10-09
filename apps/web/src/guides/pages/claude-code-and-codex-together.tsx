@@ -39,7 +39,7 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
 
 6. Stop. Leave the reviewer's thread open so I can read it; don't archive it.
 
-Reply with what you built, what each review found, what you fixed, and what's left for me.`,
+Reply with what you built, what the review found, what you fixed, and what's left for me.`,
 );
 
 export const meta: GuideMeta = {
@@ -143,13 +143,12 @@ export const guide: Guide = {
       question: "Can Codex build and Claude Code review?",
       answer: (
         <p>
-          Yes. Start a Codex thread instead and ask it to have Claude Code
-          review. To keep a manager that runs every morning, or to fan out
-          across a whole codebase, see{" "}
+          Yes, but this page's prompt is for Claude Code building. Use the
+          prompt in{" "}
           <a href="/guides/orchestrate-coding-agents">
             Orchestrate your coding agents
-          </a>
-          .
+          </a>{" "}
+          in a Codex thread, and name Claude Code as the reviewer.
         </p>
       ),
     },

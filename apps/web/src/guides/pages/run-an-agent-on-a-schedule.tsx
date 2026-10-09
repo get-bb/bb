@@ -2,6 +2,7 @@ import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
+import { AGENTS_FAQ } from "../shared/faq";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -214,7 +215,8 @@ export const guide: Guide = {
           </li>
           <li>
             Check that bb and the computer running the agent were awake at that
-            time. Scheduling doesn't wake a sleeping computer.
+            time. Scheduling doesn't wake a sleeping computer; a missed run
+            happens once when it's back.
           </li>
           <li>
             Choose <strong>Run now</strong>. If that works, the schedule or the
@@ -323,15 +325,7 @@ export const guide: Guide = {
         </p>
       ),
     },
-    {
-      question: "Which agents can run an automation?",
-      answer: (
-        <p>
-          Any agent you can use in a bb thread, including Claude Code, Codex,
-          Cursor, and OpenCode. Each run uses that agent's subscription.
-        </p>
-      ),
-    },
+    AGENTS_FAQ,
     {
       question: "How do I change an automation later?",
       answer: (

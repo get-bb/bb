@@ -154,10 +154,10 @@ export const guide: Guide = {
       question: "Will it buy things or send messages for me?",
       answer: (
         <p>
-          Only if you ask. The prompt from <strong>Copy for agent</strong> tells
-          it to stop and ask before buying, sending, or submitting anything. You
-          can choose <strong>Stop</strong> or <strong>Take over</strong> at any
-          point.
+          The prompt from <strong>Copy for agent</strong> tells it to stop and
+          ask before buying, sending, or submitting anything. That's an
+          instruction, not a lock, so watch the tab and choose{" "}
+          <strong>Stop</strong> if anything looks wrong.
         </p>
       ),
     },
@@ -167,16 +167,6 @@ export const guide: Guide = {
         <p>
           Ask your agent to say so instead of guessing, and to link the page it
           checked so you can look yourself.
-        </p>
-      ),
-    },
-    {
-      question: "Can it handle two-factor sign-in?",
-      answer: (
-        <p>
-          Choose <strong>Take over</strong>, enter the code yourself, and hand
-          the tab back. Once you're signed in to a site in bb's Browser, it
-          usually stays signed in.
         </p>
       ),
     },
