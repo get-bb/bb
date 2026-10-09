@@ -52,9 +52,21 @@ it("publishes immutable answers, confines reads to their thread, and survives re
       `/frame?thread=thr_test&id=${htmlId}`,
     );
     expect(page.status).toBe(200);
-    expect(page.headers.get("content-security-policy")).toBe(
-      "sandbox allow-scripts",
+    const csp = (page.headers.get("content-security-policy") ?? "")
+      .split(";")
+      .map((part) => part.trim());
+    expect(csp).toEqual(
+      expect.arrayContaining([
+        "sandbox allow-scripts",
+        "default-src 'none'",
+        "script-src 'unsafe-inline'",
+        "connect-src 'none'",
+        "form-action 'none'",
+        "base-uri 'none'",
+        "img-src data: blob: https://upload.wikimedia.org",
+      ]),
     );
+    expect(csp.join(" ")).not.toMatch(/(^|\s)(https:|\*)(\s|$)/);
     expect(await page.text()).toContain("Repot a houseplant");
     expect(
       (

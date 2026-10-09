@@ -106,11 +106,12 @@ function bridge(id: string, state: unknown, theme: WidgetTheme) {
   let theme = init.theme || ${JSON.stringify(theme)};
   apply(theme);
   let state = "state" in init ? init.state : ${JSON.stringify(state ?? null)};
+  let version = typeof init.version === "number" ? init.version : 0;
   const actions = new Map();
   window.answer = Object.freeze({
     id: ID,
     get state() { return state; },
-    save(value) { try { state = plain(value); post("state", { state }); } catch {} },
+    save(value) { try { state = plain(value); post("state", { state, base: version }); } catch {} },
     onState(callback) { stateListeners.add(callback); return () => stateListeners.delete(callback); },
     get theme() { return theme; },
     onTheme(callback) { listeners.add(callback); return () => listeners.delete(callback); },
@@ -125,7 +126,7 @@ function bridge(id: string, state: unknown, theme: WidgetTheme) {
     const message = event.data;
     if (event.source !== parent || !message || message.source !== SOURCE) return;
     if (message.type === "theme") { theme = message.theme; apply(theme); notify(listeners, theme); }
-    if (message.type === "state") { state = message.state; notify(stateListeners, state); }
+    if (message.type === "state") { state = message.state; if (typeof message.version === "number") version = message.version; notify(stateListeners, state); }
     if (message.type === "font" && typeof message.family === "string" && message.data instanceof ArrayBuffer) {
       try { const face = new FontFace(message.family, message.data, { weight: "100 900" }); document.fonts.add(face); face.load().catch(() => {}); } catch {}
     }
@@ -174,9 +175,22 @@ function bridge(id: string, state: unknown, theme: WidgetTheme) {
 }
 
 export const FRAME_PATH = "/frame";
+export const IMAGE_HOSTS = ["https://upload.wikimedia.org"] as const;
+export const FRAME_CSP = [
+  "sandbox allow-scripts",
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  `img-src data: blob: ${IMAGE_HOSTS.join(" ")}`,
+  "media-src data: blob:",
+  "font-src data: blob:",
+  "connect-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+].join("; ");
 export const FRAME_HEADERS = {
   "content-type": "text/html; charset=utf-8",
-  "content-security-policy": "sandbox allow-scripts",
+  "content-security-policy": FRAME_CSP,
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "cache-control": "private, max-age=3600",

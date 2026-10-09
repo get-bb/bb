@@ -13,7 +13,7 @@ type Options = {
   threadId: string;
   initial: LiveSnapshot;
   actions: string[];
-  onRemoteState: (state: unknown) => void;
+  onRemoteState: (state: unknown, version: number) => void;
   onCommand: (action: string, args: unknown[]) => Promise<unknown>;
 };
 const SAVE_DELAY_MS = 300;
@@ -97,7 +97,7 @@ export function useLiveAnswer({
     const next = await rpc.call("getState", { id, threadId });
     if (next.version > version.current && !pending.current) {
       version.current = next.version;
-      handlers.current.onRemoteState(next.state);
+      handlers.current.onRemoteState(next.state, next.version);
     }
   }, [rpc, id, threadId]);
   useRealtime(STATE_CHANNEL, (payload) => {

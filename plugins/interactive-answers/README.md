@@ -47,11 +47,14 @@ recently, and the card shows "Agent · <action>" each time the agent acts.
 
 ## HTML answers
 
-HTML answers are served from the plugin's `/frame` route with
-`Content-Security-Policy: sandbox allow-scripts` and rendered in an
+HTML answers are served from the plugin's `/frame` route and rendered in an
 `<iframe sandbox="allow-scripts">`, so scripts run in an opaque origin with no
-access to bb, its cookies, or the conversation, like inline-vis previews. As
-with inline-vis, scripts can load remote content and use the network.
+access to bb, its cookies, or the conversation. The route's
+Content-Security-Policy also blocks the network: `default-src 'none'`, inline
+scripts and styles only, `connect-src 'none'`, `form-action 'none'`,
+`base-uri 'none'`, and images only from `data:`, `blob:`, and
+`https://upload.wikimedia.org`. An answer cannot send what you type anywhere,
+and viewing one contacts no third party except Wikimedia for photos it shows.
 
 The frame talks to bb only through `postMessage`, and bb accepts messages only
 from that frame's window:

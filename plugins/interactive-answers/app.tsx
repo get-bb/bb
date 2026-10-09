@@ -436,14 +436,16 @@ function HtmlAnswerView({
       "*",
     );
   const latestState = useRef<{ state: unknown } | null>(null);
+  const remoteVersion = useRef(initial.version);
   const live = useLiveAnswer({
     id,
     threadId,
     initial,
     actions,
-    onRemoteState: (state) => {
+    onRemoteState: (state, version) => {
       latestState.current = { state };
-      post({ type: "state", state });
+      remoteVersion.current = version;
+      post({ type: "state", state, version });
     },
     onCommand: (action, args) =>
       new Promise((resolve, reject) => {
@@ -505,8 +507,8 @@ function HtmlAnswerView({
   gestures.current = { send, open };
   const src = useMemo(
     () =>
-      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, theme: readTheme() }))}`,
-    [id, threadId, initial.state],
+      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, version: initial.version, theme: readTheme() }))}`,
+    [id, threadId, initial.state, initial.version],
   );
   useEffect(() => {
     const budgets = {
@@ -539,6 +541,7 @@ function HtmlAnswerView({
         type?: unknown;
         height?: unknown;
         state?: unknown;
+        base?: unknown;
         url?: unknown;
         actions?: unknown;
         name?: unknown;
@@ -557,8 +560,19 @@ function HtmlAnswerView({
       )
         setHeight(Math.min(4000, Math.max(40, Math.ceil(message.height))));
       if (message.type === "state") {
-        latestState.current = { state: message.state };
-        save(message.state);
+        if (
+          typeof message.base === "number" &&
+          message.base < remoteVersion.current
+        ) {
+          post({
+            type: "state",
+            state: latestState.current?.state ?? null,
+            version: remoteVersion.current,
+          });
+        } else {
+          latestState.current = { state: message.state };
+          save(message.state);
+        }
       }
       if (
         message.type === "event" &&
@@ -634,7 +648,11 @@ function HtmlAnswerView({
           style={{ height }}
           onLoad={() => {
             if (latestState.current)
-              post({ type: "state", state: latestState.current.state });
+              post({
+                type: "state",
+                state: latestState.current.state,
+                version: remoteVersion.current,
+              });
             post({ type: "theme", theme: readTheme() });
             void loadUiFont().then((data) => {
               if (data) post({ type: "font", family: UI_FONT_FAMILY, data });

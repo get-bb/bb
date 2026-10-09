@@ -338,3 +338,69 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   });
   view.lifecycle.unmount();
 });
+
+it("keeps a newer remote state when a frame saves the state it booted with", async () => {
+  const app = await loadPluginApp(() => import("./app.js"));
+  const backend = server("html");
+  backend.shared.state = { step: 2 };
+  backend.shared.version = 3;
+  const view = renderSlot(app.messageDirectives[0]!, props, {
+    rpc: backend.rpc,
+  });
+  const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
+  expect(
+    JSON.parse(decodeURIComponent(frame.getAttribute("src")!.split("#")[1]))
+      .version,
+  ).toBe(3);
+  const posted: unknown[] = [];
+  frame.contentWindow!.postMessage = ((message: unknown) => {
+    posted.push(message);
+  }) as Window["postMessage"];
+  const send = (data: Record<string, unknown>) =>
+    fireEvent(
+      window,
+      new MessageEvent("message", {
+        data: { source: "interactive-answer", id: answer.id, ...data },
+        source: frame.contentWindow,
+      }),
+    );
+  backend.shared.state = { step: 6 };
+  backend.shared.version = 4;
+  await view.behavior.emitRealtime("state", {
+    id: answer.id,
+    threadId: answer.threadId,
+    version: 4,
+    by: "agent",
+  });
+  await waitFor(() =>
+    expect(posted).toContainEqual(
+      expect.objectContaining({
+        type: "state",
+        state: { step: 6 },
+        version: 4,
+      }),
+    ),
+  );
+  posted.length = 0;
+  send({ type: "state", state: { step: 2 }, base: 3 });
+  expect(posted).toContainEqual(
+    expect.objectContaining({ type: "state", state: { step: 6 }, version: 4 }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  expect(backend.shared.state).toEqual({ step: 6 });
+  expect(
+    backend.calls.some(
+      (c) =>
+        c.method === "setState" &&
+        JSON.stringify(c.input.state) === JSON.stringify({ step: 2 }),
+    ),
+  ).toBe(false);
+  posted.length = 0;
+  fireEvent.load(frame);
+  expect(posted).toContainEqual(
+    expect.objectContaining({ type: "state", state: { step: 6 }, version: 4 }),
+  );
+  send({ type: "state", state: { step: 7 }, base: 4 });
+  await waitFor(() => expect(backend.shared.state).toEqual({ step: 7 }));
+  view.lifecycle.unmount();
+});
