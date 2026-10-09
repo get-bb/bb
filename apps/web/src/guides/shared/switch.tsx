@@ -137,8 +137,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
   return {
     ...meta,
     description: `Pick up where ${oldTool} left off. Open the task where it was, and your agent reads the old conversation, tells you where things stand, and keeps going.`,
-    concept: null,
-    heroBadge: <SwitchConcept tool={tool.id} />,
+    concept: <SwitchConcept tool={tool.id} />,
     agentPrompt: switchPrompt(tool),
     requirement: null,
     steps: [

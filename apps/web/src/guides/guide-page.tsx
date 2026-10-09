@@ -101,9 +101,6 @@ function GuideHero({ guide }: { guide: Guide }) {
   return (
     <header className="hero cmp-hero gd-hero">
       <h1>{brandProse(guide.title)}</h1>
-      {guide.heroBadge ? (
-        <div className="gd-hero-badge">{guide.heroBadge}</div>
-      ) : null}
       <p className="sub">{brandProse(guide.description)}</p>
       <div className="gd-hero-actions">
         <CopyForAgent

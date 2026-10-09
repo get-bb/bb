@@ -45,7 +45,6 @@ export interface GuideFaq {
 export interface Guide extends GuideMeta {
   description: string;
   concept: ReactNode;
-  heroBadge: ReactNode | null;
   agentPrompt: string;
   requirement: string | null;
   steps: GuideStep[];
