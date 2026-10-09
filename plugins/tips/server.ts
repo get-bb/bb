@@ -320,7 +320,7 @@ export default async function tipsPlugin(bb: BbPluginApi): Promise<void> {
   const listCommand = cliCommand({
     summary: "List the tips you could see now",
     description:
-      "Lists tips that are eligible for this setup: the three in the feed under the New thread composer first, newest at the top, then the rest of the library by priority. Tips that need a particular app (desktop or web) are included.",
+      "Lists tips that are eligible for this setup: the three in the feed under the New thread composer first, newest at the top, then the rest of the library in ranked order. Tips that need a particular app (desktop or web) are included.",
     options: LIST_OPTIONS,
     async run(input) {
       const view = await listView(null, input.options.all);

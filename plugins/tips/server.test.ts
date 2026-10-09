@@ -117,7 +117,7 @@ async function setup(fixture: Fixture = {}) {
 
 const NEW_USER = { threadCount: 1, finishedThreadCount: 1 };
 const REGULAR = { threadCount: 10, finishedThreadCount: 3 };
-const NEW_USER_SET = ["child-threads", "set-up-for-me", "phone"];
+const NEW_USER_SET = ["child-threads", "phone", "build-plugin"];
 
 describe("tips plugin registration", () => {
   it("declares a Show tips switch and the bb tips command", async () => {
@@ -165,22 +165,30 @@ describe("current tips", () => {
     }
   });
 
-  it("puts Account Pooler first after a rate limit", async () => {
-    const host = await setup({
-      ...NEW_USER,
-      plugins: { "account-pool": false },
-    });
-    await host.harness.behavior.emitThreadEvent(
-      "turn.failed",
-      makeTurnFailedEvent({
-        errorInfo: {
-          category: "rate-limit",
-          providerCode: null,
-          httpStatusCode: 429,
-        },
-      }),
-    );
-    expect((await host.current())[0]).toBe("account-pool");
+  it("brings Account Pooler in ahead of other unranked tips after a rate limit", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.UTC(2026, 9, 5, 12));
+      const host = await setup({
+        ...NEW_USER,
+        plugins: { "account-pool": false },
+      });
+      await host.harness.behavior.emitThreadEvent(
+        "turn.failed",
+        makeTurnFailedEvent({
+          errorInfo: {
+            category: "rate-limit",
+            providerCode: null,
+            httpStatusCode: 429,
+          },
+        }),
+      );
+      expect(await host.current()).toEqual(NEW_USER_SET);
+      vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 11));
+      expect((await host.current())[0]).toBe("account-pool");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores turn failures that are not rate limits", async () => {
@@ -316,7 +324,7 @@ describe("dismissing and acting", () => {
     const refilled = await host.current();
     expect(refilled).toHaveLength(3);
     expect(refilled).not.toContain("child-threads");
-    expect(refilled.slice(1)).toEqual(["set-up-for-me", "phone"]);
+    expect(refilled).toEqual(["set-up-for-me", "phone", "build-plugin"]);
     expect(host.harness.realtimeSignals).toContainEqual({
       channel: "tips-changed",
       payload: {},
@@ -346,7 +354,7 @@ describe("dismissing and acting", () => {
       const next = await host.current();
       expect(next).toHaveLength(3);
       expect(next).not.toContain("child-threads");
-      expect(next.slice(1)).toEqual(["set-up-for-me", "phone"]);
+      expect(next).toEqual(["set-up-for-me", "phone", "build-plugin"]);
     } finally {
       vi.useRealTimers();
     }
@@ -362,8 +370,7 @@ describe("dismissing and acting", () => {
       expect(await host.current()).toEqual(NEW_USER_SET);
       vi.setSystemTime(Date.UTC(2026, 9, 5, 12, 20));
       const next = await host.current();
-      expect(next.slice(1)).toEqual(["child-threads", "set-up-for-me"]);
-      expect(next[0]).not.toBe("phone");
+      expect(next).toEqual(["set-up-for-me", "child-threads", "phone"]);
     } finally {
       vi.useRealTimers();
     }
@@ -386,7 +393,7 @@ describe("bb tips", () => {
     for (const id of NEW_USER_SET) {
       expect(result.stdout).toContain(`${id} (in the feed)`);
     }
-    expect(result.stdout).toContain("build-plugin\n");
+    expect(result.stdout).toContain("set-up-for-me\n");
     expect(result.stdout).not.toContain("account-pool");
   });
 

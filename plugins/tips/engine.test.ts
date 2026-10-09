@@ -20,6 +20,7 @@ import {
   parseTipsState,
   rankEligibleTips,
   resetTips,
+  tierOrder,
   visitFeed,
   type LiveSignals,
   type TipsState,
@@ -89,6 +90,7 @@ function testTip(
     addedAt: "1.0.0",
     reviewedAt: "1.0.0",
     held: false,
+    tier: "unranked",
     priority: 10,
     perVersion: false,
     eligible: () => true,
@@ -311,25 +313,89 @@ describe("classifyAudience", () => {
   });
 });
 
-describe("contextual ranking", () => {
-  it("leads with threads waiting on you, then Account Pooler after a recent rate limit", () => {
+describe("tier ranking", () => {
+  it("orders tier 1, then unranked, then tier 2, then tier 3, with boosts and priority inside a tier", () => {
+    const catalog = [
+      testTip("tier-3", { tier: 3, priority: 99 }),
+      testTip("tier-2", { tier: 2, priority: 50 }),
+      testTip("unranked", { priority: 70 }),
+      testTip("tier-1-low", { tier: 1, priority: 1 }),
+      testTip("tier-1-high", { tier: 1, priority: 5 }),
+      testTip("tier-1-boosted", { tier: 1, priority: 0, boost: () => 100 }),
+      testTip("unranked-urgent", { priority: 0, boost: () => 100 }),
+    ];
+    expect(
+      rankEligibleTips(createTipsState(START, "1.0.0"), signals(), catalog).map(
+        (definition) => definition.id,
+      ),
+    ).toEqual([
+      "tier-1-boosted",
+      "tier-1-high",
+      "tier-1-low",
+      "unranked-urgent",
+      "unranked",
+      "tier-2",
+      "tier-3",
+    ]);
+  });
+
+  it("shows tier 3 only after every higher-tier tip has been shown", () => {
+    const catalog = [
+      testTip("late", { tier: 3, priority: 99 }),
+      testTip("first", { tier: 1 }),
+      testTip("middle", { priority: 1 }),
+      testTip("second-a", { tier: 2, priority: 2 }),
+      testTip("second-b", { tier: 2, priority: 1 }),
+    ];
+    const first = visit(createTipsState(START, "1.0.0"), 0, catalog);
+    expect(first.ids).toEqual(["first", "middle", "second-a"]);
+    const second = visit(first.state, LATER, catalog);
+    expect(second.ids).toEqual(["second-b", "first", "middle"]);
+    const third = visit(second.state, LATER * 2, catalog);
+    expect(third.ids).toEqual(["late", "second-b", "first"]);
+  });
+
+  it("keeps held tips out whatever their tier", () => {
+    const catalog = [
+      testTip("held-first", { tier: 1, held: true }),
+      testTip("late", { tier: 3 }),
+    ];
+    expect(visit(createTipsState(START, "1.0.0"), 0, catalog).ids).toEqual([
+      "late",
+    ]);
+  });
+
+  it("ranks the catalog by tier and leads the unranked tips with automations", () => {
     const context = {
       hasFinishedThread: true,
       finishedThreadCount: 5,
       threadCount: 20,
-      installedPlugins: { "account-pool": false },
+      daysSinceFirstSeen: 3,
+      availableProviderCount: 2,
+      installedPlugins: { "account-pool": false, automations: true },
       rateLimited: true,
     };
-    const ranked = (overrides: Partial<TipSignals>) =>
+    const ranked = (overrides: Partial<TipSignals> = {}) =>
       rankEligibleTips(
         createTipsState(START, "1.0.0"),
         signals({ ...context, ...overrides }),
-      ).map((definition) => definition.id);
-    expect(ranked({}).slice(0, 2)).toEqual(["account-pool", "child-threads"]);
-    expect(ranked({ recentlyRateLimited: true })[0]).toBe("account-pool");
-    expect(
-      ranked({ recentlyRateLimited: true, waitingThreadCount: 4 }).slice(0, 2),
-    ).toEqual(["open-threads-that-need-me", "account-pool"]);
+      );
+    const ids = ranked().map((definition) => definition.id);
+    const orders = ranked().map((definition) => tierOrder(definition.tier));
+    expect(orders).toEqual([...orders].sort((left, right) => left - right));
+    expect(ids.slice(0, 5)).toEqual([
+      "child-threads",
+      "another-agent",
+      "phone",
+      "build-plugin",
+      "decision-buttons",
+    ]);
+    expect(ids[5]).toBe("automations");
+    expect(ids.at(-1)).toBe("queue-or-steer");
+    expect(ranked({ recentlyRateLimited: true })[5]?.id).toBe("account-pool");
+    expect(ranked({ waitingThreadCount: 4 })[5]?.id).toBe(
+      "open-threads-that-need-me",
+    );
   });
 });
 

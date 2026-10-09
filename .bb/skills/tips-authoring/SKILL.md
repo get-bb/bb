@@ -23,7 +23,9 @@ orders the work.
 4. **Draw the illustration** in `plugins/tips/illustrations.tsx` from
    `diagram-kit.tsx` parts, with one accent and one named hover animation. Add a
    kit part, plus a Diagram kit story cell, only when a second drawing needs it.
-5. **Set `eligible`, `retireWhen`, and any `boost`.** Add `engine.test.ts`
+5. **Set `tier`, `eligible`, `retireWhen`, and any `boost`.** Use
+   `"unranked"` unless the owner placed the tip in a tier; AUTHORING.md's
+   Tiers section explains the order. Never record metrics in the repo. Add `engine.test.ts`
    cases when the logic is new.
 6. **Check it in Ladle.** Open the `plugins/Tips` Illustrations and Diagram kit
    stories, and hover the new drawing in light and dark.

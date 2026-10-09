@@ -41,6 +41,7 @@ function signals(overrides: Partial<TipSignals> = {}): TipSignals {
 
 const FIXTURES: readonly TipSignals[] = [
   signals(),
+  signals({ availableProviderCount: 1 }),
   signals({
     installedPlugins: {
       "account-pool": false,
@@ -106,6 +107,27 @@ describe("tip catalog", () => {
         ).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("keeps the agreed tiers", () => {
+    const tierOf = (id: string) =>
+      TIP_CATALOG.find((definition) => definition.id === id)?.tier;
+    for (const id of [
+      "child-threads",
+      "phone",
+      "another-agent",
+      "build-plugin",
+    ]) {
+      expect(tierOf(id), id).toBe(1);
+    }
+    for (const id of ["remote-access", "bb-cli", "add-agent"]) {
+      expect(tierOf(id), id).toBe(2);
+    }
+    expect(tierOf("queue-or-steer")).toBe(3);
+    const unranked = TIP_CATALOG.filter(
+      (definition) => definition.tier === "unranked",
+    ).sort((left, right) => right.priority - left.priority);
+    expect(unranked[0]?.id).toBe("automations");
   });
 
   it("has no dead tips: every tip that is not held can show for someone", () => {

@@ -10,6 +10,7 @@ export const ACCOUNT_POOL_PLUGIN_ID = "account-pool";
 export const AUTOMATIONS_PLUGIN_ID = "automations";
 export const BROWSER_AUTOMATION_PLUGIN_ID = "browser-automation";
 export const PROVIDER_USAGE_PLUGIN_ID = "bb--provider-usage";
+export const CONNECT_PLUGIN_ID = "connect";
 
 export interface TipSignals {
   client: TipClient | null;
@@ -42,6 +43,8 @@ export interface TipSource {
   version?: string;
 }
 
+export type TipTier = 1 | 2 | 3 | "unranked";
+
 export interface TipDefinition {
   id: string;
   title: string;
@@ -54,6 +57,7 @@ export interface TipDefinition {
   reviewedAt: string;
   expiresAt?: string;
   held: boolean;
+  tier: TipTier;
   priority: number;
   perVersion: boolean;
   eligible(signals: TipSignals): boolean;
@@ -143,6 +147,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "See what's new",
       path: "/settings/updates#whats-new",
     },
+    tier: "unranked",
     priority: 130,
     perVersion: true,
     boost: () => NEW_VERSION_BOOST,
@@ -165,6 +170,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Set up Account Pooler",
       pluginId: ACCOUNT_POOL_PLUGIN_ID,
     },
+    tier: "unranked",
     priority: 120,
     eligible: (signals) =>
       isInstalled(signals, ACCOUNT_POOL_PLUGIN_ID) &&
@@ -187,6 +193,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Spin up three child threads that each try a different approach to this task, then compare their results and recommend one. Task: ",
     },
+    tier: 1,
     priority: 110,
     eligible: (signals) =>
       signals.hasFinishedThread && !usesChildThreadsHere(signals),
@@ -206,6 +213,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Review my bb setup (settings, machines, and providers), suggest improvements, and make the changes I approve.",
     },
+    tier: "unranked",
     priority: 100,
     eligible: (signals) => signals.hasFinishedThread,
   }),
@@ -223,6 +231,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Get the app",
       path: "/settings/mobile",
     },
+    tier: 1,
     priority: 90,
     eligible: (signals) =>
       signals.hasFinishedThread &&
@@ -247,6 +256,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Turn on the Browser Automation plugin if it is off, then open my app in a browser, click through the main flow, and tell me what is broken.",
     },
+    tier: "unranked",
     priority: 80,
     eligible: (signals) =>
       signals.hasFinishedThread &&
@@ -268,6 +278,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Try it",
       prompt: "Build me a bb plugin that ",
     },
+    tier: 1,
     priority: 75,
     eligible: (signals) =>
       signals.hasFinishedThread && signals.daysSinceFirstSeen <= NEW_USER_DAYS,
@@ -287,6 +298,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Find my threads that are waiting on me (open questions, errors, or unread results) and open them side by side in split panes with bb thread open --split.",
     },
+    tier: "unranked",
     priority: 70,
     eligible: (signals) =>
       signals.waitingThreadCount >= WAITING_THREADS_FOR_TIP &&
@@ -308,6 +320,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Set up an automation that runs every weekday at 8am, uses Browser Automation to read my unread email in bb's browser (where I am signed in), and writes me a short digest of what needs my attention. Turn on Browser Automation first if it is off.",
     },
+    tier: "unranked",
     priority: 65,
     eligible: (signals) =>
       signals.finishedThreadCount >= 3 &&
@@ -330,6 +343,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       prompt:
         "Build me a bb plugin that gives you a tool to ask me a decision with one-click answer buttons in the thread, then use it whenever you need a choice from me.",
     },
+    tier: 1,
     priority: 60,
     eligible: (signals) => signals.finishedThreadCount >= 3,
   }),
@@ -347,7 +361,8 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Try it",
       prompt: "Create an automation that runs every weekday at 9am and ",
     },
-    priority: 55,
+    tier: "unranked",
+    priority: 150,
     eligible: (signals) =>
       signals.finishedThreadCount >= 5 &&
       isEnabled(signals, AUTOMATIONS_PLUGIN_ID) &&
@@ -367,6 +382,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Choose what Enter does",
       path: "/settings",
     },
+    tier: 3,
     priority: 50,
     eligible: (signals) => signals.finishedThreadCount >= 3,
     retireWhen: (signals) => signals.queuedFollowUp,
@@ -385,6 +401,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Search threads",
       commandId: "thread.search",
     },
+    tier: "unranked",
     priority: 42,
     eligible: (signals) =>
       signals.threadCount >= 10 && onClient(signals, hasKeyboard),
@@ -403,9 +420,91 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Open palette",
       commandId: "palette.open",
     },
+    tier: "unranked",
     priority: 40,
     eligible: (signals) =>
       signals.daysSinceFirstSeen >= 3 && onClient(signals, hasKeyboard),
+  }),
+  tip({
+    id: "another-agent",
+    illustration: "another-agent",
+    tone: "amber",
+    source: { kind: "feature", ref: "multiple providers" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Try a second agent on the same task",
+    body: "Ask bb to hand this task to another agent in a child thread, then compare the two results.",
+    action: {
+      kind: "prompt",
+      label: "Try it",
+      prompt:
+        "Start a child thread that does this task with a different agent provider than the one you are using, then compare both results and tell me which is better. Task: ",
+    },
+    tier: 1,
+    priority: 105,
+    eligible: (signals) =>
+      signals.hasFinishedThread && signals.availableProviderCount >= 2,
+  }),
+  tip({
+    id: "remote-access",
+    illustration: "remote-access",
+    tone: "orange",
+    source: { kind: "feature", ref: "connect plugin" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Open bb from another computer",
+    body: "bb connect gives your bb a private web address, so you can reach it from any browser.",
+    action: {
+      kind: "open-plugin",
+      label: "Set up bb connect",
+      pluginId: CONNECT_PLUGIN_ID,
+    },
+    tier: 2,
+    priority: 95,
+    eligible: (signals) =>
+      signals.hasFinishedThread &&
+      onClient(
+        signals,
+        (client) => client.surface === "desktop" || client.surface === "web",
+      ),
+  }),
+  tip({
+    id: "bb-cli",
+    illustration: "bb-cli",
+    tone: "blue",
+    source: { kind: "guide", ref: "bb guide cli" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Drive bb from scripts",
+    body: "The bb command lets scripts and agents start threads, check on them, and change settings.",
+    action: {
+      kind: "prompt",
+      label: "Try it",
+      prompt: "Write me a shell script that uses the bb CLI to ",
+    },
+    tier: 2,
+    priority: 85,
+    eligible: (signals) =>
+      signals.hasFinishedThread && onClient(signals, hasKeyboard),
+  }),
+  tip({
+    id: "add-agent",
+    illustration: "add-agent",
+    tone: "green",
+    source: { kind: "feature", ref: "multiple providers" },
+    addedAt: "0.46.0",
+    reviewedAt: "0.46.0",
+    title: "Add a second coding agent",
+    body: "bb can run more than one agent, so you can compare them or keep working when one hits a limit.",
+    action: {
+      kind: "open-page",
+      label: "Open Providers",
+      path: "/settings/providers",
+    },
+    tier: 2,
+    priority: 80,
+    eligible: (signals) =>
+      signals.hasFinishedThread && signals.availableProviderCount < 2,
   }),
   tip({
     id: "provider-usage",
@@ -421,6 +520,7 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
       label: "Open Provider usage",
       pluginId: PROVIDER_USAGE_PLUGIN_ID,
     },
+    tier: 2,
     priority: 35,
     eligible: (signals) =>
       signals.threadCount >= 10 && isEnabled(signals, PROVIDER_USAGE_PLUGIN_ID),

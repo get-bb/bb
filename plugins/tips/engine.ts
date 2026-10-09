@@ -3,6 +3,7 @@ import {
   TIP_CATALOG,
   renderTip,
   type TipDefinition,
+  type TipTier,
   type TipSignals,
 } from "./catalog.js";
 import {
@@ -292,6 +293,17 @@ export function retireTips(
   return next;
 }
 
+const TIER_ORDER: Record<TipTier, number> = {
+  1: 0,
+  unranked: 1,
+  2: 2,
+  3: 3,
+};
+
+export function tierOrder(tier: TipTier): number {
+  return TIER_ORDER[tier];
+}
+
 export function rankEligibleTips(
   state: TipsState,
   signals: TipSignals,
@@ -305,6 +317,7 @@ export function rankEligibleTips(
     )
     .sort(
       (left, right) =>
+        tierOrder(left.definition.tier) - tierOrder(right.definition.tier) ||
         right.definition.boost(signals) - left.definition.boost(signals) ||
         right.definition.priority - left.definition.priority ||
         left.index - right.index,
@@ -502,7 +515,9 @@ export function listTips(
   return [...catalog]
     .sort(
       (left, right) =>
-        position(left) - position(right) || right.priority - left.priority,
+        position(left) - position(right) ||
+        tierOrder(left.tier) - tierOrder(right.tier) ||
+        right.priority - left.priority,
     )
     .flatMap((definition) => {
       const record = recordFor(state, definition, signals);

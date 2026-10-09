@@ -25,6 +25,10 @@ export const TIP_IDS = [
   "thread-search",
   "command-palette",
   "provider-usage",
+  "another-agent",
+  "remote-access",
+  "bb-cli",
+  "add-agent",
 ] as const;
 export const tipIdSchema = z.enum(TIP_IDS);
 export type TipId = z.infer<typeof tipIdSchema>;

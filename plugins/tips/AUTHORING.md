@@ -10,8 +10,9 @@ rules below.
 
 The New thread page shows a feed of three tips. Each new visit (a fresh mount,
 at least 10 minutes after the last one) adds one tip at the top and drops the
-oldest. The engine works through every eligible tip, highest `boost` and
-`priority` first, before it repeats any. A clicked tip is left out of the next
+oldest. The engine works through every eligible tip in ranked order (by
+`tier`, then `boost`, then `priority`) before it repeats any. A clicked tip is
+left out of the next
 visit and comes back only after the rest of the library has been shown. A tip
 retires for good when `retireWhen` turns true or the person dismisses it.
 Held and expired tips never show. No tips show until bb's setup checklist is
@@ -32,13 +33,34 @@ finished or dismissed.
 | `reviewedAt`          | bb version the copy and eligibility were last checked against. Never later than `CATALOG_REVIEWED_THROUGH`.                                                                          |
 | `expiresAt`           | Optional bb version from which the tip stops showing. Must be later than `CATALOG_REVIEWED_THROUGH`, so an expired tip fails CI.                                                     |
 | `held`                | Optional. `true` keeps a finished tip out of every feed.                                                                                                                             |
-| `priority`            | Ordering inside the library.                                                                                                                                                         |
+| `tier`                | `1`, `2`, `3`, or `"unranked"`. See [Tiers](#tiers).                                                                                                                                 |
+| `priority`            | Ordering inside a tier.                                                                                                                                                              |
 | `eligible(signals)`   | When the tip fits this person right now.                                                                                                                                             |
 | `retireWhen(signals)` | When the person already uses the feature. Retirement is permanent.                                                                                                                   |
 | `boost(signals)`      | Optional. Pushes a tip ahead when context makes it urgent.                                                                                                                           |
 
 Bump `CATALOG_REVIEWED_THROUGH` when you review the whole catalog against a
 release.
+
+## Tiers
+
+Tiers come from which early behaviors go with people sticking with bb. The feed
+shows tier 1 first, then unranked tips, then tier 2, then tier 3; `boost` and
+`priority` only reorder tips inside one tier, so even an urgent boost never
+lifts a tip above a higher tier. A tier 3 tip appears only after every eligible
+higher-tier tip has been shown.
+
+- **Tier 1:** the strongest early habits: child threads, the mobile app, a
+  second agent on the same task, and asking the agent to build a plugin.
+- **Unranked:** no clear signal yet. Place these by judgment with `priority`;
+  automations lead because they give people a reason to come back.
+- **Tier 2:** weaker but real: remote access, the bb CLI, and running more
+  than one agent.
+- **Tier 3:** features not worth promoting early, such as queued follow-ups,
+  installing catalog plugins, or ACP agents.
+
+New tips start `"unranked"` unless the owner places them. Keep tier reasons in
+words; never put metrics, percentages, or sample sizes in this repository.
 
 ## Voice
 
@@ -101,5 +123,6 @@ cell in the Diagram kit story, when two drawings need it.
 - [ ] The action type fits; its target is a core route, a built-in plugin, or an `https://` link.
 - [ ] The illustration uses kit parts, one accent, and one hover animation.
 - [ ] `source`, `addedAt`, `reviewedAt`, and any `expiresAt` are set.
+- [ ] `tier` is set; new tips are `"unranked"` unless the owner placed them.
 - [ ] `eligible` and `retireWhen` have tests in `engine.test.ts` when they are new logic.
 - [ ] The drawing reads at rest and on hover in light and dark, in the Illustrations story.

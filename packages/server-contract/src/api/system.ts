@@ -235,6 +235,10 @@ export const TIP_TELEMETRY_IDS = [
   "thread-search",
   "command-palette",
   "provider-usage",
+  "another-agent",
+  "remote-access",
+  "bb-cli",
+  "add-agent",
 ] as const;
 const tipTelemetryPropertiesSchema = z
   .object({

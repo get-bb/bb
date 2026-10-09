@@ -314,6 +314,58 @@ export const ILLUSTRATIONS: Record<string, Illustration> = {
       <ListLine x={10} y={40} width={20} animate="fade-in" stagger={3} />
     </>
   ),
+  "another-agent": (accent) => (
+    <>
+      <Panel x={4} y={8} width={18} height={26} />
+      <Rule x={8} y={15} width={10} />
+      <Rule x={8} y={20} width={7} soft />
+      <Rule x={8} y={25} width={9} soft />
+      <Part animate="slide-in" stagger={1}>
+        <Panel x={26} y={8} width={18} height={26} />
+        <Rule x={30} y={15} width={10} />
+        <Rule x={30} y={20} width={8} soft />
+        <Dot cx={31} cy={26} r={1.75} color={accent} />
+        <Rule x={34} y={26} width={6} soft />
+      </Part>
+      <Check cx={24} cy={39} color={accent} animate="pop" stagger={3} />
+    </>
+  ),
+  "remote-access": (accent) => (
+    <>
+      <Window x={3} y={8} width={28} height={22} />
+      <Rule x={8} y={18} width={14} soft />
+      <Rule x={8} y={23} width={10} soft />
+      <Phone x={33} y={14} width={12} height={24} />
+      <Arrow
+        d="M17 31v3a3 3 0 0 0 3 3h9"
+        head="M29 34l3 3-3 3"
+        color={accent}
+        animate="nudge"
+      />
+      <Dot cx={39} cy={24} r={1.75} color={accent} animate="pop" stagger={2} />
+    </>
+  ),
+  "bb-cli": (accent) => (
+    <>
+      <Window x={4} y={7} width={40} height={34} />
+      <path {...LINE} d="M10 20l3.5 3-3.5 3" style={{ stroke: accent }} />
+      <Rule x={17} y={23} width={12} animate="fill-in" from={0.45} />
+      <Rule x={10} y={30} width={22} soft animate="fade-in" stagger={2} />
+      <Rule x={10} y={35} width={16} soft animate="fade-in" stagger={3} />
+    </>
+  ),
+  "add-agent": (accent) => (
+    <>
+      <Panel x={5} y={6} width={38} height={36} rx={4} />
+      <ListLine x={11} y={14} width={20} soft={false} />
+      <ListLine x={11} y={21} width={16} />
+      <Part animate="slide-in" stagger={1}>
+        <Pill x={9} y={29} width={30} height={9} dashed />
+        <path {...LINE} d="M14 33.5h4M16 31.5v4" style={{ stroke: accent }} />
+        <Rule x={21} y={33.5} width={13} soft />
+      </Part>
+    </>
+  ),
   "provider-usage": (accent) => (
     <>
       <ChartAxes x={5} y={6} width={38} height={36} limit={13} />
