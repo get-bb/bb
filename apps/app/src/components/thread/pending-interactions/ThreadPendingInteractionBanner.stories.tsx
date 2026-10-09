@@ -2,7 +2,7 @@ import type {
   PendingInteraction,
   ProviderPendingInteraction,
 } from "@bb/domain";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
@@ -180,8 +180,8 @@ export function Overview() {
         hint="the parent composer shows the child's prompt plus the needs-approval banner"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={commandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[commandApproval]}
             sourceThread={{
               href: "/projects/proj-1/threads/thr_blocked",
               title: "Install workspace tools",
@@ -216,8 +216,8 @@ export function Overview() {
         hint="parent composer surfaces the child's permission prompt with a link back to that child"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={commandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[commandApproval]}
             sourceThread={{
               href: "/projects/proj-1/threads/thr_blocked",
               title: "Install workspace tools",
@@ -232,8 +232,8 @@ export function Overview() {
         hint="arrives as a one-line label; expand to see the reason, command, and decisions"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={commandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[commandApproval]}
             threadId={commandApproval.threadId}
           />
         </PromptStage>
@@ -244,8 +244,8 @@ export function Overview() {
         hint="long command scrolls inside the pre block"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={longCommandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[longCommandApproval]}
             threadId={longCommandApproval.threadId}
           />
         </PromptStage>
@@ -256,8 +256,8 @@ export function Overview() {
         hint="open the card: the preview caps at four lines with a Show more control, and the script is not repeated as an action line"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={multiLineCommandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[multiLineCommandApproval]}
             sourceThread={{
               href: "/projects/proj-1/threads/thr_blocked",
               title: "Telemetry option in installer",
@@ -272,8 +272,8 @@ export function Overview() {
         hint="user submitted a decision; banner shows Delivering pill and disables interaction"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={resolvingCommandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[resolvingCommandApproval]}
             threadId={resolvingCommandApproval.threadId}
           />
         </PromptStage>
@@ -284,8 +284,8 @@ export function Overview() {
         hint="agent wants to write a file"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={fileChange}
+          <ThreadPendingInteractionBanners
+            interactions={[fileChange]}
             threadId={fileChange.threadId}
           />
         </PromptStage>
@@ -296,8 +296,8 @@ export function Overview() {
         hint="agent requests fs read/write permission for specific paths"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={permissionGrant}
+          <ThreadPendingInteractionBanners
+            interactions={[permissionGrant]}
             threadId={permissionGrant.threadId}
           />
         </PromptStage>
@@ -308,8 +308,8 @@ export function Overview() {
         hint="a generic tool call (MCP, provider-native) described by the bridge's presentation alone"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={toolUse}
+          <ThreadPendingInteractionBanners
+            interactions={[toolUse]}
             threadId={toolUse.threadId}
           />
         </PromptStage>
@@ -321,12 +321,12 @@ export function Overview() {
 export function CompactPermissions() {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4">
-      <ThreadPendingInteractionBanner
-        interaction={permissionGrant}
+      <ThreadPendingInteractionBanners
+        interactions={[permissionGrant]}
         threadId={permissionGrant.threadId}
       />
-      <ThreadPendingInteractionBanner
-        interaction={commandApproval}
+      <ThreadPendingInteractionBanners
+        interactions={[commandApproval]}
         threadId={commandApproval.threadId}
       />
     </div>

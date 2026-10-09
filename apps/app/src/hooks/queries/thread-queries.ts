@@ -1110,17 +1110,16 @@ export function useThreadTimelineTurnSummaryDetails(
   });
 }
 
-export function getLatestPendingInteraction(
-  interactions: readonly PendingInteraction[] | undefined,
-): PendingInteraction | null {
-  if (!interactions || interactions.length === 0) {
-    return null;
-  }
+const EMPTY_PENDING_INTERACTIONS: readonly PendingInteraction[] = [];
 
-  const [firstInteraction, ...restInteractions] = interactions;
-  return restInteractions.reduce<PendingInteraction>(
-    (latest, interaction) =>
-      interaction.createdAt > latest.createdAt ? interaction : latest,
-    firstInteraction,
+export function orderPendingInteractions(
+  interactions: readonly PendingInteraction[] | undefined,
+): readonly PendingInteraction[] {
+  if (!interactions || interactions.length === 0) {
+    return EMPTY_PENDING_INTERACTIONS;
+  }
+  return [...interactions].sort(
+    (left, right) =>
+      left.createdAt - right.createdAt || left.id.localeCompare(right.id),
   );
 }

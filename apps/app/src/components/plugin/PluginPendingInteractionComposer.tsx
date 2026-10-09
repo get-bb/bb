@@ -29,6 +29,7 @@ interface PluginPendingInteractionComposerProps {
   request: PluginPendingInteractionRequest;
   origin: "plugin" | "provider";
   sourceThread?: PendingInteractionSourceThread;
+  collapsedByDefault: boolean;
 }
 
 export function PluginPendingInteractionComposer({
@@ -36,6 +37,7 @@ export function PluginPendingInteractionComposer({
   request,
   origin,
   sourceThread,
+  collapsedByDefault,
 }: PluginPendingInteractionComposerProps) {
   const { pendingInteractions } = usePluginSlots();
   const pluginName = usePluginDisplayName(request.pluginId);
@@ -95,6 +97,7 @@ export function PluginPendingInteractionComposer({
     <PendingInteractionShell
       key={interaction.id}
       label={request.title}
+      initiallyExpanded={!collapsedByDefault}
       errorMessage={error}
       sourceThread={sourceThread}
       testId="plugin-interaction-shell"

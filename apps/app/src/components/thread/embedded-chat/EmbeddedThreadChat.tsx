@@ -39,7 +39,7 @@ import {
   useComposerHostSelection,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   LazyQueuedMessagesList,
   type QueuedMessageInlineEditor,
@@ -60,7 +60,7 @@ import {
 } from "@/components/thread/timeline";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import {
-  getLatestPendingInteraction,
+  orderPendingInteractions,
   useThread,
   useThreadPendingInteractions,
   useThreadQueuedMessages,
@@ -224,12 +224,11 @@ function EmbeddedThreadChatWithComposer({
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const threadQuery = useThread(threadId);
   const pendingInteractionsQuery = useThreadPendingInteractions(threadId);
-  const activePendingInteraction = getLatestPendingInteraction(
+  const composerBlockingPendingInteractions = orderPendingInteractions(
     pendingInteractionsQuery.data,
-  );
+  ).filter((interaction) => interaction.payload.kind !== "plugin");
   const hasComposerBlockingPendingInteraction =
-    activePendingInteraction !== null &&
-    activePendingInteraction.payload.kind !== "plugin";
+    composerBlockingPendingInteractions.length > 0;
   useThreadReadTracking({
     markThreadRead,
     thread: threadQuery.data,
@@ -1223,8 +1222,8 @@ function EmbeddedThreadChatWithComposer({
   const surfaceClassName =
     surfaceTone === "sidebar" ? "bg-sidebar" : "bg-background";
   const pendingInteractionBanner = hasComposerBlockingPendingInteraction ? (
-    <ThreadPendingInteractionBanner
-      interaction={activePendingInteraction}
+    <ThreadPendingInteractionBanners
+      interactions={composerBlockingPendingInteractions}
       threadId={threadId}
     />
   ) : null;

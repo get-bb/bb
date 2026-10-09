@@ -73,7 +73,6 @@ import {
 } from "../../hooks/queries/child-thread-pending-interactions";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
-  getLatestPendingInteraction,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -608,8 +607,7 @@ function ThreadDetailViewInternal(
     },
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
-  const hasPendingInteraction =
-    getLatestPendingInteraction(pendingInteractions) !== null;
+  const hasPendingInteraction = pendingInteractions.length > 0;
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,

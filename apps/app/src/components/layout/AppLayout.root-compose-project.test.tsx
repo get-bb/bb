@@ -163,7 +163,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreadDetailBootstrap: (...args: unknown[]) =>
     mockUseThreadDetailBootstrap(...args),
   useThreadPendingInteractions: () => ({ data: undefined }),
-  getLatestPendingInteraction: () => null,
 }));
 
 describe("AppLayout root compose project preference", () => {

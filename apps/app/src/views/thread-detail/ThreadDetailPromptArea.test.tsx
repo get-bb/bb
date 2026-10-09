@@ -562,7 +562,7 @@ vi.mock("@/components/promptbox/banner/ThreadWorkflowCard", () => {
 vi.mock(
   "@/components/thread/pending-interactions/ThreadPendingInteractionBanner",
   () => ({
-    ThreadPendingInteractionBanner: () => (
+    ThreadPendingInteractionBanners: () => (
       <div data-testid="composer-stack-item">Pending interaction</div>
     ),
   }),
@@ -746,8 +746,9 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  getLatestPendingInteraction: (interactions: readonly PendingInteraction[]) =>
-    interactions.at(-1) ?? null,
+  orderPendingInteractions: (
+    interactions: readonly PendingInteraction[] | undefined,
+  ) => interactions ?? [],
   useThreadPromptHistory: (threadId: string, options: unknown) => {
     mocks.useThreadPromptHistory(threadId, options);
     return { data: [] };
@@ -1909,7 +1910,7 @@ describe("ThreadDetailPromptArea", () => {
           childThreadId: "thr_child",
           childTitle: "Install workspace tools",
           href: "/threads/thr_child",
-          interaction: makePendingInteraction(),
+          interactions: [makePendingInteraction()],
         },
       ],
     });

@@ -183,7 +183,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: () => ({ data: undefined }),
   useThreadDetailBootstrap: () => ({ isError: false, isSuccess: true }),
   useThreadPendingInteractions: () => ({ data: undefined }),
-  getLatestPendingInteraction: () => null,
 }));
 
 function renderPluginPanelRoute(): void {

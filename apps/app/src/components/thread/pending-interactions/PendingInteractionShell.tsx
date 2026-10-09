@@ -22,6 +22,7 @@ export interface PendingInteractionSourceThread {
 interface PendingInteractionShellProps {
   label: string;
   title?: string;
+  initiallyExpanded: boolean;
   errorMessage?: string | null;
   footer?: ReactNode;
   children?: (isExpanded: boolean) => ReactNode;
@@ -32,13 +33,14 @@ interface PendingInteractionShellProps {
 export function PendingInteractionShell({
   label,
   title,
+  initiallyExpanded,
   errorMessage,
   footer,
   children,
   sourceThread,
   testId,
 }: PendingInteractionShellProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const rootRef = useRef<HTMLElement>(null);
   const availableHeight = useStickyFooterAvailableHeight(rootRef, isExpanded);
   const toggleRef = useRef<HTMLButtonElement>(null);

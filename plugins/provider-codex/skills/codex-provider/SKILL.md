@@ -12,8 +12,8 @@ confirmation. Inspect the thread before recovery actions.
 
 Codex questions from `request_user_input` pause the turn until answered.
 Questions from `request_user_input_async` do not pause it: the plugin opens a
-question card for each one, one at a time, that stays open for up to an hour
-after the turn ends. Submitting sends the answer to the thread as a message
+question card for each one that stays open for up to an hour after the turn
+ends. Submitting sends the answer to the thread as a message
 (steering an active turn or starting a new one); dismissing sends nothing.
 From the CLI, find it with `bb thread interactions list <thread>` and answer
 with `bb thread interactions respond <interactionId> <thread> --value

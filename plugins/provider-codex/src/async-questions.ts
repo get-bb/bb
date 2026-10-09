@@ -106,7 +106,11 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
     if (thread.providerId !== CODEX_PROVIDER_ID) return;
     enqueue(thread.id, async () => {
       for (const state of await readNewQuestions(thread.id)) {
-        await ask(thread.id, state);
+        void ask(thread.id, state).catch((error: unknown) => {
+          bb.log.warn(
+            `async question handling failed for thread ${thread.id}: ${errorMessage(error)}`,
+          );
+        });
       }
     });
   });

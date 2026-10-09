@@ -404,6 +404,7 @@ export type {
 export {
   createPendingInteraction,
   getActivePendingInteractionForThread,
+  hasTurnBoundActivePendingInteractionForThread,
   getPendingInteraction,
   getPendingInteractionByProviderRequest,
   interruptPendingInteractionsForThreadIds,

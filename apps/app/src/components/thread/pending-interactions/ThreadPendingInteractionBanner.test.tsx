@@ -25,7 +25,7 @@ import {
   resetPluginFrontendBootStateForTest,
 } from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
-import { ThreadPendingInteractionBanner } from "./ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -167,8 +167,8 @@ const commandApproval: PendingInteraction = {
 
 function bannerElement(interaction: PendingInteraction) {
   return (
-    <ThreadPendingInteractionBanner
-      interaction={interaction}
+    <ThreadPendingInteractionBanners
+      interactions={[interaction]}
       threadId="thr_1"
     />
   );
@@ -619,8 +619,8 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
-          <ThreadPendingInteractionBanner
-            interaction={commandApproval}
+          <ThreadPendingInteractionBanners
+            interactions={[commandApproval]}
             sourceThread={{
               href: "/threads/thr_child",
               title: "Install tools",

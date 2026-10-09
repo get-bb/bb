@@ -102,6 +102,16 @@ describe("Codex async questions", () => {
     });
   });
 
+  it("opens every question without waiting for earlier answers", async () => {
+    const host = createHost([questionRow(5), questionRow(6)]);
+
+    await notify(host);
+
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(2),
+    );
+  });
+
   it("does not send anything when the question is dismissed", async () => {
     const host = createHost([questionRow(5)]);
 

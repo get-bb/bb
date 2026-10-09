@@ -184,7 +184,6 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: () => ({ data: undefined }),
   useThreadDetailBootstrap: useThreadDetailBootstrapMock,
   useThreadPendingInteractions: () => ({ data: undefined }),
-  getLatestPendingInteraction: () => null,
 }));
 
 function widthVar(element: Element | null): string {

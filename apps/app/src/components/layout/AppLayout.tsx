@@ -42,7 +42,6 @@ import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
-  getLatestPendingInteraction,
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
@@ -714,8 +713,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { enabled: isThreadView && Boolean(threadId) },
   );
   const currentThreadHasPendingInteraction =
-    getLatestPendingInteraction(currentThreadPendingInteractionsQuery.data) !==
-    null;
+    (currentThreadPendingInteractionsQuery.data?.length ?? 0) > 0;
   const faviconBadge = shouldShowFaviconAttentionDot({
     currentThreadHasPendingInteraction,
     currentThreadId: threadId,
