@@ -22,10 +22,16 @@ import {
   resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
+import { isPathWithinDirectory } from "@bb/process-utils";
+import { isFsErrorWithCode } from "../fs-errors.js";
+import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
 
 type SkillRootResolution = DeclaredScanRootResolution;
 
 const SHARED_SKILLS_PROVIDER_ID = "bb-shared";
+
+type SkillFile =
+  HostDaemonOnlineRpcResult<"host.read_skill_files">["skills"][number];
 
 function createBbSkillScanRoot(
   rootPath: string,
@@ -120,6 +126,81 @@ export async function listHostSkills(
   });
   const skills = await discoverSkills({ roots });
   return { skills };
+}
+
+async function orNullIfMissing<T>(operation: Promise<T>): Promise<T | null> {
+  try {
+    return await operation;
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function readHostSkillFiles(
+  command: CommandOf<"host.read_skill_files">,
+): Promise<HostDaemonOnlineRpcResult<"host.read_skill_files">> {
+  if (!path.isAbsolute(command.path)) {
+    throw new CommandDispatchError("invalid_path", "Path must be absolute");
+  }
+  if (!path.isAbsolute(command.rootPath)) {
+    throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
+  }
+  const rootPath = await orNullIfMissing(
+    resolveNonSymlinkDirectoryPath({ description: "Path", path: command.path }),
+  );
+  if (rootPath === null) {
+    return { skills: [], truncated: false };
+  }
+  const realReadRootPath = await fs.realpath(command.rootPath);
+  if (!isPathWithinDirectory(realReadRootPath, rootPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      `Path "${command.path}" escapes read root`,
+    );
+  }
+  const excludedNames = new Set(command.excludeNames);
+  const directoryNames = (await fs.readdir(rootPath, { withFileTypes: true }))
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
+        !excludedNames.has(entry.name),
+    )
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+  const skills: SkillFile[] = [];
+  let remainingBytes = command.maxTotalBytes;
+  for (const directoryName of directoryNames.slice(0, command.limit)) {
+    const directoryPath = path.join(rootPath, directoryName);
+    const entryNames = await orNullIfMissing(fs.readdir(directoryPath));
+    if (!entryNames?.includes(SKILL_FILE_NAME)) continue;
+    const filePath = path.join(directoryPath, SKILL_FILE_NAME);
+    const stat = await orNullIfMissing(fs.lstat(filePath));
+    if (!stat?.isFile()) continue;
+    const allowedBytes = Math.min(command.maxFileBytes, remainingBytes);
+    const bytes =
+      stat.size > allowedBytes
+        ? undefined
+        : await orNullIfMissing(fs.readFile(filePath));
+    if (bytes === null) continue;
+    const sizeBytes = bytes?.length ?? stat.size;
+    const content =
+      bytes === undefined || sizeBytes > command.maxFileBytes
+        ? null
+        : bytes.toString("utf8");
+    const encodedBytes =
+      content === null ? 0 : Buffer.byteLength(JSON.stringify(content));
+    if (content === null || encodedBytes > remainingBytes) {
+      skills.push({ directoryName, sizeBytes, content: null });
+      continue;
+    }
+    remainingBytes -= encodedBytes;
+    skills.push({ directoryName, sizeBytes, content });
+  }
+  return { skills, truncated: directoryNames.length > command.limit };
 }
 
 function isSafeSkillName(name: string): boolean {

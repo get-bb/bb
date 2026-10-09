@@ -89,8 +89,8 @@ function registerCommandRpc(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: (request) => {
-      if (request.command.type === "host.list_files") {
-        return { ok: true, result: { files: [], truncated: false } };
+      if (request.command.type === "host.read_skill_files") {
+        return { ok: true, result: { skills: [], truncated: false } };
       }
       if (request.command.type === "plugin.host.call") {
         if (request.command.method !== "resolveNativeRoots") {

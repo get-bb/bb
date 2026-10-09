@@ -67,6 +67,8 @@ function registerResponder(
           };
         case "turn.submit":
           return { ok: true, result: {} };
+        case "host.read_skill_files":
+          return { ok: true, result: { skills: [], truncated: false } };
         case "host.list_files":
           return { ok: true, result: { files: [], truncated: false } };
         case "host.read_file":

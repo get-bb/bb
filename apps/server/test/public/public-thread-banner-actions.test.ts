@@ -530,6 +530,9 @@ describe("public thread banner actions", () => {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
         handle: ({ command }) => {
+          if (command.type === "host.read_skill_files") {
+            return { ok: true, result: { skills: [], truncated: false } };
+          }
           if (command.type === "host.list_files") {
             return { ok: true, result: { files: [], truncated: false } };
           }
@@ -582,6 +585,9 @@ describe("public thread banner actions", () => {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
         handle: ({ command }) => {
+          if (command.type === "host.read_skill_files") {
+            return { ok: true, result: { skills: [], truncated: false } };
+          }
           if (command.type === "host.list_files") {
             return { ok: true, result: { files: [], truncated: false } };
           }

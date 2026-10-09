@@ -210,6 +210,9 @@ describe("public project workspace routing", () => {
               },
             };
           }
+          if (request.command.type === "host.read_skill_files") {
+            return { ok: true, result: { skills: [], truncated: false } };
+          }
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [primaryCommand] } };
           }
@@ -239,6 +242,9 @@ describe("public project workspace routing", () => {
         hostId: remoteHost.id,
         sessionId: remoteSession.id,
         handle: (request) => {
+          if (request.command.type === "host.read_skill_files") {
+            return { ok: true, result: { skills: [], truncated: false } };
+          }
           if (request.command.type === "host.list_files") {
             return { ok: true, result: { files: [], truncated: false } };
           }

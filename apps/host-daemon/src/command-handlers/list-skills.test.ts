@@ -22,6 +22,7 @@ import { discoverSkills, type SkillScanRoot } from "../command-discovery.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import {
   deleteHostSkill,
+  readHostSkillFiles,
   resolveSkillScanRoots,
   writeHostSkill,
 } from "./list-skills.js";
@@ -752,5 +753,208 @@ describe("writeHostSkill", () => {
     );
     expect(stale).toMatchObject({ outcome: "conflict" });
     expect(await readFile(filePath, "utf8")).toBe("# Updated");
+  });
+});
+
+describe("readHostSkillFiles", () => {
+  it("returns top-level SKILL.md files without following symlinks", async () => {
+    const skillsRoot = path.join(tempRoot, "workspace", ".bb", "skills");
+    await writeSkill(path.join(skillsRoot, "review", "SKILL.md"), "review");
+    await writeSkill(path.join(skillsRoot, ".hidden", "SKILL.md"), "hidden");
+    await writeSkill(
+      path.join(skillsRoot, "nested", "inner", "SKILL.md"),
+      "inner",
+    );
+    await writeSkill(path.join(tempRoot, "outside", "SKILL.md"), "outside");
+    await symlink(
+      path.join(tempRoot, "outside"),
+      path.join(skillsRoot, "linked-dir"),
+    );
+    await mkdir(path.join(skillsRoot, "linked-file"));
+    await symlink(
+      path.join(tempRoot, "outside", "SKILL.md"),
+      path.join(skillsRoot, "linked-file", "SKILL.md"),
+    );
+    const reviewContent = await readFile(
+      path.join(skillsRoot, "review", "SKILL.md"),
+      "utf8",
+    );
+    await mkdir(path.join(skillsRoot, "large"));
+    await writeFile(
+      path.join(skillsRoot, "large", "SKILL.md"),
+      `${reviewContent}\n\n`,
+      "utf8",
+    );
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: reviewContent.length,
+      maxTotalBytes: 1_000_000,
+      excludeNames: [],
+    });
+
+    expect(result).toEqual({
+      skills: [
+        {
+          directoryName: "large",
+          sizeBytes: reviewContent.length + 2,
+          content: null,
+        },
+        {
+          directoryName: "review",
+          sizeBytes: reviewContent.length,
+          content: reviewContent,
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it("skips excluded directories and SKILL.md with the wrong case", async () => {
+    const skillsRoot = path.join(tempRoot, "match-skills");
+    await writeSkill(path.join(skillsRoot, "kept", "SKILL.md"), "kept");
+    await writeSkill(path.join(skillsRoot, "venv", "SKILL.md"), "venv");
+    await writeSkill(path.join(skillsRoot, "lower", "skill.md"), "lower");
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 1024,
+      maxTotalBytes: 1024,
+      excludeNames: ["venv"],
+    });
+
+    expect(result.skills.map((skill) => skill.directoryName)).toEqual(["kept"]);
+  });
+
+  it("withholds content once the total byte budget is spent", async () => {
+    const skillsRoot = path.join(tempRoot, "budget-skills");
+    for (const name of ["a", "b", "c"]) {
+      await mkdir(path.join(skillsRoot, name), { recursive: true });
+      await writeFile(
+        path.join(skillsRoot, name, "SKILL.md"),
+        name.repeat(10),
+        "utf8",
+      );
+    }
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 10,
+      maxTotalBytes: 25,
+      excludeNames: [],
+    });
+
+    expect(result.skills).toEqual([
+      { directoryName: "a", sizeBytes: 10, content: "a".repeat(10) },
+      { directoryName: "b", sizeBytes: 10, content: "b".repeat(10) },
+      { directoryName: "c", sizeBytes: 10, content: null },
+    ]);
+  });
+
+  it("charges the budget by encoded size, not file size", async () => {
+    const skillsRoot = path.join(tempRoot, "encoded-skills");
+    for (const name of ["a", "b", "c"]) {
+      await mkdir(path.join(skillsRoot, name), { recursive: true });
+      await writeFile(
+        path.join(skillsRoot, name, "SKILL.md"),
+        "\u0001".repeat(10),
+        "utf8",
+      );
+    }
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 10,
+      maxFileBytes: 10,
+      maxTotalBytes: 130,
+      excludeNames: [],
+    });
+
+    expect(result.skills.map((skill) => skill.content !== null)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it("reports truncation past the directory limit", async () => {
+    const skillsRoot = path.join(tempRoot, "skills");
+    await writeSkill(path.join(skillsRoot, "a", "SKILL.md"), "a");
+    await writeSkill(path.join(skillsRoot, "b", "SKILL.md"), "b");
+
+    const result = await readHostSkillFiles({
+      type: "host.read_skill_files",
+      path: skillsRoot,
+      rootPath: tempRoot,
+      limit: 1,
+      maxFileBytes: 1024,
+      maxTotalBytes: 1_000_000,
+      excludeNames: [],
+    });
+
+    expect(result.skills.map((skill) => skill.directoryName)).toEqual(["a"]);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("returns no skills for a missing root and rejects a symlinked root", async () => {
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(tempRoot, "missing"),
+        rootPath: tempRoot,
+        limit: 10,
+        maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
+        excludeNames: [],
+      }),
+    ).resolves.toEqual({ skills: [], truncated: false });
+
+    await mkdir(path.join(tempRoot, "real-skills"));
+    await symlink(
+      path.join(tempRoot, "real-skills"),
+      path.join(tempRoot, "linked-skills"),
+    );
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(tempRoot, "linked-skills"),
+        rootPath: tempRoot,
+        limit: 10,
+        maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
+        excludeNames: [],
+      }),
+    ).rejects.toBeInstanceOf(CommandDispatchError);
+  });
+
+  it("rejects a skills root whose parent symlinks outside the read root", async () => {
+    const workspace = path.join(tempRoot, "workspace");
+    const outside = path.join(tempRoot, "outside-bb");
+    await writeSkill(path.join(outside, "skills", "leak", "SKILL.md"), "leak");
+    await mkdir(workspace, { recursive: true });
+    await symlink(outside, path.join(workspace, ".bb"));
+
+    await expect(
+      readHostSkillFiles({
+        type: "host.read_skill_files",
+        path: path.join(workspace, ".bb", "skills"),
+        rootPath: workspace,
+        limit: 10,
+        maxFileBytes: 1024,
+        maxTotalBytes: 1_000_000,
+        excludeNames: [],
+      }),
+    ).rejects.toBeInstanceOf(CommandDispatchError);
   });
 });

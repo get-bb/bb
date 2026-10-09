@@ -1,82 +1,20 @@
 import { joinHostPathSegments } from "../lib/host-path.js";
-import { Buffer } from "node:buffer";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
-import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
-import {
-  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
-  SKILL_PATH_LIST_INCLUDE_HIDDEN,
-} from "../../routes/path-list-policy.js";
-import { requireDaemonFileContentResult } from "../hosts/daemon-file-response.js";
+import { DEFAULT_PATH_LIST_EXCLUDE_NAMES } from "../../routes/path-list-policy.js";
 import {
   resolveProjectSkillSourceFromContent,
   type ProjectInjectedSkillSource,
 } from "./injected-skills.js";
 
-const SKILL_FILE_NAME = "SKILL.md";
 const MAX_PROJECT_SKILLS = 1_000;
 const MAX_PROJECT_SKILL_FILE_BYTES = 10 * 1024 * 1024;
-const PROJECT_SKILL_READ_CONCURRENCY = 16;
+const MAX_PROJECT_SKILLS_TOTAL_BYTES = 32 * 1024 * 1024;
 
 interface ResolveWorkspaceProjectSkillsArgs {
   hostId: string;
   workspacePath: string;
-}
-
-async function readProjectSkill(
-  deps: LoggedWorkSessionDeps,
-  args: {
-    directoryName: string;
-    skillsRootPath: string;
-    workspacePath: string;
-    hostId: string;
-  },
-): Promise<ProjectInjectedSkillSource | null> {
-  const candidatePath = joinHostPathSegments(
-    args.skillsRootPath,
-    args.directoryName,
-  );
-  const skillFilePath = joinHostPathSegments(candidatePath, SKILL_FILE_NAME);
-  let result;
-  try {
-    result = await callHostRetryableOnlineRpc(deps, {
-      hostId: args.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.read_file",
-        path: skillFilePath,
-        rootPath: args.workspacePath,
-      },
-    });
-  } catch (error) {
-    if (error instanceof ApiError && error.body.code === "ENOENT") {
-      return null;
-    }
-    throw error;
-  }
-
-  const contentResult = requireDaemonFileContentResult(result);
-  if (contentResult.sizeBytes > MAX_PROJECT_SKILL_FILE_BYTES) {
-    deps.logger.warn(
-      {
-        candidatePath,
-        reason: `SKILL.md exceeds ${MAX_PROJECT_SKILL_FILE_BYTES} bytes`,
-        sourceType: "project",
-      },
-      "Skipping invalid injected skill",
-    );
-    return null;
-  }
-  const content =
-    contentResult.contentEncoding === "utf8"
-      ? contentResult.content
-      : Buffer.from(contentResult.content, "base64").toString("utf8");
-  return resolveProjectSkillSourceFromContent(deps.logger, {
-    candidatePath,
-    content,
-    directoryName: args.directoryName,
-  });
 }
 
 export async function resolveWorkspaceProjectSkills(
@@ -92,12 +30,12 @@ export async function resolveWorkspaceProjectSkills(
     hostId: args.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
-      type: "host.list_files",
+      type: "host.read_skill_files",
       path: skillsRootPath,
-      query: SKILL_FILE_NAME,
+      rootPath: args.workspacePath,
       limit: MAX_PROJECT_SKILLS,
-      includeHidden: SKILL_PATH_LIST_INCLUDE_HIDDEN,
-      respectGitIgnore: false,
+      maxFileBytes: MAX_PROJECT_SKILL_FILE_BYTES,
+      maxTotalBytes: MAX_PROJECT_SKILLS_TOTAL_BYTES,
       excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
     },
   });
@@ -108,37 +46,32 @@ export async function resolveWorkspaceProjectSkills(
     );
   }
 
-  const directoryNames = result.files
-    .map((file) => file.path.split("/"))
-    .filter(
-      (segments) => segments.length === 2 && segments[1] === SKILL_FILE_NAME,
-    )
-    .map((segments) => segments[0])
-    .filter((name): name is string => name !== undefined)
-    .sort((left, right) => left.localeCompare(right));
   const sources: ProjectInjectedSkillSource[] = [];
-  for (
-    let offset = 0;
-    offset < directoryNames.length;
-    offset += PROJECT_SKILL_READ_CONCURRENCY
-  ) {
-    const batch = directoryNames.slice(
-      offset,
-      offset + PROJECT_SKILL_READ_CONCURRENCY,
+  for (const skill of result.skills) {
+    const candidatePath = joinHostPathSegments(
+      skillsRootPath,
+      skill.directoryName,
     );
-    const batchSources = await Promise.all(
-      batch.map((directoryName) =>
-        readProjectSkill(deps, {
-          directoryName,
-          hostId: args.hostId,
-          skillsRootPath,
-          workspacePath: args.workspacePath,
-        }),
-      ),
-    );
-    for (const source of batchSources) {
-      if (source) sources.push(source);
+    if (skill.content === null) {
+      deps.logger.warn(
+        {
+          candidatePath,
+          reason:
+            skill.sizeBytes > MAX_PROJECT_SKILL_FILE_BYTES
+              ? `SKILL.md exceeds ${MAX_PROJECT_SKILL_FILE_BYTES} bytes`
+              : `Project skills exceed ${MAX_PROJECT_SKILLS_TOTAL_BYTES} bytes in total`,
+          sourceType: "project",
+        },
+        "Skipping invalid injected skill",
+      );
+      continue;
     }
+    const source = resolveProjectSkillSourceFromContent(deps.logger, {
+      candidatePath,
+      content: skill.content,
+      directoryName: skill.directoryName,
+    });
+    if (source) sources.push(source);
   }
   return sources;
 }

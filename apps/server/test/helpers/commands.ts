@@ -116,13 +116,13 @@ export interface TestHostRpcSocket {
 }
 
 function isRuntimeWorkspaceFileCommand(command: HostDaemonRpcCommand): boolean {
-  if (command.type !== "host.list_files" && command.type !== "host.read_file") {
+  if (command.type === "host.read_skill_files") {
+    return command.path.replaceAll("\\", "/").endsWith(".bb/skills");
+  }
+  if (command.type !== "host.read_file") {
     return false;
   }
   const hostPath = command.path.replaceAll("\\", "/");
-  if (command.type === "host.list_files") {
-    return hostPath.endsWith(".bb/skills");
-  }
   return (
     hostPath.endsWith(".bb/AGENTS.md") || hostPath.includes("/.bb/skills/")
   );
@@ -136,24 +136,38 @@ function respondToRuntimeWorkspaceFileCommand(
   const command = message.command;
   if (!isRuntimeWorkspaceFileCommand(command)) return false;
 
-  if (command.type === "host.list_files") {
-    let files: Array<{ name: string; path: string }> = [];
+  if (command.type === "host.read_skill_files") {
+    let skills: Array<{
+      content: string | null;
+      directoryName: string;
+      sizeBytes: number;
+    }> = [];
     try {
-      files = readdirSync(command.path, { withFileTypes: true })
+      skills = readdirSync(command.path, { withFileTypes: true })
         .filter((entry) => !entry.isSymbolicLink() && entry.isDirectory())
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .slice(0, command.limit)
         .flatMap((entry) => {
           const skillFilePath = path.join(command.path, entry.name, "SKILL.md");
           try {
-            return lstatSync(skillFilePath).isFile()
-              ? [{ name: "SKILL.md", path: `${entry.name}/SKILL.md` }]
-              : [];
+            const stat = lstatSync(skillFilePath);
+            if (!stat.isFile()) return [];
+            return [
+              {
+                directoryName: entry.name,
+                sizeBytes: stat.size,
+                content:
+                  stat.size > command.maxFileBytes
+                    ? null
+                    : readFileSync(skillFilePath, "utf8"),
+              },
+            ];
           } catch {
             return [];
           }
-        })
-        .slice(0, command.limit);
+        });
     } catch {
-      files = [];
+      skills = [];
     }
     deps.hub.recordHostOnlineRpcResponse({
       message: hostDaemonOnlineRpcResponseMessageSchema.parse({
@@ -161,7 +175,7 @@ function respondToRuntimeWorkspaceFileCommand(
         requestId: message.requestId,
         commandType: command.type,
         ok: true,
-        result: { files, truncated: false },
+        result: { skills, truncated: false },
       }),
       sessionId: args.sessionId,
     });

@@ -3948,6 +3948,9 @@ describe("public thread data routes", () => {
               result: { providerThreadId: "provider-immediate-reprovision" },
             };
           }
+          if (request.command.type === "host.read_skill_files") {
+            return { ok: true, result: { skills: [], truncated: false } };
+          }
           if (request.command.type === "host.list_files") {
             return {
               ok: true,
