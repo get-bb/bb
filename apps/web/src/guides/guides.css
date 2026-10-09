@@ -105,13 +105,35 @@
   text-align: left;
 }
 
-.gd-switch {
-  margin: 56px 0 0;
-  flex-wrap: wrap;
-}
-
 .gd-switch .cmp-logo-item {
   transition: opacity 0.2s ease;
+}
+
+.gd-hero .cmp-logos {
+  margin-bottom: 22px;
+}
+
+.gd-hero .cmp-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+@media (max-width: 720px) {
+  .gd-hero .cmp-logos {
+    margin-bottom: 16px;
+  }
+
+  .gd-hero .cmp-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .gd-hero .gd-switch-glyph-ic {
+    width: 22px;
+    height: 22px;
+  }
 }
 
 .gd-switch-glyph {
@@ -126,15 +148,15 @@
 }
 
 .gd-switch-glyph-ic {
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
 }
 
 .gd-switch-arrow {
   width: 22px;
   height: 22px;
   flex-shrink: 0;
-  margin-bottom: 28px;
+  margin-bottom: 26px;
   color: var(--subtle);
 }
 
@@ -899,33 +921,6 @@
 }
 
 @media (max-width: 640px) {
-  .gd-switch {
-    flex-wrap: nowrap;
-    gap: 6px;
-    margin-top: 40px;
-  }
-  .gd-switch .cmp-logo {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-  }
-  .gd-switch-glyph-ic {
-    width: 18px;
-    height: 18px;
-  }
-  .gd-switch .cmp-logo-item {
-    gap: 8px;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  .gd-switch-name {
-    display: none;
-  }
-  .gd-switch-arrow {
-    width: 16px;
-    height: 16px;
-    margin-bottom: 0;
-  }
   .gd-hero {
     padding-top: 24px;
   }

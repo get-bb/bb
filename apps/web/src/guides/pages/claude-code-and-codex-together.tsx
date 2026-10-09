@@ -53,6 +53,7 @@ export const guide: Guide = {
   ...meta,
   description:
     "Have Claude Code build and Codex review. They message each other and report back to you, in threads you can watch side by side.",
+  heroTop: null,
   concept: <AgentSplit />,
   agentPrompt: AGENT_PROMPT,
   requirement: "Claude Code and Codex, each signed in once",

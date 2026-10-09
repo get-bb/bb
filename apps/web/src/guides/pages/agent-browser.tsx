@@ -52,6 +52,7 @@ export const guide: Guide = {
   ...meta,
   description:
     "Have your coding agent check its own work and show you screenshots. Then you annotate what to change instead of describing it.",
+  heroTop: null,
   concept: <BrowserConcept scene="code" />,
   agentPrompt: AGENT_PROMPT,
   requirement: "the bb desktop app for Browser tabs, logins, and annotations",
