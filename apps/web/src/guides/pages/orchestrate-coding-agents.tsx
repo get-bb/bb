@@ -73,7 +73,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/orchestrate-coding-agents/window-start-interview.png",
+        src: "/guides/orchestrate-coding-agents/window-start-interview.webp",
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, starting with the questions the agent asks: your task and reviewer.",
         width: 2048,
         height: 1280,
@@ -151,7 +151,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/orchestrate-coding-agents/window-manager.png",
+        src: "/guides/orchestrate-coding-agents/window-manager.webp",
         alt: "The Issue triage thread in bb. After a correction that anything broken by a deploy is P0, the agent says it saved the issue-triage skill with the correction as a rule, and will update it each time it's corrected.",
         width: 2048,
         height: 1280,
@@ -168,7 +168,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/orchestrate-coding-agents/window-drag.png",
+            src: "/guides/orchestrate-coding-agents/window-drag.webp",
             alt: "The Fix emoji filenames thread being dragged onto Issue triage in the bb sidebar, with Issue triage outlined as the drop target. The Issue triage thread is open on its report for three new issues: one P0, one P1, and one P2, each with an owner.",
             width: 2048,
             height: 1280,
@@ -198,7 +198,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/orchestrate-coding-agents/window-automation.png",
+        src: "/guides/orchestrate-coding-agents/window-automation.webp",
         alt: "The Weekday issue triage automation in bb: 9AM Mon-Fri in acme-web, posting to an existing thread with the prompt “Run your issue-triage skill on this morning's new issues,” and one successful run",
         width: 2048,
         height: 1280,
@@ -230,7 +230,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/orchestrate-coding-agents/window-workflows.png",
+        src: "/guides/orchestrate-coding-agents/window-workflows.webp",
         alt: "bb's Installed plugins settings filtered to Workflows, with its switch on",
         width: 2048,
         height: 1280,

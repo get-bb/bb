@@ -67,7 +67,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-connect-signed-in.png",
+        src: "/guides/work-from-anywhere/window-connect-signed-in.webp",
         alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
         width: 2048,
         height: 1280,
@@ -99,7 +99,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-keep-awake.png",
+        src: "/guides/work-from-anywhere/window-keep-awake.webp",
         alt: "Keep Awake in bb's settings, with Prevent idle sleep on for all hosts",
         width: 2048,
         height: 1280,
@@ -128,7 +128,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-phone.png",
+        src: "/guides/work-from-anywhere/window-phone.webp",
         alt: "The bb app on a phone, showing an agent's reply in a thread and an Ask a follow-up box",
         width: 780,
         height: 1688,
@@ -149,7 +149,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-notify.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-notify.webp",
         alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
         width: 2048,
         height: 1280,
