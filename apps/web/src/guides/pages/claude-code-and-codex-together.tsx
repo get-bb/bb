@@ -86,7 +86,7 @@ export const guide: Guide = {
     {
       id: "step-1",
       title: "Start a Claude Code thread with your task",
-      lead: "Claude Code builds it and brings in Codex. You only talk to one of them unless you want to.",
+      lead: "Claude Code builds it and brings in Codex to review. You talk to Claude Code, and can open Codex's thread anytime.",
       body: (
         <Substeps>
           <li>
