@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { splitPathForMiddleTruncation } from "./truncate-path-middle";
+import {
+  fitPathMiddle,
+  splitPathForMiddleTruncation,
+} from "./truncate-path-middle";
 
 describe("splitPathForMiddleTruncation", () => {
   it.each([
@@ -24,4 +27,36 @@ describe("splitPathForMiddleTruncation", () => {
       });
     },
   );
+});
+
+describe("fitPathMiddle", () => {
+  const measure = (text: string) => text.length;
+  const path = "~/.bb/plugins/worktrees/thr_abc-1/bb";
+
+  it("keeps a path that fits", () => {
+    expect(fitPathMiddle(path, path.length, measure)).toBe(path);
+  });
+
+  it("cuts the middle and keeps the root and last two segments", () => {
+    expect(fitPathMiddle(path, 22, measure)).toBe("~/.bb/pl…/thr_abc-1/bb");
+  });
+
+  it("cuts the start of the kept segments once only the root is left", () => {
+    expect(fitPathMiddle(path, 10, measure)).toBe("~/…bc-1/bb");
+  });
+
+  it("keeps the root of paths outside home and on Windows", () => {
+    expect(fitPathMiddle("/tmp/qa/run/external-root", 19, measure)).toBe(
+      "/tmp/…external-root",
+    );
+    expect(fitPathMiddle("C:\\Users\\me\\Code\\bb", 12, measure)).toBe(
+      "C:\\…\\Code\\bb",
+    );
+  });
+
+  it("start-truncates a path with no head to shorten", () => {
+    expect(fitPathMiddle("/repo/very-long-name", 10, measure)).toBe(
+      "…long-name",
+    );
+  });
 });
