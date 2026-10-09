@@ -423,6 +423,11 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
+  unassignedBinding("window.reload", {
+    all: ["mainSurface"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
   unassignedBinding("dataDirectory.open", {
     all: ["mainSurface"],
     desktopOnly: true,

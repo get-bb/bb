@@ -20,3 +20,4 @@ export const BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL =
   "bb-desktop:write-clipboard";
 export const BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL =
   "bb-desktop:open-window-find";
+export const BB_DESKTOP_RELOAD_WINDOW_CHANNEL = "bb-desktop:reload-window";

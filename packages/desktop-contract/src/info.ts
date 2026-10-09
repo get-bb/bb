@@ -83,6 +83,7 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
+  reloadWindow?(): void;
   setSplitNavigationEnabled?(
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],

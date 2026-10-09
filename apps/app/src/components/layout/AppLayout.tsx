@@ -85,6 +85,7 @@ import {
 } from "@/lib/bb-desktop";
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import { useDataDirectoryCommand } from "@/hooks/useDataDirectoryCommand";
+import { useWindowReloadCommand } from "@/hooks/useWindowReloadCommand";
 import { usePluginSafeModeCommands } from "@/hooks/usePluginSafeModeCommands";
 import { usePluginCachePruneCommand } from "@/hooks/usePluginCachePruneCommand";
 import { useServerDaemonLogsCommand } from "@/hooks/useServerDaemonLogsCommand";
@@ -523,6 +524,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   });
   useServerDaemonLogsCommand();
   useDataDirectoryCommand();
+  useWindowReloadCommand();
   usePluginSafeModeCommands();
   usePluginCachePruneCommand();
   const archivedSectionId = isArchivedView

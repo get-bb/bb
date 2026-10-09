@@ -88,6 +88,7 @@ import {
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
@@ -456,6 +457,9 @@ const bbDesktopApi: BbDesktopApi = {
   },
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
+  },
+  reloadWindow(): void {
+    ipcRenderer.send(BB_DESKTOP_RELOAD_WINDOW_CHANNEL);
   },
   setSplitNavigationEnabled(
     enabled: boolean,
