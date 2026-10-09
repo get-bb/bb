@@ -1740,7 +1740,8 @@
 @media (prefers-reduced-motion: reduce) {
   .gd-sched-before,
   .gd-sched-after,
-  .gd-sched-pending {
+  .gd-sched-pending,
+  .gd-sched-pending.gd-sched-before {
     animation: none;
   }
   .gd-sched-before {
@@ -1755,14 +1756,14 @@
 }
 
 @media (max-width: 640px) {
-  .gd-shot-frame {
+  .gd-shot-wide .gd-shot-frame {
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .gd-shot-frame::-webkit-scrollbar {
+  .gd-shot-wide .gd-shot-frame::-webkit-scrollbar {
     display: none;
   }
-  .gd-shot-frame img {
+  .gd-shot-wide .gd-shot-frame img {
     width: 720px;
     max-width: none;
   }

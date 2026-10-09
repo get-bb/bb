@@ -302,9 +302,11 @@ export function guideVariant(variant: string | null): Guide {
         answer: (
           <ol>
             <li>
-              Ask the agent in that thread to run <code>.bb-env-setup.sh</code>{" "}
-              and fix what fails.
+              Open the thread and read the{" "}
+              <strong>.bb-env-setup.sh failed</strong> output. bb removes a
+              worktree whose setup fails.
             </li>
+            <li>Fix the script and commit it.</li>
             <li>
               Check that every untracked file the setup needs, like{" "}
               <code>.env</code>, is listed in <code>.worktreeinclude</code>.
@@ -335,8 +337,8 @@ export function guideVariant(variant: string | null): Guide {
           <ol>
             <li>Its agent probably isn't signed in on this computer.</li>
             <li>
-              Sign in to that agent once, then choose <strong>Retry</strong> in
-              the thread.
+              Sign in to that agent once, then send the thread a message to
+              start it again.
             </li>
           </ol>
         ),

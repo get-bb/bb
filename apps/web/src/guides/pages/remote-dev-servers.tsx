@@ -420,10 +420,11 @@ export const guide: Guide = {
       question: "How do I keep a machine from running too many agents?",
       answer: (
         <p>
-          Install the{" "}
-          <a href="/marketplace/concurrency-limit">Concurrency limit</a> plugin.
-          It holds new turns until a running thread finishes, with a limit for
-          each machine.
+          The built-in{" "}
+          <a href="/marketplace/concurrency-limit">Concurrency limit</a> plugin
+          does this by default: each machine runs one thread per processor, and
+          new turns wait until a running thread finishes. To change a machine's
+          limit, open <strong>Settings → Concurrency limit</strong>.
         </p>
       ),
     },

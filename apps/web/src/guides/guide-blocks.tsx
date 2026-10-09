@@ -192,7 +192,9 @@ export function Note({
 
 export function ProductShot({ shot }: { shot: GuideShot }) {
   return (
-    <figure className="gd-shot">
+    <figure
+      className={shot.width > shot.height ? "gd-shot gd-shot-wide" : "gd-shot"}
+    >
       <div
         className="gd-shot-frame"
         style={{ maxWidth: `${shot.width / 2}px` }}

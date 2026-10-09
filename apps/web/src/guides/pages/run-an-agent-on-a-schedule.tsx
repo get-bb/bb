@@ -26,7 +26,7 @@ Guide: https://getbb.app/guides/run-an-agent-on-a-schedule
 
 You're in a bb thread, so the bb CLI is on your PATH. Do every step yourself, with a Check after each step. If a check fails, stop and tell me the command, the error, and what you'd do next. If Job is blank, suggest morning issue triage on weekdays at 9am with all reports in one thread. Don't guess my timezone or create extra example jobs.
 
-1. Get ready. Read bb guide automations and bb automation create --help. Run bb plugin list; install Automations with bb plugin install automations if it's missing, or bb plugin enable automations if it's off. Read bb status --json and bb machine list to get this project's ID and the machine that will run the job. For an agent job, pick a signed-in provider and a model from bb provider models <provider> --json. Run bb keep-awake status; if it's off, or the machine is a laptop, tell me runs are skipped while it sleeps.
+1. Get ready. Read bb guide automations and bb automation create --help. Run bb plugin list; install Automations with bb plugin install automations if it's missing, or bb plugin enable automations if it's off. Read bb status --json and bb machine list to get this project's ID and the machine that will run the job. For an agent job, pick a signed-in provider and a model from bb provider models <provider> --json. Run bb keep-awake status; if it's off, or the machine is a laptop, tell me a run that comes due while it sleeps starts once it wakes.
    Check: Automations is on, the machine is connected, and for an agent job the model is listed.
 
 2. Don't duplicate. Run bb automation list --project <project-id>. If a matching automation exists, reuse it and skip to step 4.
