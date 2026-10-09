@@ -102,7 +102,11 @@ function RailHarness() {
 
 function renderRail(
   initialPath: string,
-  options: { visibleKeys?: string[]; isCompactViewport?: boolean } = {},
+  options: {
+    visibleKeys?: string[];
+    isCompactViewport?: boolean;
+    isFramed?: boolean;
+  } = {},
 ) {
   const store = createStore();
   if (options.visibleKeys) {
@@ -116,7 +120,7 @@ function renderRail(
           isCompactViewport={options.isCompactViewport ?? false}
         >
           <TooltipProvider>
-            <SidebarProvider>
+            <SidebarProvider framed={options.isFramed ?? false}>
               <RailHarness />
             </SidebarProvider>
           </TooltipProvider>
@@ -200,6 +204,25 @@ describe("AppNavRail", () => {
       "Settings",
     ]);
     expect(currentRailLabels()).toEqual(["Home"]);
+  });
+
+  it("rests Settings on the window card's bottom edge in the framed shell, and keeps its own bottom padding otherwise", () => {
+    const framed = renderRail(THREAD_PATH, { isFramed: true });
+    const framedNav = screen.getByRole("navigation", {
+      name: "Primary navigation",
+    });
+    expect(framedNav.lastElementChild).toBe(
+      screen.getByRole("button", { name: /^Settings/ }),
+    );
+    expect(framedNav.classList.contains("pb-2.5")).toBe(false);
+    framed.unmount();
+
+    renderRail(THREAD_PATH);
+    expect(
+      screen
+        .getByRole("navigation", { name: "Primary navigation" })
+        .classList.contains("pb-2.5"),
+    ).toBe(true);
   });
 
   it("moves the highlight from Home to a plugin panel and to Settings as the route changes", () => {
