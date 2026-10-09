@@ -7,7 +7,6 @@ import {
   OPENCODE_ACP_DIALECT,
   grokContextUsageFromPromptResult,
   grokContextWindowSizeFromSessionModels,
-  registerAcpDialect,
   resolveAcpDialect,
 } from "./dialect.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
@@ -46,38 +45,6 @@ describe("resolveAcpDialect", () => {
       resolveAcpDialect({ dialectId: "amp", command: "cursor-agent" }),
     ).toBe(GENERIC_ACP_DIALECT);
     expect(resolveAcpDialect({ command: "amp" })).toBe(GENERIC_ACP_DIALECT);
-  });
-});
-
-describe("registerAcpDialect", () => {
-  it("makes a plugin's dialect the one its id resolves to, and lets a later registration replace it", () => {
-    const first = { id: "amp-test", toolIdentity: () => ({ name: "first" }) };
-    const second = { id: "amp-test", toolIdentity: () => ({ name: "second" }) };
-
-    registerAcpDialect(first);
-    expect(resolveAcpDialect({ dialectId: "amp-test", command: "node" })).toBe(
-      first,
-    );
-    expect(resolveAcpDialect({ command: "amp-test" })).toBe(
-      GENERIC_ACP_DIALECT,
-    );
-
-    registerAcpDialect(second);
-    expect(resolveAcpDialect({ dialectId: "amp-test", command: "node" })).toBe(
-      second,
-    );
-  });
-
-  it("refuses an empty id and every id the bridge ships", () => {
-    expect(() => registerAcpDialect({ id: " " })).toThrow("non-empty id");
-    for (const id of ["acp", "cursor", "grok", "omp", "opencode"]) {
-      expect(() => registerAcpDialect({ id })).toThrow(
-        `ACP dialect id "${id}" is reserved by a built-in dialect.`,
-      );
-    }
-    expect(resolveAcpDialect({ dialectId: "grok", command: "node" })).toBe(
-      GROK_ACP_DIALECT,
-    );
   });
 });
 

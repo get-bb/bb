@@ -1,12 +1,12 @@
 {
   "acp-cursor/approval-allow": {
-    "events": 34,
+    "events": 31,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/approval-deny": {
-    "events": 32,
+    "events": 29,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
@@ -24,43 +24,43 @@
     "grammarDrops": 0
   },
   "acp-cursor/resume": {
-    "events": 26,
+    "events": 21,
     "rows": 4,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/steer": {
-    "events": 71,
+    "events": 68,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/stop-interrupt": {
-    "events": 44,
+    "events": 39,
     "rows": 5,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/subagent": {
-    "events": 53,
+    "events": 50,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/turn-tools": {
-    "events": 101,
+    "events": 98,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/user-question": {
-    "events": 29,
+    "events": 26,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "acp-cursor/web-search": {
-    "events": 54,
+    "events": 51,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0

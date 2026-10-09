@@ -22,7 +22,6 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.7.0",
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "zod": "^4.3.6",

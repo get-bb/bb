@@ -30,6 +30,7 @@ describe("builtin server artifacts", () => {
 
   it.each([
     { pluginDir: "provider-acp" },
+    { pluginDir: "provider-acp-redux" },
     { pluginDir: "provider-claude-code" },
     { pluginDir: "provider-codex" },
     { pluginDir: "provider-pi" },

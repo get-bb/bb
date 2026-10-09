@@ -95,58 +95,91 @@ export function findAcpThoughtLevelConfigOption(
   );
 }
 
-const ACP_NATIVE_REASONING_VALUE_ALIASES_BY_LEVEL: Readonly<
+const ACP_NATIVE_REASONING_LEVEL_BY_VALUE: Readonly<
+  Partial<Record<string, ReasoningLevel>>
+> = {
+  none: "none",
+  minimal: "low",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  ultracode: "ultracode",
+  max: "max",
+  ultra: "ultra",
+};
+
+const ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL: Readonly<
   Partial<Record<ReasoningLevel, readonly string[]>>
 > = {
-  low: ["minimal"],
-  ultracode: ["xhigh"],
-  max: ["xhigh"],
-  ultra: ["max"],
+  none: ["none"],
+  low: ["low", "minimal"],
+  medium: ["medium"],
+  high: ["high"],
+  xhigh: ["xhigh"],
+  ultracode: ["ultracode", "xhigh"],
+  max: ["max", "xhigh"],
+  ultra: ["ultra", "max"],
 };
+
+function acpNativeValueToReasoningLevel(
+  value: string | undefined,
+): ReasoningLevel | undefined {
+  return value === undefined
+    ? undefined
+    : ACP_NATIVE_REASONING_LEVEL_BY_VALUE[value];
+}
 
 export function acpNativeReasoningLevelToValue(
   level: ReasoningLevel,
   thoughtLevelOption: AcpConfigOption,
 ): string | undefined {
+  const candidateValues = ACP_NATIVE_REASONING_VALUE_CANDIDATES_BY_LEVEL[level];
+  if (candidateValues === undefined) {
+    return undefined;
+  }
   const values = new Set(
     (thoughtLevelOption.options ?? []).map((o) => o.value),
   );
-  if (values.has(level)) {
-    return level;
-  }
-  return (ACP_NATIVE_REASONING_VALUE_ALIASES_BY_LEVEL[level] ?? []).find(
-    (value) => values.has(value),
-  );
-}
-
-function readOptionDescription(option: object): string | undefined {
-  const description: unknown = Reflect.get(option, "description");
-  return typeof description === "string" && description.trim() !== ""
-    ? description
-    : undefined;
+  return candidateValues.find((value) => values.has(value));
 }
 
 export function buildAcpNativeReasoningSupport(
   thoughtLevelOption: AcpConfigOption | undefined,
 ): AcpNativeReasoningSupport {
+  const options = thoughtLevelOption?.options ?? [];
   const seen = new Set<ReasoningLevel>();
+  const matchedValueByLevel = new Map<ReasoningLevel, string>();
   const supportedReasoningEfforts: AvailableModel["supportedReasoningEfforts"] =
     [];
-  for (const option of thoughtLevelOption?.options ?? []) {
-    if (option.value === "" || seen.has(option.value)) {
+  for (const option of options) {
+    const level = acpNativeValueToReasoningLevel(option.value);
+    if (level === undefined) {
       continue;
     }
-    seen.add(option.value);
-    const name =
-      option.name !== undefined && option.name.trim() !== ""
-        ? option.name
-        : undefined;
+    if (seen.has(level)) {
+      const previousValue = matchedValueByLevel.get(level);
+      if (previousValue !== level && option.value === level) {
+        const effort = supportedReasoningEfforts.find(
+          (candidate) => candidate.reasoningEffort === level,
+        );
+        if (effort) {
+          effort.description = option.name ?? option.value;
+        }
+        matchedValueByLevel.set(level, option.value);
+      }
+      continue;
+    }
+    seen.add(level);
+    matchedValueByLevel.set(level, option.value);
     supportedReasoningEfforts.push({
-      reasoningEffort: option.value,
-      ...(name !== undefined && name !== option.value ? { label: name } : {}),
-      description: readOptionDescription(option) ?? name ?? option.value,
+      reasoningEffort: level,
+      description: option.name ?? option.value,
     });
   }
+  supportedReasoningEfforts.sort((a, b) =>
+    compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
+  );
   if (supportedReasoningEfforts.length === 0) {
     return {
       supportedReasoningEfforts:
@@ -154,12 +187,17 @@ export function buildAcpNativeReasoningSupport(
       defaultReasoningEffort: "medium",
     };
   }
-  const currentValue = thoughtLevelOption?.currentValue;
+  const currentLevel = acpNativeValueToReasoningLevel(
+    thoughtLevelOption?.currentValue,
+  );
+  const supportedLevels = supportedReasoningEfforts.map(
+    (effort) => effort.reasoningEffort,
+  );
   return {
     supportedReasoningEfforts,
     defaultReasoningEffort:
-      currentValue !== undefined && seen.has(currentValue)
-        ? currentValue
+      currentLevel !== undefined && supportedLevels.includes(currentLevel)
+        ? currentLevel
         : supportedReasoningEfforts[0].reasoningEffort,
   };
 }
@@ -184,7 +222,7 @@ export function buildModelCatalogFromConfigOptions(
       id: option.value,
       model: option.value,
       displayName: option.name ?? option.value,
-      description: readOptionDescription(option) ?? "",
+      description: "",
       supportedReasoningEfforts: reasoning.supportedReasoningEfforts,
       defaultReasoningEffort: reasoning.defaultReasoningEffort,
       isDefault,

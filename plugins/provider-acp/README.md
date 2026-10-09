@@ -33,10 +33,6 @@ What lives here:
   chapter of `docs/configuration.md`.
 - `src/configured-agents.ts` — resolving the setting's JSON into agent
   definitions, with a warning for each entry it cannot use.
-- `src/registry.ts` and `src/registry-service.ts` — the official ACP registry:
-  reading its document, turning an `npx` or `uvx` agent into a `customAgents`
-  entry, and the `listRegistry` / `addRegistryAgent` / `removeAgent` RPC and
-  `bb acp` CLI commands that the settings section (`app.tsx`) and the CLI share.
 - `src/declaration.ts` — one agent definition becomes one
   `bb.providers.register` declaration: ids, display names, icons,
   capabilities, and the bridge options it launches with (`acpLaunchSpec`, and

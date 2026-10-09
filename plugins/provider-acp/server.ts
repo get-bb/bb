@@ -10,7 +10,6 @@ import { resolveConfiguredAcpAgents } from "./src/configured-agents.js";
 import { acpHostContract } from "./src/contract.js";
 import { acpProviderDeclaration } from "./src/declaration.js";
 import { applyAcpAgentProbe } from "./src/probe-capabilities.js";
-import { registerAcpRegistry } from "./src/registry-service.js";
 import {
   KNOWN_ACP_AGENTS,
   RESERVED_ACP_PROVIDER_IDS,
@@ -24,8 +23,6 @@ const PROBEABLE_ACP_AGENTS = KNOWN_ACP_AGENTS.filter(
 );
 
 const HOST_POLL_INTERVAL_MS = 5_000;
-
-const REGISTRY_PROVIDER_IDS_OF_SHIPPED_AGENTS = ["acp-grok-build"];
 
 async function sleepUntilAbort(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) {
@@ -75,18 +72,6 @@ export default async function acpProvidersPlugin(
       }),
       default: "",
     },
-  });
-
-  registerAcpRegistry({
-    bb,
-    readCustomAgents: async () => (await settings.get()).customAgents,
-    writeCustomAgents: async (value) => {
-      await settings.experimental_set({ customAgents: value });
-    },
-    reservedProviderIds: new Set([
-      ...KNOWN_ACP_AGENTS.map((agent) => agent.id),
-      ...REGISTRY_PROVIDER_IDS_OF_SHIPPED_AGENTS,
-    ]),
   });
 
   const registered = new Map<string, { key: string; dispose(): void }>();

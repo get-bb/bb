@@ -1,6 +1,5 @@
 export { experimental_providerBridge as acpProviderBridge } from "./bridge/bridge.js";
 
-export { registerAcpDialect } from "./dialect.js";
 export type {
   AcpClientRequestOutcome,
   AcpDelegationReport,

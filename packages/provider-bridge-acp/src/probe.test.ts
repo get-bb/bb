@@ -37,10 +37,10 @@ describe("probeAcpAgent", () => {
         command: process.execPath,
         args: [
           "-e",
-          `process.stdin.on("data", (chunk) => {
+          `process.stdin.on("data", () => {
              process.stdout.write(JSON.stringify({
                jsonrpc: "2.0",
-               id: JSON.parse(chunk.toString()).id,
+               id: 1,
                result: {
                  protocolVersion: 1,
                  agentCapabilities: {
@@ -69,10 +69,10 @@ describe("probeAcpAgent", () => {
       command: process.execPath,
       args: [
         "-e",
-        `process.stdin.on("data", (chunk) => {
+        `process.stdin.on("data", () => {
            process.stdout.write(JSON.stringify({
              jsonrpc: "2.0",
-             id: JSON.parse(chunk.toString()).id,
+             id: 1,
              result: {
                protocolVersion: 1,
                agentCapabilities: {

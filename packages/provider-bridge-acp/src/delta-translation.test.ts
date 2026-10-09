@@ -437,49 +437,8 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
           usedTokens: 32_768,
           modelContextWindow: 200_000,
           estimated: false,
-          cost: { amount: 0.42, currency: "USD" },
         },
       },
-    ]);
-  });
-
-  it("keeps the last reported cumulative cost on usage updates that omit it", () => {
-    const harness = startedHarness();
-    harness.translate(
-      updateEvent({
-        sessionUpdate: "usage_update",
-        used: 1_000,
-        size: 200_000,
-        cost: { amount: 0.42, currency: "USD" },
-      }),
-    );
-    expect(
-      harness.translate(
-        updateEvent({
-          sessionUpdate: "usage_update",
-          used: 2_000,
-          size: 200_000,
-        }),
-      ),
-    ).toMatchObject([
-      {
-        contextWindowUsage: {
-          usedTokens: 2_000,
-          cost: { amount: 0.42, currency: "USD" },
-        },
-      },
-    ]);
-    expect(
-      harness.translate(
-        updateEvent({
-          sessionUpdate: "usage_update",
-          used: 3_000,
-          size: 200_000,
-          cost: { amount: "free" },
-        }),
-      ),
-    ).toMatchObject([
-      { contextWindowUsage: { cost: { amount: 0.42, currency: "USD" } } },
     ]);
   });
 
@@ -1137,7 +1096,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     ]);
   });
 
-  it("marks cancelled turns interrupted and ends other stop reasons as completed with a notice", () => {
+  it("marks cancelled turns interrupted and refusals failed", () => {
     const harness = startedHarness();
     const firstTurnId = harness.openTurnId();
 
@@ -1151,42 +1110,18 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       },
     ]);
 
-    const notices: Record<string, unknown>[] = [];
-    for (const stopReason of [
-      "refusal",
-      "max_tokens",
-      "max_turn_requests",
-      "paused_by_vendor",
-    ]) {
-      harness.translate(turnStartedEvent());
-      const turnId = harness.openTurnId();
-      const events = harness.translate(turnCompletedEvent(stopReason));
-      expect(events.at(-1)).toEqual({
+    harness.translate(turnStartedEvent());
+    const secondTurnId = harness.openTurnId();
+    expect(secondTurnId).not.toBe(firstTurnId);
+    expect(harness.translate(turnCompletedEvent("refusal"))).toEqual([
+      {
         type: "turn/completed",
         threadId: "",
         providerThreadId: "",
-        scope: turnScope(turnId),
-        status: "completed",
-      });
-      notices.push(
-        ...events
-          .filter((event) => event.type === "provider/warning")
-          .map((event) => ({ ...event })),
-      );
-    }
-    expect(
-      notices.map((notice) => [notice["summary"], notice["details"]]),
-    ).toEqual([
-      ["The agent declined to continue", undefined],
-      [
-        "The agent stopped at its output limit",
-        "The model reached its maximum output length before finishing this turn.",
-      ],
-      [
-        "The agent stopped at its request limit",
-        "The agent reached its limit of model requests for a single turn.",
-      ],
-      ["The agent stopped the turn", "Stop reason: paused_by_vendor"],
+        scope: turnScope(secondTurnId),
+        status: "failed",
+        error: { message: "Agent stopped the turn: refusal" },
+      },
     ]);
   });
 
@@ -1202,45 +1137,18 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       ),
     ).toEqual([]);
     expect(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "session_info_update",
+          title: "Tool Tester",
+        }),
+      ),
+    ).toEqual([]);
+    expect(
       harness.translate(updateEvent({ sessionUpdate: "totally_new_update" })),
     ).toMatchObject([
       { type: "provider/unhandled", rawType: "acp/update:totally_new_update" },
     ]);
-  });
-});
-
-describe("acp delta translation (session title)", () => {
-  it("reports a title the agent sets once, as an agent-sourced thread name", () => {
-    const harness = createHarness();
-    const titled = updateEvent({
-      sessionUpdate: "session_info_update",
-      title: "Fix the login redirect",
-      updatedAt: "2026-10-08T00:00:00Z",
-    });
-    expect(harness.translate(titled)).toEqual([
-      {
-        type: "thread/name/updated",
-        threadId: "",
-        providerThreadId: "",
-        scope: threadScope(),
-        threadName: "Fix the login redirect",
-        source: "agent",
-      },
-    ]);
-    expect(harness.translate(titled)).toEqual([]);
-    expect(
-      harness.translate(
-        updateEvent({ sessionUpdate: "session_info_update", title: null }),
-      ),
-    ).toEqual([]);
-    expect(
-      harness.translate(
-        updateEvent({
-          sessionUpdate: "session_info_update",
-          updatedAt: "2026-10-08T01:00:00Z",
-        }),
-      ),
-    ).toEqual([]);
   });
 });
 

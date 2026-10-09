@@ -75,7 +75,7 @@ export async function probeAcpAgent(
     ]);
     return {
       reachable: true,
-      fork: result.session.fork,
+      fork: result.agentCapabilities?.sessionCapabilities?.fork != null,
     };
   } catch (error) {
     return { reachable: false, reason: describe(error) };
