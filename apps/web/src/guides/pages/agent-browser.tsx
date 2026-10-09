@@ -51,17 +51,14 @@ export const meta: GuideMeta = {
 export const guide: Guide = {
   ...meta,
   description:
-    "Have your coding agent open your app, click through its change, and show you screenshots. Then point at what to change instead of describing it.",
+    "Have your coding agent check its own work and show you screenshots. Then annotate what to change instead of describing it.",
   concept: <BrowserConcept scene="code" />,
   picker: null,
   agentPrompt: AGENT_PROMPT,
   requirement: "the bb desktop app for Browser tabs, logins, and annotations",
   steps: [
     PLUGINS_STEP,
-    {
-      ...SIGN_INS_STEP,
-      lead: "Skip this if your app has no login. Otherwise, import your logins so your agent opens your app already logged in.",
-    },
+    SIGN_INS_STEP,
     {
       id: "check",
       title: "Ask your agent to try its change",
