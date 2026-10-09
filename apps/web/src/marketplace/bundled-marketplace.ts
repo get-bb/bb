@@ -23,6 +23,7 @@ export const INSTALL_ON_REQUEST_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "docs",
   "environment-modal-sandbox",
   "github",
+  "interactive-answers",
   "memory",
   "tasks",
   "theme-preview",

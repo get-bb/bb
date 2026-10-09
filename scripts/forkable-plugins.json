@@ -15,6 +15,7 @@
     "plugins/environment-personal-workspace",
     "plugins/github",
     "plugins/inline-vis",
+    "plugins/interactive-answers",
     "plugins/keep-awake",
     "plugins/memory",
     "plugins/monaco-editor",

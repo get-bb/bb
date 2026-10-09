@@ -226,6 +226,11 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "interactive-answers",
+    pluginId: "bb--interactive-answers",
+    defaultEnabled: true,
+  },
+  {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,

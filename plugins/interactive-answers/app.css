@@ -1,0 +1,360 @@
+.ia-answer {
+  position: relative;
+  color: var(--foreground);
+  background: var(--card, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 12px 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ia-answer * {
+  box-sizing: border-box;
+}
+.ia-answer header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ia-answer h3 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  margin: 3px 0 0;
+  line-height: 1.3;
+}
+.ia-answer h4,
+.ia-answer caption {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  text-align: left;
+  color: var(--foreground);
+}
+.ia-answer p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.ia-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.ia-answer .ia-description {
+  margin: 9px 0 0;
+  color: var(--muted-foreground);
+}
+.ia-answer button,
+.ia-answer select,
+.ia-answer input {
+  font: inherit;
+  color: inherit;
+  accent-color: var(--primary);
+}
+.ia-answer button,
+.ia-answer select,
+.ia-number {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ia-answer button {
+  cursor: pointer;
+  padding: 5px 9px;
+  min-height: 30px;
+}
+.ia-answer .ia-reset {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+.ia-answer button:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.ia-answer :is(button, input, select, summary):focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 3px;
+}
+.ia-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 18px 22px;
+  margin: 22px 0;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.ia-control {
+  min-width: 0;
+}
+.ia-control label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-weight: 500;
+}
+.ia-control output {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ia-control select {
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+}
+.ia-number {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+}
+.ia-number input {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.ia-number span {
+  padding-right: 9px;
+  color: var(--muted-foreground);
+}
+.ia-control input[type="range"] {
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+}
+.ia-control small {
+  display: block;
+  margin-top: 7px;
+  color: var(--destructive, var(--foreground));
+}
+.ia-blocks {
+  display: grid;
+  gap: 22px;
+  margin-top: 18px;
+}
+.ia-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 18px;
+  margin: 0;
+}
+.ia-metrics dt {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.ia-metrics dd {
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  margin: 3px 0 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.ia-chart > svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.ia-chart text {
+  fill: var(--muted-foreground);
+  font-size: 10px;
+}
+.ia-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.ia-series {
+  stroke: currentColor;
+  fill: currentColor;
+}
+.ia-series-0 {
+  color: var(--primary);
+}
+.ia-series-1 {
+  color: var(--foreground);
+}
+.ia-series-2 {
+  color: #ac6437;
+}
+.ia-series-3 {
+  color: #7778bd;
+}
+.ia-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  font-size: 11px;
+  margin: 0 0 12px 4px;
+}
+.ia-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ia-answer details {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.ia-answer summary {
+  cursor: pointer;
+  min-height: 28px;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+.ia-answer details p {
+  margin-top: 10px;
+  color: var(--muted-foreground);
+}
+.ia-table-scroll {
+  overflow-x: auto;
+}
+.ia-answer table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ia-answer :is(td, th) {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.ia-answer th {
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.ia-answer footer {
+  margin-top: 16px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.ia-error p {
+  margin-bottom: 8px;
+}
+.ia-diagram > svg {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.ia-diagram svg g {
+  transition:
+    transform 450ms ease,
+    opacity 300ms ease;
+}
+.ia-diagram :is(path, rect, ellipse) {
+  transition: fill 450ms ease;
+}
+.ia-diagram-choice {
+  cursor: pointer;
+  outline: none;
+}
+.ia-diagram svg > g:not(.ia-diagram-choice) {
+  pointer-events: none;
+}
+.ia-diagram-choice:focus-visible {
+  filter: drop-shadow(0 0 4px var(--ring, var(--primary)));
+}
+@media (prefers-reduced-motion: reduce) {
+  .ia-diagram svg g,
+  .ia-diagram :is(path, rect, ellipse) {
+    transition: none;
+  }
+}
+.ia-diagram svg g {
+  animation: ia-diagram-enter 350ms ease;
+}
+@keyframes ia-diagram-enter {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ia-diagram svg g {
+    animation: none;
+  }
+}
+.ia-widget {
+  position: relative;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--card, var(--background));
+  overflow: hidden;
+}
+.ia-widget iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.ia-agent {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 88%, transparent);
+  color: var(--background);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  animation: ia-agent 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.ia-agent i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: ia-agent-dot 1s ease-in-out infinite alternate;
+}
+@keyframes ia-agent-dot {
+  from {
+    opacity: 0.35;
+  }
+}
+@keyframes ia-agent {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  8%,
+  82% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ia-agent,
+  .ia-agent i {
+    animation: none;
+  }
+}

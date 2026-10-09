@@ -269,6 +269,7 @@ describe("builtin plugin reconciliation", () => {
       "environment-modal-sandbox",
       "browser-automation",
       "github",
+      "interactive-answers",
       "docs",
       "memory",
       "tasks",
