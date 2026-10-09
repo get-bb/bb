@@ -11,7 +11,14 @@ import { Provider, createStore } from "jotai";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
-import { SidebarNotificationsPrompt } from "./SidebarNotificationsPrompt";
+import {
+  SidebarNotificationsCard,
+  useSidebarNotificationsPrompt,
+} from "./SidebarNotificationsPrompt";
+
+function Harness() {
+  return <SidebarNotificationsCard prompt={useSidebarNotificationsPrompt()} />;
+}
 
 const mocks = vi.hoisted(() => ({
   recordTelemetryEvent: vi.fn(),
@@ -63,14 +70,14 @@ function renderPrompt() {
     <Provider store={createStore()}>
       <TooltipProvider delayDuration={300} disableHoverableContent>
         <SidebarProvider>
-          <SidebarNotificationsPrompt />
+          <Harness />
         </SidebarProvider>
       </TooltipProvider>
     </Provider>,
   );
 }
 
-const chip = () => screen.queryByTestId("sidebar-notifications-prompt");
+const card = () => screen.queryByTestId("sidebar-notifications-prompt");
 const events = (name: string) =>
   mocks.recordTelemetryEvent.mock.calls
     .map(([event]) => event)
@@ -86,18 +93,20 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("SidebarNotificationsPrompt", () => {
+describe("SidebarNotificationsCard", () => {
   it("appears once a thread is running and asks for permission only on a click", async () => {
     const requestPermission = arrange({});
 
     renderPrompt();
 
-    expect(chip()).not.toBeNull();
+    expect(card()).not.toBeNull();
     expect(events("notification_prompt_shown")).toEqual([
       { name: "notification_prompt_shown", properties: { surface: "sidebar" } },
     ]);
     expect(requestPermission).not.toHaveBeenCalled();
-    fireEvent.click(chip() as HTMLElement);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Turn on notifications" }),
+    );
     await waitFor(() =>
       expect(events("notification_prompt_accepted")).toEqual([
         {
@@ -107,7 +116,7 @@ describe("SidebarNotificationsPrompt", () => {
       ]),
     );
     expect(requestPermission).toHaveBeenCalledTimes(1);
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
   });
 
   it("stays hidden before any thread runs", () => {
@@ -115,19 +124,19 @@ describe("SidebarNotificationsPrompt", () => {
 
     renderPrompt();
 
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
     expect(events("notification_prompt_shown")).toEqual([]);
   });
 
   it("stays hidden once permission is decided or push is off", () => {
     arrange({ permission: "denied" });
     renderPrompt();
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
     cleanup();
 
     arrange({ pushEnabled: false });
     renderPrompt();
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
   });
 
   it("does not ask again after Not now", () => {
@@ -136,7 +145,7 @@ describe("SidebarNotificationsPrompt", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
 
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
     expect(events("notification_prompt_dismissed")).toEqual([
       {
         name: "notification_prompt_dismissed",
@@ -145,7 +154,7 @@ describe("SidebarNotificationsPrompt", () => {
     ]);
     cleanup();
     renderPrompt();
-    expect(chip()).toBeNull();
+    expect(card()).toBeNull();
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
@@ -157,6 +166,6 @@ describe("SidebarNotificationsPrompt", () => {
     arrange({ threadStatus: "idle" });
     renderPrompt();
 
-    expect(chip()).not.toBeNull();
+    expect(card()).not.toBeNull();
   });
 });

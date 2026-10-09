@@ -27,7 +27,10 @@ import {
   usePluginSidebarFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
-import { SidebarNotificationsPrompt } from "./SidebarNotificationsPrompt";
+import {
+  SidebarNotificationsCard,
+  useSidebarNotificationsPrompt,
+} from "./SidebarNotificationsPrompt";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
@@ -92,6 +95,7 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
+  const notificationsPrompt = useSidebarNotificationsPrompt();
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -228,6 +232,10 @@ export function AppSidebar({
             onDismiss={pluginSidebarFooter.dismiss}
           />
         )}
+        {isFooterCustomizing ||
+        pluginSidebarFooter.activeItem !== null ? null : (
+          <SidebarNotificationsCard prompt={notificationsPrompt} />
+        )}
         <SidebarMenu
           className={cn(
             "flex-row items-center gap-1",
@@ -266,7 +274,6 @@ export function AppSidebar({
             onNavigate={closeOnMobile}
           />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
-          <SidebarNotificationsPrompt />
         </SidebarMenu>
       </SidebarFooter>
       <SidebarResizeHandle

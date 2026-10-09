@@ -273,6 +273,12 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("setup_checklist_item_skipped"),
+      properties: z.object({ item: setupChecklistItemIdSchema }).strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("setup_checklist_dismissed"),
       properties: z
         .object({

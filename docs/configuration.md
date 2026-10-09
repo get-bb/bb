@@ -2056,7 +2056,8 @@ through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordT
 `onboarding_started` (whether an agent was installed or ready at first launch),
 `onboarding_step_reached`, `onboarding_step_completed`, and
 `onboarding_step_skipped` (per first-run step), `onboarding_finished` (completed
-or skipped), `setup_checklist_item_completed`, `setup_checklist_dismissed`, and
+or skipped), `setup_checklist_item_completed`, `setup_checklist_item_skipped`,
+`setup_checklist_dismissed`, and
 `notification_prompt_shown`, `notification_prompt_accepted`,
 `notification_prompt_dismissed`, and `notification_prompt_denied`. That route
 accepts only those events and their fixed, non-identifying properties.

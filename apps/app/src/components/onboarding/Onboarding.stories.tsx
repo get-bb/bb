@@ -576,9 +576,11 @@ function HomeFrame({
         checklist={{
           items,
           agentMissing,
+          setupComplete: false,
           act: (id) => {
             if (id !== "thread" && id !== "notifications") onOpen(id);
           },
+          skip: noop,
           dismiss: onDismiss,
         }}
       />
@@ -1107,8 +1109,8 @@ export function HomeAfterSkipping() {
         </StoryWindow>
       </Captioned>
       <Captioned
-        label="Home with only optional extras left"
-        hint="Once the required steps are done, the line offers the next optional extra with its one-line reason."
+        label="Home with only extras left"
+        hint="Once the required steps are done, the line offers the next extra with its one-line reason; × skips it and shows the next, and setup ends after the last one."
       >
         <StoryWindow>
           <HomeFrame

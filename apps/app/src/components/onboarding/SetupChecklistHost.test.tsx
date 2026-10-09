@@ -133,6 +133,9 @@ function Harness() {
       <span data-testid="has-banner">
         {String(hasSetupChecklistBanner(checklist))}
       </span>
+      <span data-testid="setup-complete">
+        {String(checklist.setupComplete)}
+      </span>
       <SetupChecklistBanner checklist={checklist} />
     </>
   );
@@ -215,7 +218,7 @@ describe("setup checklist", () => {
 
     const store = renderHarness();
 
-    expect(screen.getByText("Optional: Pick plugins")).toBeTruthy();
+    expect(screen.getByText("Pick plugins")).toBeTruthy();
     expect(
       screen.getByText(
         "Browser automation, workflows, and more. Off until you want them.",
@@ -223,6 +226,48 @@ describe("setup checklist", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Browse" }));
     expect(store.get(onboardingReopenStepAtom)).toBe("plugins");
+  });
+
+  it("skips one extra at a time with its × and completes setup after the last one", () => {
+    arrange({ agentStatuses: ["ready"], projectCount: 1, threadCount: 1 });
+
+    renderHarness();
+
+    expect(screen.queryByText(/Optional/u)).toBeNull();
+    expect(screen.getByTestId("setup-complete").textContent).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "Skip Pick plugins" }));
+    expect(screen.getByText("Use bb from anywhere")).toBeTruthy();
+    expect(telemetryEvents("setup_checklist_item_skipped")).toEqual([
+      { name: "setup_checklist_item_skipped", properties: { item: "plugins" } },
+    ]);
+    expect(mocks.mutate).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Skip Use bb from anywhere" }),
+    );
+
+    expect(screen.getByTestId("has-banner").textContent).toBe("false");
+    expect(screen.getByTestId("setup-complete").textContent).toBe("true");
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ setupChecklistVisible: false }),
+    );
+    expect(telemetryEvents("setup_checklist_dismissed")).toEqual([]);
+  });
+
+  it("reports setup complete once the checklist is dismissed", () => {
+    arrange({ settings: { setupChecklistVisible: false } });
+
+    renderHarness();
+
+    expect(screen.getByTestId("setup-complete").textContent).toBe("true");
+  });
+
+  it("keeps setup incomplete while a required step is open", () => {
+    arrange({ agentStatuses: ["ready"] });
+
+    renderHarness();
+
+    expect(screen.getByTestId("setup-complete").textContent).toBe("false");
   });
 
   it("offers notifications only on a click and records the answer", async () => {
@@ -239,7 +284,7 @@ describe("setup checklist", () => {
 
     renderHarness();
 
-    expect(screen.getByText("Optional: Turn on notifications")).toBeTruthy();
+    expect(screen.getByText("Turn on notifications")).toBeTruthy();
     expect(requestPermission).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Turn on" }));
     await waitFor(() =>
@@ -269,7 +314,7 @@ describe("setup checklist", () => {
 
     renderHarness();
 
-    expect(screen.queryByText("Optional: Turn on notifications")).toBeNull();
+    expect(screen.queryByText("Turn on notifications")).toBeNull();
     expect(screen.getByTestId("has-banner").textContent).toBe("false");
   });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import {
   setupChecklistItemIdSchema,
@@ -41,6 +41,7 @@ export interface SetupChecklistItem {
 }
 
 const COMPLETED_ITEMS_STORAGE_KEY = "bb.setupChecklist.completedItems";
+const SKIPPED_EXTRAS_STORAGE_KEY = "bb.setupChecklist.skippedExtras";
 
 function readCompletedItems(): Set<string> | null {
   try {
@@ -52,6 +53,33 @@ function readCompletedItems(): Set<string> | null {
       : null;
   } catch {
     return null;
+  }
+}
+
+function readSkippedExtras(): ReadonlySet<SetupChecklistItemId> {
+  try {
+    const raw = window.localStorage.getItem(SKIPPED_EXTRAS_STORAGE_KEY);
+    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.flatMap((id) => {
+        const result = setupChecklistItemIdSchema.safeParse(id);
+        return result.success ? [result.data] : [];
+      }),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSkippedExtras(ids: ReadonlySet<SetupChecklistItemId>): void {
+  try {
+    window.localStorage.setItem(
+      SKIPPED_EXTRAS_STORAGE_KEY,
+      JSON.stringify([...ids]),
+    );
+  } catch {
+    return;
   }
 }
 
@@ -111,7 +139,9 @@ interface UseSetupChecklistArgs {
 interface SetupChecklistState {
   items: SetupChecklistItem[] | null;
   agentMissing: boolean;
+  setupComplete: boolean;
   act: (id: SetupChecklistItemId) => void;
+  skip: (id: SetupChecklistItemId) => void;
   dismiss: () => void;
 }
 
@@ -137,6 +167,7 @@ export function useSetupChecklist({
   const pluginsQuery = usePluginList({ enabled: visible });
   const hostsQuery = useHosts({ enabled: visible });
   const notificationPermission = useNotificationPermission();
+  const [skippedExtras, setSkippedExtras] = useState(readSkippedExtras);
 
   const states = statesQuery.data?.providers;
   const agentReady = hasReadyAgent(states);
@@ -254,8 +285,14 @@ export function useSetupChecklist({
         ];
   useChecklistCompletionTelemetry(allItems);
 
+  const openItems =
+    allItems === null
+      ? null
+      : allItems.filter(
+          (item) => !(item.optional && skippedExtras.has(item.id)),
+        );
   const everythingDone =
-    allItems !== null && allItems.every((item) => item.done);
+    openItems !== null && openItems.every((item) => item.done);
   const clearedRef = useRef(false);
   useEffect(() => {
     if (!everythingDone || clearedRef.current) return;
@@ -275,6 +312,15 @@ export function useSetupChecklist({
         setReopenStep(id);
     }
   };
+  const skip = (id: SetupChecklistItemId) => {
+    const next = new Set(skippedExtras).add(id);
+    writeSkippedExtras(next);
+    setSkippedExtras(next);
+    recordTelemetryEvent({
+      name: "setup_checklist_item_skipped",
+      properties: { item: id },
+    });
+  };
   const dismiss = () => {
     if (allItems !== null) {
       const required = allItems.filter((item) => !item.optional);
@@ -293,9 +339,11 @@ export function useSetupChecklist({
   };
 
   return {
-    items: everythingDone ? null : allItems,
+    items: everythingDone ? null : openItems,
     agentMissing,
+    setupComplete: onboarded && (!visible || everythingDone),
     act,
+    skip,
     dismiss,
   };
 }
@@ -340,7 +388,7 @@ export function SetupChecklistBanner({
       <div className="flex items-center gap-3 px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-foreground">
-            {next.optional ? `Optional: ${next.title}` : "Finish setting up bb"}
+            {next.optional ? next.title : "Finish setting up bb"}
           </p>
           <p className="mt-0.5 truncate text-xs text-subtle-foreground">
             {next.optional
@@ -359,8 +407,12 @@ export function SetupChecklistBanner({
         </Button>
         <button
           type="button"
-          aria-label="Dismiss setup checklist"
-          onClick={checklist.dismiss}
+          aria-label={
+            next.optional ? `Skip ${next.title}` : "Dismiss setup checklist"
+          }
+          onClick={() =>
+            next.optional ? checklist.skip(next.id) : checklist.dismiss()
+          }
           className="shrink-0 rounded-sm text-muted-foreground hover:text-foreground"
         >
           <Icon name="X" aria-hidden className="size-4" />

@@ -1,10 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { PUSH_NOTIFICATIONS_PLUGIN_ID } from "@/components/onboarding/onboarding-model";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
-import { SidebarMenuItem } from "@/components/ui/sidebar.js";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
 import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -17,6 +14,11 @@ import { withLocalStorage } from "@/lib/browser-storage";
 type PromptState = "shown" | "answered";
 
 const PROMPT_STATE_STORAGE_KEY = "bb.sidebar.notificationPrompt";
+
+const CARD_SURFACE_CLASS =
+  "relative rounded-lg bg-card shadow-xs dark:bg-sidebar-accent/50 dark:shadow-none";
+const CARD_CONTROL_CLASS =
+  "flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring motion-reduce:transition-none";
 
 function readPromptState(): PromptState | null {
   const stored = withLocalStorage(
@@ -38,14 +40,13 @@ function usePromptState() {
   return [promptState, setPromptState] as const;
 }
 
-const PROMPT_LABEL = "Get notified when an agent needs you";
+export interface SidebarNotificationsPromptState {
+  visible: boolean;
+  turnOn: () => void;
+  notNow: () => void;
+}
 
-const CHIP_CLASS = cn(
-  "flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-sidebar-border px-2",
-  "text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
-);
-
-export function SidebarNotificationsPrompt() {
+export function useSidebarNotificationsPrompt(): SidebarNotificationsPromptState {
   const permission = useNotificationPermission();
   const [promptState, setPromptState] = usePromptState();
   const pushEnabled =
@@ -71,43 +72,60 @@ export function SidebarNotificationsPrompt() {
     });
   }, [promptState, setPromptState, visible]);
 
-  if (!visible) return null;
+  return {
+    visible,
+    turnOn: () => {
+      setPromptState("answered");
+      void requestNotificationPermission("sidebar");
+    },
+    notNow: () => {
+      setPromptState("answered");
+      recordTelemetryEvent({
+        name: "notification_prompt_dismissed",
+        properties: { surface: "sidebar" },
+      });
+    },
+  };
+}
+
+export function SidebarNotificationsCard({
+  prompt,
+}: {
+  prompt: SidebarNotificationsPromptState;
+}) {
+  const labelId = useId();
+  if (!prompt.visible) return null;
   return (
-    <SidebarMenuItem className="flex min-w-0 items-center">
-      <div className={cn(CHIP_CLASS, "gap-0 pr-0.5")}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={PROMPT_LABEL}
-              data-testid="sidebar-notifications-prompt"
-              className="flex items-center gap-1.5 pr-1"
-              onClick={() => {
-                setPromptState("answered");
-                void requestNotificationPermission("sidebar");
-              }}
-            >
-              <Icon name="BellDot" className="size-3 text-muted-foreground" />
-              Notify me
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">{PROMPT_LABEL}</TooltipContent>
-        </Tooltip>
-        <button
-          type="button"
-          aria-label="Not now"
-          className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:text-sidebar-foreground"
-          onClick={() => {
-            setPromptState("answered");
-            recordTelemetryEvent({
-              name: "notification_prompt_dismissed",
-              properties: { surface: "sidebar" },
-            });
-          }}
-        >
-          <Icon name="X" aria-hidden className="size-3" />
-        </button>
-      </div>
-    </SidebarMenuItem>
+    <section
+      aria-labelledby={labelId}
+      data-testid="sidebar-notifications-prompt"
+      className={`${CARD_SURFACE_CLASS} px-3 pb-2.5 pt-2.5`}
+    >
+      <p
+        id={labelId}
+        className="pr-6 text-sm font-medium leading-snug text-foreground"
+      >
+        Get notified when an agent needs you
+      </p>
+      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+        See when a thread finishes or asks you a question.
+      </p>
+      <button
+        type="button"
+        onClick={prompt.turnOn}
+        className="mt-1.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+      >
+        Turn on notifications
+        <Icon aria-hidden name="ChevronRight" className="size-3" />
+      </button>
+      <button
+        type="button"
+        aria-label="Not now"
+        onClick={prompt.notNow}
+        className={`absolute right-1.5 top-1.5 ${CARD_CONTROL_CLASS}`}
+      >
+        <Icon aria-hidden name="X" className="size-3.5" />
+      </button>
+    </section>
   );
 }
