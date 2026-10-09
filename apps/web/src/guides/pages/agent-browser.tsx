@@ -41,7 +41,13 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
 export const PLUGINS_STEP: GuideStep = {
   id: "plugins",
   title: "Add the browser plugins",
-  lead: "Browser Automation gives your agent a browser. Agent Annotations lets you point at what you mean.",
+  lead: (
+    <>
+      The <a href="/marketplace/browser-automation">Browser Automation</a>{" "}
+      plugin gives your agent a browser. The Agent Annotations plugin lets you
+      point at what you mean.
+    </>
+  ),
   body: (
     <Substeps>
       <li>
