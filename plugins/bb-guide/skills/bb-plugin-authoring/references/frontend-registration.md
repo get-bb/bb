@@ -124,6 +124,11 @@ export default definePluginApp((app) => {
     onActivate: ({ openPluginDetails }) => openPluginDetails(),
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
+  app.slots.experimental_codeFenceRenderer({
+    id: "ui-blocks",
+    languages: ["ui"],
+    component: UiBlock,
+  });
   app.slots.experimental_threadList({
     id: "inbox",
     title: "Inbox",

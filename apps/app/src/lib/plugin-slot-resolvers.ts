@@ -4,6 +4,7 @@ import type {
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
 import type {
+  PluginCodeFenceRendererSlot,
   PluginComposerCustomizationSlot,
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
@@ -269,6 +270,34 @@ export function resolveMessageDirectiveRegistry(
   for (const [id, claimants] of claimantsById) {
     const directive = resolveMessageDirectiveClaimants(claimants);
     if (directive !== null) resolved.set(id, directive);
+  }
+  return resolved;
+}
+
+export interface ResolvedCodeFenceRenderer {
+  slot: PluginCodeFenceRendererSlot;
+  pluginIds: readonly string[];
+}
+
+export function resolveCodeFenceRendererRegistry(
+  registrations: readonly PluginCodeFenceRendererSlot[],
+): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
+  const resolved = new Map<
+    string,
+    { slot: PluginCodeFenceRendererSlot; pluginIds: string[] }
+  >();
+  for (const registration of registrations) {
+    for (const language of registration.languages) {
+      const existing = resolved.get(language);
+      if (existing === undefined) {
+        resolved.set(language, {
+          slot: registration,
+          pluginIds: [registration.pluginId],
+        });
+      } else {
+        existing.pluginIds.push(registration.pluginId);
+      }
+    }
   }
   return resolved;
 }

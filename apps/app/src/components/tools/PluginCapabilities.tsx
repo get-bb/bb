@@ -366,6 +366,14 @@ function pluginAppSurfaceItems(
         detail: "Renders plugin-provided content inside thread messages.",
         mono: true,
       })),
+    ...slots.codeFenceRenderers
+      .filter((slot) => slot.pluginId === pluginId)
+      .map((slot) => ({
+        key: `code-fence:${slot.id}`,
+        label: slot.languages.map((language) => `\`\`\`${language}`).join(", "),
+        detail: "Renders these fenced code blocks inside assistant messages.",
+        mono: true,
+      })),
   ];
 }
 

@@ -1272,6 +1272,87 @@ describe("loadPluginApp", () => {
     ).rejects.toThrow('slots.messageDirective: duplicate id "inline-vis"');
   });
 
+  it("captures experimental_codeFenceRenderer registrations and validates them like the host", async () => {
+    const FenceRenderer = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_codeFenceRenderer({
+          id: "generative-ui",
+          languages: ["ui", "app"],
+          component: FenceRenderer,
+        });
+        builder.slots.experimental_codeFenceRenderer({
+          id: "charts",
+          languages: ["c++", "chart.v2"],
+          component: FenceRenderer,
+        });
+      }),
+    );
+    expect(captured.codeFenceRenderers).toEqual([
+      {
+        id: "generative-ui",
+        languages: ["ui", "app"],
+        component: FenceRenderer,
+      },
+      {
+        id: "charts",
+        languages: ["c++", "chart.v2"],
+        component: FenceRenderer,
+      },
+    ]);
+
+    const kind = "slots.experimental_codeFenceRenderer";
+    const rejected: [string, Record<string, unknown>[]][] = [
+      [
+        `${kind}: "languages" must be a non-empty array`,
+        [{ id: "ui", languages: [], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: "languages" must be a non-empty array`,
+        [{ id: "ui", languages: "ui", component: FenceRenderer }],
+      ],
+      [
+        `${kind}: languages must match`,
+        [{ id: "ui", languages: ["UI"], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: languages must match`,
+        [{ id: "ui", languages: ["ui block"], component: FenceRenderer }],
+      ],
+      [
+        `${kind}: duplicate language "ui"`,
+        [
+          { id: "first", languages: ["ui"], component: FenceRenderer },
+          { id: "second", languages: ["app", "ui"], component: FenceRenderer },
+        ],
+      ],
+      [
+        `${kind}: duplicate id "ui"`,
+        [
+          { id: "ui", languages: ["ui"], component: FenceRenderer },
+          { id: "ui", languages: ["app"], component: FenceRenderer },
+        ],
+      ],
+      [
+        `${kind}: "component"`,
+        [{ id: "ui", languages: ["ui"], component: undefined }],
+      ],
+    ];
+    for (const [message, registrations] of rejected) {
+      await expect(
+        loadPluginApp(
+          definePluginApp((builder) => {
+            for (const registration of registrations) {
+              builder.slots.experimental_codeFenceRenderer(
+                registration as never,
+              );
+            }
+          }),
+        ),
+      ).rejects.toThrow(message);
+    }
+  });
+
   it("captures messageAction registrations and validates them like the host", async () => {
     expect(app.messageActions).toHaveLength(1);
     expect(app.messageActions[0]).toMatchObject({

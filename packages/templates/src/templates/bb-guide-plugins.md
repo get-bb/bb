@@ -731,14 +731,18 @@ experimental_newThreadPanelAction (the root New thread counterpart, with
 `projectId: string | null` instead of `threadId`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
-file link for a one-off choice), and messageDirective (replace a leaf
+file link for a one-off choice), messageDirective (replace a leaf
 `::name{k="v"}` block inside assistant / nested-agent Markdown with a plugin
 component; unknown, disabled, incomplete, code-fenced, or crashing
 directives fall back to the original source; components receive a nullable
 openWorkspaceFile(path) callback for opening a worktree-relative file in the
 host workspace viewer and a nullable
 openThreadPanel({ actionId, title?, params? }) callback for opening one of the
-same plugin's thread-panel actions). Hooks:
+same plugin's thread-panel actions), and experimental_codeFenceRenderer
+(render fenced code blocks of claimed languages in the same assistant /
+nested-agent Markdown with a plugin component receiving { code, language,
+index, complete, message, Original }; BB's code block is the fallback for
+missing, disabled, or crashing plugins). Hooks:
 useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
@@ -963,7 +967,7 @@ reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
 navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
-messageDirective) and composer
+messageDirective, experimental_codeFenceRenderer) and composer
 customizations via `app.composer.customize({ actions, plusMenu, sendMenu,
 banners, richText })`; action/banner components use `useComposer()`, while the
 host renders plus-menu and send-menu rows and editor decorations. The deprecated pre-1.0 `slots.composerAccessory` footer API was

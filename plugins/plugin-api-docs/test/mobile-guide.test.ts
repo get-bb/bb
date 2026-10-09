@@ -131,7 +131,7 @@ it("pages mobile panes without using annotation selection as navigation", () => 
     expect(visiblePage()).toBe("Thread");
     expect(previous.disabled).toBe(false);
     expect(current().querySelector('[data-guide-mobile-scene="conversation"]')).not.toBeNull();
-    for (const id of ["timeline-renderers", "message-directives", "pending-interaction", "app-overlay"]) {
+    for (const id of ["timeline-renderers", "message-directives", "code-fence-renderers", "pending-interaction", "app-overlay"]) {
       expect(current().querySelector(`a[href="#surface-${id}"]`), id).not.toBeNull();
     }
     act(() => next.click());

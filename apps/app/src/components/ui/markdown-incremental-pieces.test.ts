@@ -33,6 +33,7 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives";
 import { remarkThreadMentions } from "./markdown-thread-mentions";
+import { EMPTY_CODE_FENCE_COUNTS } from "./markdown-code-fence-renderers";
 
 interface RenderedMarkdownDocument {
   html: string;
@@ -45,6 +46,8 @@ const registry = buildMessageDirectiveRegistry([
 ]);
 
 const config: MarkdownPieceRenderConfig = {
+  codeFenceIndexBase: EMPTY_CODE_FENCE_COUNTS,
+  codeFenceRendererRegistry: null,
   components: {},
   messageDirectiveRegistry: registry,
   rehypePlugins: [rehypeKatex],

@@ -20,6 +20,11 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import {
+  remarkCodeFenceRenderers,
+  type CodeFenceCounts,
+  type CodeFenceRendererRegistry,
+} from "./markdown-code-fence-renderers.js";
+import {
   BARE_FENCE_PATTERN,
   TRAILING_CLOSE_PATTERN,
 } from "./markdown-math-fences.js";
@@ -37,6 +42,8 @@ import {
 type MarkdownPluginList = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 export interface MarkdownPieceRenderConfig {
+  codeFenceIndexBase: CodeFenceCounts;
+  codeFenceRendererRegistry: CodeFenceRendererRegistry | null;
   components: Components;
   messageDirectiveRegistry: MessageDirectiveRegistry | null;
   rehypePlugins: MarkdownPluginList;
@@ -62,6 +69,7 @@ interface MarkdownElementProps {
 }
 
 interface MarkdownPieceEntry {
+  codeFenceCounts: CodeFenceCounts;
   children: readonly ReactNode[];
   mounts: readonly MountedMessageDirective[];
   source: string;
@@ -82,6 +90,7 @@ interface MarkdownPieceSummaryTarget {
 }
 
 interface ParseMarkdownPieceArgs {
+  codeFenceIndexBase: CodeFenceCounts;
   config: MarkdownPieceRenderConfig;
   indexBase: number;
   offsets: ReadonlyMap<string, number>;
@@ -343,6 +352,7 @@ function rekeyMarkdownRootChildren(
 }
 
 function parseMarkdownPiece({
+  codeFenceIndexBase,
   config,
   indexBase,
   offsets,
@@ -369,6 +379,17 @@ function parseMarkdownPiece({
       },
     ]);
   }
+  const codeFenceCounts = new Map<string, number>();
+  if (config.codeFenceRendererRegistry !== null) {
+    remarkPlugins.push([
+      remarkCodeFenceRenderers,
+      {
+        counts: codeFenceCounts,
+        indexBase: codeFenceIndexBase,
+        registry: config.codeFenceRendererRegistry,
+      },
+    ]);
+  }
   remarkPlugins.push(() => (tree: Root) => {
     visit(tree, "image", (node) => {
       if (node.position?.start.offset === undefined) return;
@@ -392,6 +413,7 @@ function parseMarkdownPiece({
   );
   return {
     children,
+    codeFenceCounts,
     mounts: mounts.length === 0 ? EMPTY_MOUNTED_MESSAGE_DIRECTIVES : mounts,
     source,
     summary: summaryTarget.summary,
@@ -425,6 +447,7 @@ function resolveIncrementalMarkdownPieceEntries(
   const candidates = findMarkdownPieceCandidates(body);
   const entries: MarkdownPieceEntry[] = [];
   const offsets = new Map<string, number>();
+  const codeFenceOffsets = new Map(config.codeFenceIndexBase);
   let mountCount = 0;
   let reusingPreviousEntries = true;
   let start = 0;
@@ -458,6 +481,7 @@ function resolveIncrementalMarkdownPieceEntries(
       previousMatches && start + previous.source.length === end
         ? previous
         : parseMarkdownPiece({
+            codeFenceIndexBase: new Map(codeFenceOffsets),
             config,
             indexBase: mountCount,
             offsets,
@@ -474,6 +498,7 @@ function resolveIncrementalMarkdownPieceEntries(
       endIndex = merges === 1 ? endIndex + 1 : candidates.length;
       end = candidates[endIndex] ?? body.length;
       entry = parseMarkdownPiece({
+        codeFenceIndexBase: new Map(codeFenceOffsets),
         config,
         indexBase: mountCount,
         offsets,
@@ -490,6 +515,12 @@ function resolveIncrementalMarkdownPieceEntries(
     entries.push(entry);
     for (const [name, count] of entry.tagCounts) {
       offsets.set(name, (offsets.get(name) ?? 0) + count);
+    }
+    for (const [language, count] of entry.codeFenceCounts) {
+      codeFenceOffsets.set(
+        language,
+        (codeFenceOffsets.get(language) ?? 0) + count,
+      );
     }
     mountCount += entry.mounts.length;
     start = end;
@@ -581,6 +612,7 @@ export function resolveMarkdownPieces(
     : null;
   if (entries === null) {
     const entry = parseMarkdownPiece({
+      codeFenceIndexBase: config.codeFenceIndexBase,
       config,
       indexBase: 0,
       offsets: EMPTY_MARKDOWN_TAG_COUNTS,

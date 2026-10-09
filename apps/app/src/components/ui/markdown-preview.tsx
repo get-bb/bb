@@ -37,6 +37,8 @@ import { LazyMarkdownHtml } from "./lazy-markdown-html";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
@@ -94,6 +96,15 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import {
+  CodeFenceRendererMount,
+  CodeFenceRenderersContext,
+  countClaimedCodeFences,
+  EMPTY_CODE_FENCE_COUNTS,
+  remarkCodeFenceRenderers,
+  type CodeFenceElementProps,
+  type MarkdownCodeFenceRenderers,
+} from "./markdown-code-fence-renderers.js";
+import {
   createMarkdownPieceCache,
   resolveMarkdownPieces,
   type MarkdownPieceRenderConfig,
@@ -127,6 +138,7 @@ interface MarkdownPreviewProps {
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: MarkdownPromptMentions;
   messageDirectives?: MarkdownMessageDirectives;
+  codeFenceRenderers?: MarkdownCodeFenceRenderers;
   urlTransform?: UrlTransform;
 }
 
@@ -251,7 +263,9 @@ type MarkdownPreviewPropsEqual = (
 type MarkdownAnchorEvent = ReactMouseEvent<HTMLAnchorElement>;
 type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
   ExtraProps;
-type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & ExtraProps;
+type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> &
+  ExtraProps &
+  CodeFenceElementProps;
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
   imagePolicy: MarkdownImagePolicy;
   linkRouting?: MarkdownLinkRouting;
@@ -282,6 +296,7 @@ type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 type MarkdownRemarkPlugins = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
+const MARKDOWN_FENCE_MARKER_PATTERN = /`{3}|~{3}/u;
 const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
@@ -444,6 +459,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
     next: next.messageDirectives,
     previous: previous.messageDirectives,
   }) &&
+  previous.codeFenceRenderers === next.codeFenceRenderers &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
     previous: previous.linkRouting,
@@ -750,6 +766,88 @@ function renderMarkdownLocalFileContextMenuItem(
   );
 }
 
+function MarkdownCodeBlock({
+  codeProps,
+  codeText,
+  imagePolicy,
+  language,
+  preferredTheme,
+}: {
+  codeProps: ComponentPropsWithoutRef<"code">;
+  codeText: string;
+  imagePolicy: MarkdownImagePolicy;
+  language: string | null;
+  preferredTheme: Theme;
+}) {
+  const [softWrap, setSoftWrap] = useState(false);
+  const highlightedHtml = useMemo(
+    () =>
+      language !== "mermaid"
+        ? highlightMarkdownCode({ code: codeText, language })
+        : null,
+    [language, codeText],
+  );
+  const highlightedMarkup = useMemo(
+    () => (highlightedHtml === null ? null : { __html: highlightedHtml }),
+    [highlightedHtml],
+  );
+  if (language === "mermaid" && imagePolicy === "render") {
+    return (
+      <MarkdownMermaidDiagram
+        preferredTheme={preferredTheme}
+        source={codeText}
+      />
+    );
+  }
+
+  return (
+    <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
+      <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
+        <span className="font-mono text-xs uppercase text-muted-foreground">
+          {language ?? ""}
+        </span>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-pressed={softWrap}
+            aria-label={softWrap ? "Disable line wrap" : "Wrap long lines"}
+            onClick={() => {
+              setSoftWrap((value) => !value);
+            }}
+            className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground aria-pressed:text-foreground"
+          >
+            <Icon name="TextWrap" className="size-3" />
+          </button>
+          <CopyButton text={codeText} label="Copy code" />
+        </div>
+      </div>
+      <pre
+        className={cn(
+          "bb-code-highlight px-3 pb-3 pt-1",
+          softWrap
+            ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
+            : "overflow-x-auto",
+        )}
+      >
+        {highlightedMarkup === null ? (
+          <code className="font-mono text-xs" {...codeProps}>
+            {codeText}
+          </code>
+        ) : (
+          <code
+            className={cn(
+              "font-mono text-xs",
+              language ? `language-${language}` : "",
+            )}
+            dangerouslySetInnerHTML={highlightedMarkup}
+            {...codeProps}
+          />
+        )}
+      </pre>
+    </div>
+  );
+}
+
 function MarkdownCode({
   className: codeClassName,
   children,
@@ -758,79 +856,34 @@ function MarkdownCode({
   node: _node,
   preferredTheme,
   rewriteLocalhostLinks,
+  "data-code-fence-index": codeFenceIndex,
+  "data-code-fence-complete": codeFenceComplete,
   ...props
 }: MarkdownCodeRendererProps) {
   const codeText =
     typeof children === "string" ? children.replace(/\n$/, "") : "";
   const language = getMarkdownCodeLanguage({ className: codeClassName });
   const isBlock = isMarkdownCodeBlock({ codeText, language });
-  const [softWrap, setSoftWrap] = useState(false);
-  const highlightedHtml = useMemo(
-    () =>
-      isBlock && language !== "mermaid"
-        ? highlightMarkdownCode({ code: codeText, language })
-        : null,
-    [isBlock, language, codeText],
-  );
-  const highlightedMarkup = useMemo(
-    () => (highlightedHtml === null ? null : { __html: highlightedHtml }),
-    [highlightedHtml],
-  );
   if (isBlock) {
-    if (language === "mermaid" && imagePolicy === "render") {
-      return (
-        <MarkdownMermaidDiagram
-          preferredTheme={preferredTheme}
-          source={codeText}
-        />
-      );
-    }
-
-    return (
-      <div className="my-2 overflow-hidden rounded-md border border-border bg-surface-recessed">
-        <div className="flex items-center justify-between pl-3 pr-1.5 pt-1.5">
-          <span className="font-mono text-xs uppercase text-muted-foreground">
-            {language ?? ""}
-          </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              aria-pressed={softWrap}
-              aria-label={softWrap ? "Disable line wrap" : "Wrap long lines"}
-              onClick={() => {
-                setSoftWrap((value) => !value);
-              }}
-              className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground aria-pressed:text-foreground"
-            >
-              <Icon name="TextWrap" className="size-3" />
-            </button>
-            <CopyButton text={codeText} label="Copy code" />
-          </div>
-        </div>
-        <pre
-          className={cn(
-            "bb-code-highlight px-3 pb-3 pt-1",
-            softWrap
-              ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
-              : "overflow-x-auto",
-          )}
-        >
-          {highlightedMarkup === null ? (
-            <code className="font-mono text-xs" {...props}>
-              {codeText}
-            </code>
-          ) : (
-            <code
-              className={cn(
-                "font-mono text-xs",
-                language ? `language-${language}` : "",
-              )}
-              dangerouslySetInnerHTML={highlightedMarkup}
-              {...props}
-            />
-          )}
-        </pre>
-      </div>
+    const original = (
+      <MarkdownCodeBlock
+        codeProps={props}
+        codeText={codeText}
+        imagePolicy={imagePolicy}
+        language={language}
+        preferredTheme={preferredTheme}
+      />
+    );
+    return codeFenceIndex === undefined || language === null ? (
+      original
+    ) : (
+      <CodeFenceRendererMount
+        code={codeText}
+        complete={codeFenceComplete === "true"}
+        index={Number(codeFenceIndex)}
+        language={language}
+        original={original}
+      />
     );
   }
 
@@ -1718,6 +1771,7 @@ function MarkdownPreviewComponent({
   threadMentions,
   promptMentions,
   messageDirectives,
+  codeFenceRenderers,
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -1732,12 +1786,13 @@ function MarkdownPreviewComponent({
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
     localFileRouting !== undefined || localImageRouting !== undefined;
-  const imageSourceOffset = useMemo(() => {
+  const prefixBody = useMemo(() => {
     const prefix = normalizeLocalFileLinks
       ? normalizeLocalFileMarkdownLinks(sourcePrefix)
       : sourcePrefix;
-    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body).length;
+    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body);
   }, [sourcePrefix, normalizeLocalFileLinks]);
+  const imageSourceOffset = prefixBody.length;
   const promptMentionSubstitution = useMemo(
     () =>
       promptMentions
@@ -1837,24 +1892,48 @@ function MarkdownPreviewComponent({
     }
     return plugins;
   }, [threadMentions, promptMentions, hasMessageDirectives]);
-  const remarkPlugins = useMemo(
-    (): MarkdownRemarkPlugins =>
-      messageDirectiveMounts === null
-        ? baseRemarkPlugins
-        : [
-            ...baseRemarkPlugins,
-            [
-              remarkMessageDirectives,
-              {
-                indexBase: 0,
-                limit: MESSAGE_DIRECTIVE_MOUNT_LIMIT,
-                mounts: messageDirectiveMounts.mounts,
-                registry: messageDirectiveMounts.registry,
-              },
-            ],
-          ],
-    [baseRemarkPlugins, messageDirectiveMounts],
+  const codeFenceRegistry = codeFenceRenderers?.registry ?? null;
+  const codeFenceIndexBase = useMemo(
+    () =>
+      codeFenceRegistry === null ||
+      !MARKDOWN_FENCE_MARKER_PATTERN.test(prefixBody)
+        ? EMPTY_CODE_FENCE_COUNTS
+        : countClaimedCodeFences(
+            unified().use(remarkParse).use(baseRemarkPlugins).parse(prefixBody),
+            codeFenceRegistry,
+          ),
+    [codeFenceRegistry, prefixBody, baseRemarkPlugins],
   );
+  const remarkPlugins = useMemo((): MarkdownRemarkPlugins => {
+    const plugins: MarkdownRemarkPlugins = [...baseRemarkPlugins];
+    if (messageDirectiveMounts !== null) {
+      plugins.push([
+        remarkMessageDirectives,
+        {
+          indexBase: 0,
+          limit: MESSAGE_DIRECTIVE_MOUNT_LIMIT,
+          mounts: messageDirectiveMounts.mounts,
+          registry: messageDirectiveMounts.registry,
+        },
+      ]);
+    }
+    if (codeFenceRegistry !== null) {
+      plugins.push([
+        remarkCodeFenceRenderers,
+        {
+          counts: new Map<string, number>(),
+          indexBase: codeFenceIndexBase,
+          registry: codeFenceRegistry,
+        },
+      ]);
+    }
+    return plugins;
+  }, [
+    baseRemarkPlugins,
+    messageDirectiveMounts,
+    codeFenceRegistry,
+    codeFenceIndexBase,
+  ]);
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1875,6 +1954,8 @@ function MarkdownPreviewComponent({
 
   const markdownPieceRenderConfig = useMemo(
     (): MarkdownPieceRenderConfig => ({
+      codeFenceIndexBase,
+      codeFenceRendererRegistry: codeFenceRegistry,
       components: markdownComponents,
       messageDirectiveRegistry: messageDirectiveMounts?.registry ?? null,
       rehypePlugins,
@@ -1882,6 +1963,8 @@ function MarkdownPreviewComponent({
       urlTransform: resolvedUrlTransform,
     }),
     [
+      codeFenceIndexBase,
+      codeFenceRegistry,
       markdownComponents,
       messageDirectiveMounts,
       rehypePlugins,
@@ -1948,13 +2031,17 @@ function MarkdownPreviewComponent({
             render: messageDirectiveMounts,
           }}
         >
-          {threadMentions === undefined ? (
-            renderedMarkdown
-          ) : (
-            <RawThreadMentionBatchProvider>
-              {renderedMarkdown}
-            </RawThreadMentionBatchProvider>
-          )}
+          <CodeFenceRenderersContext.Provider
+            value={codeFenceRenderers ?? null}
+          >
+            {threadMentions === undefined ? (
+              renderedMarkdown
+            ) : (
+              <RawThreadMentionBatchProvider>
+                {renderedMarkdown}
+              </RawThreadMentionBatchProvider>
+            )}
+          </CodeFenceRenderersContext.Provider>
         </MessageDirectiveMountsContext.Provider>
       </div>
 

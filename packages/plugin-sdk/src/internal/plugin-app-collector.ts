@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
+  ExperimentalCodeFenceRendererRegistration,
   ExperimentalSidebarFooter,
   ExperimentalSidebarFooterActionContext,
   ExperimentalSidebarFooterActionRegistration,
@@ -47,6 +48,8 @@ import {
   requireTimelineRendererKind,
   requireUniqueId,
 } from "./composer-customization-validation.js";
+
+const CODE_FENCE_LANGUAGE_PATTERN = /^[a-z0-9][a-z0-9+#._-]*$/;
 
 export type ExperimentalSidebarFooterCommandKind = "open" | "close" | "toggle";
 
@@ -360,6 +363,7 @@ export interface CollectedPluginAppRegistrations {
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
+  codeFenceRenderers: ExperimentalCodeFenceRendererRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: CollectedPluginCommandRegistration[];
   providerIcons: CollectedPluginProviderIconRegistration[];
@@ -485,6 +489,7 @@ export function collectPluginAppRegistrations(
     sourceCodeRenderers: [],
     diffRenderers: [],
     messageDirectives: [],
+    codeFenceRenderers: [],
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],
@@ -514,6 +519,8 @@ export function collectPluginAppRegistrations(
     sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
     messageDirective: new Set<string>(),
+    codeFenceRenderer: new Set<string>(),
+    codeFenceLanguage: new Set<string>(),
     messageAction: new Set<string>(),
     command: new Set<string>(),
     providerIcon: new Set<string>(),
@@ -882,6 +889,37 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.messageDirective, id);
         collected.messageDirectives.push({
           id,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_codeFenceRenderer(registration) {
+        const kind = "slots.experimental_codeFenceRenderer";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.codeFenceRenderer, id);
+        const rawLanguages: unknown = registration.languages;
+        if (!Array.isArray(rawLanguages) || rawLanguages.length === 0) {
+          throw new Error(
+            `${kind}: "languages" must be a non-empty array of lowercase info-string languages`,
+          );
+        }
+        const languages = rawLanguages.map((language: unknown) => {
+          if (
+            typeof language !== "string" ||
+            !CODE_FENCE_LANGUAGE_PATTERN.test(language)
+          ) {
+            throw new Error(
+              `${kind}: languages must match ${CODE_FENCE_LANGUAGE_PATTERN}, got ${JSON.stringify(language)}`,
+            );
+          }
+          if (seenIds.codeFenceLanguage.has(language)) {
+            throw new Error(`${kind}: duplicate language "${language}"`);
+          }
+          seenIds.codeFenceLanguage.add(language);
+          return language;
+        });
+        collected.codeFenceRenderers.push({
+          id,
+          languages,
           component: requireComponent(kind, registration.component),
         });
       },

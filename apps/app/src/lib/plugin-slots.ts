@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
+  ExperimentalCodeFenceRendererRegistration,
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
   PluginMachineProviderInputsRegistration,
@@ -53,6 +54,7 @@ export interface PluginRegistrationSet {
   sourceCodeRenderers?: readonly PluginSourceCodeRendererRegistration[];
   diffRenderers?: readonly PluginDiffRendererRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
+  codeFenceRenderers?: readonly ExperimentalCodeFenceRendererRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
@@ -101,6 +103,8 @@ export interface PluginDiffRendererSlot
   extends PluginDiffRendererRegistration, PluginSlotBase {}
 export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
+export interface PluginCodeFenceRendererSlot
+  extends ExperimentalCodeFenceRendererRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
 export type PluginCommandPaletteActionSlot =
@@ -133,6 +137,7 @@ export interface PluginSlotSnapshot {
   sourceCodeRenderers: readonly PluginSourceCodeRendererSlot[];
   diffRenderers: readonly PluginDiffRendererSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
+  codeFenceRenderers: readonly PluginCodeFenceRendererSlot[];
   messageActions: readonly PluginMessageActionSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
@@ -160,6 +165,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   sourceCodeRenderers: [],
   diffRenderers: [],
   messageDirectives: [],
+  codeFenceRenderers: [],
   messageActions: [],
   commandPaletteActions: [],
   providerIcons: [],
@@ -194,6 +200,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "sourceCodeRenderers",
   "diffRenderers",
   "messageDirectives",
+  "codeFenceRenderers",
   "messageActions",
   "commandPaletteActions",
   "providerIcons",
@@ -252,6 +259,7 @@ function flattenRegistrations(
     sourceCodeRenderers: stamp(set.sourceCodeRenderers),
     diffRenderers: stamp(set.diffRenderers),
     messageDirectives: stamp(set.messageDirectives),
+    codeFenceRenderers: stamp(set.codeFenceRenderers),
     messageActions: stamp(set.messageActions),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),

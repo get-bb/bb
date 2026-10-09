@@ -67,6 +67,31 @@ openWorkspaceFile }` — register a leaf
   rather than trusting paths. Reference implementation:
   `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
   iframe preview, including relative assets and normal web loading).
+- `experimental_codeFenceRenderer` → `{ code, language, index, complete,
+message, Original }` — render fenced code blocks of chosen languages in
+  assistant-message Markdown with a plugin component (e.g. a ```` ```ui ````
+  block rendered live as the reply streams). Registration:
+  `{ id, languages, component }`; `id` uses letters, digits, `-`, `_` and is
+  unique within the plugin; `languages` is non-empty and each entry matches
+  `/^[a-z0-9][a-z0-9+#._-]*$/`. A plugin may claim a language once across its
+  registrations (duplicates are rejected at load). Props: `code` is the fence
+  body so far (it grows while streaming; the component keeps its React
+  identity while the open fence grows, but may remount once after it
+  closes); `complete` is true once the closing
+  fence is present in the message source; `index` is the zero-based ordinal
+  among fences of the same language in the message (other languages don't
+  shift it), so key persistent state on
+  `${message.id}#${language}#${index}`; `message` matches
+  `messageDirective`'s; `Original` renders BB's code block (highlighting,
+  copy button, mermaid diagrams). `useBbNavigate().openThreadPanel` works
+  inside it as for `messageDirective`. **Host behavior / fallbacks:** activates
+  only where `messageDirective` does (assistant and nested agent Markdown);
+  user messages, file previews, and plugin Markdown keep BB's code block.
+  When two plugins claim a language, the first in slot order (plugin ids
+  sorted) wins and BB logs a console warning naming both. A missing or
+  disabled plugin renders BB's code block; a crash disables that renderer
+  for the session, so all its fences render `Original`. Experimental: see
+  `docs/api_to_audit.md`.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
   assistant-message text-selection menu. Slot actions are limited to the main

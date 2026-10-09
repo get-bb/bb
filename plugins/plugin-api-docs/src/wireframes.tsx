@@ -1204,6 +1204,20 @@ function AppShellWireframeBody({
                   ::your-directive
                 </span>
               </Mark>
+              <Mark
+                id="code-fence-renderers"
+                label="A plugin component rendering a fenced code block"
+                className="block w-3/5 px-2.5 py-2.5"
+              >
+                <span className="flex gap-1.5" aria-hidden>
+                  <span className="h-5 w-12 rounded-sm bg-muted" />
+                  <span className="h-5 w-8 rounded-sm bg-foreground/40" />
+                </span>
+                <span className="mt-1.5 flex items-center gap-1.5">
+                  <PluginGlyph className="size-3.5" />
+                  ```ui
+                </span>
+              </Mark>
               <div className="space-y-1.5">
                 {messageActionsSelected ? (
                   <div

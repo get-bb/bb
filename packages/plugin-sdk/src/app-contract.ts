@@ -494,6 +494,39 @@ export interface PluginMessageDirectiveProps {
   openWorkspaceFile: PluginMessageDirectiveOpenWorkspaceFile | null;
 }
 
+/**
+ * Props passed to an `experimental_codeFenceRenderer` component — one fenced
+ * code block whose info-string language the plugin claimed, inside assistant
+ * (or nested agent) message Markdown. The component stays mounted while the
+ * reply streams, so it can keep local state as `code` grows.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalCodeFenceRendererProps {
+  /** The fence body received so far, without the fence delimiters. */
+  code: string;
+  /** The matched lowercase info-string language (e.g. `"ui"`). */
+  language: string;
+  /**
+   * Zero-based ordinal of this fence among the fences of the same language in
+   * the same message. Stable while the message streams, so
+   * `${message.id}#${language}#${index}` keys persistent per-block state.
+   */
+  index: number;
+  /**
+   * True once the message source contains this fence's closing delimiter.
+   * False while the fence is still streaming, and for a reply that ended
+   * without closing it.
+   */
+  complete: boolean;
+  message: PluginMessageDirectiveMessage;
+  /**
+   * BB's own code block for this fence. Render it to show the source, for
+   * example while `complete` is false or when `code` does not parse.
+   */
+  Original: ComponentType;
+}
+
 // ---------------------------------------------------------------------------
 // Slot registrations (the arguments to `app.slots.*`).
 // ---------------------------------------------------------------------------
@@ -1786,6 +1819,28 @@ export interface PluginMessageDirectiveRegistration {
 }
 
 /**
+ * Render fenced code blocks of chosen languages inside assistant (and nested
+ * agent) message Markdown. ` ```ui ` matches a registration whose `languages`
+ * include `"ui"`. Fences elsewhere (user messages, file previews, plugin
+ * Markdown) keep BB's code block. When several plugins claim one language the
+ * first in deterministic slot order wins and BB logs a warning. A disabled
+ * plugin or a crashing component falls back to BB's code block.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export interface ExperimentalCodeFenceRendererRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /**
+   * Lowercase info-string languages, e.g. `["ui", "app"]`. Each starts with a
+   * letter or digit and contains only `a-z`, `0-9`, `+`, `#`, `.`, `_`, `-`.
+   * A language may be claimed once per plugin.
+   */
+  languages: readonly string[];
+  component: ComponentType<ExperimentalCodeFenceRendererProps>;
+}
+
+/**
  * A narrow, stable reference to one rendered chat message — NOT an internal
  * timeline row. `sourceSeqEnd` is the last source event sequence the message
  * covers, the anchor the server accepts for provider-history forks.
@@ -2209,6 +2264,14 @@ export interface PluginAppSlots {
    */
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
+  /**
+   * Render fenced code blocks of chosen languages in assistant messages (see
+   * {@link ExperimentalCodeFenceRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_codeFenceRenderer(
+    registration: ExperimentalCodeFenceRendererRegistration,
+  ): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**
    * @deprecated Use `app.commands.register` with the same registration.

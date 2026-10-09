@@ -96,6 +96,7 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
             "thread-header",
             "timeline-renderers",
             "message-directives",
+            "code-fence-renderers",
             "message-actions",
             "pending-interaction",
             "app-overlay",

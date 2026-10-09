@@ -273,6 +273,7 @@ compact viewports (the host's responsive behavior) — same API.
 Crash isolation stays local to the slot. Additive slots can show a crash chip
 or nothing. Replacement slots fall back to the native list or renderer.
 `messageDirective` falls back to the original source text.
+`experimental_codeFenceRenderer` falls back to BB's code block (`Original`).
 
 The `run` pattern (threadPanelAction): `run` is the place to resolve
 server state before deciding what to open — e.g. call a backend rpc, then

@@ -21,6 +21,7 @@ import {
   type PluginMessageActionRegistration,
   type ThreadChatMessageReference,
   type PluginMessageDirectiveProps,
+  type ExperimentalCodeFenceRendererProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelProps,
@@ -279,6 +280,7 @@ type SlotPropsByName = {
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
   experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
+  experimental_codeFenceRenderer: ExperimentalCodeFenceRendererProps;
   messageAction: PluginMessageActionContext;
   commandPaletteAction: PluginCommandContext;
   experimental_providerIcon: PluginProviderIconRegistration;
@@ -386,6 +388,14 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "Original",
   ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
+  experimental_codeFenceRenderer: [
+    "code",
+    "language",
+    "index",
+    "complete",
+    "message",
+    "Original",
+  ],
   messageAction: [
     "threadId",
     "message",
