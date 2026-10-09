@@ -1,3 +1,4 @@
+import { Ui } from "../guide-blocks";
 import type { GuideFaq, GuideShot } from "../guide-types";
 
 export const NESTED_SHOT: GuideShot = {
@@ -113,7 +114,7 @@ export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
       <ol>
         <li>
           Agents often archive a thread when its work is done. Open{" "}
-          <strong>Settings → Archived threads</strong> and choose{" "}
+          <Ui icon="settings">Settings → Archived threads</Ui> and choose{" "}
           <strong>Unarchive</strong>.
         </li>
         <li>
@@ -133,7 +134,7 @@ export const TEAM_TROUBLESHOOTING: [GuideFaq, ...GuideFaq[]] = [
         </li>
         <li>
           To keep a Mac awake while bb runs, open{" "}
-          <strong>Settings → Keep Awake</strong> and turn it on.
+          <Ui icon="settings">Settings → Keep Awake</Ui> and turn it on.
         </li>
       </ol>
     ),

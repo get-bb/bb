@@ -1,8 +1,13 @@
 import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
+import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
+import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
+import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import SidebarRightIcon from "@hugeicons/core-free-icons/SidebarRightIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   createContext,
   Fragment,
@@ -16,6 +21,7 @@ import {
 
 import { LightboxImage } from "../blog/lightbox";
 import { brandProse } from "../compare/compare-page";
+import { trackLandingEvent } from "../landing/analytics";
 import type { GuideShot } from "./guide-types";
 import { copyPlainText } from "../lib/copy-plain-text";
 
@@ -86,6 +92,73 @@ function joinContinuations(command: string): string {
 
 function splitCommands(command: string): string[] {
   return command.split(/(?<!\\)\n/);
+}
+
+const APP_ICONS = {
+  settings: { icon: Settings01Icon, label: "Settings" },
+  "side-panel": { icon: SidebarRightIcon, label: "Side panel" },
+  plus: { icon: PlusSignIcon, label: "Add" },
+  more: { icon: MoreHorizontalIcon, label: "More" },
+  "send-options": { icon: ArrowDown01Icon, label: "Send options" },
+  annotate: { icon: BubbleChatAddIcon, label: "Annotate elements" },
+} satisfies Record<string, { icon: IconSvgElement; label: string }>;
+
+export type AppIcon = keyof typeof APP_ICONS;
+
+export function Ui({
+  icon,
+  children,
+}: {
+  icon: AppIcon;
+  children?: ReactNode;
+}) {
+  const app = APP_ICONS[icon];
+  return (
+    <strong className="gd-ui">
+      <span
+        className="gd-ui-icon"
+        role="img"
+        aria-label={children ? undefined : app.label}
+      >
+        <HugeiconsIcon icon={app.icon} aria-hidden="true" />
+      </span>
+      {children}
+    </strong>
+  );
+}
+
+interface GuidePrompt {
+  guide: string;
+  prompt: string;
+}
+
+export const GuidePromptContext = createContext<GuidePrompt>({
+  guide: "",
+  prompt: "",
+});
+
+export function CopyPromptButton() {
+  const { guide, prompt } = useContext(GuidePromptContext);
+  const { copied, copy } = useCopy(prompt, PROMPT_COPIED);
+  return (
+    <button
+      type="button"
+      className="gd-inline-copy"
+      onClick={() => {
+        copy();
+        trackLandingEvent({
+          name: "guide_prompt_copied",
+          properties: { guide, placement: "step" },
+        });
+      }}
+    >
+      <HugeiconsIcon
+        icon={copied ? Tick02Icon : Copy01Icon}
+        className="gd-ic"
+      />
+      {copied ? "Copied" : "Copy for agent"}
+    </button>
+  );
 }
 
 export function CommandBlock({

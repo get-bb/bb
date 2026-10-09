@@ -38,6 +38,57 @@
   flex-shrink: 0;
 }
 
+.gd-ui {
+  white-space: nowrap;
+}
+
+.gd-ui-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  vertical-align: -5px;
+  color: var(--heading);
+}
+
+.gd-ui-icon:last-child {
+  margin-right: 0;
+}
+
+.gd-ui-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.gd-inline-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-weight: 600;
+  color: var(--heading);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
+.gd-inline-copy:hover {
+  border-color: var(--heading);
+}
+
+.gd-inline-copy .gd-ic {
+  width: 14px;
+  height: 14px;
+}
+
 .gd-diagram {
   position: relative;
   display: grid;

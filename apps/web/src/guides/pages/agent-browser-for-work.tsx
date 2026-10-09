@@ -3,7 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
 
 import { BrowserConcept } from "../concepts";
-import { BulletList, PromptBlock, Substeps } from "../guide-blocks";
+import { BulletList, PromptBlock, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
@@ -17,7 +17,7 @@ const AGENT_PROMPT = withIntake(
   [
     { label: "Task", hint: "what you want found, compared, or filled in" },
     { label: "Sites", hint: "where to look" },
-    { label: "Sign-ins", hint: "sites that need your account, if any" },
+    { label: "Logins", hint: "sites that need your account, if any" },
     { label: "Bring back", hint: "e.g. a table with a source link per row" },
   ],
   `Use a real browser to do the web task above, and show me what you found.
@@ -30,7 +30,7 @@ You're in a bb thread with the bb CLI on PATH. Do every step below, with a Check
 
 2. Open a browser. Find the computer running the bb desktop app with bb machine list, then run bb browser instances --host <desktop-host-id> --json. If a desktop instance is connected, open a Browser tab there so I can watch and my sign-ins work:
    bb browser-automation open --backend desktop --machine <desktop-host-id> --desktop <instance-id> --json
-   If no desktop instance is connected and Sign-ins lists any site, stop and tell me signed-in sites need the bb desktop app open. Otherwise open headless Chrome on this thread's machine:
+   If no desktop instance is connected and Logins lists any site, stop and tell me signed-in sites need the bb desktop app open. Otherwise open headless Chrome on this thread's machine:
    bb browser-automation open --backend local --headless --machine <host-id> --json
    Keep the returned session ID. Emit the returned previewDirective once if present.
    Check: the first page loads. For a signed-in site, confirm the expected account is signed in. If it isn't, stop and ask me to sign in once in a Browser tab, or to import my sign-ins in Settings → Browser. Never read or print cookie values.
@@ -62,7 +62,7 @@ export const guide: Guide = {
     {
       title: "The bb desktop app",
       icon: ComputerIcon,
-      body: "Your agent works in a Browser tab you can watch, with your sign-ins.",
+      body: "Your agent works in a Browser tab you can watch, logged in as you.",
     },
     {
       title: "An agent you're signed in to",
@@ -153,8 +153,8 @@ export const guide: Guide = {
             still has it.
           </li>
           <li>
-            Choose <strong>Annotate elements</strong> in the toolbar and click
-            the text, number, or button.
+            Choose <Ui icon="annotate">Annotate elements</Ui> in the toolbar and
+            click the text, number, or button.
           </li>
           <li>
             In the box, write your question or request and choose{" "}

@@ -3,7 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { SpawnTimeline } from "../../compare/compare-visuals";
-import { PromptBlock, Substeps } from "../guide-blocks";
+import { CopyPromptButton, PromptBlock, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
@@ -98,8 +98,8 @@ export const guide: Guide = {
             <strong>Worktree</strong> so the work gets its own branch.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong> and send it.
-            Your agent asks for your task and reviewer.
+            Paste the prompt from <CopyPromptButton /> and send it. Your agent
+            asks for your task and reviewer.
           </li>
         </Substeps>
       ),
@@ -133,7 +133,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            In the sidebar, open the reviewer's <strong>⋯</strong> menu and
+            In the sidebar, open the reviewer's <Ui icon="more" /> menu and
             choose <strong>Open in split</strong>.
           </li>
           <li>Type in either thread to step in yourself.</li>
@@ -244,8 +244,8 @@ export const guide: Guide = {
         <>
           <Substeps>
             <li>
-              Open <strong>Settings → Installed plugins</strong> and turn on{" "}
-              <strong>Workflows</strong>. It's off by default.
+              Open <Ui icon="settings">Settings → Installed plugins</Ui> and
+              turn on <strong>Workflows</strong>. It's off by default.
             </li>
             <li>Ask your agent for a workflow by name.</li>
           </Substeps>
@@ -312,7 +312,7 @@ export const guide: Guide = {
         <ol>
           <li>
             Turn on <strong>Workflows</strong> in{" "}
-            <strong>Settings → Installed plugins</strong>.
+            <Ui icon="settings">Settings → Installed plugins</Ui>.
           </li>
           <li>
             Ask for a workflow by name. Agents don't start one unless you ask.

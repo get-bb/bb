@@ -3,7 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { ScheduleConcept } from "../concepts";
-import { Substeps } from "../guide-blocks";
+import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 
@@ -124,7 +124,7 @@ export const guide: Guide = {
             Does the job need a site you're signed in to, like Linear or your
             analytics?{" "}
             <a href="/guides/agent-browser#sign-ins">
-              Bring your browser sign-ins
+              Import your browser logins
             </a>{" "}
             into bb first.
           </p>
@@ -175,9 +175,9 @@ export const guide: Guide = {
           title: "Send one message later",
           body: (
             <p>
-              Type the message, open the arrow next to the send button, and
-              choose <strong>Send later…</strong> to pick when it goes to this
-              thread.
+              Type the message, open the arrow <Ui icon="send-options" /> next
+              to the send button, and choose <strong>Send later…</strong> to
+              pick when it goes to this thread.
             </p>
           ),
           shot: {
@@ -222,7 +222,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            Open <strong>Settings → Push notifications</strong>.
+            Open <Ui icon="settings">Settings → Push notifications</Ui>.
           </li>
           <li>
             Turn on <strong>Web notifications</strong> or{" "}
@@ -231,7 +231,7 @@ export const guide: Guide = {
           </li>
           <li>
             For your phone, keep <strong>Mobile notifications</strong> on and
-            pair the bb app in <strong>Settings → Mobile</strong>. See{" "}
+            pair the bb app in <Ui icon="settings">Settings → Mobile</Ui>. See{" "}
             <a href="/guides/work-from-anywhere">Work from anywhere</a>.
           </li>
           <li>
@@ -338,7 +338,7 @@ export const guide: Guide = {
           </li>
           <li>
             For notifications with the app closed, pair the bb mobile app in{" "}
-            <strong>Settings → Mobile</strong>.
+            <Ui icon="settings">Settings → Mobile</Ui>.
           </li>
         </ol>
       ),

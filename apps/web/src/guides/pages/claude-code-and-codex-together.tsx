@@ -3,7 +3,7 @@ import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 
 import { AgentSplit } from "../../compare/compare-visuals";
-import { Substeps } from "../guide-blocks";
+import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 import {
@@ -94,8 +94,8 @@ export const guide: Guide = {
             <strong>Opus 5.5</strong>, and choose <strong>Worktree</strong>.
           </li>
           <li>
-            Paste the prompt from <strong>Copy for agent</strong> and send it.
-            Claude Code asks for your task.
+            Paste the prompt from <CopyPromptButton /> and send it. Claude Code
+            asks for your task.
           </li>
         </Substeps>
       ),
@@ -129,7 +129,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            In the sidebar, open the Codex thread's <strong>⋯</strong> menu and
+            In the sidebar, open the Codex thread's <Ui icon="more" /> menu and
             choose <strong>Open in split</strong>.
           </li>
           <li>Type in either thread to step in yourself.</li>

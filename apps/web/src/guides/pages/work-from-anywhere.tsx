@@ -3,7 +3,7 @@ import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
 import UserAccountIcon from "@hugeicons/core-free-icons/UserAccountIcon";
 
 import { AnywhereConcept } from "../concepts";
-import { Substeps } from "../guide-blocks";
+import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
 
@@ -74,7 +74,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            Open <strong>Settings → bb connect</strong> and choose{" "}
+            Open <Ui icon="settings">Settings → bb connect</Ui> and choose{" "}
             <strong>Sign in to your bb account</strong>.
           </li>
           <li>Approve the sign-in on getbb.app and claim a handle.</li>
@@ -99,8 +99,8 @@ export const guide: Guide = {
         <>
           <Substeps>
             <li>
-              Open <strong>Settings</strong>, and under <strong>Plugins</strong>
-              , choose <strong>Keep Awake</strong>.
+              Open <Ui icon="settings">Settings</Ui>, and under{" "}
+              <strong>Plugins</strong>, choose <strong>Keep Awake</strong>.
             </li>
             <li>
               Turn on <strong>Prevent idle sleep</strong>. Keep{" "}
@@ -152,7 +152,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            Open <strong>Settings → Mobile</strong>, and choose{" "}
+            Open <Ui icon="settings">Settings → Mobile</Ui>, and choose{" "}
             <strong>Join iOS TestFlight</strong> or{" "}
             <strong>Download Android APK</strong> on your phone.
           </li>
@@ -188,8 +188,9 @@ export const guide: Guide = {
             <strong>Prevent idle sleep</strong> is on for it.
           </li>
           <li>
-            On that computer, open <strong>Settings → bb connect</strong> and
-            check that <strong>Remote access</strong> is on.
+            On that computer, open{" "}
+            <Ui icon="settings">Settings → bb connect</Ui> and check that{" "}
+            <strong>Remote access</strong> is on.
           </li>
         </ol>
       ),
@@ -218,15 +219,15 @@ export const guide: Guide = {
       answer: (
         <ol>
           <li>
-            Open <strong>Settings → bb connect</strong> and sign in to your bb
-            account.
+            Open <Ui icon="settings">Settings → bb connect</Ui> and sign in to
+            your bb account.
           </li>
           <li>
             Turn on <strong>Remote access</strong> and wait for your address to
             show.
           </li>
           <li>
-            Go back to <strong>Settings → Mobile</strong>.
+            Go back to <Ui icon="settings">Settings → Mobile</Ui>.
           </li>
         </ol>
       ),
@@ -237,8 +238,8 @@ export const guide: Guide = {
         <ol>
           <li>Check that its computer is on, awake, and online.</li>
           <li>
-            In <strong>Settings → Machines</strong>, open its menu and choose{" "}
-            <strong>Reconnect</strong>.
+            In <Ui icon="settings">Settings → Machines</Ui>, open its menu and
+            choose <strong>Reconnect</strong>.
           </li>
           <li>
             Run the command it shows on that machine. Its threads and worktrees
@@ -254,7 +255,7 @@ export const guide: Guide = {
           <li>Machines update themselves to match the server's version.</li>
           <li>
             If an update failed, open its menu in{" "}
-            <strong>Settings → Machines</strong> and choose{" "}
+            <Ui icon="settings">Settings → Machines</Ui> and choose{" "}
             <strong>Retry update</strong>.
           </li>
           <li>
@@ -321,8 +322,8 @@ export const guide: Guide = {
       question: "Which of my computers is the server?",
       answer: (
         <p>
-          Open <strong>Settings → Machines</strong>. The server's computer has a
-          server badge.
+          Open <Ui icon="settings">Settings → Machines</Ui>. The server's
+          computer has a server badge.
         </p>
       ),
     },
@@ -332,8 +333,8 @@ export const guide: Guide = {
         <p>
           Each setup runs its own server. To use one bb everywhere, keep the
           server on the computer that stays on, and add the other one from{" "}
-          <strong>Settings → Machines</strong>. New threads can then run on
-          either computer.
+          <Ui icon="settings">Settings → Machines</Ui>. New threads can then run
+          on either computer.
         </p>
       ),
     },

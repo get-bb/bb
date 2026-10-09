@@ -8,6 +8,7 @@ import {
   FileBlock,
   PromptBlock,
   Substeps,
+  Ui,
 } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
 import type { Guide, GuideMeta } from "../guide-types";
@@ -95,7 +96,7 @@ export const guide: Guide = {
       body: (
         <Substeps>
           <li>
-            Open <strong>Settings → Machines</strong> and choose{" "}
+            Open <Ui icon="settings">Settings → Machines</Ui> and choose{" "}
             <strong>Add a machine</strong>.
           </li>
           <li>
@@ -111,7 +112,7 @@ export const guide: Guide = {
           <li>Sign in to your agents on that machine once.</li>
           <li>
             Check that the machine shows as Online in{" "}
-            <strong>Settings → Machines</strong>.
+            <Ui icon="settings">Settings → Machines</Ui>.
           </li>
         </Substeps>
       ),
@@ -131,7 +132,8 @@ export const guide: Guide = {
         <>
           <Substeps>
             <li>
-              Open <strong>Settings → Projects</strong> and choose your project.
+              Open <Ui icon="settings">Settings → Projects</Ui> and choose your
+              project.
             </li>
             <li>
               Under <strong>Checkouts</strong>, choose <strong>Set up</strong>{" "}
@@ -188,8 +190,8 @@ export const guide: Guide = {
         <>
           <Substeps>
             <li>
-              In the thread's side panel, choose <strong>+</strong>, then{" "}
-              <strong>Start terminal</strong>.
+              Open the side panel <Ui icon="side-panel" /> (⌘ J), choose{" "}
+              <Ui icon="plus" />, then <strong>Start terminal</strong>.
             </li>
             <li>Start the server on the ports the setup script picked:</li>
           </Substeps>
@@ -217,7 +219,7 @@ export const guide: Guide = {
         <>
           <Substeps>
             <li>
-              Open <strong>Settings → bb connect</strong> and choose{" "}
+              Open <Ui icon="settings">Settings → bb connect</Ui> and choose{" "}
               <strong>Sign in to your bb account</strong>, if you haven't.
             </li>
             <li>Ask the thread's agent to share its port:</li>
@@ -230,9 +232,9 @@ export const guide: Guide = {
             It replies with a link like{" "}
             <code>https://my-server--3001.getbb.app</code>. Every link is listed
             under <strong>Shared ports</strong> in{" "}
-            <strong>Settings → bb connect</strong>, where you can copy it or
-            stop sharing when the branch is done. Open each link on your phone
-            to check its branch.
+            <Ui icon="settings">Settings → bb connect</Ui>, where you can copy
+            it or stop sharing when the branch is done. Open each link on your
+            phone to check its branch.
           </p>
         </>
       ),
@@ -319,8 +321,8 @@ export const guide: Guide = {
         <ol>
           <li>Check that the machine is on and online.</li>
           <li>
-            In <strong>Settings → Machines</strong>, open its menu and choose{" "}
-            <strong>Reconnect</strong>.
+            In <Ui icon="settings">Settings → Machines</Ui>, open its menu and
+            choose <strong>Reconnect</strong>.
           </li>
           <li>
             Run the command it shows on the machine. Its threads and worktrees
@@ -412,7 +414,8 @@ export const guide: Guide = {
           <a href="/marketplace/environment-modal-sandbox">
             Modal Sandbox plugin
           </a>
-          , then add a Modal machine in <strong>Settings → Machines</strong>.
+          , then add a Modal machine in{" "}
+          <Ui icon="settings">Settings → Machines</Ui>.
         </p>
       ),
     },
@@ -424,7 +427,7 @@ export const guide: Guide = {
           <a href="/marketplace/concurrency-limit">Concurrency limit</a> plugin
           does this by default: each machine runs one thread per processor, and
           new turns wait until a running thread finishes. To change a machine's
-          limit, open <strong>Settings → Concurrency limit</strong>.
+          limit, open <Ui icon="settings">Settings → Concurrency limit</Ui>.
         </p>
       ),
     },
