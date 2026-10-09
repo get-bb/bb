@@ -8,6 +8,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { createStore, getDefaultStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   resetPluginLogoStoreForTest,
@@ -20,11 +21,17 @@ import {
   findMessageActionTooltipCollisionBoundary,
   MessageActionBar,
 } from "./MessageActionBar";
+import {
+  MESSAGE_ACTION_USAGE_STORAGE_KEY,
+  messageActionUsageAtom,
+} from "./message-action-usage";
 
 const TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
 
 afterEach(() => {
   cleanup();
+  getDefaultStore().set(messageActionUsageAtom, {});
+  window.localStorage.clear();
   resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -75,6 +82,18 @@ function mockMobileCoarsePointer() {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   }));
+}
+
+function inlineActionLabels(container: HTMLElement) {
+  return [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
+    .map((button) => button.getAttribute("aria-label"))
+    .filter((label) => label !== "Message actions");
+}
+
+function menuItemLabels(menu: HTMLElement) {
+  return within(menu)
+    .getAllByRole("menuitem")
+    .map((item) => item.textContent);
 }
 
 function openDesktopMenu() {
@@ -133,6 +152,7 @@ describe("MessageActionBar", () => {
         pluginActions={[
           {
             key: "demo/summarize/1",
+            usageKey: "demo/summarize/1",
             pluginId: "demo",
             icon: "Zap",
             label: "Summarize",
@@ -184,6 +204,7 @@ describe("MessageActionBar", () => {
         pluginActions={[
           {
             key: "demo/summarize/1",
+            usageKey: "demo/summarize/1",
             pluginId: null,
             icon: "Zap",
             label: "Summarize",
@@ -191,6 +212,7 @@ describe("MessageActionBar", () => {
           },
           {
             key: "demo/translate/1",
+            usageKey: "demo/translate/1",
             pluginId: null,
             icon: "Languages",
             label: "Translate",
@@ -282,6 +304,7 @@ describe("MessageActionBar", () => {
           pluginActions={[
             {
               key: "demo/summarize/1",
+              usageKey: "demo/summarize/1",
               pluginId: null,
               icon: "Zap",
               label: "Summarize",
@@ -458,6 +481,204 @@ describe("MessageActionBar", () => {
     expect(row?.hasAttribute("data-menu-open")).toBe(true);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(row?.hasAttribute("data-menu-open")).toBe(false);
+  });
+});
+
+describe("MessageActionBar usage ordering", () => {
+  function renderAssistantBar(onFork = vi.fn()) {
+    const resizeObserver = installControlledResizeObserver();
+    const result = render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onCopyLink={vi.fn()}
+        onAddToChat={vi.fn()}
+        onFork={onFork}
+      />,
+    );
+    resizeObserver.reportWidth(200);
+    return result;
+  }
+
+  it("promotes a menu action into the row after repeated use", () => {
+    const onFork = vi.fn();
+    const { container } = renderAssistantBar(onFork);
+
+    expect(inlineActionLabels(container)).toEqual(["Copy message"]);
+    fireEvent.click(
+      within(openDesktopMenu()).getByRole("menuitem", {
+        name: "Fork into new thread",
+      }),
+    );
+    expect(inlineActionLabels(container)).toEqual(["Copy message"]);
+    fireEvent.click(
+      within(openDesktopMenu()).getByRole("menuitem", {
+        name: "Fork into new thread",
+      }),
+    );
+
+    expect(onFork).toHaveBeenCalledTimes(2);
+    expect(inlineActionLabels(container)).toEqual([
+      "Copy message",
+      "Fork into new thread",
+    ]);
+    expect(menuItemLabels(openDesktopMenu())).toEqual([
+      "Copy link",
+      "Add to chat",
+    ]);
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(MESSAGE_ACTION_USAGE_STORAGE_KEY) ?? "{}",
+      ),
+    ).toHaveProperty("fork");
+  });
+
+  it("keeps canonical order and moves the least-used action into the menu when the row is full", () => {
+    const now = Date.now();
+    getDefaultStore().set(messageActionUsageAtom, {
+      "add-to-chat": { score: 5, usedAt: now },
+      fork: { score: 4, usedAt: now },
+      copy: { score: 3.5, usedAt: now },
+      "copy-link": { score: 3, usedAt: now },
+    });
+    const { container } = renderAssistantBar();
+
+    expect(inlineActionLabels(container)).toEqual([
+      "Copy message",
+      "Add to chat",
+      "Fork into new thread",
+    ]);
+    expect(menuItemLabels(openDesktopMenu())).toEqual(["Copy link"]);
+  });
+
+  it("keeps every default inline beside promoted actions", () => {
+    const now = Date.now();
+    getDefaultStore().set(messageActionUsageAtom, {
+      "add-to-chat": { score: 2, usedAt: now },
+      "copy-link": { score: 2, usedAt: now },
+    });
+    const resizeObserver = installControlledResizeObserver();
+    const { container } = render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        messageText="A question."
+        alignment="end"
+        mobileActionDisplay="inline"
+        onEdit={vi.fn()}
+        onCopyLink={vi.fn()}
+        onAddToChat={vi.fn()}
+        pluginActions={[
+          {
+            key: "demo/reply/1",
+            usageKey: "demo/reply",
+            pluginId: null,
+            icon: "Zap",
+            label: "Reply in side chat",
+            onSelect: vi.fn(),
+          },
+        ]}
+      />,
+    );
+    resizeObserver.reportWidth(200);
+
+    expect(inlineActionLabels(container)).toEqual([
+      "Copy message",
+      "Edit message",
+      "Reply in side chat",
+      "Copy link",
+      "Add to chat",
+    ]);
+  });
+
+  it("overflows the lowest-scoring action first when the row is narrow", () => {
+    const now = Date.now();
+    getDefaultStore().set(messageActionUsageAtom, {
+      fork: { score: 6, usedAt: now },
+      copy: { score: 4, usedAt: now },
+      "add-to-chat": { score: 2, usedAt: now },
+    });
+    const resizeObserver = installControlledResizeObserver();
+    const { container } = render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
+    resizeObserver.reportWidth(72);
+
+    expect(inlineActionLabels(container)).toEqual([
+      "Copy message",
+      "Fork into new thread",
+    ]);
+    expect(menuItemLabels(openDesktopMenu())).toEqual(["Add to chat"]);
+  });
+
+  it("keeps a promoted action inline and disabled when it is unavailable", () => {
+    getDefaultStore().set(messageActionUsageAtom, {
+      fork: { score: 3, usedAt: Date.now() },
+    });
+    render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onFork={vi.fn()}
+        disabled
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: "Fork into new thread" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("records copies from the inline copy button", async () => {
+    render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        messageText="An answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy message" }));
+    });
+
+    expect(getDefaultStore().get(messageActionUsageAtom).copy?.score).toBe(1);
+  });
+
+  it("falls back to the default row when stored usage is malformed", () => {
+    window.localStorage.setItem(
+      MESSAGE_ACTION_USAGE_STORAGE_KEY,
+      JSON.stringify({
+        fork: { score: 9, usedAt: Date.now() },
+        copy: { score: "lots" },
+      }),
+    );
+    const { container } = render(
+      <Provider store={createStore()}>
+        <MessageActionBar
+          timestamp={TIMESTAMP}
+          messageText="An answer."
+          alignment="start"
+          mobileActionDisplay="inline"
+          onFork={vi.fn()}
+        />
+      </Provider>,
+    );
+
+    expect(inlineActionLabels(container)).toEqual(["Copy message"]);
   });
 });
 

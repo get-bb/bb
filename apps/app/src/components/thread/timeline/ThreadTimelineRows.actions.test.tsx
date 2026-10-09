@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { getDefaultStore } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
@@ -26,6 +27,7 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { messageActionUsageAtom } from "./message-action-usage";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 function messageActionRegistrationSet(
@@ -260,6 +262,7 @@ function mockSelectionMenuMedia({
 
 afterEach(() => {
   cleanup();
+  getDefaultStore().set(messageActionUsageAtom, {});
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
 });

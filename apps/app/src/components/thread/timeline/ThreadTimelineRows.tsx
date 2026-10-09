@@ -754,6 +754,7 @@ function buildRowPluginMessageActions(args: {
   }
   return slots.map((slot) => ({
     key: `${slot.pluginId}/${slot.id}/${slot.generation}`,
+    usageKey: `${slot.pluginId}/${slot.id}`,
     pluginId: slot.pluginId,
     icon: slot.icon ?? null,
     label: slot.title,
@@ -781,6 +782,7 @@ function buildRowConsumerMessageActions(args: {
     )
     .map((action) => ({
       key: `consumer/${action.id}`,
+      usageKey: `consumer/${action.id}`,
       pluginId: action.pluginId,
       icon: action.icon,
       label: action.label,

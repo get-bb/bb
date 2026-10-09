@@ -1,4 +1,5 @@
 import { createContext, useCallback, useRef, useState } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
 import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -21,6 +22,11 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
+import {
+  messageActionUsageAtom,
+  rankInlineMessageActions,
+  recordMessageActionUseAtom,
+} from "./message-action-usage.js";
 
 function PluginActionIcon({
   pluginId,
@@ -64,12 +70,15 @@ interface MessageOverflowAction {
   icon: "Copy" | "Link" | "Edit" | "MessageSquarePlus" | "Fork";
   plugin?: { pluginId: string | null; icon: string | null };
   key?: string;
+  usageKey: string;
+  promotable: boolean;
   label: string;
   onSelect: () => void;
   disabled?: boolean;
   copyText?: string;
   copyImageUrl?: string;
   kind?: "copy";
+  onRecordUse: () => void;
 }
 
 function MessageActionIcon({
@@ -222,6 +231,7 @@ function DesktopMessageAction({
             imageUrl={action.copyImageUrl}
             label={action.label}
             className={className}
+            onClickCapture={action.onRecordUse}
           />
         ) : (
           <button
@@ -353,11 +363,15 @@ export function MessageActionBar({
     }
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
-  const inlineCandidates: MessageOverflowAction[] = [
+  const usage = useAtomValue(messageActionUsageAtom);
+  const recordUse = useSetAtom(recordMessageActionUseAtom);
+  const actionSpecs: Omit<MessageOverflowAction, "onRecordUse">[] = [
     ...(hasCopy
       ? [
           {
             icon: "Copy" as const,
+            usageKey: "copy",
+            promotable: false,
             label: "Copy message",
             onSelect: () => {
               void copyToClipboardWithToast(messageText, {
@@ -375,6 +389,8 @@ export function MessageActionBar({
       ? [
           {
             icon: "Edit" as const,
+            usageKey: "edit",
+            promotable: false,
             label: "Edit message",
             onSelect: onEdit,
           },
@@ -384,15 +400,28 @@ export function MessageActionBar({
       icon: "Copy" as const,
       plugin: { pluginId: action.pluginId, icon: action.icon },
       key: action.key,
+      usageKey: `plugin:${action.usageKey}`,
+      promotable: false,
       label: action.label,
       onSelect: action.onSelect,
     })),
-  ];
-  const trailingMenuActions: MessageOverflowAction[] = [
+    ...(onCopyLink
+      ? [
+          {
+            icon: "Link" as const,
+            usageKey: "copy-link",
+            promotable: true,
+            label: "Copy link",
+            onSelect: onCopyLink,
+          },
+        ]
+      : []),
     ...(hasAddToChat
       ? [
           {
             icon: "MessageSquarePlus" as const,
+            usageKey: "add-to-chat",
+            promotable: true,
             label: "Add to chat",
             onSelect: handleAddToChat,
           },
@@ -402,6 +431,8 @@ export function MessageActionBar({
       ? [
           {
             icon: "Fork" as const,
+            usageKey: "fork",
+            promotable: true,
             label: "Fork into new thread",
             onSelect: onFork,
             disabled,
@@ -409,8 +440,24 @@ export function MessageActionBar({
         ]
       : []),
   ];
+  const actions: MessageOverflowAction[] = actionSpecs.map((action) => {
+    const onRecordUse = () => recordUse(action.usageKey);
+    return {
+      ...action,
+      onRecordUse,
+      onSelect: () => {
+        onRecordUse();
+        action.onSelect();
+      },
+    };
+  });
+  const rankedInlineCandidates = rankInlineMessageActions({
+    actions,
+    usage,
+    now: Date.now(),
+  });
   const layout = computeMessageActionRowLayout({
-    actionCount: inlineCandidates.length,
+    actionCount: rankedInlineCandidates.length,
     availableWidth,
     actionWidth: isCompactTouch
       ? TOUCH_ACTION_WIDTH_PX
@@ -420,18 +467,20 @@ export function MessageActionBar({
     isCompactTouch && mobileActionDisplay === "overflow"
       ? 0
       : layout.inlineCount;
+  const inlineUsageKeys = new Set(
+    rankedInlineCandidates
+      .slice(0, inlineCount)
+      .map((action) => action.usageKey),
+  );
+  const inlineActions = actions.filter((action) =>
+    inlineUsageKeys.has(action.usageKey),
+  );
+  const listedActions = isCompactViewport
+    ? actions
+    : actions.filter((action) => !inlineUsageKeys.has(action.usageKey));
   const menuActions = [
-    ...(onCopyLink
-      ? [
-          {
-            icon: "Link" as const,
-            label: "Copy link",
-            onSelect: onCopyLink,
-          },
-        ]
-      : []),
-    ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
-    ...trailingMenuActions,
+    ...listedActions.filter((action) => action.usageKey === "copy-link"),
+    ...listedActions.filter((action) => action.usageKey !== "copy-link"),
   ];
 
   const rowClass = cn(
@@ -453,13 +502,9 @@ export function MessageActionBar({
       >
         <div className={rowClass} data-menu-open={isMenuOpen ? "" : undefined}>
           {isCompactTouch ? (
-            <MobileInlineActions
-              actions={inlineCandidates.slice(0, inlineCount)}
-            />
+            <MobileInlineActions actions={inlineActions} />
           ) : (
-            inlineCandidates
-              .slice(0, inlineCount)
-              .map((action) => (
+            inlineActions.map((action) => (
                 <DesktopMessageAction
                   key={action.key ?? action.label}
                   action={action}
@@ -513,6 +558,7 @@ function MobileInlineActions({
         imageUrl={action.copyImageUrl}
         label={action.label}
         className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
+        onClickCapture={action.onRecordUse}
       />
     ) : (
       <button

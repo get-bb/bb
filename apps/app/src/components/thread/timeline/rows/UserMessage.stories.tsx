@@ -906,6 +906,7 @@ export function Overview() {
 const overflowStoryActions: ThreadTimelinePluginMessageAction[] = [
   {
     key: "story/summarize",
+    usageKey: "story/summarize",
     pluginId: null,
     icon: "Sparkles",
     label: "Summarize",
@@ -913,6 +914,7 @@ const overflowStoryActions: ThreadTimelinePluginMessageAction[] = [
   },
   {
     key: "story/translate",
+    usageKey: "story/translate",
     pluginId: null,
     icon: "Globe",
     label: "Translate",
@@ -920,6 +922,7 @@ const overflowStoryActions: ThreadTimelinePluginMessageAction[] = [
   },
   {
     key: "story/save",
+    usageKey: "story/save",
     pluginId: null,
     icon: "Bookmark",
     label: "Save to notes",

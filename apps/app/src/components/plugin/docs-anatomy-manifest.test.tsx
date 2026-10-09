@@ -249,6 +249,7 @@ describe("docs anatomy manifest", () => {
           pluginActions={[
             {
               key: "anatomy-plugin-action",
+              usageKey: "anatomy-plugin-action",
               pluginId: null,
               icon: null,
               label: "Anatomy message action",
