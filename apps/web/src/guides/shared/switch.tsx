@@ -2,8 +2,24 @@ import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide, GuideMeta, GuideShot } from "../guide-types";
 import { AGENTS_FAQ, COST_FAQ } from "./faq";
+
+const CLAUDE_HANDOFF_SHOT: GuideShot = {
+  src: "/guides/switch-to-bb/window-handoff.png",
+  alt: "A bb thread where the agent found the latest Claude Code conversation for the folder and wrote a handoff: finish the 5 MB upload limit, with the goal, what's done, decisions, and the tests left, then asks for an OK to continue",
+  width: 2048,
+  height: 1280,
+};
+
+function askingHandoffShot(file: string, conversation: string): GuideShot {
+  return {
+    src: `/guides/switch-to-bb/${file}`,
+    alt: `A bb thread where the agent asks which work to bring over, suggests ${conversation} for the folder, and writes a handoff for the 5 MB upload limit: the goal, what's done, decisions, and the tests left`,
+    width: 2048,
+    height: 1280,
+  };
+}
 
 const GENERIC_SETUP_STEP = (
   <>
@@ -20,6 +36,7 @@ export type SwitchTool = {
   conversations: string;
   keepsWorking: string;
   setupStep: ReactNode;
+  handoffShot: GuideShot;
 };
 
 export const SWITCH_TOOLS = {
@@ -31,6 +48,8 @@ export const SWITCH_TOOLS = {
       "Claude Code keeps each conversation as a .jsonl file in ~/.claude/projects/, in a folder named after the path it ran in.",
     keepsWorking: "Claude Code keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
+
+    handoffShot: CLAUDE_HANDOFF_SHOT,
   },
   "codex-app": {
     id: "codex-app",
@@ -40,6 +59,11 @@ export const SWITCH_TOOLS = {
       "Codex keeps each conversation as a .jsonl file under ~/.codex/sessions/. The first line's payload.cwd is the folder it ran in.",
     keepsWorking: "Codex keeps working while you try bb.",
     setupStep: GENERIC_SETUP_STEP,
+
+    handoffShot: askingHandoffShot(
+      "window-handoff-codex.png",
+      "the latest prior conversation",
+    ),
   },
   conductor: {
     id: "conductor",
@@ -55,6 +79,8 @@ export const SWITCH_TOOLS = {
         <code>.worktreeinclude</code>.
       </>
     ),
+
+    handoffShot: CLAUDE_HANDOFF_SHOT,
   },
   cursor: {
     id: "cursor",
@@ -69,6 +95,11 @@ export const SWITCH_TOOLS = {
         <code>.bb-env-setup.sh</code> at the repo root, and list files like{" "}
         <code>.env</code> in a <code>.worktreeinclude</code>.
       </>
+    ),
+
+    handoffShot: askingHandoffShot(
+      "window-handoff-cursor.png",
+      "the latest Cursor conversation",
     ),
   },
   superset: {
@@ -86,13 +117,15 @@ export const SWITCH_TOOLS = {
         <code>.worktreeinclude</code>.
       </>
     ),
+
+    handoffShot: CLAUDE_HANDOFF_SHOT,
   },
   "t3-code": {
     id: "t3-code",
     slug: "switch-from-t3-code",
     name: "T3 Code",
     conversations:
-      "T3 Code's Codex conversations are .jsonl files under ~/.codex/sessions/ with the originator t3code_desktop. The first line's payload.cwd is the folder it ran in.",
+      "T3 Code runs Codex, Claude Code, or OpenCode, so look in ~/.codex/sessions/, ~/.claude/projects/, and OpenCode's ~/.local/share/opencode/ for this folder's path.",
     keepsWorking: "T3 Code keeps working while you try bb.",
     setupStep: (
       <>
@@ -100,6 +133,11 @@ export const SWITCH_TOOLS = {
         into a <code>.bb-env-setup.sh</code> at the repo root, and list files
         like <code>.env</code> in a <code>.worktreeinclude</code>.
       </>
+    ),
+
+    handoffShot: askingHandoffShot(
+      "window-handoff-t3-code.png",
+      "the latest OpenCode conversation",
     ),
   },
   "vibe-kanban": {
@@ -117,6 +155,8 @@ export const SWITCH_TOOLS = {
         in a <code>.worktreeinclude</code>.
       </>
     ),
+
+    handoffShot: CLAUDE_HANDOFF_SHOT,
   },
 } satisfies Record<string, SwitchTool>;
 
@@ -200,12 +240,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
             <li>Do the same for each task you want to bring over.</li>
           </Substeps>
         ),
-        shot: {
-          src: "/guides/switch-to-bb/window-handoff.png",
-          alt: "A bb thread where the agent found the latest Claude Code conversation for the folder and wrote a handoff: finish the 5 MB upload limit, with the goal, what's done, decisions, and the tests left, then asks for an OK to continue",
-          width: 2048,
-          height: 1280,
-        },
+        shot: tool.handoffShot,
         options: [],
       },
     ],
