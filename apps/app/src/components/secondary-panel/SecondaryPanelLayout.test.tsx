@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -16,6 +17,7 @@ import {
   type SecondaryPanelRenderArgs,
 } from "./SecondaryPanelLayout";
 import { panelGroupState } from "@/test/react-resizable-panels-stub";
+import { secondaryPanelWidthPercentAtom } from "./threadSecondaryPanelAtoms";
 
 type DrawerShellCallback = (open: boolean) => void;
 
@@ -25,11 +27,6 @@ const drawerShellState = vi.hoisted(() => ({
 
 vi.mock("@/lib/browser-view-bounds-sync", () => ({
   dispatchBrowserViewBoundsSync: vi.fn(),
-}));
-
-vi.mock("jotai", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("jotai")>()),
-  useAtomValue: () => 40,
 }));
 
 vi.mock(
@@ -118,31 +115,35 @@ function withHostedPane(
 
 function renderLayout(args: RenderLayoutArgs) {
   let renderArgs = args;
+  const store = createStore();
+  store.set(secondaryPanelWidthPercentAtom, 40);
   const renderContent = () =>
     withHostedPane(
-      <CompactViewportOverrideProvider
-        isCompactViewport={renderArgs.isCompactViewport}
-      >
-        <SecondaryPanelLayout
-          open={renderArgs.open}
-          onToggle={noop}
-          onClose={renderArgs.onClose ?? noop}
-          panelGroupKey={renderArgs.panelGroupKey}
-          resetKey={renderArgs.resetKey}
-          contentKey={renderArgs.resetKey}
-          drawerLabel="Details"
-          drawerFallback={<div data-testid="drawer-fallback" />}
-          mainPanelId="test-main-panel"
-          main={<main data-testid="main-content" />}
-          collapse={
-            renderArgs.collapseActive === undefined
-              ? undefined
-              : { active: renderArgs.collapseActive, onToggle: noop }
-          }
-          renderPanel={renderArgs.renderPanel}
-          composerHost={null}
-        />
-      </CompactViewportOverrideProvider>,
+      <Provider store={store}>
+        <CompactViewportOverrideProvider
+          isCompactViewport={renderArgs.isCompactViewport}
+        >
+          <SecondaryPanelLayout
+            open={renderArgs.open}
+            onToggle={noop}
+            onClose={renderArgs.onClose ?? noop}
+            panelGroupKey={renderArgs.panelGroupKey}
+            resetKey={renderArgs.resetKey}
+            contentKey={renderArgs.resetKey}
+            drawerLabel="Details"
+            drawerFallback={<div data-testid="drawer-fallback" />}
+            mainPanelId="test-main-panel"
+            main={<main data-testid="main-content" />}
+            collapse={
+              renderArgs.collapseActive === undefined
+                ? undefined
+                : { active: renderArgs.collapseActive, onToggle: noop }
+            }
+            renderPanel={renderArgs.renderPanel}
+            composerHost={null}
+          />
+        </CompactViewportOverrideProvider>
+      </Provider>,
       renderArgs.isFocusedHosted,
     );
   const view = render(renderContent());
