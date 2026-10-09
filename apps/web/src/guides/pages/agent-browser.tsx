@@ -64,8 +64,8 @@ export const PLUGINS_STEP: GuideStep = {
     </Substeps>
   ),
   shot: {
-    src: "/guides/agent-browser/window-plugins.png",
-    alt: "Browser Automation in bb's plugin catalog, made by BB Official, with an Install button",
+    src: "/guides/agent-browser/window-plugins-sidebar.png",
+    alt: "bb's Plugins page with Browse plugins selected in the sidebar, a search for browser, and Browser Automation open with an Install button",
     width: 2048,
     height: 1280,
   },
@@ -307,8 +307,8 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/agent-browser/window-check.png",
-        alt: "A bb thread asking the agent to try new order filters, with a live preview of the Acme Store Orders page in the agent's browser",
+        src: "/guides/agent-browser/window-check-full.png",
+        alt: "A bb thread where the agent is trying new order filters, with the full live preview of the Acme Store Orders page in its browser",
         width: 2048,
         height: 1280,
       },
@@ -324,7 +324,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/agent-browser/window-screenshots.png",
+            src: "/guides/agent-browser/window-screenshots-full.png",
             alt: "The agent's phone screenshots side by side in a bb thread: before, the search box and Total column are cut off; after, both fit",
             width: 2048,
             height: 1280,
