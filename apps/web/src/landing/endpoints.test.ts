@@ -111,6 +111,54 @@ describe("marketing download", () => {
     expect(waitUntil).not.toHaveBeenCalled();
   });
 
+  it("restarts a resume whose If-Range no longer matches the installer", async () => {
+    const fetchMock = stubReleaseFetch(["bb-0.0.27-arm64.dmg"], () => {
+      const ranged = fetchMock.mock.calls.at(-1)?.[1] !== undefined;
+      return ranged
+        ? new Response("tail", {
+            headers: { "content-range": "bytes 100-103/104", etag: '"new"' },
+            status: 206,
+          })
+        : new Response("whole-new-file", { headers: { etag: '"new"' } });
+    });
+
+    const response = await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos", {
+        headers: { range: "bytes=100-", "if-range": '"old"' },
+      }),
+      {},
+      vi.fn(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Range")).toBeNull();
+    expect(await response.text()).toBe("whole-new-file");
+  });
+
+  it("keeps the partial response when If-Range still matches", async () => {
+    stubReleaseFetch(
+      ["bb-0.0.27-arm64.dmg"],
+      () =>
+        new Response("tail", {
+          headers: { "content-range": "bytes 100-103/104", etag: '"same"' },
+          status: 206,
+        }),
+    );
+
+    const response = await handleDownload(
+      "macos",
+      new Request("https://getbb.app/download/macos", {
+        headers: { range: "bytes=100-", "if-range": '"same"' },
+      }),
+      {},
+      vi.fn(),
+    );
+
+    expect(response.status).toBe(206);
+    expect(await response.text()).toBe("tail");
+  });
+
   it("falls back to the release page when the installer fetch fails", async () => {
     stubReleaseFetch(
       ["bb-0.0.26-arm64.dmg"],
