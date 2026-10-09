@@ -41,8 +41,7 @@ import {
   definePluginApp,
   useBbNavigate,
   useComposer,
-  useRealtime,
-  useRealtimeConnectionState,
+  experimental_useRpcQuery,
   useRpc,
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
@@ -358,88 +357,41 @@ function useWorkflowRun(
   threadId: string,
   runId: string | null,
 ): { state: RunLoadState; refresh: () => Promise<void> } {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<RunLoadState>({ status: "loading" });
-  const requestSequence = useRef(0);
-
-  const load = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowRunView", { threadId, runId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", run: result.run, refreshError: null });
-      }
-      return true;
-    } catch (error) {
-      if (sequence === requestSequence.current) {
-        const message = error instanceof Error ? error.message : String(error);
-        setState((current) =>
-          current.status === "ready" && current.run !== null
-            ? { ...current, refreshError: message }
-            : { status: "error", message },
-        );
-      }
-      return false;
-    }
-  }, [rpc, runId, threadId]);
-  const refresh = useCallback(async () => {
-    await load();
-  }, [load]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void load();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [load]);
-
-  const refreshOnSignal = useCoalescedLoad(load);
-  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (
-      workflowRunsSignalThreadId(payload) === threadId &&
-      readDocumentVisible()
-    ) {
-      refreshOnSignal();
-    }
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowRunView"
+  >({
+    method: "workflowRunView",
+    input: { threadId, runId },
+    realtime: workflowRunsSignals(threadId),
   });
-
-  const failing =
-    state.status === "error" ||
-    (state.status === "ready" && state.refreshError !== null);
-  const shouldPoll =
-    failing ||
-    (state.status === "ready" && state.run !== null && isRunActive(state.run));
-  useVisibleActivePolling(load, shouldPoll, failing);
-
-  return { state, refresh };
+  const state: RunLoadState =
+    query.data !== undefined
+      ? {
+          status: "ready",
+          run: query.data.run,
+          refreshError: query.error?.message ?? null,
+        }
+      : query.error !== null
+        ? { status: "error", message: query.error.message }
+        : { status: "loading" };
+  useVisibleActivePolling(
+    query,
+    query.error !== null ||
+      (query.data?.run != null && isRunActive(query.data.run)),
+  );
+  return { state, refresh: query.refetch };
 }
 
-function useCoalescedLoad(load: () => Promise<boolean>): () => void {
-  const latestLoad = useRef(load);
-  useEffect(() => {
-    latestLoad.current = load;
-  }, [load]);
-  const pending = useRef({ running: false, queued: false });
-  return useCallback(() => {
-    const state = pending.current;
-    if (state.running) {
-      state.queued = true;
-      return;
-    }
-    state.running = true;
-    const run = () => {
-      void latestLoad.current().finally(() => {
-        if (state.queued) {
-          state.queued = false;
-          run();
-        } else {
-          state.running = false;
-        }
-      });
-    };
-    run();
-  }, []);
+function workflowRunsSignals(threadId: string) {
+  return [
+    {
+      channel: WORKFLOW_RUNS_REALTIME_CHANNEL,
+      affects: (payload: unknown) =>
+        workflowRunsSignalThreadId(payload) === threadId &&
+        readDocumentVisible(),
+    },
+  ];
 }
 
 function pollDelayMs(consecutiveFailures: number): number {
@@ -468,14 +420,12 @@ function useDocumentVisible(): boolean {
 }
 
 function useVisibleActivePolling(
-  load: () => Promise<boolean>,
+  query: { error: Error | null; refetch(): Promise<void> },
   active: boolean,
-  failing: boolean,
 ): void {
+  const { error, refetch } = query;
   const visible = useDocumentVisible();
-  const connection = useRealtimeConnectionState();
   const wasHidden = useRef(false);
-  const wasDisconnected = useRef(false);
 
   useEffect(() => {
     if (!visible) {
@@ -484,90 +434,59 @@ function useVisibleActivePolling(
     }
     if (!wasHidden.current) return;
     wasHidden.current = false;
-    void load();
-  }, [load, visible]);
+    void refetch();
+  }, [refetch, visible]);
 
+  const consecutiveFailures = useRef(0);
   useEffect(() => {
-    if (connection !== "connected") {
-      wasDisconnected.current = true;
-      return;
-    }
-    if (!wasDisconnected.current) return;
-    wasDisconnected.current = false;
-    void load();
-  }, [connection, load]);
-
-  const failingAtStart = useRef(failing);
-  useEffect(() => {
-    failingAtStart.current = failing;
-  }, [failing]);
+    consecutiveFailures.current =
+      error === null ? 0 : consecutiveFailures.current + 1;
+  }, [error]);
   const enabled = active && visible;
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
+    let completedAt = Date.now();
     let timeout: number | null = null;
-    let consecutiveFailures = failingAtStart.current ? 1 : 0;
-    const schedule = () => {
-      timeout = window.setTimeout(() => {
-        void load().then((succeeded) => {
-          consecutiveFailures = succeeded ? 0 : consecutiveFailures + 1;
-          if (!cancelled) schedule();
-        });
-      }, pollDelayMs(consecutiveFailures));
+    const tick = () => {
+      const remaining =
+        completedAt + pollDelayMs(consecutiveFailures.current) - Date.now();
+      if (remaining > 0) {
+        timeout = window.setTimeout(tick, remaining);
+        return;
+      }
+      void refetch().then(() => {
+        if (cancelled) return;
+        completedAt = Date.now();
+        timeout = window.setTimeout(tick, FAILED_POLL_RETRY_BASE_MS);
+      });
     };
-    schedule();
+    timeout = window.setTimeout(tick, FAILED_POLL_RETRY_BASE_MS);
     return () => {
       cancelled = true;
       if (timeout !== null) window.clearTimeout(timeout);
     };
-  }, [enabled, load]);
+  }, [enabled, refetch]);
 }
 
 function useActiveWorkflowRuns(threadId: string): ActiveRunsLoadState {
-  const rpc = useRpc<typeof workflowUiRpcContract>();
-  const [state, setState] = useState<ActiveRunsLoadState>({
-    status: "loading",
+  const query = experimental_useRpcQuery<
+    typeof workflowUiRpcContract,
+    "workflowActiveRuns"
+  >({
+    method: "workflowActiveRuns",
+    input: { threadId },
+    realtime: workflowRunsSignals(threadId),
   });
-  const requestSequence = useRef(0);
-
-  const load = useCallback(async () => {
-    const sequence = ++requestSequence.current;
-    try {
-      const result = await rpc.call("workflowActiveRuns", { threadId });
-      if (sequence === requestSequence.current) {
-        setState({ status: "ready", runs: result.runs });
-      }
-      return true;
-    } catch {
-      if (sequence === requestSequence.current) setState({ status: "error" });
-      return false;
-    }
-  }, [rpc, threadId]);
-
-  useEffect(() => {
-    setState({ status: "loading" });
-    void load();
-    return () => {
-      requestSequence.current += 1;
-    };
-  }, [load]);
-
-  const refreshOnSignal = useCoalescedLoad(load);
-  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
-    if (
-      workflowRunsSignalThreadId(payload) === threadId &&
-      readDocumentVisible()
-    ) {
-      refreshOnSignal();
-    }
-  });
-
-  const failing = state.status === "error";
-  const shouldPoll =
-    failing || (state.status === "ready" && state.runs.some(isRunActive));
-  useVisibleActivePolling(load, shouldPoll, failing);
-
-  return state;
+  useVisibleActivePolling(
+    query,
+    query.error !== null || (query.data?.runs.some(isRunActive) ?? false),
+  );
+  return query.data !== undefined
+    ? { status: "ready", runs: query.data.runs }
+    : query.error !== null
+      ? { status: "error" }
+      : { status: "loading" };
 }
 
 export function EmptyOrError({ children }: { children: ReactNode }) {

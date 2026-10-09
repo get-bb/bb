@@ -24,9 +24,9 @@ import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
-  experimental_useBranches,
-  experimental_useCheckoutState,
-  type CheckoutState,
+  experimental_useProjects,
+  experimental_useProjectSourceBranches,
+  type PluginBrowserBbSdk,
   type JsonValue,
   type PluginEnvironmentProviderInputsProps,
 } from "@get-bb/plugin-sdk/app";
@@ -40,6 +40,11 @@ const BRANCH_LABEL_PREFIXES = [
   "New branch from:",
 ] as const;
 const CURRENT_PARENTHESES_LABEL_PREFIX = "Current (";
+
+type CheckoutData =
+  | Awaited<ReturnType<PluginBrowserBbSdk["projects"]["branches"]>>
+  | undefined;
+const EMPTY_BRANCHES: string[] = [];
 
 interface CheckoutInputsValue {
   path: string | null;
@@ -93,7 +98,7 @@ export function buildCheckoutInputs(inputs: CheckoutInputsValue): JsonValue {
   };
 }
 
-function operationName(state: CheckoutState): string {
+function operationName(state: NonNullable<CheckoutData>): string {
   switch (state.operation.kind) {
     case "merge":
       return "Merge";
@@ -110,19 +115,20 @@ function operationName(state: CheckoutState): string {
   }
 }
 
-export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
-  if (state.isGit === null) {
+export function checkoutBlocker(state: CheckoutData): CheckoutBlocker | null {
+  if (state === undefined) {
     return {
       label: "Checking",
       reason: "Checking checkout state",
       guidance: "Checking whether branch changes are available…",
     };
   }
-  if (!state.isGit) {
+  if (state.checkout.kind === "unknown") {
     return {
       label: "Unknown",
       reason: "Checkout state is unavailable",
-      guidance: "Branch changes are unavailable because this checkout could not be inspected.",
+      guidance:
+        "Branch changes are unavailable because this checkout could not be inspected.",
     };
   }
   if (state.operation.kind !== "none") {
@@ -130,7 +136,8 @@ export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
       return {
         label: "Conflicts",
         reason: "Checkout blocked by unresolved conflicts",
-        guidance: "Resolve the conflicts and finish or abort the Git operation to change branches.",
+        guidance:
+          "Resolve the conflicts and finish or abort the Git operation to change branches.",
       };
     }
     const name = operationName(state);
@@ -140,42 +147,46 @@ export function checkoutBlocker(state: CheckoutState): CheckoutBlocker | null {
       guidance: `Finish or abort the ${name.toLowerCase()} to change branches.`,
     };
   }
-  if (state.dirty) {
+  if (state.hasUncommittedChanges) {
     return {
       label: "Dirty",
       reason: "Checkout blocked by uncommitted changes",
-      guidance: "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
+      guidance:
+        "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
     };
   }
-  if (state.detached) {
+  if (state?.checkout.kind === "detached") {
     return {
       label: "Detached",
       reason: "Checkout blocked while HEAD is detached",
-      guidance: "Attach HEAD to a branch in this checkout to create or switch branches here.",
+      guidance:
+        "Attach HEAD to a branch in this checkout to create or switch branches here.",
     };
   }
-  if (state.unborn) {
+  if (state?.checkout.kind === "unborn") {
     return {
       label: "Empty repo",
       reason: "Checkout blocked before the first commit",
-      guidance: "Create the first commit in this checkout to create or switch branches.",
+      guidance:
+        "Create the first commit in this checkout to create or switch branches.",
     };
   }
   return null;
 }
 
-function currentMenuLabel(state: CheckoutState): string {
-  if (state.currentBranch !== null) return `Current: ${state.currentBranch}`;
-  if (state.detached) return "Current (detached)";
-  if (state.unborn) return "Current (empty repo)";
-  if (state.isGit === null) return "Checking checkout";
+function currentMenuLabel(state: CheckoutData): string {
+  if (state?.checkout.kind === "branch")
+    return `Current: ${state.checkout.branchName}`;
+  if (state?.checkout.kind === "detached") return "Current (detached)";
+  if (state?.checkout.kind === "unborn") return "Current (empty repo)";
+  if (state === undefined) return "Checking checkout";
   return "Unknown checkout";
 }
 
-function currentTriggerLabel(state: CheckoutState): string {
-  return state.currentBranch === null
-    ? currentMenuLabel(state)
-    : `Current (${state.currentBranch})`;
+function currentTriggerLabel(state: CheckoutData): string {
+  return state?.checkout.kind === "branch"
+    ? `Current (${state.checkout.branchName})`
+    : currentMenuLabel(state);
 }
 
 function resolveCheckoutIntent(
@@ -304,7 +315,6 @@ function CheckoutInputsControl({
 }: PluginEnvironmentProviderInputsProps) {
   const hostId = target.kind === "existing-host" ? target.hostId : null;
   const inputs = useMemo(() => readCheckoutInputs(value), [value]);
-  const checkout = experimental_useCheckoutState({ hostId, projectId });
   const selectedCheckoutIntent = resolveCheckoutIntent(inputs.branch);
   const [checkoutIntent, setCheckoutIntent] = useState<CheckoutIntent>(
     selectedCheckoutIntent,
@@ -312,11 +322,26 @@ function CheckoutInputsControl({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const branchState = experimental_useBranches({
-    hostId,
-    projectId,
-    query: deferredQuery.trim().toLowerCase(),
+  const projects = experimental_useProjects({
+    enabled: hostId === null && projectId !== null,
   });
+  const sources = projects.data?.find(
+    (project) => project.id === projectId,
+  )?.sources;
+  const source =
+    sources?.find(
+      (source) => source.type === "local_path" && source.isDefault,
+    ) ?? sources?.find((source) => source.type === "local_path");
+  const branchesQuery = experimental_useProjectSourceBranches(
+    projectId,
+    hostId ?? source?.hostId ?? null,
+    {
+      query: deferredQuery.trim().toLowerCase(),
+    },
+  );
+  const branches = branchesQuery.data?.branches ?? EMPTY_BRANCHES;
+  const remoteBranches = branchesQuery.data?.remoteBranches ?? EMPTY_BRANCHES;
+  const checkout = branchesQuery.data;
   const inputRef = useRef<HTMLInputElement>(null);
   const optionsScrollRef = useRef<HTMLDivElement>(null);
   const blocker = hostId === null ? null : checkoutBlocker(checkout);
@@ -349,27 +374,25 @@ function CheckoutInputsControl({
         ? inputs.branch.baseBranch
         : null;
   const branchOptions = useMemo(() => {
-    const branches =
+    const choices =
       hostId === null
-        ? branchState.remoteBranches
+        ? remoteBranches
             .filter((branch) => branch.startsWith("origin/"))
             .map((branch) => branch.slice("origin/".length))
         : checkoutIntent === "new"
           ? [
-              ...branchState.branches,
-              ...branchState.remoteBranches.filter(
-                (branch) => !branchState.branches.includes(branch),
-              ),
+              ...branches,
+              ...remoteBranches.filter((branch) => !branches.includes(branch)),
             ]
-          : [...branchState.branches];
-    const filtered = filterBranches(branches, deferredQuery);
+          : [...branches];
+    const filtered = filterBranches(choices, deferredQuery);
     const selectedBranch =
       query.trim().length === 0 ? selectedBranchName : null;
     return orderBranches(filtered, selectedBranch);
   }, [
     hostId,
-    branchState.branches,
-    branchState.remoteBranches,
+    branches,
+    remoteBranches,
     checkoutIntent,
     deferredQuery,
     query,
@@ -408,7 +431,7 @@ function CheckoutInputsControl({
       blurActiveKeyboardInputWithin(inputRef.current);
       setQuery("");
     } else {
-      void branchState.refresh().catch(() => undefined);
+      void branchesQuery.refreshFromRemote().catch(() => undefined);
     }
     setOpen(nextOpen);
   };
@@ -516,7 +539,11 @@ function CheckoutInputsControl({
               title={blocker?.reason ?? CREATE_NEW_BRANCH_LABEL}
               onSelect={() => {
                 setCheckoutIntent("new");
-                const baseBranch = selectedBranchName ?? checkout.currentBranch;
+                const baseBranch =
+                  selectedBranchName ??
+                  (checkout?.checkout.kind === "branch"
+                    ? checkout.checkout.branchName
+                    : null);
                 if (baseBranch !== null) {
                   updateBranch({ kind: "new", baseBranch });
                 }
@@ -538,7 +565,10 @@ function CheckoutInputsControl({
               <BranchPickerText label="Checkout" className="flex-1" wrap />
             </BranchPickerRow>
             {blocker !== null ? (
-              <p role="status" className="px-2 py-2 text-xs leading-snug text-muted-foreground">
+              <p
+                role="status"
+                className="px-2 py-2 text-xs leading-snug text-muted-foreground"
+              >
                 {blocker.guidance}
               </p>
             ) : null}
@@ -586,7 +616,7 @@ function CheckoutInputsControl({
                     {branchOptions.length === 0 &&
                     !(hostId === null && query.trim()) ? (
                       <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                        {branchState.isLoading
+                        {branchesQuery.isFetching
                           ? "Loading branches..."
                           : checkoutIntent === "checkout"
                             ? "No local branches found."

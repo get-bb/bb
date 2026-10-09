@@ -37,6 +37,8 @@
   "devDependencies": {
     "@bb/plugin-build": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -44,6 +46,7 @@
     "better-sqlite3": "12.10.0",
     "cron-parser": "^5.5.0",
     "hono": "4.11.9",
+    "jsdom": "^29.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

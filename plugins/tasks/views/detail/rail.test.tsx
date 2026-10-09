@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { withReadBatches } from "../../read-test-fixtures.js";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,7 +7,7 @@ import {
   installTestPluginRuntime,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { makeTask, rpcInput } from "../../test-fixtures.js";
+import { makeTask, makeBbProject, rpcInput } from "../../test-fixtures.js";
 
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class {
@@ -120,10 +121,12 @@ describe("dispatch target rail control", () => {
   it("links a discovered bb project", async () => {
     const updateCalls: Array<Record<string, unknown>> = [];
     const slot = renderSlot({ component: RailHarness }, railProps(null), {
-      rpc: {
-        listBbProjects: () => ({
-          bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
-        }),
+      sdk: {
+        projects: {
+          list: async () => [makeBbProject(BB_PROJECT_ID, "bb monorepo")],
+        },
+      },
+      rpc: withReadBatches({
         updateProject: (raw: unknown) => {
           const input = rpcInput(raw);
           updateCalls.push(input);
@@ -133,7 +136,7 @@ describe("dispatch target rail control", () => {
             },
           };
         },
-      },
+      }),
     });
     fireEvent.click(slot.getByRole("button", { name: "Edit dispatch target" }));
     fireEvent.click(await slot.findByLabelText("Linked bb project"));
@@ -152,10 +155,12 @@ describe("dispatch target rail control", () => {
       { component: RailHarness },
       railProps(BB_PROJECT_ID),
       {
-        rpc: {
-          listBbProjects: () => ({
-            bbProjects: [{ id: BB_PROJECT_ID, name: "bb monorepo" }],
-          }),
+        sdk: {
+          projects: {
+            list: async () => [makeBbProject(BB_PROJECT_ID, "bb monorepo")],
+          },
+        },
+        rpc: withReadBatches({
           updateProject: (raw: unknown) => {
             const input = rpcInput(raw);
             updateCalls.push(input);
@@ -165,7 +170,7 @@ describe("dispatch target rail control", () => {
               },
             };
           },
-        },
+        }),
       },
     );
     const trigger = slot.getByRole("button", {

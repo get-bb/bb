@@ -1,3 +1,4 @@
+import { experimental_useHosts } from "@get-bb/plugin-sdk/app";
 import { useState } from "react";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
@@ -8,7 +9,6 @@ import type { Preset, PresetPermissionMode } from "../../shared/contract.js";
 import { PRESET_ENVIRONMENT_KINDS } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
 import type { TasksRpc } from "../../shell/data.js";
-import { useTasksQuery } from "../../shell/data.js";
 import {
   Dialog,
   DialogContent,
@@ -151,10 +151,7 @@ export function PresetDialog({
   const set = <K extends keyof PresetDraft>(key: K, value: PresetDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const machinesQuery = useTasksQuery(
-    async (rpc) => (await rpc.call("listMachines", {})).machines,
-    [],
-  );
+  const machinesQuery = experimental_useHosts();
   const machines = machinesQuery.data;
 
   const canSubmit =

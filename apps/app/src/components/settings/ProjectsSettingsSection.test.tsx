@@ -8,7 +8,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import { makeHost } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeHost,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -24,6 +27,7 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     hosts: { list: vi.fn(), pickFolder: vi.fn() },
     projects: {
+      list: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
       reorder: vi.fn(),
@@ -69,54 +73,41 @@ interface SidebarProjectFixture {
   threadCount: number;
 }
 
-function stubSidebarBootstrapFetch(
+function stubProjectsList(
   projects: SidebarProjectFixture[],
   status = 200,
 ): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          sections: [],
-          projects: projects.map((project) => ({
-            id: project.id,
-            kind: "standard",
-            name: project.name,
-            gitRemoteUrl: project.gitRemoteUrl,
-            createdAt: NOW,
-            updatedAt: NOW,
-            sources: project.hostIds.map((hostId, index) => ({
-              id: `src_${project.id}_${index}`,
-              projectId: project.id,
-              type: "local_path",
-              hostId,
-              path: `/repos/${project.name}`,
-              isDefault: index === 0,
-              createdAt: NOW,
-              updatedAt: NOW,
-            })),
-            defaultExecutionOptions: null,
-            threads: Array.from({ length: project.threadCount }, (_, i) => ({
-              id: `thr_${project.id}_${i}`,
-              projectId: project.id,
-            })),
-          })),
-          personalProject: {
-            id: "proj_personal",
-            kind: "personal",
-            name: "Personal",
-            gitRemoteUrl: null,
-            createdAt: NOW,
-            updatedAt: NOW,
-            sources: [],
-            defaultExecutionOptions: null,
-            threads: [],
-          },
+  if (status !== 200) {
+    vi.mocked(sdk.projects.list).mockRejectedValue(
+      new Error("Project list unavailable"),
+    );
+    return;
+  }
+  vi.mocked(sdk.projects.list).mockResolvedValue(
+    projects.map((project) => ({
+      id: project.id,
+      kind: "standard",
+      name: project.name,
+      gitRemoteUrl: project.gitRemoteUrl,
+      createdAt: NOW,
+      updatedAt: NOW,
+      sources: project.hostIds.map((hostId, index) => ({
+        id: `src_${project.id}_${index}`,
+        projectId: project.id,
+        type: "local_path",
+        hostId,
+        path: `/repos/${project.name}`,
+        isDefault: index === 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+      })),
+      threads: Array.from({ length: project.threadCount }, (_, i) =>
+        makeThreadListEntry({
+          id: `thr_${project.id}_${i}`,
+          projectId: project.id,
         }),
-        { status, headers: { "content-type": "application/json" } },
       ),
-    ),
+    })),
   );
 }
 
@@ -188,7 +179,7 @@ it("counts only persistent checkouts and their connection status in project summ
     remoteHost,
     sandbox,
   ]);
-  stubSidebarBootstrapFetch([
+  stubProjectsList([
     {
       id: "proj_all",
       name: "All checkouts",
@@ -267,7 +258,7 @@ describe("formatGitRemote", () => {
 
 describe("ProjectsSettingsSection", () => {
   it("summarises each project's remote, machine coverage, and threads", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
 
     renderSection();
 
@@ -288,7 +279,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("marks a project offline when every configured machine is disconnected", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
 
     renderSection();
 
@@ -300,7 +291,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("shows a drag handle per project and disables them with a single project", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
     const { unmount } = renderSection();
 
     await screen.findByText("bb");
@@ -311,7 +302,7 @@ describe("ProjectsSettingsSection", () => {
     );
     unmount();
 
-    stubSidebarBootstrapFetch([projects[0]!]);
+    stubProjectsList([projects[0]!]);
     renderSection();
     await screen.findByText("bb");
     await waitFor(() =>
@@ -326,7 +317,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("renames a project through the existing dialog", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
     vi.mocked(sdk.projects.update).mockResolvedValue({
       id: "proj_bb",
       kind: "standard",
@@ -354,7 +345,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("deletes a project after confirmation", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
     vi.mocked(sdk.projects.delete).mockResolvedValue({ ok: true });
 
     renderSection();
@@ -374,7 +365,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("opens the add-project dialog with the paired machines listed", async () => {
-    stubSidebarBootstrapFetch(projects);
+    stubProjectsList(projects);
 
     renderSection();
     await screen.findByText("bb");
@@ -387,7 +378,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("explains an empty project list", async () => {
-    stubSidebarBootstrapFetch([]);
+    stubProjectsList([]);
 
     renderSection();
 
@@ -395,7 +386,7 @@ describe("ProjectsSettingsSection", () => {
   });
 
   it("surfaces a failed project load instead of staying on the loader", async () => {
-    stubSidebarBootstrapFetch([], 500);
+    stubProjectsList([], 500);
 
     renderSection();
 

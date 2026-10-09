@@ -77,7 +77,9 @@ vi.mock("@/lib/ws", () => ({
     {},
     {
       get: (_target, key) =>
-        key === "onPluginSignal" ? () => () => {} : () => undefined,
+        key === "onPluginSignal" || key === "onConnected"
+          ? () => () => {}
+          : () => undefined,
     },
   ),
 }));

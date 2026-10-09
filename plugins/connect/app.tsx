@@ -4,9 +4,9 @@ import {
   experimental_copyToClipboard,
   UrlLink as UrlLink,
   useRealtime,
-  useRealtimeConnectionState,
   useRpc,
   useSdk,
+  experimental_useRpcQuery,
 } from "@get-bb/plugin-sdk/app";
 import {
   encodeMobilePairingPayload,
@@ -1508,44 +1508,17 @@ function OffContent({
 }
 
 function useConnectStatus() {
-  const rpc = useRpc<typeof connectRpcContract>();
-  const connectionState = useRealtimeConnectionState();
-  const previousConnectionState = useRef(connectionState);
+  const query = experimental_useRpcQuery<typeof connectRpcContract, "status">({
+    method: "status",
+    input: null,
+  });
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const latestStatusRequest = useRef(0);
-
-  const refetch = useCallback(() => {
-    const request = ++latestStatusRequest.current;
-    rpc.call("status").then(
-      (result) => {
-        if (request !== latestStatusRequest.current) return;
-        const next = asStatus(result);
-        if (next !== null) {
-          setStatus(next);
-          setLoadError(null);
-        } else {
-          setLoadError("Unexpected status payload.");
-        }
-      },
-      (error: unknown) => {
-        if (request !== latestStatusRequest.current) return;
-        setLoadError(errorText(error));
-      },
-    );
-  }, [rpc]);
 
   useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  useEffect(() => {
-    const previous = previousConnectionState.current;
-    previousConnectionState.current = connectionState;
-    if (connectionState === "connected" && previous !== "connected") {
-      refetch();
-    }
-  }, [connectionState, refetch]);
+    if (query.data !== undefined) setStatus(query.data);
+    setLoadError(query.error?.message ?? null);
+  }, [query.data, query.error]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
     const next = asStatus(payload);
@@ -1555,7 +1528,7 @@ function useConnectStatus() {
     }
   });
 
-  return { status, loadError, refetch };
+  return { status, loadError, refetch: query.refetch };
 }
 
 function MobilePairingSection() {

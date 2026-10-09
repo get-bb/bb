@@ -79,37 +79,11 @@ async function fetchBoard(
     if (task.status === "done") entry.done += 1;
     subProgress.set(task.parentTaskId, entry);
   }
-  const activeTaskIds = await listAllTasks(rpc, {
-    projectId,
-    activeOnly: true,
-  }).then(
-    (result) => new Set(result.map((task) => task.id)),
-    () => new Set<string>(),
-  );
-  const workingByTaskId = new Map<string, TaskThread[]>();
-  await Promise.all(
-    topLevel
-      .filter((task) => activeTaskIds.has(task.id))
-      .map(async (task) => {
-        const threads = await rpc
-          .call("listTaskThreads", { taskId: task.id })
-          .then(
-            (result) => result.taskThreads,
-            () => [],
-          );
-        workingByTaskId.set(task.id, threads.filter(isActiveThread));
-      }),
-  );
-  const attachmentCounts = new Map<string, number>();
-  await Promise.all(
-    topLevel.map(async (task) => {
-      const count = await rpc.call("listAttachments", { taskId: task.id }).then(
-        (result) => result.attachments.length,
-        () => 0,
-      );
-      attachmentCounts.set(task.id, count);
-    }),
-  );
+  const { items } = await rpc.call("taskMetadata", {
+    taskIds: topLevel.map((task) => task.id),
+    includeAttachmentCounts: true,
+  });
+  const metadata = new Map(items.map((item) => [item.taskId, item]));
 
   return {
     tasks: topLevel,
@@ -119,8 +93,9 @@ async function fetchBoard(
       topLevel.map((task) => [
         task.id,
         {
-          workingThreads: workingByTaskId.get(task.id) ?? [],
-          attachmentCount: attachmentCounts.get(task.id) ?? 0,
+          workingThreads:
+            metadata.get(task.id)?.taskThreads.filter(isActiveThread) ?? [],
+          attachmentCount: metadata.get(task.id)?.attachmentCount ?? 0,
           subDone: subProgress.get(task.id)?.done ?? 0,
           subTotal: subProgress.get(task.id)?.total ?? 0,
         },

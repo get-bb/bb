@@ -147,11 +147,10 @@ function unwrapTask(result: TaskMutationResult): Task {
 
 async function resolveClientHostId(
   bb: BbPluginApi,
-  domain: TasksDomain,
   machine: string | undefined,
   ctx: PluginCliContext,
 ): Promise<string | undefined> {
-  if (machine !== undefined) return resolveMachineId(domain, machine);
+  if (machine !== undefined) return resolveMachineId(bb, machine);
   if (!ctx.threadId) return undefined;
   const thread = await bb.sdk.threads.get({ threadId: ctx.threadId });
   if (!thread.environmentId) return undefined;
@@ -515,12 +514,10 @@ function presetServiceTier(
 }
 
 async function resolveMachineId(
-  domain: TasksDomain,
+  bb: BbPluginApi,
   address: string,
 ): Promise<string> {
-  const machines = tasksRpcContract.listMachines.output.parse(
-    await domain.listMachines(tasksRpcContract.listMachines.input.parse({})),
-  ).machines;
+  const machines = await bb.sdk.hosts.list();
   const normalized = address.trim().toLocaleLowerCase();
   const matches = machines.filter(
     (machine) =>
@@ -1218,12 +1215,7 @@ export function registerTasksCli(
                 );
               }
               const clientHostId = usesClientFiles
-                ? await resolveClientHostId(
-                    bb,
-                    domain,
-                    input.options.machine,
-                    ctx,
-                  )
+                ? await resolveClientHostId(bb, input.options.machine, ctx)
                 : undefined;
               const attachSources: Array<{ path: string; bytes: Buffer }> = [];
               for (const path of attachPaths) {
@@ -1725,12 +1717,7 @@ export function registerTasksCli(
               const descriptionFile = input.options["description-file"];
               const clientHostId =
                 descriptionFile !== undefined
-                  ? await resolveClientHostId(
-                      bb,
-                      domain,
-                      input.options.machine,
-                      ctx,
-                    )
+                  ? await resolveClientHostId(bb, input.options.machine, ctx)
                   : undefined;
               const description = await readTextOption(
                 bb,
@@ -1875,12 +1862,7 @@ export function registerTasksCli(
               const bodyFile = input.options["body-file"];
               const clientHostId =
                 bodyFile !== undefined
-                  ? await resolveClientHostId(
-                      bb,
-                      domain,
-                      input.options.machine,
-                      ctx,
-                    )
+                  ? await resolveClientHostId(bb, input.options.machine, ctx)
                   : undefined;
               const body = await readTextOption(
                 bb,
@@ -2068,7 +2050,6 @@ export function registerTasksCli(
                 : { taskId: (await resolveTask(domain, ownerAddress)).id };
               const clientHostId = await resolveClientHostId(
                 bb,
-                domain,
                 input.options.machine,
                 ctx,
               );
@@ -2128,7 +2109,6 @@ export function registerTasksCli(
               );
               const clientHostId = await resolveClientHostId(
                 bb,
-                domain,
                 input.options.machine,
                 ctx,
               );
@@ -2408,7 +2388,7 @@ export function registerTasksCli(
                     machineId:
                       machine === undefined
                         ? null
-                        : await resolveMachineId(domain, machine),
+                        : await resolveMachineId(bb, machine),
                     instructions: input.options.instructions ?? "",
                   }),
                 ),
@@ -2529,7 +2509,7 @@ export function registerTasksCli(
                         ? null
                         : machine === undefined
                           ? undefined
-                          : await resolveMachineId(domain, machine),
+                          : await resolveMachineId(bb, machine),
                     instructions: input.options.instructions,
                   }),
                 ),

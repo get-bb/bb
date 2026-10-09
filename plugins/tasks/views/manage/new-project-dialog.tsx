@@ -1,10 +1,6 @@
+import { experimental_useProjects } from "@get-bb/plugin-sdk/app";
 import { useEffect, useMemo, useState } from "react";
-import {
-  useFolders,
-  useProjects,
-  useTasksQuery,
-  useTasksRpc,
-} from "../../shell/data.js";
+import { useFolders, useProjects, useTasksRpc } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { PROJECT_PREFIX_PATTERN } from "../../shared/contract.js";
 import { errorMessage } from "../../shared/errors.js";
@@ -66,10 +62,7 @@ export function NewProjectDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bbProjects = useTasksQuery(
-    async (rpc) => (await rpc.call("listBbProjects")).bbProjects,
-    [],
-  );
+  const bbProjects = experimental_useProjects({ includePersonal: true });
   const bbProjectList = bbProjects.data ?? [];
 
   useEffect(() => {

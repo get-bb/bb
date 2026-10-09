@@ -575,6 +575,7 @@ describe("connect settings section", () => {
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({ method: "status", input: null }),
     );
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(
       slot.queryByRole("button", { name: "Add mobile device" }),
     ).toBeNull();
