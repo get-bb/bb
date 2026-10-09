@@ -384,6 +384,7 @@ export class DemoWorld {
         return json({
           nonDeletedChildCount: 0,
           unarchivedDescendantCount: 0,
+          workspaceRemovalDelayMs: null,
         } satisfies ThreadChildSummaryResponse);
       default:
         return null;

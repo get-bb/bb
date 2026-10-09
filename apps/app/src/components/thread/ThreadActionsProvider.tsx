@@ -471,6 +471,7 @@ export function ThreadActionsProvider({
             openArchiveDialog({
               thread,
               childThreadCount: error.childThreadCount,
+              workspaceRemovalDelayMs: error.workspaceRemovalDelayMs,
             });
             return;
           }
