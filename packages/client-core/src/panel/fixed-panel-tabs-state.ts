@@ -114,6 +114,15 @@ const threadStorageFilePreviewFixedPanelTabSchema = z
     threadId: z.string().min(1).nullable().default(null),
   })
   .strict();
+const attachmentFilePreviewFixedPanelTabSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.literal("attachment-file-preview"),
+    name: z.string().min(1),
+    path: z.string().min(1),
+    projectId: z.string().min(1),
+  })
+  .strict();
 const browserFixedPanelTabSchema = z
   .object({
     environmentId: z.string().min(1).nullable().default(null),
@@ -161,6 +170,7 @@ const secondaryFixedPanelTabSchema = z.union([
   workspaceFilePreviewFixedPanelTabSchema,
   hostFilePreviewFixedPanelTabSchema,
   threadStorageFilePreviewFixedPanelTabSchema,
+  attachmentFilePreviewFixedPanelTabSchema,
   browserFixedPanelTabSchema,
   newTabFixedPanelTabSchema,
   terminalFixedPanelTabSchema,
@@ -258,6 +268,14 @@ export interface ThreadStorageFilePreviewFixedPanelTab {
   threadId: string | null;
 }
 
+export interface AttachmentFilePreviewFixedPanelTab {
+  id: string;
+  kind: "attachment-file-preview";
+  name: string;
+  path: string;
+  projectId: string;
+}
+
 export interface BrowserFixedPanelTab {
   desktopTarget?: BbDesktopBrowserTarget;
   environmentId: string | null;
@@ -287,6 +305,7 @@ export type SecondaryFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | AttachmentFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab;
@@ -295,6 +314,7 @@ export type SecondaryFileFixedPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | AttachmentFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | TerminalFixedPanelTab
@@ -364,6 +384,12 @@ interface CreateThreadStorageFilePreviewFixedPanelTabArgs {
   isPinned: boolean;
   tab: ThreadStorageFileTabState;
   threadId: string;
+}
+
+interface CreateAttachmentFilePreviewFixedPanelTabArgs {
+  name: string;
+  path: string;
+  projectId: string;
 }
 
 interface CreateHostFilePreviewFixedPanelTabArgs {
@@ -502,6 +528,17 @@ function buildThreadStorageFilePreviewTabId({
   });
 }
 
+function buildAttachmentFilePreviewTabId({
+  path,
+  projectId,
+}: Omit<CreateAttachmentFilePreviewFixedPanelTabArgs, "name">): string {
+  return buildFixedPanelTabId({
+    environmentId: `project:${projectId}`,
+    kind: "attachment-file-preview",
+    path,
+  });
+}
+
 export function createThreadInfoFixedPanelTab(): ThreadInfoFixedPanelTab {
   return {
     id: THREAD_INFO_TAB_ID,
@@ -617,6 +654,20 @@ export function createThreadStorageFilePreviewFixedPanelTab({
   };
 }
 
+export function createAttachmentFilePreviewFixedPanelTab({
+  name,
+  path,
+  projectId,
+}: CreateAttachmentFilePreviewFixedPanelTabArgs): AttachmentFilePreviewFixedPanelTab {
+  return {
+    id: buildAttachmentFilePreviewTabId({ path, projectId }),
+    kind: "attachment-file-preview",
+    name,
+    path,
+    projectId,
+  };
+}
+
 export function createNewTabFixedPanelTab(): NewTabFixedPanelTab {
   return {
     id: NEW_TAB_TAB_ID,
@@ -723,6 +774,13 @@ function normalizeFixedPanelTabId(tab: FixedPanelTab): FixedPanelTab {
       });
       return tab.id === id ? tab : { ...tab, id };
     }
+    case "attachment-file-preview": {
+      const id = buildAttachmentFilePreviewTabId({
+        path: tab.path,
+        projectId: tab.projectId,
+      });
+      return tab.id === id ? tab : { ...tab, id };
+    }
     case "browser": {
       if (tab.desktopTarget !== undefined) return tab;
       const idSegments = tab.id.split(":");
@@ -823,6 +881,7 @@ function stripTransientFixedPanelTabForStorage(
     case "thread-info":
     case "git-diff":
     case "plugin-page-fixed":
+    case "attachment-file-preview":
     case "browser":
     case "new-tab":
     case "terminal":
@@ -1093,6 +1152,13 @@ export function areFixedPanelTabsEquivalent(
         }) &&
         a.path === b.path &&
         a.threadId === b.threadId
+      );
+    case "attachment-file-preview":
+      return (
+        b.kind === "attachment-file-preview" &&
+        a.name === b.name &&
+        a.path === b.path &&
+        a.projectId === b.projectId
       );
     case "terminal":
       return (

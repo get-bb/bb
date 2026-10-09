@@ -32,6 +32,7 @@ export function CompactQuestion() {
   return (
     <div className="mx-auto flex min-h-[80vh] w-full max-w-3xl flex-col justify-end p-4">
       <PluginPendingInteractionComposer
+        collapsedByDefault={false}
         interaction={{
           id: "question-demo",
           threadId: "thread-demo",

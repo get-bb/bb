@@ -3,6 +3,7 @@
 import { LazyMarkdownHtml } from "@/components/ui/lazy-markdown-html";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
@@ -205,13 +206,15 @@ describe("plugin SDK navigation components", () => {
       );
     }
     render(
-      <MemoryRouter>
-        <AppNavigationHostProvider capabilities={{ openUrl }}>
-          <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
-            <Probe />
-          </PluginSlotMount>
-        </AppNavigationHostProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openUrl }}>
+            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+              <Probe />
+            </PluginSlotMount>
+          </AppNavigationHostProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(results).toEqual([true]);

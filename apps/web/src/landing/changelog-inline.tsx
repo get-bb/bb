@@ -73,7 +73,8 @@ function parseInline(
 
     appendText(tokens, text.slice(cursor, tokenStart));
     const isCode = tokenStart === codeStart;
-    const isStrongEm = !isCode && allowStrong && text.startsWith("***", tokenStart);
+    const isStrongEm =
+      !isCode && allowStrong && text.startsWith("***", tokenStart);
     const isStrong = !isCode && !isStrongEm && tokenStart === strongStart;
     const delimiter = isCode ? "`" : isStrongEm ? "***" : isStrong ? "**" : "*";
     const contentStart = tokenStart + delimiter.length;
@@ -144,5 +145,16 @@ function renderTokens(tokens: InlineToken[]): ReactNode {
 }
 
 export function ChangelogInline({ text }: { text: string }): ReactNode {
+  const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(text);
+  if (image && isRenderableHref(image[2])) {
+    return (
+      <img
+        src={image[2]}
+        alt={image[1]}
+        className="release-screenshot"
+        loading="lazy"
+      />
+    );
+  }
   return renderTokens(parseInline(text, true, true, true));
 }

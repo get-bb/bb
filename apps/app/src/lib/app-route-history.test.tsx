@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   cleanup,
@@ -284,9 +285,11 @@ describe("useRouteStateHistoryNavigation", () => {
 
   it("redirects remounted automation edit routes without duplicate history entries", async () => {
     render(
-      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
-        <RemountablePluginNavigationHarness />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
+          <RemountablePluginNavigationHarness />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);

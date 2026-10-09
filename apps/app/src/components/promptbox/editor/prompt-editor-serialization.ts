@@ -582,6 +582,14 @@ export function promptMentionResourceFromSuggestion(
     };
   }
 
+  if (suggestion.kind === "attachment") {
+    return {
+      kind: "attachment",
+      path: suggestion.path,
+      label: suggestion.name,
+    };
+  }
+
   return {
     kind: "path",
     source: suggestion.source,

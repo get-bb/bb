@@ -11,6 +11,8 @@ import {
   copyInjectedSkillSource,
   ensureStoredSkillTree,
   hashInstalledSkillDirectory,
+  scheduleSkillStoreGc,
+  type InjectedSkillsLogger,
 } from "../injected-skills.js";
 import type { FetchSkillTree } from "../skill-trees.js";
 
@@ -23,6 +25,7 @@ interface InstallGlobalSkillsOptions {
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   homeDir?: string;
+  logger: InjectedSkillsLogger;
 }
 
 interface GlobalSkillsStatusOptions {
@@ -120,6 +123,9 @@ export async function installGlobalSkills(
       });
       installations.push({ name: skill.name, path: destinationPath });
     }
+  }
+  if (command.skills.length > 0) {
+    scheduleSkillStoreGc(options.dataDir, options.logger);
   }
 
   return { installations };

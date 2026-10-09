@@ -16,3 +16,8 @@ ordering, or failover, read
 Use stdin or supported login/import flows for credentials; never put secret values
 in command arguments or chat. Confirm the resulting account and routing state.
 Do not enable the plugin or change accounts unless the requested task calls for it.
+
+Pooled rate-limit failures can be retried by Provider Retry using the pool’s
+earliest usable account, even if the provider omits structured quota events.
+Inspect `bb provider-retry explain <thread-id> --json` for the last decision
+and `bb provider-retry status <thread-id> --json` for pending retries.

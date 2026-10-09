@@ -2,6 +2,7 @@ import type {
   BbSdkAreas,
   ThreadForkArgs,
   ThreadMutationResult,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
@@ -26,6 +27,10 @@ import {
   settleThreadListMembershipMutation,
   invalidateThreadMetadataBatch,
   rollbackThreadMetadataBatchTransaction,
+  applyThreadReadStateResult,
+  beginThreadReadStateTransaction,
+  rollbackThreadReadStateTransaction,
+  settleThreadReadStateTransaction,
 } from "@/hooks/cache-owners/thread-state-cache-owner";
 
 import {
@@ -136,6 +141,29 @@ function createOptimisticThreadMutationBatcher(
     pin: (args) => enqueue("pin", args),
     unpin: (args) => enqueue("unpin", args),
   };
+}
+
+async function withOptimisticReadState(
+  queryClient: QueryClient,
+  threadId: string,
+  lastReadAt: number | null,
+  request: () => ReturnType<BbSdkAreas["threads"]["markRead"]>,
+): ReturnType<BbSdkAreas["threads"]["markRead"]> {
+  const transaction = await beginThreadReadStateTransaction({
+    lastReadAt,
+    queryClient,
+    threadId,
+  });
+  try {
+    const thread = await request();
+    applyThreadReadStateResult({ queryClient, thread });
+    return thread;
+  } catch (error) {
+    rollbackThreadReadStateTransaction({ queryClient, threadId, transaction });
+    throw error;
+  } finally {
+    settleThreadReadStateTransaction({ queryClient, transaction });
+  }
 }
 
 function withPluginThreadAttribution<
@@ -308,6 +336,19 @@ export function bindSdkToPlugin(
     threads: {
       ...sdk.threads,
       ...threadMutations,
+      markRead(args) {
+        return withOptimisticReadState(
+          queryClient,
+          args.threadId,
+          Date.now(),
+          () => sdk.threads.markRead(args),
+        );
+      },
+      markUnread(args) {
+        return withOptimisticReadState(queryClient, args.threadId, null, () =>
+          sdk.threads.markUnread(args),
+        );
+      },
       async reorderPinned(args) {
         const orderedRoots = await sdk.threads.reorderPinned(args);
         applyPinnedThreadOrderResult({ queryClient, orderedRoots });
@@ -340,6 +381,16 @@ export function bindSdkToPlugin(
         },
       ) {
         return sdk.threads.getPluginMetadata({
+          ...args,
+          pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
         });

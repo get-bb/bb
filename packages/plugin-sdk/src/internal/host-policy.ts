@@ -247,6 +247,9 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("select"),
       ...settingsBaseFields,
       options: z.array(z.string().min(1)).min(1),
+      experimental_optionLabels: z
+        .record(z.string().min(1), z.string().min(1))
+        .optional(),
       experimental_schema: stringSettingSchemaSchema.optional(),
       default: z.string().optional(),
     })
@@ -297,6 +300,16 @@ export function registerSettingDescriptors(
       throw new Error(
         `default for setting "${key}" must be one of its options`,
       );
+    }
+    if (descriptor.type === "select") {
+      const unknownLabel = Object.keys(
+        descriptor.experimental_optionLabels ?? {},
+      ).find((option) => !descriptor.options.includes(option));
+      if (unknownLabel !== undefined) {
+        throw new Error(
+          `label for setting "${key}" names "${unknownLabel}", which is not one of its options`,
+        );
+      }
     }
     if (descriptor.default !== undefined) {
       const errors = validateSettingsUpdate(

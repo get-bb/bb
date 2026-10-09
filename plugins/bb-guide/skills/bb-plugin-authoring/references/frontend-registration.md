@@ -158,6 +158,59 @@ A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
 
+### An action in every thread menu
+
+`app.slots.experimental_threadAction` adds an entry to the thread header's
+actions menu, the sidebar row's menu, its right-click menu, the compact
+long-press drawer, and, when the user picks it in Customize row actions, a
+sidebar row's quick-action buttons. bb's own actions are registrations of the
+same shape.
+
+`useData` is a hook the host runs once for the whole app, never per row: read
+your preferences or a realtime channel there. It receives `{ threadIds }`, the
+sorted ids of every thread on screen or in an open menu; for per-thread state,
+keep an id-keyed cache and fetch only the ids not in it, in one batch (for
+example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
+`item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
+`useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
+null to hide it. Menus and the quick-action picker sort registrations by
+their static `group`, a separator between groups, then by `order`. Join one
+of bb's groups through `experimental_THREAD_ACTION_GROUPS` or name your own. `choices` renders as a submenu, a drawer step with Back, or
+a popover; the picked id reaches `run` as `value`. Set `detail` to show the
+current value on a muted line under the label, and `choices.hint` for a footnote below the
+choices.
+
+```tsx
+app.slots.experimental_threadAction({
+  id: "notifications",
+  title: "Notifications",
+  icon: "Notification",
+  group: experimental_THREAD_ACTION_GROUPS.settings,
+  useData: ({ threadIds }) => useNotificationLevels(threadIds),
+  item: ({ thread, data, sdk }) => ({
+    label: "Notifications",
+    detail: data.get(thread.id) === "muted" ? "Muted" : "All activity",
+    icon: "Notification",
+    choices: {
+      items: [
+        { id: "all", label: "All activity", selected: data.get(thread.id) === "all" },
+        { id: "muted", label: "Muted", selected: data.get(thread.id) === "muted" },
+      ],
+    },
+    run: ({ value }) => saveLevel(sdk, thread.id, value),
+  }),
+});
+```
+
+A replacement thread list renders bb's menus with
+`experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
+passing its own rename editor as `requestRename` and list-only entries as
+`inline` (`{ key, group, action }`). `trigger` is a function: spread the props
+and ref it receives onto your button, or the menu never opens. `experimental_useThreadActions(thread, { keys })` returns bound
+actions for quick-action buttons, and
+`experimental_useThreadActionRegistrations()` lists every action's static
+title and icon for a picker. Keys are `bb--core/<id>` and `<pluginId>/<id>`.
+
 ### A control in the Browser toolbar
 
 `app.slots.experimental_browserToolbarAction` renders a component beside the
@@ -236,12 +289,16 @@ interface PluginThreadListProps {
 }
 ```
 
-**Reading and acting on threads.** Two hooks back a replaced list:
+**Reading and acting on threads.** One hook reads the list; writes go through
+the plugin SDK and navigation:
 
 ```tsx
 const { status, threads, projects, sections } =
   experimental_useSidebarThreads();
-const actions = experimental_useSidebarThreadActions();
+const navigate = useBbNavigate();
+navigate.toThread(thread.id, { split: true });
+navigate.toCompose({ projectId, placement: { sectionId, pinned: false } });
+const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
 
 // sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
 // server order. A thread's `sectionId` names one of these or is null for the
@@ -300,25 +357,25 @@ const { providers: environmentProviders } = useEnvironmentProviders();
 const { pullRequest } = experimental_useSidebarThreadPullRequest(thread.id);
 // → { isLoading, pullRequest: { number, title, url, state, attention } | null }
 
-actions.open(id, { split: true }); // bb's split placement rules
-actions.openNewThread({ projectId, focusPrompt: true });
-actions.openNewThread({ projectId, sectionId }); // file it under a section
-actions.openNewThread({ projectId, environmentId }); // reuse an environment
-actions.setPinned(id, true);
-actions.setRead(id, false);
-actions.rename(id, "New title"); // silent; for inline editing
-actions.archive(id); // archives immediately, or confirms first if there are children
-actions.requestDelete(id); // opens bb's delete confirmation
+const navigate = useBbNavigate();
+const sdk = useSdk();
+navigate.toThread(id, { split: true }); // bb's split placement rules
+navigate.toCompose({ projectId, focusPrompt: true });
+navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
+navigate.toCompose({ projectId, environmentId }); // reuse an environment
+await sdk.threads.pin({ threadId: id }); // optimistic in bb's surfaces
+await sdk.threads.markUnread({ threadId: id });
+await sdk.threads.update({ threadId: id, title: "New title" }); // silent; for inline editing
 ```
 
-Cascading actions route through the host's own flow. Archiving a thread with
-children opens bb's confirmation, which counts them; archiving a thread without
-children takes effect immediately. Deletion opens bb's confirmation.
+Archive and delete go through bb's thread menu (below), which owns the
+confirmations: archiving a thread with children asks first and counts them,
+and deletion always asks.
 
 Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
 seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
 `sidebarRowStatuses`, and `sidebarShortcuts` for the per-row hooks) and assert against
-`inspection.sidebarActionCalls`.
+`inspection.navigateCalls` and `inspection.sdkCalls`.
 
 **Splits.** Rows can drag out to the split area:
 
@@ -336,9 +393,18 @@ The host owns the gesture rules, including the one that matters if your list
 has its own drag-to-reorder: a split drag engages only once the pointer leaves
 the sidebar.
 
-**Your row, your menu.** This API ships no components. Build your own context
-menu from `experimental_useSidebarThreadActions` — it exposes everything bb's
-own menu does, including `requestDelete`, which opens bb's confirmation.
+**bb's menu on your row.** Render `experimental_ThreadActionsMenu` and
+`experimental_ThreadActionsContextMenu` around your row for bb's own thread
+menu (archive and delete confirmation included) plus every plugin's thread
+actions; see "An action in every thread menu".
+`experimental_useArchiveEnvironmentThreads()` archives a whole environment
+group with bb's pane cleanup and Undo toast.
+
+**bb's status glyph on your row.** Render `experimental_ThreadStatusGlyph`
+with the row's `indicator` (start from the thread's own, then fold in what
+your row knows, such as collapsed children or `useSidebarThreadDraft`) and
+`useSidebarThreadRowStatus(threadId)` as `rowStatus`; bb draws the same icon,
+color, and accessible label its own lists use.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or

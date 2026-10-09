@@ -1,3 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { z } from "zod";
 import {
   claimQueuedThreadMessageGroup,
   getLatestThreadSequence,
@@ -745,6 +751,169 @@ describe("retrying a failed turn", () => {
       await expect(retry(requestId)).rejects.toMatchObject({
         body: { code: "retry_already_queued" },
       });
+    });
+  });
+});
+
+describe("pooled provider retry integration", () => {
+  it("queues a durable retry for a pool 429 without a provider quota event", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread, environment, host, requestId } = seedFailableThread(
+        harness,
+        "host-pooled-retry",
+      );
+      const poolModule = await import(
+        new URL(
+          "../../../../plugins/account-pool/src/server.ts",
+          import.meta.url,
+        ).href
+      );
+      const createAccountPoolPlugin: (options: {
+        now: () => number;
+        env: NodeJS.ProcessEnv;
+        fetch: typeof fetch;
+      }) => (bb: BbPluginApi) => Promise<void> =
+        poolModule.createAccountPoolPlugin;
+      const retryModule = await import(
+        new URL("../../../../plugins/provider-retry/server.ts", import.meta.url)
+          .href
+      );
+      const providerRetryPlugin: (bb: BbPluginApi) => Promise<void> =
+        retryModule.default;
+      const retryAvailabilityMethod = "provider-retry.v1.availability";
+      const retryAvailabilitySchema = z.object({
+        kind: z.literal("blocked"),
+        retryAt: z.number(),
+      });
+      const now = Date.now();
+      const resetAt = now + 3_600_000;
+      const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-retry-"));
+      const pool = createFakePluginHost({
+        pluginId: "account-pool",
+        dataDir,
+        sdk: {
+          hosts: { list: async () => [host] },
+          system: { providerStates: async () => ({ providers: [] }) },
+          threads: {
+            events: {
+              list: async () => [{ data: lastTurnRequest(harness, thread.id) }],
+            },
+          },
+        },
+      });
+      const retry = createFakePluginHost({
+        pluginId: "provider-retry",
+        sdk: {
+          plugins: {
+            experimental_discoverRpc: async () => [
+              {
+                pluginId: "account-pool",
+                displayName: "Account Pooler",
+                method: retryAvailabilityMethod,
+              },
+            ],
+            callRpc: async ({ method, input }) =>
+              retryAvailabilitySchema.parse(
+                await pool.harness.behavior.callRpc(method, input),
+              ),
+          },
+          threads: {
+            retry: async (request) =>
+              retryFailedTurn(harness.deps, {
+                thread: requireThread(harness, request.threadId),
+                request: {
+                  turnRequestId: request.turnRequestId ?? null,
+                  sendAt: request.sendAt ?? null,
+                  reason: request.reason ?? "Rate limited",
+                },
+              }),
+          },
+        },
+      });
+      try {
+        await createAccountPoolPlugin({
+          now: () => now,
+          env: {},
+          fetch: async () =>
+            Response.json(
+              {},
+              {
+                status: 429,
+                headers: {
+                  "anthropic-ratelimit-unified-5h-status": "rejected",
+                  "anthropic-ratelimit-unified-5h-reset": String(
+                    resetAt / 1000,
+                  ),
+                },
+              },
+            ),
+        })(pool.bb);
+        await pool.harness.behavior.callRpc("account.add", {
+          provider: "claude",
+          source: { kind: "api-key", apiKey: "test-account" },
+          label: null,
+          priority: 1,
+        });
+        pool.harness.behavior.runService("hub");
+        const entries = await pool.harness.behavior.resolveProviderEnv(
+          "claude-code",
+          { threadId: thread.id, projectId: thread.projectId, hostId: host.id },
+        );
+        const token = entries.find(
+          (entry) => entry.name === "ANTHROPIC_AUTH_TOKEN",
+        )?.value;
+        if (typeof token !== "string") throw new Error("Expected a pool token");
+        const response = await pool.harness.behavior.fetchHttp(
+          "POST",
+          "/v1/messages",
+          {
+            headers: { authorization: `Bearer ${token}` },
+            body: JSON.stringify({ model: "claude-opus-4-1", messages: [] }),
+          },
+        );
+        expect(response.status).toBe(429);
+        await response.text();
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          sequence:
+            getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+          type: "provider/error",
+          scope: { kind: "thread" },
+          data: {
+            providerThreadId: "provider-session",
+            message: "No Account Pooler account is currently eligible.",
+            errorInfo: {
+              category: "rate-limit",
+              providerCode: null,
+              httpStatusCode: 429,
+            },
+          },
+        });
+        failThread(harness, thread.id);
+        const failed = buildTurnFailedEvent(harness.db, thread.id);
+        if (failed === null) throw new Error("Expected a failed turn");
+        expect(failed.rateLimits).toBeNull();
+        await providerRetryPlugin(retry.bb);
+        expect(
+          (await retry.harness.behavior.emitThreadEvent("turn.failed", failed))
+            .errors,
+        ).toEqual([]);
+        const queued = listQueuedThreadMessages(harness.db, thread.id);
+        expect(queued).toHaveLength(1);
+        const row = queued[0]!;
+        expect(row.sendAt).toBeGreaterThanOrEqual(resetAt + 15_000);
+        expect(row.sendAt).toBeLessThan(resetAt + 45_000);
+        expect(toThreadQueuedMessage(row).payload).toMatchObject({
+          kind: "retry",
+          retryOfTurnRequestId: requestId,
+          attempt: 2,
+        });
+      } finally {
+        await retry.harness.dispose();
+        await pool.harness.dispose();
+        await rm(dataDir, { recursive: true, force: true });
+      }
     });
   });
 });

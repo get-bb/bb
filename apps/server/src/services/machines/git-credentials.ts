@@ -96,6 +96,7 @@ async function cachedGitCredentials(run: typeof runGh, refresh: boolean) {
     cache = createAsyncTtlMemo({
       maxEntries: 1_024,
       ttlMs: (entries) => (entries.length ? 60_000 : 5_000),
+      staleWhileRevalidate: true,
     });
     credentialCaches.set(run, cache);
   }

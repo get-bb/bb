@@ -1,8 +1,6 @@
 import { useMemo } from "react";
-import {
-  SidebarVisibilityCustomize,
-  type SidebarVisibilityItem,
-} from "./SidebarVisibilityControls";
+import type { SidebarVisibilityItem } from "@bb/shared-ui/sidebar-visibility-customize";
+import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import {
   SidebarNavigationIcon,
   useSidebarNavigationModel,

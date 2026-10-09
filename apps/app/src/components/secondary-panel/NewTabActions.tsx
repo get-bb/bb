@@ -12,8 +12,8 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
-import { useReorderDnd } from "@/components/ui/useReorderDnd";
+import { useSidebarSortable } from "@bb/shared-ui/sortable-motion";
+import { useReorderDnd } from "@bb/shared-ui/use-reorder-dnd";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";

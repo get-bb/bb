@@ -28,6 +28,7 @@ import type {
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
   PluginThreadHeaderActionRegistration,
+  PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
@@ -353,6 +354,7 @@ export interface CollectedPluginAppRegistrations {
   experimentalSidebarFooterItems: CollectedExperimentalSidebarFooterItem[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
+  threadActions: PluginThreadActionRegistration<unknown>[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -477,6 +479,7 @@ export function collectPluginAppRegistrations(
     experimentalSidebarFooterItems: [],
     threadLists: [],
     threadHeaderActions: [],
+    threadActions: [],
     browserToolbarActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
@@ -505,6 +508,7 @@ export function collectPluginAppRegistrations(
     sidebarFooterItem: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadAction: new Set<string>(),
     browserToolbarAction: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
@@ -784,6 +788,39 @@ export function collectPluginAppRegistrations(
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadAction(registration) {
+        const kind = "slots.experimental_threadAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadAction, id);
+        if (typeof registration.item !== "function") {
+          throw new Error(`${kind}: "item" must be a function`);
+        }
+        if (
+          registration.useData !== undefined &&
+          typeof registration.useData !== "function"
+        ) {
+          throw new Error(`${kind}: "useData" must be a function`);
+        }
+        if (
+          registration.order !== undefined &&
+          !Number.isFinite(registration.order)
+        ) {
+          throw new Error(`${kind}: "order" must be a finite number`);
+        }
+        collected.threadActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...(registration.order !== undefined
+            ? { order: registration.order }
+            : {}),
+          ...(registration.useData !== undefined
+            ? { useData: registration.useData }
+            : {}),
+          item: registration.item,
         });
       },
       experimental_browserToolbarAction(registration) {

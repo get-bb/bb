@@ -441,6 +441,15 @@ that entry and switches an active custom target to the built-in server. Other
 saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
 
+The app command palette lists **Switch to <server>** for each inactive choice
+from this same Server menu, including Connect discovery. Palette list requests
+use the menu's discovery refresh policy (at most once per minute, with the
+existing ten-minute background refresh). The optional `window.bbDesktop`
+`getServerChoices`, `onServerChoicesChange`, and `selectServer` methods expose
+only `{id, name, active}`; custom server IDs are opaque hashes. Selection is
+validated against native choices and runs the menu's existing authentication,
+window navigation, and runtime lifecycle. Older desktop shells omit these actions.
+
 ### Server moves
 
 After `bb server move`, the old computer's data dir (`~/.bb` or

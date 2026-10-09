@@ -15,6 +15,7 @@
       "icon": "./icons/codex.svg"
     },
     "server": "./server.ts",
+    "app": "./app.tsx",
     "host": "./src/host.ts",
     "experimental_providers": [
       {
@@ -37,14 +38,17 @@
     "@bb/plugin-build": "workspace:*",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
     "better-sqlite3": "12.10.0",
     "cron-parser": "^5.5.0",
     "hono": "4.11.9",
+    "react": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
     "zod": "^4.3.6"
   }

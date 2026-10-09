@@ -2047,3 +2047,92 @@ it("reacts to attachment-only updates and atomic replacement through the public 
   fireEvent.click(slot.getByRole("button", { name: "Replace all" }));
   expect(slot.getByRole("status").textContent).toBe(":0:true");
 });
+
+describe("thread actions menu fake", () => {
+  const thread = {
+    id: "thr_menu",
+    projectId: "proj_menu",
+    parentThreadId: null,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: null,
+    isUnread: false,
+    status: "idle" as const,
+    environment: null,
+  };
+
+  it("rejects a trigger that drops the props and ref it receives", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={() => <button type="button">Thread actions</button>}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /must spread the props and ref/,
+    );
+    error.mockRestore();
+  });
+
+  it("rejects a trigger that replaces the host's className", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button" className="mine">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /replaced the host's className/,
+    );
+    error.mockRestore();
+  });
+
+  it("opens from a trigger that spreads its props", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const run = vi.fn(async () => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        threadActions: () => [
+          {
+            key: "bb--core/pin",
+            pluginId: "bb--core",
+            group: "2_organize",
+            action: { label: "Pin", icon: "Pin", run },
+          },
+        ],
+      },
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Thread actions" }));
+    fireEvent.click(slot.getByRole("menuitem", { name: "Pin" }));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+});

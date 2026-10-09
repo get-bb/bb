@@ -7,7 +7,7 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
-} from "@/components/sidebar/sidebarRowClasses";
+} from "@bb/shared-ui/sidebar-row-classes";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { AppCommandShortcutPill } from "./AppCommandShortcutHint";
 

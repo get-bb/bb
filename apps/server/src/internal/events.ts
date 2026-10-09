@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
@@ -61,6 +62,7 @@ import {
 import { getAuthenticatedDaemon } from "./auth.js";
 import { validateExtensionPayloads } from "./extension-payloads.js";
 import { validatePresentationIcons } from "./presentation-icons.js";
+import { observeTurnTraceEventBatch } from "../services/system/turn-trace.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -1018,6 +1020,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
     "/session/events",
     hostDaemonEventBatchRequestSchema,
     async (context, payload) => {
+      const receivedAt = performance.now();
       let session: ReturnType<typeof requireAuthenticatedDaemonSession>;
       try {
         session = requireAuthenticatedDaemonSession({
@@ -1128,9 +1131,16 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           "Dropped orphan thread-state snapshot with no stored turn/started",
         );
       }
+      const committedAt = performance.now();
       notifyInsertedEventThreads(deps, {
         eventInputs,
         insertedInputIndexes: appendResult.insertedInputIndexes,
+      });
+      observeTurnTraceEventBatch({
+        committedAt,
+        events: postableEvents,
+        notifiedAt: performance.now(),
+        receivedAt,
       });
 
       const followUps = await applyEventEffects(

@@ -271,12 +271,12 @@ describe("thread-list plugin", () => {
       await screen.findByRole("button", { name: "New thread in Laptop" }),
     );
 
-    expect(inspection.sidebarActionCalls).toContainEqual({
-      method: "openNewThread",
+    expect(inspection.navigateCalls).toContainEqual({
+      method: "toCompose",
       options: {
         projectId: PERSONAL_PROJECT_ID,
         hostId: "host_laptop",
-        experimental_placement: { sectionId: null, pinned: false },
+        placement: { sectionId: null, pinned: false },
         focusPrompt: true,
       },
     });

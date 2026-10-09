@@ -4,13 +4,19 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { BbDiffSplit } from "@/components/code/BbDiffSplit";
+import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
   useEnvironment,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
-import { useProjectFilePreview } from "@/hooks/queries/project-queries";
+import {
+  useProjectAttachmentPreview,
+  useProjectFilePreview,
+} from "@/hooks/queries/project-queries";
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
@@ -106,6 +112,14 @@ interface HostScopedFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
 }
 
+interface AttachmentFilePreviewTabContentProps {
+  isPanelOpen: boolean;
+  name: string;
+  onSelectionAddToChat?: (text: string) => void;
+  path: string;
+  projectId: string;
+}
+
 interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   isPanelOpen: boolean;
@@ -133,32 +147,27 @@ function GitDiffMessageSlot({ children }: { children: ReactNode }) {
   );
 }
 
-function ThreadDiffSkeleton() {
+export function GitDiffLoadingSkeleton() {
   return (
-    <div className="space-y-2 pt-2">
+    <GitDiffMessageSlot>
+      <div className="space-y-2 pt-2" role="status" aria-label="Loading diff">
       {Array.from({ length: GIT_DIFF_SKELETON_FILE_COUNT }).map((_, index) => (
         <div
           key={`git-diff-skeleton-${index}`}
-          className="rounded-lg border border-border bg-surface-raised"
+          className="overflow-clip rounded-lg border border-border bg-background"
         >
-          <div className="border-b border-border bg-surface-recessed px-3 py-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <Skeleton className="size-4 shrink-0 rounded-sm" />
-                <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
-              </div>
-              <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
+          <div className="flex h-8 items-center justify-between gap-2 py-1.5 pl-2 pr-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <Skeleton className="size-4 shrink-0 rounded-sm" />
+              <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
             </div>
+            <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
           </div>
-          <div className="space-y-1.5 px-2.5 py-2">
-            <Skeleton className="h-3 w-full rounded-sm" />
-            <Skeleton className="h-3 w-[94%] rounded-sm" />
-            <Skeleton className="h-3 w-[90%] rounded-sm" />
-            <Skeleton className="h-3 w-[86%] rounded-sm" />
-          </div>
+          <DiffLoadingSkeleton />
         </div>
       ))}
-    </div>
+      </div>
+    </GitDiffMessageSlot>
   );
 }
 
@@ -206,6 +215,12 @@ export function GitDiffTabContent({
   useEffect(() => {
     clearDiffFileCardStates(diffIdentity);
   }, [diffIdentity]);
+  const requestDiffWorkers = useRequestPierreWorkerPool();
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    void BbDiffSplit.preload();
+    requestDiffWorkers();
+  }, [isPanelOpen, requestDiffWorkers]);
 
   const isPreparing =
     isQueryEnabled &&
@@ -213,11 +228,7 @@ export function GitDiffTabContent({
       (diffFilesResponse === undefined && diffFilesError === null));
 
   if (isPreparing) {
-    return (
-      <GitDiffMessageSlot>
-        <ThreadDiffSkeleton />
-      </GitDiffMessageSlot>
-    );
+    return <GitDiffLoadingSkeleton />;
   }
 
   if (diffFilesError && diffFilesResponse === undefined) {
@@ -545,6 +556,32 @@ export function ThreadStorageFilePreviewTabContent({
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      statusLabel={null}
+    />
+  );
+}
+
+export function AttachmentFilePreviewTabContent({
+  isPanelOpen,
+  name,
+  onSelectionAddToChat,
+  path,
+  projectId,
+}: AttachmentFilePreviewTabContentProps) {
+  const attachmentPreviewQuery = useProjectAttachmentPreview(
+    projectId,
+    path,
+    name,
+    { enabled: isPanelOpen },
+  );
+
+  return (
+    <SecondaryPanelFilePreview
+      {...filePreviewQueryProps(attachmentPreviewQuery)}
+      activePath={name}
+      copyPath={null}
+      lineRange={null}
+      onSelectionAddToChat={onSelectionAddToChat}
       statusLabel={null}
     />
   );

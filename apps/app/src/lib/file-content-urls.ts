@@ -11,6 +11,28 @@ function encodeHostFilePath(absolutePath: string): string {
   );
 }
 
+interface PathClassificationArgs {
+  path: string;
+}
+
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
+const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
+
+export function isAbsoluteLocalPath({ path }: PathClassificationArgs): boolean {
+  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
+}
+
+export function isProjectAttachmentPath({
+  path,
+}: PathClassificationArgs): boolean {
+  return (
+    path.length > 0 &&
+    !path.startsWith("\\") &&
+    !isAbsoluteLocalPath({ path }) &&
+    !URL_SCHEME_PATTERN.test(path)
+  );
+}
+
 export function buildProjectAttachmentContentUrl(
   projectId: string,
   path: string,

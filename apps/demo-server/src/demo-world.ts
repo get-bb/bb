@@ -172,16 +172,6 @@ function createUiPreferences(): UiPreferenceEntries {
       "sidebar.machineSectionOrder",
     ),
     "sidebar.hiddenGroups": uiPreferenceEntry("sidebar.hiddenGroups"),
-    "sidebar.collapsedSections": uiPreferenceEntry("sidebar.collapsedSections"),
-    "sidebar.collapsedProjects": uiPreferenceEntry("sidebar.collapsedProjects"),
-    "sidebar.collapsedThreads": uiPreferenceEntry("sidebar.collapsedThreads"),
-    "sidebar.collapsedEnvironments": uiPreferenceEntry(
-      "sidebar.collapsedEnvironments",
-    ),
-    "sidebar.collapsedThreadSections": uiPreferenceEntry(
-      "sidebar.collapsedThreadSections",
-    ),
-    "sidebar.collapsedMachines": uiPreferenceEntry("sidebar.collapsedMachines"),
     "sidebar.footerOrder": uiPreferenceEntry("sidebar.footerOrder"),
     "sidebar.hiddenFooterItems": uiPreferenceEntry("sidebar.hiddenFooterItems"),
     "sidebar.pluginPanelOrder": uiPreferenceEntry("sidebar.pluginPanelOrder"),

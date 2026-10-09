@@ -62,10 +62,6 @@ interface BeginThreadPinTransactionArgs extends ThreadIdCacheArgs {
   pinnedAt: number;
 }
 
-interface BeginUnpinAndMoveThreadTransactionArgs extends ThreadIdCacheArgs {
-  sectionId: string | null;
-}
-
 interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
   lastReadAt: number | null;
 }
@@ -300,18 +296,6 @@ export function beginUnpinThreadTransaction({
 }: ThreadIdCacheArgs): Promise<ThreadListMutationTransaction> {
   return beginHeldThreadPatchTransaction({
     patch: { pinnedAt: null, pinSortKey: null },
-    queryClient,
-    threadId,
-  });
-}
-
-export function beginUnpinAndMoveThreadTransaction({
-  sectionId,
-  queryClient,
-  threadId,
-}: BeginUnpinAndMoveThreadTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return beginHeldThreadPatchTransaction({
-    patch: { sectionId, pinnedAt: null, pinSortKey: null },
     queryClient,
     threadId,
   });
