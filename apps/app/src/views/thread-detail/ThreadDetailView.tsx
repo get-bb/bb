@@ -68,7 +68,6 @@ import {
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
-  EMPTY_CHILD_THREAD_PENDING_ATTENTION,
   useChildThreadPendingAttention,
   type ChildThreadPendingAttentionSource,
 } from "../../hooks/queries/child-thread-pending-interactions";
@@ -167,6 +166,7 @@ import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
   type ThreadPromptParentThreadSection,
+  type ChildThreadQuestion,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
@@ -282,6 +282,7 @@ import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
+const EMPTY_CHILD_THREAD_QUESTIONS: readonly ChildThreadQuestion[] = [];
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
   [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1788,7 +1789,7 @@ function ThreadDetailViewInternal(
       if (activeItems.length === 0) return null;
       return {
         items: activeItems,
-        pendingInteractions: EMPTY_CHILD_THREAD_PENDING_ATTENTION,
+        pendingInteractions: EMPTY_CHILD_THREAD_QUESTIONS,
         waitingQuestion: null,
       };
     }, [childThreadSubsetQuery.data]);
@@ -1798,10 +1799,19 @@ function ThreadDetailViewInternal(
   const childThreadsBannerSection =
     useMemo((): ThreadPromptChildThreadsSection | null => {
       if (!childThreadsSection) return null;
-      const pendingInteractions = [...childPendingInteractions].sort(
-        (left, right) =>
-          right.interaction.createdAt - left.interaction.createdAt,
-      );
+      const pendingInteractions = childPendingInteractions
+        .flatMap((child) =>
+          child.interactions.map((interaction) => ({
+            childThreadId: child.childThreadId,
+            childTitle: child.childTitle,
+            href: child.href,
+            interaction,
+          })),
+        )
+        .sort(
+          (left, right) =>
+            right.interaction.createdAt - left.interaction.createdAt,
+        );
       const latest = pendingInteractions[0];
       return {
         ...childThreadsSection,

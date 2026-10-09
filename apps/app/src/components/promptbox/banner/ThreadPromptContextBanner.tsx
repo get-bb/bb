@@ -16,6 +16,7 @@ import {
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
+  PendingInteraction,
   GitBranchRefClassification,
   ThreadPullRequest,
   ThreadRuntimeDisplayStatus,
@@ -41,8 +42,7 @@ import {
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   formatChangeSummary,
   renderChangeSummary,
@@ -119,9 +119,16 @@ interface ThreadPromptChildThreadItem {
   hasPendingInteraction: boolean;
 }
 
+export interface ChildThreadQuestion {
+  childThreadId: string;
+  childTitle: string;
+  href: string;
+  interaction: PendingInteraction;
+}
+
 export interface ThreadPromptChildThreadsSection {
   items: readonly ThreadPromptChildThreadItem[];
-  pendingInteractions: readonly ChildThreadPendingAttention[];
+  pendingInteractions: readonly ChildThreadQuestion[];
   waitingQuestion: string | null;
 }
 
@@ -456,7 +463,7 @@ function ChildThreadsBody({
   onOpenQuestion,
 }: {
   items: readonly ThreadPromptChildThreadItem[];
-  pendingInteractions: readonly ChildThreadPendingAttention[];
+  pendingInteractions: readonly ChildThreadQuestion[];
   onOpenQuestion: (interactionId: string) => void;
 }) {
   return (
@@ -552,7 +559,7 @@ function ChildQuestionBody({
   onBack,
 }: {
   backButtonRef: RefObject<HTMLButtonElement | null>;
-  current: ChildThreadPendingAttention;
+  current: ChildThreadQuestion;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
@@ -606,8 +613,8 @@ function ChildQuestionBody({
       </span>
       <div className="mt-1">
         <PendingInteractionPresentationContext.Provider value="inline">
-          <ThreadPendingInteractionBanner
-            interaction={current.interaction}
+          <ThreadPendingInteractionBanners
+            interactions={[current.interaction]}
             threadId={current.childThreadId}
           />
         </PendingInteractionPresentationContext.Provider>

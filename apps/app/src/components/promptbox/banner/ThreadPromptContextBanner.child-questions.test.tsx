@@ -6,9 +6,9 @@ import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction } from "@bb/domain";
-import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   ThreadPromptContextBanner,
+  type ChildThreadQuestion,
   type ThreadPromptChildThreadsSection,
   type ThreadPromptContextBannerExpandedSection,
 } from "./ThreadPromptContextBanner";
@@ -34,7 +34,7 @@ function childQuestion(
   childThreadId: string,
   prompt: string,
   createdAt: number,
-): ChildThreadPendingAttention {
+): ChildThreadQuestion {
   const interaction: PendingInteraction = {
     id: `pint_${childThreadId}`,
     threadId: childThreadId,
@@ -76,7 +76,7 @@ const middle = childQuestion("thr_c", "Which shape?", 2);
 const oldest = childQuestion("thr_a", "Which color?", 1);
 
 function section(
-  pendingInteractions: readonly ChildThreadPendingAttention[],
+  pendingInteractions: readonly ChildThreadQuestion[],
 ): ThreadPromptChildThreadsSection {
   return {
     items: [
