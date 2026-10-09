@@ -170,9 +170,9 @@ same shape.
 your preferences, a batched per-thread map, or a realtime channel there.
 `item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
 `useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
-null to hide it. Menus sort by `group`, a separator between groups, then by
-`order`. Join one of bb's groups through `experimental_THREAD_ACTION_GROUPS`
-or name your own. `choices` renders as a submenu, a drawer step with Back, or
+null to hide it. Menus and the quick-action picker sort registrations by
+their static `group`, a separator between groups, then by `order`. Join one
+of bb's groups through `experimental_THREAD_ACTION_GROUPS` or name your own. `choices` renders as a submenu, a drawer step with Back, or
 a popover; the picked id reaches `run` as `value`.
 
 ```tsx
@@ -180,11 +180,11 @@ app.slots.experimental_threadAction({
   id: "notifications",
   title: "Notifications",
   icon: "Notification",
+  group: experimental_THREAD_ACTION_GROUPS.settings,
   useData: () => useNotificationLevels(),
   item: ({ thread, data, sdk }) => ({
     label: "Notifications",
     icon: "Notification",
-    group: experimental_THREAD_ACTION_GROUPS.settings,
     choices: {
       items: [
         { id: "all", label: "All activity", selected: data.get(thread.id) === "all" },
@@ -199,10 +199,11 @@ app.slots.experimental_threadAction({
 A replacement thread list renders bb's menus with
 `experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
 passing its own rename editor as `requestRename` and list-only entries as
-`inline`. `experimental_useThreadActions(thread, { keys })` returns bound
+`inline` (`{ key, group, action }`). `trigger` is a function: spread the props
+and ref it receives onto your button, or the menu never opens. `experimental_useThreadActions(thread, { keys })` returns bound
 actions for quick-action buttons, and
 `experimental_useThreadActionRegistrations()` lists every action's static
-title and icon for a picker. Keys are `core/<id>` and `<pluginId>/<id>`.
+title and icon for a picker. Keys are `bb--core/<id>` and `<pluginId>/<id>`.
 
 ### A control in the Browser toolbar
 
@@ -282,12 +283,16 @@ interface PluginThreadListProps {
 }
 ```
 
-**Reading and acting on threads.** Two hooks back a replaced list:
+**Reading and acting on threads.** One hook reads the list; writes go through
+the plugin SDK and navigation:
 
 ```tsx
 const { status, threads, projects, sections } =
   experimental_useSidebarThreads();
-const actions = experimental_useSidebarThreadActions();
+const navigate = useBbNavigate();
+navigate.toThread(thread.id, { split: true });
+navigate.toCompose({ projectId, placement: { sectionId, pinned: false } });
+const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
 
 // sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
 // server order. A thread's `sectionId` names one of these or is null for the
@@ -382,9 +387,12 @@ The host owns the gesture rules, including the one that matters if your list
 has its own drag-to-reorder: a split drag engages only once the pointer leaves
 the sidebar.
 
-**Your row, your menu.** This API ships no components. Build your own context
-menu from `experimental_useSidebarThreadActions` — it exposes everything bb's
-own menu does, including `requestDelete`, which opens bb's confirmation.
+**bb's menu on your row.** Render `experimental_ThreadActionsMenu` and
+`experimental_ThreadActionsContextMenu` around your row for bb's own thread
+menu (archive and delete confirmation included) plus every plugin's thread
+actions; see "An action in every thread menu".
+`experimental_useArchiveEnvironmentThreads()` archives a whole environment
+group with bb's pane cleanup and Undo toast.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or

@@ -32,6 +32,7 @@ export const {
   experimental_useSidebarThreadActions,
   experimental_useThreadActions,
   experimental_useThreadActionRegistrations,
+  experimental_useArchiveEnvironmentThreads,
   experimental_ThreadActionsMenu,
   experimental_ThreadActionsContextMenu,
   experimental_THREAD_ACTION_GROUPS,

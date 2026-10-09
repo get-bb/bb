@@ -19,26 +19,36 @@ const {
 
 const REGISTRATIONS: readonly PluginThreadActionRegistrationInfo[] = [
   {
-    key: "core/split",
-    pluginId: "core",
+    key: "bb--core/split",
+    pluginId: "bb--core",
     title: "Open in split",
     icon: "Columns2",
   },
   {
-    key: "core/copyLink",
-    pluginId: "core",
+    key: "bb--core/copyLink",
+    pluginId: "bb--core",
     title: "Copy thread link",
     icon: "Copy",
   },
   {
-    key: "core/read",
-    pluginId: "core",
+    key: "bb--core/read",
+    pluginId: "bb--core",
     title: "Mark read / unread",
     icon: "MailOpen",
   },
-  { key: "core/pin", pluginId: "core", title: "Pin", icon: "Pin" },
-  { key: "core/rename", pluginId: "core", title: "Rename", icon: "Edit" },
-  { key: "core/archive", pluginId: "core", title: "Archive", icon: "Archive" },
+  { key: "bb--core/pin", pluginId: "bb--core", title: "Pin", icon: "Pin" },
+  {
+    key: "bb--core/rename",
+    pluginId: "bb--core",
+    title: "Rename",
+    icon: "Edit",
+  },
+  {
+    key: "bb--core/archive",
+    pluginId: "bb--core",
+    title: "Archive",
+    icon: "Archive",
+  },
   {
     key: "thread-list/move",
     pluginId: "thread-list",
@@ -82,13 +92,13 @@ afterEach(() => {
 
 it("previews empty slots before shown actions, next to the menu", () => {
   const store = createStore();
-  store.set(threadRowActionsAtom, ["core/pin", "core/archive"]);
+  store.set(threadRowActionsAtom, ["bb--core/pin", "bb--core/archive"]);
   renderWithRegistrations(<ThreadRowActionsEditor onDone={() => {}} />, store);
   expect(
     Array.from(
       document.querySelectorAll<HTMLElement>("[data-row-action-slot]"),
     ).map((slot) => slot.dataset.rowActionSlot),
-  ).toEqual(["none", "core/pin", "core/archive"]);
+  ).toEqual(["none", "bb--core/pin", "bb--core/archive"]);
 });
 
 it("fills, replaces, swaps, and clears slots", () => {
@@ -113,25 +123,25 @@ it("fills, replaces, swaps, and clears slots", () => {
 
 it.each([
   {
-    initial: ["core/archive"],
+    initial: ["bb--core/archive"],
     slot: 0,
     pick: "Pin",
     focusedSlot: 1,
-    focused: "core/pin",
+    focused: "bb--core/pin",
   },
   {
-    initial: ["core/pin", "core/archive", "core/rename"],
+    initial: ["bb--core/pin", "bb--core/archive", "bb--core/rename"],
     slot: 0,
     pick: "Rename",
     focusedSlot: 0,
-    focused: "core/rename",
+    focused: "bb--core/rename",
   },
   {
-    initial: ["core/pin", "core/archive", "core/rename"],
+    initial: ["bb--core/pin", "bb--core/archive", "bb--core/rename"],
     slot: 1,
     pick: "Hide",
     focusedSlot: 1,
-    focused: "core/pin",
+    focused: "bb--core/pin",
   },
 ] as const)(
   "moves focus to slot $focusedSlot after picking $pick in slot $slot",
@@ -157,7 +167,7 @@ it.each([
 
 it("offers Hide only for a filled slot and finishes on Escape", async () => {
   const store = createStore();
-  store.set(threadRowActionsAtom, ["core/archive"]);
+  store.set(threadRowActionsAtom, ["bb--core/archive"]);
   const finish = vi.fn();
   renderWithRegistrations(<ThreadRowActionsEditor onDone={finish} />, store);
   fireEvent.click(screen.getByRole("button", { name: "Row action 1: Empty" }));
@@ -185,7 +195,7 @@ it("offers Hide only for a filled slot and finishes on Escape", async () => {
 
 it("keeps customizing through picker choices and dismissals, then finishes on a click elsewhere", async () => {
   const store = createStore();
-  store.set(threadRowActionsAtom, ["core/archive"]);
+  store.set(threadRowActionsAtom, ["bb--core/archive"]);
   const finish = vi.fn();
   renderWithRegistrations(
     <OutsideClickHarness onDone={finish} showEditor />,
@@ -197,8 +207,8 @@ it("keeps customizing through picker choices and dismissals, then finishes on a 
   });
   await waitFor(() =>
     expect(store.get(threadRowActionsAtom)).toEqual([
-      "core/pin",
-      "core/archive",
+      "bb--core/pin",
+      "bb--core/archive",
     ]),
   );
   expect(finish).not.toHaveBeenCalled();

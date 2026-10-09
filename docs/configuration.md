@@ -1187,19 +1187,20 @@ each change saves immediately.
 Archived rows keep their unarchive button regardless of this setting.
 
 The Thread list plugin's `rowActions` preference stores up to three thread
-action keys in display order and defaults to `["core/archive"]`. bb's keys are
-`core/split`, `core/newThreadInEnvironment`, `core/copyLink`, `core/read`,
-`core/pin`, `core/rename`, `core/archive`, and `core/delete`; the thread list's
-own Move to section is `thread-list/move`, and other plugins add
-`<pluginId>/<actionId>`. Bare legacy ids (`pin`, `archive`, `move`, …) are
-accepted and migrate to their keys. Duplicates are deduplicated. A key whose
-action is hidden for a row (`core/split` for a thread already open,
+action keys in display order and defaults to `["bb--core/archive"]`. bb's
+keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
+`bb--core/copyLink`, `bb--core/read`, `bb--core/pin`, `bb--core/rename`,
+`bb--core/archive`, and `bb--core/delete`; the thread list's own Move to
+section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
+Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
+accepted and migrate to their current keys. Duplicates are deduplicated. A key
+whose action is hidden for a row (`bb--core/split` for a thread already open,
 `thread-list/move` for a thread that cannot move) or whose plugin is not
 installed is skipped on that row. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["core/pin","core/copyLink","core/archive"]'
+bb thread-list prefs set rowActions '["bb--core/pin","bb--core/copyLink","bb--core/archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```

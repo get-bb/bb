@@ -33,6 +33,7 @@ import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-
 import {
   ThreadActionCollectors,
   resetThreadActionRegistryForTest,
+  useThreadActionRegistrationInfos,
 } from "@/lib/thread-actions/thread-action-registry";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -65,14 +66,14 @@ const moveAction: PluginThreadActionRegistration = {
   id: "move",
   title: "Move to section",
   icon: "SectionMove",
+  group: experimental_THREAD_ACTION_GROUPS.organize,
+  order: 50,
   item: ({ thread }) =>
     thread.parentThreadId !== null || thread.archivedAt !== null
       ? null
       : {
           label: "Move to section",
           icon: "SectionMove",
-          group: experimental_THREAD_ACTION_GROUPS.organize,
-          order: 50,
           choices: {
             items: [
               { id: "sec_planning", label: "Planning", selected: true },
@@ -87,10 +88,10 @@ const pluginGroupAction: PluginThreadActionRegistration = {
   id: "notify",
   title: "Notifications",
   icon: "Notification",
+  group: "5_plugin",
   item: () => ({
     label: "Notifications",
     icon: "Notification",
-    group: "5_plugin",
     run: pluginGroupRun,
   }),
 };
@@ -128,7 +129,11 @@ const SURFACES: readonly Surface[] = [
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
         thread={threadListEntryActionTarget(thread)}
-        trigger={<button type="button">Thread actions</button>}
+        trigger={(props) => (
+          <button {...props} type="button">
+            Thread actions
+          </button>
+        )}
         inline={inline}
         requestRename={requestRename}
       />
@@ -162,7 +167,11 @@ const SURFACES: readonly Surface[] = [
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
         thread={threadListEntryActionTarget(thread)}
-        trigger={<button type="button">Thread actions</button>}
+        trigger={(props) => (
+          <button {...props} type="button">
+            Thread actions
+          </button>
+        )}
         inline={inline}
         requestRename={requestRename}
       />
@@ -261,10 +270,10 @@ afterEach(() => {
 
 const CUSTOMIZE: PluginThreadActionsInlineItem = {
   key: "surface/customize",
+  group: experimental_THREAD_ACTION_GROUPS.settings,
   action: {
     label: "Customize row actions",
     icon: "FilterHorizontal",
-    group: experimental_THREAD_ACTION_GROUPS.settings,
     run: vi.fn(),
   },
 };
@@ -467,6 +476,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
             id: "boom",
             title: "Boom",
             icon: "Zap",
+            group: "2_organize",
             item: () => {
               throw new Error("boom");
             },
@@ -499,5 +509,68 @@ describe("thread action run containment", () => {
     await waitFor(() => expect(error).toHaveBeenCalled());
     await surface.open();
     expect(await screen.findByRole("menuitem", { name: "Pin" })).not.toBeNull();
+  });
+});
+
+describe("thread actions menu trigger", () => {
+  it("reports a trigger that drops the props and ref it receives", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      {
+        ...surface,
+        render: ({ thread }) => (
+          <ThreadActionsMenu
+            thread={threadListEntryActionTarget(thread)}
+            trigger={() => <button type="button">Thread actions</button>}
+          />
+        ),
+      },
+      { thread: baseThread },
+    );
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread actions" }),
+      { button: 0 },
+    );
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("did not attach the ref"),
+    );
+  });
+});
+
+describe("thread action registrations", () => {
+  function RegistrationList() {
+    return (
+      <ol>
+        {useThreadActionRegistrationInfos().map((info) => (
+          <li key={info.key}>{info.key}</li>
+        ))}
+      </ol>
+    );
+  }
+
+  it("lists every registration in menu order, independent of any thread", () => {
+    const [surface] = SURFACES;
+    if (surface === undefined) throw new Error("no surface");
+    renderSurface(
+      { ...surface, render: () => <RegistrationList /> },
+      { thread: baseThread },
+    );
+    expect(
+      screen.getAllByRole("listitem").map((item) => item.textContent),
+    ).toEqual([
+      "bb--core/split",
+      "bb--core/newThreadInEnvironment",
+      "bb--core/copyLink",
+      "bb--core/read",
+      "bb--core/pin",
+      "fixture/move",
+      "bb--core/rename",
+      "bb--core/archive",
+      "bb--core/delete",
+      "fixture/notify",
+    ]);
   });
 });

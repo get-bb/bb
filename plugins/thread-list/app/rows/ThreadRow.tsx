@@ -47,6 +47,7 @@ import {
   useSdk,
   type PluginSidebarSplitPane,
   type PluginThreadActionsInlineItem,
+  type PluginThreadActionsTriggerProps,
   type PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
@@ -302,12 +303,13 @@ function ThreadTrailingIndicator({
   );
 }
 
-const ARCHIVED_ROW_ACTION_KEYS = ["core/archive"];
+const ARCHIVED_ROW_ACTION_KEYS = ["bb--core/archive"];
 const CUSTOMIZE_ROW_ACTIONS_KEY = "thread-list/customizeRowActions";
 
-function ThreadActionsTrigger() {
+function renderThreadActionsTrigger(props: PluginThreadActionsTriggerProps) {
   return (
     <Button
+      {...props}
       type="button"
       variant="ghost"
       size="icon"
@@ -319,6 +321,7 @@ function ThreadActionsTrigger() {
       aria-label="Thread actions"
       data-thread-actions-trigger=""
       onClick={(event) => {
+        props.onClick?.(event);
         event.stopPropagation();
       }}
     >
@@ -425,10 +428,10 @@ function ThreadRowComponent({
       : [
           {
             key: CUSTOMIZE_ROW_ACTIONS_KEY,
+            group: experimental_THREAD_ACTION_GROUPS.settings,
             action: {
               label: "Customize row actions",
               icon: "FilterHorizontal",
-              group: experimental_THREAD_ACTION_GROUPS.settings,
               run: () => customizeRowActions(thread.id),
             },
           },
@@ -727,7 +730,7 @@ function ThreadRowComponent({
             >
               <ThreadActionsMenu
                 thread={actionTarget}
-                trigger={<ThreadActionsTrigger />}
+                trigger={renderThreadActionsTrigger}
                 inline={inlineMenuActions}
                 requestRename={requestRenameFromMenu}
                 side="right"
@@ -817,7 +820,7 @@ function ThreadRowComponent({
                 >
                   <ThreadActionsMenu
                     thread={actionTarget}
-                    trigger={<ThreadActionsTrigger />}
+                    trigger={renderThreadActionsTrigger}
                     inline={inlineMenuActions}
                     requestRename={requestRenameFromMenu}
                     side="right"

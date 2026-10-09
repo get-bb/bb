@@ -34,6 +34,7 @@ export type ThreadActionMenuSurface = "context" | "dropdown";
 
 export interface ThreadActionMenuEntry {
   key: string;
+  group: string;
   action: PluginBoundThreadAction;
 }
 
@@ -46,8 +47,8 @@ export function groupThreadActionMenuEntries(
 ): ThreadActionMenuEntry[][] {
   const groups = new Map<string, ThreadActionMenuEntry[]>();
   for (const entry of [...entries, ...inline]) {
-    const group = groups.get(entry.action.group);
-    if (group === undefined) groups.set(entry.action.group, [entry]);
+    const group = groups.get(entry.group);
+    if (group === undefined) groups.set(entry.group, [entry]);
     else group.push(entry);
   }
   return [...groups.entries()]
@@ -71,6 +72,7 @@ export function useThreadActionMenuGroups({
     entries,
     inline.map((item) => ({
       key: item.key,
+      group: item.group,
       action: bindThreadAction(item.key, item.action, rename),
     })),
   );
@@ -256,7 +258,7 @@ export function ThreadActionMenuRows({
     );
   }
   return groups.map((group, index) => (
-    <Fragment key={group[0]?.action.group ?? index}>
+    <Fragment key={group[0]?.group ?? index}>
       {index > 0 && !isDrawer ? (
         <ActionMenuSeparator surface={surface} />
       ) : null}

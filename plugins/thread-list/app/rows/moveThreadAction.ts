@@ -65,6 +65,8 @@ export const moveThreadAction: PluginThreadActionRegistration<
   id: "move",
   title: "Move to section",
   icon: "SectionMove",
+  group: experimental_THREAD_ACTION_GROUPS.organize,
+  order: 50,
   useData: useMoveDestinations,
   item: ({ thread, data: destinations, sdk }) => {
     if (
@@ -82,8 +84,6 @@ export const moveThreadAction: PluginThreadActionRegistration<
     return {
       label: "Move to section",
       icon: "SectionMove",
-      group: experimental_THREAD_ACTION_GROUPS.organize,
-      order: 50,
       choices: {
         items: destinations.map((destination) => ({
           id: choiceId(destination.sectionId),

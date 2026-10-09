@@ -1198,7 +1198,7 @@ describe("ProjectRow interactions", () => {
       sdkResult({ ok: true, archivedThreadIds: [] }),
     );
     const update = vi.fn(sdkResult({ ok: true }));
-    const { sdkCalls, sidebarActionCalls } = renderProjectRow(
+    const { sdkCalls, experimental_environmentArchiveCalls } = renderProjectRow(
       vi.fn(),
       {
         status: "ready",
@@ -1236,10 +1236,7 @@ describe("ProjectRow interactions", () => {
       { button: 0 },
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    expect(sidebarActionCalls).toContainEqual({
-      method: "experimental_archiveEnvironmentThreads",
-      environmentId: "env_plain",
-    });
+    expect(experimental_environmentArchiveCalls).toEqual(["env_plain"]);
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Environment actions" }),

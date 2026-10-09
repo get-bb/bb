@@ -1414,18 +1414,10 @@ export interface PluginThreadActionRunInput {
   requestRename(threadId: string): void;
 }
 
-/**
- * One evaluated thread action. Menus sort by `group` (string compare) with a
- * separator between groups, then by `order` within a group (default and ties:
- * registration order). bb's groups are
- * {@link PluginSdkApp.experimental_THREAD_ACTION_GROUPS}; any other string is
- * a group of its own, placed where it sorts.
- */
+/** One evaluated thread action: what a registration shows for one thread. */
 export interface PluginThreadAction {
   label: string;
   icon: BbIconName;
-  group: string;
-  order?: number;
   variant?: "default" | "destructive";
   disabled?: boolean;
   choices?: PluginThreadActionChoices;
@@ -1468,6 +1460,15 @@ export interface PluginThreadActionRegistration<Data = undefined> {
   title: string;
   /** Static icon for that picker; the evaluated action's `icon` wins in menus. */
   icon: BbIconName;
+  /**
+   * Menus and the quick-action picker sort by `group` (string compare) with a
+   * separator between groups, then by `order` within a group (unset sorts
+   * last), then by registration order. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_ACTION_GROUPS}; any other string
+   * is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
   useData?(): Data;
   item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
 }
@@ -1487,12 +1488,14 @@ export interface PluginBoundThreadAction extends Omit<
 
 /**
  * One row of {@link PluginSdkApp.experimental_useThreadActions}: `key` is
- * `<owner>/<id>`, where the owner is the registering plugin's id or `core`
- * for bb's own actions.
+ * `<owner>/<id>`, where the owner is the registering plugin's id or
+ * `bb--core` for bb's own actions.
  */
 export interface PluginThreadActionEntry {
   key: string;
   pluginId: string;
+  /** The registration's group, for separators in a caller's own list. */
+  group: string;
   action: PluginBoundThreadAction;
 }
 
@@ -1522,8 +1525,17 @@ export interface PluginThreadActionsOptions {
  */
 export interface PluginThreadActionsInlineItem {
   key: string;
+  group: string;
   action: PluginThreadAction;
 }
+
+/**
+ * What a thread menu's `trigger` receives: the menu's ARIA state, event
+ * handlers, and ref. Spread all of them onto the button you render (compose
+ * your own handlers after calling theirs); a trigger that drops them never
+ * opens the menu.
+ */
+export type PluginThreadActionsTriggerProps = ComponentPropsWithRef<"button">;
 
 interface PluginThreadActionsMenuBaseProps {
   thread: PluginThreadActionTarget;
@@ -1537,11 +1549,11 @@ interface PluginThreadActionsMenuBaseProps {
 
 /**
  * Props of the host-owned `experimental_ThreadActionsMenu`: bb's thread menu
- * opened from `trigger` (rendered as the Radix trigger, `asChild`), a drawer
- * at compact width.
+ * opened from the button `trigger` renders (see
+ * {@link PluginThreadActionsTriggerProps}), a drawer at compact width.
  */
 export interface PluginThreadActionsMenuProps extends PluginThreadActionsMenuBaseProps {
-  trigger: ReactNode;
+  trigger(props: PluginThreadActionsTriggerProps): ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
   sideOffset?: number;
@@ -3514,6 +3526,16 @@ export interface PluginSdkApp {
    */
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
   /**
+   * Archive an environment's active thread trees the way bb's own list does:
+   * optimistic removal, closing their split panes, leaving a route that shows
+   * one of them, and one Undo toast that restores them and the route. The
+   * promise rejects after bb has shown an error toast. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useArchiveEnvironmentThreads(): (
+    environmentId: string,
+  ) => Promise<void>;
+  /**
    * Every thread action for one thread, in menu order (see
    * {@link PluginThreadAction} for grouping): bb's own registrations first,
    * then plugins' in registration order. Registrations' `useData` hooks run
@@ -3526,8 +3548,8 @@ export interface PluginSdkApp {
     options?: PluginThreadActionsOptions,
   ): readonly PluginThreadActionEntry[];
   /**
-   * Every registered thread action with its static title and icon,
-   * independent of any thread: what a quick-action picker lists.
+   * Every registered thread action with its static title and icon, in menu
+   * order and independent of any thread: what a quick-action picker lists.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[];

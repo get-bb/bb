@@ -69,6 +69,8 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         id: "notifications",
         title: "Notifications",
         icon: "Notification",
+        group: "3_settings",
+        order: 5,
         useData,
         item,
       });
@@ -78,6 +80,8 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         id: "notifications",
         title: "Notifications",
         icon: "Notification",
+        group: "3_settings",
+        order: 5,
         useData,
         item,
       },
@@ -90,12 +94,14 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
         id: "a",
         title: "One",
         icon: "Pin",
+        group: "2_organize",
         item,
       });
       app.slots.experimental_threadAction({
         id: "a",
         title: "Two",
         icon: "Pin",
+        group: "2_organize",
         item,
       });
     });
@@ -106,12 +112,15 @@ describe("collectPluginAppRegistrations — experimental_threadAction", () => {
     ["item", { item: null }, '"item" must be a function'],
     ["useData", { item, useData: 1 }, '"useData" must be a function'],
     ["icon", { item, icon: "" }, "icon"],
+    ["group", { item, group: "" }, "group"],
+    ["order", { item, order: Number.NaN }, '"order" must be a finite number'],
   ])("rejects a malformed %s", (_field, fields, message) => {
     const definition = definePluginApp((app) => {
       app.slots.experimental_threadAction({
         id: "a",
         title: "One",
         icon: "Pin",
+        group: "2_organize",
         ...fields,
       } as unknown as Parameters<
         typeof app.slots.experimental_threadAction

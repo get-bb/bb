@@ -110,13 +110,16 @@ describe("thread-list preferences rpc", () => {
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["core/archive"]);
+    expect(listed.preferences.rowActions).toEqual(["bb--core/archive"]);
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
-        value: ["pin", "core/archive", "core/pin"],
+        value: ["pin", "core/archive", "bb--core/pin"],
       }),
-    ).resolves.toEqual({ key: "rowActions", value: ["core/pin", "core/archive"] });
+    ).resolves.toEqual({
+      key: "rowActions",
+      value: ["bb--core/pin", "bb--core/archive"],
+    });
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
@@ -140,14 +143,23 @@ describe("thread-list preferences rpc", () => {
     ).rejects.toThrow(/at most 3 row actions/);
   });
 
-  it("migrates stored bare row action ids and drops unknown ones instead of resetting the rest", async () => {
+  it("migrates stored bare ids and core/<id> keys and drops unknown ones instead of resetting the rest", async () => {
     const { bb, harness } = setup();
-    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "move"]);
+    await bb.storage.kv.set("preference:rowActions", [
+      "pin",
+      "futureAction",
+      "move",
+      "core/rename",
+    ]);
     await plugin(bb);
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["core/pin", "thread-list/move"]);
+    expect(listed.preferences.rowActions).toEqual([
+      "bb--core/pin",
+      "thread-list/move",
+      "bb--core/rename",
+    ]);
   });
 
   it("falls back to the default when a stored value no longer parses", async () => {

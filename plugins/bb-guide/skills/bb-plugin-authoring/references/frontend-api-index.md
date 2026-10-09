@@ -45,6 +45,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_useSidebarThreads`
 - `experimental_useSidebarThreadActions` — deprecated; use the thread action
   registry, `useSdk().threads`, and `useBbNavigate()`
+- `experimental_useArchiveEnvironmentThreads` — archive an environment's
+  threads with bb's pane cleanup, route repair, and Undo toast
 - `experimental_useThreadActions` — every thread action for one thread, in
   menu order, or only `keys` for a row's quick actions
 - `experimental_useThreadActionRegistrations` — every registered thread
@@ -188,6 +190,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginThreadActionRegistrationInfo`
 - `PluginThreadActionsOptions`
 - `PluginThreadActionsInlineItem`
+- `PluginThreadActionsTriggerProps` — what a thread menu's `trigger` must
+  spread onto its button
 - `PluginThreadActionsMenuProps`
 - `PluginThreadActionsContextMenuProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`

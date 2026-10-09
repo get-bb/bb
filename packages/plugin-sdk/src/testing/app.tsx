@@ -1,7 +1,9 @@
 import * as React from "react";
 import {
   createContext,
+  useCallback,
   useContext,
+  useLayoutEffect,
   useEffect,
   useMemo,
   useRef,
@@ -281,6 +283,7 @@ interface SlotEnv {
   sidebarThreads: PluginSidebarThreadsState;
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
+  environmentArchiveCalls: string[];
   threadActions: TestThreadActionsResolver;
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
@@ -534,11 +537,23 @@ function TestThreadActionsMenu({
   onCloseAutoFocus,
 }: PluginThreadActionsMenuProps) {
   const menu = useTestMenuOpenState({ onOpenChange, onCloseAutoFocus });
+  const triggerElement = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (triggerElement.current?.getAttribute("aria-haspopup") !== "menu") {
+      throw new Error(
+        "experimental_ThreadActionsMenu: `trigger` must spread the props and ref it receives onto the button it renders, or the menu never opens",
+      );
+    }
+  });
   return (
     <span data-testid="bb-thread-actions-menu" data-thread-id={thread.id}>
-      <span className="contents" onClickCapture={menu.show}>
-        {trigger}
-      </span>
+      {trigger({
+        ref: triggerElement,
+        type: "button",
+        "aria-haspopup": "menu",
+        "aria-expanded": menu.open,
+        onClick: menu.show,
+      })}
       {menu.open ? (
         <TestThreadActionsMenuItems
           hook="experimental_ThreadActionsMenu"
@@ -1308,6 +1323,19 @@ const testPluginSdkApp = {
       options,
     );
   },
+  experimental_useArchiveEnvironmentThreads(): (
+    environmentId: string,
+  ) => Promise<void> {
+    const calls = useSlotEnv(
+      "experimental_useArchiveEnvironmentThreads",
+    ).environmentArchiveCalls;
+    return useCallback(
+      async (environmentId: string) => {
+        calls.push(environmentId);
+      },
+      [calls],
+    );
+  },
   experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[] {
     return useSlotEnv("experimental_useThreadActionRegistrations")
       .threadActionRegistrations;
@@ -1800,6 +1828,11 @@ export interface RenderedSlotInspectionState {
   readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
+  /**
+   * The environment id of every `experimental_useArchiveEnvironmentThreads()`
+   * call, in order.
+   */
+  readonly experimental_environmentArchiveCalls: string[];
   /** Every `useSdk()` call, in order, as `"<area>.<method>"`. */
   readonly sdkCalls: SdkCall[];
   /** Every `experimental_copyToClipboard()` write, in order. */
@@ -1992,6 +2025,7 @@ export function renderSlot<
     },
   };
   const sidebarActionCalls: SidebarActionCall[] = [];
+  const environmentArchiveCalls: string[] = [];
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
   );
@@ -2402,6 +2436,7 @@ export function renderSlot<
     sidebarThreads,
     sidebarActions,
     sidebarActionCalls,
+    environmentArchiveCalls,
     threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
     threadActionRegistrations:
       options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,
@@ -2500,6 +2535,7 @@ export function renderSlot<
     navigateCalls,
     experimental_fixedTabOpenCalls,
     sidebarActionCalls,
+    experimental_environmentArchiveCalls: environmentArchiveCalls,
     sdkCalls,
     experimental_clipboardWrites,
     composer: composerLog,
@@ -2514,6 +2550,7 @@ export function renderSlot<
       navigateCalls,
       experimental_fixedTabOpenCalls,
       sidebarActionCalls,
+      experimental_environmentArchiveCalls: environmentArchiveCalls,
       sdkCalls,
       experimental_clipboardWrites,
       composer: composerLog,

@@ -803,10 +803,20 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(`${kind}: "useData" must be a function`);
         }
+        if (
+          registration.order !== undefined &&
+          !Number.isFinite(registration.order)
+        ) {
+          throw new Error(`${kind}: "order" must be a finite number`);
+        }
         collected.threadActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...(registration.order !== undefined
+            ? { order: registration.order }
+            : {}),
           ...(registration.useData !== undefined
             ? { useData: registration.useData }
             : {}),

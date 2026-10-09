@@ -1,8 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import type {
   PluginThreadActionsContextMenuProps,
   PluginThreadActionsInlineItem,
   PluginThreadActionsMenuProps,
+  PluginThreadActionsTriggerProps,
   PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import {
@@ -54,6 +64,30 @@ function ThreadActionsMenuItems({
   );
 }
 
+const ThreadActionsTriggerSlot = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<"button"> & {
+    render: (props: PluginThreadActionsTriggerProps) => ReactNode;
+  }
+>(function ThreadActionsTriggerSlot({ render, ...props }, ref) {
+  const element = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (element.current === null) {
+      console.error(
+        "experimental_ThreadActionsMenu: `trigger` did not attach the ref it received, so the menu cannot open; spread its props and ref onto the button",
+      );
+    }
+  }, []);
+  return render({
+    ...props,
+    ref: (node: HTMLButtonElement | null) => {
+      element.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref !== null) ref.current = node;
+    },
+  });
+});
+
 function useDrawerStep(onOpenChange?: (open: boolean) => void) {
   const [drawerStep, setDrawerStep] = useState<string | null>(null);
   const handleOpenChange = useCallback(
@@ -82,7 +116,9 @@ export function ThreadActionsMenu({
     useDrawerStep(onOpenChange);
   return (
     <DropdownMenu onOpenChange={handleOpenChange}>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>
+        <ThreadActionsTriggerSlot render={trigger} />
+      </DropdownMenuTrigger>
       <DropdownMenuContent
         side={side}
         align={align}

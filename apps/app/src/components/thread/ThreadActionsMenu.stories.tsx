@@ -24,11 +24,11 @@ function Menu({ thread }: { thread: ThreadListEntry }) {
   return (
     <ThreadActionsMenu
       thread={threadListEntryActionTarget(thread)}
-      trigger={
-        <button type="button" aria-label="Thread actions">
+      trigger={(props) => (
+        <button {...props} type="button" aria-label="Thread actions">
           ...
         </button>
-      }
+      )}
     />
   );
 }

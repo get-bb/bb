@@ -21,7 +21,7 @@ import { PluginContext } from "@/components/plugin/plugin-context";
 import { useBbNavigate, useSdk } from "@/lib/plugin-sdk-hooks";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
-export const CORE_THREAD_ACTION_OWNER = "core";
+export const CORE_THREAD_ACTION_OWNER = "bb--core";
 
 export interface ThreadActionRegistrationRecord {
   key: string;
@@ -185,7 +185,7 @@ function useThreadActionRecords(
   coreRegistrations: readonly PluginThreadActionRegistration<unknown>[],
 ): readonly ThreadActionRegistrationRecord[] {
   const slots = usePluginSlots().threadActions;
-  return [
+  const records = [
     ...coreRegistrations.map((registration) => ({
       key: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,
       instanceKey: `${CORE_THREAD_ACTION_OWNER}/${registration.id}`,
@@ -199,6 +199,17 @@ function useThreadActionRecords(
       registration: slot,
     })),
   ];
+  return records
+    .map((record, index) => ({ record, index }))
+    .sort((left, right) =>
+      compareThreadActionPlacement(
+        left.record.registration,
+        left.index,
+        right.record.registration,
+        right.index,
+      ),
+    )
+    .map(({ record }) => record);
 }
 
 export function ThreadActionCollectors({
@@ -265,20 +276,26 @@ export function bindThreadAction(
   };
 }
 
-interface EvaluatedThreadAction {
-  key: string;
-  pluginId: string;
-  action: PluginThreadAction;
-  index: number;
+export function compareThreadActionPlacement(
+  left: { group: string; order?: number },
+  leftIndex: number,
+  right: { group: string; order?: number },
+  rightIndex: number,
+): number {
+  if (left.group !== right.group) return left.group < right.group ? -1 : 1;
+  const leftOrder = left.order ?? Number.POSITIVE_INFINITY;
+  const rightOrder = right.order ?? Number.POSITIVE_INFINITY;
+  if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
+  return leftIndex - rightIndex;
 }
 
 function evaluateRecord(
   record: ThreadActionRegistrationRecord,
-  index: number,
   thread: PluginThreadActionTarget,
-  collected: ReadonlyMap<string, CollectedThreadAction>,
-): EvaluatedThreadAction | null {
-  const input = collected.get(record.key);
+  registry: ThreadActionRegistrySnapshot,
+  requestRename: (threadId: string) => void,
+): PluginThreadActionEntry | null {
+  const input = registry.collected.get(record.key);
   if (input === undefined) return null;
   try {
     const action = record.registration.item({
@@ -288,24 +305,16 @@ function evaluateRecord(
       navigate: input.navigate,
     });
     if (action === null) return null;
-    return { key: record.key, pluginId: record.pluginId, action, index };
+    return {
+      key: record.key,
+      pluginId: record.pluginId,
+      group: record.registration.group,
+      action: bindThreadAction(record.key, action, requestRename),
+    };
   } catch (error) {
     reportFailure(record.key, "item", error);
     return null;
   }
-}
-
-export function compareThreadActions(
-  left: { action: PluginThreadAction; index: number },
-  right: { action: PluginThreadAction; index: number },
-): number {
-  if (left.action.group !== right.action.group) {
-    return left.action.group < right.action.group ? -1 : 1;
-  }
-  const leftOrder = left.action.order ?? Number.POSITIVE_INFINITY;
-  const rightOrder = right.action.order ?? Number.POSITIVE_INFINITY;
-  if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
-  return left.index - right.index;
 }
 
 function evaluateThreadActions(
@@ -314,34 +323,19 @@ function evaluateThreadActions(
   options: PluginThreadActionsOptions | undefined,
 ): PluginThreadActionEntry[] {
   const requestRename = options?.requestRename ?? registry.requestRename;
-  const keys = options?.keys;
-  const evaluated =
-    keys === undefined
+  const records =
+    options?.keys === undefined
       ? registry.records
-          .map((record, index) =>
-            evaluateRecord(record, index, thread, registry.collected),
-          )
-          .filter((entry) => entry !== null)
-          .sort(compareThreadActions)
-      : keys.flatMap((key) => {
-          const index = registry.records.findIndex(
-            (record) => record.key === key,
+      : options.keys.flatMap((key) => {
+          const record = registry.records.find(
+            (candidate) => candidate.key === key,
           );
-          const record = registry.records[index];
-          if (record === undefined) return [];
-          const entry = evaluateRecord(
-            record,
-            index,
-            thread,
-            registry.collected,
-          );
-          return entry === null ? [] : [entry];
+          return record === undefined ? [] : [record];
         });
-  return evaluated.map((entry) => ({
-    key: entry.key,
-    pluginId: entry.pluginId,
-    action: bindThreadAction(entry.key, entry.action, requestRename),
-  }));
+  return records.flatMap((record) => {
+    const entry = evaluateRecord(record, thread, registry, requestRename);
+    return entry === null ? [] : [entry];
+  });
 }
 
 export function useThreadActionEntries(

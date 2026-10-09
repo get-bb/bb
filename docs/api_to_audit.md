@@ -355,10 +355,10 @@ version.
 registry (`app.slots.experimental_threadAction`, `experimental_useThreadActions`,
 the thread action components), `useSdk().threads`, and
 `useBbNavigate().toThread` / `toCompose`. The runtime keeps the hook's full
-behaviour so installed plugins keep working; remove at the next major version.
-The one repository caller left is the thread list's environment-group archive
-(`experimental_archiveEnvironmentThreads`), which has no SDK replacement yet
-because its pane cleanup, route repair, and Undo toast are host UI.
+behaviour so installed plugins keep working; nothing in this repository calls
+it (the runtime test in `PluginAppOverlays.test.tsx` only checks it still
+resolves). Its `experimental_archiveEnvironmentThreads` moved to
+`experimental_useArchiveEnvironmentThreads`. Remove at the next major version.
 
 ## Settings schemas and server writes
 
@@ -2965,33 +2965,40 @@ surface pays one subscription and one pure `item` call per registration; a
 throw from `useData` drops that registration, a throw from `item` drops it for
 that thread, and `run` errors are logged and contained.
 
-An action is `{ label, icon, group, order?, variant?, disabled?, choices?,
-run }`. Menus sort by `group` (string compare) with a separator between
-groups, then `order` within a group (unset sorts last), then registration
-order. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
+Placement is static: a registration carries `group` and `order?`, and the
+host keeps registrations sorted by `group` (string compare), then `order`
+(unset sorts last), then registration order, so menus (with a separator
+between groups) and the quick-action picker share one order. An evaluated
+action is `{ label, icon, variant?, disabled?, choices?, run }`. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
 `2_organize`, `3_settings`, `4_lifecycle`); any other string forms its own
 group. `choices` is data (heading, hint, items): a submenu on desktop, a drawer
 step with Back at compact width, a popover from a row quick-action button; the
 picked id reaches `run` as `value`. `run` also receives `requestRename`, the
 surface's own rename editor or bb's dialog.
 
-bb's own actions are registrations of the same shape under the `core` owner
-(keys `core/<id>`): Open in split, New thread in environment, Copy thread
-link, Mark read/unread, Pin/Unpin, Rename, Archive/Unarchive, and Delete. The
+bb's own actions are registrations of the same shape under the reserved
+`bb--core` owner (keys `bb--core/<id>`): Open in split, New thread in
+environment, Copy thread link, Mark read/unread, Pin/Unpin, Rename,
+Archive/Unarchive, and Delete. The
 thread-list plugin registers Move to section (`thread-list/move`) because the
 destinations depend on its organization and section-order preferences. The
 header menu, mobile recents, and both sidebar row menus render the host
 components; the row's hover quick actions read `experimental_useThreadActions`
-with `keys`; the thread archive keyboard command runs `core/archive`.
+with `keys`; the thread archive keyboard command runs `bb--core/archive`.
 
 `experimental_useThreadActions(thread, { keys?, requestRename? })` returns
 `{ key, pluginId, action }` with `run(value?)` bound to the caller's
 `requestRename`, contained, and resolving when the action settles.
 `experimental_useThreadActionRegistrations()` lists registrations with their
 static title and icon, independent of any thread (the row-actions picker).
-`experimental_ThreadActionsMenu` (trigger, a drawer at compact width) and
+`experimental_ThreadActionsMenu` (a drawer at compact width) takes `trigger`
+as a render function: it receives the Radix trigger's props and ref
+(`PluginThreadActionsTriggerProps`) and must spread them onto its button. The
+host logs an error when the ref is never attached, and the SDK test fake
+throws, because a trigger that drops them leaves a button that never opens.
+It and
 `experimental_ThreadActionsContextMenu` (right-click; touch long-press at
-compact width) take `inline` items appended to their group (the thread
+compact width) take `inline` items (`{ key, group, action }`) appended to their group (the thread
 list's Customize row actions, the header's overflowed workspace and git
 actions) and `requestRename`.
 
@@ -3007,16 +3014,35 @@ menu surface against the same registrations.
 1. **Per-thread data.** `useData` has no visible-id batching; a plugin with
    per-thread state loads its whole map once. Decide whether the host should
    pass visible thread ids before a plugin needs paging.
-2. **Owner id.** Core keys use `core/`; decide whether that collides with a
-   plugin id or should move to the reserved `bb--` namespace.
-3. **Picker catalog.** The row-actions picker lists every registration,
+2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.
-4. **Run input.** `requestRename` is the only surface-supplied capability.
+3. **Run input.** `requestRename` is the only surface-supplied capability.
    Confirm no second one is needed before stabilizing the run signature.
-5. **Inline items.** `inline` exists for surface-specific entries that are not
+4. **Inline items.** `inline` exists for surface-specific entries that are not
    about a thread. Confirm it should stay a component prop rather than a
    registration.
+
+## `experimental_useArchiveEnvironmentThreads` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Returns `(environmentId) => Promise<void>`, the same
+function core's environment-group archive uses (`ThreadActionsProvider`'s
+`archiveEnvironmentThreads`): the bound SDK's optimistic
+`environments.archiveThreads`, closing the archived threads' split panes,
+moving off a route that shows one, and one Undo toast that unarchives them and
+returns to that route. It rejects after bb has shown an error toast. It is the
+one host UI flow of the deprecated `experimental_useSidebarThreadActions` that
+plain SDK calls cannot reproduce; the thread list's environment group menu is
+the caller.
+
+**Audit before stabilizing.**
+
+1. **Scope.** A per-flow hook was the smallest honest path. If more host UI
+   flows need exposing (thread archive and delete outside a menu), decide
+   whether they become thread actions, bound-SDK side effects, or a small
+   flows area instead of one hook each.
+2. **Undo route repair.** The toast's route restore assumes the user has not
+   navigated since; confirm that matches plugin-hosted surfaces.
 
 ## `app.slots.experimental_browserToolbarAction` (`@get-bb/plugin-sdk/app`)
 

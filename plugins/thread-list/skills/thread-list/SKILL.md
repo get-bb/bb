@@ -39,12 +39,14 @@ of the list. The same preference is available through `setPreference` RPC.
 
 `rowActions` picks up to three quick-action buttons a thread row shows on
 hover, left to right before its actions menu, as thread action keys: bb's
-`core/split`, `core/copyLink`, `core/read`, `core/pin`, `core/rename`,
-`core/archive`, `core/delete`, the list's `thread-list/move` (opens a section
-menu), or another plugin's `<pluginId>/<actionId>`. Bare legacy ids such as
-`archive` still work. The default is `'["core/archive"]'` and `'[]'` leaves
+`bb--core/split`, `bb--core/copyLink`, `bb--core/read`, `bb--core/pin`,
+`bb--core/rename`, `bb--core/archive`, `bb--core/delete`, the list's
+`thread-list/move` (opens a section menu), or another plugin's
+`<pluginId>/<actionId>`. Bare legacy ids such as `archive` and `core/<id>`
+keys still work. The default is `'["bb--core/archive"]'` and `'[]'` leaves
 only the menu. For example,
-`bb thread-list prefs set rowActions '["core/pin","core/archive"]'`. In the app, a thread
+`bb thread-list prefs set rowActions '["bb--core/pin","bb--core/archive"]'`.
+In the app, a thread
 row's actions menu has Customize row actions, which turns that row's quick
 actions into three editable slots in place; each slot picks an action, a filled
 slot can Hide, and filled slots drag to reorder. Done, Escape, or a click

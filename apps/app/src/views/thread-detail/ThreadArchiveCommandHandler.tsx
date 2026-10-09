@@ -3,7 +3,7 @@ import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { useThreadActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { usePaneContext } from "./PaneContext";
 
-const ARCHIVE_KEYS = ["core/archive"];
+const ARCHIVE_KEYS = ["bb--core/archive"];
 
 export function ThreadArchiveCommandHandler({
   thread,

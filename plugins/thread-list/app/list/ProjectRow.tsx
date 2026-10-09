@@ -43,7 +43,7 @@ import { createPortal } from "react-dom";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { toast } from "sonner";
 import {
-  experimental_useSidebarThreadActions,
+  experimental_useArchiveEnvironmentThreads,
   useBbNavigate,
   useEnvironmentProviders,
   useSdk,
@@ -644,15 +644,14 @@ const DroppableSectionItemRow = memo(function DroppableSectionItemRow({
 function useArchiveEnvironmentThreadGroupAction({
   environmentId,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const actions = experimental_useSidebarThreadActions();
+  const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
   const [archiveThreadsPending, setArchiveThreadsPending] = useState(false);
   const onArchiveThreads = useCallback(() => {
     setArchiveThreadsPending(true);
-    void actions
-      .experimental_archiveEnvironmentThreads(environmentId)
+    void archiveEnvironmentThreads(environmentId)
       .catch(() => {})
       .finally(() => setArchiveThreadsPending(false));
-  }, [actions, environmentId]);
+  }, [archiveEnvironmentThreads, environmentId]);
 
   return { archiveThreadsPending, onArchiveThreads };
 }

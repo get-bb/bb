@@ -281,30 +281,30 @@ function hostThreadActions({
       },
     ): PluginThreadActionEntry => ({
       key,
-      pluginId: key.split("/")[0] ?? "core",
+      pluginId: key.split("/")[0] ?? "bb--core",
+      group: "2_organize",
       action: {
         label,
         icon,
-        group: "2_organize",
         run: () => run().catch(() => undefined),
       },
     });
     const isArchived = thread.archivedAt !== null;
     return [
-      entry("core/copyLink", "Copy thread link", "Copy"),
+      entry("bb--core/copyLink", "Copy thread link", "Copy"),
       entry(
-        "core/pin",
+        "bb--core/pin",
         thread.pinnedAt === null ? "Pin" : "Unpin",
         thread.pinnedAt === null ? "Pin" : "PinOff",
       ),
       ...(thread.parentThreadId === null && !isArchived
         ? [entry("thread-list/move", "Move to section", "SectionMove")]
         : []),
-      entry("core/rename", "Rename", "Edit", async () => {
+      entry("bb--core/rename", "Rename", "Edit", async () => {
         requestRename(thread.id);
       }),
       entry(
-        "core/archive",
+        "bb--core/archive",
         isArchived ? "Unarchive" : "Archive",
         isArchived ? "ArchiveRestore" : "Archive",
         archiveRun,
@@ -419,7 +419,7 @@ describe("ThreadRow", () => {
     fireEvent.keyDown(restore, { key: "Enter" });
     fireEvent.click(restore);
     await waitFor(() =>
-      expect(ran).toEqual([{ key: "core/archive", threadId: "thr_test" }]),
+      expect(ran).toEqual([{ key: "bb--core/archive", threadId: "thr_test" }]),
     );
     expect(rowEvent).not.toHaveBeenCalled();
   });
@@ -448,9 +448,9 @@ describe("ThreadRow", () => {
 
   it("shows the configured row actions in order and reserves their width", async () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
-      "core/pin",
-      "core/copyLink",
-      "core/archive",
+      "bb--core/pin",
+      "bb--core/copyLink",
+      "bb--core/archive",
     ]);
     const ran: RanThreadAction[] = [];
     renderThreadRow({ threadActions: hostThreadActions({ ran }) });
@@ -467,7 +467,7 @@ describe("ThreadRow", () => {
     ).toBe("calc(var(--spacing) * 22.5)");
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
     await waitFor(() =>
-      expect(ran).toEqual([{ key: "core/pin", threadId: "thr_test" }]),
+      expect(ran).toEqual([{ key: "bb--core/pin", threadId: "thr_test" }]),
     );
   });
 
@@ -475,7 +475,7 @@ describe("ThreadRow", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
       "thread-list/move",
       "plugin-gone/action",
-      "core/archive",
+      "bb--core/archive",
     ]);
     renderThreadRow({
       thread: createThread({ parentThreadId: "thr_parent" }),
@@ -503,7 +503,10 @@ describe("ThreadRow", () => {
     ).toBe("calc(var(--spacing) * 0)");
   });
 
-  it.each([[[]], [["core/pin", "core/copyLink", "core/archive"]]] as const)(
+  it.each([
+    [[]],
+    [["bb--core/pin", "bb--core/copyLink", "bb--core/archive"]],
+  ] as const)(
     "reserves one action for an archived row whatever the row actions (%j)",
     (rowActions) => {
       getDefaultStore().set(preferenceValueAtom("rowActions"), [...rowActions]);
@@ -519,7 +522,9 @@ describe("ThreadRow", () => {
   );
 
   it("starts the inline rename directly from a Rename row action", async () => {
-    getDefaultStore().set(preferenceValueAtom("rowActions"), ["core/rename"]);
+    getDefaultStore().set(preferenceValueAtom("rowActions"), [
+      "bb--core/rename",
+    ]);
     renderThreadRow();
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(

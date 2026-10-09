@@ -180,6 +180,9 @@ export const experimental_useSidebarThreadActions = runtimeFunction(
 export const experimental_useThreadActions = runtimeFunction(
   "experimental_useThreadActions",
 );
+export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
+  "experimental_useArchiveEnvironmentThreads",
+);
 export const experimental_useThreadActionRegistrations = runtimeFunction(
   "experimental_useThreadActionRegistrations",
 );

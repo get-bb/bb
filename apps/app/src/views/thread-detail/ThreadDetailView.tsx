@@ -2218,10 +2218,10 @@ function ThreadDetailViewInternal(
           ),
         ].map((target) => ({
           key: `workspace/${target.id}`,
+          group: THREAD_HEADER_ACTIONS_GROUP,
           action: {
             icon: "FolderOpen",
             label: `Open workspace in ${target.label}`,
-            group: THREAD_HEADER_ACTIONS_GROUP,
             run: async () => {
               if (target.id === preferredDirectoryTarget.id) {
                 await openPathInPreferredDirectoryTarget({
@@ -2249,10 +2249,10 @@ function ThreadDetailViewInternal(
   const responsiveGitActions: PluginThreadActionsInlineItem[] =
     threadHeaderGitActions.map((action) => ({
       key: `git/${action.label}`,
+      group: THREAD_HEADER_ACTIONS_GROUP,
       action: {
         icon: "GitBranch",
         label: action.label,
-        group: THREAD_HEADER_ACTIONS_GROUP,
         run: () => {
           gitActions.threadGitActionDialog.onOpen(action.target);
         },
@@ -2298,8 +2298,9 @@ function ThreadDetailViewInternal(
       }) => (
         <ThreadActionsMenu
           thread={threadActionTarget}
-          trigger={
+          trigger={(triggerProps) => (
             <Button
+              {...triggerProps}
               type="button"
               variant="ghost"
               size="icon"
@@ -2310,6 +2311,7 @@ function ThreadDetailViewInternal(
               )}
               aria-label="Thread actions"
               onClick={(event) => {
+                triggerProps.onClick?.(event);
                 event.stopPropagation();
               }}
             >
@@ -2318,7 +2320,7 @@ function ThreadDetailViewInternal(
                 className={COARSE_POINTER_ICON_SIZE_CLASS}
               />
             </Button>
-          }
+          )}
           inline={includeResponsiveActions ? responsiveHeaderActions : []}
           requestRename={requestRename}
           onCloseAutoFocus={onCloseAutoFocus}
