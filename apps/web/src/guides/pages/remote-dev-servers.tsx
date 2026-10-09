@@ -143,9 +143,10 @@ export const guide: Guide = {
           <p>
             Then commit a setup script at the repo root. bb runs it in every new
             worktree, so each branch installs its dependencies and picks free
-            ports:
+            ports. Here's an example for a pnpm project; change the install
+            command and ports to fit yours:
           </p>
-          <FileBlock name=".bb-env-setup.sh" contents={SETUP_SCRIPT} />
+          <FileBlock name="Example: .bb-env-setup.sh" contents={SETUP_SCRIPT} />
         </>
       ),
       shot: {
