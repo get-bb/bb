@@ -28,6 +28,8 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { getThreadRoutePath } from "@/lib/route-paths";
+import type { SplitLayout } from "@/lib/split-layout";
+import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import {
@@ -200,8 +202,42 @@ const SURFACES: readonly Surface[] = [
 
 const defaultRequestRename = vi.fn();
 
-function renderSurface(surface: Surface, options: SurfaceOptions, route = "/") {
+function twoPaneLayout(focusedPaneId: string): SplitLayout {
+  return {
+    root: {
+      type: "split",
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [
+        {
+          type: "pane",
+          paneId: "pane_other",
+          content: { kind: "thread", projectId: "proj_a", threadId: "thr_other" },
+        },
+        {
+          type: "pane",
+          paneId: "pane_target",
+          content: {
+            kind: "thread",
+            projectId: baseThread.projectId,
+            threadId: baseThread.id,
+          },
+        },
+      ],
+    },
+    focusedPaneId,
+  };
+}
+
+function renderSurface(
+  surface: Surface,
+  options: SurfaceOptions,
+  route = "/",
+  layout: SplitLayout | null = null,
+) {
   const queryClient = new QueryClient();
+  const store = createStore();
+  if (layout !== null) store.set(splitLayoutAtom, layout);
   queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
   setPluginSlotRegistrations(
     "fixture",
@@ -211,7 +247,7 @@ function renderSurface(surface: Surface, options: SurfaceOptions, route = "/") {
   );
   return render(
     <QueryClientProvider client={queryClient}>
-      <Provider store={createStore()}>
+      <Provider store={store}>
         <MemoryRouter initialEntries={[route]}>
           <CompactViewportOverrideProvider isCompactViewport={surface.compact}>
             <ThreadActionCollectors
@@ -262,6 +298,8 @@ async function choose(surface: Surface, actionLabel: string, choice: string) {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
   vi.clearAllMocks();
@@ -284,6 +322,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       state: "a top-level thread",
       thread: baseThread,
       route: "/",
+      layout: null,
       desktop: [
         "Open in split",
         "---",
@@ -325,6 +364,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         environmentPath: null,
       }),
       route: "/",
+      layout: null,
       desktop: [
         "Open in split",
         "---",
@@ -358,6 +398,76 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
+      layout: null,
+      desktop: [
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "---",
+        "Customize row actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "New thread in environment",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "Customize row actions",
+        "Archive",
+        "Delete",
+        "Notifications",
+      ],
+    },
+    {
+      state: "a thread open in another split pane",
+      thread: baseThread,
+      route: getThreadRoutePath({ projectId: "proj_a", threadId: "thr_other" }),
+      layout: twoPaneLayout("pane_other"),
+      desktop: [
+        "Focus split",
+        "---",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "---",
+        "Customize row actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "New thread in environment",
+        "Copy thread link",
+        "Mark unread",
+        "Pin",
+        "Move to section",
+        "Rename",
+        "Customize row actions",
+        "Archive",
+        "Delete",
+        "Notifications",
+      ],
+    },
+    {
+      state: "the thread in the focused split pane",
+      thread: baseThread,
+      route: getThreadRoutePath({
+        projectId: baseThread.projectId,
+        threadId: baseThread.id,
+      }),
+      layout: twoPaneLayout("pane_target"),
       desktop: [
         "Copy thread link",
         "Mark unread",
@@ -387,8 +497,8 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     },
   ])(
     "lists the items for $state",
-    async ({ thread, route, desktop, compact }) => {
-      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, route);
+    async ({ thread, route, layout, desktop, compact }) => {
+      renderSurface(surface, { thread, inline: [CUSTOMIZE] }, route, layout);
       await surface.open();
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
     },

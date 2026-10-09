@@ -31,29 +31,41 @@ export function getThreadUrl(thread: PluginThreadActionTarget): string {
 
 interface SplitAvailability {
   available: boolean;
-  openThreadIds: ReadonlySet<string>;
+  focusedThreadId: string | null;
+  otherPaneThreadIds: ReadonlySet<string>;
 }
 
 function useSplitAvailability(): SplitAvailability {
   const isCompact = useIsCompactViewport();
   const layout = useAtomValue(splitLayoutAtom);
   const { threadId } = useRouteState();
-  const openThreadIdsKey =
-    layout !== null && countPanes(layout.root) > 1
-      ? listPanes(layout.root)
-          .flatMap((pane) =>
-            pane.content.kind === "thread" ? [pane.content.threadId] : [],
-          )
-          .join("\n")
-      : (threadId ?? "");
+  const panes =
+    layout !== null && countPanes(layout.root) > 1 ? listPanes(layout.root) : [];
+  const focusedPane = panes.find(
+    (pane) => pane.paneId === layout?.focusedPaneId,
+  );
+  const focusedThreadId =
+    panes.length === 0
+      ? (threadId ?? null)
+      : focusedPane?.content.kind === "thread"
+        ? focusedPane.content.threadId
+        : null;
+  const otherPaneThreadIdsKey = panes
+    .flatMap((pane) =>
+      pane !== focusedPane && pane.content.kind === "thread"
+        ? [pane.content.threadId]
+        : [],
+    )
+    .join("\n");
   return useMemo(
     () => ({
       available: !isCompact,
-      openThreadIds: new Set(
-        openThreadIdsKey === "" ? [] : openThreadIdsKey.split("\n"),
+      focusedThreadId,
+      otherPaneThreadIds: new Set(
+        otherPaneThreadIdsKey === "" ? [] : otherPaneThreadIdsKey.split("\n"),
       ),
     }),
-    [isCompact, openThreadIdsKey],
+    [focusedThreadId, isCompact, otherPaneThreadIdsKey],
   );
 }
 
@@ -97,10 +109,12 @@ export const CORE_THREAD_ACTIONS: readonly PluginThreadActionRegistration<unknow
       icon: "Columns2",
       useData: useSplitAvailability,
       item: ({ thread, data, navigate }) =>
-        !data.available || data.openThreadIds.has(thread.id)
+        !data.available || data.focusedThreadId === thread.id
           ? null
           : {
-              label: "Open in split",
+              label: data.otherPaneThreadIds.has(thread.id)
+                ? "Focus split"
+                : "Open in split",
               icon: "Columns2",
               run: () => navigate.toThread(thread.id, { split: true }),
             },

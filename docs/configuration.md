@@ -1194,9 +1194,10 @@ keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
 section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
 Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
 accepted and migrate to their current keys. Duplicates are deduplicated. A key
-whose action is hidden for a row (`bb--core/split` for a thread already open,
+whose action is hidden for a row (`bb--core/split` for the thread in view,
 `thread-list/move` for a thread that cannot move) or whose plugin is not
-installed is skipped on that row. `thread-list/move` opens a menu of sections.
+installed is skipped on that row. `bb--core/split` reads Focus split for a
+thread open in another split pane. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
