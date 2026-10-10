@@ -55,6 +55,14 @@ export type TelemetryEvent =
       };
     }
   | {
+      name: "plugin_enabled";
+      properties: {
+        plugin_id: string | null;
+        provenance: "builtin" | "catalog" | "direct";
+        marketplace: string | null;
+      };
+    }
+  | {
       name: "plugin_installed";
       properties: {
         plugin_id: string | null;

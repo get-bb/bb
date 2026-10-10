@@ -155,7 +155,10 @@ import {
   type PluginHookProvider,
 } from "./plugin-hook-registry.js";
 import type { PluginEnvironmentProviderBridge } from "./plugin-environment-provider-registry.js";
-import { createPluginRegistration } from "./plugin-registration.js";
+import {
+  createPluginRegistration,
+  pluginEnabledTelemetryEvent,
+} from "./plugin-registration.js";
 import {
   createPluginRuntime,
   forgetMutableRoot,
@@ -1729,7 +1732,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               .map(({ id, displayName }) => ({ id, displayName })),
           );
         }
+        const before = getInstalledPlugin(deps.db, id);
         if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
+        if (enabled && before && !before.enabled) {
+          deps.telemetry.capture(
+            pluginEnabledTelemetryEvent(id, provenanceForRow(before)),
+          );
+        }
         if (enabled) {
           const row = getInstalledPlugin(deps.db, id);
           if (row) {

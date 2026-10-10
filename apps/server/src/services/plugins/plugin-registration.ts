@@ -58,27 +58,41 @@ import {
   type PluginResolvedUpdateVersion,
 } from "./update-resolver.js";
 
-export function pluginInstalledTelemetryEvent(
-  pluginId: string,
-  provenance: PluginProvenance,
-  sourceIntent: PluginSourceIntent,
-): Extract<TelemetryEvent, { name: "plugin_installed" }> {
+function publicPluginIdentity(pluginId: string, provenance: PluginProvenance) {
   const isPublic =
     provenance.kind === "builtin" ||
     (provenance.kind === "catalog" &&
       (provenance.marketplace === CURATED_PLUGIN_MARKETPLACE_NAME ||
         provenance.marketplace === BUNDLED_MARKETPLACE_NAME));
   return {
+    plugin_id: isPublic ? pluginId : null,
+    provenance: provenance.kind,
+    marketplace:
+      isPublic && provenance.kind === "catalog" ? provenance.marketplace : null,
+  };
+}
+
+export function pluginInstalledTelemetryEvent(
+  pluginId: string,
+  provenance: PluginProvenance,
+  sourceIntent: PluginSourceIntent,
+): Extract<TelemetryEvent, { name: "plugin_installed" }> {
+  return {
     name: "plugin_installed",
     properties: {
-      plugin_id: isPublic ? pluginId : null,
-      provenance: provenance.kind,
-      marketplace:
-        isPublic && provenance.kind === "catalog"
-          ? provenance.marketplace
-          : null,
+      ...publicPluginIdentity(pluginId, provenance),
       source_kind: sourceIntent.kind,
     },
+  };
+}
+
+export function pluginEnabledTelemetryEvent(
+  pluginId: string,
+  provenance: PluginProvenance,
+): Extract<TelemetryEvent, { name: "plugin_enabled" }> {
+  return {
+    name: "plugin_enabled",
+    properties: publicPluginIdentity(pluginId, provenance),
   };
 }
 

@@ -32,6 +32,10 @@ async function setup() {
     makeThreadResponse({ id: "thread-test" }),
   );
   host.harness.sdk.stub(
+    "system.experimental_recordTelemetryEvent",
+    async () => ({ ok: true }),
+  );
+  host.harness.sdk.stub(
     "experimental_desktopBrowsers.listInstances",
     async () => ({
       instances: [
@@ -165,6 +169,68 @@ describe("server session ownership", () => {
       }
     },
   );
+
+  it("reports each opened session's surface and whether an agent, a user, or the SDK opened it", async () => {
+    const h = await setup();
+    h.harness.sdk.stub("hosts.list", async () => [
+      makeHostResponse({ id: "local-host", name: "Lab workstation" }),
+    ]);
+    try {
+      await h.open();
+      const cli = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "local",
+          "--machine",
+          "local-host",
+          "--headless",
+          "--json",
+        ],
+        { threadId: "thread-test" },
+      );
+      expect(cli.exitCode, cli.stderr).toBe(0);
+      const terminal = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "local",
+          "--machine",
+          "local-host",
+          "--headless",
+          "--thread",
+          "thread-test",
+          "--json",
+        ],
+        {},
+      );
+      expect(terminal.exitCode, terminal.stderr).toBe(0);
+      expect(
+        h.harness.sdk.callsTo("system.experimental_recordTelemetryEvent"),
+      ).toEqual([
+        [
+          {
+            name: "browser_session_started",
+            properties: { surface: "desktop", initiated_by: "sdk" },
+          },
+        ],
+        [
+          {
+            name: "browser_session_started",
+            properties: { surface: "headless", initiated_by: "agent" },
+          },
+        ],
+        [
+          {
+            name: "browser_session_started",
+            properties: { surface: "headless", initiated_by: "user" },
+          },
+        ],
+      ]);
+    } finally {
+      await h.harness.lifecycle.dispose();
+    }
+  });
 
   it("prefers an exact machine ID over a matching name", async () => {
     const h = await setup();
