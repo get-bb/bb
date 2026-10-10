@@ -607,17 +607,21 @@ async function runPrompt(text) {
       attempt: 3,
       finalError: "scripted run failure",
     });
-  if (overflowFailure || text === "/threshold-cancel") {
+  const optionalOverflow =
+    text === "/stop-overflow-cancel" || text === "/stop-overflow-error";
+  const compactionError =
+    text === "/overflow-failed" || text === "/stop-overflow-error";
+  if (overflowFailure || optionalOverflow || text === "/threshold-cancel") {
     event({
       type: "compaction_start",
-      reason: overflowFailure ? "overflow" : "threshold",
+      reason: overflowFailure || optionalOverflow ? "overflow" : "threshold",
     });
     event({
       type: "compaction_end",
-      reason: overflowFailure ? "overflow" : "threshold",
+      reason: overflowFailure || optionalOverflow ? "overflow" : "threshold",
       willRetry: false,
-      aborted: text !== "/overflow-failed",
-      ...(text === "/overflow-failed"
+      aborted: !compactionError,
+      ...(compactionError
         ? { errorMessage: "overflow recovery exhausted" }
         : {}),
     });

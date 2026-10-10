@@ -165,14 +165,24 @@ it.each([
   );
 });
 
-it("does not mistake optional threshold cancellation for failed recovery", async () => {
-  const t = await start();
-  expect(
-    (await t.run("/threshold-cancel")).filter(
-      (d) => d.kind === "turn.boundary",
-    ),
-  ).toEqual([expect.objectContaining({ status: "completed" })]);
-});
+it.each(["/threshold-cancel", "/stop-overflow-cancel", "/stop-overflow-error"])(
+  "does not mistake optional compaction %s for failed recovery",
+  async (text) => {
+    const t = await start();
+    const deltas = await t.run(text);
+    expect(deltas.filter((d) => d.kind === "turn.boundary")).toEqual([
+      expect.objectContaining({ status: "completed" }),
+    ]);
+    expect(
+      deltas.some(
+        (d) =>
+          d.kind === "item.textClose" &&
+          String(d.text).includes("Response to:"),
+      ),
+    ).toBe(true);
+    expect(deltas.filter((d) => d.kind === "usage")).toHaveLength(1);
+  },
+);
 
 it.each(["hello", "/unexpected-abort"])(
   "retains legacy fallback without settlement events for %s",
