@@ -25,7 +25,7 @@ import {
 } from "./client.js";
 import { runTipAction } from "./actions.js";
 import type { TipView, tipsRpcContract } from "./contract.js";
-import { TipsGallery, TipsHiddenNotice } from "./gallery.js";
+import { TipsGallery, TipsHiddenNotice, type TipResult } from "./gallery.js";
 import { recordTipEvent } from "./telemetry.js";
 
 const TIPS_CHANGED_CHANNEL = "tips-changed";
@@ -90,8 +90,9 @@ function TipsGallerySection({
   const [tips, setTips] = useState<readonly TipView[]>([]);
   const [revision, setRevision] = useState(0);
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [filledId, setFilledId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [result, setResult] = useState<
+    (TipResult & { filled: boolean }) | null
+  >(null);
   const [dismissed, setDismissed] = useState(false);
   const visited = useRef(false);
   const isEmpty = composer.isEmpty;
@@ -138,11 +139,12 @@ function TipsGallerySection({
     );
   }, [composer, isEmpty, preview]);
 
-  const filled = isEmpty ? null : filledId;
+  const shownResult =
+    result !== null && result.filled && isEmpty ? null : result;
 
   const activate = useCallback(
     (tip: TipView) => {
-      const result = runTipAction(tip, {
+      const outcome = runTipAction(tip, {
         replaceDraft: (update) => composer.replace(update),
         focusComposer: () => composer.focus(),
         openAppRoute: (path) => navigate.experimental_openAppRoute(path),
@@ -150,11 +152,14 @@ function TipsGallerySection({
           navigate.experimental_runAppCommand(commandId),
         openUrl: (url) => navigate.openUrl(url),
       });
-      if (tip.action.kind === "prompt") {
-        setPreviewId(null);
-        setFilledId(tip.id);
-      }
-      setNotice(result.announcement);
+      const filled = tip.action.kind === "prompt";
+      if (filled) setPreviewId(null);
+      setResult({
+        id: tip.id,
+        ok: outcome.ok,
+        text: outcome.announcement,
+        filled,
+      });
       recordTipEvent(
         sdk,
         "tip_used",
@@ -182,8 +187,7 @@ function TipsGallerySection({
   return (
     <TipsGallery
       tips={tips}
-      filledId={filled}
-      notice={notice}
+      result={shownResult}
       onPreview={setPreviewId}
       onActivate={activate}
       onDismiss={turnOff}

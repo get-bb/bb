@@ -17,8 +17,14 @@ interface StoryTip {
   action: StoryTipAction;
 }
 
+interface StoryResult {
+  id: string;
+  ok: boolean;
+  text: string;
+}
+
 interface ControlsProps {
-  notice: string | null;
+  result: StoryResult | null;
   onDismiss(): void;
 }
 
@@ -26,7 +32,6 @@ interface GalleryModule {
   TipsGallery: ComponentType<
     ControlsProps & {
       tips: readonly StoryTip[];
-      filledId: string | null;
       onPreview(id: string | null): void;
       onActivate(tip: StoryTip): void;
     }
@@ -77,8 +82,7 @@ function composeTip(prompt: string, draft: string): string {
 
 interface TipsPageState {
   tips: readonly StoryTip[];
-  filledId: string | null;
-  notice: string | null;
+  result: StoryResult | null;
   setPreviewId(id: string | null): void;
   activate(tip: StoryTip): void;
 }
@@ -90,26 +94,23 @@ function NewThreadPage({
 }) {
   const [draft, setDraft] = useState("");
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [filledId, setFilledId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [result, setResult] = useState<StoryResult | null>(null);
   const [focusRequest, setFocusRequest] = useState<string | undefined>();
   const tips = CARD_TIPS;
   const preview = tips.find((tip) => tip.id === previewId)?.action;
   const state: TipsPageState = {
     tips,
-    filledId: draft.trim() === "" ? null : filledId,
-    notice,
+    result,
     setPreviewId,
     activate(tip) {
       const action = tip.action;
       if (action.kind !== "prompt") {
-        setNotice(`Opens ${action.label}`);
+        setResult({ id: tip.id, ok: true, text: `Opened ${action.label}` });
         return;
       }
       setDraft((current) => composeTip(action.prompt, current));
-      setFilledId(tip.id);
       setFocusRequest(`${tip.id}:${Date.now()}`);
-      setNotice(`Added “${tip.title}” to the composer`);
+      setResult({ id: tip.id, ok: true, text: "Added to the composer" });
     },
   };
   return (
@@ -139,8 +140,7 @@ function ControlLayout(state: TipsPageState) {
   return (
     <gallery.TipsGallery
       tips={state.tips}
-      filledId={state.filledId}
-      notice={state.notice}
+      result={state.result}
       onPreview={state.setPreviewId}
       onActivate={state.activate}
       onDismiss={() => {}}
@@ -168,7 +168,7 @@ export function Control() {
   return (
     <LayoutStory
       layout={ControlLayout}
-      hint="Production layout: a feed of three tips under the composer that fades out at the bottom, each row an illustration with a title and body, with Hide tips above it. Hover a row to play its illustration and preview a prompt as the placeholder; click to fill the composer."
+      hint="Production layout: a Tips section of three suggestion cards under the composer, each with an illustration, title, and description, and Hide tips beside the label. Hover a card to play its illustration and preview a prompt as the placeholder; click to fill the composer and confirm inside the card."
     />
   );
 }

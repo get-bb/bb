@@ -44,7 +44,8 @@ export interface Animated {
 }
 
 const EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
-const ACTIVE = "[data-tip-art-trigger]:is(:hover, :focus-visible) .tip-art";
+const ACTIVE =
+  "[data-tip-art-trigger]:is(:hover, :focus-visible, :has(:focus-visible)) .tip-art";
 const TRANSITIONS: readonly HoverAnimation[] = [
   "fill-in",
   "flip-on",

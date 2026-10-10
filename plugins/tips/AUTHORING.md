@@ -74,7 +74,7 @@ words; never put metrics, percentages, or sample sizes in this repository.
 
 ## Actions
 
-Every click marks the tip used and announces the result in the status line.
+Every click marks the tip used and confirms the result inside the clicked card.
 `actions.ts` implements each type once.
 
 | Type          | Use it when                                                                                                                | Click                                                                                     |
@@ -103,6 +103,15 @@ Interactive Answers plugin: the prompt asks for an interactive answer only when
 the tool is there, and plain numbered steps otherwise. Prompts that act on the
 person's own task, such as child threads, end with `Task: ` instead.
 
+## Feed layout
+
+The feed is built from bb's shared activation components:
+`SuggestionSection`, `SuggestionGroup`, and `SuggestionCard` from
+`@/components/ui/suggestion-card`, and `InlineConfirmation` from
+`@/components/ui/inline-confirmation`. Don't restyle them or add local row
+styles; the tip's illustration is the card's leading node. Keep the title and
+description within the card's two-line limits by cutting copy.
+
 ## Illustrations
 
 Build every drawing from the parts in `diagram-kit.tsx`, and check it in the
@@ -117,7 +126,7 @@ Build every drawing from the parts in `diagram-kit.tsx`, and check it in the
   without the animation.
 - **Hover.** Give the part that acts out the tip `animate`, and `stagger` for
   a sequence. Use one idea per drawing, about one second, with the end state
-  held while the row is hovered. Reduced motion turns animation off in the kit.
+  held while the card is hovered. Reduced motion turns animation off in the kit.
 
 | Animation                                  | Does                                                                |
 | ------------------------------------------ | ------------------------------------------------------------------- |

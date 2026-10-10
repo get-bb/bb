@@ -57,7 +57,7 @@ export function runTipAction(
     case "prompt":
       host.replaceDraft((current) => composeTipDraft(action.prompt, current));
       host.focusComposer();
-      return { ok: true, announcement: `Added “${tip.title}” to the composer` };
+      return { ok: true, announcement: "Added to the composer" };
     case "open-page":
       return attempt(
         host.openAppRoute(action.path),

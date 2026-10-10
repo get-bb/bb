@@ -136,7 +136,7 @@ function methods(slot: ReturnType<typeof renderTips>): string[] {
 }
 
 function tile(slot: ReturnType<typeof renderTips>, id: string): HTMLElement {
-  const element = slot.container.querySelector(`[data-tip-id="${id}"]`);
+  const element = slot.container.querySelector(`[data-tip-id="${id}"] button`);
   if (!(element instanceof HTMLElement)) throw new Error(`missing tile ${id}`);
   return element;
 }
@@ -153,7 +153,7 @@ describe("Tips homepage section", () => {
       await slot.findByText("Split a big task across helpers"),
     ).toBeTruthy();
     expect(slot.getByRole("region", { name: "Tips" })).toBeTruthy();
-    expect(slot.getAllByRole("listitem")).toHaveLength(3);
+    expect(slot.container.querySelectorAll("[data-tip-id]")).toHaveLength(3);
     expect(
       slot.getByRole("button", {
         name: /Split a big task across helpers.*Adds prompt to composer$/u,
@@ -303,11 +303,10 @@ describe("Tips homepage section", () => {
     );
     expect(slot.composer.focusCount).toBe(1);
     expect(slot.inspection.navigateCalls).toEqual([]);
-    expect(
-      await slot.findByText(
-        "Added “Split a big task across helpers” to the composer",
-      ),
-    ).toBeTruthy();
+    expect(await slot.findByText("Added to the composer")).toBeTruthy();
+    expect(tile(slot, "child-threads").textContent).toContain(
+      "Added to the composer",
+    );
     expect(slot.queryByText("In composer")).toBeNull();
     await waitFor(() =>
       expect(slot.inspection.rpcCalls.at(-1)).toEqual({
@@ -411,10 +410,7 @@ describe("Tips homepage section", () => {
     const slot = renderTips();
     await slot.findByText("Split a big task across helpers");
     fireEvent.click(slot.getByRole("button", { name: /Hide tips/u }));
-    expect(await slot.findByText(/Tips are off\./u)).toBeTruthy();
-    expect(
-      slot.getByText(/Show tips in the Tips plugin settings/u),
-    ).toBeTruthy();
+    expect(await slot.findByText("Tips hidden")).toBeTruthy();
     expect(slot.queryByRole("region", { name: "Tips" })).toBeNull();
     expect(slot.inspection.rpcCalls).toContainEqual({
       method: "setEnabled",
