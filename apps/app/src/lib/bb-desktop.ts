@@ -8,7 +8,8 @@ export const MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS = "left-[84px]";
 export const MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS = "pl-[84px]";
 export const MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS = "pl-[104px]";
 
-export const BROWSER_SIDEBAR_TRIGGER_INSET_CLASS = "pl-[12px]";
+export const BROWSER_SIDEBAR_TRIGGER_INSET_CLASS =
+  "pl-(--bb-sidebar-rail-padding)";
 export const BROWSER_COLLAPSED_HEADER_RESERVE_CLASS =
   "pl-[32px] max-md:pointer-coarse:pl-[40px]";
 export const MACOS_WINDOW_DRAG_CLASS =
@@ -21,7 +22,7 @@ export const CHROME_ROW_HEIGHT_CLASS = "h-(--bb-app-chrome-row-height)";
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
-  "[--bb-macos-chrome-control-y:2px] [transform:translateY(var(--bb-macos-chrome-control-y))]";
+  "[transform:translateY(var(--bb-macos-chrome-control-y,2px))]";
 export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;
 
 type BbDesktopInfoResult = BbDesktopApi | null;
