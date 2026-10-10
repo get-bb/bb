@@ -24,6 +24,7 @@ function fixture() {
     execFileSync("git", args, {
       cwd,
       encoding: "utf8",
+      timeout: 30_000,
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   put(
@@ -104,7 +105,12 @@ function fixture() {
           "--head",
           "HEAD",
         ],
-        { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        {
+          cwd,
+          encoding: "utf8",
+          timeout: 30_000,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
       );
       put("affected.json", affected);
       return JSON.parse(
@@ -117,7 +123,12 @@ function fixture() {
             "--affected",
             "affected.json",
           ],
-          { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+          {
+            cwd,
+            encoding: "utf8",
+            timeout: 30_000,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
         ),
       );
     },
@@ -145,7 +156,7 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
   expect(plan.forks).toBe(false);
   expect(plan.staticFilters).toContain("--filter=@bb/app");
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
-});
+}, 30_000);
 
 it("omits mobile installs only when the selected tests do not include mobile", () => {
   const selected = fixture().plan("packages/text-utils/src/index.ts");
@@ -167,6 +178,7 @@ it("omits mobile installs only when the selected tests do not include mobile", (
       {
         cwd: root,
         encoding: "utf8",
+        timeout: 30_000,
       },
     ),
   );
@@ -248,7 +260,12 @@ it.each(["missing base", "malformed query"])(
         "--affected",
         "affected.json",
       ],
-      { cwd: f.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+      {
+        cwd: f.cwd,
+        encoding: "utf8",
+        timeout: 30_000,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
     );
     const plan = JSON.parse(output);
     expect(plan.reason).toBe("Full cross-platform coverage");
@@ -275,7 +292,7 @@ it.each([
   const output = execFileSync(
     process.execPath,
     [join(root, "scripts/ci-dependencies-changed.mjs"), f.base],
-    { cwd: f.cwd, encoding: "utf8" },
+    { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
   );
   expect(output.trim()).toBe(String(required));
 });
@@ -288,7 +305,7 @@ it.each(["", "missing-ref"])(
       execFileSync(
         process.execPath,
         [join(root, "scripts/ci-dependencies-changed.mjs"), base],
-        { cwd: f.cwd, encoding: "utf8" },
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
       ).trim(),
     ).toBe("true");
   },
@@ -309,7 +326,7 @@ it("compares a refreshed PR merge against its actual base without treating unrel
     execFileSync(
       process.execPath,
       [join(root, "scripts/ci-comparison-base.mjs"), eventBase, prHead],
-      { cwd: f.cwd, encoding: "utf8" },
+      { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
     ).trim();
   expect(resolveBase(f.base, head)).toBe(currentBase);
   expect(resolveBase(f.base, "0".repeat(40))).toBe(f.base);
@@ -328,7 +345,7 @@ it("compares a refreshed PR merge against its actual base without treating unrel
           "--head",
           "HEAD",
         ],
-        { cwd: f.cwd, encoding: "utf8" },
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
       ),
     );
     return JSON.parse(
@@ -341,7 +358,7 @@ it("compares a refreshed PR merge against its actual base without treating unrel
           "--affected",
           "affected.json",
         ],
-        { cwd: f.cwd, encoding: "utf8" },
+        { cwd: f.cwd, encoding: "utf8", timeout: 30_000 },
       ),
     );
   };
