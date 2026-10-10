@@ -1609,6 +1609,41 @@ describe("core environment orchestration", () => {
       expect(getEnvironment(harness.db, environmentId)?.retireAt).toBeNull();
     }));
 
+  it.each([
+    { retireGraceMs: 60_000, sibling: "none", expected: 60_000 },
+    { retireGraceMs: 60_000, sibling: "child", expected: 60_000 },
+    { retireGraceMs: 60_000, sibling: "unrelated", expected: null },
+    { retireGraceMs: null, sibling: "none", expected: null },
+  ] as const)(
+    "reports workspace removal after archive (grace $retireGraceMs, sibling $sibling)",
+    async ({ retireGraceMs, sibling, expected }) =>
+      withTestHarness(async (harness) => {
+        const fixture = setup(harness, { policy: { retireGraceMs } });
+        fixture.ask();
+        await fixture.settled();
+        const environmentId = fixture.attach();
+        updateThread(harness.db, harness.hub, fixture.thread.id, {
+          environmentId,
+        });
+        if (sibling !== "none") {
+          seedThread(harness.deps, {
+            projectId: fixture.thread.projectId,
+            environmentId,
+            parentThreadId: sibling === "child" ? fixture.thread.id : null,
+          });
+        }
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${fixture.thread.id}/child-summary`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({
+          workspaceRemovalDelayMs: expected,
+        });
+      }),
+  );
+
   it("waits for an archived runtime to stop before remove", async () =>
     withTestHarness(async (harness) => {
       let removes = 0;

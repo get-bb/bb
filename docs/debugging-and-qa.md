@@ -176,6 +176,13 @@ the same hierarchy, lifecycle-owner, and hidden source-fork edges as
 excludes hidden, already archived, or deleted candidates and the requested root.
 Hidden threads still participate in the archive cascade, and visible descendants
 beneath hidden threads still count toward confirmation.
+`workspaceRemovalDelayMs` is the provider's `retireGraceMs` when archiving the
+thread and that cascade would leave its environment with no unarchived threads,
+so the server would schedule workspace removal; it is `null` when other threads
+keep the environment, the provider retains workspaces (`retireGraceMs: null`),
+the thread has no provider environment, or removal is already scheduled or
+running. Servers that predate the field omit it. The confirmation dialog states
+the delay only when it is a number.
 The UI adds the root to the displayed total and skips confirmation when no
 unarchived descendants remain or the General setting `confirmThreadArchive`
 is disabled. The summary is a preview; concurrent changes

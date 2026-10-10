@@ -13,6 +13,23 @@ import {
 export interface ThreadArchiveDialogTarget {
   thread: Thread;
   childThreadCount: number;
+  workspaceRemovalDelayMs: number | null;
+}
+
+const WORKSPACE_REMOVAL_DELAY_UNITS = [
+  { label: "day", ms: 86_400_000 },
+  { label: "hour", ms: 3_600_000 },
+  { label: "minute", ms: 60_000 },
+  { label: "second", ms: 1_000 },
+] as const;
+
+function formatWorkspaceRemovalSentence(delayMs: number): string {
+  const unit = WORKSPACE_REMOVAL_DELAY_UNITS.find(
+    (candidate) => delayMs >= candidate.ms,
+  );
+  if (unit === undefined) return "Its workspace is removed after archiving.";
+  const count = Math.round(delayMs / unit.ms);
+  return `Its workspace is removed ${count} ${unit.label}${count === 1 ? "" : "s"} after archiving.`;
 }
 
 interface ThreadArchiveDialogProps {
@@ -67,7 +84,7 @@ export function ThreadArchiveDialogContent({
   onOpenChange,
   onArchive,
 }: ThreadArchiveDialogContentProps) {
-  const { childThreadCount } = target;
+  const { childThreadCount, workspaceRemovalDelayMs } = target;
   const archivedThreadCount = childThreadCount + 1;
   const active =
     target.thread.status === "starting" ||
@@ -77,6 +94,9 @@ export function ThreadArchiveDialogContent({
     active ? "This will stop current work." : null,
     `${childThreadCount} child ${childThreadCount === 1 ? "thread" : "threads"} will be archived with this thread.`,
     "Archived threads stay available and can be unarchived.",
+    workspaceRemovalDelayMs === null
+      ? null
+      : formatWorkspaceRemovalSentence(workspaceRemovalDelayMs),
   ].filter((sentence): sentence is string => sentence !== null);
 
   return (

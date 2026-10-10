@@ -1924,3 +1924,26 @@ export async function sweepProviderEnvironment(
 ): Promise<void> {
   await advanceEnvironmentProvisioning(deps, { environmentId, removal: true });
 }
+
+export function getEnvironmentRetireGraceMs(
+  db: DbConnection,
+  environmentId: string,
+): number | null {
+  const row = getEnvironment(db, environmentId);
+  if (
+    row === null ||
+    row.environmentProviderId === null ||
+    row.status === "destroyed" ||
+    row.ownerThreadId !== null ||
+    row.teardownStatus !== null ||
+    row.retireAt !== null
+  )
+    return null;
+  const record = getEnvironmentProvider(row.environmentProviderId);
+  if (
+    record === undefined ||
+    record.pluginId !== row.environmentProviderPluginId
+  )
+    return null;
+  return record.provider.policy.retireGraceMs;
+}

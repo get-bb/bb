@@ -1,5 +1,6 @@
 import {
   cancelProviderEnvironmentCreation,
+  getEnvironmentRetireGraceMs,
   sweepProviderEnvironment,
 } from "../environments/environment-engine.js";
 import {
@@ -178,6 +179,21 @@ export function countUnarchivedThreadDescendants(
       candidate.deletedAt === null &&
       candidate.archivedAt === null,
   ).length;
+}
+
+export function resolveArchiveWorkspaceRemovalDelayMs(
+  db: AppDeps["db"],
+  thread: Thread,
+): number | null {
+  if (thread.environmentId === null) return null;
+  const archivedThreadIds = new Set(
+    listArchiveCandidates(db, [thread]).map((candidate) => candidate.id),
+  );
+  const keepsEnvironment = listLiveThreadsInEnvironment(db, {
+    environmentId: thread.environmentId,
+  }).some((liveThread) => !archivedThreadIds.has(liveThread.id));
+  if (keepsEnvironment) return null;
+  return getEnvironmentRetireGraceMs(db, thread.environmentId);
 }
 
 function listArchiveCandidates(db: AppDeps["db"], roots: Thread[]) {

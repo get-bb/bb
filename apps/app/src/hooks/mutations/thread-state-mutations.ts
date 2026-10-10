@@ -49,7 +49,10 @@ interface ArchiveThreadAndChildrenMutationRequest {
 }
 
 export class ArchiveThreadConfirmationRequired extends Error {
-  constructor(readonly childThreadCount: number) {
+  constructor(
+    readonly childThreadCount: number,
+    readonly workspaceRemovalDelayMs: number | null,
+  ) {
     super("Archiving child threads requires confirmation");
   }
 }
@@ -204,6 +207,7 @@ export function useArchiveThreadAndChildren() {
         if (summary.unarchivedDescendantCount > 0) {
           throw new ArchiveThreadConfirmationRequired(
             summary.unarchivedDescendantCount,
+            summary.workspaceRemovalDelayMs ?? null,
           );
         }
       }

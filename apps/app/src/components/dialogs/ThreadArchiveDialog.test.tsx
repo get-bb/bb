@@ -13,9 +13,11 @@ function renderDialog({
   childThreadCount = 1,
   status = "idle",
   pending = false,
+  workspaceRemovalDelayMs = null,
 }: {
   pending?: boolean;
   childThreadCount?: number;
+  workspaceRemovalDelayMs?: number | null;
   status?: "idle" | "starting" | "active" | "stopping";
 } = {}) {
   const onArchive = vi.fn();
@@ -23,7 +25,7 @@ function renderDialog({
   const thread = makeThread({ status });
   const view = render(
     <ThreadArchiveDialog
-      target={{ thread, childThreadCount }}
+      target={{ thread, childThreadCount, workspaceRemovalDelayMs }}
       pending={pending}
       onOpenChange={onOpenChange}
       onArchive={onArchive}
@@ -100,6 +102,29 @@ describe("ThreadArchiveDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive 3 threads" }));
-    expect(onArchive).toHaveBeenCalledWith({ thread, childThreadCount: 2 });
+    expect(onArchive).toHaveBeenCalledWith({
+      thread,
+      childThreadCount: 2,
+      workspaceRemovalDelayMs: null,
+    });
+  });
+
+  it.each([
+    [300_000, "Its workspace is removed 5 minutes after archiving."],
+    [3_600_000, "Its workspace is removed 1 hour after archiving."],
+    [0, "Its workspace is removed after archiving."],
+  ])(
+    "states when archiving removes the workspace after %i ms",
+    (delayMs, sentence) => {
+      renderDialog({ workspaceRemovalDelayMs: delayMs });
+      expect(
+        screen.getByText(new RegExp(sentence.replace(".", "\\."))),
+      ).toBeTruthy();
+    },
+  );
+
+  it("omits the workspace sentence when archiving keeps the workspace", () => {
+    renderDialog();
+    expect(screen.queryByText(/workspace is removed/)).toBeNull();
   });
 });

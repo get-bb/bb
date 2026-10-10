@@ -1,4 +1,7 @@
-import { countUnarchivedThreadDescendants } from "../../services/threads/thread-archive.js";
+import {
+  countUnarchivedThreadDescendants,
+  resolveArchiveWorkspaceRemovalDelayMs,
+} from "../../services/threads/thread-archive.js";
 import { cancelAbandonedProviderCreations } from "../../services/threads/thread-environment-providers.js";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
@@ -414,6 +417,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return {
       nonDeletedChildCount,
       unarchivedDescendantCount: countUnarchivedThreadDescendants(
+        deps.db,
+        thread,
+      ),
+      workspaceRemovalDelayMs: resolveArchiveWorkspaceRemovalDelayMs(
         deps.db,
         thread,
       ),
