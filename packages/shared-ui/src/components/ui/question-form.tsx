@@ -5,6 +5,7 @@ import type {
 } from "./question-form-state";
 import {
   useQuestionFormHost,
+  type QuestionFormHost,
   type QuestionShortcut,
 } from "./question-form-host";
 import {
@@ -38,7 +39,7 @@ const FREE_TEXT_MIN_HEIGHT = 84;
 const FREE_TEXT_MAX_HEIGHT = 158;
 const PREVIEW_MAX_HEIGHT = 220;
 
-export type QuestionFormDensity = "default" | "compact";
+export type QuestionFormDensity = QuestionFormHost["density"];
 
 interface QuestionOptionRowProps {
   checked: boolean;
@@ -84,15 +85,17 @@ function QuestionOptionRow({
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onSelect}
       className={cn(
-        "flex w-full gap-2.5 rounded-md px-2.5 text-left transition-colors",
-        density === "compact" ? "items-center py-1" : "items-start py-1.5",
+        "flex w-full rounded-md text-left transition-colors",
+        density === "compact"
+          ? "items-center gap-2 px-1.5 py-0.5"
+          : "items-start gap-2.5 px-2.5 py-1.5",
         checked ? "bg-surface-selected" : "hover:bg-state-hover",
       )}
     >
       <span
         className={cn(
-          "flex size-4 shrink-0 items-center justify-center border",
-          density === "compact" ? undefined : "mt-0.5",
+          "flex shrink-0 items-center justify-center border",
+          density === "compact" ? "size-3.5" : "mt-0.5 size-4",
           multiSelect ? "rounded" : "rounded-full",
           checked
             ? "border-primary bg-primary text-primary-foreground"
@@ -103,9 +106,7 @@ function QuestionOptionRow({
       </span>
       {density === "compact" ? (
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="shrink-0 text-sm font-medium text-foreground">
-            {label}
-          </span>
+          <span className="shrink-0 text-xs text-foreground/90">{label}</span>
           {description ? (
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {description}
@@ -273,7 +274,7 @@ function QuestionInputBlock({
       <legend className="sr-only">{question.prompt}</legend>
       {density === "compact" ? (
         <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+          <div className="min-w-0 flex-1 truncate text-xs text-foreground">
             {question.prompt}
           </div>
           {actions}
@@ -283,7 +284,9 @@ function QuestionInputBlock({
           {question.prompt}
         </div>
       ) : null}
-      <div className={cn("space-y-0.5", density === "compact" ? "mt-1" : "mt-2")}>
+      <div
+        className={cn("space-y-0.5", density === "compact" ? "mt-1" : "mt-2")}
+      >
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
           return (
@@ -338,7 +341,6 @@ function QuestionInputBlock({
 }
 
 export interface QuestionFormProps {
-  density?: QuestionFormDensity;
   draftKey?: string;
   questions: readonly Question[];
   disabled: boolean;
@@ -348,7 +350,6 @@ export interface QuestionFormProps {
 }
 
 export function QuestionForm({
-  density = "default",
   draftKey,
   questions,
   disabled: inputDisabled,
@@ -364,7 +365,7 @@ export function QuestionForm({
   const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
-  const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
+  const { density, shortcuts, registerChoiceHandler } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -463,7 +464,8 @@ export function QuestionForm({
   if (!currentQuestion) return null;
 
   const currentState = answerStateFor(formState, currentQuestion);
-  const compactButtonClass = density === "compact" ? "h-6 px-2" : undefined;
+  const compactButtonClass =
+    density === "compact" ? "h-6 px-2 text-xs" : undefined;
   const cancelButton = (
     <Button
       type="button"

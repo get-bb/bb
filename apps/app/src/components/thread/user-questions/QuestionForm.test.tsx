@@ -109,11 +109,12 @@ function render(
     submit?: (value: InteractionResponse) => Promise<void>;
     cancel?: () => Promise<void>;
     draftKey?: string;
+    density?: "default" | "compact";
   } = {},
 ) {
   return renderReact(
     <AppCommandProvider>
-      <ThreadQuestionFormHost>
+      <ThreadQuestionFormHost density={handlers.density ?? "default"}>
         <QuestionForm
           draftKey={handlers.draftKey}
           questions={payload.questions}
@@ -257,6 +258,13 @@ describe("answering a single-select question", () => {
     expect(submit).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes compact density from the host when the form passes none", () => {
+    const slot = render(singleSelect, { density: "compact" });
+    expect(getButtonByText(slot, "Decline")).toBeTruthy();
+    expect(getButtonByText(slot, "Submit")).toBeTruthy();
+    expect(slot.queryByText("Submit answer")).toBeNull();
   });
 
   it("submits the selected option value", () => {

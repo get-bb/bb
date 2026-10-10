@@ -137,6 +137,13 @@ export interface ExperimentalQuestionShortcut {
  */
 export interface ExperimentalQuestionFormHost {
   /**
+   * How much room the host gives the form. `"compact"` when the question is
+   * answered inside a small surface such as a parent's child threads banner;
+   * forms there should use one-line rows and small type. `"default"` for a
+   * full question card.
+   */
+  density: "default" | "compact";
+  /**
    * Shortcut per zero-based option index, as a string (`"0"` is the first
    * option). Missing entries have no binding.
    */

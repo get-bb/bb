@@ -109,7 +109,7 @@ export function PendingInteractionShell({
         data-presentation="inline"
         className="flex min-w-0 flex-col text-xs text-muted-foreground"
       >
-        <ThreadQuestionFormHost>
+        <ThreadQuestionFormHost density="compact">
           <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
             {title ? (
               <h3
@@ -200,7 +200,7 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <ThreadQuestionFormHost>
+        <ThreadQuestionFormHost density="default">
           <div
             id={contentId}
             hidden={!isExpanded}

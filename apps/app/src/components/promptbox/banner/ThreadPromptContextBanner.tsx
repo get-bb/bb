@@ -61,9 +61,13 @@ import {
 } from "@/lib/pull-request-display";
 import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
-import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
+import {
+  AnimatedBody,
+  AnimatedDisclosureBody,
+} from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackCollapseRow,
   PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
@@ -567,43 +571,51 @@ function ChildQuestionBody({
 }) {
   const position = `${index + 1} of ${total}`;
   return (
-    <div className="px-3 pb-2 pt-1">
-      <div className="flex min-w-0 items-center gap-2 text-xs">
+    <div className="px-3 pb-1 pt-1">
+      <div className="flex min-w-0 items-center gap-1 text-xs">
         <button
           ref={backButtonRef}
           type="button"
+          aria-label="Back to child threads"
           onClick={onBack}
-          className="-ml-1.5 flex h-6 shrink-0 items-center gap-0.5 rounded-md pl-0.5 pr-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn("-ml-1.5", CHILD_QUESTION_STEP_BUTTON_CLASS)}
         >
           <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
-          Child threads
         </button>
         <NavLink
           to={current.href}
-          className="min-w-0 truncate text-subtle-foreground no-underline hover:underline"
+          className="min-w-0 truncate text-foreground/90 no-underline underline-offset-2 hover:underline"
         >
           {current.childTitle}
         </NavLink>
         {total > 1 ? (
           <div className="-mr-1.5 ml-auto flex shrink-0 items-center">
-            <span className="mr-1 tabular-nums text-subtle-foreground">
-              {`${position} waiting`}
-            </span>
             <button
               type="button"
               aria-label="Previous question"
               onClick={() => onStep(-1)}
               className={CHILD_QUESTION_STEP_BUTTON_CLASS}
             >
-              <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
+              <Icon
+                name="ChevronLeft"
+                className="size-3.5"
+                aria-hidden="true"
+              />
             </button>
+            <span className="tabular-nums text-subtle-foreground">
+              {position}
+            </span>
             <button
               type="button"
               aria-label="Next question"
               onClick={() => onStep(1)}
               className={CHILD_QUESTION_STEP_BUTTON_CLASS}
             >
-              <Icon name="ChevronRight" className="size-3.5" aria-hidden="true" />
+              <Icon
+                name="ChevronRight"
+                className="size-3.5"
+                aria-hidden="true"
+              />
             </button>
           </div>
         ) : null}
@@ -1025,14 +1037,11 @@ function ActiveChildThreadsCard({
         )}
         <PromptStackCountSlot count={items.length} prefix="" />
       </button>
-      <AnimatedDisclosureBody
+      <AnimatedBody
         collapsedBorder="reserve"
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
-        collapseLabel={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
-        collapseRef={focus.collapseRef}
-        onCollapse={focus.onCollapseClick}
       >
         {currentQuestion ? (
           <ChildQuestionBody
@@ -1050,7 +1059,14 @@ function ActiveChildThreadsCard({
             onOpenQuestion={openQuestionById}
           />
         )}
-      </AnimatedDisclosureBody>
+        <PromptStackCollapseRow
+          buttonRef={focus.collapseRef}
+          className="rounded-none"
+          controlsId={SECTION_IDS.childThreads.body}
+          label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
+          onCollapse={focus.onCollapseClick}
+        />
+      </AnimatedBody>
     </PromptStackCard>
   );
 }

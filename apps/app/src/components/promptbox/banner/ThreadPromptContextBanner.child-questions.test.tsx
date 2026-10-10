@@ -180,19 +180,17 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Child threads" }),
+      screen.getByRole("button", { name: "Back to child threads" }),
     );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
     expect(shownSource()).toBe("Child thr_c");
-    expect(screen.getByText("2 of 3 waiting")).toBeTruthy();
+    expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getAllByText("Which shape?").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBe(null);
-    expect(screen.queryByRole("button", { name: "Close question" })).toBe(
-      null,
-    );
+    expect(screen.queryByRole("button", { name: "Close question" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Submit answer" })).toBe(null);
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
@@ -211,7 +209,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(header);
 
     expect(shownSource()).toBe("Child thr_b");
-    expect(screen.getByText("1 of 3 waiting")).toBeTruthy();
+    expect(screen.getByText("1 of 3")).toBeTruthy();
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -228,7 +226,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(shownSource()).toBe("Child thr_b");
     press("Previous question");
     expect(shownSource()).toBe("Child thr_a");
-    expect(screen.getByText("3 of 3 waiting")).toBeTruthy();
+    expect(screen.getByText("3 of 3")).toBeTruthy();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Previous question" }),
     );
@@ -240,14 +238,16 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
-    expect(screen.queryByText(/waiting$/)).toBe(null);
+    expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
   });
 
   it("returns to the row list from the back button and focuses that row", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Child threads" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to child threads" }),
+    );
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();

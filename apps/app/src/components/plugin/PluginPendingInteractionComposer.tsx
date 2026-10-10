@@ -1,8 +1,9 @@
 import {
+  PendingInteractionPresentationContext,
   PendingInteractionShell,
   type PendingInteractionSourceThread,
 } from "@/components/thread/pending-interactions/PendingInteractionShell";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -42,6 +43,7 @@ export function PluginPendingInteractionComposer({
   const { pendingInteractions } = usePluginSlots();
   const pluginName = usePluginDisplayName(request.pluginId);
   const pluginsSettled = usePluginFrontendsSettled();
+  const presentation = useContext(PendingInteractionPresentationContext);
   const stopThread = useStopThread();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -104,11 +106,13 @@ export function PluginPendingInteractionComposer({
     >
       {() => (
         <>
-          <p className="mb-4 text-xs text-muted-foreground">
-            {origin === "plugin"
-              ? `Requested by ${pluginName}`
-              : `Asked by the agent through ${pluginName}`}
-          </p>
+          {presentation === "inline" ? null : (
+            <p className="mb-4 text-xs text-muted-foreground">
+              {origin === "plugin"
+                ? `Requested by ${pluginName}`
+                : `Asked by the agent through ${pluginName}`}
+            </p>
+          )}
           {slot ? (
             <PluginSlotMount
               pluginId={slot.pluginId}
@@ -130,7 +134,7 @@ export function PluginPendingInteractionComposer({
                 </div>
               }
             >
-              <fieldset disabled={submitting}>
+              <fieldset disabled={submitting} className="min-w-0">
                 <slot.component
                   interaction={{
                     id: interaction.id,

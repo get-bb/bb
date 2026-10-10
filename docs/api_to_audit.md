@@ -2109,7 +2109,10 @@ returns `renderSlot`'s `pluginId` option, `test-plugin` by default.
 **What it does.** Returns the answer shortcuts bb binds while a pending
 interaction is open (`question.select.1` and on, which users can remap), keyed
 by zero-based option index, and `registerChoiceHandler`, which receives the
-index a person chose with a shortcut while the thread's pane is focused. A
+index a person chose with a shortcut while the thread's pane is focused, and
+`density`: `"compact"` when the form is answered inside a parent's child threads
+banner, otherwise `"default"`. The registry's `question-form` reads `density`
+from the host, so plugin forms built on it match the surface without a prop. A
 `pendingInteraction` component shows each option's shortcut and decides what
 choosing it means. Outside a pending interaction the map is empty and handlers
 never run; the test harness returns that empty host. The registry's
@@ -2129,6 +2132,8 @@ not import.
 3. **Consumer count.** Two first-party consumers (Ask User Question, pi's
    extension dialogs). Confirm a third-party form needs it before the prefix
    drops.
+4. **Density.** Confirm two values are enough and that the host, not the
+   form, should choose them; compact is used only by the child threads banner.
 
 ## `app.slots.experimental_providerIcon` (`@get-bb/plugin-sdk/app`)
 
