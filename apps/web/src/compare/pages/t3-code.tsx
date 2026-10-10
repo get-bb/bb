@@ -31,7 +31,7 @@ import {
   limitsSection,
 } from "../compare-sections";
 import { AgentSplit } from "../compare-visuals";
-import { T3_CODE_LOGO, meta } from "./t3-code.meta";
+import { meta } from "./t3-code.meta";
 
 const PLUGINS_COPY_T3: SectionCopy = {
   title: "Customize everything in the app with plugins",

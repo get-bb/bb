@@ -1,4 +1,3 @@
-import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import BubbleChatAddIcon from "@hugeicons/core-free-icons/BubbleChatAddIcon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
@@ -223,44 +222,8 @@ export function PromptBlock({
   );
 }
 
-export function OutputBlock({ children }: { children: ReactNode }) {
-  return (
-    <div className="gd-code gd-output">
-      <div className="gd-code-bar">
-        <span className="gd-code-label">Output</span>
-      </div>
-      <pre>{children}</pre>
-    </div>
-  );
-}
-
 export function Substeps({ children }: { children: ReactNode }) {
   return <ol className="gd-substeps">{brandProse(children)}</ol>;
-}
-
-export function Note({
-  title,
-  warn = false,
-  children,
-}: {
-  title: string;
-  warn?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className={warn ? "gd-note gd-note-warn" : "gd-note"}>
-      {warn ? (
-        <HugeiconsIcon
-          icon={Alert02Icon}
-          className="gd-note-icon"
-          aria-hidden="true"
-        />
-      ) : null}
-      <span>
-        <strong>{title}</strong> {brandProse(children)}
-      </span>
-    </div>
-  );
 }
 
 export function ProductShot({ shot }: { shot: GuideShot }) {
@@ -294,24 +257,4 @@ export function ProductShot({ shot }: { shot: GuideShot }) {
 
 export function BulletList({ children }: { children: ReactNode }) {
   return <ul className="gd-list">{brandProse(children)}</ul>;
-}
-
-export function MorePath({
-  id,
-  title,
-  children,
-}: {
-  id: string;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <details className="gd-more" id={id}>
-      <summary>
-        {title}
-        <HugeiconsIcon icon={ArrowDown01Icon} aria-hidden="true" />
-      </summary>
-      <div className="gd-more-body">{brandProse(children)}</div>
-    </details>
-  );
 }

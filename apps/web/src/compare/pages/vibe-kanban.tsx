@@ -9,7 +9,7 @@ import {
 import { AGENTS_COPY, agentsSection } from "../compare-sections";
 import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import { TaskLedger, TasksBoard } from "../compare-visuals";
-import { VIBE_KANBAN_LOGO, meta } from "./vibe-kanban.meta";
+import { meta } from "./vibe-kanban.meta";
 
 const LEDGER_HIGHLIGHT: CompareHighlight = {
   title: "See the agents on every task",

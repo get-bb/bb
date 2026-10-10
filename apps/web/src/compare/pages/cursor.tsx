@@ -30,7 +30,7 @@ import {
   spawnSection,
 } from "../compare-sections";
 import { AgentSplit, UsageVisual } from "../compare-visuals";
-import { CURSOR_LOGO, meta } from "./cursor.meta";
+import { meta } from "./cursor.meta";
 
 const PLANS_SECTION = {
   title: "Every agent on its own subscription",
