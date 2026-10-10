@@ -795,8 +795,8 @@ Sidebar.displayName = "Sidebar";
 
 const SidebarCollapsibleBody = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, children, ...props }, ref) => {
+  React.ComponentProps<"div"> & { contentInFlow?: boolean }
+>(({ className, children, contentInFlow = false, ...props }, ref) => {
   const { open } = useSidebar();
   const width = React.useContext(SidebarWidthContext);
   const collapsedRailWidth = React.useContext(SidebarCollapsedRailWidthContext);
@@ -820,7 +820,10 @@ const SidebarCollapsibleBody = React.forwardRef<
       {...props}
     >
       <div
-        className="absolute inset-y-0 right-0 flex"
+        className={cn(
+          "flex",
+          contentInFlow ? "relative h-full" : "absolute inset-y-0 right-0",
+        )}
         style={{
           width:
             collapsedRailWidth === null

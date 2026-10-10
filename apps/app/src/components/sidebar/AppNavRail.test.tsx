@@ -50,7 +50,11 @@ import {
 } from "@/lib/route-paths";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
-import { AppNavRail, NavRailNewThreadButton } from "./AppNavRail";
+import {
+  AppNavRail,
+  NavRailNewThreadButton,
+  NavRailSettingsButton,
+} from "./AppNavRail";
 import { SidebarVisibilityCustomize } from "./SidebarVisibilityControls";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
 
@@ -76,12 +80,19 @@ vi.mock("@/views/useMobileRecentsThreadReveal", () => ({
 vi.mock("@/components/sidebar/AppSidebar", () => ({
   AppSidebar: ({
     renderRail,
+    railFooter,
   }: {
+    railFooter: ReactNode;
     renderRail: (customize: {
       isOpen: boolean;
       onOpenChange: () => void;
     }) => ReactNode;
-  }) => renderRail({ isOpen: false, onOpenChange: () => {} }),
+  }) => (
+    <>
+      {renderRail({ isOpen: false, onOpenChange: () => {} })}
+      {railFooter}
+    </>
+  ),
 }));
 
 vi.mock("@/components/settings/SettingsSidebar", () => ({
@@ -147,12 +158,16 @@ function RailHarness({ useLayout = false }: { useLayout?: boolean }) {
           <SidebarUpdatesBadge onNavigate={closeMobileSidebar} />
         </>
       ) : (
-        <AppNavRail
-          isAppMode={isAppMode}
-          isSettingsActive={isSettings}
-          settingsRoutePath={SETTINGS_ROUTE_PATH}
-          customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
-        />
+        <>
+          <AppNavRail
+            isAppMode={isAppMode}
+            customize={{ isOpen: isCustomizing, onOpenChange: setCustomizing }}
+          />
+          <NavRailSettingsButton
+            isSettingsActive={isSettings}
+            settingsRoutePath={SETTINGS_ROUTE_PATH}
+          />
+        </>
       )}
       <NavRailNewThreadButton />
       <output data-testid="pathname">{location.pathname}</output>
@@ -196,22 +211,29 @@ function rail(): HTMLElement {
 }
 
 function railButton(name: string): HTMLElement {
-  const button = Array.from(rail().querySelectorAll("button")).find(
-    (candidate) => candidate.getAttribute("aria-label") === name,
-  );
+  const button = Array.from(
+    document.querySelectorAll(
+      '[data-testid="app-nav-rail"] button, button[aria-label="Settings"]',
+    ),
+  ).find((candidate) => candidate.getAttribute("aria-label") === name);
   if (!button) throw new Error(`Expected a rail button named ${name}`);
   return button;
 }
 
 function railLabels(): (string | null)[] {
-  return Array.from(rail().querySelectorAll("button"), (button) =>
-    button.getAttribute("aria-label"),
+  return Array.from(
+    document.querySelectorAll(
+      '[data-testid="app-nav-rail"] button, button[aria-label="Settings"]',
+    ),
+    (button) => button.getAttribute("aria-label"),
   );
 }
 
 function currentRailLabels(): (string | null)[] {
   return Array.from(
-    rail().querySelectorAll('button[aria-current="page"]'),
+    document.querySelectorAll(
+      '[data-testid="app-nav-rail"] button[aria-current="page"], button[aria-label="Settings"][aria-current="page"]',
+    ),
     (button) => button.getAttribute("aria-label"),
   );
 }
