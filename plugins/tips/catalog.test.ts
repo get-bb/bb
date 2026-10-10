@@ -77,6 +77,15 @@ describe("tip catalog", () => {
     }
   });
 
+  it("describes outcomes instead of naming child threads in titles and bodies", () => {
+    for (const definition of TIP_CATALOG) {
+      expect(
+        `${definition.title} ${definition.body}`,
+        definition.id,
+      ).not.toMatch(/child thread/iu);
+    }
+  });
+
   it("draws every tip with an illustration that exists", () => {
     for (const definition of TIP_CATALOG) {
       expect(ILLUSTRATION_IDS, definition.id).toContain(
