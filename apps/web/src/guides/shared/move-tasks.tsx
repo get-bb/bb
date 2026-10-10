@@ -29,13 +29,13 @@ Guide: https://getbb.app/guides/${tool.slug}
 Move every active one. Use this computer's timezone for every schedule: the part of \`readlink /etc/localtime\` after zoneinfo/.
 
 ${tool.find}
-2. Match each one to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose source path matches its folder. If none does, add the folder with \`bb project create --name <folder name> --root <folder>\`.
+2. Match each one to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose source path matches its folder. If none does, add the folder with \`bb project create --name '<folder name>' --root '<folder>'\`.
    Check: every one has a project ID.
 3. Turn each schedule into a five-field cron in my timezone. If there's no exact cron, like every other week, use the closest one and note it.
    Check each model against \`${tool.modelsCommand}\`. If it isn't listed, use the one marked isDefault and note it.
-4. Create each automation paused. Read \`bb automation create --help\` first.
-   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <timezone> ${tool.providerFlag} --model <model> --permission-mode auto <where> --prompt "<the prompt, word for word>"
-   For <where>: if it ran in a worktree, use --new-environment worktree. If it ran in its folder, use --environment <that folder>, the project source path from \`bb project list\`.
+4. Create each automation paused. Read \`bb automation create --help\` first. Never put task text inside a shell string, where backticks and $ would run: write each prompt to its own file with a quoted heredoc (<<'EOF'), and quote every name and folder.
+   bb automation create --project <project-id> --name '<name>' --disabled --cron '<cron>' --timezone <timezone> ${tool.providerFlag} --model <model> --permission-mode auto <where> --prompt "$(cat <prompt file>)"
+   For <where>: if it ran in a worktree, use --new-environment worktree. If it ran in its folder, use --environment '<that folder>', the project source path from \`bb project list\`.
    If a prompt relies on something only ${tool.name} had, like a connector or an event trigger, note what it needs.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
 5. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
@@ -43,7 +43,7 @@ ${tool.find}
 6. Switch over each one whose test passed.
    Turn it on: \`bb automation resume <id> --project <project-id>\`.
 ${tool.pause}
-   Check: a minute later, read the original again. If it's active again, note that I need to pause it in ${tool.app}.
+   Check: read the original back, and count it as switched over only if it's paused. A minute later, read it again. If it's active again, or a pause step failed, note that I need to pause it in ${tool.app}.
 
 Reply with a table: name, its old schedule, its bb schedule, project, test result, and whether it's switched over. Then list anything I still need to do.`;
 }
@@ -146,10 +146,10 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
         question: `What does my agent change in ${tool.name}?`,
         answer: (
           <p>
-            Only one thing: it pauses each original after its bb automation
-            passes a test, so nothing runs twice. It backs up the file first
-            and leaves the prompt and schedule alone, so you can switch an
-            original back on in {tool.app}.{tool.changeNote}
+            It pauses each original after its bb automation passes a test, so
+            nothing runs twice. First it saves a backup copy of the files it
+            changes, and it leaves the prompt and schedule alone, so you can
+            switch an original back on in {tool.app}.{tool.changeNote}
           </p>
         ),
       },
@@ -185,12 +185,12 @@ export const MOVE_TASKS_TOOLS = {
     description:
       "Turn your Claude Code routines into bb automations. bb recreates each one and tests them before you switch over.",
     find: `1. Find my routines.
-   - Local routines: read ${CLAUDE_TASKS_FILE}. Each entry in scheduledTasks has its schedule (cronExpression), enabled, model, folder (cwd, or the first of userSelectedFolders), useWorktree, and filePath: the SKILL.md under ~/.claude/scheduled-tasks/ whose body is the prompt. Skip entries with enabled false, and one-time ones with fireAt instead of cronExpression.
+   - Local routines: read ${CLAUDE_TASKS_FILE}. Each entry in scheduledTasks has its schedule (cronExpression), enabled, model, folder (cwd, or the first of userSelectedFolders), useWorktree, and filePath: the SKILL.md under ~/.claude/scheduled-tasks/ whose body is the prompt. Skip entries with enabled false, and one-time ones with fireAt instead of cronExpression. If the file is missing or its entries don't have these fields, don't edit anything: tell me what you found and stop.
    - Cloud routines live on my claude.ai account. List them with Claude Code's /schedule, using my claude.ai login rather than any key bb set: \`${CLAUDE_AI} claude -p "/schedule list" --allowedTools RemoteTrigger\`. Get each one's prompt, schedule, repository, and model. Each cloud run gets a fresh clone, so use a worktree for these. If you can't reach them, skip them and say so.
    - Skip /loop tasks. They end with their session.
    Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
     pause: `   Pause the original. For a cloud routine, turn it off the same way: \`${CLAUDE_AI} claude -p "/schedule update <routine id>: set enabled to false" --allowedTools RemoteTrigger\`.
-   The Claude desktop app reads scheduled-tasks.json only when it starts, so pause the local routines together after the last test: quit the app with \`osascript -e 'quit app "Claude"'\` and wait until it has closed, copy scheduled-tasks.json to scheduled-tasks.before-bb.json, set each moved entry's "enabled" to false with a JSON-aware edit, read the file back, then reopen the app with \`open -a Claude\`.`,
+   The Claude desktop app reads scheduled-tasks.json only when it starts, so pause the local routines together after the last test: quit the app with \`osascript -e 'quit app "Claude"'\` and wait until it has closed, for each scheduled-tasks.json you'll change, copy it to scheduled-tasks.before-bb.json beside it unless that backup already exists, set each moved entry's "enabled" to false in the file it came from with a JSON-aware edit, read the file back, then reopen the app with \`open -a Claude\`.`,
     changeNote:
       " To pause local routines, it quits and reopens the Claude Code desktop app.",
     checkOriginals: (
@@ -293,7 +293,7 @@ export const MOVE_TASKS_TOOLS = {
    rrule is the schedule, cwds the project folders, and execution_environment is worktree or local. If that table doesn't exist, read each ~/.codex/automations/<id>/automation.toml instead; it has the same fields.
    A task with a target_thread_id runs inside a Codex chat. bb can't continue that chat, so move it as a regular automation and note it.
    Check: list each task's name, schedule in plain words, project folder, local or worktree, and model.`,
-    pause: `   Pause the original. The app keeps each task twice: in ~/.codex/automations/<task id>/automation.toml and in the database, and it restores the database from the TOML file. So change both. Copy the TOML file to ~/.codex/automations-before-bb/<task id>.toml, set its status line to status = "PAUSED", then run \`sqlite3 "${CODEX_DB_SHELL}" "UPDATE automations SET status = 'PAUSED' WHERE id = '<task id>'"\`, and read both back.`,
+    pause: `   Pause the original. The app keeps each task twice: in ~/.codex/automations/<task id>/automation.toml and in the database, and it restores the database from the TOML file. So change both. Before the first change, back up both once, never over an existing backup: copy ~/.codex/automations to ~/.codex/automations-before-bb, and run \`sqlite3 "${CODEX_DB_SHELL}" ".backup '${CODEX_DB_SHELL.replace(".db", ".before-bb.db")}'"\`. Then for each task, set its TOML status line to status = "PAUSED" first, then run \`sqlite3 "${CODEX_DB_SHELL}" "UPDATE automations SET status = 'PAUSED' WHERE id = '<task id>'"\`, and read both back.`,
     changeNote: "",
     checkOriginals: (
       <li>
@@ -309,7 +309,8 @@ export const MOVE_TASKS_TOOLS = {
             It reads them on the computer where you use the ChatGPT desktop app.
             Run the prompt in a bb thread on that computer. Or ask Codex in a
             chat to list your scheduled tasks with each one's prompt, schedule,
-            project, and model, and paste the list into the bb thread.
+            project, model, whether it runs in a worktree, and whether it runs
+            inside a chat, and paste the list into the bb thread.
           </p>
         ),
       },
