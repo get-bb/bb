@@ -243,7 +243,9 @@ function InstallCount({
   if (badge?.kind !== "count") return null;
   const total = badge.installs;
   const formatted =
-    variant === "detail" ? total.toLocaleString("en-US") : formatInstalls(total);
+    variant === "detail"
+      ? total.toLocaleString("en-US")
+      : formatInstalls(total);
   return (
     <span
       className={className}
@@ -370,7 +372,8 @@ function Shelf({
       <div className="marketplace-section-head">
         <div>
           <h2>
-            {shelf.label}{"\u00a0"}
+            {shelf.label}
+            {"\u00a0"}
             <span>{shelf.entries.length}</span>
           </h2>
           {description === undefined ? null : <p>{description}</p>}
@@ -708,6 +711,16 @@ function MarketplaceBrowser({
     state.sort === undefined
       ? filtered
       : sortMarketplaceEntries(filtered, state.sort, stats);
+  const activeOption = options.find((option) => option.id === activeCategory);
+  const categoryHeading =
+    activeOption === undefined || query.trim().length > 0
+      ? undefined
+      : {
+          label: activeOption.label,
+          description: manifest.categories.find(
+            (category) => category.id === activeOption.id,
+          )?.description,
+        };
   const isFlat =
     query.trim().length > 0 ||
     activeCategory !== undefined ||
@@ -730,17 +743,36 @@ function MarketplaceBrowser({
           />
         ) : isFlat ? (
           <section className="marketplace-flat-results">
-            <div className="marketplace-section-head">
-              <div>
-                <h2>
-                  {query.trim().length > 0
-                    ? "Search results"
-                    : state.sort === undefined
-                      ? "Filtered plugins"
-                      : SORT_LABELS[state.sort]}
-                </h2>
-                <span>{displayed.length} plugins</span>
-              </div>
+            <div
+              className={
+                categoryHeading === undefined
+                  ? "marketplace-section-head"
+                  : "marketplace-section-head is-category"
+              }
+            >
+              {categoryHeading === undefined ? (
+                <div>
+                  <h2>
+                    {query.trim().length > 0
+                      ? "Search results"
+                      : state.sort === undefined
+                        ? "Filtered plugins"
+                        : SORT_LABELS[state.sort]}
+                  </h2>
+                  <span>{displayed.length} plugins</span>
+                </div>
+              ) : (
+                <div>
+                  <h2>
+                    {categoryHeading.label}
+                    {"\u00a0"}
+                    <span>{displayed.length}</span>
+                  </h2>
+                  {categoryHeading.description === undefined ? null : (
+                    <p>{categoryHeading.description}</p>
+                  )}
+                </div>
+              )}
             </div>
             <PluginGrid
               manifest={manifest}
@@ -863,16 +895,15 @@ function MoreInCategory({
       <div className="marketplace-section-head">
         <div>
           <h2>
-            More in {categoryName}{"\u00a0"}
+            More in {categoryName}
+            {"\u00a0"}
             <span>{entries.length}</span>
           </h2>
           {category?.description === undefined ? null : (
             <p>{category.description}</p>
           )}
         </div>
-        <MarketplaceLink
-          href={marketplaceIndexPath(categoryId)}
-        >
+        <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
           View all
         </MarketplaceLink>
       </div>
@@ -926,9 +957,7 @@ export function PublicMarketplaceDetailPage({
         <nav className="marketplace-breadcrumbs" aria-label="Breadcrumb">
           <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
           <span aria-hidden>/</span>
-          <MarketplaceLink
-            href={marketplaceIndexPath(categoryId)}
-          >
+          <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
             {category}
           </MarketplaceLink>
           <span aria-hidden>/</span>
@@ -966,7 +995,6 @@ export function PublicMarketplaceDetailPage({
                 {category}
               </MarketplaceLink>
               <InstallCount entry={entry} stats={stats} variant="detail" />
-
             </div>
           </div>
           <div className="marketplace-detail-install">
@@ -1009,15 +1037,15 @@ export function PublicMarketplaceDetailPage({
               <hr className="marketplace-overview-rule" />
               <div className="marketplace-overview-heading">
                 <h2>Overview</h2>
-              <a
-                className="marketplace-detail-source"
-                href={repository}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-                <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
-              </a>
+                <a
+                  className="marketplace-detail-source"
+                  href={repository}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View source
+                  <HugeiconsIcon icon={LinkSquare02Icon} aria-hidden />
+                </a>
               </div>
               {entry.overview === undefined ? null : (
                 <MarketplaceOverview markdown={entry.overview} />

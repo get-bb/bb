@@ -344,6 +344,11 @@
   white-space: nowrap;
 }
 
+.marketplace-section-head.is-category p {
+  max-width: none;
+  white-space: normal;
+}
+
 .marketplace-section-head > a {
   padding: 6px 10px;
   flex: 0 0 auto;
@@ -1164,7 +1169,6 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
-
   .marketplace-detail-download {
     display: none;
   }
@@ -1248,7 +1252,7 @@ a.marketplace-detail-author:hover {
 
   .marketplace-sort-control,
   .marketplace-category-select .marketplace-count,
-  .marketplace-flat-results > .marketplace-section-head {
+  .marketplace-flat-results > .marketplace-section-head:not(.is-category) {
     display: none;
   }
 
