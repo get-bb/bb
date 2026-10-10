@@ -9,11 +9,9 @@ export function canonicalHref(
   const page = matches.at(-1);
   if (
     page === undefined ||
+    page.staticData.ownsCanonical === true ||
     matches.some(
-      (match) =>
-        match.status === "notFound" ||
-        match.globalNotFound === true ||
-        match.staticData.ownsCanonical === true,
+      (match) => match.status === "notFound" || match.globalNotFound === true,
     )
   ) {
     return null;

@@ -175,6 +175,22 @@ export function sortMarketplaceEntries(
   });
 }
 
+export function indexableMarketplaceCategories(
+  manifest: MarketplaceV2Manifest,
+): MarketplaceCategory[] {
+  return manifest.categories.filter((category) =>
+    manifest.plugins.some((entry) => entry.category === category.id),
+  );
+}
+
+export function marketplaceIndexPath(
+  category: MarketplaceCategory | undefined,
+): string {
+  return category === undefined
+    ? "/marketplace"
+    : `/marketplace?category=${encodeURIComponent(category.id)}`;
+}
+
 export function parseMarketplaceCategory(input: unknown): string | undefined {
   const values = Array.isArray(input) ? input : [input];
   return values.find(

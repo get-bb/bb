@@ -2,10 +2,15 @@ import { notFound, redirect } from "@tanstack/react-router";
 
 import { unfurlMeta } from "../landing/site.js";
 import type { PublicMarketplaceData } from "./marketplace-data.js";
-import type { MarketplaceV2Entry } from "./marketplace-v2.js";
+import type {
+  MarketplaceCategory,
+  MarketplaceV2Entry,
+} from "./marketplace-v2.js";
 import {
+  indexableMarketplaceCategories,
   isMarketplaceSort,
   marketplaceAuthorEntries,
+  marketplaceIndexPath,
   parseMarketplaceCategory,
 } from "./marketplace-view-model.js";
 
@@ -21,16 +26,35 @@ export function validateMarketplaceSearch(search: Record<string, unknown>) {
   };
 }
 
-export function marketplaceIndexMeta(available: boolean) {
+export function marketplaceIndexCategory(
+  marketplace: PublicMarketplaceData | undefined,
+  category: string | undefined,
+): MarketplaceCategory | undefined {
+  if (category === undefined || marketplace?.status !== "available") {
+    return undefined;
+  }
+  return indexableMarketplaceCategories(marketplace.manifest).find(
+    (candidate) => candidate.id === category,
+  );
+}
+
+export function marketplaceIndexMeta(
+  available: boolean,
+  category?: MarketplaceCategory,
+) {
+  const title =
+    category === undefined
+      ? MARKETPLACE_PAGE_TITLE
+      : `${category.displayName} plugins — bb Plugin Marketplace`;
+  const description =
+    category === undefined
+      ? MARKETPLACE_PAGE_DESCRIPTION
+      : `${category.description} Browse ${category.displayName} plugins for bb.`;
   return [
-    { title: MARKETPLACE_PAGE_TITLE },
-    { name: "description", content: MARKETPLACE_PAGE_DESCRIPTION },
+    { title },
+    { name: "description", content: description },
     { name: "robots", content: available ? "index, follow" : "noindex" },
-    ...unfurlMeta(
-      MARKETPLACE_PAGE_TITLE,
-      MARKETPLACE_PAGE_DESCRIPTION,
-      "/marketplace",
-    ),
+    ...unfurlMeta(title, description, marketplaceIndexPath(category)),
   ];
 }
 

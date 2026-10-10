@@ -12,6 +12,7 @@ import {
 } from "./marketplace-response-status.js";
 import {
   marketplaceAuthorRouteEntries,
+  marketplaceIndexCategory,
   marketplaceIndexMeta,
   marketplacePluginRouteEntry,
   validateMarketplaceSearch,
@@ -121,6 +122,28 @@ describe("marketplace routes", () => {
         thrown = error;
       }
       expect(isNotFound(thrown)).toBe(true);
+    }
+  });
+
+  it("indexes a listed category under its own title and URL", () => {
+    const category = marketplaceIndexCategory(
+      AVAILABLE_MARKETPLACE,
+      "code-and-reviews",
+    );
+    expect(category?.id).toBe("code-and-reviews");
+    expect(marketplaceIndexMeta(true, category)).toEqual(
+      expect.arrayContaining([
+        { title: "Code & Reviews plugins — bb Plugin Marketplace" },
+        {
+          property: "og:url",
+          content: "https://web.test/marketplace?category=code-and-reviews",
+        },
+      ]),
+    );
+    for (const unlisted of ["future-tools", "missing", undefined]) {
+      expect(
+        marketplaceIndexCategory(AVAILABLE_MARKETPLACE, unlisted),
+      ).toBeUndefined();
     }
   });
 

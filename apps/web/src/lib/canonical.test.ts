@@ -58,6 +58,15 @@ describe("canonicalHref", () => {
       matches: [match("/"), match("/guides/x", { ownsCanonical: true })],
       href: null,
     },
+    {
+      name: "a child of a route that owns its own canonical",
+      matches: [
+        match("/"),
+        match("/marketplace", { ownsCanonical: true }),
+        match("/marketplace/advisor"),
+      ],
+      href: "https://getbb.app/marketplace/advisor",
+    },
     { name: "no matches", matches: [], href: null },
   ])("returns the canonical for $name", ({ matches, href }) => {
     expect(canonicalHref(matches)).toBe(href);
