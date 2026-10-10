@@ -45,7 +45,7 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
 
 const noop = () => {};
 
-function Harness() {
+function Harness({ contentFillsRegion = false }: { contentFillsRegion?: boolean }) {
   const documents = ["reading.md", "short.md"].map((path) =>
     createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env_scroll",
@@ -67,6 +67,7 @@ function Harness() {
     .filter((document) => !closed || document.path !== "reading.md")
     .map((document) => ({
       tab: document,
+      contentFillsRegion,
       label: document.path,
       leadingVisual: null,
       statusLabel: null,
@@ -144,12 +145,12 @@ function Harness() {
   );
 }
 
-function renderHarness() {
+function renderHarness(contentFillsRegion = false) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   const content = () => (
     <Wrapper>
       <TooltipProvider>
-        <Harness />
+        <Harness contentFillsRegion={contentFillsRegion} />
       </TooltipProvider>
     </Wrapper>
   );
@@ -157,9 +158,10 @@ function renderHarness() {
 }
 
 function scrollContainer() {
-  const container = document.querySelector<HTMLDivElement>(
+  const containers = document.querySelectorAll<HTMLDivElement>(
     "[data-file-preview-scroll-container]",
   );
+  const container = containers[containers.length - 1];
   if (!container) throw new Error("Missing file scroll container");
   return container;
 }
@@ -180,6 +182,18 @@ afterEach(() => {
 });
 
 describe("Markdown reading position in open secondary-panel tabs", () => {
+  it("provides a bounded scroll container inside a full-height file opener", () => {
+    renderHarness(true);
+    const container = scrollContainer();
+    expect(container.classList.contains("overflow-y-auto")).toBe(true);
+    expect(container.classList.contains("h-full")).toBe(true);
+    expect(container.classList.contains("min-h-0")).toBe(true);
+    scrollTo(780);
+    selectTab("short.md");
+    selectTab("reading.md");
+    expect(scrollContainer().scrollTop).toBe(780);
+  });
+
   it.each(["tab", "hyperlink"])(
     "retains position after leaving through a %s",
     (navigation) => {
