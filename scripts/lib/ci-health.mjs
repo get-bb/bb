@@ -14,6 +14,15 @@ export function distribution(values) {
 
 const seconds = (start, end) => (Date.parse(end) - Date.parse(start)) / 1_000;
 
+function firstAttemptOutcome(jobs) {
+  if (jobs.some((job) => ["failure", "timed_out"].includes(job.conclusion)))
+    return "failure";
+  if (jobs.some((job) => job.conclusion === "cancelled")) return "cancelled";
+  if (jobs.length > 0 && jobs.every((job) => job.conclusion === "success"))
+    return "success";
+  return "unavailable";
+}
+
 export function summarizeCiHealth(runs) {
   const outcomes = {};
   const durations = [];
@@ -22,17 +31,28 @@ export function summarizeCiHealth(runs) {
   const failedSteps = new Map();
   const recoveries = [];
   const events = new Map();
+  const firstAttemptOutcomes = {};
+  const failureGroups = new Map();
   for (const run of runs) {
     const outcome = run.conclusion ?? "pending";
     outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
     if (!events.has(run.event))
-      events.set(run.event, { runs: 0, durations: [] });
+      events.set(run.event, {
+        runs: 0,
+        durations: [],
+        firstAttemptOutcomes: {},
+      });
     const event = events.get(run.event);
     event.runs++;
     const first = run.jobs.filter(
       (job) => job.run_attempt === 1 && job.conclusion !== "skipped",
     );
     if (!run.jobsComplete) continue;
+    const firstOutcome = firstAttemptOutcome(first);
+    firstAttemptOutcomes[firstOutcome] =
+      (firstAttemptOutcomes[firstOutcome] ?? 0) + 1;
+    event.firstAttemptOutcomes[firstOutcome] =
+      (event.firstAttemptOutcomes[firstOutcome] ?? 0) + 1;
     const timed =
       run.run_attempt === 1 && run.conclusion === "success" && first.length > 0;
     if (timed) {
@@ -55,6 +75,7 @@ export function summarizeCiHealth(runs) {
             last: 0,
             restores: [],
             startDelays: [],
+            steps: new Map(),
           });
         const group = jobs.get(job.name);
         group.durations.push(seconds(job.started_at, job.completed_at));
@@ -69,6 +90,16 @@ export function summarizeCiHealth(runs) {
         group.startDelays.push(Math.max(0, seconds(ready, job.started_at)));
         for (const step of job.steps) {
           if (
+            step.conclusion === "success" &&
+            step.completed_at &&
+            step.started_at
+          ) {
+            if (!group.steps.has(step.name)) group.steps.set(step.name, []);
+            group.steps
+              .get(step.name)
+              .push(seconds(step.started_at, step.completed_at));
+          }
+          if (
             step.name === "Restore workspace caches" &&
             step.completed_at &&
             step.started_at
@@ -79,21 +110,30 @@ export function summarizeCiHealth(runs) {
     }
     const recovered = new Set();
     for (const job of run.jobs.filter((job) => job.conclusion === "failure")) {
+      const passedLater = run.jobs.some(
+        (later) =>
+          later.name === job.name &&
+          later.run_attempt > job.run_attempt &&
+          later.conclusion === "success",
+      );
       for (const step of job.steps.filter(
         (step) => step.conclusion === "failure",
       )) {
         if (!failedSteps.has(step.name)) failedSteps.set(step.name, new Set());
         failedSteps.get(step.name).add(run.id);
+        const key = JSON.stringify([job.name, step.name]);
+        if (!failureGroups.has(key))
+          failureGroups.set(key, {
+            job: job.name,
+            step: step.name,
+            runs: new Set(),
+            recoveredRuns: new Set(),
+          });
+        const group = failureGroups.get(key);
+        group.runs.add(run.id);
+        if (passedLater) group.recoveredRuns.add(run.id);
       }
-      if (
-        run.jobs.some(
-          (later) =>
-            later.name === job.name &&
-            later.run_attempt > job.run_attempt &&
-            later.conclusion === "success",
-        )
-      )
-        recovered.add(job.name);
+      if (passedLater) recovered.add(job.name);
     }
     if (recovered.size)
       recoveries.push({ run: run.id, url: run.html_url, jobs: [...recovered] });
@@ -101,12 +141,14 @@ export function summarizeCiHealth(runs) {
   return {
     runs: runs.length,
     outcomes,
+    firstAttemptOutcomes,
     incompleteRuns: runs.filter(
       (run) => !run.jobsComplete && run.conclusion !== null,
     ).length,
     events: [...events].map(([event, group]) => ({
       event,
       runs: group.runs,
+      firstAttemptOutcomes: group.firstAttemptOutcomes,
       durationSeconds: distribution(group.durations),
     })),
     rerunRuns: runs.filter((run) => run.run_attempt > 1).length,
@@ -120,12 +162,24 @@ export function summarizeCiHealth(runs) {
         lastFinisher: group.last,
         cacheRestoreSeconds: distribution(group.restores),
         startDelaySeconds: distribution(group.startDelays),
+        steps: [...group.steps].map(([name, values]) => ({
+          name,
+          durationSeconds: distribution(values),
+        })),
       }))
       .sort((a, b) => b.lastFinisher - a.lastFinisher || b.median - a.median),
     failedSteps: [...failedSteps]
       .map(([name, ids]) => ({ name, runs: ids.size }))
       .sort((a, b) => b.runs - a.runs),
     recoveries,
+    failureGroups: [...failureGroups.values()]
+      .map((group) => ({
+        job: group.job,
+        step: group.step,
+        runs: group.runs.size,
+        recoveredRuns: group.recoveredRuns.size,
+      }))
+      .sort((a, b) => b.runs - a.runs),
   };
 }
 
@@ -272,16 +326,17 @@ export function ciHealthMarkdown(report) {
         ]),
     `${report.incompleteRuns} completed runs lack a complete job inventory and are excluded from timing and recovery statistics.`,
     `${report.runs} runs; outcomes: ${JSON.stringify(report.outcomes)}.`,
+    `First-attempt job outcomes: ${JSON.stringify(report.firstAttemptOutcomes)}. Only complete job inventories are counted; cancelled and unavailable attempts are not passes.`,
     `${report.rerunRuns} runs retried; ${report.recoveredRuns} had a failed job pass in a later attempt on the same commit. Recovery includes infrastructure and external dependency failures; it is not a measured test-flake rate.`,
     "",
     `Successful first attempts: ${report.durationSeconds.count}; median ${number(report.durationSeconds.median)}s, p90 ${number(report.durationSeconds.p90)}s from run creation to the final job. Median summed job runtime: ${number(report.runnerMinutes.median)} runner-minutes.`,
     "Cancelled, failed, pending, and rerun workflows are excluded from timing distributions. Cache restore timings do not measure cache hit rates. Snapshot outcomes can change after this report.",
     "",
-    "| Trigger | Runs | Timed samples | Median seconds | P90 seconds |",
-    "|---|---:|---:|---:|---:|",
+    "| Trigger | Runs | First-attempt passes | First-attempt failures | Timed samples | Median seconds | P90 seconds |",
+    "|---|---:|---:|---:|---:|---:|---:|",
     ...report.events.map(
       (group) =>
-        `| ${escape(group.event)} | ${group.runs} | ${group.durationSeconds.count} | ${number(group.durationSeconds.median)} | ${number(group.durationSeconds.p90)} |`,
+        `| ${escape(group.event)} | ${group.runs} | ${group.firstAttemptOutcomes.success ?? 0} | ${group.firstAttemptOutcomes.failure ?? 0} | ${group.durationSeconds.count} | ${number(group.durationSeconds.median)} | ${number(group.durationSeconds.p90)} |`,
     ),
     "",
     "Start delay is measured from planning completion for dependent jobs and from run creation for planning and Node compatibility. It includes Actions scheduling and runner provisioning, not just a runner queue.",
@@ -291,6 +346,28 @@ export function ciHealthMarkdown(report) {
     ...report.jobs.map(
       (job) =>
         `| ${escape(job.name)} | ${job.count} | ${number(job.median)} | ${number(job.p90)} | ${job.lastFinisher} | ${number(job.cacheRestoreSeconds.median)} | ${number(job.startDelaySeconds.median)} | ${number(job.startDelaySeconds.p90)} |`,
+    ),
+    "",
+    "Successful first-attempt step timings separate dependency setup from test/build execution. Skipped steps have no samples; medians across steps are not additive.",
+    "",
+    "| Job | Step | Samples | Median seconds | P90 seconds |",
+    "|---|---|---:|---:|---:|",
+    ...report.jobs.flatMap((job) =>
+      job.steps
+        .filter((step) => step.durationSeconds.p90 >= 5)
+        .map(
+          (step) =>
+            `| ${escape(job.name)} | ${escape(step.name)} | ${step.durationSeconds.count} | ${number(step.durationSeconds.median)} | ${number(step.durationSeconds.p90)} |`,
+        ),
+    ),
+    "",
+    "Failure groups identify the job and step, not the root cause. Counts deduplicate attempts within each run; recovery can reflect infrastructure or dependency availability.",
+    "",
+    "| Job | Failed step | Affected runs | Recovered runs |",
+    "|---|---|---:|---:|",
+    ...report.failureGroups.map(
+      (group) =>
+        `| ${escape(group.job)} | ${escape(group.step)} | ${group.runs} | ${group.recoveredRuns} |`,
     ),
     "",
     "| Failed step | Distinct affected runs |",

@@ -10,7 +10,6 @@ import {
 } from "@bb/server-archive";
 import { describe, expect, it } from "vitest";
 import { writeIncomingMoveState } from "./move-state.js";
-import { isProcessGroupAlive } from "./pending-server.js";
 import {
   ACTIVATION_TOKEN,
   createFixture,
@@ -68,7 +67,7 @@ describe("ServerMoveService.prepare", () => {
       localServerUrl: `http://127.0.0.1:${command.serverPort}`,
       pid: expect.any(Number),
     });
-    expect(isProcessGroupAlive(result.pid)).toBe(true);
+    expect(fixture.isPendingServerRunning(result.pid)).toBe(true);
     expect(installed.map((bytes) => bytes.toString("utf8"))).toEqual([
       "full bb-app package",
     ]);
@@ -208,7 +207,7 @@ describe("ServerMoveService.prepare", () => {
       fixture.service.abort({ type: "server_move.abort", moveId: MOVE_ID }),
     ).resolves.toEqual({ ok: true });
 
-    expect(isProcessGroupAlive(result.pid)).toBe(false);
+    expect(fixture.isPendingServerRunning(result.pid)).toBe(false);
     expect(await readJson(join(fixture.dataDir, "config.json"))).toEqual(
       originalConfig,
     );

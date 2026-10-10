@@ -37,7 +37,26 @@ it("separates first-attempt latency from retries and counts failure incidents by
   const report = summarizeCiHealth([
     run(1, 1, "success", [
       job(1, "Select CI checks", 1, "success", 10, 20),
-      job(2, "Windows", 1, "success", 30, 150),
+      job(2, "Windows", 1, "success", 30, 150, [
+        {
+          ...failure,
+          conclusion: "success",
+          started_at: time(30),
+          completed_at: time(80),
+        },
+        {
+          name: "Test",
+          conclusion: "success",
+          started_at: time(80),
+          completed_at: time(145),
+        },
+        {
+          name: "Optional setup",
+          conclusion: "skipped",
+          started_at: time(30),
+          completed_at: time(30),
+        },
+      ]),
       job(3, "Linux", 1, "success", 20, 100),
     ]),
     run(2, 2, "success", [
@@ -57,6 +76,16 @@ it("separates first-attempt latency from retries and counts failure incidents by
   expect(report.runnerMinutes.median).toBe(3.5);
   expect(report.rerunRuns).toBe(2);
   expect(report.recoveredRuns).toBe(1);
+  expect(report.firstAttemptOutcomes).toEqual({
+    success: 1,
+    failure: 2,
+    cancelled: 1,
+    unavailable: 1,
+  });
+  expect(report.failureGroups).toEqual([
+    { job: "Windows", step: "Install dependencies", runs: 2, recoveredRuns: 1 },
+    { job: "Linux", step: "Install dependencies", runs: 1, recoveredRuns: 1 },
+  ]);
   expect(report.failedSteps).toEqual([
     { name: "Install dependencies", runs: 2 },
   ]);
@@ -65,6 +94,13 @@ it("separates first-attempt latency from retries and counts failure incidents by
     lastFinisher: 1,
     median: 120,
     startDelaySeconds: { count: 1, median: 10, p90: 10 },
+    steps: [
+      {
+        name: "Install dependencies",
+        durationSeconds: { count: 1, median: 50, p90: 50 },
+      },
+      { name: "Test", durationSeconds: { count: 1, median: 65, p90: 65 } },
+    ],
   });
   expect(report.recoveries[0].jobs).toEqual(["Windows", "Linux"]);
   expect(report.outcomes).toEqual({
@@ -171,11 +207,13 @@ it("checkpoints incomplete evidence and excludes a partly fetched run without di
     {
       event: "pull_request",
       runs: 1,
+      firstAttemptOutcomes: {},
       durationSeconds: { count: 0, median: null, p90: null },
     },
     {
       event: "push",
       runs: 1,
+      firstAttemptOutcomes: { success: 1 },
       durationSeconds: { count: 1, median: 50, p90: 50 },
     },
   ]);

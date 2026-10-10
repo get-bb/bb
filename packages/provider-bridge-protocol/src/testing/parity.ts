@@ -443,6 +443,7 @@ export async function replayRecording(
       : null;
 
     const answeredIds = new Set<string>();
+    const sentRequestIds: string[] = [];
     const pendingBridgeRequests: { id: string | number; method: string }[] = [];
     const recordedAnswers = new Map<string, ParsedWireMessage[]>();
     for (const step of steps) {
@@ -558,6 +559,20 @@ export async function replayRecording(
       limitMs: number = timeoutMs,
       reportStall = true,
     ): Promise<void> {
+      const diagnostic = () =>
+        JSON.stringify({
+          events: events.length,
+          plannedEvents: plannedEventCount,
+          grammarViolationCount: grammarViolations.length,
+          grammarViolations: grammarViolations.slice(-5),
+          unansweredRequests: sentRequestIds.filter(
+            (id) => !answeredIds.has(id),
+          ),
+          exitCode: child.exitCode,
+          signal: child.signalCode,
+          millisecondsSinceOutput: Date.now() - lastOutputAt,
+          stderrTail: stderr.slice(-2_000),
+        });
       const deadline = Date.now() + limitMs;
       while (!predicate()) {
         if (
@@ -565,11 +580,14 @@ export async function replayRecording(
           child.signalCode !== null ||
           child.pid === undefined
         ) {
-          stalls.push(`bridge exited while waiting for ${label}`);
+          stalls.push(
+            `bridge exited while waiting for ${label}: ${diagnostic()}`,
+          );
           return;
         }
         if (Date.now() > deadline) {
-          if (reportStall) stalls.push(`timed out waiting for ${label}`);
+          if (reportStall)
+            stalls.push(`timed out waiting for ${label}: ${diagnostic()}`);
           return;
         }
         await sleep(10);
@@ -608,7 +626,6 @@ export async function replayRecording(
     }
     releaseStartup();
 
-    const sentRequestIds: string[] = [];
     for (const step of initialized ? steps : []) {
       if (step.message === null || !isRequest(step.message)) {
         if (step.message !== null && !isResponse(step.message)) {

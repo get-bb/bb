@@ -165,7 +165,9 @@ App shards install the app and database dependency closures. Server shards
 install the server, host daemon, app, and plugin dependency closures, including
 the plugins loaded dynamically by the server test harness. Plugin, host, build,
 and integration shards omit the mobile toolchain. The catch-all `packages-other`
-shard retains the full install because it runs mobile tests. All use
+shard retains the full install when its selected tests include mobile; other
+affected PRs omit the mobile toolchain. Full main and manual runs keep mobile
+coverage. All use
 `--ignore-scripts`; Turbo runs the
 generators and native-module preparation the suites depend on. They restore
 and save Turbo outputs. The cache key includes the runner OS, so a restored
@@ -290,3 +292,12 @@ interactive terminals, updates, and actual provider sessions.
 Both Windows packaging smoke jobs install the workspace excluding `@bb/mobile`.
 The React Native toolchain is not part of the desktop or launcher dependency
 chain; all Turbo build dependencies and both runtime smoke checks remain enabled.
+
+Linux and Windows app and server test shards use the internal `BB_CI_TEST_SHARD`
+environment variable (for example, `1/3`). Vitest validates and applies it;
+Turbo hashes it only for the app and server test tasks. Shard selection must
+not be passed after Turbo's `--`: those arguments also reach prerequisite
+builds and give identical SDK type builds different cache keys. Linux applies
+its two-worker limit through `VITEST_MAX_WORKERS`, which Turbo hashes only for
+test tasks. The two packages on Vitest 3 read this variable in their configs;
+Vitest 4 supports it directly. Windows retains its existing worker defaults.

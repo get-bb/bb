@@ -499,3 +499,104 @@ checkout then hit the same timeout. SDK checkouts now use `filter: blob:none`
 to retain commit history without historical file contents. A fresh fetch of all
 branches and tags completed with a 23 MB pack, and the unchanged SDK check passed
 against that full-history checkout.
+
+## October 9 reliability and setup follow-up
+
+The October 9 sample covers 299 CI runs created from 00:00 through 22:41
+Pacific. Successful first-attempt PR runs had a median of 143.5 seconds and
+p90 of 414 seconds; main pushes had a median of 318.5 seconds and p90 of
+427 seconds. Windows finished last in 114 of 205 timed runs. These are
+pre-change measurements, not projected savings.
+
+Test matrices now carry whether their selected packages include `@bb/mobile`.
+The catch-all shard retains mobile dependencies on full runs and affected
+mobile PRs, but omits them on other PRs. Linux's other broad test installs also
+omit mobile when it is not tested. Existing app/server install closures and
+shared generator prerequisites remain intact. This does not restore Windows
+pnpm archives or repeat the unsuccessful aggressive filtering experiment above.
+Compare dependency-install timings on equivalent Windows jobs before claiming
+a speedup; runner provisioning remains outside the workflow's control.
+
+The FUSE installer no longer rewrites the runner's global apt configuration or
+forces every download through one mirror. It skips an already-installed runtime,
+uses isolated indexes, requires a successful index refresh, and tries Ubuntu's
+archive followed by the kernel.org mirror on amd64/i386. Other architectures
+use Ubuntu Ports. Both index and package-download failures trigger the next
+mirror; exhaustion remains a blocking failure. The installer is also used by
+desktop and release packaging.
+
+Standalone fork checks resolve a fresh package lock with lifecycle scripts
+disabled, then use `npm ci` to install that exact graph. Resolution and installation
+failures have distinct stage names; neither is silently passed or treated as a
+source-test failure. CI saves the packed SDK, each fork's manifest and available
+lockfile, and its result stage in `plugin-fork-evidence-<shard>-<attempt>` for
+seven days. SDK references are relative to the evidence root. A resolution
+failure may have no lockfile. Local `--keep` retains the full fork directory,
+where `npm ci --legacy-peer-deps` can reproduce its installation without fresh
+resolution. Fresh resolution remains part of every selected fork check, so this
+improves diagnosis and reproduction rather than hiding upstream availability
+failures.
+
+CI Health now separates first-attempt job outcomes from final rerun outcomes,
+reports successful step timing distributions, and groups failure/recovery counts
+by job and step. Cancelled and unavailable attempts are not passes. Failure groups
+are locations, not inferred root causes; same-commit recovery includes registry
+and runner failures, not just flaky tests. JSON retains all step timings; Markdown
+shows steps with a p90 of at least five seconds. Scheduling delays still include
+both Actions scheduling and runner provisioning.
+
+Storage archive-test teardown waits for retained trash-removal work before
+removing the parent fixture directory. Provider replay stalls now include event
+counts, unanswered request IDs, child exit state, time since output, and the last
+2,000 stderr characters. Timeout budgets and replay concurrency are unchanged;
+the missing-event failure needs that evidence before changing them.
+
+### Remaining-failure investigation and fresh-install measurement
+
+[Install experiment 38033720968](https://github.com/get-bb/bb/actions/runs/38033720968)
+compared three fresh four-vCPU Windows runners per configuration, with Node 22,
+pnpm 9.15, the same lockfile, no restored dependency cache, and `--ignore-scripts`.
+Only the `!@bb/mobile` filter differed. Full installs took 51.710, 50.393, and
+52.105 seconds; excluding mobile took 33.760, 37.256, and 37.777 seconds. Means
+were 51.403 and 36.264 seconds: 15.138 seconds (29.5%) saved during installation.
+Medians were 51.710 and 37.256 seconds. This small sample measures eligible
+broad installs, not app/server closures, scheduling, or end-to-end CI. Full runs
+and mobile changes still install mobile where their selected tests need it.
+The experiment workflow and raw install artifacts are retained on
+`bb/ci-install-benchmark-5324`; its initial setup-only failed attempt is excluded.
+
+The remaining October 9 failure groups were investigated against the failing
+logs and current source, including historical feature branches:
+
+| Finding                                                                                 | Evidence and disposition                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows activation checks report a stopped PID alive again                              | Two jobs show the transition. Fixtures now retain `ChildProcess` handles and synchronously check the original child, preserving termination-before-port-release assertions.                                                                                                                                                         |
+| Idle Codex reaping reports no stopped process after restart                             | The assertion reopens historical numeric PIDs after starting a replacement. It now observes the runtime's existing completed-exit callback before and after restarting. Production shutdown still waits for child exit.                                                                                                             |
+| Replay cursor can release notifications during a write                                  | A real subprocess reproduced the truncate/read race. Empty, malformed, and unreadable cursor contents now keep events gated; explicit `end` and absent-cursor unpaced replay retain their behavior. Regression fails before the fix and passes afterward.                                                                           |
+| Historical ACP web-search misses 51 events; Codex exits before initialize               | These remain unexplained historical incidents. The cursor defect does not prove their cause. Full local parity passes; exit, stderr, request, and grammar diagnostics remain enabled for recurrence.                                                                                                                                |
+| CI selection and plugin-rename fixture tests exceed five seconds                        | These execute many real Git/Node processes. Only the two observed failing integration cases receive a 30-second budget; fixture subprocesses are bounded. Assertions and ordinary test budgets remain unchanged.                                                                                                                    |
+| Linux app worker exits after all 691 assertions pass                                    | Log reports an unexpected worker exit and teardown timeout, without exit code or signal. The named mobile-recents test passes locally; the current Linux shard passes three uncached repetitions (76 files/694 assertions each). No evidence establishes an assertion defect or OOM. No speculative worker-count or timeout change. |
+| Linux Git fixture cleanup returns `ENOTEMPTY`                                           | One observed `.git/objects` cleanup error. The successful diff path awaits its children; 100 local and 100 Linux fixture repetitions passed. The full 28-test suite also passed three uncached CI repetitions. No proven root cause and no production retry added.                                                                  |
+| Playgrounds/Interactive Answers state, sizing, and controls                             | These plugins are absent from this branch (owning PRs #5293/#5314). Historical Playgrounds state failure reproduced once in 16 executions; an effect-flush candidate passed 16/16. Candidate is preserved separately, not claimed as a proven Windows runtime repair or imported with the unmerged plugin.                          |
+| Community/library schema and catalog assertions                                         | Owning feature branch (#5320) already fixes schema omissions (`25f67013b8`), catalog expectations (`f29ae6acbb`), and migration/backfill handling (`f69bf501cd`).                                                                                                                                                                   |
+| Desktop process-group cleanup `ESRCH`                                                   | Already fixed by #5287 (`1ae755fce6`).                                                                                                                                                                                                                                                                                              |
+| Skill content changes with unchanged size/mtime                                         | Already fixed by #5257 (`9f7c11e9d0`); focused regression passes.                                                                                                                                                                                                                                                                   |
+| ACP sign-in command quoting and model-options timeout                                   | Historical ACP-redux package is absent. Current ACP-next has platform-aware quoting tests and a 20-second budget for the multi-discovery integration case.                                                                                                                                                                          |
+| Model-discovery “30-second” errors                                                      | Intentional fake-clock failure injection; examples finish in 206–370 ms. Actual failed tests were elsewhere. No performance defect.                                                                                                                                                                                                 |
+| In-memory database guard, enrollment/installation telemetry, Pi background recovery     | Failures belong to unmerged feature branches: Windows path-separator source scanning, changed event contracts, or missing `tsx`. Their failing tests are absent here; no demonstrated current CI flake.                                                                                                                             |
+| Plugin-settings final autosave assertion                                                | Controlled delayed query notifications reproduce the checked/unchecked assertion race. The test now waits for both the final checkbox and saved-status state, retaining the serialized-save assertions.                                                                                                                             |
+| Marketplace cache headers and hidden-sidebar benchmark                                  | Already fixed by #5299 (`ba77afe213`) and `ba5a4c546e`, respectively.                                                                                                                                                                                                                                                               |
+| Release-notes expectation                                                               | Feature-branch test used a now-published version; owning fix `aaaa188cf5` selects an unpublished version. Test is absent here.                                                                                                                                                                                                      |
+| Bulk generated-import, duplicate-import, stale-path, SDK-doc, type, and budget failures | Source-development failures: invalid template input cascaded into missing generated imports; other logs identify explicit import/type/documentation mismatches. These are not independent intermittent runner failures. Current full CI remains the verification boundary.                                                          |
+| npm AWS package 404/ETARGET and FUSE mirror availability                                | External resolution/download failures. FUSE fallback and isolated apt state are fixed; fork checks now retain exact resolution/install evidence. Fresh registry resolution remains deliberate and can still fail upstream.                                                                                                          |
+
+Windows scheduling/provisioning and cold prerequisite duplication remain costs.
+In the original successful PR sample with Windows jobs, the first Windows job
+started a median 31 seconds after planning and the last at 67 seconds; main
+medians were 33 and 76 seconds. These intervals are not pure queue time. Prior
+four-versus-eight-vCPU and worker-count experiments above did not justify a
+runner upgrade or more workers. Matching Turbo prerequisite hashes enables
+reuse only when a compatible cache already exists; concurrent cold shards still
+build prerequisites independently. More shards or a shared prerequisite job
+would trade startup/dependency costs against test time and require a separate
+controlled comparison before changing the pipeline.
