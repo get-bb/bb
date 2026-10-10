@@ -298,14 +298,14 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
           SERVER_SHARD: ${{ startsWith(matrix.shard, 'server-') }}
-          NON_MOBILE_SHARD: ${{ startsWith(matrix.shard, 'plugins-') || matrix.shard == 'packages-host' || matrix.shard == 'packages-build' || matrix.shard == 'integration' }}
+          MOBILE_TESTS: ${{ matrix.mobile }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/app...' --filter '@bb/db...')
           elif [[ "$SERVER_SHARD" == "true" ]]; then
             filters=(--filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...')
-          elif [[ "$NON_MOBILE_SHARD" == "true" ]]; then
+          elif [[ "$MOBILE_TESTS" != "true" ]]; then
             filters=(--filter '!@bb/mobile')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts "${filters[@]}"
@@ -534,12 +534,15 @@ jobs:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
           APP_SHARD: ${{ startsWith(matrix.shard, 'app-') }}
           DEMO_ONLY: ${{ matrix.filter == '--filter=@bb/demo-server' }}
+          MOBILE_TESTS: ${{ matrix.mobile }}
         run: |
           filters=()
           if [[ "$APP_SHARD" == "true" ]]; then
             filters=(--ignore-scripts --filter bb --filter '@bb/app...' --filter '@bb/db...')
           elif [[ "$DEMO_ONLY" == "true" ]]; then
             filters=(--ignore-scripts --filter bb --filter '@bb/demo-server...' --filter '@bb/db...')
+          elif [[ "$MOBILE_TESTS" != "true" ]]; then
+            filters=(--filter '!@bb/mobile')
           fi
           bash .github/actions/setup-workspace/install-dependencies.sh "${filters[@]}"
 
@@ -653,6 +656,17 @@ jobs:
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && needs.plan.outputs.base || '' }}
         run: node scripts/check-plugin-forks.mjs --changed-from="$BASE_SHA" --shard=${{ matrix.shard }}/3
+
+      - name: Upload fork dependency evidence
+        if: ${{ !cancelled() && steps.selection.outputs.count != '0' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: plugin-fork-evidence-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/plugin-fork-evidence
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Bound saved Turbo cache
         if: steps.selection.outputs.count != '0'
