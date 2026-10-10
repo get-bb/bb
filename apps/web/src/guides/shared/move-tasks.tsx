@@ -43,7 +43,8 @@ ${tool.find}
 3. Turn each schedule into a five-field cron in my Timezone. If a schedule has no exact cron, like every other week, pick the closest one and tell me.
    ${MODEL_STEP.replace("<models>", tool.modelsCommand)}
 4. Create each automation paused. Read \`bb automation create --help\` first.
-   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <Timezone> ${tool.providerFlag} --model <the model, or the one I picked> --permission-mode auto --new-environment worktree --prompt "<the prompt, word for word>"
+   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <Timezone> ${tool.providerFlag} --model <the model, or the one I picked> --permission-mode auto <where> --prompt "<the prompt, word for word>"
+   For <where>: if it ran in a worktree, use --new-environment worktree. If it ran in its folder, use --environment <that folder>, the project source path from \`bb project list\`.
    If a prompt relies on something only ${tool.name} had, like a connector or an event trigger, tell me what it needs instead of guessing.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
 5. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
@@ -189,15 +190,16 @@ export const MOVE_TASKS_TOOLS = {
     description:
       "Bring your Claude Code routines into bb automations, local and cloud. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
     find: `1. Find my routines.
-   - Local routines are Desktop scheduled tasks. Each is ~/.claude/scheduled-tasks/<name>/SKILL.md, with the prompt as the body. Its schedule, folder, and model aren't in the file, so ask me for them: I can read them on Routines in the Claude Code desktop app.
-   - Cloud routines live on my claude.ai account, not this computer. Ask me to run /schedule list in Claude Code, or open claude.ai/code/routines, and paste each routine's prompt, schedule, repositories, and model.
+   - Local routines are Desktop scheduled tasks. Each is ~/.claude/scheduled-tasks/<name>/SKILL.md, with the prompt as the body. Its schedule, folder, model, and whether it runs in a worktree aren't in the file, so ask me for them: I can read them on Routines in the Claude Code desktop app.
+   - Cloud routines live on my claude.ai account, not this computer. Ask me to run /schedule list in Claude Code, or open claude.ai/code/routines, and paste each routine's prompt, schedule, repositories, and model. Each cloud run gets a fresh clone, so use a worktree for these.
    - Skip /loop tasks. They end with their session.
-   Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, and model.`,
+   Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
     findSteps: (
       <>
         <li>
-          For local routines, it asks for each one's schedule and folder. Find
-          them on <strong>Routines</strong> in the Claude Code desktop app.
+          For local routines, it asks for each one's schedule, folder, and
+          whether it runs in a worktree. Find them on{" "}
+          <strong>Routines</strong> in the Claude Code desktop app.
         </li>
         <li>
           For cloud routines, run <code>/schedule list</code> in Claude Code, or
@@ -268,9 +270,10 @@ export const MOVE_TASKS_TOOLS = {
         question: "Where do the changes go?",
         answer: (
           <p>
-            Each run gets its own worktree on a new branch, the way cloud
-            routines push to <code>claude/</code> branches. Nothing is pushed
-            unless the prompt says to.
+            A local routine runs where it did before: in its folder, or in its
+            own worktree if you turned that on. A cloud routine gets a worktree
+            on a new branch, the way it pushed to <code>claude/</code> branches.
+            Nothing is pushed unless the prompt says to.
           </p>
         ),
       },
@@ -304,14 +307,15 @@ export const MOVE_TASKS_TOOLS = {
     tasks: "scheduled tasks",
     description:
       "Bring your Codex scheduled tasks into bb automations. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
-    find: `1. Find my scheduled tasks. If ~/.codex/automations/ has task folders, read each automation.toml: its prompt, schedule (an RRULE), project folders (cwds), model, and status. Skip paused ones unless I named them. Otherwise, ask me to ask Codex in a chat in the ChatGPT desktop app to list my scheduled tasks with each one's prompt, schedule, project, model, and whether it runs in the local project or a worktree, and paste the list here.
-   A scheduled task inside a chat returns to that chat's context each run. For each of those, ask whether to have bb re-prompt one thread instead: use --target-thread <thread-id> in step 4, without --new-environment.
-   Check: list each task's name, schedule in plain words, project, and model.`,
+    find: `1. Find my scheduled tasks. If ~/.codex/automations/ has task folders, read each automation.toml: its prompt, schedule (an RRULE), project folders (cwds), model, status, and whether it runs in a worktree; ask me if that isn't in the file. Skip paused ones unless I named them. Otherwise, ask me to ask Codex in a chat in the ChatGPT desktop app to list my scheduled tasks with each one's prompt, schedule, project, model, and whether it runs in the local project or a worktree, and paste the list here.
+   A scheduled task inside a chat returns to that chat's context each run. For each of those, ask whether to have bb re-prompt one thread instead: use --target-thread <thread-id> in step 4 in place of <where>.
+   Check: list each task's name, schedule in plain words, project, local project or worktree, and model.`,
     findSteps: (
       <li>
         If it asks for your scheduled tasks, ask Codex in a chat in the ChatGPT
-        desktop app to list them with each one's prompt, schedule, project, and
-        model, and paste the list into the bb thread.
+        desktop app to list them with each one's prompt, schedule, project,
+        model, and whether it runs in a worktree, and paste the list into the bb
+        thread.
       </li>
     ),
     pauseSteps: (
@@ -347,9 +351,9 @@ export const MOVE_TASKS_TOOLS = {
         question: "Local project or worktree?",
         answer: (
           <p>
-            Each run gets its own worktree by default, like Codex's worktree
-            option, so it never touches files you're working on. To run in your
-            checkout instead, ask your agent when it sets the automation up.
+            Each one runs where it did in Codex: in your local project, or in
+            its own worktree if you chose that. A worktree run never touches
+            files you're working on.
           </p>
         ),
       },
