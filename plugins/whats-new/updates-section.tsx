@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSdk, type PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 import { WhatsNewNotes, type WhatsNewNotesData } from "./notes.js";
 import { compareVersions, visitWhatsNewVersion } from "./seen.js";
+import { useShowMe } from "./show-me.js";
 import { useWhatsNewEnabled, type ReleaseNotes } from "./state.js";
 
 async function loadSkipped(
@@ -75,8 +76,9 @@ function useWhatsNewNotes(enabled: boolean): WhatsNewNotesData | null {
 export function WhatsNewUpdatesSection() {
   const enabled = useWhatsNewEnabled();
   const data = useWhatsNewNotes(enabled === true);
+  const showMe = useShowMe();
   if (enabled !== true || data === null) {
     return null;
   }
-  return <WhatsNewNotes {...data} />;
+  return <WhatsNewNotes {...data} onShowMe={showMe} />;
 }

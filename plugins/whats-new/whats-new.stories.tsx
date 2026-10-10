@@ -158,6 +158,7 @@ export function UpdatesSection() {
           skipped={[]}
           updatedFrom={null}
           available={null}
+          onShowMe={noop}
         />
       </div>
       <div className="max-w-2xl">
@@ -166,6 +167,7 @@ export function UpdatesSection() {
           skipped={[DIFF_FILTERING, SAVED_DRAFTS]}
           updatedFrom="0.43.0"
           available={NEXT_RELEASE}
+          onShowMe={noop}
         />
       </div>
     </Themes>

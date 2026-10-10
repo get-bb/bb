@@ -40,20 +40,29 @@ export function highlightWalkthroughPrompt(item: string): string {
   return `Walk me through ${title} in this bb, one step at a time, and check each step with me.${context} If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
 }
 
-export function ShowMeAction({ item }: { item: string }) {
+export function useShowMe(): (item: string) => void {
   const navigate = useBbNavigate();
+  return (item) =>
+    navigate.toCompose({
+      initialPrompt: highlightWalkthroughPrompt(item),
+      focusPrompt: true,
+    });
+}
+
+export function ShowMeAction({
+  item,
+  onShowMe,
+}: {
+  item: string;
+  onShowMe(item: string): void;
+}) {
   const { title } = highlightSubject(item);
   return (
     <button
       type="button"
       data-whats-new-show-me
       aria-label={`Show me ${title}`}
-      onClick={() =>
-        navigate.toCompose({
-          initialPrompt: highlightWalkthroughPrompt(item),
-          focusPrompt: true,
-        })
-      }
+      onClick={() => onShowMe(item)}
       className="ml-1.5 inline cursor-pointer whitespace-nowrap rounded-sm text-xs text-subtle-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       Show me

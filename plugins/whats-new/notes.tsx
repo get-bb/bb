@@ -105,15 +105,21 @@ function SectionTitle({ title }: { title: string }) {
   );
 }
 
-function SectionList({ sections }: { sections: readonly ReleaseSection[] }) {
+function SectionList({
+  sections,
+  onShowMe,
+}: {
+  sections: readonly ReleaseSection[];
+  onShowMe: ((item: string) => void) | null;
+}) {
   return sections.map((section) => (
     <div key={section.title} className="mt-5 first:mt-3">
       <SectionTitle title={section.title} />
       <Blocks
         blocks={section.blocks}
         itemAction={
-          section.title === "Highlights"
-            ? (item) => <ShowMeAction item={item} />
+          section.title === "Highlights" && onShowMe !== null
+            ? (item) => <ShowMeAction item={item} onShowMe={onShowMe} />
             : undefined
         }
       />
@@ -289,9 +295,11 @@ function ReleaseHeroImage({
 function CurrentRelease({
   release,
   metaLine,
+  onShowMe,
 }: {
   release: ReleaseNotes;
   metaLine: string;
+  onShowMe: ((item: string) => void) | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -346,7 +354,7 @@ function CurrentRelease({
               <Blocks blocks={ledeList} />
             </div>
           )}
-          <SectionList sections={sections} />
+          <SectionList sections={sections} onShowMe={onShowMe} />
           <ThanksLine release={release} />
         </div>
       </div>
@@ -359,7 +367,8 @@ export function WhatsNewNotes({
   skipped,
   updatedFrom,
   available,
-}: WhatsNewNotesData) {
+  onShowMe = null,
+}: WhatsNewNotesData & { onShowMe?: ((item: string) => void) | null }) {
   const metaLine = [
     `bb ${current.version}`,
     current.date,
@@ -391,7 +400,11 @@ export function WhatsNewNotes({
         </UrlLink>
       </div>
       <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-        <CurrentRelease release={current} metaLine={metaLine} />
+        <CurrentRelease
+          release={current}
+          metaLine={metaLine}
+          onShowMe={onShowMe}
+        />
         {available === null ? null : (
           <div data-whats-new-available className="mt-4">
             <ReleaseRow release={available} badge="Update available" />
