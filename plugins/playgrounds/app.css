@@ -587,7 +587,11 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
+.pga details {
+  min-width: 0;
+}
 .pga-diff {
+  max-width: 100%;
   margin: 8px 0 0;
   padding: 10px;
   max-height: 320px;
