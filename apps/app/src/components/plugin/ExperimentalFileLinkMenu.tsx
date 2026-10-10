@@ -15,6 +15,7 @@ import {
   getExperimentalFileLocationStart,
 } from "@/lib/live-file-navigation";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { usePluginDisplayNames } from "@/lib/plugin-logos";
 
 function getFileExtension(path: string): string | null {
   const name = getFileBasename(path);
@@ -38,6 +39,7 @@ export function ExperimentalFileLinkMenu({
       : {}),
   });
   const { fileOpeners } = usePluginSlots();
+  const getPluginName = usePluginDisplayNames();
   const extension = getFileExtension(intent.target.path);
   const matchingOpeners =
     extension === null
@@ -74,7 +76,7 @@ export function ExperimentalFileLinkMenu({
                   })
                 }
               >
-                {opener.title}
+                {getPluginName(opener.pluginId)} ({opener.title})
               </ContextMenuItem>
             ))}
           </ContextMenuSubContent>

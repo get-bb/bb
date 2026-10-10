@@ -50,12 +50,19 @@ export function usePluginCompactBranding(
 }
 
 export function usePluginDisplayName(pluginId: string): string {
+  return usePluginDisplayNames()(pluginId);
+}
+
+export function usePluginDisplayNames(): (pluginId: string) => string {
   const entries = useSyncExternalStore(
     subscribePluginLogos,
     getPluginLogoUrls,
     getPluginLogoUrls,
   );
-  return entries.get(pluginId)?.displayName ?? pluginId;
+  return useCallback(
+    (pluginId: string) => entries.get(pluginId)?.displayName ?? pluginId,
+    [entries],
+  );
 }
 
 export function usePluginIconUrl(

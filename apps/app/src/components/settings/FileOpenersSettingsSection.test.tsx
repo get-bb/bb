@@ -9,15 +9,34 @@ import {
 import { BUILT_IN_FILE_OPENER_PREFERENCE } from "@/lib/file-opener-preference";
 import { FileOpenersSettingsSection } from "./FileOpenersSettingsSection";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
 
 function registerNotesOpener() {
+  setPluginLogoUrls(
+    new Map([
+      [
+        "simple-notes",
+        {
+          displayName: "Docs",
+          icon: null,
+          compactIconUrl: null,
+          logoUrl: null,
+          logoDarkUrl: null,
+          icons: new Map(),
+        },
+      ],
+    ]),
+  );
   setPluginSlotRegistrations(
-    "notes",
+    "simple-notes",
     makePluginRegistrationSet({
       fileOpeners: [
         {
-          id: "editor",
-          title: "Notes editor",
+          id: "docs",
+          title: "Markdown",
           extensions: ["md", "mdx"],
           component: () => null,
         },
@@ -30,6 +49,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
 });
 
 describe("FileOpenersSettingsSection", () => {
@@ -42,15 +62,15 @@ describe("FileOpenersSettingsSection", () => {
     const trigger = screen.getByRole("button", {
       name: "Default opener for .md files",
     });
-    expect(trigger.textContent).toContain("Automatic");
+    expect(trigger.textContent).toContain("Automatic (Docs)");
 
     await selectOption(trigger, /Built-in preview/u);
     expect(storedPreference()).toEqual({
       md: BUILT_IN_FILE_OPENER_PREFERENCE,
     });
 
-    await selectOption(trigger, /Notes editor \(notes\)/u);
-    expect(storedPreference()).toEqual({ md: "notes:editor" });
+    await selectOption(trigger, /Docs \(Markdown\)/u);
+    expect(storedPreference()).toEqual({ md: "simple-notes:docs" });
 
     await selectOption(trigger, /Automatic/u);
     expect(storedPreference()).toEqual({});
