@@ -591,7 +591,7 @@ function ChildQuestionBody({
                 className="size-3.5"
                 aria-hidden="true"
               />
-              Back
+              Child threads
             </button>
           ) : (
             <span />

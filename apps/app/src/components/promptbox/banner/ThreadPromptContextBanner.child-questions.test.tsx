@@ -180,7 +180,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Back" }),
+      screen.getByRole("button", { name: "Child threads" }),
     );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
@@ -232,14 +232,14 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
-  it("hides the stepper and Back when only one child thread is waiting", () => {
+  it("hides the stepper and the back control when only one child thread is waiting", () => {
     render(bannerElement(section([newest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
     expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
-    expect(screen.queryByRole("button", { name: "Back" })).toBe(null);
+    expect(screen.queryByRole("button", { name: "Child threads" })).toBe(null);
   });
 
   it("drops the bottom collapse row while a question is open", () => {
@@ -258,7 +258,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child threads" }));
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
