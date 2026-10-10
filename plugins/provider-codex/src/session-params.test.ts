@@ -707,4 +707,154 @@ describe("toCodexUserInput", () => {
       },
     ]);
   });
+
+  it("invokes a selected slash skill without changing the displayed prompt", () => {
+    const input: PromptInput[] = [
+      {
+        type: "text",
+        text: "/teach explain this change",
+        mentions: [
+          {
+            start: 0,
+            end: 6,
+            resource: {
+              kind: "command",
+              trigger: "/",
+              name: "teach",
+              source: "skill",
+              origin: "user",
+              label: "teach",
+              argumentHint: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(toCodexUserInput(input)).toEqual([
+      { type: "text", text: "$teach explain this change", text_elements: [] },
+    ]);
+    expect(input[0]).toHaveProperty("text", "/teach explain this change");
+  });
+
+  it("preserves selected dollar skills, ordinary slash commands, and plain text", () => {
+    const input: PromptInput[] = [
+      {
+        type: "text",
+        text: "$teach /plan /teach",
+        mentions: [
+          {
+            start: 0,
+            end: 6,
+            resource: {
+              kind: "command",
+              trigger: "$",
+              name: "teach",
+              source: "skill",
+              origin: "user",
+              label: "teach",
+              argumentHint: null,
+            },
+          },
+          {
+            start: 7,
+            end: 12,
+            resource: {
+              kind: "command",
+              trigger: "/",
+              name: "plan",
+              source: "command",
+              origin: "builtin",
+              label: "plan",
+              argumentHint: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(toCodexUserInput(input)).toEqual([
+      { type: "text", text: "$teach /plan /teach", text_elements: [] },
+    ]);
+  });
+
+  it("converts only selected ranges in a prompt with repeated skill names", () => {
+    const text = "Use /teach, then /teach with /plan; keep /teach plain.";
+    const first = text.indexOf("/teach");
+    const second = text.indexOf("/teach", first + 1);
+    const plan = text.indexOf("/plan");
+    const skillResource = {
+      kind: "command",
+      trigger: "/",
+      name: "teach",
+      source: "skill",
+      origin: "user",
+      label: "teach",
+      argumentHint: null,
+    } satisfies Extract<
+      PromptInput,
+      { type: "text" }
+    >["mentions"][number]["resource"];
+    const input: PromptInput[] = [
+      {
+        type: "text",
+        text,
+        mentions: [
+          { start: second, end: second + 6, resource: skillResource },
+          {
+            start: plan,
+            end: plan + 5,
+            resource: {
+              kind: "command",
+              trigger: "/",
+              name: "plan",
+              source: "command",
+              origin: "builtin",
+              label: "plan",
+              argumentHint: null,
+            },
+          },
+          { start: first, end: first + 6, resource: skillResource },
+        ],
+      },
+      { type: "text", text: "Then $teach and /teach.", mentions: [] },
+    ];
+
+    expect(toCodexUserInput(input)).toEqual([
+      {
+        type: "text",
+        text: "Use $teach, then $teach with /plan; keep /teach plain.",
+        text_elements: [],
+      },
+      { type: "text", text: "Then $teach and /teach.", text_elements: [] },
+    ]);
+  });
+
+  it("does not invoke a skill from a stale mention range", () => {
+    const input: PromptInput[] = [
+      {
+        type: "text",
+        text: "/teach",
+        mentions: [
+          {
+            start: 0,
+            end: 100,
+            resource: {
+              kind: "command",
+              trigger: "/",
+              name: "teach",
+              source: "skill",
+              origin: "user",
+              label: "teach",
+              argumentHint: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(toCodexUserInput(input)).toEqual([
+      { type: "text", text: "/teach", text_elements: [] },
+    ]);
+  });
 });
