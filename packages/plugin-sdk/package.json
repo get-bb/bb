@@ -44,11 +44,11 @@
       "import": "./dist/provider-bridge-acp.js",
       "default": "./dist/provider-bridge-acp.js"
     },
-    "./provider-bridge/acp-redux": {
-      "source": "./src/provider-bridge-acp-redux.ts",
-      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp-redux.d.ts",
-      "import": "./dist/provider-bridge-acp-redux.js",
-      "default": "./dist/provider-bridge-acp-redux.js"
+    "./provider-bridge/acp-next": {
+      "source": "./src/provider-bridge-acp-next.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp-next.d.ts",
+      "import": "./dist/provider-bridge-acp-next.js",
+      "default": "./dist/provider-bridge-acp-next.js"
     },
     "./environment-provider": {
       "source": "./src/environment-provider.ts",
@@ -147,7 +147,7 @@
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-acp": "workspace:*",
-    "@bb/provider-bridge-acp-redux": "workspace:*",
+    "@bb/provider-bridge-acp-next": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",

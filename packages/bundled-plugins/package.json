@@ -32,7 +32,7 @@
     "bb-plugin-plugin-api-docs": "workspace:*",
     "bb-plugin-plugin-api-tester": "workspace:*",
     "bb-plugin-provider-acp": "workspace:*",
-    "bb-plugin-bb--provider-acp-redux": "workspace:*",
+    "bb-plugin-bb--provider-acp-next": "workspace:*",
     "bb-plugin-provider-claude-code": "workspace:*",
     "bb-plugin-provider-codex": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",

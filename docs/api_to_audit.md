@@ -962,12 +962,12 @@ is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
 
-## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-redux`)
+## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
 
 **Experimental preview (2026-10-09).** The rebuilt ACP bridge, published
 beside the original kit so the two can be compared before one replaces the
 other. The built-in "ACP providers (new adapter)" plugin
-(`plugins/provider-acp-redux`, off by default) is its consumer: its `bb.host`
+(`plugins/provider-acp-next`, off by default) is its consumer: its `bb.host`
 artifact re-exports `experimental_acpProviderBridge` from this subpath the way
 the original plugin re-exports it from `provider-bridge/acp`. Turning that
 plugin on turns the original ACP plugin off, and the reverse.
@@ -975,7 +975,7 @@ plugin on turns the original ACP plugin off, and the reverse.
 **What it does.** The same members as the original kit
 (`experimental_acpProviderBridge`, `experimental_probeAcpAgent`,
 `experimental_acpAgentProbeSchema`, `experimental_acpLaunchSpecSchema` and
-their types), backed by `packages/provider-bridge-acp-redux`: transport on the
+their types), backed by `packages/provider-bridge-acp-next`: transport on the
 official `@agentclientprotocol/sdk`, a session model that opens turns for
 agent-started work, live slash commands and session options published as bb
 thread state, elicitation forms as question cards, and sign-in guidance from
@@ -991,13 +991,13 @@ throws for an empty id and for a built-in id (`acp`, `cursor`, `grok`, `omp`,
 `opencode`); a second registration of the same id replaces the first; an id
 nothing registered resolves to the generic dialect. Core uses the same path:
 the bridge resolves every dialect, shipped or registered, through the one
-registry (`packages/provider-bridge-acp-redux/src/dialect.ts`,
+registry (`packages/provider-bridge-acp-next/src/dialect.ts`,
 `resolveAcpDialect`), and the built-in plugin names its dialects by id the way
 a third-party plugin does.
 
 **Audit before stabilizing.** Decide when this kit replaces the original: the
 subpath should then be removed and its members move to `provider-bridge/acp`,
-so no plugin is left importing a name that says "redux". The open questions
+so no plugin is left importing a name that says "next". The open questions
 on the original kit apply here unchanged (what `probeAcpAgent` owes a caller,
 hook versioning for `AcpDialect`, naming a dialect by value, a bridge factory
 instead of a module-level registry).

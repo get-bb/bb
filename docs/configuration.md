@@ -796,7 +796,7 @@ listed.
 
 The rebuilt ACP adapter ships as a second built-in plugin, "ACP providers (new
 adapter)", which is off by default. Turn it on in Settings → Plugins or with
-`bb plugin enable bb--provider-acp-redux`. It registers the same provider ids,
+`bb plugin enable bb--provider-acp-next`. It registers the same provider ids,
 so existing threads keep working, and only one of the two ACP plugins runs at
 a time: turning the new one on turns "ACP providers" off, turning it off
 turns "ACP providers" back on, and the `customAgents` list follows the switch

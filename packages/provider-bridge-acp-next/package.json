@@ -1,5 +1,5 @@
 {
-  "name": "@bb/provider-bridge-acp-redux",
+  "name": "@bb/provider-bridge-acp-next",
   "version": "0.0.1",
   "type": "module",
   "exports": {

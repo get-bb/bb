@@ -13,7 +13,7 @@ export const UNLISTED_BUNDLED_PLUGINS: ReadonlySet<string> = new Set([
   "environment-project-checkout",
   "plugin-api-tester",
   "provider-acp",
-  "provider-acp-redux",
+  "provider-acp-next",
   "provider-claude-code",
   "provider-codex",
   "provider-pi",

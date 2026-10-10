@@ -10,7 +10,7 @@ import {
 import { acpProviderDeclaration } from "./declaration.js";
 import { KNOWN_ACP_AGENTS, RESERVED_ACP_PROVIDER_IDS } from "./known-agents.js";
 import { REGISTRY_ICON_AGENT_IDS } from "./registry-icons.js";
-import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
+import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp-next";
 
 const reserved = RESERVED_ACP_PROVIDER_IDS;
 
@@ -150,7 +150,7 @@ describe("custom agent icons", () => {
   };
 
   it("gives an agent from the ACP registry its registry icon and any other agent the toolbox", () => {
-    expect(iconFor("pi-acp")).toBe("bb--provider-acp-redux/registry-pi-acp");
+    expect(iconFor("pi-acp")).toBe("bb--provider-acp-next/registry-pi-acp");
     expect(iconFor("my-own-agent")).toBe("Toolbox");
   });
 

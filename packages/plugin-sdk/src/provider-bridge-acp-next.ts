@@ -1,5 +1,5 @@
 /**
- * `@get-bb/plugin-sdk/provider-bridge/acp-redux` — a preview of the rebuilt
+ * `@get-bb/plugin-sdk/provider-bridge/acp-next` — a preview of the rebuilt
  * ACP bridge kit, published beside `provider-bridge/acp` until it replaces it
  * (docs/api_to_audit.md). The exports match the original kit, plus
  * `experimental_registerAcpDialect`.
@@ -14,7 +14,7 @@
  * ```ts
  * // host.ts (the plugin's `bb.host` entry)
  * export { experimental_acpProviderBridge as experimental_providerBridge }
- *   from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
+ *   from "@get-bb/plugin-sdk/provider-bridge/acp-next";
  *
  * // server.ts
  * bb.providers.register({
@@ -43,7 +43,7 @@
  * // host.ts
  * import {
  *   experimental_registerAcpDialect,
- * } from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
+ * } from "@get-bb/plugin-sdk/provider-bridge/acp-next";
  *
  * experimental_registerAcpDialect({
  *   id: "amp",
@@ -62,35 +62,35 @@
  * consumes are not published: the surface grows with a consumer, not ahead
  * of one.
  */
-import type { AcpLaunchSpec } from "@bb/provider-bridge-acp-redux";
+import type { AcpLaunchSpec } from "@bb/provider-bridge-acp-next";
 
-export { acpProviderBridge as experimental_acpProviderBridge } from "@bb/provider-bridge-acp-redux";
+export { acpProviderBridge as experimental_acpProviderBridge } from "@bb/provider-bridge-acp-next";
 /**
  * Add an agent dialect to the bridge in this host artifact. Call it at
  * module load, before the bridge handles a command. Throws for an empty id
  * and for the id of a dialect the bridge ships; registering the same id
  * again replaces the earlier registration.
  */
-export { registerAcpDialect as experimental_registerAcpDialect } from "@bb/provider-bridge-acp-redux";
+export { registerAcpDialect as experimental_registerAcpDialect } from "@bb/provider-bridge-acp-next";
 export type {
   AcpClassifiedToolCall,
   AcpClientRequestOutcome,
   AcpDelegationReport,
   AcpDialect,
   AcpToolIdentity,
-} from "@bb/provider-bridge-acp-redux";
+} from "@bb/provider-bridge-acp-next";
 
 export {
   acpAgentProbeSchema as experimental_acpAgentProbeSchema,
   probeAcpAgent as experimental_probeAcpAgent,
-} from "@bb/provider-bridge-acp-redux";
+} from "@bb/provider-bridge-acp-next";
 export type {
   AcpAgentProbe,
   AcpAgentProbeRequest,
-} from "@bb/provider-bridge-acp-redux";
+} from "@bb/provider-bridge-acp-next";
 
-export { acpLaunchSpecSchema as experimental_acpLaunchSpecSchema } from "@bb/provider-bridge-acp-redux";
-export type { AcpLaunchSpec } from "@bb/provider-bridge-acp-redux";
+export { acpLaunchSpecSchema as experimental_acpLaunchSpecSchema } from "@bb/provider-bridge-acp-next";
+export type { AcpLaunchSpec } from "@bb/provider-bridge-acp-next";
 /**
  * @deprecated The bridge reads the parsed `AcpLaunchSpec` directly; the
  * profile it used to derive from the spec carried the same fields under
@@ -105,5 +105,5 @@ export type {
   AcpToolCallStatus,
   AcpToolCallUpdateEvent,
   AcpToolKind,
-} from "@bb/provider-bridge-acp-redux";
-export type { AgentModelCatalog as AcpAgentModelCatalog } from "@bb/provider-bridge-acp-redux";
+} from "@bb/provider-bridge-acp-next";
+export type { AgentModelCatalog as AcpAgentModelCatalog } from "@bb/provider-bridge-acp-next";

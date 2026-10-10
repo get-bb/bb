@@ -140,8 +140,8 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "provider-acp-redux",
-    pluginId: "bb--provider-acp-redux",
+    name: "provider-acp-next",
+    pluginId: "bb--provider-acp-next",
     defaultEnabled: false,
   },
   {
@@ -269,7 +269,7 @@ export interface BundledPluginReplacement {
 export const BUNDLED_PLUGIN_REPLACEMENTS: readonly BundledPluginReplacement[] =
   [
     {
-      pluginId: "bb--provider-acp-redux",
+      pluginId: "bb--provider-acp-next",
       replaces: "provider-acp",
       carriedSettings: ["customAgents"],
     },

@@ -421,7 +421,7 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `AcpToolIdentity`
 - `AcpToolKind`
 
-## `@get-bb/plugin-sdk/provider-bridge/acp-redux`
+## `@get-bb/plugin-sdk/provider-bridge/acp-next`
 
 - `experimental_acpAgentProbeSchema`
 - `experimental_acpLaunchSpecSchema`

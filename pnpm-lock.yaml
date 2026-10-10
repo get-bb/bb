@@ -1605,9 +1605,9 @@ importers:
       bb-plugin-bb--prompt-library:
         specifier: workspace:*
         version: link:../../plugins/prompt-library
-      bb-plugin-bb--provider-acp-redux:
+      bb-plugin-bb--provider-acp-next:
         specifier: workspace:*
-        version: link:../../plugins/provider-acp-redux
+        version: link:../../plugins/provider-acp-next
       bb-plugin-bb--provider-usage:
         specifier: workspace:*
         version: link:../../plugins/provider-usage
@@ -2377,9 +2377,9 @@ importers:
       '@bb/provider-bridge-acp':
         specifier: workspace:*
         version: link:../provider-bridge-acp
-      '@bb/provider-bridge-acp-redux':
+      '@bb/provider-bridge-acp-next':
         specifier: workspace:*
-        version: link:../provider-bridge-acp-redux
+        version: link:../provider-bridge-acp-next
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../provider-bridge-protocol
@@ -2506,7 +2506,7 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  packages/provider-bridge-acp-redux:
+  packages/provider-bridge-acp-next:
     dependencies:
       '@agentclientprotocol/sdk':
         specifier: 1.7.0
@@ -4559,7 +4559,7 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  plugins/provider-acp-redux:
+  plugins/provider-acp-next:
     dependencies:
       '@bb/shared-ui':
         specifier: workspace:*
@@ -21491,7 +21491,9 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

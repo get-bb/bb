@@ -3,7 +3,7 @@ import type {
   BbPluginApi,
   PluginProviderDeclaration,
 } from "@get-bb/plugin-sdk";
-import type { AcpAgentProbe } from "@get-bb/plugin-sdk/provider-bridge/acp-redux";
+import type { AcpAgentProbe } from "@get-bb/plugin-sdk/provider-bridge/acp-next";
 import { z } from "zod";
 import { type AcpAgentDefinition } from "./src/agents.js";
 import { resolveConfiguredAcpAgents } from "./src/configured-agents.js";

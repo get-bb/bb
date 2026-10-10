@@ -6,7 +6,7 @@ import { z } from "zod";
 import { KNOWN_ACP_AGENTS } from "./src/known-agents.js";
 import acpProvidersPlugin from "./server.js";
 
-const PLUGIN_ID = "bb--provider-acp-redux";
+const PLUGIN_ID = "bb--provider-acp-next";
 
 const DECLARED_ICON_NAMES = Object.keys(
   z

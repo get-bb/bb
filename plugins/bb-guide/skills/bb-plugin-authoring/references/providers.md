@@ -290,7 +290,7 @@ catalog, tool, and dialect contracts. It supports the `generic`, `cursor`, and
 `grok` dialects. Read `provider-bridge-api-index.md` for the complete export
 list.
 
-`@get-bb/plugin-sdk/provider-bridge/acp-redux` is a preview of the rebuilt ACP
+`@get-bb/plugin-sdk/provider-bridge/acp-next` is a preview of the rebuilt ACP
 bridge with the same exports plus `experimental_registerAcpDialect({ id,
 ...hooks })`. Call it at module load in the host artifact and name that id as
 `acpDialect` to read an agent's own side channels; a built-in id (`acp`,

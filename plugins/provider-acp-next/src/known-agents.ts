@@ -5,7 +5,7 @@ import { resolveHermesNativeRoots } from "./native-roots/hermes.js";
 import { resolveOmpNativeRoots } from "./native-roots/omp.js";
 import { resolveOpenCodeNativeRoots } from "./native-roots/opencode.js";
 
-const PLUGIN_ID = "bb--provider-acp-redux";
+const PLUGIN_ID = "bb--provider-acp-next";
 
 function declaredIcon(name: string): string {
   return `${PLUGIN_ID}/${name}`;

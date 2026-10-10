@@ -120,7 +120,7 @@ const ALWAYS_VISIBLE_PROVIDER_IDS = FIRST_PARTY_PROVIDER_DECLARATIONS.filter(
   (plugin) => plugin.visibility === "always",
 ).map((plugin) => plugin.providerId);
 
-const NEW_ACP_PLUGIN_ID = "bb--provider-acp-redux";
+const NEW_ACP_PLUGIN_ID = "bb--provider-acp-next";
 const ACP_PROVIDER_IDS = FIRST_PARTY_PROVIDER_DECLARATIONS.filter(
   (plugin) => plugin.builtinName === "provider-acp",
 ).map((plugin) => plugin.providerId);
@@ -423,7 +423,7 @@ describe("first-party provider plugins", () => {
             .map((entry) => [entry.id, entry.pluginId, entry.pluginEnabled]);
 
         await installFirstPartyProviderPlugins(harness);
-        await harness.pluginService.install("builtin:provider-acp-redux", {
+        await harness.pluginService.install("builtin:provider-acp-next", {
           kind: "root",
         });
         await harness.pluginService.setEnabled(NEW_ACP_PLUGIN_ID, false);

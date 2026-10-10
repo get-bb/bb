@@ -98,7 +98,7 @@ describe("builtin host artifacts", () => {
       methods: ["probeAgent", "resolveNativeRoots"],
     },
     {
-      pluginDir: "provider-acp-redux",
+      pluginDir: "provider-acp-next",
       methods: ["probeAgent", "resolveNativeRoots"],
     },
     { pluginDir: "provider-claude-code", methods: ["resolveNativeRoots"] },

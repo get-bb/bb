@@ -12,7 +12,7 @@ and `bb.sdk.system.usageLimits({ hostId, providerId: "acp-opencode" })`.
 Other OpenCode providers and pay-as-you-go spending are not included.
 
 The plugin has no bridge of its own. Every agent it registers runs on the
-published ACP kit, `@get-bb/plugin-sdk/provider-bridge/acp-redux`, which its
+published ACP kit, `@get-bb/plugin-sdk/provider-bridge/acp-next`, which its
 `bb.host` entry re-exports (`src/host.ts`). That is the whole
 point of the kit: a third-party plugin adds an ACP agent exactly the way this
 one does, with no bb-side code. The plugin is forkable
@@ -49,4 +49,4 @@ What lives here:
   `bb.branding.experimental_icons` so the packaged build ships them.
 
 The kit itself, including the ACP wire schema, the delta translation, the
-per-agent dialects and the bridge process, is `packages/provider-bridge-acp-redux`.
+per-agent dialects and the bridge process, is `packages/provider-bridge-acp-next`.
