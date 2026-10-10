@@ -27,15 +27,20 @@ type Db = ReturnType<BbPluginApi["storage"]["database"]>;
 type Live = ReturnType<typeof createLive>;
 
 export const LIBRARY_MIGRATIONS = [
-  "CREATE TABLE library_apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, selected_version_id TEXT NOT NULL, revision INTEGER NOT NULL, origin_kind TEXT NOT NULL, origin_ref TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER)",
+  "CREATE TABLE library_apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, selected_version_id TEXT NOT NULL, revision INTEGER NOT NULL, origin_kind TEXT NOT NULL, origin_ref TEXT, publish_catalog_id TEXT, published_version TEXT, published_digest TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER)",
   "CREATE UNIQUE INDEX library_apps_catalog ON library_apps(origin_ref) WHERE origin_kind = 'catalog'",
+  "CREATE UNIQUE INDEX library_apps_publish ON library_apps(publish_catalog_id) WHERE publish_catalog_id IS NOT NULL",
   "CREATE TABLE library_versions (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, label TEXT NOT NULL, package TEXT NOT NULL, digest TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE (app_id, label))",
-  "CREATE TABLE library_runs (answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, app_id TEXT NOT NULL, version_id TEXT NOT NULL, origin TEXT NOT NULL, inherited INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY (answer_id, thread_id))",
+  "CREATE TABLE library_runs (answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, app_id TEXT NOT NULL, version_id TEXT NOT NULL, origin TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'run', inherited INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY (answer_id, thread_id))",
   "CREATE INDEX library_runs_resume ON library_runs(app_id, thread_id, created_at)",
   "CREATE INDEX library_runs_thread ON library_runs(thread_id)",
   "CREATE TABLE library_operations (request_id TEXT PRIMARY KEY, op TEXT NOT NULL, digest TEXT NOT NULL, status TEXT NOT NULL, result TEXT, thread_id TEXT, expires_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
   "CREATE INDEX library_operations_thread ON library_operations(thread_id)",
   "CREATE INDEX library_operations_expiry ON library_operations(expires_at)",
+  "CREATE TABLE library_drafts (app_id TEXT PRIMARY KEY, base_version_id TEXT NOT NULL, package TEXT NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+  "CREATE TABLE library_releases (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, version_id TEXT NOT NULL, catalog_id TEXT NOT NULL, version_label TEXT NOT NULL, digest TEXT NOT NULL, changelog TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, catalog_revision TEXT, pr_url TEXT, note TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+  "CREATE INDEX library_releases_app ON library_releases(app_id, created_at)",
+  "CREATE UNIQUE INDEX library_releases_version ON library_releases(catalog_id, version_label)",
 ];
 
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -97,6 +102,9 @@ type AppRow = {
   revision: number;
   origin_kind: "local" | "import" | "remix" | "catalog";
   origin_ref: string | null;
+  publish_catalog_id: string | null;
+  published_version: string | null;
+  published_digest: string | null;
   created_at: number;
   updated_at: number;
   trashed_at: number | null;
@@ -116,6 +124,7 @@ type RunRow = {
   app_id: string;
   version_id: string;
   origin: string;
+  kind: "run" | "preview";
   inherited: number;
   created_at: number;
 };
@@ -124,6 +133,7 @@ export type RunOrigin = {
   versionLabel: string;
   digest: string;
   title: string;
+  manifest?: Manifest;
 };
 type OperationRow = {
   request_id: string;

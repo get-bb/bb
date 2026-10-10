@@ -15,8 +15,8 @@ it("opens the app panel once the destination thread mounts, and keeps a manual a
   const app = await loadPluginApp(() => import("./app.js"));
   const header = app.threadHeaderActions.find((a) => a.id === "open-app")!;
   const rpc = {
-    get: ({ id }: { id: string }) => ({
-      id,
+    get: (input: unknown) => ({
+      id: (input as { id: string }).id,
       threadId: "thr_b",
       kind: "html" as const,
       widget: stepper,
