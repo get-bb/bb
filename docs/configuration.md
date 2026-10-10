@@ -2100,7 +2100,9 @@ new phone registers for notifications (`mobile_ios` or `mobile_android`) and
 from the server when a new machine enrolls with a join code (`machine`; the
 server's own machine and re-enrollments do not count), each with `first_of_kind`, and `browser_session_started` from the bundled
 Browser Automation plugin when a session opens (`surface`: `headless` or
-`desktop`; `initiated_by`: `agent` for the CLI agents use, `user` for the app).
+`desktop`; `initiated_by`: `agent` when the CLI runs inside a thread, as agents'
+shells do, `user` when it runs outside any thread, and `sdk` for a direct SDK or
+RPC call).
 That route accepts
 only those events and their fixed, non-identifying properties.
 

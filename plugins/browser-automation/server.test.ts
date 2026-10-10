@@ -170,7 +170,7 @@ describe("server session ownership", () => {
     },
   );
 
-  it("reports each opened session's surface and whether the app or an agent opened it", async () => {
+  it("reports each opened session's surface and whether an agent, a user, or the SDK opened it", async () => {
     const h = await setup();
     h.harness.sdk.stub("hosts.list", async () => [
       makeHostResponse({ id: "local-host", name: "Lab workstation" }),
@@ -190,19 +190,40 @@ describe("server session ownership", () => {
         { threadId: "thread-test" },
       );
       expect(cli.exitCode, cli.stderr).toBe(0);
+      const terminal = await h.harness.behavior.runCli(
+        [
+          "open",
+          "--backend",
+          "local",
+          "--machine",
+          "local-host",
+          "--headless",
+          "--thread",
+          "thread-test",
+          "--json",
+        ],
+        {},
+      );
+      expect(terminal.exitCode, terminal.stderr).toBe(0);
       expect(
         h.harness.sdk.callsTo("system.experimental_recordTelemetryEvent"),
       ).toEqual([
         [
           {
             name: "browser_session_started",
-            properties: { surface: "desktop", initiated_by: "user" },
+            properties: { surface: "desktop", initiated_by: "sdk" },
           },
         ],
         [
           {
             name: "browser_session_started",
             properties: { surface: "headless", initiated_by: "agent" },
+          },
+        ],
+        [
+          {
+            name: "browser_session_started",
+            properties: { surface: "headless", initiated_by: "user" },
           },
         ],
       ]);

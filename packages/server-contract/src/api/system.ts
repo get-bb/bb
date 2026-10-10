@@ -350,7 +350,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
       properties: z
         .object({
           surface: z.enum(["headless", "desktop"]),
-          initiated_by: z.enum(["agent", "user"]),
+          initiated_by: z.enum(["agent", "user", "sdk"]),
         })
         .strict(),
     })

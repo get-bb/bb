@@ -82,14 +82,14 @@ function PrivacyRoute() {
             agent ran it, and whether it was your first), when you connect a
             phone for notifications or add another machine (only the kind of
             device and whether it is your first of that kind), when a browser
-            automation session starts (headless or desktop, and whether an agent
-            or the app started it), and when you turn on a plugin (its id only
-            for built-in and marketplace plugins). Each event carries a random
-            install ID, the app version, and your operating system and
-            architecture. Events never include your prompts, code, file names,
-            project names, or account details. Turn this off in Settings &rarr;
-            General &rarr; Share anonymous usage data, or set{" "}
-            <code>BB_TELEMETRY=false</code>.
+            automation session starts (headless or desktop, and whether it was
+            opened from an agent's thread, outside a thread, or through the
+            SDK), and when you turn on a plugin (its id only for built-in and
+            marketplace plugins). Each event carries a random install ID, the
+            app version, and your operating system and architecture. Events
+            never include your prompts, code, file names, project names, or
+            account details. Turn this off in Settings &rarr; General &rarr;
+            Share anonymous usage data, or set <code>BB_TELEMETRY=false</code>.
           </p>
 
           <p>The iOS and Android apps store the following on your device:</p>

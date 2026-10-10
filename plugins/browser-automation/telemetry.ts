@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
-export type BrowserSessionInitiator = "agent" | "user";
+export type BrowserSessionInitiator = "agent" | "user" | "sdk";
 
 export async function recordBrowserSessionStarted(
   bb: Pick<BbPluginApi, "sdk">,

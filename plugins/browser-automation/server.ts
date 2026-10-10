@@ -450,13 +450,14 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
         finish(await owned(input.threadId, input.sessionId), "closed"),
     };
   }
-  bb.rpc.register(rpcContract, handlers(lifecycle.signal, "user"));
+  bb.rpc.register(rpcContract, handlers(lifecycle.signal, "sdk"));
   function dispatch(
     method: BrowserCliMethod,
     input: unknown,
     signal: AbortSignal,
+    initiatedBy: BrowserSessionInitiator,
   ) {
-    const h = handlers(signal, "agent");
+    const h = handlers(signal, initiatedBy);
     switch (method) {
       case "open":
         return h.open(rpcContract.open.input.parse(input));
@@ -537,6 +538,7 @@ export default async function browserAutomationPlugin(bb: BbPluginApi) {
           context.signal ?? new AbortController().signal,
           lifecycle.signal,
         ]),
+        context.threadId === undefined ? "user" : "agent",
       );
       const output = rpcContract.run.output.safeParse(result);
       const previewed = rpcContract.preview.output.safeParse(result);
