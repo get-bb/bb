@@ -49,9 +49,10 @@ import {
   MACOS_APP_REGION_NO_DRAG_CLASS,
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
-import type {
-  SecondaryPanelRenderableTab,
-  SecondaryPanelTabReorderHandler,
+import {
+  SECONDARY_PANEL_TAB_DRAG_DISTANCE_PX,
+  type SecondaryPanelRenderableTab,
+  type SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
 
 const CHEVRON_SCROLL_STEP_PX = 140;
@@ -156,7 +157,7 @@ export function SecondaryPanelTabStrip({
   } = useDragClickSuppression();
   const dragDisabled = tabs.length < 2;
   const mouseSensor = useSensor(MouseSensor, {
-    activationConstraint: { distance: 4 },
+    activationConstraint: { distance: SECONDARY_PANEL_TAB_DRAG_DISTANCE_PX },
   });
   const touchSensor = useSensor(
     isPanelOpen && !dragDisabled ? TouchSensor : InertTouchSensor,
@@ -554,6 +555,12 @@ function SortablePanelTab({
             noDragClass,
           )}
           onPointerDown={(event) => {
+            if (
+              event.target instanceof Element &&
+              event.target.closest("[data-tab-pill-close]") !== null
+            ) {
+              return;
+            }
             onBeginTabDrag?.(tabId, event);
             sortablePointerDown?.(event);
           }}

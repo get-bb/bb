@@ -61,9 +61,11 @@ import {
   type SidebarTabPlacement,
   type SidebarTabGroup,
 } from "./sidebarSplitLayout";
-import type { SecondaryPanelTabReorderRequest } from "./secondaryPanelTab";
+import {
+  SECONDARY_PANEL_TAB_DRAG_DISTANCE_PX,
+  type SecondaryPanelTabReorderRequest,
+} from "./secondaryPanelTab";
 
-const PANE_DRAG_ENGAGE_DISTANCE_PX = 7;
 const PANE_EDGE_EPSILON = 1e-9;
 type SidebarSplitResizeCursor = "col-resize" | "row-resize";
 
@@ -499,7 +501,8 @@ export function SidebarSplitContainer({
         shouldEngage: (x, y) => {
           const dx = x - startX;
           const dy = y - startY;
-          if (Math.hypot(dx, dy) <= PANE_DRAG_ENGAGE_DISTANCE_PX) return false;
+          if (Math.hypot(dx, dy) <= SECONDARY_PANEL_TAB_DRAG_DISTANCE_PX)
+            return false;
           return (
             Math.abs(dy) > Math.abs(dx) ||
             chromeRect === null ||
