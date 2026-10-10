@@ -105,17 +105,18 @@ export function SidebarNotificationsCard({
         id={labelId}
         className="pr-6 text-sm font-medium leading-snug text-foreground"
       >
-        Get notified when an agent needs you
+        Get notified when this agent needs you
       </p>
       <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-        See when a thread finishes or asks you a question.
+        bb tells you when it finishes or asks you a question, even in another
+        tab.
       </p>
       <button
         type="button"
         onClick={prompt.turnOn}
         className="mt-1.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
       >
-        Turn on notifications
+        Notify me
         <Icon aria-hidden name="ChevronRight" className="size-3" />
       </button>
       <button
