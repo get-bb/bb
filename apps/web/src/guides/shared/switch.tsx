@@ -29,14 +29,15 @@ const GENERIC_AUTOMATIONS = (
   </>
 );
 
-const MOVE_AUTOMATIONS = (
-  <>
-    Your agent can move them for you. Follow{" "}
-    <a href="/guides/move-scheduled-tasks">Move your scheduled tasks to bb</a>:
-    it recreates each one as a bb automation with the same prompt and schedule,
-    and tests it.
-  </>
-);
+function moveAutomations(href: string, title: string, tasks: string) {
+  return (
+    <>
+      Your agent can move them for you. Follow <a href={href}>{title}</a>: it
+      recreates each of your {tasks} as a bb automation with the same prompt and
+      schedule, and tests it.
+    </>
+  );
+}
 
 const GENERIC_SETUP_STEP = (
   <>
@@ -69,7 +70,11 @@ export const SWITCH_TOOLS = {
 
     handoffShot: CLAUDE_HANDOFF_SHOT,
 
-    automations: MOVE_AUTOMATIONS,
+    automations: moveAutomations(
+      "/guides/move-claude-code-routines",
+      "Move your Claude Code routines to bb",
+      "routines",
+    ),
   },
   "codex-app": {
     id: "codex-app",
@@ -85,7 +90,11 @@ export const SWITCH_TOOLS = {
       "the latest prior conversation",
     ),
 
-    automations: MOVE_AUTOMATIONS,
+    automations: moveAutomations(
+      "/guides/move-codex-scheduled-tasks",
+      "Move your Codex scheduled tasks to bb",
+      "scheduled tasks",
+    ),
   },
   conductor: {
     id: "conductor",

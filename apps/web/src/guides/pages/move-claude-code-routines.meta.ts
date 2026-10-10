@@ -1,8 +1,8 @@
 import type { GuideMeta } from "../guide-types";
 
 export const meta: GuideMeta = {
-  slug: "move-scheduled-tasks",
-  title: "Move your Claude Code and Codex scheduled tasks to bb",
+  slug: "move-claude-code-routines",
+  title: "Move your Claude Code routines to bb",
   nav: null,
   canonical: null,
 };
