@@ -589,7 +589,7 @@ function setup(bb: BbPluginApi, deps: CatalogDeps): void {
       name: "playgrounds",
       summary: "Publish playgrounds in a bb thread",
       commands: {
-        ...libraryCommands(library, catalog),
+        ...libraryCommands(library, catalog, (args) => bb.sdk.files.read(args)),
         guide: cliCommand({
           summary: "Print the document schema and examples",
           run: () => ({

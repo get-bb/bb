@@ -67,7 +67,22 @@ export const catalogListingSchema = z
 export const catalogIndexSchema = z
   .object({
     format: z.literal(CATALOG_FORMAT),
-    revision: z.string().min(1).max(80),
+    revision: z
+      .string()
+      .regex(
+        /^[0-9a-f]{40}([0-9a-f]{24})?$/,
+        "Use the full Git commit ID the packages are published at.",
+      ),
+    packages: z
+      .string()
+      .url()
+      .startsWith("https://")
+      .max(300)
+      .refine(
+        (value) =>
+          value.split("{revision}").length === 2 && value.endsWith("/"),
+        "Use an https URL ending in / that contains {revision} once.",
+      ),
     contributing: z.string().url().startsWith("https://").max(300).optional(),
     apps: z.array(catalogListingSchema).max(2000),
   })

@@ -124,11 +124,11 @@ export function createCatalog({
   const fetchLimited = async (
     target: URL,
     limit: number,
+    scope: URL,
     headers: Record<string, string> = {},
   ) => {
     if (!url) throw new Error("No Community catalog is configured.");
     const base = catalogBase(url);
-    const scope = new URL(".", base);
     let current = target;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       if (
@@ -195,9 +195,20 @@ export function createCatalog({
     throw new Error("The catalog redirected too many times.");
   };
 
-  const resolvePath = (path: string) => {
+  const packageRoot = (catalog: CatalogIndex) => {
     if (!url) throw new Error("No Community catalog is configured.");
-    return new URL(path, catalogBase(url));
+    const root = new URL(
+      catalog.packages.replace("{revision}", catalog.revision),
+    );
+    if (root.origin !== catalogBase(url).origin)
+      throw new Error("The catalog's package location must share its origin.");
+    return root;
+  };
+  const resolvePath = (path: string) => {
+    const current = index();
+    if (!current) throw new Error("Refresh the Community catalog first.");
+    const root = packageRoot(current);
+    return { target: new URL(path, root), scope: root };
   };
 
   const refresh = async () => {
@@ -207,6 +218,7 @@ export function createCatalog({
       const response = await fetchLimited(
         catalogBase(url),
         MAX_INDEX_BYTES,
+        new URL(".", catalogBase(url)),
         existing?.etag && existing.index_json
           ? { "if-none-match": existing.etag }
           : {},
@@ -224,6 +236,7 @@ export function createCatalog({
           `The catalog index is invalid: ${parsedIndex.error.issues[0]?.message ?? "unknown error"}`,
         );
       const fresh = parsedIndex.data;
+      packageRoot(fresh);
       db.transaction(() => {
         for (const app of fresh.apps)
           for (const v of app.versions)
@@ -307,7 +320,12 @@ export function createCatalog({
         "invalid",
         "This package is larger than the library limit.",
       );
-    const { body } = await fetchLimited(resolvePath(entry.path), entry.bytes);
+    const location = resolvePath(entry.path);
+    const { body } = await fetchLimited(
+      location.target,
+      entry.bytes,
+      location.scope,
+    );
     if (body.byteLength !== entry.bytes)
       throw new LibraryError(
         "invalid",
@@ -450,7 +468,7 @@ export function createCatalog({
         author: pkg.author ?? listing.author,
         license: pkg.license ?? listing.license,
         origin: pkg.origin ?? null,
-        source: url ? resolvePath(entry.path).href : null,
+        source: url ? resolvePath(entry.path).target.href : null,
       };
     },
     async add({
@@ -482,9 +500,11 @@ export function createCatalog({
       if (cached) return cached;
       const listing = listingOrThrow(catalogId);
       if (!listing.preview) return null;
+      const location = resolvePath(listing.preview);
       const { body } = await fetchLimited(
-        resolvePath(listing.preview),
+        location.target,
         MAX_PREVIEW_BYTES,
+        location.scope,
       );
       const type =
         body[0] === 0x89 &&

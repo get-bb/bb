@@ -19,9 +19,18 @@ function setup(threads: Record<string, ThreadState> = {}) {
     ...threads,
   };
   const forks: Record<string, string> = {};
+  const files: Record<string, string> = {};
   const host = createFakePluginHost({
     pluginId: "playgrounds",
     sdk: {
+      files: {
+        read: (async ({ hostId, path }: { hostId: string; path: string }) => {
+          const content = files[`${hostId}:${path}`];
+          if (content === undefined)
+            throw Object.assign(new Error("not found"), { status: 404 });
+          return { content, contentEncoding: "utf8" };
+        }) as never,
+      },
       threads: {
         get: (async ({ threadId }: { threadId: string }) => {
           const s = state[threadId];
@@ -38,7 +47,7 @@ function setup(threads: Record<string, ThreadState> = {}) {
     },
   });
   createPlugin()(host.bb);
-  return { host, state, forks };
+  return { host, state, forks, files };
 }
 const hosts: Host[] = [];
 afterEach(async () => {
@@ -561,7 +570,7 @@ it("cleans up runs in deleted threads through the recheck, the delete event, and
 });
 
 it("bounds packages, exports stored bytes verbatim, and rejects unsupported packages before writing", async () => {
-  const { host } = tracked(setup());
+  const { host, files } = tracked(setup());
   const { callRpc } = host.harness.behavior;
   const html = 'é"<\u0001'.repeat(100_000);
   const id = /id="([^"]+)"/.exec(
@@ -623,6 +632,30 @@ it("bounds packages, exports stored bytes verbatim, and rejects unsupported pack
   const imported = (await callRpc("appsImport", { text: one.text })) as {
     appId: string;
   };
+  files["host_x:/work/big.json"] = one.text;
+  const fromFile = await host.harness.behavior.runCli(
+    ["apps", "import", "--file", "big.json", "--host", "host_x"],
+    { cwd: "/work" },
+  );
+  expect(fromFile.exitCode).toBe(0);
+  const fileApp = JSON.parse(fromFile.stdout!) as { appId: string };
+  expect(
+    (
+      (await callRpc("appsExport", { appId: fileApp.appId })) as {
+        digest: string;
+      }
+    ).digest,
+  ).toBe(one.digest);
+  expect(
+    (
+      await host.harness.behavior.runCli([
+        "apps",
+        "import",
+        "--file",
+        "big.json",
+      ])
+    ).stderr,
+  ).toContain("--host");
   expect(
     (
       (await callRpc("appsExport", { appId: imported.appId })) as {
@@ -657,7 +690,7 @@ it("bounds packages, exports stored bytes verbatim, and rejects unsupported pack
   await expect(
     callRpc("appsImport", { text: " ".repeat(4 * 1024 * 1024 + 1) }),
   ).rejects.toThrow("limited");
-  expect(await callRpc("appsList", {})).toHaveLength(2);
+  expect(await callRpc("appsList", {})).toHaveLength(3);
   const native = await publish(host, "thr_a", "document");
   const nativeApp = (await callRpc("appsSave", {
     answerId: native,

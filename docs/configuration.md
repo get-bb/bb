@@ -2151,9 +2151,10 @@ for CLI and SDK commands.
 
 The Playgrounds plugin's **Community catalog URL** setting is the https URL of
 a curated catalog `index.json`. It is empty by default, so the Community tab
-says no catalog is configured while My apps keeps working. Packages and preview
-images are fetched only from that index's origin and directory, and every
-package must match the size and SHA-256 recorded in the index. Set it in the
+says no catalog is configured while My apps keeps working. The index names the Git
+commit its packages are published at; packages and preview images are fetched
+only from that commit on the index's origin, and every package must match the
+size and SHA-256 recorded in the index. Set it in the
 plugin's settings or with
 `bb plugin config playgrounds set catalogUrl <url>`; see the `playgrounds` skill for
 the catalog and release commands.

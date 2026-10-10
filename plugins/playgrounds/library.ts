@@ -838,7 +838,7 @@ export function createLibrary({
       agentRequest: pkg
         ? [
             `Submit Playgrounds release ${release.id}: ${pkg.title} ${release.version_label} (${release.kind === "update" ? `update to ${release.catalog_id}` : `new listing ${release.catalog_id}`}) to the Community catalog${contributing ? ` following ${contributing}` : ""}.`,
-            `I authorize opening or updating one pull request for exactly this release using your existing GitHub access.`,
+            `I authorize opening or updating one pull request for exactly this release using your existing GitHub access. The catalog's maintainers decide whether it is accepted for this listing.`,
             `1. Run \`bb playgrounds apps release show ${release.id} --json\`. Stop and tell me if \`ready\` is false.`,
             `2. ${release.pr_url ? `This release already has pull request ${release.pr_url}. Update that pull request; do not open another.` : "Search the catalog repository for an open pull request mentioning this release ID before opening a new one."} Never force-push.`,
             `3. Write \`bb playgrounds apps release package ${release.id}\` byte-for-byte to ${path} and check its SHA-256 is ${release.digest}. Upsert \`catalogEntry\` into index.json's apps list. Mention the release ID in the pull request body.`,
@@ -1883,6 +1883,89 @@ export function createLibrary({
           return { releaseId };
         },
       );
+    },
+    releaseRecover(input: { appId: string; catalogId: string; prUrl: string }) {
+      return db.transaction(() => {
+        const app = requireApp(input.appId);
+        if (app.origin_kind === "catalog")
+          throw new LibraryError(
+            "invalid",
+            "Apps added from Community cannot take over their listing. Use the library that submitted it.",
+          );
+        if (app.publish_catalog_id)
+          throw new LibraryError(
+            "invalid",
+            `This app is already associated with ${app.publish_catalog_id}.`,
+          );
+        const catalogId = catalogIdSchema.parse(input.catalogId);
+        const listing = catalog.listing(catalogId);
+        if (!listing)
+          throw new LibraryError(
+            "not_found",
+            `${catalogId} is not in the refreshed Community catalog.`,
+          );
+        if (
+          db
+            .prepare("SELECT 1 FROM library_apps WHERE publish_catalog_id = ?")
+            .get(catalogId)
+        )
+          throw new LibraryError(
+            "conflict",
+            `Another app in this library is already associated with ${catalogId}.`,
+          );
+        let url: URL;
+        try {
+          url = new URL(input.prUrl);
+        } catch {
+          throw new LibraryError(
+            "invalid",
+            "Pass the https URL of the pull request that submitted a listed version.",
+          );
+        }
+        if (url.protocol !== "https:" || input.prUrl.length > 300)
+          throw new LibraryError(
+            "invalid",
+            "Pass the https URL of the pull request that submitted a listed version.",
+          );
+        const listed = new Map(
+          listing.versions.map((v) => [v.digest, v.version]),
+        );
+        const held = (
+          db
+            .prepare(
+              "SELECT id, label, digest FROM library_versions WHERE app_id = ? ORDER BY created_at DESC, rowid DESC",
+            )
+            .all(app.id) as { id: string; label: string; digest: string }[]
+        ).find((v) => listed.has(v.digest));
+        if (!held)
+          throw new LibraryError(
+            "invalid",
+            `None of this app's versions has exactly the bytes of a version listed for ${catalogId}, so it cannot be reconciled with that listing.`,
+          );
+        const version = listed.get(held.digest)!;
+        const at = now();
+        db.prepare(
+          "UPDATE library_apps SET publish_catalog_id = ?, published_version = ?, published_digest = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
+        ).run(catalogId, version, held.digest, at, app.id);
+        const releaseId = randomUUID();
+        db.prepare(
+          "INSERT OR IGNORE INTO library_releases (id, app_id, version_id, catalog_id, version_label, digest, changelog, kind, status, catalog_revision, pr_url, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'initial', 'published', ?, ?, ?, ?, ?)",
+        ).run(
+          releaseId,
+          app.id,
+          held.id,
+          catalogId,
+          version,
+          held.digest,
+          listing.versions.find((v) => v.version === version)?.notes ?? "",
+          catalog.revision(),
+          url.href,
+          "Association recovered from the catalog. Catalog maintainers still decide whether this library's pull requests may update the listing.",
+          at,
+          at,
+        );
+        return { appId: app.id, catalogId, publishedVersion: version };
+      })();
     },
     releaseShow({ releaseId }: { releaseId: string }) {
       return releaseView(requireRelease(releaseId));

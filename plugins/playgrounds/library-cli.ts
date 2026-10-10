@@ -3,6 +3,7 @@ import {
   type PluginCliCommand,
   type PluginCliContext,
 } from "@get-bb/plugin-sdk";
+import { posix, win32 } from "node:path";
 import { idSchema, threadSchema } from "./model.js";
 import { catalogIdSchema } from "./catalog-format.js";
 import { compactDraft, uuidv7, type Library } from "./library.js";
@@ -99,10 +100,44 @@ const parseArgs = (raw: string | undefined): unknown[] => {
   return Array.isArray(value) ? value : [value];
 };
 
+export type ReadHostFile = (args: {
+  hostId: string;
+  path: string;
+  signal?: AbortSignal;
+}) => Promise<{ content: string; contentEncoding: string }>;
+const hostOption = {
+  type: "string",
+  description:
+    "Machine (host ID) that holds the file; required with a file option",
+} as const;
+
 export function libraryCommands(
   library: Library,
   catalog: Catalog,
+  readFile: ReadHostFile,
 ): Record<string, PluginCliCommand> {
+  const readText = async (
+    file: string | undefined,
+    host: string | undefined,
+    ctx: PluginCliContext,
+  ) => {
+    if (file === undefined) return undefined;
+    if (!host)
+      throw new Error("Pass --host with the machine that holds the file.");
+    const relative = !posix.isAbsolute(file) && !win32.isAbsolute(file);
+    if (relative && !ctx.cwd)
+      throw new Error(
+        "Pass an absolute path; this command has no working directory.",
+      );
+    const read = await readFile({
+      hostId: host,
+      path: relative ? posix.resolve(ctx.cwd!, file) : file,
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+    });
+    if (read.contentEncoding !== "utf8")
+      throw new Error("The file must be UTF-8 text.");
+    return read.content;
+  };
   return {
     "apps request-id": cliCommand({
       summary: "Print a new UUIDv7 request ID for retry-safe app commands",
@@ -221,25 +256,37 @@ export function libraryCommands(
         package: {
           type: "string",
           stdin: true,
-          required: true,
-          description: "Package JSON exactly as exported; use --package-stdin",
+          description:
+            "Package JSON exactly as exported; use --package-stdin (16 KiB) or --file for larger packages",
         },
+        file: {
+          type: "string",
+          description: "Path to an exported package file on --host",
+        },
+        host: hostOption,
         name: {
           type: "string",
           description: "App name; defaults to the package title",
         },
         "request-id": requestIdOption,
       },
-      run: ({ options }) =>
-        json(
+      run: async ({ options }, ctx) => {
+        const fromFile = await readText(options.file, options.host, ctx);
+        const text = fromFile ?? options.package;
+        if (text === undefined)
+          throw new Error("Pass --package-stdin, or --file with --host.");
+        if (fromFile !== undefined && options.package !== undefined)
+          throw new Error("Pass either --package or --file, not both.");
+        return json(
           library.importPackage({
-            text: options.package,
+            text,
             ...(options.name ? { name: options.name } : {}),
             ...(options["request-id"]
               ? { requestId: options["request-id"] }
               : {}),
           }),
-        ),
+        );
+      },
     }),
     "apps export": cliCommand({
       summary: "Print an app version's package bytes exactly as stored",
@@ -297,6 +344,11 @@ export function libraryCommands(
           stdin: true,
           description: "Full package JSON; use --package-stdin",
         },
+        "package-file": {
+          type: "string",
+          description: "Path to a package file on --host",
+        },
+        host: hostOption,
         "from-playground": {
           type: "string",
           description: "Playground ID whose content becomes the new version",
@@ -308,15 +360,16 @@ export function libraryCommands(
         },
         "request-id": requestIdOption,
       },
-      run: async ({ positionals, options }, ctx) =>
-        json(
+      run: async ({ positionals, options }, ctx) => {
+        const packageText =
+          (await readText(options["package-file"], options.host, ctx)) ??
+          options.package;
+        return json(
           await library.createVersion({
             appId: idSchema.parse(positionals.app),
             expectedRevision: options.revision,
             ...(options.label ? { label: options.label } : {}),
-            ...(options.package !== undefined
-              ? { packageText: options.package }
-              : {}),
+            ...(packageText !== undefined ? { packageText } : {}),
             ...(options["from-playground"]
               ? {
                   answerId: idSchema.parse(options["from-playground"]),
@@ -327,7 +380,8 @@ export function libraryCommands(
               ? { requestId: options["request-id"] }
               : {}),
           }),
-        ),
+        );
+      },
     }),
     "apps remix": cliCommand({
       summary: "Copy an app version into a new app with its own identity",
@@ -524,6 +578,16 @@ export function libraryCommands(
           stdin: true,
           description: "New HTML body; use --html-stdin",
         },
+        "html-file": {
+          type: "string",
+          description:
+            "Path to an HTML body file on --host (for HTML over 16 KiB)",
+        },
+        "package-file": {
+          type: "string",
+          description: "Path to a whole draft package file on --host",
+        },
+        host: hostOption,
         document: {
           type: "string",
           stdin: true,
@@ -549,17 +613,21 @@ export function libraryCommands(
         },
         thread,
       },
-      run: async ({ positionals, options }, ctx) =>
-        json(
+      run: async ({ positionals, options }, ctx) => {
+        const packageText =
+          (await readText(options["package-file"], options.host, ctx)) ??
+          options.package;
+        const html =
+          (await readText(options["html-file"], options.host, ctx)) ??
+          options.html;
+        return json(
           compactDraft(
             await library.draftWrite({
               appId: idSchema.parse(positionals.app),
               expectedRevision: options.revision,
               edit: {
-                ...(options.package !== undefined
-                  ? { packageText: options.package }
-                  : {}),
-                ...(options.html !== undefined ? { html: options.html } : {}),
+                ...(packageText !== undefined ? { packageText } : {}),
+                ...(html !== undefined ? { html } : {}),
                 ...(options.document !== undefined
                   ? { documentJson: options.document }
                   : {}),
@@ -588,7 +656,8 @@ export function libraryCommands(
               },
             }),
           ),
-        ),
+        );
+      },
     }),
     "apps draft discard": cliCommand({
       summary: "Delete the private draft",
@@ -765,6 +834,32 @@ export function libraryCommands(
         json(
           library.releaseRecordSubmission({
             releaseId: idSchema.parse(positionals.release),
+            prUrl: options.pr,
+          }),
+        ),
+    }),
+    "apps release recover": cliCommand({
+      summary:
+        "Reconnect an app to a listing it submitted from another library, using a listed version's exact bytes and its pull request",
+      positionals: [app],
+      options: {
+        "catalog-id": {
+          type: "string",
+          required: true,
+          description: "owner/name listing ID",
+        },
+        pr: {
+          type: "string",
+          required: true,
+          description:
+            "https URL of the pull request that submitted a listed version",
+        },
+      },
+      run: ({ positionals, options }) =>
+        json(
+          library.releaseRecover({
+            appId: idSchema.parse(positionals.app),
+            catalogId: catalogIdSchema.parse(options["catalog-id"]),
             prUrl: options.pr,
           }),
         ),

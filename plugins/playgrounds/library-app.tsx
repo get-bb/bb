@@ -922,6 +922,7 @@ function ReleasePanel({
     license: draft.package.license ?? "",
     reviewed: false,
   });
+  const [recover, setRecover] = useState({ catalogId: "", prUrl: "" });
   const { busy, error, run } = useAsync();
   const reload = useCallback(() => {
     void rpc.call("releaseList", { appId }).then(
@@ -1234,6 +1235,61 @@ function ReleasePanel({
         >
           {firstSubmission ? "Prepare submission" : "Prepare update"}
         </button>
+      )}
+      {firstSubmission && !preparing && (
+        <details>
+          <summary>Already listed from another library?</summary>
+          <form
+            className="pga-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(() =>
+                rpc.call("releaseRecover", {
+                  appId,
+                  catalogId: recover.catalogId.trim(),
+                  prUrl: recover.prUrl.trim(),
+                }),
+              ).then((result) => {
+                if (!result) return;
+                reload();
+                onPrepared();
+              });
+            }}
+          >
+            <p className="pga-meta">
+              Reconnect this app to its listing. One of its versions must have
+              exactly the bytes of a listed version. Catalog maintainers still
+              decide whether your updates are accepted.
+            </p>
+            <label className="pga-field">
+              Community ID (owner/name)
+              <input
+                value={recover.catalogId}
+                onChange={(e) =>
+                  setRecover({ ...recover, catalogId: e.target.value })
+                }
+              />
+            </label>
+            <label className="pga-field">
+              Pull request that submitted it
+              <input
+                value={recover.prUrl}
+                onChange={(e) =>
+                  setRecover({ ...recover, prUrl: e.target.value })
+                }
+              />
+            </label>
+            <button
+              type="submit"
+              className="pga-btn"
+              disabled={
+                busy || !recover.catalogId.trim() || !recover.prUrl.trim()
+              }
+            >
+              Reconnect listing
+            </button>
+          </form>
+        </details>
       )}
       <ErrorText error={error} />
     </div>

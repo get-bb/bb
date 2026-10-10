@@ -46,8 +46,14 @@ function makePackage(
   });
 }
 
+const REPO = "https://catalog.example.org/repo/";
+const commitOf = (n: number) =>
+  createHash("sha1").update(`r${n}`).digest("hex");
+
 class FakeCatalog {
   files = new Map<string, string>();
+  commits = new Map<string, Map<string, string>>();
+  packages = `${REPO}{revision}/`;
   offline = false;
   requests: string[] = [];
   revision = 0;
@@ -88,9 +94,13 @@ class FakeCatalog {
     this.revision += 1;
   }
   index(): string {
+    const commit = commitOf(this.revision);
+    if (!this.commits.has(commit))
+      this.commits.set(commit, new Map(this.files));
     return JSON.stringify({
       format: CATALOG_FORMAT,
-      revision: `r${this.revision}`,
+      revision: commit,
+      packages: this.packages,
       contributing: this.contributing,
       apps: this.apps,
     });
@@ -98,7 +108,6 @@ class FakeCatalog {
   fetcher: Fetcher = async (url, init) => {
     this.requests.push(url);
     if (this.offline) throw new Error("getaddrinfo ENOTFOUND");
-    const path = url.slice(BASE.length);
     if (url === `${BASE}index.json`) {
       const body = this.index();
       const etag = `"${sha(body)}"`;
@@ -107,12 +116,15 @@ class FakeCatalog {
         return new Response(null, { status: 304 });
       return new Response(body, { headers: { etag } });
     }
+    if (!url.startsWith(REPO)) return new Response("missing", { status: 404 });
+    const [commit = "", ...rest] = url.slice(REPO.length).split("/");
+    const path = rest.join("/");
     if (path === "apps/redirect.json")
       return new Response(null, {
         status: 302,
         headers: { location: "https://evil.example.com/x.json" },
       });
-    const file = this.files.get(path);
+    const file = this.commits.get(commit)?.get(path);
     return file === undefined
       ? new Response("missing", { status: 404 })
       : new Response(file);
@@ -369,6 +381,13 @@ it("refuses tampered, oversized, unsupported, changed, and redirected packages b
     ]),
   });
 
+  catalog.packages = "https://evil.example.com/{revision}/";
+  catalog.revision += 1;
+  expect(await callRpc("communityRefresh", {})).toMatchObject({
+    error: expect.stringContaining("share its origin"),
+  });
+  catalog.packages = `${REPO}{revision}/`;
+
   const local = await server(catalog, "127.0.0.1");
   expect(
     await local.harness.behavior.callRpc("communityRefresh", {}),
@@ -488,6 +507,49 @@ it("lets an author develop, preview, and release updates to the same listing whi
       reviewed: true,
     }),
   ).rejects.toThrow("already taken");
+  await expect(
+    callRpc("releaseRecover", {
+      appId: importedCopy.appId,
+      catalogId: "example/pocket-synth",
+      prUrl: "https://github.com/example/catalog/pull/1",
+    }),
+  ).rejects.toThrow("Another app");
+
+  const restored = await server(catalog);
+  await restored.harness.behavior.callRpc("communityRefresh", {});
+  const unrelated = (await restored.harness.behavior.callRpc("appsImport", {
+    text: makePackage("1.0.0"),
+  })) as { appId: string };
+  await expect(
+    restored.harness.behavior.callRpc("releaseRecover", {
+      appId: unrelated.appId,
+      catalogId: "example/pocket-synth",
+      prUrl: "https://github.com/example/catalog/pull/1",
+    }),
+  ).rejects.toThrow("exactly the bytes");
+  const backup = (await restored.harness.behavior.callRpc("appsImport", {
+    text: v1Package.text,
+  })) as { appId: string };
+  expect(
+    await restored.harness.behavior.callRpc("releaseRecover", {
+      appId: backup.appId,
+      catalogId: "example/pocket-synth",
+      prUrl: "https://github.com/example/catalog/pull/1",
+    }),
+  ).toMatchObject({ publishedVersion: "1.0.0" });
+  expect(
+    await restored.harness.behavior.callRpc("draftOpen", {
+      appId: backup.appId,
+    }),
+  ).toMatchObject({
+    catalogId: "example/pocket-synth",
+    publishedVersion: "1.0.0",
+  });
+  expect(
+    await restored.harness.behavior.callRpc("releaseList", {
+      appId: backup.appId,
+    }),
+  ).toMatchObject([{ status: "published", version: "1.0.0" }]);
 
   await other.harness.behavior.callRpc("communityRefresh", {});
   const installed = (await other.harness.behavior.callRpc("communityAdd", {

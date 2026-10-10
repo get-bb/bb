@@ -218,6 +218,16 @@ export const libraryRpc = {
       .strict(),
     output: out<R<Library["releaseRecordSubmission"]>>(),
   },
+  releaseRecover: {
+    input: z
+      .object({
+        appId: idSchema,
+        catalogId: catalogIdSchema,
+        prUrl: z.string().max(300),
+      })
+      .strict(),
+    output: out<R<Library["releaseRecover"]>>(),
+  },
   releaseFailed: {
     input: z
       .object({ releaseId: idSchema, note: z.string().max(500) })
@@ -291,6 +301,7 @@ export function libraryHandlers(library: Library, catalog: Catalog) {
     releaseRefresh: library.releaseRefresh,
     releaseSubmitted: library.releaseRecordSubmission,
     releaseFailed: library.releaseMarkFailed,
+    releaseRecover: library.releaseRecover,
     communityList: catalog.list,
     communityRefresh: () => catalog.refresh(),
     communityInspect: catalog.inspect,

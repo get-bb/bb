@@ -126,11 +126,14 @@ invoke, and draft operations.
   cannot run yet. A result with `notice` "Audio activation required" means the
   person must click inside the app before sound plays.
 - Lifecycle: `apps update` (rename, default version), `apps version` (new
-  immutable version from `--package-stdin` or `--from-playground`), `apps remix`,
-  `apps trash`/`restore`, `apps purge --confirm`, `apps export` (exact stored
-  bytes; `--chunk N` above 300,000 characters), and `apps import
---package-stdin`. Plugin CLI stdin is 16 KiB, so import larger packages from
-  the Apps page. Runs and remixes keep their own copies when an app is purged.
+  immutable version from `--package-stdin`, `--package-file`, or
+  `--from-playground`), `apps remix`, `apps trash`/`restore`,
+  `apps purge --confirm`, `apps export` (exact stored bytes; `--chunk N` above
+  300,000 characters), and `apps import`. Plugin CLI stdin is 16 KiB, so pass
+  larger packages as a file on a machine: `apps import --file <path> --host
+<host-id>` (relative paths resolve from your working directory). `apps draft
+set` also takes `--html-file` and `--package-file` with `--host`. Runs and
+  remixes keep their own copies when an app is purged.
 
 ### Documented actions
 
@@ -197,6 +200,9 @@ request instead of opening another, never force-push, and record the PR with
 example, run `apps release refresh <release>` after the catalog moved). A
 release becomes **Published** only when the catalog lists its exact version and
 digest. Record a declined or closed pull request with `apps release failed`.
+If the person submitted a listing from another bb server, `apps release recover
+<app> --catalog-id <owner/name> --pr <url>` reconnects an app that holds the
+exact bytes of a listed version; maintainers still review every update.
 
 ### Community
 
@@ -205,7 +211,10 @@ digest. Record a declined or closed pull request with `apps release failed`.
 [--version]` (also updates), and `community refresh`. Community needs the
 plugin's **Community catalog URL** setting: the https URL of a catalog
 `index.json` (`bb plugin config playgrounds set catalogUrl <url>`). Without
-it, Community says no catalog is configured. Installed
+it, Community says no catalog is configured. The index names the Git commit
+its packages are published at (`revision`) and a same-origin `packages` URL
+containing `{revision}`; packages and previews are fetched only from that
+commit and must match the index's size and SHA-256. Installed
 apps keep working offline and after delisting. Updates change only the default
 for new runs; existing runs keep their version.
 
