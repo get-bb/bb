@@ -195,6 +195,22 @@ export class InteractiveRequestRegistry {
     entry.resolve(request.resolution);
   }
 
+  interruptTurn(args: {
+    threadId: string;
+    turnId: string;
+    reason: string;
+  }): void {
+    for (const [key, entry] of this.pendingEntries) {
+      if (
+        entry.request.threadId !== args.threadId ||
+        entry.request.turnId !== args.turnId
+      )
+        continue;
+      this.pendingEntries.delete(key);
+      entry.reject(new Error(args.reason));
+    }
+  }
+
   interruptThreads(args: InterruptInteractiveThreadsArgs): void {
     const threadIds = new Set(args.threadIds);
     for (const [key, entry] of this.pendingEntries) {

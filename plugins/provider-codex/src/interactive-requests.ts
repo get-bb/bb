@@ -1,9 +1,16 @@
+import { z } from "zod";
+import {
+  CODEX_MCP_ELICITATION_KIND,
+  decodeMcpElicitation,
+  buildMcpElicitationResponse,
+} from "./mcp-elicitation.js";
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
   isApprovalInteractionOutcome,
   userQuestionInteractionOutcomeSchema,
   type ApprovalInteractionOutcome,
+  type ProviderInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
   type PendingInteractionApprovalDecision,
@@ -32,14 +39,13 @@ import type {
 } from "./schemas.js";
 
 type CodexInteractiveResponse =
+  | ReturnType<typeof buildMcpElicitationResponse>
   | CommandExecutionRequestApprovalResponse
   | FileChangeRequestApprovalResponse
   | PermissionsRequestApprovalResponse
   | { answers: Record<string, { answers: string[] }> };
 
-type CodexInteractionOutcome =
-  | ApprovalInteractionOutcome
-  | UserQuestionInteractionOutcome;
+type CodexInteractionOutcome = ProviderInteractionOutcome;
 
 function assertNever(value: never): never {
   throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
@@ -167,6 +173,12 @@ export function decodeCodexInteractiveRequest(
   }
 
   switch (request.method) {
+    case "mcpServer/elicitation/request":
+      return {
+        requestId: request.id,
+        method: request.method,
+        ...decodeMcpElicitation(request.params),
+      };
     case "item/commandExecution/requestApproval": {
       const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
         request.params,
@@ -307,7 +319,17 @@ export function buildCodexInteractiveResponse(
   args: CodexInteractionOutcome,
 ): CodexInteractiveResponse {
   if (!isApprovalInteractionOutcome(args)) {
-    return buildCodexUserQuestionResponse(args);
+    if (args.payload.kind === "user_question")
+      return buildCodexUserQuestionResponse(
+        userQuestionInteractionOutcomeSchema.parse(args),
+      );
+    if (args.payload.kind === CODEX_MCP_ELICITATION_KIND) {
+      const resolution = z
+        .object({ kind: z.literal("request_answer"), value: z.unknown() })
+        .parse(args.resolution);
+      return buildMcpElicitationResponse(args.payload.data, resolution.value);
+    }
+    throw new ProviderResponseEncodeError("Unsupported Codex interaction");
   }
   switch (args.payload.subject.kind) {
     case "command": {
