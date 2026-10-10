@@ -52,7 +52,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
               platform={otherPlatform}
               className="install-note-link"
             >
-              Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
+              {DESKTOP_DOWNLOADS[otherPlatform].label}
             </DownloadLink>
           </span>
           <span className="install-note install-note-touch">
