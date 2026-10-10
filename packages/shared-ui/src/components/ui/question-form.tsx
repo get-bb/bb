@@ -215,6 +215,7 @@ function QuestionTabs({
 
 interface QuestionInputBlockProps {
   density: QuestionFormDensity;
+  showPrompt: boolean;
   disabled: boolean;
   question: Question;
   state: QuestionAnswerState;
@@ -228,6 +229,7 @@ interface QuestionInputBlockProps {
 
 function QuestionInputBlock({
   density,
+  showPrompt,
   disabled,
   question,
   state,
@@ -269,7 +271,7 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      {density === "compact" ? (
+      {!showPrompt ? null : density === "compact" ? (
         <div className="text-xs text-foreground">{question.prompt}</div>
       ) : question.prompt ? (
         <div className="text-sm font-semibold text-foreground">
@@ -277,7 +279,10 @@ function QuestionInputBlock({
         </div>
       ) : null}
       <div
-        className={cn("space-y-0.5", density === "compact" ? "mt-1" : "mt-2")}
+        className={cn(
+          "space-y-0.5",
+          !showPrompt ? undefined : density === "compact" ? "mt-1" : "mt-2",
+        )}
       >
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
@@ -538,6 +543,7 @@ export function QuestionForm({
         <QuestionInputBlock
           key={currentQuestion.id}
           density={density}
+          showPrompt={density !== "compact" || totalQuestions > 1}
           disabled={disabled}
           question={currentQuestion}
           state={currentState}

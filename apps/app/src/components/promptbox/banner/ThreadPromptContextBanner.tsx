@@ -582,12 +582,21 @@ function ChildQuestionBody({
           <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
           Back
         </button>
-        <NavLink
-          to={current.href}
-          className="min-w-0 truncate text-center text-foreground/90 no-underline underline-offset-2 hover:underline"
-        >
-          {current.childTitle}
-        </NavLink>
+        <span className="flex min-w-0 justify-center">
+          <ChildQuestionSummary
+            childTitle={
+              <NavLink
+                to={current.href}
+                className="no-underline underline-offset-2 hover:underline"
+              >
+                {current.childTitle}
+              </NavLink>
+            }
+            question={formatPendingInteractionSummary({
+              interaction: current.interaction,
+            })}
+          />
+        </span>
         {total > 1 ? (
           <div className="-mr-1.5 flex items-center justify-self-end">
             <button
@@ -602,7 +611,7 @@ function ChildQuestionBody({
                 aria-hidden="true"
               />
             </button>
-            <span className="tabular-nums text-subtle-foreground">
+            <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
               {position}
             </span>
             <button
