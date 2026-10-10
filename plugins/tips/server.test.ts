@@ -410,9 +410,7 @@ describe("bb tips", () => {
       current.tips.find((tip) => tip.id === "phone")?.action,
     ).toMatchObject({
       kind: "prompt",
-      prompt: expect.stringContaining(
-        "If the interactive_answer tool is available",
-      ),
+      prompt: expect.stringContaining("If the playground tool is available"),
     });
     const result = await host.harness.behavior.runCli(["--json"]);
     const view = listResultSchema.parse(JSON.parse(result.stdout));

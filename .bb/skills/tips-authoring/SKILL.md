@@ -20,8 +20,9 @@ orders the work.
 3. **Choose one action type.** Use `open-plugin` only for plugins in
    `apps/server/src/services/plugins/builtin-registry.ts`, and `open-page` only
    for the plugin store or core Settings routes. For multi-step setup, use a walkthrough prompt
-   from `walkthroughPrompt(goal)`; AUTHORING.md's Walkthrough prompts section
-   has the wording and rules.
+   from `walkthroughPrompt(goal)`, which asks for a playground when that tool
+   is available and numbered steps otherwise; AUTHORING.md's Walkthrough
+   prompts section has the wording and rules.
 4. **Draw the illustration** in `plugins/tips/illustrations.tsx` from
    `diagram-kit.tsx` parts, with one accent and one named hover animation. Add a
    kit part, plus a Diagram kit story cell, only when a second drawing needs it.

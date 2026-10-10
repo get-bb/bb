@@ -95,11 +95,11 @@ built with `walkthroughPrompt(goal)` in `catalog.ts` instead of opening a page.
 It is the only place the wording lives:
 
 > Walk me through `<goal>` in this bb, one step at a time, and check each step
-> with me. If the interactive_answer tool is available, show the steps as an
-> interactive answer; otherwise reply with plain numbered steps.
+> with me. If the playground tool is available, show the steps as a
+> playground; otherwise reply with plain numbered steps.
 
 Make the goal specific and about something bb ships. Tips never depend on the
-Interactive Answers plugin: the prompt asks for an interactive answer only when
+Playgrounds plugin: the prompt asks for a playground only when
 the tool is there, and plain numbered steps otherwise. Prompts that act on the
 person's own task, such as child threads, end with `Task: ` instead.
 

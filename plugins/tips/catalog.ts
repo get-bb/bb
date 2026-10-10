@@ -118,7 +118,7 @@ function usesAutomationsHere(signals: TipSignals): boolean {
 }
 
 export function walkthroughPrompt(goal: string): string {
-  return `Walk me through ${goal} in this bb, one step at a time, and check each step with me. If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
+  return `Walk me through ${goal} in this bb, one step at a time, and check each step with me. If the playground tool is available, show the steps as a playground; otherwise reply with plain numbered steps.`;
 }
 
 type TipDefaults = "held" | "perVersion" | "retireWhen" | "boost";
