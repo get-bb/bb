@@ -64,3 +64,15 @@ export function isExternallyOpenable(url: string): boolean {
     return false;
   }
 }
+
+export function resolveShellNavigation(
+  request: { url: string; isTopFrame?: boolean; navigationType?: string },
+  serverUrl: string,
+): "load" | "open-external" | "block" {
+  if (isShellNavigation(request.url, serverUrl)) return "load";
+  if (!isExternallyOpenable(request.url)) return "block";
+  if (request.isTopFrame !== false || request.navigationType === "click") {
+    return "open-external";
+  }
+  return "block";
+}

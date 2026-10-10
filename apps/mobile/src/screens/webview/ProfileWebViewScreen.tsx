@@ -28,9 +28,8 @@ import { revealApp, useProfiles } from "@/app-shell";
 import { nativeSessionCache } from "@/lib/native";
 import {
   buildShellUrl,
-  isExternallyOpenable,
-  isShellNavigation,
   resolveShellLoadPath,
+  resolveShellNavigation,
   resolveShellScreenState,
   revealsShellFailure,
   shellPathFromUrl,
@@ -319,6 +318,7 @@ export function ProfileWebViewScreen() {
         ref={webViewRef}
         initialUrl={sourceUrl}
         style={{ backgroundColor: tokens.background }}
+        originWhitelist={["http://*", "https://*", "mailto:*"]}
         sharedCookiesEnabled
         javaScriptEnabled
         domStorageEnabled
@@ -340,11 +340,11 @@ export function ProfileWebViewScreen() {
           bridge.onMessage(event);
         }}
         onShouldStartLoadWithRequest={(request) => {
-          if (isShellNavigation(request.url, profile.serverUrl)) return true;
-          if (isExternallyOpenable(request.url)) {
+          const navigation = resolveShellNavigation(request, profile.serverUrl);
+          if (navigation === "open-external") {
             void Linking.openURL(request.url).catch(() => undefined);
           }
-          return false;
+          return navigation === "load";
         }}
         onNavigationStateChange={(state) => {
           canGoBack.current = state.canGoBack;

@@ -3,6 +3,7 @@ import {
   buildShellUrl,
   isExternallyOpenable,
   isShellNavigation,
+  resolveShellNavigation,
   shellPathFromUrl,
 } from "./shell-url";
 
@@ -102,5 +103,59 @@ describe("isExternallyOpenable", () => {
     ]) {
       expect(isExternallyOpenable(url), url).toBe(false);
     }
+  });
+});
+
+describe("resolveShellNavigation", () => {
+  const navigate = (
+    url: string,
+    isTopFrame: boolean,
+    navigationType = "other",
+  ) => resolveShellNavigation({ url, isTopFrame, navigationType }, ROOT);
+
+  it("loads the profile's own pages in the page and in its frames", () => {
+    expect(navigate("https://bee.getbb.app/threads/x", true)).toBe("load");
+    expect(
+      navigate("https://bee.getbb.app/api/v1/plugins/canvas/http/frame", false),
+    ).toBe("load");
+  });
+
+  it("opens a page-level navigation elsewhere in the system browser", () => {
+    expect(navigate("https://example.com/docs", true)).toBe("open-external");
+    expect(navigate("https://example.com/docs", true, "click")).toBe(
+      "open-external",
+    );
+    expect(navigate("mailto:a@b.com", true, "click")).toBe("open-external");
+  });
+
+  it("treats a navigation without frame details as page-level, as Android sends it", () => {
+    expect(
+      resolveShellNavigation({ url: "https://getbb.app/sign-in" }, ROOT),
+    ).toBe("open-external");
+    expect(
+      resolveShellNavigation({ url: "https://bee.getbb.app/threads/x" }, ROOT),
+    ).toBe("load");
+  });
+
+  it("opens a link tapped inside an embedded frame", () => {
+    expect(navigate("https://example.com/docs", false, "click")).toBe(
+      "open-external",
+    );
+  });
+
+  it("keeps an embed's own frame loads and redirects inside bb", () => {
+    for (const navigationType of ["other", "reload", "backforward"]) {
+      expect(
+        navigate("https://www.youtube.com/embed/x", false, navigationType),
+        navigationType,
+      ).toBe("block");
+    }
+    expect(navigate("mailto:a@b.com", false)).toBe("block");
+    expect(navigate("mailto:a@b.com", false, "click")).toBe("open-external");
+  });
+
+  it("keeps blank frames inside bb", () => {
+    expect(navigate("about:blank", true)).toBe("block");
+    expect(navigate("about:blank", false)).toBe("block");
   });
 });

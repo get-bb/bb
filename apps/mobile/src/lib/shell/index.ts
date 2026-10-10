@@ -1,7 +1,7 @@
 export {
   buildShellUrl,
   isExternallyOpenable,
-  isShellNavigation,
+  resolveShellNavigation,
   shellPathFromUrl,
 } from "./shell-url";
 export {
