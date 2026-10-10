@@ -256,6 +256,11 @@ The default-off `serverMove` experiment enables Move server here in Settings →
 Machines and the server-backed `bb server move` and `bb server export`
 commands. Enable it with `bb settings experiment serverMove true`.
 
+The default-off `timelinePush` experiment sends an open thread's timeline
+updates over the live connection as row deltas instead of reloading the latest
+window after each update. Enable it with
+`bb settings experiment timelinePush true`.
+
 Long timelines and large expanded timeline details mount only nearby rows.
 
 Thread timeline pages select complete conversation groups using

@@ -1111,6 +1111,11 @@ const EXPERIMENT_DEFINITIONS: Record<
     description:
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
+  timelinePush: {
+    label: "Pushed timeline updates",
+    description:
+      "Send an open thread's timeline changes over the live connection instead of reloading the latest window after each update.",
+  },
 };
 export function visibleExperimentKeys(
   performanceDiagnosticsAvailable: boolean,

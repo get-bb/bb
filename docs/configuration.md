@@ -1556,6 +1556,17 @@ While it is off those routes return 403 `server_move_experiment_disabled`;
 move status and cancel stay available. Toggle it with
 `bb settings experiment serverMove <true|false>`.
 
+The `timelinePush` experiment is off by default. When enabled, an open thread
+view subscribes to its latest timeline window over the WebSocket
+(`thread-timeline` subscription target), and the server pushes the full window
+once and then row deltas after new events, so the client stops reloading the
+latest window after every update. A missed push falls back to the same delta
+request the view uses with the experiment off. While it is off the client
+neither subscribes nor applies pushes and refetches the latest window after
+events as before; the server sends nothing because no view subscribes. Toggle
+it with `bb settings experiment timelinePush <true|false>`; open views follow
+the change live.
+
 ## Thread Timeline Window
 
 Timeline pages select conversation groups using user-message anchors. The

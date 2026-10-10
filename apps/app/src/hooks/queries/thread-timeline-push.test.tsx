@@ -2,17 +2,19 @@
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultExperiments } from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useThreadTimelineRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import { sdk } from "@/lib/sdk";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { makeThreadTimelineResponse } from "@/test/fixtures/thread-responses";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   applyThreadTimelineSignal,
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
 } from "../cache-owners/thread-timeline-push-owner";
-import { threadTimelineQueryKey } from "./query-keys";
+import { systemConfigQueryKey, threadTimelineQueryKey } from "./query-keys";
 import { useThreadTimeline } from "./thread-queries";
 
 vi.mock("@/lib/sdk", () => ({
@@ -82,9 +84,22 @@ describe("pushed thread timeline", () => {
     deferContent: true,
   } as const;
 
-  function seedTimeline(maxSeq: number) {
+  function setTimelinePush(
+    queryClient: ReturnType<typeof createQueryClientTestHarness>["queryClient"],
+    timelinePush: boolean,
+  ) {
+    queryClient.setQueryData(
+      systemConfigQueryKey(),
+      makeSystemConfig({
+        experiments: { ...defaultExperiments, timelinePush },
+      }),
+    );
+  }
+
+  function seedTimeline(maxSeq: number, timelinePush = true) {
     mockMatchMedia([]);
     const harness = createQueryClientTestHarness();
+    setTimelinePush(harness.queryClient, timelinePush);
     harness.queryClient.setQueryData(
       threadTimelineQueryKey("thread-1"),
       makeThreadTimelineResponse({ rows: [firstRow], maxSeq }),
@@ -115,7 +130,8 @@ describe("pushed thread timeline", () => {
 
   it("subscribes to the window the query fetches", () => {
     mockMatchMedia([COMPACT_VIEWPORT_QUERY]);
-    const { wrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    setTimelinePush(queryClient, true);
     renderHook(() => useThreadTimeline("thread-1"), { wrapper });
     expect(useThreadTimelineRealtimeSubscription).toHaveBeenCalledWith(
       "thread-1",
@@ -125,6 +141,22 @@ describe("pushed thread timeline", () => {
         segmentLimit: COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
       },
     );
+  });
+
+  it("neither subscribes nor applies pushes while the experiment is off", () => {
+    const { queryClient, wrapper } = seedTimeline(7, false);
+    renderHook(() => useThreadTimeline("thread-1", { staleTime: Infinity }), {
+      wrapper,
+    });
+    expect(useThreadTimelineRealtimeSubscription).toHaveBeenLastCalledWith(
+      "thread-1",
+      { deferContent: true, enabled: false, segmentLimit: null },
+    );
+    applyThreadTimelineSignal(queryClient, deltaSignal(7));
+    expect(cachedTimeline(queryClient)).toMatchObject({
+      maxSeq: 7,
+      rows: [firstRow],
+    });
   });
 
   it("applies a delta at or past its base without fetching", () => {

@@ -33,6 +33,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
     changelogPreview: false,
     serverMove: false,
     performanceDiagnostics: false,
+    timelinePush: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

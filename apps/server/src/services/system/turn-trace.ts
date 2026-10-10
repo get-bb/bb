@@ -269,7 +269,7 @@ interface StreamTraceThreadBatch {
 }
 
 export function observeStreamTraceEventBatch(
-  deps: Pick<AppDeps, "config" | "db" | "logger">,
+  deps: Pick<AppDeps, "config" | "db" | "hub" | "logger">,
   batch: TurnTraceEventBatch,
 ): void {
   if (!isTurnTraceEnabled(deps)) {
@@ -302,6 +302,10 @@ export function observeStreamTraceEventBatch(
           committedAt: epochMs(batch.committedAt),
           notifiedAt: epochMs(batch.notifiedAt),
           ...entry,
+          served:
+            deps.hub.listThreadTimelineTargets(threadId).length > 0
+              ? "push"
+              : "refetch",
         },
       },
       "Stream trace",

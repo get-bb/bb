@@ -100,8 +100,11 @@ import { ingestThreadDetailBootstrap } from "../cache-owners/thread-detail-cache
 import { clearThreadTimelineUnseenEvents } from "../cache-owners/thread-timeline-unseen-events";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
+  isCachedThreadTimelinePushEnabled,
+  isThreadTimelinePushEnabled,
   resolveThreadTimelineSegmentLimit,
 } from "../cache-owners/thread-timeline-push-owner";
+import { systemConfigQueryOptions } from "./system-queries";
 import { markStreamTrace } from "@/lib/stream-trace";
 import {
   THREAD_OPEN_CACHE_GC_MS,
@@ -1090,7 +1093,9 @@ async function fetchThreadTimeline({
   const merged = await mergeThreadTimelineDelta(previous, response, () =>
     sdk.threads.timeline({ threadId, signal, ...pageArgs }),
   );
-  const pushed = queryClient.getQueryData<ThreadTimelineResponse>(queryKey);
+  const pushed = isCachedThreadTimelinePushEnabled(queryClient)
+    ? queryClient.getQueryData<ThreadTimelineResponse>(queryKey)
+    : undefined;
   const timeline =
     pushed !== undefined && pushed.maxSeq > merged.maxSeq ? pushed : merged;
   clearThreadTimelineUnseenEvents(queryClient, threadId, timeline.maxSeq);
@@ -1144,10 +1149,15 @@ export function useThreadTimeline(
   const queryClient = useQueryClient();
   const enabled = (options?.enabled ?? true) && Boolean(id);
   const compactViewport = useMediaQuery(COMPACT_VIEWPORT_QUERY);
+  const pushEnabled = useQuery({
+    ...systemConfigQueryOptions(),
+    enabled: false,
+    select: isThreadTimelinePushEnabled,
+  }).data;
   useThreadDetailRealtimeSubscription(id, { enabled });
   useThreadTimelineRealtimeSubscription(id, {
     deferContent: true,
-    enabled,
+    enabled: enabled && pushEnabled === true,
     segmentLimit: compactViewport
       ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
       : null,

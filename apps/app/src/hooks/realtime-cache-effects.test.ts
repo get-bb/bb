@@ -7,10 +7,12 @@ import {
   PROJECT_CHANGE_KINDS,
   SYSTEM_CHANGE_KINDS,
   THREAD_CHANGE_KINDS,
+  defaultExperiments,
 } from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
 import {
   archivedThreadsListQueryKey,
@@ -120,6 +122,15 @@ function createFakeVisibility(): FakeVisibility {
       }
     },
   };
+}
+
+function enableTimelinePush(queryClient: QueryClient): void {
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      experiments: { ...defaultExperiments, timelinePush: true },
+    }),
+  );
 }
 
 function createRealtimeEffectsTestContext(
@@ -263,7 +274,7 @@ describe("createRealtimeCacheEffects", () => {
     const statusKey = serverMoveStatusQueryKey();
     const configKey = systemConfigQueryKey();
     queryClient.setQueryData(statusKey, { move: null, lastMove: null });
-    queryClient.setQueryData(configKey, {});
+    queryClient.setQueryData(configKey, makeSystemConfig());
 
     effects.handleChanged({
       type: "changed",
@@ -281,7 +292,7 @@ describe("createRealtimeCacheEffects", () => {
     const statusKey = systemAppUpdateQueryKey();
     const configKey = systemConfigQueryKey();
     queryClient.setQueryData(statusKey, {});
-    queryClient.setQueryData(configKey, {});
+    queryClient.setQueryData(configKey, makeSystemConfig());
 
     effects.handleChanged({
       type: "changed",
@@ -413,7 +424,10 @@ describe("createRealtimeCacheEffects", () => {
       queryClient: QueryClient,
       primaryHostId: string | null,
     ) {
-      queryClient.setQueryData(systemConfigQueryKey(), { primaryHostId });
+      queryClient.setQueryData(
+        systemConfigQueryKey(),
+        makeSystemConfig({ primaryHostId }),
+      );
       for (const [id, hostId] of [
         ["env-a", "host-a"],
         ["env-b", "host-b"],
@@ -530,7 +544,7 @@ describe("createRealtimeCacheEffects", () => {
       sourceSeqStart: 1,
       sourceSeqEnd: 2,
     });
-    queryClient.setQueryData(configKey, {});
+    queryClient.setQueryData(configKey, makeSystemConfig());
     queryClient.setQueryData(timelineKey, {});
     queryClient.setQueryData(summaryKey, {});
 
@@ -867,10 +881,86 @@ describe("createRealtimeCacheEffects", () => {
     { cachedSequence: 2, isBehind: false },
     { cachedSequence: 3, isBehind: false },
   ])(
-    "compares unviewed timeline sequence $cachedSequence with the notified sequence and leaves the viewed one to pushes",
+    "compares unviewed timeline sequence $cachedSequence with the notified sequence without refetching",
     async ({ cachedSequence, isBehind }) => {
       vi.useFakeTimers();
       const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
+      const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
+      queryClient.setQueryData(unviewedTimelineKey, {
+        rows: [],
+        maxSeq: cachedSequence,
+      });
+      const viewedTimelineQueryFn = vi.fn(async () => ({
+        rows: [],
+        maxSeq: 2,
+      }));
+      const viewedObserver = new QueryObserver(queryClient, {
+        queryKey: viewedTimelineKey,
+        queryFn: viewedTimelineQueryFn,
+        staleTime: Infinity,
+      });
+      const unsubscribeViewed = viewedObserver.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      viewedTimelineQueryFn.mockClear();
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+      for (const threadId of ["thr_viewed", "thr_unviewed"]) {
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: threadId,
+          metadata: {
+            eventTypes: ["item/completed"],
+            projectId: "project-1",
+            timelineSequence: 2,
+          },
+          changes: ["events-appended"],
+        });
+      }
+      await vi.advanceTimersByTimeAsync(50);
+
+      expect(
+        queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated,
+      ).toBe(true);
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_unviewed")).toBe(
+        isBehind,
+      );
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_viewed")).toBe(
+        false,
+      );
+      const unviewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
+      );
+      expect(unviewedInvalidations).toHaveLength(1);
+      expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
+      const viewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
+      );
+      expect(viewedInvalidations).toHaveLength(1);
+      expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
+      expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+
+      invalidateSpy.mockRestore();
+      unsubscribeViewed();
+      effects.dispose();
+    },
+  );
+
+  it.each([
+    { cachedSequence: 1, isBehind: true },
+    { cachedSequence: 2, isBehind: false },
+    { cachedSequence: 3, isBehind: false },
+  ])(
+    "compares unviewed timeline sequence $cachedSequence with the notified sequence and leaves the viewed one to pushes when timeline push is on",
+    async ({ cachedSequence, isBehind }) => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      enableTimelinePush(queryClient);
       const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
       const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
       queryClient.setQueryData(unviewedTimelineKey, {
@@ -939,6 +1029,66 @@ describe("createRealtimeCacheEffects", () => {
   it("refreshes the full conversation outline once at turn completion, not for streaming deltas", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadId = "thr_outline";
+    const timelineKey = threadTimelineQueryKey(threadId);
+    const outlineKey = threadConversationOutlineQueryKey(threadId, "user");
+    const timelineQueryFn = vi.fn(async () => ({ rows: [] }));
+    const outlineQueryFn = vi.fn(async () => ({ items: [], maxSeq: 1 }));
+    const timelineObserver = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const outlineObserver = new QueryObserver(queryClient, {
+      queryKey: outlineKey,
+      queryFn: outlineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeTimeline = timelineObserver.subscribe(() => {});
+    const unsubscribeOutline = outlineObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    timelineQueryFn.mockClear();
+    outlineQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: threadId,
+      metadata: {
+        eventTypes: ["item/agentMessage/delta"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+    expect(outlineQueryFn).not.toHaveBeenCalled();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: threadId,
+      metadata: {
+        eventTypes: ["item/completed", "turn/completed"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+    expect(outlineQueryFn).toHaveBeenCalledTimes(1);
+
+    unsubscribeOutline();
+    unsubscribeTimeline();
+    effects.dispose();
+  });
+
+  it("refreshes only the conversation outline at turn completion when timeline push is on", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    enableTimelinePush(queryClient);
     const threadId = "thr_outline";
     const timelineKey = threadTimelineQueryKey(threadId);
     const outlineKey = threadConversationOutlineQueryKey(threadId, "user");
@@ -1859,9 +2009,153 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("leaves an active timeline read to pushed deltas through a stream and its completion", async () => {
+  it("does not cancel active timeline refetches for repeated event invalidations", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const timelineObserver = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeTimeline = timelineObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["system/error"], projectId: "project-1" },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        eventTypes: ["item/completed"],
+        projectId: "project-1",
+        timelineSequence: 2,
+      },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(signals[0]?.aborted).toBe(false);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    resolveFetches[0]?.({
+      rows: [],
+      timelinePage: {
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(false);
+    resolveFetches[1]?.({
+      rows: [],
+      timelinePage: {
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
+      },
+    });
+
+    unsubscribeTimeline();
+    effects.dispose();
+  });
+
+  it("supersedes an in-flight timeline read when a turn completes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const timelineKey = threadTimelineQueryKey("thr_1");
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const timelineObserver = new QueryObserver(queryClient, {
+      queryKey: timelineKey,
+      queryFn: timelineQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeTimeline = timelineObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["item/agentMessage/delta"] },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(signals[0]?.aborted).toBe(false);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["turn/completed"] },
+      changes: ["events-appended"],
+    });
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+
+    resolveFetches[1]?.({
+      rows: [],
+      timelinePage: {
+        topLevelLimit: 100,
+        returnedOlderTopLevelRowCount: 0,
+        olderCursor: null,
+        historySnapshot: "snapshot-1",
+        olderRowsSourceSeqEnd: null,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(timelineQueryFn).toHaveBeenCalledTimes(2);
+
+    unsubscribeTimeline();
+    effects.dispose();
+  });
+
+  it("leaves an active timeline read to pushed deltas through a stream and its completion when timeline push is on", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    enableTimelinePush(queryClient);
     const timelineKey = threadTimelineQueryKey("thr_1");
     const signals: AbortSignal[] = [];
     const timelineQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
@@ -3041,7 +3335,7 @@ describe("createRealtimeCacheEffects", () => {
       queryClient.setQueryData(timelineKey, { rows: [] });
       queryClient.setQueryData(workStatusKey, null);
       queryClient.setQueryData(projectsKey, []);
-      queryClient.setQueryData(configKey, {});
+      queryClient.setQueryData(configKey, makeSystemConfig());
 
       effects.handleChanged({
         type: "changed",

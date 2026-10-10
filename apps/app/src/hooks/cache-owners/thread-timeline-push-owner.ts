@@ -3,11 +3,15 @@ import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import {
   applyTimelineDelta,
+  type SystemConfigResponse,
   type ThreadTimelineResponse,
   type ThreadTimelineSignal,
 } from "@bb/server-contract";
 import { markStreamTrace } from "@/lib/stream-trace";
-import { threadTimelineQueryKey } from "../queries/query-keys";
+import {
+  systemConfigQueryKey,
+  threadTimelineQueryKey,
+} from "../queries/query-keys";
 import { clearThreadTimelineUnseenEvents } from "./thread-timeline-unseen-events";
 
 export const COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT = 8;
@@ -16,6 +20,20 @@ export function resolveThreadTimelineSegmentLimit(): number | undefined {
   return getMediaQuerySnapshot(COMPACT_VIEWPORT_QUERY)
     ? COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT
     : undefined;
+}
+
+export function isThreadTimelinePushEnabled(
+  config: SystemConfigResponse | undefined,
+): boolean {
+  return config?.experiments.timelinePush === true;
+}
+
+export function isCachedThreadTimelinePushEnabled(
+  queryClient: QueryClient,
+): boolean {
+  return isThreadTimelinePushEnabled(
+    queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey()),
+  );
 }
 
 function resolvePushedThreadTimeline(
@@ -38,7 +56,10 @@ export function applyThreadTimelineSignal(
   signal: ThreadTimelineSignal,
 ): void {
   const { target } = signal;
-  if (target.segmentLimit !== (resolveThreadTimelineSegmentLimit() ?? null)) {
+  if (
+    !isCachedThreadTimelinePushEnabled(queryClient) ||
+    target.segmentLimit !== (resolveThreadTimelineSegmentLimit() ?? null)
+  ) {
     return;
   }
   const queryKey = threadTimelineQueryKey(target.threadId);

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import type {
-  ThreadTimelineResponse,
-  TimelinePaginationCursor,
-  TimelineRow,
+import { defaultExperiments } from "@bb/domain";
+import {
+  computeTimelineRowDelta,
+  type ThreadTimelineResponse,
+  type TimelinePaginationCursor,
+  type TimelineRow,
 } from "@bb/server-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider as JotaiProvider } from "jotai";
@@ -12,11 +14,17 @@ import {
   makeThreadResponse,
   makeThreadTimelineResponse,
 } from "@/test/fixtures/thread-responses";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
+  systemConfigQueryKey,
   threadDetailBootstrapQueryKey,
   threadQueryKey,
   threadTimelineQueryKey,
 } from "@/hooks/queries/query-keys";
+import {
+  applyThreadTimelineSignal,
+  resolveThreadTimelineSegmentLimit,
+} from "@/hooks/cache-owners/thread-timeline-push-owner";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
@@ -63,6 +71,7 @@ class StoryTimelineServer {
   private surfaceVersion = 1;
   private turns: TimelineRow[][] = [];
   maxSeq = 0;
+  latestRequests = 0;
   olderRequests = 0;
   reachedStart = false;
   staleCursorResponses = 0;
@@ -146,7 +155,8 @@ class StoryTimelineServer {
 interface ScrollbackStoryControls {
   allRowIds(): string[];
   olderRequests(): number;
-  pushLatest(): void;
+  deliverLatest(): void;
+  latestRequests(): number;
   reachedStart(): boolean;
   refetchUnchanged(): void;
   renameWithEvent(): void;
@@ -178,7 +188,9 @@ function requestUrl(input: RequestInfo | URL): URL {
   return new URL(href, window.location.origin);
 }
 
-function createScrollbackStory(): {
+type TimelineDelivery = "refetch" | "push";
+
+function createScrollbackStory(delivery: TimelineDelivery): {
   controls: ScrollbackStoryControls;
   queryClient: QueryClient;
   server: StoryTimelineServer;
@@ -205,36 +217,72 @@ function createScrollbackStory(): {
     }),
     canSpawnChild: false,
   });
+  const timelineKey = threadTimelineQueryKey(THREAD_ID);
+  queryClient.setQueryData(
+    systemConfigQueryKey(),
+    makeSystemConfig({
+      experiments: {
+        ...defaultExperiments,
+        timelinePush: delivery === "push",
+      },
+    }),
+  );
   queryClient.setQueryData(threadDetailBootstrapQueryKey(THREAD_ID), thread);
   queryClient.setQueryData(threadQueryKey(THREAD_ID), thread);
-  queryClient.setQueryData(threadTimelineQueryKey(THREAD_ID), server.latest());
-  const pushLatest = () =>
-    queryClient.setQueryData(
-      threadTimelineQueryKey(THREAD_ID),
-      server.latest(),
-    );
+  queryClient.setQueryData(timelineKey, server.latest());
+  const refetchLatest = () => {
+    void queryClient.refetchQueries({ queryKey: timelineKey });
+  };
+  const pushLatest = () => {
+    const previous =
+      queryClient.getQueryData<ThreadTimelineResponse>(timelineKey)!;
+    const latest = server.latest();
+    applyThreadTimelineSignal(queryClient, {
+      type: "thread-timeline",
+      target: {
+        kind: "thread-timeline",
+        threadId: THREAD_ID,
+        segmentLimit: resolveThreadTimelineSegmentLimit() ?? null,
+        deferContent: true,
+      },
+      afterSequence: previous.maxSeq,
+      timeline: {
+        ...latest,
+        rows: [],
+        delta: computeTimelineRowDelta(previous.rows, latest.rows),
+      },
+    });
+  };
+  const deliverLatest = delivery === "push" ? pushLatest : refetchLatest;
   const controls: ScrollbackStoryControls = {
     allRowIds: () => server.allRowIds(),
     olderRequests: () => server.olderRequests,
-    pushLatest,
+    deliverLatest,
+    latestRequests: () => server.latestRequests,
     reachedStart: () => server.reachedStart,
-    refetchUnchanged: pushLatest,
+    refetchUnchanged: refetchLatest,
     renameWithEvent: () => server.renameWithEvent(),
     staleCursorResponses: () => server.staleCursorResponses,
     stream: () => {
       server.streamIntoLastAnswer();
-      pushLatest();
+      deliverLatest();
     },
     newTurn: () => {
       server.addTurn();
-      pushLatest();
+      deliverLatest();
     },
   };
   return { controls, queryClient, server };
 }
 
-function ScrollbackStory({ width }: { width: number | null }) {
-  const [story] = useState(createScrollbackStory);
+function ScrollbackStory({
+  delivery,
+  width,
+}: {
+  delivery: TimelineDelivery;
+  width: number | null;
+}) {
+  const [story] = useState(() => createScrollbackStory(delivery));
   const [store] = useState(createStore);
   useEffect(() => {
     const originalFetch = globalThis.fetch;
@@ -245,6 +293,7 @@ function ScrollbackStory({ width }: { width: number | null }) {
       }
       const anchorId = url.searchParams.get("beforeAnchorId");
       if (anchorId === null) {
+        story.server.latestRequests += 1;
         return jsonResponse(200, story.server.latest());
       }
       const page = story.server.older(anchorId);
@@ -308,9 +357,17 @@ function ScrollbackStory({ width }: { width: number | null }) {
 }
 
 export function PagedThread() {
-  return <ScrollbackStory width={null} />;
+  return <ScrollbackStory delivery="refetch" width={null} />;
 }
 
 export function PagedThreadPhoneWidth() {
-  return <ScrollbackStory width={390} />;
+  return <ScrollbackStory delivery="refetch" width={390} />;
+}
+
+export function PagedThreadPushed() {
+  return <ScrollbackStory delivery="push" width={null} />;
+}
+
+export function PagedThreadPushedPhoneWidth() {
+  return <ScrollbackStory delivery="push" width={390} />;
 }

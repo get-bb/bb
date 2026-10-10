@@ -15,12 +15,15 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
+  applyTimelineDelta,
   threadTimelineResponseSchema,
+  threadTimelineSignalSchema,
   type ThreadTimelineResponse,
   type TimelinePaginationCursor,
   type TimelineRow,
 } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -157,9 +160,12 @@ async function readLatest(
   return timeline!;
 }
 
+type TimelineDelivery = "refetch" | "push";
+
 interface ScrollbackClient {
   latest: ThreadTimelineResponse;
   loaded: LoadedTimelineState;
+  pushSocket: ReturnType<typeof createMockHubSocket> | null;
   staleCursorRecoveries: number;
 }
 
@@ -173,10 +179,21 @@ function surfaceKeyFor(
 async function openThread(
   harness: TestAppHarness,
   threadId: string,
+  delivery: TimelineDelivery = "refetch",
 ): Promise<ScrollbackClient> {
   const latest = await readLatest(harness, threadId);
   const surfaceKey = surfaceKeyFor(threadId, latest);
+  const pushSocket = delivery === "push" ? createMockHubSocket() : null;
+  if (pushSocket !== null) {
+    harness.deps.hub.subscribe(pushSocket, {
+      kind: "thread-timeline",
+      threadId,
+      segmentLimit: null,
+      deferContent: true,
+    });
+  }
   return {
+    pushSocket,
     latest,
     loaded: mergeLoadedTimelineWithLatest({
       current: buildLoadedTimelineState({
@@ -206,12 +223,46 @@ function receiveLatest(
   });
 }
 
-async function refresh(
+async function refetch(
   harness: TestAppHarness,
   client: ScrollbackClient,
   threadId: string,
 ): Promise<void> {
   receiveLatest(client, threadId, await readLatest(harness, threadId));
+}
+
+async function refresh(
+  harness: TestAppHarness,
+  client: ScrollbackClient,
+  threadId: string,
+): Promise<void> {
+  const socket = client.pushSocket;
+  if (socket === null) {
+    await refetch(harness, client, threadId);
+    return;
+  }
+  harness.deps.hub.notifyThread(threadId, ["events-appended"]);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const signals = socket.messages
+    .splice(0)
+    .map((message) => JSON.parse(message))
+    .filter((message) => message.type === "thread-timeline")
+    .map((message) => threadTimelineSignalSchema.parse(message));
+  expect(signals.length).toBeGreaterThan(0);
+  for (const { afterSequence, timeline } of signals) {
+    const rows =
+      timeline.delta === undefined
+        ? timeline.rows
+        : afterSequence !== null && afterSequence <= client.latest.maxSeq
+          ? applyTimelineDelta(client.latest.rows, timeline.delta)
+          : null;
+    expect(rows).not.toBeNull();
+    receiveLatest(client, threadId, {
+      ...timeline,
+      rows: rows!,
+      delta: undefined,
+    });
+  }
 }
 
 async function loadOlder(
@@ -307,147 +358,114 @@ const SMALL_WINDOW = {
   featureFlags: { ...defaultFeatureFlags, timelineWindowEventBudget: 6 },
 };
 
-describe("timeline scrollback against the server", () => {
-  it("walks every page of a paged thread to the rows of one unpaged read", async () => {
-    let paged: unknown = null;
-    let pages = 0;
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      for (let turn = 1; turn <= 8; turn += 1) script.finishedTurn(turn);
-      const client = await openThread(harness, script.threadId);
-      pages = await walkToStart(harness, client, script.threadId);
-      paged = comparableRows(client.loaded.rows, script.threadId);
-    });
-    await withTestHarness(async (harness) => {
-      const script = createThreadScript(harness);
-      for (let turn = 1; turn <= 8; turn += 1) script.finishedTurn(turn);
-      const whole = await readLatest(harness, script.threadId);
-      expect(whole.timelinePage.olderCursor).toBeNull();
-      expect(pages).toBeGreaterThan(2);
-      expect(paged).toEqual(comparableRows(whole.rows, script.threadId));
-    });
-  });
-
-  it("streams into a scrolled-back view and ends equal to a fresh walk", async () => {
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
-      const turnId = script.startTurn(7);
-      const client = await openThread(harness, script.threadId);
-      await scrollBack(harness, client, script.threadId, 2);
-      const scrolledBackIds = client.loaded.rows
-        .slice(0, 3)
-        .map((row) => row.id);
-
-      const steps: (() => void)[] = [
-        () =>
-          script.append("item/agentMessage/delta", turnScope(turnId), {
-            itemId: "turn-7-live",
-            delta: "Reading the logs.\n",
-          }),
-        () =>
-          script.append("item/started", turnScope(turnId), {
-            item: command("turn-7-command", "pending", null),
-          }),
-        () =>
-          script.append("item/completed", turnScope(turnId), {
-            item: command("turn-7-command", "completed", "ok"),
-          }),
-        () =>
-          script.append("item/completed", turnScope(turnId), {
-            item: {
-              type: "agentMessage",
-              id: "turn-7-live",
-              text: "Reading the logs.\nAll clear.",
-            },
-          }),
-        () =>
-          script.append("turn/completed", turnScope(turnId), {
-            status: "completed",
-          }),
-        () => script.startTurn(8),
-        () =>
-          script.append("item/agentMessage/delta", turnScope("turn-8"), {
-            itemId: "turn-8-live",
-            delta: "Next.\n",
-          }),
-      ];
-      for (const step of steps) {
-        step();
-        await refresh(harness, client, script.threadId);
-        expectUniqueIds(client.loaded.rows);
-        expectEndsWithLatest(client);
-        expect(client.loaded.rows.slice(0, 3).map((row) => row.id)).toEqual(
-          scrolledBackIds,
-        );
-      }
-
-      await walkToStart(harness, client, script.threadId);
-      expect(client.loaded.rows).toEqual(
-        await freshWalk(harness, script.threadId),
-      );
-    });
-  });
-
-  it("keeps a scrolled-back view unchanged when a refetch finds no new events", async () => {
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
-      script.startTurn(7);
-      const client = await openThread(harness, script.threadId);
-      await scrollBack(harness, client, script.threadId, 2);
-      const before = client.loaded;
-
-      await refresh(harness, client, script.threadId);
-
-      expect(client.latest.timelinePage.historySnapshot).toBe(
-        before.historySnapshot,
-      );
-      expect(client.loaded.rows).toEqual(before.rows);
-      expect(client.loaded.olderCursor).toEqual(before.olderCursor);
-      await walkToStart(harness, client, script.threadId);
-      expect(client.loaded.rows).toEqual(
-        await freshWalk(harness, script.threadId),
-      );
-    });
-  });
-
-  it("streams a running turn larger than the window while scrolled back inside it", async () => {
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      script.finishedTurn(1);
-      const turnId = script.startTurn(2);
-      for (let index = 0; index < 12; index += 1) {
-        script.append("item/completed", turnScope(turnId), {
-          item: command(`turn-2-command-${index}`, "completed", `${index}`),
-        });
-      }
-      const client = await openThread(harness, script.threadId);
-      await scrollBack(harness, client, script.threadId, 1);
-
-      for (let index = 12; index < 20; index += 1) {
-        script.append("item/completed", turnScope(turnId), {
-          item: command(`turn-2-command-${index}`, "completed", `${index}`),
-        });
-        await refresh(harness, client, script.threadId);
-        expectUniqueIds(client.loaded.rows);
-        expectEndsWithLatest(client);
-      }
-      script.append("turn/completed", turnScope(turnId), {
-        status: "completed",
+describe.each(["refetch", "push"] as const)(
+  "timeline scrollback against the server (%s)",
+  (delivery) => {
+    it("walks every page of a paged thread to the rows of one unpaged read", async () => {
+      let paged: unknown = null;
+      let pages = 0;
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        for (let turn = 1; turn <= 8; turn += 1) script.finishedTurn(turn);
+        const client = await openThread(harness, script.threadId, delivery);
+        pages = await walkToStart(harness, client, script.threadId);
+        paged = comparableRows(client.loaded.rows, script.threadId);
       });
-      await refresh(harness, client, script.threadId);
-
-      await walkToStart(harness, client, script.threadId);
-      expect(client.loaded.rows).toEqual(
-        await freshWalk(harness, script.threadId),
-      );
+      await withTestHarness(async (harness) => {
+        const script = createThreadScript(harness);
+        for (let turn = 1; turn <= 8; turn += 1) script.finishedTurn(turn);
+        const whole = await readLatest(harness, script.threadId);
+        expect(whole.timelinePage.olderCursor).toBeNull();
+        expect(pages).toBeGreaterThan(2);
+        expect(paged).toEqual(comparableRows(whole.rows, script.threadId));
+      });
     });
-  });
 
-  it.each([0, 1])(
-    "drops in-turn rows a completed turn absorbed, scrolled back %i pages",
-    async (pages) => {
+    it("streams into a scrolled-back view and ends equal to a fresh walk", async () => {
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
+        const turnId = script.startTurn(7);
+        const client = await openThread(harness, script.threadId, delivery);
+        await scrollBack(harness, client, script.threadId, 2);
+        const scrolledBackIds = client.loaded.rows
+          .slice(0, 3)
+          .map((row) => row.id);
+
+        const steps: (() => void)[] = [
+          () =>
+            script.append("item/agentMessage/delta", turnScope(turnId), {
+              itemId: "turn-7-live",
+              delta: "Reading the logs.\n",
+            }),
+          () =>
+            script.append("item/started", turnScope(turnId), {
+              item: command("turn-7-command", "pending", null),
+            }),
+          () =>
+            script.append("item/completed", turnScope(turnId), {
+              item: command("turn-7-command", "completed", "ok"),
+            }),
+          () =>
+            script.append("item/completed", turnScope(turnId), {
+              item: {
+                type: "agentMessage",
+                id: "turn-7-live",
+                text: "Reading the logs.\nAll clear.",
+              },
+            }),
+          () =>
+            script.append("turn/completed", turnScope(turnId), {
+              status: "completed",
+            }),
+          () => script.startTurn(8),
+          () =>
+            script.append("item/agentMessage/delta", turnScope("turn-8"), {
+              itemId: "turn-8-live",
+              delta: "Next.\n",
+            }),
+        ];
+        for (const step of steps) {
+          step();
+          await refresh(harness, client, script.threadId);
+          expectUniqueIds(client.loaded.rows);
+          expectEndsWithLatest(client);
+          expect(client.loaded.rows.slice(0, 3).map((row) => row.id)).toEqual(
+            scrolledBackIds,
+          );
+        }
+
+        await walkToStart(harness, client, script.threadId);
+        expect(client.loaded.rows).toEqual(
+          await freshWalk(harness, script.threadId),
+        );
+      });
+    });
+
+    it("keeps a scrolled-back view unchanged when a refetch finds no new events", async () => {
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
+        script.startTurn(7);
+        const client = await openThread(harness, script.threadId, delivery);
+        await scrollBack(harness, client, script.threadId, 2);
+        const before = client.loaded;
+
+        await refetch(harness, client, script.threadId);
+
+        expect(client.latest.timelinePage.historySnapshot).toBe(
+          before.historySnapshot,
+        );
+        expect(client.loaded.rows).toEqual(before.rows);
+        expect(client.loaded.olderCursor).toEqual(before.olderCursor);
+        await walkToStart(harness, client, script.threadId);
+        expect(client.loaded.rows).toEqual(
+          await freshWalk(harness, script.threadId),
+        );
+      });
+    });
+
+    it("streams a running turn larger than the window while scrolled back inside it", async () => {
       await withTestHarness(SMALL_WINDOW, async (harness) => {
         const script = createThreadScript(harness);
         script.finishedTurn(1);
@@ -457,21 +475,115 @@ describe("timeline scrollback against the server", () => {
             item: command(`turn-2-command-${index}`, "completed", `${index}`),
           });
         }
-        script.append("item/agentMessage/delta", turnScope(turnId), {
-          itemId: "turn-2-answer",
-          delta: "Done.\n",
-        });
-        const client = await openThread(harness, script.threadId);
-        await scrollBack(harness, client, script.threadId, pages);
+        const client = await openThread(harness, script.threadId, delivery);
+        await scrollBack(harness, client, script.threadId, 1);
 
-        script.append("item/completed", turnScope(turnId), {
-          item: { type: "agentMessage", id: "turn-2-answer", text: "Done.\n" },
-        });
+        for (let index = 12; index < 20; index += 1) {
+          script.append("item/completed", turnScope(turnId), {
+            item: command(`turn-2-command-${index}`, "completed", `${index}`),
+          });
+          await refresh(harness, client, script.threadId);
+          expectUniqueIds(client.loaded.rows);
+          expectEndsWithLatest(client);
+        }
         script.append("turn/completed", turnScope(turnId), {
           status: "completed",
         });
         await refresh(harness, client, script.threadId);
 
+        await walkToStart(harness, client, script.threadId);
+        expect(client.loaded.rows).toEqual(
+          await freshWalk(harness, script.threadId),
+        );
+      });
+    });
+
+    it.each([0, 1])(
+      "drops in-turn rows a completed turn absorbed, scrolled back %i pages",
+      async (pages) => {
+        await withTestHarness(SMALL_WINDOW, async (harness) => {
+          const script = createThreadScript(harness);
+          script.finishedTurn(1);
+          const turnId = script.startTurn(2);
+          for (let index = 0; index < 12; index += 1) {
+            script.append("item/completed", turnScope(turnId), {
+              item: command(`turn-2-command-${index}`, "completed", `${index}`),
+            });
+          }
+          script.append("item/agentMessage/delta", turnScope(turnId), {
+            itemId: "turn-2-answer",
+            delta: "Done.\n",
+          });
+          const client = await openThread(harness, script.threadId, delivery);
+          await scrollBack(harness, client, script.threadId, pages);
+
+          script.append("item/completed", turnScope(turnId), {
+            item: {
+              type: "agentMessage",
+              id: "turn-2-answer",
+              text: "Done.\n",
+            },
+          });
+          script.append("turn/completed", turnScope(turnId), {
+            status: "completed",
+          });
+          await refresh(harness, client, script.threadId);
+
+          expect(client.loaded.rows).toEqual(client.latest.rows);
+          expect(client.loaded.olderCursor).toEqual(
+            client.latest.timelinePage.olderCursor,
+          );
+          await walkToStart(harness, client, script.threadId);
+          expect(client.loaded.rows).toEqual(
+            await freshWalk(harness, script.threadId),
+          );
+        });
+      },
+    );
+
+    it("updates a scrolled-back item that completes in a later turn", async () => {
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        script.finishedTurn(1);
+        const turnId = script.startTurn(2);
+        script.append("item/started", turnScope(turnId), {
+          item: command("dev-server", "pending", null),
+        });
+        script.append("turn/completed", turnScope(turnId), {
+          status: "completed",
+        });
+        for (let turn = 3; turn <= 6; turn += 1) script.finishedTurn(turn);
+        const client = await openThread(harness, script.threadId, delivery);
+        await walkToStart(harness, client, script.threadId);
+
+        script.append("item/completed", turnScope(turnId), {
+          item: command("dev-server", "completed", "dev server exited"),
+        });
+        await refresh(harness, client, script.threadId);
+        expectUniqueIds(client.loaded.rows);
+
+        await walkToStart(harness, client, script.threadId);
+        expect(client.loaded.rows).toEqual(
+          await freshWalk(harness, script.threadId),
+        );
+      });
+    });
+
+    it("recovers a scrolled-back view whose cursor went stale on rename", async () => {
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
+        const client = await openThread(harness, script.threadId, delivery);
+        await scrollBack(harness, client, script.threadId, 1);
+        expect(client.loaded.olderCursor).not.toBeNull();
+
+        updateThread(harness.db, harness.hub, script.threadId, {
+          title: "Renamed while scrolled back",
+        });
+        script.startTurn(7);
+        await loadOlder(harness, client, script.threadId);
+
+        expect(client.staleCursorRecoveries).toBe(1);
         expect(client.loaded.rows).toEqual(client.latest.rows);
         expect(client.loaded.olderCursor).toEqual(
           client.latest.timelinePage.olderCursor,
@@ -481,60 +593,6 @@ describe("timeline scrollback against the server", () => {
           await freshWalk(harness, script.threadId),
         );
       });
-    },
-  );
-
-  it("updates a scrolled-back item that completes in a later turn", async () => {
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      script.finishedTurn(1);
-      const turnId = script.startTurn(2);
-      script.append("item/started", turnScope(turnId), {
-        item: command("dev-server", "pending", null),
-      });
-      script.append("turn/completed", turnScope(turnId), {
-        status: "completed",
-      });
-      for (let turn = 3; turn <= 6; turn += 1) script.finishedTurn(turn);
-      const client = await openThread(harness, script.threadId);
-      await walkToStart(harness, client, script.threadId);
-
-      script.append("item/completed", turnScope(turnId), {
-        item: command("dev-server", "completed", "dev server exited"),
-      });
-      await refresh(harness, client, script.threadId);
-      expectUniqueIds(client.loaded.rows);
-
-      await walkToStart(harness, client, script.threadId);
-      expect(client.loaded.rows).toEqual(
-        await freshWalk(harness, script.threadId),
-      );
     });
-  });
-
-  it("recovers a scrolled-back view whose cursor went stale on rename", async () => {
-    await withTestHarness(SMALL_WINDOW, async (harness) => {
-      const script = createThreadScript(harness);
-      for (let turn = 1; turn <= 6; turn += 1) script.finishedTurn(turn);
-      const client = await openThread(harness, script.threadId);
-      await scrollBack(harness, client, script.threadId, 1);
-      expect(client.loaded.olderCursor).not.toBeNull();
-
-      updateThread(harness.db, harness.hub, script.threadId, {
-        title: "Renamed while scrolled back",
-      });
-      script.startTurn(7);
-      await loadOlder(harness, client, script.threadId);
-
-      expect(client.staleCursorRecoveries).toBe(1);
-      expect(client.loaded.rows).toEqual(client.latest.rows);
-      expect(client.loaded.olderCursor).toEqual(
-        client.latest.timelinePage.olderCursor,
-      );
-      await walkToStart(harness, client, script.threadId);
-      expect(client.loaded.rows).toEqual(
-        await freshWalk(harness, script.threadId),
-      );
-    });
-  });
-});
+  },
+);

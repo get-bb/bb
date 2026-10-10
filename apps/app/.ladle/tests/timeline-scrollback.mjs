@@ -146,6 +146,9 @@ async function runStory(storyId, width) {
   const anchor = scrolledBack.rows.find((row) => row.top >= 40);
   if (!anchor) throw new Error(`${storyId}: no anchor row in view`);
 
+  const latestRequestsBefore = await page.evaluate(() =>
+    window.__timelineScrollback.latestRequests(),
+  );
   const actions = [
     ["stream", 5],
     ["newTurn", 1],
@@ -162,6 +165,16 @@ async function runStory(storyId, width) {
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
     await expectAnchorHeld(`${storyId} ${action}`, anchor);
+  }
+  const streamedRequests =
+    (await page.evaluate(() => window.__timelineScrollback.latestRequests())) -
+    latestRequestsBefore;
+  const pushed = storyId.includes("-pushed");
+  console.log(JSON.stringify({ storyId, latestRequests: streamedRequests }));
+  if (pushed ? streamedRequests !== 1 : streamedRequests !== 10) {
+    throw new Error(
+      `${storyId}: ${streamedRequests} latest-window requests for 9 updates and one unchanged refetch`,
+    );
   }
 
   await page.evaluate(() => window.__timelineScrollback.renameWithEvent());
@@ -207,4 +220,9 @@ async function runStory(storyId, width) {
 
 await runStory("thread--timeline--scrollback--paged-thread", 1280);
 await runStory("thread--timeline--scrollback--paged-thread-phone-width", 390);
+await runStory("thread--timeline--scrollback--paged-thread-pushed", 1280);
+await runStory(
+  "thread--timeline--scrollback--paged-thread-pushed-phone-width",
+  390,
+);
 ("timeline scrollback held");

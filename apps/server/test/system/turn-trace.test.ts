@@ -19,6 +19,7 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const PROVIDER_THREAD_ID = "provider-turn-trace";
@@ -187,9 +188,33 @@ describe("turn trace", () => {
               events: 1,
               textChars: 2,
               textEvents: 1,
+              served: "refetch",
             },
           },
         ]);
+
+        harness.deps.hub.subscribe(createMockHubSocket(), {
+          kind: "thread-timeline",
+          threadId: thread.id,
+          segmentLimit: null,
+          deferContent: true,
+        });
+        await postEvents(harness, sessionId, [
+          {
+            threadId: thread.id,
+            event: {
+              type: "item/agentMessage/delta",
+              threadId: thread.id,
+              providerThreadId: PROVIDER_THREAD_ID,
+              itemId: "item-traced",
+              delta: " there",
+              scope: turnScope("turn-traced"),
+            },
+          },
+        ]);
+        expect(streamTraceLogs()[1]).toMatchObject({
+          streamTrace: { threadId: thread.id, textChars: 6, served: "push" },
+        });
       },
     );
   });

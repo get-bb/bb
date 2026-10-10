@@ -275,6 +275,13 @@ hide the navigation rail's destinations (see Navigation rail below).
 - It shows Move server here in Settings → Machines and lets the server run
   `bb server move`, `bb server export`, and old server copy deletion.
 
+## Pushed timeline updates
+
+- The `timelinePush` experiment defaults to false.
+- Enable it with `bb settings experiment timelinePush true`.
+- An open thread view then receives timeline updates over the live connection
+  as row deltas instead of reloading the latest window after each update.
+
 Machine access: `bb settings general machineServerUrl https://bb.example.com`
 sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
 `bb settings general defaultMachineAccess direct` selects direct access;
