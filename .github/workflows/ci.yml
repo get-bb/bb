@@ -322,9 +322,10 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
+          BB_CI_TEST_SHARD: ${{ matrix.vitestShard }}
         run: |
           if not defined TURBO_CACHE_DIR set TURBO_CACHE_DIR=.turbo/cache
-          pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }} ${{ matrix.args }}
+          pnpm exec turbo run test ${{ matrix.filter }} --cache-dir="%TURBO_CACHE_DIR%" --continue --output-logs=new-only --summarize --concurrency=${{ matrix.concurrency }}
 
       - name: Upload test timings
         if: ${{ !cancelled() }}

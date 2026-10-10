@@ -563,6 +563,8 @@ export async function replayRecording(
         JSON.stringify({
           events: events.length,
           plannedEvents: plannedEventCount,
+          grammarViolationCount: grammarViolations.length,
+          grammarViolations: grammarViolations.slice(-5),
           unansweredRequests: sentRequestIds.filter(
             (id) => !answeredIds.has(id),
           ),
