@@ -17,6 +17,7 @@ import { resolveProviderPlanCommand } from "../providers/provider-plan-command.j
 import { observeTimelinePushTrace } from "../system/turn-trace.js";
 import {
   buildThreadTimelineWithProfile,
+  resolveThreadTimelineSurface,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   THREAD_TIMELINE_SEGMENT_LIMIT_MAX,
 } from "./timeline.js";
@@ -112,18 +113,22 @@ export function createThreadTimelineWindows(
       thread.providerId,
     );
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+    const surfaceOptions = {
+      completedTurnDisplay,
+      deferContent: request.deferContent,
+      includeClearedContextHistory,
+      includeDiagnosticOperations,
+      includeNestedRows: request.includeNestedRows,
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      providerDisplayName,
+    };
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
-      environmentId: thread.environmentId,
-      providerDisplayName,
+      surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
+        .key,
       page: request.page,
-      includeNestedRows: request.includeNestedRows,
-      deferContent: request.deferContent,
       summaryOnly: request.summaryOnly,
-      includeClearedContextHistory,
-      includeDiagnosticOperations,
-      completedTurnDisplay,
     };
     const response = timelineCache.getOrBuild(
       thread.id,
@@ -133,16 +138,10 @@ export function createThreadTimelineWindows(
           deps.db,
           thread,
           {
-            completedTurnDisplay,
-            deferContent: request.deferContent,
+            ...surfaceOptions,
             eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-            includeClearedContextHistory,
-            includeDiagnosticOperations,
-            includeNestedRows: request.includeNestedRows,
-            maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
             maxSeq,
             page: request.page,
-            providerDisplayName,
             planCommand: resolveProviderPlanCommand(
               deps.providerRegistry,
               thread.providerId,

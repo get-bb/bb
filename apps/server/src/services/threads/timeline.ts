@@ -145,6 +145,30 @@ function resolveThreadWorkspaceRoot(
   return getEnvironment(db, thread.environmentId)?.path ?? null;
 }
 
+export function resolveThreadTimelineSurface(
+  db: DbConnection,
+  thread: Thread,
+  options: ThreadTimelineSurfaceOptions,
+): ThreadTimelineSurface {
+  const threadName = thread.title ?? thread.titleFallback ?? "";
+  const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
+  return {
+    key: JSON.stringify([
+      options.includeClearedContextHistory,
+      options.includeDiagnosticOperations,
+      options.includeNestedRows ?? false,
+      options.deferContent ?? false,
+      options.maxInlineOutputChars,
+      options.providerDisplayName ?? null,
+      threadName,
+      workspaceRoot,
+      options.completedTurnDisplay,
+    ]),
+    threadName,
+    workspaceRoot,
+  };
+}
+
 interface PartitionAcceptedInputRowsByRequestedTurnArgs {
   acceptedInputRows: readonly StoredEventRow[];
   turnId: string;
@@ -161,19 +185,28 @@ interface FilterExactEventRowsForRequestedTurnArgs {
   turnId: string;
 }
 
-interface BuildThreadTimelineOptions {
+export interface ThreadTimelineSurfaceOptions {
   completedTurnDisplay: CompletedTurnDisplay;
   deferContent?: boolean;
-  eventBudget: number;
-  responseByteBudget?: number;
   includeClearedContextHistory: boolean;
   includeDiagnosticOperations: boolean;
   includeNestedRows?: boolean;
   maxInlineOutputChars: InlineOutputCharLimit;
+  providerDisplayName?: string;
+}
+
+interface ThreadTimelineSurface {
+  key: string;
+  threadName: string;
+  workspaceRoot: string | null;
+}
+
+interface BuildThreadTimelineOptions extends ThreadTimelineSurfaceOptions {
+  eventBudget: number;
+  responseByteBudget?: number;
   maxSeq: number;
   page: ThreadTimelinePageRequest;
   summaryOnly?: boolean;
-  providerDisplayName?: string;
   planCommand?: ProviderComposerCommand | null;
 }
 
@@ -1248,22 +1281,12 @@ function buildThreadTimelineInternal(
   thread: Thread,
   options: BuildThreadTimelineOptions,
 ): BuildThreadTimelineInternalResult {
-  const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
+  const surface = resolveThreadTimelineSurface(db, thread, options);
   const snapshot = resolveTimelineSnapshot(
     db,
     thread,
     options.page,
-    JSON.stringify([
-      options.includeClearedContextHistory,
-      options.includeDiagnosticOperations,
-      options.includeNestedRows ?? false,
-      options.deferContent ?? false,
-      options.maxInlineOutputChars,
-      options.providerDisplayName ?? null,
-      thread.title ?? thread.titleFallback ?? "",
-      workspaceRoot,
-      options.completedTurnDisplay,
-    ]),
+    surface.key,
     options.maxSeq === 0 ? undefined : options.maxSeq,
   );
   const contentCursor = readTimelineContentCursor(options.page);
@@ -1388,8 +1411,8 @@ function buildThreadTimelineInternal(
     providerDisplayName: options.providerDisplayName,
     planCommand: options.planCommand,
     threadStatus: snapshot.status,
-    threadName: thread.title ?? thread.titleFallback ?? "",
-    workspaceRoot,
+    threadName: surface.threadName,
+    workspaceRoot: surface.workspaceRoot,
   };
   const contextWindowEvents = measureThreadTimelineStage(
     profile,
