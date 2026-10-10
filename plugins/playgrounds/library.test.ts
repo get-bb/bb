@@ -837,7 +837,11 @@ it("delivers pinned package assets only to the runs that own them, keeps them ac
 
   const legacy = await publish(host, "thr_a");
   const plain = await fetchHttp("GET", `/frame?thread=thr_a&id=${legacy}`);
-  expect(plain.headers.get("content-security-policy")).not.toContain("blob:");
+  expect(
+    (plain.headers.get("content-security-policy") ?? "")
+      .split(";")
+      .map((part) => part.trim()),
+  ).toContain("script-src 'unsafe-inline'");
   expect(await plain.text()).not.toContain("pg-assets");
 
   forks.thr_fork = "thr_a";
