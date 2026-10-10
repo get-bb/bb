@@ -18,6 +18,7 @@ import type {
   PluginCatalogSearchEntry,
 } from "@/hooks/queries/plugin-catalog-queries";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeInstalledPlugin } from "@/test/fixtures/plugins";
 import { BrowsePluginsTab } from "./BrowsePluginsTab";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PLUGINS_BROWSE_DESCRIPTION } from "../plugins-collection-copy";
@@ -750,5 +751,77 @@ describe("BrowsePluginsTab", () => {
     });
     fireEvent.click(open);
     expect(onOpenPlugin).toHaveBeenCalledWith("memory", open);
+  });
+});
+
+describe("BrowsePluginsTab installed plugin switch", () => {
+  it("shows an off switch for an installed plugin that is turned off and enables it", async () => {
+    const installedEntry: PluginCatalogSearchEntry = {
+      ...MEMORY_ENTRY,
+      installed: true,
+      installedByDefault: true,
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return jsonResponse({
+            results: [installedEntry, TASKS_ENTRY],
+            collections: [],
+            categories: [],
+          });
+        }
+        if (url === "/api/v1/plugins" && init?.method !== "POST") {
+          return jsonResponse({
+            plugins: [
+              makeInstalledPlugin({
+                id: "memory",
+                source: "builtin:memory",
+                enabled: false,
+              }),
+            ],
+          });
+        }
+        if (url === "/api/v1/plugins/memory/enable") {
+          return jsonResponse({
+            ok: true,
+            plugin: makeInstalledPlugin({
+              id: "memory",
+              source: "builtin:memory",
+              enabled: true,
+            }),
+          });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?sort=name"]}>
+        <BrowsePluginsTab
+          onInstall={vi.fn()}
+          onOpenPlugin={vi.fn()}
+          onInstallFromSource={() => undefined}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    const toggle = await screen.findByRole("switch", { name: "Enable Memory" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("switch", { name: /Tasks$/u })).toBeNull();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/v1/plugins/memory/enable" &&
+            init?.method === "POST",
+        ),
+      ).toBe(true),
+    );
   });
 });

@@ -3,8 +3,14 @@ import {
   ResourceInfiniteScrollSentinel,
   useResourceInfiniteItems,
 } from "@bb/shared-ui/resource-pagination";
+import { Switch } from "@bb/shared-ui/switch";
+import { usePluginEnabledMutation } from "@/components/plugin/usePluginEnabledMutation";
 import { PluginCatalogInstallControl } from "./PluginCatalogInstallControl";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  usePluginList,
+  type PluginListItem,
+} from "@/hooks/queries/plugin-settings-queries";
 import {
   useCancelPluginInstallJob,
   useCatalogEntryInstallJob,
@@ -59,6 +65,24 @@ export function PluginCatalogGrid({
   );
 }
 
+function PluginCatalogEnabledSwitch({
+  plugin,
+  displayName,
+}: {
+  plugin: PluginListItem;
+  displayName: string;
+}) {
+  const { toggle, enabled } = usePluginEnabledMutation(plugin);
+  return (
+    <Switch
+      checked={enabled}
+      disabled={toggle.isPending}
+      onCheckedChange={(next) => toggle.mutate(next)}
+      aria-label={`${enabled ? "Disable" : "Enable"} ${displayName}`}
+    />
+  );
+}
+
 export function PluginCatalogCard({
   entry,
   onInstall,
@@ -74,6 +98,9 @@ export function PluginCatalogCard({
   const installBlocker = catalogEntryInstallBlocker(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const { mutate: cancelInstall } = useCancelPluginInstallJob();
+  const installedPlugin = usePluginList({
+    enabled: entry.installed,
+  }).data?.plugins.find((plugin) => plugin.id === entry.pluginId);
   return (
     <PluginCard
       leading={<CatalogEntryIconChip entry={entry} compact />}
@@ -82,16 +109,24 @@ export function PluginCatalogCard({
       byline={<PluginCardAuthor entry={entry} />}
       footerAction={
         entry.installed ? (
-          <PluginCatalogInstallControl
-            displayName={entry.displayName}
-            installed
-            subtle
-            included={entry.source.startsWith("builtin:")}
-            count={count}
-            onUninstall={
-              onUninstall === undefined ? undefined : () => onUninstall(entry)
-            }
-          />
+          <span className="flex items-center gap-2">
+            <PluginCatalogInstallControl
+              displayName={entry.displayName}
+              installed
+              subtle
+              included={entry.source.startsWith("builtin:")}
+              count={count}
+              onUninstall={
+                onUninstall === undefined ? undefined : () => onUninstall(entry)
+              }
+            />
+            {installedPlugin === undefined ? null : (
+              <PluginCatalogEnabledSwitch
+                plugin={installedPlugin}
+                displayName={entry.displayName}
+              />
+            )}
+          </span>
         ) : (
           <PluginCatalogInstallControl
             displayName={entry.displayName}
