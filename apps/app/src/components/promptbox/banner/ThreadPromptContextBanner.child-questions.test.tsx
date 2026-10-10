@@ -232,13 +232,26 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
-  it("hides the stepper and the back control when only one child thread is waiting", () => {
+  it("hides the stepper when only one question is waiting", () => {
     render(bannerElement(section([newest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
     expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
+  });
+
+  it("drops the back control when the parent has a single child thread", () => {
+    const only = section([newest]);
+    render(
+      bannerElement({
+        ...only,
+        items: only.items.filter((item) => item.hasPendingInteraction),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+
+    expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Child threads" })).toBe(null);
   });
 
