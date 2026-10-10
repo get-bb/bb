@@ -26,7 +26,10 @@ describe("AppBreadcrumbs", () => {
               label: "Installed",
               to: "/plugins/automations/automations",
             },
-            { label: "Weekly review" },
+            {
+              label: "Weekly review",
+              to: "/plugins/automations/automations/proj_personal/weekly-review",
+            },
           ]}
           usesDesktopChrome={false}
         />

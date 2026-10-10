@@ -61,6 +61,7 @@ describe("ProviderCliBanner", () => {
     });
 
     expect(markup).toContain('aria-label="Claude Code not installed"');
+    expect(text).toContain("Install Claude Code before starting a thread.");
     expect(text).not.toContain("version");
     expect(button?.[2]).toBe("Install Claude Code");
   });

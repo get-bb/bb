@@ -207,7 +207,7 @@ describe("shouldOverrideUnknownOpenTargetPreference", () => {
 
   it("does not override preferences before available targets load", () => {
     expect(
-      shouldOverrideUnknownOpenTargetPreference("removed-editor", []),
+      shouldOverrideUnknownOpenTargetPreference("removed-editor", undefined),
     ).toBe(false);
   });
 });

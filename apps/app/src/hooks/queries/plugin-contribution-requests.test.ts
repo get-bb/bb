@@ -80,7 +80,14 @@ describe("fetchPluginContributions", () => {
   });
 
   it("shapes a failed contributions request as empty rather than an error", async () => {
-    mockFetchJsonOnce({ ok: false }, { status: 503 });
+    mockFetchJsonOnce(
+      {
+        mentionProviders: [
+          { pluginId: "linear", id: "issues", label: "Linear issues" },
+        ],
+      },
+      { status: 503 },
+    );
 
     await expect(
       fetchPluginContributions(new AbortController().signal),
