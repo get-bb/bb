@@ -1,13 +1,15 @@
-import {
-  CONTEXT_CARD_TOGGLE_CLASS,
-  CONTEXT_CARD_CHEVRON_CLASS,
-} from "@bb/shared-ui/chrome-style-tokens";
+import { CONTEXT_CARD_TOGGLE_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   machineRemovalDescriptions,
   machineRemovalLabels,
   type MachineRemovalStatus,
 } from "@/lib/machine-removal-display";
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { NavLink } from "react-router-dom";
 import type {
   EnvironmentStatus,
@@ -22,9 +24,9 @@ import {
 } from "@/components/pickers/BranchPicker";
 import {
   PromptStackCard,
-  PromptStackCardChevron,
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
+  PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_INLAY_INSET_CLASS,
   PROMPT_STACK_INLAY_SEGMENT_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
@@ -43,12 +45,21 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
-  getPullRequestAttentionDisplay,
+  describePullRequestStatus,
+  getPullRequestNextStep,
+  isPullRequestAutoMergeOn,
   getPullRequestGithubCheckStatus,
   PULL_REQUEST_STATE_DISPLAY,
 } from "@/lib/pull-request-display";
+import { PullRequestNextStepLabel } from "@/components/pull-request/PullRequestNextStepLabel";
 import { PullRequestStatusPill } from "@/components/pull-request/PullRequestStatusPill";
-import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackCountSlot,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 import {
   BannerActionSlot,
   PROMPT_BANNER_ACTION_FILL_CLASS,
@@ -88,7 +99,7 @@ export interface ThreadPromptGitSection {
 export interface ThreadPromptParentThreadSection {
   parentThreadTitle: string;
   href: string;
-  relationship: "parent" | "fork" | "side-chat";
+  relationship: "parent" | "fork";
 }
 
 interface ThreadPromptChildThreadItem {
@@ -214,6 +225,8 @@ function ChildThreadIcon({ className }: { className?: string }) {
 }
 
 interface SectionToggleButtonProps {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  fillRow: boolean;
   id: string;
   controlsId: string;
   ariaLabel?: string;
@@ -226,6 +239,8 @@ interface SectionToggleButtonProps {
 }
 
 function SectionToggleButton({
+  buttonRef,
+  fillRow,
   id,
   controlsId,
   ariaLabel,
@@ -238,6 +253,7 @@ function SectionToggleButton({
 }: SectionToggleButtonProps) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       id={id}
       aria-expanded={isExpanded}
@@ -249,6 +265,8 @@ function SectionToggleButton({
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
         SEGMENT_SHRINK_CLASS,
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
+        fillRow && "flex-1 justify-start text-left",
+        PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
         isExpanded ? "text-foreground" : "text-muted-foreground",
       )}
     >
@@ -268,11 +286,7 @@ function SectionToggleButton({
           {compactLabel}
         </span>
       ) : null}
-      <Icon
-        name="ChevronDown"
-        className={cn(CONTEXT_CARD_CHEVRON_CLASS, isExpanded && "rotate-180")}
-        aria-hidden="true"
-      />
+      {fillRow ? <PromptStackHoverChevron isExpanded={isExpanded} /> : null}
     </button>
   );
 }
@@ -291,11 +305,6 @@ const PARENT_SECTION_COPY: Record<
     bodyLead: "This thread was forked from ",
     ariaPrefix: "Forked from",
   },
-  "side-chat": {
-    verb: "Side chat of",
-    bodyLead: "This thread is a side chat of ",
-    ariaPrefix: "Side chat of",
-  },
 };
 
 const PARENT_SECTION_ICON: Record<
@@ -304,7 +313,6 @@ const PARENT_SECTION_ICON: Record<
 > = {
   parent: "UserRound",
   fork: "Fork",
-  "side-chat": "SideChat",
 };
 
 function useParentSectionAriaLabel(
@@ -357,8 +365,7 @@ function shouldShowPullRequestAttentionLabel(
 ): boolean {
   if (pullRequest.attention === "checks_failed") return false;
   return (
-    (pullRequest.state === "open" &&
-      (pullRequest.autoMerge || pullRequest.attention === "queued")) ||
+    (pullRequest.state === "open" && pullRequest.attention === "queued") ||
     pullRequest.attention === "changes_requested" ||
     pullRequest.attention === "review_requested" ||
     pullRequest.attention === "conflicts" ||
@@ -368,16 +375,20 @@ function shouldShowPullRequestAttentionLabel(
 
 function ParentThreadSectionToggle({
   section,
+  buttonRef,
   isExpanded,
   onToggle,
 }: {
   section: ThreadPromptParentThreadSection;
+  buttonRef: RefObject<HTMLButtonElement | null>;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
   const ariaLabel = useParentSectionAriaLabel(section);
   return (
     <SectionToggleButton
+      buttonRef={buttonRef}
+      fillRow={false}
       id={SECTION_IDS.parentThread.toggle}
       controlsId={SECTION_IDS.parentThread.body}
       ariaLabel={ariaLabel}
@@ -398,16 +409,23 @@ function ParentThreadSectionToggle({
 function ParentThreadSectionBody({
   section,
   isExpanded,
+  collapseRef,
+  onCollapse,
 }: {
   section: ThreadPromptParentThreadSection;
   isExpanded: boolean;
+  collapseRef: RefObject<HTMLButtonElement | null>;
+  onCollapse: () => void;
 }) {
   return (
-    <AnimatedBody
+    <AnimatedDisclosureBody
       collapsedBorder="reserve"
       id={SECTION_IDS.parentThread.body}
       labelledBy={SECTION_IDS.parentThread.toggle}
       isExpanded={isExpanded}
+      collapseLabel="Collapse parent thread"
+      collapseRef={collapseRef}
+      onCollapse={onCollapse}
     >
       <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
         {PARENT_SECTION_COPY[section.relationship].bodyLead}
@@ -420,7 +438,7 @@ function ParentThreadSectionBody({
         </NavLink>
         .
       </div>
-    </AnimatedBody>
+    </AnimatedDisclosureBody>
   );
 }
 
@@ -595,7 +613,7 @@ function PullRequestBannerLink({
   showLabel: boolean;
   showStateLabel: boolean;
 }) {
-  const attentionDisplay = getPullRequestAttentionDisplay(pullRequest);
+  const nextStep = getPullRequestNextStep(pullRequest);
   const stateDisplay = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const handlePullRequestClick = useUrlAnchorClickHandler(pullRequest.url);
   const showAttentionLabel =
@@ -606,7 +624,7 @@ function PullRequestBannerLink({
       target="_blank"
       rel="noopener noreferrer"
       onClick={handlePullRequestClick}
-      aria-label={`Pull request ${pullRequest.number}: ${attentionDisplay.label}`}
+      aria-label={`Pull request ${pullRequest.number}: ${describePullRequestStatus(pullRequest)}`}
       className={cn(
         "flex items-center gap-1.5 text-xs text-muted-foreground no-underline transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         PROMPT_STACK_INLAY_SEGMENT_CLASS,
@@ -628,10 +646,18 @@ function PullRequestBannerLink({
             : ""}
         </span>
       ) : null}
-      {showAttentionLabel ? (
-        <span className={cn("min-w-0 truncate", attentionDisplay.className)}>
-          · {attentionDisplay.label}
-        </span>
+      {showAttentionLabel && nextStep ? (
+        <>
+          <span aria-hidden>·</span>
+          <PullRequestNextStepLabel nextStep={nextStep} />
+        </>
+      ) : null}
+      {showLabel && isPullRequestAutoMergeOn(pullRequest) ? (
+        <Icon
+          name="Zap"
+          aria-label="Auto-merge on"
+          className="size-3 shrink-0 text-subtle-foreground"
+        />
       ) : null}
     </a>
   );
@@ -665,6 +691,7 @@ function ActiveChildThreadsCard({
   );
   const primary = items[0];
   const primaryTitle = useThreadTitleDisplayText(primary?.title ?? "");
+  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   if (!primary) {
     return null;
   }
@@ -685,20 +712,22 @@ function ActiveChildThreadsCard({
     >
       <div className="flex items-center">
         <button
+          ref={focus.triggerRef}
           type="button"
           id={SECTION_IDS.childThreads.toggle}
           aria-expanded={isExpanded}
           aria-controls={SECTION_IDS.childThreads.body}
           aria-label={`${groupLabel}: ${primaryTitle}`}
-          onClick={onToggle}
-          className={
+          onClick={focus.onTriggerClick}
+          className={cn(
             needsApproval
               ? PROMPT_STACK_CARD_HEADER_BUTTON_CLASS
               : activityRowClass(
                   "active",
                   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-                )
-          }
+                ),
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name={needsApproval ? "CircleQuestion" : "UserRound"}
@@ -720,24 +749,23 @@ function ActiveChildThreadsCard({
             />
           </span>
           {otherCount > 0 ? (
-            <span className="shrink-0 text-muted-foreground">
-              +{otherCount} more
-            </span>
-          ) : null}
-          <PromptStackCardChevron
-            isExpanded={isExpanded}
-            className="text-muted-foreground"
-          />
+            <PromptStackCountSlot count={otherCount} />
+          ) : (
+            <PromptStackHoverChevron isExpanded={isExpanded} />
+          )}
         </button>
       </div>
-      <AnimatedBody
+      <AnimatedDisclosureBody
         collapsedBorder="reserve"
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
+        collapseLabel="Collapse child threads"
+        collapseRef={focus.collapseRef}
+        onCollapse={focus.onCollapseClick}
       >
         <ChildThreadsBody items={items} />
-      </AnimatedBody>
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }
@@ -764,6 +792,12 @@ function ReadOnlyContextBanner({
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
   const isStatusExpanded = expandedSection === "status" && description !== null;
+  const parentFocus = useDisclosureFocusHandoff(isParentThreadExpanded, () =>
+    onToggleSection("parentThread"),
+  );
+  const statusFocus = useDisclosureFocusHandoff(isStatusExpanded, () =>
+    onToggleSection("status"),
+  );
   const hasMultipleSegments = parentThreadSection !== null;
   const statusIcon = (
     <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden="true" />
@@ -784,8 +818,9 @@ function ReadOnlyContextBanner({
         {parentThreadSection ? (
           <ParentThreadSectionToggle
             section={parentThreadSection}
+            buttonRef={parentFocus.triggerRef}
             isExpanded={isParentThreadExpanded}
-            onToggle={() => onToggleSection("parentThread")}
+            onToggle={parentFocus.onTriggerClick}
           />
         ) : null}
         {description === null ? (
@@ -804,13 +839,15 @@ function ReadOnlyContextBanner({
           </div>
         ) : (
           <SectionToggleButton
+            buttonRef={statusFocus.triggerRef}
+            fillRow
             id={SECTION_IDS.status.toggle}
             controlsId={SECTION_IDS.status.body}
             icon={statusIcon}
             label={statusLabel}
             hideLabelInCompact={false}
             isExpanded={isStatusExpanded}
-            onToggle={() => onToggleSection("status")}
+            onToggle={statusFocus.onTriggerClick}
           />
         )}
         {showStatusAction ? (
@@ -818,21 +855,26 @@ function ReadOnlyContextBanner({
         ) : null}
       </div>
       {description === null ? null : (
-        <AnimatedBody
+        <AnimatedDisclosureBody
           collapsedBorder="reserve"
           id={SECTION_IDS.status.body}
           labelledBy={SECTION_IDS.status.toggle}
           isExpanded={isStatusExpanded}
+          collapseLabel={`Collapse ${statusLabel.toLowerCase()}`}
+          collapseRef={statusFocus.collapseRef}
+          onCollapse={statusFocus.onCollapseClick}
         >
           <p className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
             {description}
           </p>
-        </AnimatedBody>
+        </AnimatedDisclosureBody>
       )}
       {parentThreadSection ? (
         <ParentThreadSectionBody
           section={parentThreadSection}
           isExpanded={isParentThreadExpanded}
+          collapseRef={parentFocus.collapseRef}
+          onCollapse={parentFocus.onCollapseClick}
         />
       ) : null}
     </PromptStackCard>
@@ -850,6 +892,13 @@ export function ThreadPromptContextBanner({
   expandedSection,
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
+  const gitFocus = useDisclosureFocusHandoff(expandedSection === "git", () =>
+    onToggleSection("git"),
+  );
+  const parentFocus = useDisclosureFocusHandoff(
+    expandedSection === "parentThread",
+    () => onToggleSection("parentThread"),
+  );
   if (archivedSection || environmentGoneSection) {
     const environmentGone = environmentGoneSection !== null;
     const environmentGoneCopy = environmentGoneSection
@@ -997,7 +1046,7 @@ export function ThreadPromptContextBanner({
       <PromptStackCard
         ariaLabel="Thread context before sending"
         className="overflow-hidden"
-        style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
+        style={{ minHeight: PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT }}
       >
         <div
           className={cn(
@@ -1011,8 +1060,9 @@ export function ThreadPromptContextBanner({
           {showParentThread && parentThreadSection && !isParentThreadOnly ? (
             <ParentThreadSectionToggle
               section={parentThreadSection}
+              buttonRef={parentFocus.triggerRef}
               isExpanded={isParentThreadExpanded}
-              onToggle={() => onToggleSection("parentThread")}
+              onToggle={parentFocus.onTriggerClick}
             />
           ) : null}
           {showPullRequest && pullRequest ? (
@@ -1025,6 +1075,8 @@ export function ThreadPromptContextBanner({
           ) : null}
           {showGit && gitSummary ? (
             <SectionToggleButton
+              buttonRef={gitFocus.triggerRef}
+              fillRow
               id={SECTION_IDS.git.toggle}
               controlsId={SECTION_IDS.git.body}
               icon={
@@ -1039,7 +1091,7 @@ export function ThreadPromptContextBanner({
               hideLabelInCompact={visibleSegmentCount > 2}
               ariaLabel={`Changed files: ${gitSummaryPrefix}, ${gitSummaryText}`}
               isExpanded={isGitExpanded}
-              onToggle={() => onToggleSection("git")}
+              onToggle={gitFocus.onTriggerClick}
             />
           ) : null}
           {pullRequestAction}
@@ -1049,14 +1101,19 @@ export function ThreadPromptContextBanner({
           <ParentThreadSectionBody
             section={parentThreadSection}
             isExpanded={isParentThreadExpanded}
+            collapseRef={parentFocus.collapseRef}
+            onCollapse={parentFocus.onCollapseClick}
           />
         ) : null}
         {showGit ? (
-          <AnimatedBody
+          <AnimatedDisclosureBody
             collapsedBorder="reserve"
             id={SECTION_IDS.git.body}
             labelledBy={SECTION_IDS.git.toggle}
             isExpanded={isGitExpanded}
+            collapseLabel="Collapse changed files"
+            collapseRef={gitFocus.collapseRef}
+            onCollapse={gitFocus.onCollapseClick}
           >
             <WorkspaceChangesList
               files={gitSection.changedFiles.files}
@@ -1068,7 +1125,7 @@ export function ThreadPromptContextBanner({
                 })
               }
             />
-          </AnimatedBody>
+          </AnimatedDisclosureBody>
         ) : null}
       </PromptStackCard>
     ) : null;

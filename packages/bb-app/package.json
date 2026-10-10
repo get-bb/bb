@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.44.0",
+  "version": "0.46.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -34,7 +34,8 @@
   "types": "./dist/index.d.ts",
   "os": [
     "darwin",
-    "linux"
+    "linux",
+    "win32"
   ],
   "bin": {
     "bb-app": "dist/bb-app.js",

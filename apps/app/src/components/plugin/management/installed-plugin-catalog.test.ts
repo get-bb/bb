@@ -6,6 +6,7 @@ const community = {
   entryId: "notes",
   marketplace: "community",
   source: "git:https://github.com/alice/notes.git@v2",
+  installed: false,
 };
 const official = {
   ...community,
@@ -74,5 +75,26 @@ describe("installed plugin catalog identity", () => {
         ),
       ).toBeUndefined();
     }
+  });
+  it("links a direct install to the one listing the server matched to its repository", () => {
+    const direct = {
+      id: "notes",
+      catalogEntryId: null,
+      catalogMarketplaceName: null,
+      source: "git:https://github.com/alice/notes.git@main",
+    };
+    const matched = { ...community, installed: true };
+    expect(
+      installedPluginCatalogEntry(direct, [official, matched], {
+        allowSourceFallback: false,
+      }),
+    ).toBe(matched);
+    expect(
+      installedPluginCatalogEntry(
+        direct,
+        [matched, { ...matched, marketplace: "mirror" }],
+        { allowSourceFallback: false },
+      ),
+    ).toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   findProjectEnvironmentByHostPath,
   getAppSettings,
   getEnvironment,
@@ -833,6 +834,7 @@ function reportMachineProgress(
     entries,
   });
   deps.hub.notifyThread(threadId, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, { threadId: threadId }),
     eventTypes: ["system/thread-provisioning"],
   });
 }
@@ -1229,6 +1231,9 @@ export function prepareProviderEnvironment(
         ],
       });
       deps.hub.notifyThread(context.thread.id, ["events-appended"], {
+        timelineSequence: getLatestThreadSequence(deps.db, {
+          threadId: context.thread.id,
+        }),
         eventTypes: ["system/thread-provisioning"],
       });
     }

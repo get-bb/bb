@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatAutomationTrigger,
   formatDetailScheduleStatusLabel,
   formatOverviewScheduleMetadata,
   formatScheduleStatusLabel,
@@ -7,6 +8,35 @@ import {
   matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
 } from "../lib/format-schedule.js";
+
+describe("automation schedule cadence", () => {
+  it.each([
+    ["*/5 9-17 * * *", "Every 5 min, 9AM-5:59PM"],
+    ["0 9-17 * * 1-5", "Every hour, 9AM-5PM Mon-Fri"],
+    ["15 9-17 * * *", "15 min past the hour, 9AM-5:59PM"],
+    ["0 0-2 * * *", "Every hour, 12AM-2AM"],
+    ["0 9,17 * * 1,3,5", "9AM, 5PM Mon, Wed, Fri"],
+    ["30 9,12,17 * * *", "9:30AM, 12:30PM, 5:30PM"],
+    ["10-20 * * * *", "Minutes 10-20 past the hour"],
+    ["*/5 * * * *", "Every 5 min"],
+    ["0 9 * * 1-5", "9AM Mon-Fri"],
+    ["invalid", "Custom schedule"],
+  ])("formats %s as %s", (cron, expected) => {
+    expect(
+      formatAutomationTrigger({
+        triggerType: "schedule",
+        cron,
+        timezone: "UTC",
+      }),
+    ).toBe(expected);
+  });
+
+  it("formats one-shot schedules", () => {
+    expect(formatAutomationTrigger({ triggerType: "once", runAt: 2_000 })).toBe(
+      "One time",
+    );
+  });
+});
 
 const NOW = 2_000;
 

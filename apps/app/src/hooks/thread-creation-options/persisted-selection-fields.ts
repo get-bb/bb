@@ -2,7 +2,13 @@ import { atom, useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
-import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import {
+  sessionOptionSelectionsSchema,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
+  type SessionOptionSelections,
+} from "@bb/domain";
 import { createTabScopedStorage } from "@/lib/browser-storage";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 
@@ -13,6 +19,7 @@ const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const MACHINE_STORAGE_KEY = "bb.promptbox.machine";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
+const SESSION_OPTIONS_STORAGE_KEY = "bb.promptbox.session-options";
 const PROVIDER_SELECTION_STORAGE_VERSION = "1";
 
 export type StoredServiceTier = "" | ServiceTier;
@@ -51,16 +58,7 @@ interface PromptBoxProviderModelReasoningPreference {
 }
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
-  return (
-    value === "none" ||
-    value === "low" ||
-    value === "medium" ||
-    value === "high" ||
-    value === "xhigh" ||
-    value === "ultracode" ||
-    value === "max" ||
-    value === "ultra"
-  );
+  return value !== "";
 }
 
 function isPermissionMode(value: string): value is PermissionMode {
@@ -136,6 +134,54 @@ const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
     { getOnInit: true },
   ),
 );
+const NO_SESSION_OPTION_SELECTIONS: SessionOptionSelections = {};
+const sessionOptionsStorage = createTabScopedStorage<SessionOptionSelections>(
+  {
+    parse: (value, initialValue) => {
+      if (value === null) {
+        return initialValue;
+      }
+      try {
+        const parsed = sessionOptionSelectionsSchema.safeParse(
+          JSON.parse(value),
+        );
+        return parsed.success ? parsed.data : initialValue;
+      } catch {
+        return initialValue;
+      }
+    },
+    serialize: (value) => JSON.stringify(value),
+  },
+  { persistInitialValue: false },
+);
+const sessionOptionsAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<SessionOptionSelections>(
+    getProviderSelectionStorageKey(SESSION_OPTIONS_STORAGE_KEY, providerId),
+    NO_SESSION_OPTION_SELECTIONS,
+    sessionOptionsStorage,
+    { getOnInit: true },
+  ),
+);
+const emptySessionOptionsAtom = atom<SessionOptionSelections>(
+  NO_SESSION_OPTION_SELECTIONS,
+);
+
+export function usePromptBoxSessionOptionsPreference(providerId: string): {
+  value: SessionOptionSelections;
+  setValue: (value: SessionOptionSelections) => void;
+} {
+  const [value, setAtomValue] = useAtom(
+    providerId ? sessionOptionsAtomFamily(providerId) : emptySessionOptionsAtom,
+  );
+  const setValue = useCallback(
+    (nextValue: SessionOptionSelections) => {
+      setAtomValue(nextValue);
+    },
+    [setAtomValue],
+  );
+  return { setValue, value };
+}
+
 const permissionModePreferenceStorage =
   createTabScopedStorage<StoredPermissionMode>(
     {

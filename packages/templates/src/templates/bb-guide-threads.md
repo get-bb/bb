@@ -25,7 +25,7 @@ Spawning:
     --lifecycle-owner-thread <id>  Archive/delete with this owner
     --provider <id>                Provider override
     --model <model>                Model override
-    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
+    --reasoning-level <level>      Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
@@ -47,6 +47,9 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
+    --option <option=value>        Choose a value for an option the provider's model lists, applied
+                                   before the first message; true or false for an on/off option
+                                   (repeatable; see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
@@ -110,7 +113,7 @@ Forking:
     --environment <id-or-path>     Existing environment ID or unmanaged workspace path
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new worktree; omit for the project default
-    --title <title>                Thread title
+    --title <title>                Thread title (idle forks default to "(1) <source title>")
     --permission-mode <mode>       Inherit source by default; accepts accept-edits, auto, full
     --visibility <visibility>      visible (default) or hidden
     --agent-context-seed <text>    Persist agent-only context without a first run
@@ -129,7 +132,9 @@ Forking:
   source machine; --environment can select another environment or unmanaged
   path on that machine. A different machine is rejected because the source
   provider session lives on its original machine. Omit --prompt to create an
-  idle fork.
+  idle fork. A visible idle fork without --title is named after its source with
+  a numbered prefix: "foo" becomes "(1) foo" and "(1) foo" becomes "(2) foo".
+  Forks created with a first prompt get a title from that prompt.
 
 Editing a sent message:
 
@@ -197,6 +202,10 @@ Sections:
 Inspecting:
 
   bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
+  bb thread commands [id]                  List the slash commands the thread's agent has advertised (--self, --json)
+  bb thread options [id]                   List the session options the agent reports, with current values (--self, --json)
+    --set <option=value>                   Choose a value, applied on the thread's next turn (repeatable)
+    --clear <option>                       Drop a choice that has not been applied yet (repeatable)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
     --work-status                          Include git working-tree status
@@ -214,6 +223,8 @@ Inspecting:
                                            user-message turns for minimal/verbose (newest first, default 20, max 100)
     --after-seq <seq>                      Paginate after sequence number (json only)
     --all                                  Print the whole thread, paging through every entry
+    --message <seq>                        Print one message
+    --context <count>                      With --message, also print this many messages around it (max 20)
 
   Human formats end with a notice when older history was omitted; --json warns
   on stderr when more events exist beyond the printed page. Human-format --all
@@ -233,6 +244,14 @@ Opening threads and files in the app:
 
   In chat, reference a thread as @thread:thr_abc123, substituting its actual ID.
   BB renders the correct project-aware link; do not construct thread URLs manually.
+  Pasting a bare thread URL from the current bb origin into a composer turns it
+  into the same thread pill when the target resolves. Undo restores the URL;
+  paste without formatting (Cmd/Ctrl+Shift+V) keeps it literal. Links with query
+  strings or fragments, quoted/code text, and links to other origins stay literal.
+  CLI prompts can use @thread:<id> directly; URL conversion only runs on a user paste.
+  Reference one message as @thread:thr_abc123#msg=42, taking the number from
+  sourceSeq in `bb thread search --json`. Read it, or a copied message link
+  (…/threads/thr_abc123#msg=42), with `bb thread log thr_abc123 --message 42`.
 
   bb thread open <path>                    Open a file in the current BB thread panel
   bb thread open <thread-id> [path]        Open a thread, optionally with a panel file
@@ -302,7 +321,9 @@ Messaging:
   `thread clear` keeps the BB thread, workspace, durable event history, and
   sticky execution settings. Its active timeline starts at one visible
   `Context cleared` boundary, and its next prompt starts a fresh provider
-  conversation in the same thread.
+  conversation in the same thread. With
+  `bb settings general keepHistoryAfterContextClear true`, earlier messages
+  stay visible above that boundary.
 
 Ownership:
 
@@ -472,3 +493,9 @@ Lifecycle ownership:
   recursively deletes them after runtime/storage cleanup. Failed cleanup retries
   durably. Unarchive the owner before explicitly restoring a dependent. Stop does
   not cascade. Sidebar parents and ordinary forks retain their existing policies.
+
+Thread storage deletion and orphan cleanup stop processes whose working
+directories are inside that storage before removing files, including dev
+servers in nested checkouts. On macOS and Linux this uses the same SIGTERM
+grace period and SIGKILL fallback as worktree removal. Windows does not
+enumerate process working directories.

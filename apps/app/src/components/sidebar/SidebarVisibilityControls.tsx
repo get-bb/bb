@@ -1,21 +1,9 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { defineSplit, SplitLoadFailure } from "@/lib/define-split";
 import type { SidebarVisibilityCustomize as SidebarVisibilityCustomizeView } from "./SidebarVisibilityCustomize";
-import { SidebarVisibilityCustomizeFrame } from "./SidebarVisibilityCustomizeFrame";
-
-export interface SidebarVisibilityItem {
-  id: string;
-  title: string;
-  icon?: ReactNode;
-  disabled?: boolean;
-}
-
-export interface SidebarActivationModifiers {
-  metaKey: boolean;
-  ctrlKey: boolean;
-}
+import { SidebarCustomizePanel } from "@bb/shared-ui/sidebar-customize-panel";
 
 type SidebarVisibilityCustomizeProps = ComponentProps<
   typeof SidebarVisibilityCustomizeView
@@ -29,7 +17,7 @@ function SidebarVisibilityCustomizePlaceholder({
   variant,
 }: SidebarVisibilityCustomizeProps & { retry?: () => void }) {
   return (
-    <SidebarVisibilityCustomizeFrame
+    <SidebarCustomizePanel
       autoFocusDone
       onDone={onDone}
       title={title}
@@ -60,7 +48,7 @@ function SidebarVisibilityCustomizePlaceholder({
           ))}
         </div>
       )}
-    </SidebarVisibilityCustomizeFrame>
+    </SidebarCustomizePanel>
   );
 }
 
@@ -72,5 +60,5 @@ export const SidebarVisibilityCustomize = defineSplit({
     ),
   loading: SidebarVisibilityCustomizePlaceholder,
   error: SidebarVisibilityCustomizePlaceholder,
-  preload: "render",
+  tier: "intent",
 });

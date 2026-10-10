@@ -1,0 +1,582 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import type { HistoryEntry } from "./history-prompt.js";
+import plugin from "./server.js";
+
+function text(value: string): HistoryEntry["input"] {
+  return [{ type: "text", text: value, mentions: [] }];
+}
+
+function draft(value: string) {
+  return { text: value, mentions: [] };
+}
+
+function entry(
+  id: string,
+  createdAt: number,
+  value: string,
+  location: {
+    projectId?: string;
+    threadId?: string;
+    scope?: HistoryEntry["scope"];
+  } = {},
+): HistoryEntry {
+  return {
+    id,
+    createdAt,
+    input: text(value),
+    projectId: location.projectId ?? "proj_a",
+    threadId: location.threadId ?? "thr_a",
+    scope: location.scope ?? "thread",
+  };
+}
+
+function historyList(history: HistoryEntry[]) {
+  return vi.fn(async (args: { cursor?: string; limit?: string } = {}) => {
+    const newestFirst = [...history].sort(
+      (left, right) =>
+        right.createdAt - left.createdAt || right.id.localeCompare(left.id),
+    );
+    const start = args.cursor === undefined ? 0 : Number(args.cursor);
+    const limit = Number(args.limit ?? "100");
+    const end = start + limit;
+    return {
+      entries: newestFirst.slice(start, end),
+      nextCursor: end < newestFirst.length ? String(end) : null,
+    };
+  });
+}
+
+async function setup(entries: readonly HistoryEntry[]) {
+  const history = [...entries];
+  const list = historyList(history);
+  const fake = createFakePluginHost({
+    pluginId: "prompt-library",
+    sdk: {
+      experimental_promptHistory: { list },
+      projects: {
+        list: async () => [
+          { id: "proj_a", name: "Alpha" },
+          { id: "proj_b", name: "Beta" },
+        ],
+      },
+    },
+  });
+  await plugin(fake.bb);
+  const call = (method: string, input: unknown) =>
+    fake.harness.behavior.callRpc(method, input);
+  return { ...fake, history, list, call };
+}
+
+const GLOBAL = {
+  scope: "global",
+  projectId: null,
+  threadId: null,
+  composer: "follow-up",
+} as const;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("prompt library server", () => {
+  it("searches a full pasted prompt including text beyond 256 characters", async () => {
+    const prefix =
+      "Please verify the changes on this branch and explain the results. ".repeat(
+        8,
+      );
+    const query = `${prefix}zebra`;
+    const { call } = await setup([
+      entry("match", 1, query),
+      entry("other", 2, `${prefix}yak`),
+    ]);
+
+    await expect(call("search", { ...GLOBAL, query })).resolves.toMatchObject({
+      prompts: [{ id: "match" }],
+    });
+  });
+
+  it("lists starred prompts first and collapses repeated history, newest first", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "write the release notes"),
+      entry("h2", 2, "fix the timeline cache", { projectId: "proj_b" }),
+      entry("h3", 3, "write the release notes"),
+    ]);
+    const starred = await call("star", {
+      prompt: draft("fix the timeline cache"),
+    });
+
+    const result = await call("search", { ...GLOBAL, query: "" });
+
+    expect(result).toMatchObject({
+      prompts: [
+        { kind: "starred", id: (starred as { id: string }).id },
+        { kind: "recent", id: "h3", projectName: "Alpha", starredId: null },
+        {
+          kind: "recent",
+          id: "h2",
+          projectName: "Beta",
+          starredId: (starred as { id: string }).id,
+        },
+      ],
+    });
+  });
+
+  it("turns history mentions and attachments into a composer prompt", async () => {
+    const { call } = await setup([
+      {
+        id: "h1",
+        createdAt: 1,
+        projectId: "proj_a",
+        threadId: "thr_a",
+        scope: "thread",
+        input: [
+          {
+            type: "text",
+            text: "see @a.ts",
+            mentions: [
+              {
+                start: 4,
+                end: 9,
+                resource: {
+                  kind: "path",
+                  source: "workspace",
+                  entryKind: "file",
+                  path: "src/a.ts",
+                  label: "a.ts",
+                },
+              },
+            ],
+          },
+          {
+            type: "text",
+            text: "then #42",
+            mentions: [
+              {
+                start: 5,
+                end: 8,
+                resource: {
+                  kind: "plugin",
+                  pluginId: "github",
+                  itemId: "issues:42",
+                  label: "#42",
+                },
+              },
+            ],
+          },
+          { type: "localImage", path: ".bb/attachments/shot.png" },
+        ],
+      },
+    ]);
+
+    const result = (await call("search", {
+      ...GLOBAL,
+      projectId: "proj_a",
+      query: "",
+    })) as {
+      prompts: { prompt: unknown }[];
+    };
+
+    expect(result.prompts[0]?.prompt).toEqual({
+      text: "see @a.ts\n\nthen #42",
+      mentions: [
+        {
+          from: 4,
+          to: 9,
+          kind: "path",
+          source: "workspace",
+          entryKind: "file",
+          path: "src/a.ts",
+          label: "a.ts",
+        },
+        {
+          from: 16,
+          to: 19,
+          kind: "plugin",
+          pluginId: "github",
+          provider: "issues",
+          id: "42",
+          label: "#42",
+        },
+      ],
+      attachments: [
+        {
+          type: "localImage",
+          path: ".bb/attachments/shot.png",
+          name: "shot.png",
+          sizeBytes: 0,
+        },
+      ],
+    });
+  });
+
+  it.each([
+    { type: "localFile", ownership: { sourceProjectId: "proj_b" } },
+    { type: "localImage", ownership: { sourceProjectId: "proj_b" } },
+    { type: "localFile", ownership: { hostId: "machine_b" } },
+    { type: "localImage", ownership: { hostId: "machine_b" } },
+  ] as const)(
+    "preserves extra fields on cross-project history attachments through RPC ($type, $ownership)",
+    async ({ type, ownership }) => {
+      const foreign = entry("foreign", 1, "@project:proj_b review", {
+        projectId: "proj_b",
+      });
+      const attachment = {
+        type,
+        path: ".bb/attachments/private.txt",
+        name: "private.txt",
+        sizeBytes: 42,
+        ...ownership,
+        futureOwnership: { project: "proj_b", token: "portable" },
+      };
+      foreign.input = [
+        {
+          type: "text",
+          text: "@project:proj_b review",
+          mentions: [
+            {
+              start: 0,
+              end: 15,
+              resource: { kind: "project", projectId: "proj_b", label: "Beta" },
+            },
+          ],
+        },
+        attachment,
+      ];
+      const { call } = await setup([foreign]);
+      const result = await call("search", {
+        ...GLOBAL,
+        projectId: "proj_a",
+        query: "",
+      });
+      expect(result).toMatchObject({
+        prompts: [
+          {
+            projectId: "proj_b",
+            prompt: {
+              text: "@project:proj_b review",
+              mentions: [
+                {
+                  from: 0,
+                  to: 15,
+                  kind: "project",
+                  projectId: "proj_b",
+                  label: "Beta",
+                },
+              ],
+              attachments: [attachment],
+            },
+          },
+        ],
+      });
+    },
+  );
+
+  it("rejects malformed mentions before saving a starred prompt", async () => {
+    const { call } = await setup([]);
+    for (const mention of [
+      { from: 0, to: 4, kind: "project", label: "Project" },
+      {
+        from: 0,
+        to: 99,
+        kind: "project",
+        projectId: "proj_a",
+        label: "Project",
+      },
+    ]) {
+      await expect(
+        call("star", { prompt: { text: "test", mentions: [mention] } }),
+      ).rejects.toThrow();
+    }
+    await expect(call("search", { ...GLOBAL, query: "" })).resolves.toEqual({
+      prompts: [],
+    });
+  });
+
+  it("matches every word inside one prompt word and highlights it", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "fix the timeline cache"),
+      entry("h2", 2, "timeline only"),
+      entry("h3", 3, "unrelated prompt"),
+      entry("h4", 4, "the main line can catch errors"),
+    ]);
+
+    const result = (await call("search", {
+      ...GLOBAL,
+      query: "tmln cach",
+    })) as {
+      prompts: {
+        id: string;
+        snippet: { text: string; highlights: number[][] };
+      }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([
+      [8, 9],
+      [10, 11],
+      [12, 13],
+      [14, 15],
+      [17, 21],
+    ]);
+  });
+
+  it("ignores case and never matches letters scattered across words", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "Secret questions are rejected because the current shell"),
+      entry("h2", 2, "please squash these commits"),
+      entry("h3", 3, "Squashed before merging"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "Squash" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h3", "h2"]);
+  });
+
+  it("ranks a search as one list by prefix, then match quality, then relevance", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "deploy the preview"),
+      entry("h2", 2, "delete old preview logs yearly"),
+      entry("h3", 3, "Deploy later"),
+      entry("h4", 4, "please deploy the docs"),
+      entry("h5", 5, "now deploy staging"),
+      entry("h6", 6, "redeploy the api"),
+    ]);
+    await call("star", { prompt: draft("please deploy the docs") });
+    await call("star", { prompt: draft("deploy staging") });
+
+    const result = (await call("search", { ...GLOBAL, query: "deploy" })) as {
+      prompts: { kind: string; prompt: { text: string } }[];
+    };
+
+    expect(result.prompts.map((row) => [row.kind, row.prompt.text])).toEqual([
+      ["starred", "deploy staging"],
+      ["recent", "Deploy later"],
+      ["recent", "deploy the preview"],
+      ["starred", "please deploy the docs"],
+      ["recent", "now deploy staging"],
+      ["recent", "redeploy the api"],
+    ]);
+  });
+
+  it("searches all history, beyond the newest page", async () => {
+    const { call, list } = await setup([
+      entry("old", 1, "migrate the billing tables"),
+      ...Array.from({ length: 1200 }, (_, index) =>
+        entry(`new-${index}`, 10 + index, `recent prompt ${index}`),
+      ),
+    ]);
+
+    const result = (await call("search", {
+      ...GLOBAL,
+      query: "mgrt blng",
+    })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["old"]);
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("lists the 30 newest prompts without a query", async () => {
+    const { call } = await setup(
+      Array.from({ length: 1200 }, (_, index) =>
+        entry(`h${index}`, index, `prompt number ${index}`),
+      ),
+    );
+
+    const result = (await call("search", { ...GLOBAL, query: "" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts).toHaveLength(30);
+    expect(result.prompts[0]?.id).toBe("h1199");
+  });
+
+  it("finds a word typed with one typo and highlights it", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "please deploy the docs"),
+      entry("h2", 2, "unrelated prompt"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "dpeloy" })) as {
+      prompts: { id: string; snippet: { highlights: number[][] } }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1"]);
+    expect(result.prompts[0]?.snippet.highlights).toEqual([[7, 13]]);
+  });
+
+  it("ranks an exact word above newer partial matches", async () => {
+    const { call } = await setup([
+      entry("h1", 1, "write a test first"),
+      entry("h2", 2, "run the tests"),
+      entry("h3", 3, "update the attestation"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "test" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h1", "h2", "h3"]);
+  });
+
+  it("ranks prompts of the searching composer's kind first within a match type", async () => {
+    const { call } = await setup([
+      entry("start", 1, "investigate the flaky login test", {
+        scope: "project",
+      }),
+      entry("follow", 2, "the login test is still flaky"),
+    ]);
+    const search = async (composer: "new-thread" | "follow-up") =>
+      (
+        (await call("search", { ...GLOBAL, composer, query: "flaky" })) as {
+          prompts: { id: string }[];
+        }
+      ).prompts.map((row) => row.id);
+
+    expect(await search("new-thread")).toEqual(["start", "follow"]);
+    expect(await search("follow-up")).toEqual(["follow", "start"]);
+  });
+
+  it("weighs how often a word appears against how old the prompt is", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = Date.UTC(2026, 9, 8);
+    vi.setSystemTime(now);
+    const day = 86_400_000;
+    const { call } = await setup([
+      entry("old", now - 30 * day, "we should ship ship ship it"),
+      entry("new", now, "can you ship it"),
+      entry("day", now - day, "time to ship the ship"),
+    ]);
+
+    const result = (await call("search", { ...GLOBAL, query: "ship" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["day", "new", "old"]);
+  });
+
+  it("adds new prompts on later searches and keeps prompts core no longer returns", async () => {
+    const { call, history, list } = await setup([
+      entry("h1", 1, "first prompt"),
+    ]);
+    await call("search", { ...GLOBAL, query: "" });
+    history.push(entry("h2", 2, "second prompt"));
+    history.splice(0, 1);
+    list.mockClear();
+
+    const result = (await call("search", { ...GLOBAL, query: "" })) as {
+      prompts: { id: string }[];
+    };
+
+    expect(result.prompts.map((row) => row.id)).toEqual(["h2", "h1"]);
+    expect(list).toHaveBeenCalledOnce();
+  });
+
+  it("scopes history to the thread or project and skips a missing target", async () => {
+    const { call, list } = await setup([
+      entry("h1", 1, "in thread a", { threadId: "thr_a" }),
+      entry("h2", 2, "in thread b", { threadId: "thr_b" }),
+    ]);
+
+    const thread = (await call("search", {
+      query: "",
+      scope: "thread",
+      projectId: "proj_a",
+      threadId: "thr_b",
+      composer: "follow-up",
+    })) as { prompts: { id: string }[] };
+    expect(thread.prompts.map((row) => row.id)).toEqual(["h2"]);
+
+    list.mockClear();
+    const missing = (await call("search", {
+      query: "",
+      scope: "project",
+      projectId: null,
+      threadId: null,
+      composer: "new-thread",
+    })) as { prompts: unknown[] };
+    expect(missing.prompts).toEqual([]);
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it("dedupes starred prompts by text and orders them by last use", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000);
+    const { call } = await setup([]);
+    const first = (await call("star", {
+      prompt: draft("first prompt"),
+    })) as { id: string };
+    vi.setSystemTime(2_000);
+    const second = (await call("star", { prompt: draft("second prompt") })) as {
+      id: string;
+    };
+    const duplicate = (await call("star", {
+      prompt: draft("first prompt"),
+    })) as { id: string };
+    expect(duplicate.id).toBe(first.id);
+
+    vi.setSystemTime(3_000);
+    await call("markUsed", { id: first.id });
+    const listed = (await call("search", { ...GLOBAL, query: "" })) as {
+      prompts: { id: string; prompt: unknown }[];
+    };
+    expect(listed.prompts.map((row) => row.id)).toEqual([first.id, second.id]);
+    expect(listed.prompts[0]?.prompt).toEqual(draft("first prompt"));
+
+    await expect(call("unstar", { id: second.id })).resolves.toEqual({
+      unstarred: true,
+    });
+    await expect(call("unstar", { id: second.id })).resolves.toEqual({
+      unstarred: false,
+    });
+  });
+
+  it("rejects saving a prompt with no text", async () => {
+    const { call } = await setup([]);
+    await expect(call("star", { prompt: draft("   ") })).rejects.toThrow(
+      "A starred prompt needs some text.",
+    );
+  });
+
+  it("manages starred prompts and searches from the CLI", async () => {
+    const { harness } = await setup([entry("h1", 1, "deploy the preview")]);
+
+    const starred = await harness.behavior.runCli([
+      "star",
+      "review",
+      "this",
+      "diff",
+      "--json",
+    ]);
+    expect(starred.exitCode).toBe(0);
+    const { id } = JSON.parse(starred.stdout ?? "") as { id: string };
+
+    const list = await harness.behavior.runCli(["list"]);
+    expect(list.stdout).toBe(`${id}  review this diff`);
+
+    const search = await harness.behavior.runCli([
+      "search",
+      "deploy",
+      "--json",
+    ]);
+    expect(JSON.parse(search.stdout ?? "")).toEqual({
+      prompts: [expect.objectContaining({ kind: "recent", id: "h1" })],
+    });
+
+    await expect(
+      harness.behavior.runCli(["unstar", id]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: `Unstarred ${id}`,
+    });
+    await expect(
+      harness.behavior.runCli(["unstar", id]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+    });
+  });
+});

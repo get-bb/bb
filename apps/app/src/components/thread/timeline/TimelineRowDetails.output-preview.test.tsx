@@ -1,24 +1,13 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  render,
-  renderHook,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineCommandWorkRow } from "@bb/server-contract";
-import {
-  commandRow,
-  delegationRow,
-  turnRow,
-} from "@/test/fixtures/thread-timeline-rows";
+import { commandRow } from "@/test/fixtures/thread-timeline-rows";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { sdk } from "@/lib/sdk";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import { useTimelineWorkRowFullOutput } from "./useTimelineWorkRowFullOutput";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { threads: { timelineTurnSummaryDetails: vi.fn() } },
@@ -94,12 +83,14 @@ describe("previewed command output", () => {
         }),
       ],
     });
-    const view = renderExpandedRow(previewedCommandRow());
+    const preview = previewedCommandRow();
+    const view = renderExpandedRow(preview);
 
     await waitFor(() => {
       expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
     });
     expect(timelineTurnSummaryDetails.mock.calls[0]?.[0]).toMatchObject({
+      itemId: preview.callId,
       threadId: "thr_main",
       turnId: "turn_1",
       sourceSeqStart: "4",
@@ -112,45 +103,12 @@ describe("previewed command output", () => {
     expect(screen.queryByTestId("timeline-output-preview-note")).toBeNull();
   });
 
-  it("loads full output from nested delegated turn details", async () => {
-    const preview = previewedCommandRow();
-    timelineTurnSummaryDetails.mockResolvedValue({
-      rows: [
-        delegationRow({
-          childRows: [
-            turnRow({
-              children: [
-                commandRow({
-                  callId: preview.callId,
-                  command: preview.command,
-                  id: preview.id,
-                  output: FULL_OUTPUT,
-                  sourceSeqEnd: preview.sourceSeqEnd,
-                  sourceSeqStart: preview.sourceSeqStart,
-                  threadId: preview.threadId,
-                  turnId: preview.turnId ?? undefined,
-                }),
-              ],
-            }),
-          ],
-        }),
-      ],
-    });
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(() => useTimelineWorkRowFullOutput(preview), {
-      wrapper,
-    });
-
-    await waitFor(() => {
-      expect(result.current.state).toBe("loaded");
-    });
-    expect(result.current.output).toBe(FULL_OUTPUT);
-  });
-
   it("keeps the live preview for a running row and does not fetch details", async () => {
     const view = renderExpandedRow(previewedCommandRow({ status: "pending" }));
 
-    expect(view.container.textContent).toContain("characters omitted");
+    await waitFor(() => {
+      expect(view.container.textContent).toContain("characters omitted");
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("full output loads when this finishes");
@@ -165,7 +123,9 @@ describe("previewed command output", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
     });
-    expect(view.container.textContent).toContain("characters omitted");
+    await waitFor(() => {
+      expect(view.container.textContent).toContain("characters omitted");
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("Failed to load the full output");
@@ -212,7 +172,9 @@ describe("previewed command output", () => {
     };
     const view = renderExpandedRow(row);
 
-    expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
+    await waitFor(() => {
+      expect(view.container.textContent).toContain(PREVIEW_OUTPUT);
+    });
     expect(
       screen.getByTestId("timeline-output-preview-note").textContent,
     ).toContain("retention period ended");

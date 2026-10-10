@@ -526,25 +526,29 @@ describe("createAgentRuntime process lifecycle", () => {
       workspacePath: tmpDir,
     });
 
-    await ensureCrashingProvider(manager);
-    await waitForRuntimeState({
-      label: "exited provider reported",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
-    const [exitedPid] = startedPids(startsLog);
+    try {
+      await ensureCrashingProvider(manager);
+      await waitForRuntimeState({
+        label: "exited provider reported",
+        predicate: () => exitInfo.mock.calls.length === 1,
+      });
+      const [exitedPid] = startedPids(startsLog);
 
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: "fake",
-      providerId: "fake",
-    });
-    const replacementProvider = manager.requireProviderProcess({
-      processKey: "fake",
-      providerId: "fake",
-    });
-    expect(exitedPid).toBeDefined();
-    expect(replacementProvider.child.pid).not.toBe(exitedPid);
-    await manager.shutdown();
+      await manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      });
+      const replacementProvider = manager.requireProviderProcess({
+        processKey: "fake",
+        providerId: "fake",
+      });
+      expect(exitedPid).toBeDefined();
+      expect(replacementProvider.child.exitCode).toBeNull();
+      expect(startedPids(startsLog)).toHaveLength(2);
+    } finally {
+      await manager.shutdown();
+    }
   });
 
   it("starts a single replacement for concurrent callers after an exit", async () => {
@@ -569,42 +573,45 @@ describe("createAgentRuntime process lifecycle", () => {
       workspacePath: tmpDir,
     });
 
-    await ensureCrashingProvider(manager);
-    await waitForRuntimeState({
-      label: "exited provider reported",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
-    const [exitedPid] = startedPids(startsLog);
+    try {
+      await ensureCrashingProvider(manager);
+      await waitForRuntimeState({
+        label: "exited provider reported",
+        predicate: () => exitInfo.mock.calls.length === 1,
+      });
+      const [exitedPid] = startedPids(startsLog);
 
-    await Promise.all([
-      manager.ensureProvider({
-        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      await Promise.all([
+        manager.ensureProvider({
+          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+          processKey: "fake",
+          providerId: "fake",
+        }),
+        manager.ensureProvider({
+          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+          processKey: "fake",
+          providerId: "fake",
+        }),
+        manager.ensureProvider({
+          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+          processKey: "fake",
+          providerId: "fake",
+        }),
+      ]);
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const replacementProvider = manager.requireProviderProcess({
         processKey: "fake",
         providerId: "fake",
-      }),
-      manager.ensureProvider({
-        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-        processKey: "fake",
-        providerId: "fake",
-      }),
-      manager.ensureProvider({
-        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-        processKey: "fake",
-        providerId: "fake",
-      }),
-    ]);
-
-    const replacementProvider = manager.requireProviderProcess({
-      processKey: "fake",
-      providerId: "fake",
-    });
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    expect(exitedPid).toBeDefined();
-    expect(replacementProvider.child.pid).not.toBe(exitedPid);
-    expect(startedPids(startsLog)).toHaveLength(2);
-    expect(manager.listRunningProviders()).toEqual(["fake"]);
-    await manager.shutdown();
+      });
+      expect(exitedPid).toBeDefined();
+      expect(replacementProvider.child.exitCode).toBeNull();
+      expect(startedPids(startsLog)).toHaveLength(2);
+      expect(manager.listRunningProviders()).toEqual(["fake"]);
+    } finally {
+      await manager.shutdown();
+    }
   });
 
   it("cuts off inherited provider output before starting a replacement", async () => {
@@ -643,36 +650,40 @@ describe("createAgentRuntime process lifecycle", () => {
       workspacePath: tmpDir,
     });
 
-    await ensureCrashingProvider(manager);
-    await waitForRuntimeState({
-      label: "exited provider reported",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
-    const [exitedPid] = startedPids(startsLog);
+    try {
+      await ensureCrashingProvider(manager);
+      await waitForRuntimeState({
+        label: "exited provider reported",
+        predicate: () => exitInfo.mock.calls.length === 1,
+      });
+      const [exitedPid] = startedPids(startsLog);
 
-    await manager.ensureProvider({
-      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
-      processKey: "fake",
-      providerId: "fake",
-    });
-    const replacementProvider = manager.requireProviderProcess({
-      processKey: "fake",
-      providerId: "fake",
-    });
-    await waitForRuntimeState({
-      label: "old provider descendant attempted delayed output",
-      timeoutMs: 5_000,
-      predicate: () => existsSync(writeMarker),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+      await manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      });
+      await waitForRuntimeState({
+        label: "old provider descendant attempted delayed output",
+        timeoutMs: 5_000,
+        predicate: () => existsSync(writeMarker),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-    expect(exitedPid).toBeDefined();
-    expect(replacementProvider.child.pid).not.toBe(exitedPid);
-    expect(lines).not.toContainEqual({
-      childPid: exitedPid,
-      line: "stale-from-old-provider",
-    });
-    await manager.shutdown();
+      const replacementProvider = manager.requireProviderProcess({
+        processKey: "fake",
+        providerId: "fake",
+      });
+      expect(exitedPid).toBeDefined();
+      expect(replacementProvider.child.exitCode).toBeNull();
+      expect(startedPids(startsLog)).toHaveLength(2);
+      expect(lines).not.toContainEqual({
+        childPid: exitedPid,
+        line: "stale-from-old-provider",
+      });
+    } finally {
+      await manager.shutdown();
+    }
   });
 
   it("treats shutdown process errors as expected without carrying state to replacement processes", async () => {

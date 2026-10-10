@@ -20,6 +20,24 @@ async function removeUnexpectedFiles(dir, expectedFiles, relativeDir = "") {
   }
 }
 
+async function renameReplacingOpenFile(source, destination) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== "win32" ||
+        attempt >= 200 ||
+        !["EACCES", "EBUSY", "EPERM"].includes(error?.code)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+}
+
 /**
  * Promote a complete staged runtime build without first deleting the live
  * package exports. Each rename replaces one file atomically, so concurrent
@@ -34,7 +52,10 @@ export async function promoteRuntimeEntries({
   for (const relativeOutput of relativeOutputs) {
     const destination = path.join(distDir, relativeOutput);
     await mkdir(path.dirname(destination), { recursive: true });
-    await rename(path.join(stagingDir, relativeOutput), destination);
+    await renameReplacingOpenFile(
+      path.join(stagingDir, relativeOutput),
+      destination,
+    );
   }
   await removeUnexpectedFiles(distDir, new Set(relativeOutputs));
 }

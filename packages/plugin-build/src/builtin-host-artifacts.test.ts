@@ -88,13 +88,17 @@ describe("builtin host artifacts", () => {
 
     expect(result).toEqual({
       enabled: false,
-      supported: process.platform === "darwin",
+      supported: process.platform === "darwin" || process.platform === "win32",
     });
   }, 20_000);
 
   it.each([
     {
       pluginDir: "provider-acp",
+      methods: ["probeAgent", "resolveNativeRoots"],
+    },
+    {
+      pluginDir: "provider-acp-next",
       methods: ["probeAgent", "resolveNativeRoots"],
     },
     { pluginDir: "provider-claude-code", methods: ["resolveNativeRoots"] },

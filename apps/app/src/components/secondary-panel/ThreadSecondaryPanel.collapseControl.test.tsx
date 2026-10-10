@@ -12,8 +12,9 @@ import {
   AppCommandProvider,
   useAppCommandRunner,
 } from "@/components/commands/AppCommandProvider";
+import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
-import { PanelGroup } from "react-resizable-panels";
+import { Panel, PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -35,10 +36,23 @@ import {
   type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 
+const fullScreenShortcut = vi.hoisted(() => ({
+  current: null as AppShortcutPresentation | null,
+}));
+
+vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/commands/AppCommandProvider")
+  >()),
+  useAppCommandShortcut: (command: string) =>
+    command === "panel.fullScreen.toggle" ? fullScreenShortcut.current : null,
+}));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  fullScreenShortcut.current = null;
 });
 
 const noop = () => {};
@@ -86,6 +100,8 @@ function renderPanel(args: {
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
   renderAsDrawer?: boolean;
+  showFullScreenShortcut?: boolean;
+  splitPanelStateId?: string;
 }) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
@@ -160,6 +176,50 @@ function renderFixedTabSplit() {
     </Wrapper>,
   );
 }
+
+describe("ThreadSecondaryPanel unavailable content", () => {
+  it.each([false, true])(
+    "only mounts the unavailable fallback while open (drawer=%s)",
+    (renderAsDrawer) => {
+      const { wrapper: Wrapper } = createQueryClientTestHarness();
+      const panel = (isOpen: boolean) => (
+        <Wrapper>
+          <TooltipProvider>
+            <PanelGroup direction="horizontal">
+              <Panel id="main" order={1}>
+                Working main content
+              </Panel>
+              <ThreadSecondaryPanel
+                activeTab={null}
+                canUseGitUi={false}
+                fixedTabs={[]}
+                tabs={[]}
+                isConversationCollapsed={false}
+                isOpen={isOpen}
+                metadataContent={null}
+                onClose={noop}
+                onCollapse={noop}
+                onTabReorder={noop}
+                onOpenNewTab={noop}
+                onPanelFocus={noop}
+                onToggleConversationCollapse={noop}
+                renderAsDrawer={renderAsDrawer}
+              />
+            </PanelGroup>
+          </TooltipProvider>
+        </Wrapper>
+      );
+      const { unmount } = render(panel(false));
+      expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
+
+      unmount();
+      render(panel(true));
+      expect(
+        screen.getByText("This panel view is unavailable."),
+      ).not.toBeNull();
+    },
+  );
+});
 
 describe("ThreadSecondaryPanel compact file content", () => {
   it("renders the available tab while persisted active state catches up", () => {
@@ -690,7 +750,7 @@ describe("ThreadSecondaryPanel Diff eligibility", () => {
     expect(
       screen.getByRole("button", { name: "Show diff panel" }),
     ).toBeTruthy();
-    expect(screen.getByText("Checking Git support…")).toBeTruthy();
+    expect(screen.getByRole("status", { name: "Loading diff" })).toBeTruthy();
     expect(screen.queryByText("This panel view is unavailable.")).toBeNull();
   });
 });
@@ -1019,6 +1079,41 @@ describe("ThreadSecondaryPanel full-screen control", () => {
     expect(
       document.querySelector('[data-split-pane-id][data-maximized="true"]'),
     ).toBeNull();
+  });
+});
+
+describe("ThreadSecondaryPanel full-screen shortcut", () => {
+  const shortcut = { label: "⌘⇧F", ariaKeyshortcuts: "Meta+Shift+F" };
+
+  it.each([
+    ["Full Screen", undefined],
+    ["Maximize pane", "full-screen-shortcut-split"],
+  ])("advertises the bound command on the %s control", (label, splitId) => {
+    fullScreenShortcut.current = shortcut;
+    renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+      showFullScreenShortcut: true,
+      splitPanelStateId: splitId,
+    });
+
+    const control = screen.getByRole("button", {
+      name: `${label} (${shortcut.label})`,
+    });
+    expect(control.getAttribute("aria-keyshortcuts")).toBe(
+      shortcut.ariaKeyshortcuts,
+    );
+  });
+
+  it("keeps the shortcut off hosts that do not handle the command", () => {
+    fullScreenShortcut.current = shortcut;
+    renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const control = screen.getByRole("button", { name: "Full Screen" });
+    expect(control.getAttribute("aria-keyshortcuts")).toBeNull();
   });
 });
 

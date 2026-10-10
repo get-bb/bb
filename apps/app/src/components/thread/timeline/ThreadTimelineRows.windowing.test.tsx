@@ -161,19 +161,26 @@ describe("ThreadTimelineRows windowing", () => {
   });
 
   it.each([
-    { count: 19, compact: false },
-    { count: 20, compact: false },
-    { count: 59, compact: false },
-    { count: 19, compact: true },
-    { count: 20, compact: true },
-    { count: 39, compact: true },
+    { count: 19, compact: false, iPhone: false },
+    { count: 20, compact: false, iPhone: false },
+    { count: 59, compact: false, iPhone: false },
+    { count: 19, compact: true, iPhone: false },
+    { count: 20, compact: true, iPhone: false },
+    { count: 39, compact: true, iPhone: false },
+    { count: 59, compact: true, iPhone: true },
   ])(
-    "bounds mounted content for $count top-level rows (compact: $compact)",
-    async ({ count, compact }) => {
+    "bounds mounted content for $count top-level rows (compact: $compact, iPhone: $iPhone)",
+    async ({ count, compact, iPhone }) => {
+      if (iPhone) {
+        vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+        );
+      }
       const scrollElement = document.createElement("div");
       scrollElement.setAttribute("data-test-main-scroll", "");
       const bottomAnchor: BottomAnchorContextValue = {
         captureScrollAnchor: vi.fn(),
+        holdContentPosition: vi.fn(),
         getScrollElement: () => scrollElement,
         isAtBottom: false,
         scrollElementIntoView: vi.fn(),
@@ -212,7 +219,7 @@ describe("ThreadTimelineRows windowing", () => {
         expect(view.container.textContent).toContain(
           `Window message ${count - 1}`,
         );
-        if (count < 20) {
+        if (count < 20 || iPhone) {
           expect(mountedRows.length).toBe(count);
           expect(
             view.container.querySelector("[data-timeline-virtual-spacer]"),
@@ -225,6 +232,61 @@ describe("ThreadTimelineRows windowing", () => {
     },
   );
 
+  it("keeps an offscreen steer realized and reveals it by its message seq", async () => {
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-test-main-scroll", "");
+    Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
+    Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
+    const scrollElementIntoView = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView,
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const rows = Array.from({ length: 80 }, (_, index) => {
+      const row = conversationRow({
+        id: `steer-window-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        sourceSeqEnd: (index + 1) * 10,
+        sourceSeqStart: (index + 1) * 10,
+        text: `Steer window message ${index}`,
+        threadId: "thr_steer_window",
+      });
+      return index === 30 ? { ...row, messageSeq: 305 } : row;
+    });
+    const view = render(
+      <MemoryRouter initialEntries={["/threads/thr_steer_window#msg=305"]}>
+        <QueryClientProvider client={new QueryClient()}>
+          <BottomAnchorContext.Provider value={bottomAnchor}>
+            <CompactViewportOverrideProvider isCompactViewport>
+              <ThreadTimelineRows
+                threadId="thr_steer_window"
+                timelineRows={rows}
+                threadRuntimeDisplayStatus="idle"
+                workspaceRootPath={undefined}
+              />
+            </CompactViewportOverrideProvider>
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const target = view.container.querySelector<HTMLElement>(
+      '[data-timeline-row-id="steer-window-30"]',
+    );
+
+    expect(target?.dataset.timelineWindowedRealized).toBe("true");
+    await waitFor(() =>
+      expect(scrollElementIntoView).toHaveBeenCalledWith({
+        element: target,
+        options: { block: "start", inline: "nearest" },
+      }),
+    );
+  });
+
   it("keeps offscreen search and outline targets realized", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");
@@ -233,6 +295,7 @@ describe("ThreadTimelineRows windowing", () => {
     const scrollElementIntoView = vi.fn();
     const bottomAnchor: BottomAnchorContextValue = {
       captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView,
@@ -243,7 +306,7 @@ describe("ThreadTimelineRows windowing", () => {
       conversationRow({
         id: `search-message-${index}`,
         role: index % 2 === 0 ? "user" : "assistant",
-        sourceSeqEnd: index + 1,
+        sourceSeqEnd: index === 20 ? 22 : index + 1,
         sourceSeqStart: index + 1,
         text: `Search message ${index}`,
         threadId: "thr_large_search",
@@ -251,7 +314,11 @@ describe("ThreadTimelineRows windowing", () => {
     );
     const queryClient = new QueryClient();
     expect(
-      collectSearchedMessageAncestorRowIds(buildTimelineViewRows(rows), 21),
+      collectSearchedMessageAncestorRowIds(
+        buildTimelineViewRows(rows),
+        21,
+        "sequence",
+      ),
     ).toContain("search-message-20");
     const view = render(
       <MemoryRouter
@@ -294,7 +361,7 @@ describe("ThreadTimelineRows windowing", () => {
     await waitFor(() =>
       expect(scrollElementIntoView).toHaveBeenCalledWith({
         element: target,
-        options: { block: "center" },
+        options: { block: "start", inline: "nearest" },
       }),
     );
   });

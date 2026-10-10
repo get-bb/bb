@@ -120,4 +120,64 @@ describe("internal event envelope threadId regression", () => {
       );
     });
   });
+
+  it("uses a title the agent itself set when the thread has none, and keeps an existing title", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-agent-title",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const untitled = createThread(harness.db, harness.hub, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-opencode",
+        title: null,
+        titleFallback: "fix it",
+        status: "active",
+      });
+      const titled = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        title: "Chosen by the user",
+        titleFallback: "Chosen by the user",
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          sessionId: session.id,
+          eventGroups: groupHostDaemonEvents(
+            [untitled.id, titled.id].map((threadId) =>
+              createTestDaemonEventEnvelope({
+                threadId,
+                event: {
+                  type: "thread/name/updated",
+                  threadId,
+                  providerThreadId: `provider-${threadId}`,
+                  scope: threadScope(),
+                  threadName: "  Fix the   login redirect ",
+                  source: "agent",
+                },
+              }),
+            ),
+          ),
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, untitled.id)?.title).toBe(
+        "Fix the login redirect",
+      );
+      expect(getThread(harness.db, titled.id)?.title).toBe(
+        "Chosen by the user",
+      );
+    });
+  });
 });

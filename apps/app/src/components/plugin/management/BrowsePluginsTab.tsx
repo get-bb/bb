@@ -75,7 +75,11 @@ export function BrowsePluginsTab({
   const searchQuery = usePluginCatalogSearch(trimmedQuery, { enabled: true });
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const activeQuery = shelfKey === null ? searchQuery : catalogQuery;
-  const catalog = activeQuery.data ?? { entries: [], collections: [] };
+  const catalog = activeQuery.data ?? {
+    entries: [],
+    collections: [],
+    categories: [],
+  };
   const entries = useMemo(
     () => catalog.entries.filter((entry) => entry.compatible),
     [catalog.entries],
@@ -97,8 +101,9 @@ export function BrowsePluginsTab({
         : pluginBrowseShelves({
             entries,
             collections: catalog.collections,
+            categories: catalog.categories,
           }).find((shelf) => shelf.key === shelfKey),
-    [catalog.collections, entries, shelfKey],
+    [catalog.categories, catalog.collections, entries, shelfKey],
   );
   useResourceRouteLabel(selectedShelf?.label ?? null);
   const shelfEntries = useMemo(
@@ -109,8 +114,13 @@ export function BrowsePluginsTab({
   const sort =
     requestedSort === "most-installed" && !installsKnown ? null : requestedSort;
   const categoryOptions = useMemo(
-    () => pluginCategoryFilterOptions(shelfEntries, selectedCategories),
-    [shelfEntries, selectedCategories],
+    () =>
+      pluginCategoryFilterOptions(
+        shelfEntries,
+        selectedCategories,
+        catalog.categories,
+      ),
+    [catalog.categories, shelfEntries, selectedCategories],
   );
   const filteredEntries = useMemo(() => {
     const selected = new Set(selectedCategories);
@@ -145,6 +155,7 @@ export function BrowsePluginsTab({
               (entry) => entry.compatible,
             ),
             collections: catalogQuery.data?.collections ?? [],
+            categories: catalogQuery.data?.categories ?? [],
           })
         : [],
     [catalogQuery.data, shelvesMode],
@@ -348,7 +359,7 @@ function BrowseShelf({
     <ResourceSourceShelf
       label={shelf.label}
       description={shelf.description}
-      hideDescriptionOnMobile
+      hideDescriptionWhenNarrow
       leading={
         shelf.key === "collection:bb-official" ? (
           <span
@@ -359,7 +370,10 @@ function BrowseShelf({
         ) : shelf.key === "collection:new-and-notable" ? (
           <Icon name="News01" className="size-4 text-foreground" aria-hidden />
         ) : (
-          <PluginCategoryIcon categoryId={shelf.categoryId} className="size-4" />
+          <PluginCategoryIcon
+            categoryId={shelf.categoryId}
+            className="size-4"
+          />
         )
       }
       browseAction={
@@ -368,7 +382,8 @@ function BrowseShelf({
             asChild
             className={cn(
               "underline underline-offset-4",
-              shelf.entries.length <= SHELF_ENTRY_LIMIT && "sm:hidden",
+              shelf.entries.length <= SHELF_ENTRY_LIMIT &&
+                "@min-[40rem]/resource-shelf:hidden",
             )}
           >
             <Link
@@ -376,9 +391,9 @@ function BrowseShelf({
                 pathname: getPluginsRoutePath(),
                 search: shelfParams.toString(),
               }}
-              aria-label={`See all ${shelf.label}`}
+              aria-label={`View all ${shelf.label}`}
             >
-              See all
+              View all
             </Link>
           </ResourceShelfAction>
         ) : undefined
@@ -387,7 +402,7 @@ function BrowseShelf({
       <div data-plugin-shelf>
         <div
           data-plugin-shelf-grid
-          className="grid gap-2 max-sm:[&>*:nth-child(n+3)]:hidden"
+          className="grid gap-2 @max-[40rem]/resource-shelf:[&>*:nth-child(n+3)]:hidden"
         >
           {visible.map((entry) => (
             <PluginCatalogCard

@@ -1,138 +1,13 @@
+import { createContext, useContext, type ReactNode } from "react";
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { SidebarRenameEditor, renameError } from "./SidebarRenameEditor.js";
+  useInlineRename,
+  useRenameController,
+  type InlineRenameArgs,
+  type RenameController,
+} from "@/components/ui/inline-rename";
+import { InlineRenameEditor } from "@/components/ui/inline-rename-editor";
+import { SidebarRenameDialog } from "./SidebarRenameDialog.js";
 
-interface SidebarRenameArgs {
-  kind: "thread" | "project" | "section" | "environment" | "machine";
-  id: string;
-  name: string;
-  label: string;
-  onSave: (name: string) => Promise<unknown>;
-  maxLength?: number;
-  placeholder?: string;
-  onClear?: () => Promise<unknown>;
-  ownerKey?: string;
-}
-
-export interface RenameSession extends SidebarRenameArgs {
-  ownerKey: string;
-  draft: string;
-  pending: Promise<boolean> | null;
-  error: string | null;
-  cannotRetry: boolean;
-}
-
-function useRenameController() {
-  const [session, setSession] = useState<RenameSession | null>(null);
-  const sessionRef = useRef<RenameSession | null>(null);
-  const startRequestRef = useRef(0);
-  const update = useCallback((next: RenameSession | null) => {
-    sessionRef.current = next;
-    setSession(next);
-  }, []);
-
-  const save = useCallback(
-    (clear = false): Promise<boolean> => {
-      const current = sessionRef.current;
-      if (!current) return Promise.resolve(false);
-      if (current.pending) return current.pending;
-      if (current.cannotRetry) return Promise.resolve(false);
-      const value = current.draft.trim();
-      const shouldClear = clear || (!value && Boolean(current.onClear));
-      const error = shouldClear
-        ? null
-        : !value
-          ? "Name cannot be empty."
-          : current.maxLength && value.length > current.maxLength
-            ? `Name must be ${current.maxLength} characters or fewer.`
-            : null;
-      if (error) {
-        update({ ...current, error });
-        return Promise.resolve(false);
-      }
-      if (
-        (!shouldClear && value === current.name.trim()) ||
-        (shouldClear && !current.name)
-      ) {
-        update(null);
-        return Promise.resolve(true);
-      }
-      if (shouldClear && !current.onClear) return Promise.resolve(false);
-      const pending = Promise.resolve()
-        .then(() => (shouldClear ? current.onClear?.() : current.onSave(value)))
-        .then(
-          () => {
-            update(null);
-            return true;
-          },
-          (error: unknown) => {
-            update({
-              ...current,
-              pending: null,
-              ...renameError(error, current.kind),
-            });
-            return false;
-          },
-        );
-      update({ ...current, pending, error: null });
-      return pending;
-    },
-    [update],
-  );
-
-  const start = useCallback(
-    async (args: SidebarRenameArgs & { ownerKey: string }) => {
-      const request = ++startRequestRef.current;
-      const current = sessionRef.current;
-      if (
-        current?.ownerKey === args.ownerKey &&
-        current.kind === args.kind &&
-        current.id === args.id
-      )
-        return;
-      if (current && !(await save())) return;
-      if (request !== startRequestRef.current) return;
-      update({
-        ...args,
-        draft: args.name,
-        pending: null,
-        error: null,
-        cannotRetry: false,
-      });
-    },
-    [save, update],
-  );
-
-  const cancel = useCallback(() => {
-    if (sessionRef.current?.pending) return;
-    ++startRequestRef.current;
-    update(null);
-  }, [update]);
-
-  return {
-    session,
-    start,
-    save,
-    cancel,
-    change: (draft: string) => {
-      const current = sessionRef.current;
-      if (current && !current.pending) {
-        update({ ...current, draft, error: null, cannotRetry: false });
-      }
-    },
-  };
-}
-
-export type RenameController = ReturnType<typeof useRenameController>;
 const SidebarRenameContext = createContext<RenameController | null>(null);
 
 export function SidebarRenameProvider({ children }: { children: ReactNode }) {
@@ -140,6 +15,10 @@ export function SidebarRenameProvider({ children }: { children: ReactNode }) {
   return (
     <SidebarRenameContext.Provider value={controller}>
       {children}
+      <SidebarRenameDialog
+        session={controller.session}
+        controller={controller}
+      />
     </SidebarRenameContext.Provider>
   );
 }
@@ -148,54 +27,10 @@ export function useSidebarRenameState() {
   return useContext(SidebarRenameContext)?.session ?? null;
 }
 
-export function useSidebarRename(args: SidebarRenameArgs) {
-  const compact = useIsCompactViewport();
-  const pendingMenuRename = useRef<(() => void) | null>(null);
-  const shared = useContext(SidebarRenameContext);
-  const local = useRenameController();
-  const controller = shared ?? local;
-  const generatedOwnerKey = useId();
-  const ownerKey = args.ownerKey ?? generatedOwnerKey;
-  const { session, start, cancel } = controller;
-  const isEditing =
-    session?.ownerKey === ownerKey &&
-    session.kind === args.kind &&
-    session.id === args.id;
-  const startEditing = useCallback(() => {
-    void start({ ...args, ownerKey });
-  }, [args, start, ownerKey]);
-
-  useEffect(() => {
-    if (
-      !shared &&
-      session &&
-      (session.kind !== args.kind || session.id !== args.id)
-    ) {
-      cancel();
-    }
-  }, [args.id, args.kind, cancel, session, shared]);
-
-  return {
-    editor: isEditing ? (
-      <SidebarRenameEditor
-        key={session.ownerKey}
-        session={session}
-        controller={controller}
-      />
-    ) : null,
-    isEditing,
-    startEditing,
-    startEditingFromMenu: () => {
-      if (compact) startEditing();
-      else pendingMenuRename.current = startEditing;
-    },
-    onCloseAutoFocus: (event: Event) => {
-      const begin = pendingMenuRename.current;
-      if (begin) {
-        pendingMenuRename.current = null;
-        event.preventDefault();
-        begin();
-      }
-    },
-  };
+export function useSidebarRename(args: InlineRenameArgs) {
+  const controller = useContext(SidebarRenameContext);
+  if (!controller) {
+    throw new Error("useSidebarRename requires a SidebarRenameProvider");
+  }
+  return useInlineRename(args, { controller, Editor: InlineRenameEditor });
 }

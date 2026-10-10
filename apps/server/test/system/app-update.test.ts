@@ -28,6 +28,8 @@ function appVersion(
         currentVersion: "1.0.0",
         isDevelopment: false,
         latestVersion: "1.1.0",
+        currentCommit: null,
+        installKind: "npm",
         source: "npm",
         updateAvailable: true,
         upgradeCommand: "npx bb-app@latest",
@@ -109,6 +111,7 @@ function createService(args: {
   const launcher =
     args.launcher === undefined ? new FakeLauncher() : args.launcher;
   const service = createAppUpdateService({
+    currentCommit: null,
     appSurface: args.appSurface ?? "web",
     appVersion: appVersion(args.version ?? {}),
     config: { appVersion: "1.0.0", isDevelopment: args.isDevelopment ?? false },
@@ -155,6 +158,23 @@ describe("app update service", () => {
       service.apply({ confirmInterruptingThreads: true }),
       "app_update_unsupported",
     );
+  });
+
+  it("keeps a failed npm lookup distinct from an up-to-date install", async () => {
+    const { service } = createService({
+      version: { latestVersion: null, updateAvailable: false },
+    });
+    const status = await service.getStatus({ forceRefresh: false });
+    expect(status.available).toBeNull();
+    expect(status.blocked).toMatchObject({ reason: "fetch-failed" });
+  });
+
+  it("does not report a source checkout as current before its first check completes", async () => {
+    const launcher = new FakeLauncher();
+    const { service } = createService({ launcher, mode: "source" });
+    const status = await service.getStatus({ forceRefresh: false });
+    expect(status.available).toBeNull();
+    expect(status.blocked).toMatchObject({ reason: "fetch-failed" });
   });
 
   it("offers the npm latest version on the stable channel", async () => {
@@ -235,7 +255,10 @@ describe("app update service", () => {
     expect(error.body.message).toContain("not source");
   });
 
-  it("maps launcher status into activity and result", async () => {
+  it.each([
+    { kind: "npm" as const, version: "1.1.0" },
+    { kind: "source" as const, commit: "b".repeat(40) },
+  ])("maps $kind launcher status into activity and result", async (target) => {
     const { launcher, notifyChanged, service } = createService({});
     notifyChanged.mockClear();
 
@@ -243,7 +266,7 @@ describe("app update service", () => {
       activity: {
         phase: "restarting",
         startedAt: "2026-09-23T00:00:00.000Z",
-        target: { kind: "npm", version: "1.1.0" },
+        target,
         targetVersion: "1.1.0",
       },
       lastResult: {
@@ -264,6 +287,7 @@ describe("app update service", () => {
     expect(status.activity).toEqual({
       phase: "restarting",
       startedAt: "2026-09-23T00:00:00.000Z",
+      targetCommit: target.kind === "source" ? "b".repeat(40) : null,
       targetVersion: "1.1.0",
     });
     expect(status.lastResult).toMatchObject({
@@ -354,6 +378,7 @@ describe("app update service", () => {
     let runningThreads = 0;
     const launcher = new FakeLauncher();
     const service = createAppUpdateService({
+      currentCommit: null,
       appSurface: "web",
       appVersion: appVersion({}),
       config: { appVersion: "1.0.0", isDevelopment: false },

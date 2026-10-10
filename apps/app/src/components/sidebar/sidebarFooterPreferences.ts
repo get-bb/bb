@@ -43,7 +43,7 @@ export function useMeasureSidebarFooterCapacity(
   }, [rowRef, moreRef, setCapacity]);
 }
 
-export type BuiltinFooterId = "settings" | "mobile" | "report-bug";
+export type BuiltinFooterId = "mobile" | "report-bug";
 export type FooterItem = { key: string; label: string; icon: string } & (
   | { kind: "builtin"; id: BuiltinFooterId }
   | { kind: "plugin"; slot: PluginSidebarFooterItemSlot }
@@ -61,13 +61,6 @@ export function useSidebarFooterPreferences() {
   const [hidden, setHidden] = useAtom(sidebarFooterHiddenAtom);
   const capacity = useAtomValue(sidebarFooterCapacityAtom);
   const items: FooterItem[] = [
-    {
-      kind: "builtin",
-      id: "settings",
-      key: "builtin:settings",
-      label: "Settings",
-      icon: "Settings",
-    },
     {
       kind: "builtin",
       id: "mobile",

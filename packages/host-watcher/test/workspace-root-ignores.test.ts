@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import parcelWatcher from "@parcel/watcher";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { watchWorkspaceStatus } from "../src/watch-status.js";
 import type { WorkspaceStatusChangeEvent } from "../src/watch-status-types.js";
@@ -15,7 +16,6 @@ const realParcelSubscribe = parcelWatcher.subscribe.bind(parcelWatcher);
 
 const NESTED_REPOS = 4;
 const PACKAGES_PER_NESTED_REPO = 300;
-const EVENT_TIMEOUT_MS = 5_000;
 const TEST_TIMEOUT_MS = 60_000;
 const MAX_EXPECTED_WATCHES = 20;
 
@@ -190,24 +190,34 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         ".git",
         "bb-marker",
       );
+      const readyFile = path.join(realRoot, "apps", "child-0", "ready.txt");
       const visibleFile = path.join(realRoot, "apps", "child-0", "visible.txt");
       const events: WorkspaceStatusChangeEvent[] = [];
-      let ready!: () => void;
-      let failed!: (error: unknown) => void;
-      const readyPromise = new Promise<void>((resolve, reject) => {
-        ready = resolve;
-        failed = reject;
-      });
+      const ready = createDeferredPromise<void>();
+      const failed = createDeferredPromise<never>();
+      let stopped = false;
       const stop = watchWorkspaceStatus(root, {
         onChange: (event) => {
           events.push(event);
         },
-        onReady: () => ready(),
-        onWatchError: failed,
+        onReady: () => ready.resolve(),
+        onWatchError: (error) => failed.reject(error),
       });
       try {
-        await readyPromise;
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await Promise.race([ready.promise, failed.promise]);
+        await Promise.race([
+          vi.waitFor(
+            async () => {
+              if (stopped) return;
+              await fs.writeFile(readyFile, `${Date.now()}\n`);
+              expect(events.flatMap((event) => event.changedPaths)).toContain(
+                readyFile,
+              );
+            },
+            { timeout: 10_000, interval: 100 },
+          ),
+          failed.promise,
+        ]);
 
         await fs.writeFile(
           nestedPackageFile,
@@ -215,15 +225,21 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
         );
         await fs.writeFile(nestedGitFile, "marker\n");
         await fs.writeFile(visibleFile, "visible\n");
-        await vi.waitFor(
-          () => {
-            expect(events.flatMap((event) => event.changedPaths)).toContain(
-              visibleFile,
-            );
-          },
-          { timeout: EVENT_TIMEOUT_MS, interval: 100 },
-        );
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await Promise.race([
+          vi.waitFor(
+            () => {
+              expect(events.flatMap((event) => event.changedPaths)).toContain(
+                visibleFile,
+              );
+            },
+            { timeout: 10_000, interval: 100 },
+          ),
+          failed.promise,
+        ]);
+        await Promise.race([
+          new Promise((resolve) => setTimeout(resolve, 300)),
+          failed.promise,
+        ]);
 
         const changedPaths = events.flatMap((event) => event.changedPaths);
         expect(changedPaths).toContain(visibleFile);
@@ -238,6 +254,7 @@ describe("workspace root watch events inside nested heavy directories (#1779)", 
           ),
         ).toEqual([]);
       } finally {
+        stopped = true;
         await stop();
       }
     },

@@ -1885,6 +1885,63 @@ describe("events", () => {
     },
   );
 
+  it("updates the parented boundary when nested history appears or is removed", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "root" }),
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "item/started",
+        ...createTurnEventFields({ turnId: "root" }),
+        itemId: "parent",
+        itemKind: "toolCall",
+        data: "{}",
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: JSON.stringify({
+          initiator: "user",
+          input: textInput("next request"),
+          target: { kind: "new-turn" },
+        }),
+      },
+    ]);
+    const read = (maxSeq: number) =>
+      getFirstParentedTimelineBoundarySequence(db, {
+        threadId: thread.id,
+        sequenceStart: 0,
+        maxSeq,
+      });
+    expect(read(3)).toBeNull();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "child" }),
+        parentToolCallId: "parent",
+        data: JSON.stringify({ parentToolCallId: "parent" }),
+      },
+    ]);
+    expect(read(3)).toBeNull();
+    expect(read(4)).toBe(3);
+    db.$client
+      .prepare("DELETE FROM events WHERE thread_id = ? AND sequence = 4")
+      .run(thread.id);
+    expect(read(4)).toBeNull();
+    db.$client.close();
+  });
+
   it("loads timeline event windows with sequence bounds and exclusions", () => {
     const { db, thread } = setup();
 
@@ -2337,6 +2394,14 @@ describe("events", () => {
       projectId: project.id,
       providerId: "codex",
     });
+    const unrelatedStateThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const noStateThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
 
     insertEvents(db, noopNotifier, [
       {
@@ -2400,11 +2465,25 @@ describe("events", () => {
         providerThreadId: "provider-thread-2",
         data: JSON.stringify({ kind: "other-plugin/widget", payload: {} }),
       },
+      {
+        threadId: unrelatedStateThread.id,
+        sequence: 1,
+        type: "thread/extensionState/updated",
+        ...threadEventFields,
+        providerThreadId: "provider-thread-3",
+        data: JSON.stringify({ kind: "other-plugin/widget", payload: {} }),
+      },
     ]);
 
     const rowsByThreadId = new Map(
       listLatestThreadStateEventRowsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id, thread.id],
+        threadIds: [
+          thread.id,
+          otherThread.id,
+          unrelatedStateThread.id,
+          noStateThread.id,
+          thread.id,
+        ],
         kind: "provider-codex/goal",
       }).map((row) => [row.threadId, row]),
     );
@@ -2415,21 +2494,52 @@ describe("events", () => {
       "thread/extensionState/updated",
     );
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(2);
-  });
-
-  it("batches latest goal lookups above the SQLite variable limit", () => {
-    const { db } = setup();
-    const threadIds = Array.from(
-      { length: 32_767 },
-      (_, index) => `thr_missing_goal_${index}`,
-    );
-
+    expect(rowsByThreadId.has(unrelatedStateThread.id)).toBe(false);
+    expect(rowsByThreadId.has(noStateThread.id)).toBe(false);
     expect(
       listLatestThreadStateEventRowsByThreadIds(db, {
-        threadIds,
+        threadIds: [],
         kind: "provider-codex/goal",
       }),
     ).toEqual([]);
+  });
+
+  it("batches latest goal lookups above the SQLite variable limit", () => {
+    const { db, project, thread } = setup();
+    const finalBatchThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "thread/goal/updated",
+        ...threadEventFields,
+        data: JSON.stringify({ objective: "First batch goal" }),
+      },
+      {
+        threadId: finalBatchThread.id,
+        sequence: 1,
+        type: "thread/goal/updated",
+        ...threadEventFields,
+        data: JSON.stringify({ objective: "Final batch goal" }),
+      },
+    ]);
+    const threadIds = Array.from({ length: 32_767 }, (_, index) => {
+      if (index === 0) return thread.id;
+      if (index === 32_766) return finalBatchThread.id;
+      return `thr_missing_goal_${index}`;
+    });
+
+    const rows = listLatestThreadStateEventRowsByThreadIds(db, {
+      threadIds,
+      kind: "provider-codex/goal",
+    });
+
+    expect(rows.map((row) => row.threadId).sort()).toEqual(
+      [thread.id, finalBatchThread.id].sort(),
+    );
   });
 
   it("lists only open accepted turn inputs after the latest interruption", () => {
@@ -4390,6 +4500,7 @@ describe("events", () => {
       ["events-appended"],
       {
         eventTypes: ["system/error", "client/turn/requested"],
+        timelineSequence: 2,
       },
     );
     expect(spy.notifyThread).toHaveBeenCalledWith(
@@ -4397,6 +4508,7 @@ describe("events", () => {
       ["events-appended"],
       {
         eventTypes: ["system/error"],
+        timelineSequence: 1,
       },
     );
     expect(spy.notifyThread).toHaveBeenCalledTimes(2);

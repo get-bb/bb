@@ -164,6 +164,7 @@ interface ProviderCompletedTurnDisplayEntry {
 }
 
 interface UsageOptions extends JsonOptions {
+  refresh?: boolean;
   host?: string;
   machine?: string;
 }
@@ -472,6 +473,23 @@ export function registerSettingsCommands(
     );
 
   settings
+    .command("replay-onboarding")
+    .description("Show the first-run setup guide again")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        const result = await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          onboardingCompletedAt: null,
+        });
+        if (outputJson(opts, result)) return;
+        console.log("The setup guide is showing again");
+      }),
+    );
+
+  settings
     .command("completed-turns [providerId] [display]")
     .description(
       "Show or set whether each provider's finished turns collapse or stay flat (collapse, flat, or default)",
@@ -764,6 +782,7 @@ export function registerSettingsCommands(
   settings
     .command("usage")
     .description("Show provider usage limits")
+    .option("--refresh", "Fetch fresh usage instead of a cached result")
     .option(
       "--machine <id-or-name>",
       "Machine whose provider usage should be shown",
@@ -780,9 +799,10 @@ export function registerSettingsCommands(
                 serverUrl: getUrl(),
                 target,
               });
-        const result = await createCliBbSdk(getUrl()).system.usageLimits(
-          hostId === undefined ? {} : { hostId },
-        );
+        const result = await createCliBbSdk(getUrl()).system.usageLimits({
+          hostId,
+          refresh: opts.refresh,
+        });
         if (outputJson(opts, result)) return;
         console.log(JSON.stringify(result, null, 2));
       }),

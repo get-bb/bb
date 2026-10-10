@@ -1,14 +1,54 @@
 # CI performance
 
-The main CI workflow keeps build/typecheck/lint, two server test shards, three app test
+The main CI workflow keeps build, lint/typecheck, two server test shards, eight app test
 shards, integration tests, three package test groups, plugin tests, three fork
 check shards, and package
 smokes independent. Node 24/26 compatibility smokes run on main and manual runs.
+Windows runs the nine host packages, an app smoke, a desktop smoke, and
+thirteen test shards that cover the remaining suites; see
+[windows-ci.md](windows-ci.md).
+
+## PR selection
+
+`Select CI checks` runs before provisioning test runners. Main pushes and manual
+runs retain the complete cross-platform matrix. PRs use the pinned Turbo query
+against the checked-out merge commit and its first parent, after verifying that
+its second parent matches the PR event's head SHA. GitHub can refresh the merge
+ref after the event was queued; comparing that ref with the older event base
+would incorrectly include intervening main changes. Missing or mismatched merge
+history falls back to the event base. Dependency validation and fork selection
+use the same comparison base. The planner in
+`scripts/plan-ci.mjs` narrows the canonical matrices in `scripts/ci-test-shards.json`
+to affected tests, including dependents and explicit task inputs. Build and
+lint/typecheck run separately for the selected packages.
+
+Frontend-only changes under app/web source or public files and the listed UI
+packages retain affected Linux checks; their Windows matrix runs on main.
+Frontend build configuration retains Windows checks. Changes to desktop,
+packaged-app, SDK, template, or plugin-bundling code retain package smokes on
+PRs. Provider changes retain the live provider listing check. App/web-only
+changes skip standalone plugin fork checks; shared UI and plugin changes can
+still select them through the task graph. Selected checks remain blocking.
+
+Root configuration, CI changes, unknown paths, missing Git history, and invalid
+query results fall back to the full matrix. The source NUL guard always runs.
+An empty test matrix skips its runners before dependency installation. This
+reduces routine PR work; broad changes and cold builds do not have a guaranteed
+two-minute completion time.
+
+Before the matrix starts, dependency changes run a full frozen install with
+lifecycle scripts disabled. This catches missing lockfile snapshots as well as
+outdated manifest entries; `--lockfile-only --frozen-lockfile` does not catch
+missing snapshots. The check covers manifests, the lockfile, workspace and pnpm
+configuration, and patches. PRs compare with their base SHA; pushes compare with
+the event's previous SHA. Manual runs and unavailable history always validate.
+Source-only changes skip the extra install. The install has a five-minute limit
+inside the planning job's ten-minute budget.
 
 ## Fork checks
 
 On pull requests, the fork checker compares the checked-out merge commit with
-the event's base SHA. When every changed path belongs to a listed forkable
+the comparison base resolved by the planning job. When every changed path belongs to a listed forkable
 plugin, only those plugins run. Renames include both old and new paths. Any
 shared, unknown, or unlisted-plugin change runs the complete list. Missing
 history also runs the complete list. Main and manual runs always check all
@@ -27,9 +67,12 @@ checks. `--list` reports the same shard selection used for execution.
 ## Setup budgets
 
 CI installs Node and the checksum-verified pnpm executable before restoring
-caches. Optional pnpm and Turbo restores share a one-minute step budget. A
-timeout falls back to a cold install using fresh cache directories. Individual
-download segments also have a one-minute limit. Bun downloads directly instead
+caches. Turbo restores have a one-minute step budget. Linux and Windows skip
+pnpm store archives; macOS restores pnpm separately with its own one-minute
+budget. A failed pnpm restore selects a fresh store without discarding healthy
+Turbo outputs. A failed Turbo restore clears incomplete archives in the saved
+cache directory without discarding the dependency store. Individual download
+segments also have a one-minute limit. Bun downloads directly instead
 of waiting for its executable cache.
 
 Dependency installation has a five-minute step budget in CI. Individual package
@@ -39,19 +82,39 @@ install, including lifecycle scripts, three times. The shared setup action used
 by other workflows reuses these tools and fetch settings, but does not impose
 the CI workflow's outer step budgets.
 
-pnpm can restore the most recent store for the same OS and architecture when a
+On macOS, pnpm can restore the most recent store for the same OS and architecture when a
 lockfile changes. The frozen install still resolves the exact lockfile contents
 and verifies store integrity. Turbo caches are pruned after restoration and
-before successful CI jobs save them. Windows restores the pnpm store for both
-jobs and Turbo build outputs for app smoke, capped at 256 MB to bound transfer
-and storage costs. Windows installs retain `--ignore-scripts`; foundation tests
-still run with `--force`. macOS smoke jobs still omit Turbo caching.
+before successful CI jobs save them. Windows skips the pnpm store archive and
+restores Turbo outputs for foundation checks, smokes, and test shards, capped at
+256 MB per job to bound transfer and storage costs. The Windows test shards
+also drop every entry their own Turbo run summary does not name before saving
+(`prune-turbo-cache.mjs --keep-run-summaries`). Windows installs retain
+`--ignore-scripts`; foundation checks reuse Windows-only cached results. macOS smoke jobs retain at most 256 MB of Turbo outputs, limited to hashes
+referenced by the current run summaries.
 
 PR runs cancel superseded work. Main concurrency groups include the commit SHA,
 so different main commits can run concurrently and each successful job saves its
 cache. The old shared main group delayed job creation by up to three minutes in
 the October 1 sample. Runner provisioning and fleet capacity remain external
 limits; removing workflow serialization does not guarantee immediate starts.
+
+### October 6 Windows cache timeouts
+
+In [run 37536497937](https://github.com/get-bb/bb/actions/runs/37536497937), all
+sixteen Windows jobs exhausted the 60-second cache restore budget. The app
+smoke downloaded an 831 MB pnpm archive in about 15 seconds, then timed out
+extracting it. Turbo restoration never started. The install fallback redirected
+both caches into temporary directories, so the job rebuilt all 56 tasks and
+the cache action could not save those new Turbo outputs. The pnpm post step
+also spent 16 seconds attempting to archive the abandoned store.
+
+Windows now skips pnpm archive restoration and saving. This leaves the cache
+budget available for the bounded Turbo archive and avoids the forced cold
+build on every run. Frozen dependency installation and every test and smoke
+check remain enabled. Linux and macOS retain pnpm caching. The baseline run
+took 8m58s overall; measure subsequent CI runs before claiming an end-to-end
+speedup.
 
 ## Test balancing and measurement
 
@@ -106,6 +169,148 @@ separately: a rerun can reuse earlier successful jobs, making the span between
 the earliest and latest job misleading. Keep failed and canceled attempts out
 of successful-run latency percentiles, but track their frequency separately.
 
+## October 5 declaration-generation investigation
+
+A sample of the 20 most recent successful runs on each sampled day, excluding
+reruns using the run API's `run_attempt`, showed these workflow durations:
+
+| Date            | First-attempt runs |  Median |
+| --------------- | -----------------: | ------: |
+| October 1, 2026 |                 16 |   4m26s |
+| October 4, 2026 |                 18 | 4m50.5s |
+| October 5, 2026 |                 15 |   7m36s |
+
+These are small time-window samples, not whole-day percentiles. The October 5
+sample ends at run [37387186039](https://github.com/get-bb/bb/actions/runs/37387186039).
+Full Windows test coverage was added on October 2 in PR #4776. Retain that
+coverage when optimizing the now-longer critical path.
+
+In first-attempt run [37386205651](https://github.com/get-bb/bb/actions/runs/37386205651),
+the Windows server shards spent 179.3s and 149.8s in
+`@get-bb/plugin-sdk#build:types`; the other-packages shard spent 170.5s there.
+All three were cache misses. Server shard 1 then spent 124.0s running tests.
+
+The shared declaration emitter compared TypeScript's forward-slash source
+filenames against a Windows backslash workspace prefix. That selected no
+workspace roots, causing repeated compiler-program construction as declaration
+sources loaded. Normalize both paths before selecting roots and checking
+program membership. The regression exercises real TypeScript emission and
+bounds source-file reads across five entry points, including an equivalent
+workspace path with a trailing separator. Before the fix that case read the
+first entry six times; afterward it reads it twice. Existing coverage checks
+inferred types, ambient declarations, and different compiler options.
+
+The controlled Windows [benchmark run 37389733655](https://github.com/get-bb/bb/actions/runs/37389733655)
+compared baseline and fixed emitters on the same Blacksmith four-vCPU Windows
+Server 2025 runner, with Node 22.23.2, unchanged dependencies, and Turbo
+`--force`. Each build started without the generated declaration directory.
+The execution order was baseline, fixed, fixed, baseline:
+
+| Emitter  | First task duration | Second task duration |     Mean |
+| -------- | ------------------: | -------------------: | -------: |
+| Baseline |            156.813s |             132.999s | 144.906s |
+| Fixed    |             18.720s |              20.083s |  19.402s |
+
+Declaration generation was 7.47 times faster (86.6% less task time). All four
+runs were cache misses, and SHA-256 manifests for all 17 declaration bundles
+matched exactly. The benchmark script and workflow are preserved in commit
+`f6abf8ad78` on `bb/ci-windows-declaration-benchmark-thr_jis82m9hmh`; its artifact
+contains per-round timings, output hashes, and Turbo execution summaries.
+
+The regular [PR CI run 37389645615](https://github.com/get-bb/bb/actions/runs/37389645615)
+passed all 26 active jobs. Its uncached Windows declaration tasks took 20.133s
+(server-1), 25.816s (server-2), and 35.365s (packages-other). The full workflow
+took seven minutes; the task speedup is not an equivalent whole-workflow
+speedup because other test jobs remain on the critical path.
+
+Infrastructure also contributes: run
+[37381624894](https://github.com/get-bb/bb/actions/runs/37381624894) had a 118s
+maximum job provisioning wait, and its Windows server-1 checkout spent 122s in
+the shallow Git fetch. Later-starting jobs in multi-attempt runs must not be
+counted as provisioning delays from the original workflow creation time.
+
+## Windows test shards
+
+After the declaration fix the Windows jobs still finished last. In
+[PR run 37389645615](https://github.com/get-bb/bb/actions/runs/37389645615) the
+seven Windows test shards took 243–417s and the app smoke 378s; the slowest
+other job took 264s. The Windows runners have no Defender to exclude
+(`Get-MpComputerStatus` reports an invalid class). Two costs are specific to
+Windows:
+
+- Setup takes 90–115s per job against about 50s on Linux. Unpacking the pnpm
+  store (67,596 files) takes 23–28s against 7s, and `pnpm install` 21–72s
+  against 10s.
+- Test files run about half as fast. `@bb/app` spent 0.67s per file in
+  environment setup and 0.61s in import, against 0.26s and 0.31s on Linux.
+
+The same shard on two identical runners in one run took 181s and 128s, so
+compare several copies of a job, never one against one.
+
+The workflow now runs thirteen Windows test shards instead of seven, sized so
+each test step takes about 100s on a four-vCPU runner, and splits the app smoke
+into an app smoke and a desktop smoke. Test step durations:
+
+| Shard            | Before: suites in the shard      |   Before | After (copies) |
+| ---------------- | -------------------------------- | -------: | -------------- |
+| `server-N`       | half of `@bb/server`             | 136–172s | 98–113s (3)    |
+| `app-N`          | half of `@bb/app`                | 170–213s | 80–107s (4)    |
+| `plugins-1`      | every plugin                     |     170s | 99–109s (4)    |
+| `plugins-2`      |                                  |          | 69–88s (4)     |
+| `packages-host`  | daemon, CLI, parity, integration |     237s | 81s (1)        |
+| `integration`    |                                  |          | 65s (1)        |
+| `packages-build` | every other package              |     172s | 87–107s (3)    |
+| `packages-other` |                                  |          | 90–111s (6)    |
+
+"Before" is run 37389645615. "After" is
+[run 37397194886](https://github.com/get-bb/bb/actions/runs/37397194886), which
+forced every suite to run; its 26 jobs all passed and took 159–238s each from
+start to finish. The combined
+app smoke took 251s and 310s with a forced build; split, the app smoke took
+204–249s and the desktop smoke 198–239s over four copies each.
+
+Each Windows test shard also carried 256 MB of another job's build outputs in
+its Turbo cache. A shard's first restore after a lockfile change falls back to
+any Windows job's cache, and a test shard's own entries are a few kilobytes of
+logs, so the size budget never evicted the foreign entries. The shards now keep
+only the entries their run summary names: one shard went from 131 entries and
+255.8 MB to 3 entries and 0.1 MB.
+
+Approaches measured and not adopted:
+
+- Eight-vCPU Windows runners. Test steps roughly halved (71s against 128–181s
+  for the same app shard), but those runners started 40–54s after the job was
+  created, against 2s, and spent 27–42s in checkout, against 6–10s. End to end
+  nothing was gained at twice the per-minute rate. Over seven runs the gap did
+  not narrow.
+- Two Vitest workers per package, as on Linux: 198s against 181s and 163s
+  against 128s for one app shard.
+- More suites at once. On eight vCPUs the plugin shard failed 2 of 3 runs at
+  four suites and 1 of 4 at three, always in `bb-plugin-provider-codex`; the
+  host suites failed 3 of 8 at two. The host daemon suite also failed 3 of 18
+  runs on eight vCPUs with nothing beside it, where Vitest runs twice as many
+  of its files at once.
+- The October 5 install experiment excluded `@bb/mobile` and `@bb/desktop`
+  and took 22–27s against 38–40s. Installing only `@bb/app` dependencies took
+  17s but `ensure-native-modules` could not find `better-sqlite3`. The October 6
+  scoped install below includes `@bb/db` to retain that native prerequisite.
+- Running the tarball smoke and desktop packaging at the same time. The tarball
+  smoke prunes and packs `packages/bb-app/dist` while packaging copies it.
+
+The full [run 37398047481](https://github.com/get-bb/bb/actions/runs/37398047481)
+passed all 37 jobs in 4m54s, against about seven minutes before. Its Windows
+server, app, plugin, and `packages-build` shards ran uncached. Counted from
+workflow creation, the slowest Windows job finished at 251s and the slowest job
+overall, the macOS package smoke, at 291s.
+
+A run now starts sixteen Windows jobs instead of nine, and more of them wait
+for a runner. With nine, Windows jobs started within 2s in most sampled runs
+and 13–46s late in others. In run 37398047481 all sixteen started 29–57s after
+creation, and in the 26-job measurement run the median was 40s and one job
+waited 246s. The shard durations above exclude that wait; the 251s figure
+includes it. Watch the start delay after merge; fewer, longer shards are the
+remedy if it grows.
+
 ## Cache maintenance
 
 `CI Cache Maintenance` reports GitHub-visible storage by family and runs daily.
@@ -126,3 +331,171 @@ entries. Run from the repository root at the default branch's current commit.
 The script finishes paginating and validating inventory and PR states before
 issuing any deletion. API requests time out after ten seconds; the maintenance
 job has a five-minute budget and is independent of PR checks.
+
+## October 6 scoped Windows installs
+
+The Windows and Linux app shards install the root tools, `@bb/app` and its transitive
+dependencies, plus `@bb/db` and its dependencies for `ensure-native-modules`.
+They retain the same test commands, sharding, and frozen lockfile. Other test
+shards still install the full workspace.
+
+In [benchmark run 37539104123](https://github.com/get-bb/bb/actions/runs/37539104123),
+two scoped installs took 36s and 44s; two full installs took 66s and 72s on the
+same four-vCPU Windows runner class. Each then ran the same uncached app shard.
+This measures dependency setup, not an end-to-end two-minute CI guarantee.
+
+Foundation lint, typecheck, and tests now reuse Windows-only Turbo results,
+matching the other Windows jobs. Their saved cache is limited to 256 MB and
+entries used by the current run.
+
+## Linux cache isolation
+
+In [run 37539619987](https://github.com/get-bb/bb/actions/runs/37539619987),
+the Linux checks job restored a 1,188 MB pnpm archive but hit the shared cache
+timeout before Turbo restoration completed. The fallback discarded both cache
+locations; only 4 of 207 build/typecheck/lint tasks were reused and execution
+took 161 seconds. Linux now omits that archive, while macOS dependency restores
+are independent from Turbo. Build and lint/typecheck use separate runners to
+avoid competing for the same four CPUs during cold runs.
+
+## App test prerequisites and shard sizing
+
+The app's development dependencies declare the bundled plugins imported by its
+tests and stories. This makes scoped installs link each plugin's dependencies
+and makes plugin changes invalidate the app's dependent tasks. Before this
+fix, fresh Windows app shards failed to resolve React and Plugin SDK imports
+from Navigation, BB Guide, and Pi; cached test results had masked the missing
+links.
+
+The app suite now contains roughly 585 files. In app-only experiment
+[37542453877](https://github.com/get-bb/bb/actions/runs/37542453877), a 195-file
+Linux shard took 132 seconds and the workflow passed in 3m24s. Linux now uses
+eight shards with the existing two-worker limit. Build and static-check package
+filters are separate, so build-only prerequisites no longer cause unrelated
+lint/typecheck tasks to run.
+
+Demo-server-only test jobs use a scoped install and omit Electron runtime setup.
+Electron libraries and Xvfb run only when the selected tests include desktop.
+
+## Daily health report
+
+The `CI Health` workflow reports the previous 24 hours each day at 07:19 UTC,
+with a manual dispatch option. It needs only checkout, Node, and read access to
+Actions. `scripts/report-ci-health.mjs` also runs locally with `GITHUB_TOKEN` and
+`GITHUB_REPOSITORY` set. It writes `.ci-health/report.md`, `report.json`, and the
+normalized run/job evidence in `runs.json`; Actions retains these for 30 days.
+
+The summary separates workflow outcomes from successful first-attempt latency,
+job durations, runner-minutes, cache-restore duration, and the jobs that finish
+last. Latency ends at the last job's completion, not the run's mutable update
+timestamp. Failed steps count distinct affected runs so one bad lockfile does
+not become dozens of incidents. Same-commit failed-job recoveries are reported
+separately from reruns that remain red. Neither a recovery nor a failed workflow
+alone establishes a test flake. Cache transfer time is not a cache hit rate.
+
+The API collector includes every job attempt and paginates jobs. Transient read
+failures, including timeouts, disconnects, rate limits with retry hints, and
+retryable HTTP errors, get at most three attempts with bounded backoff. Permanent
+errors and mutations are not retried. Every inventory page and completed batch
+of six runs checkpoints the evidence and rendered report. Incomplete collections
+are prominently marked, exclude partially fetched runs from timings and recovery
+counts, and fail the reporting step while still uploading diagnostics. The report
+splits latency by trigger and measures dependent-job start delay from planning
+completion; this includes Actions scheduling and runner provisioning.
+
+Compare several daily artifacts, separating changes in selected work from runtime
+gains. Cache restore duration still does not establish task cache-hit rates; inspect
+Turbo summaries or logs for those.
+
+## Avoiding repeated setup
+
+Windows app and desktop packaging installs omit `@bb/mobile`; their Turbo build
+and smoke dependencies still run. In clean local macOS verification, the server
+shard install used 1,445 packages versus 2,325 for a full install. Windows timings
+must be measured separately after rollout.
+
+Linux Electron setup queries dpkg before invoking apt. An installed library
+satisfies the requirement without refreshing package indexes or upgrading Mesa
+and Xvfb on every run. Missing packages still get an apt update and install, and
+the job still starts Electron to verify the runtime.
+
+The build job builds and checks the plugin SDK's published version before the
+remaining build tasks. Those later tasks reuse its Turbo outputs. A version
+mismatch therefore fails earlier without relaxing the published-content guard.
+
+PRs changing only `docs/ci-performance.md`, `docs/windows-ci.md`,
+`docs/debugging-and-qa.md`, `docs/filing-issues.md`, or
+`docs/cli-guide-and-skill.md` skip the build/test matrix. This is an explicit
+allowlist: API documentation and lifecycle diagrams are consumed by tests, and
+other documentation, mixed changes, main pushes, and manual runs retain normal
+selection or full coverage. Planning guards still run.
+
+The boot smoke waits for the host daemon to connect after the server and plugins
+are ready; these are independent startup milestones. It also clears its shutdown
+timeout when the process exits, avoiding a 15-second timer that previously kept
+the smoke process alive after cleanup.
+
+## October 8 measured follow-up
+
+The PR selection fix addresses an observed stale-base comparison in
+[run 37763307104](https://github.com/get-bb/bb/actions/runs/37763307104): checkout
+merged onto `5cd546507ed9cf7c721fb9c36cdd026ff336c82d`, while the event supplied
+`32f63ea825a241149972c277dc226d754ab90850`. The regression fixture advances main
+with an unrelated root configuration change, creates the refreshed merge, and
+checks that only the PR's app checks remain selected. Replaying the actual
+historical merge reduced the comparison from 259 paths to the three edited plugin
+files, selecting two Linux and two Windows test shards instead of fifteen and
+thirteen, and skipping unrelated package smokes, provider probing, and dependency
+validation. Unknown paths and uncertain history retain conservative coverage.
+
+[Runner experiment 37808851050](https://github.com/get-bb/bb/actions/runs/37808851050)
+compared independent npm consumer installs in the tarball smoke. On Windows,
+sequential consumer checks took 86.5 seconds for the complete smoke versus 53.9
+seconds when the npx entrypoint and SDK consumer ran concurrently. Both jobs
+reused 54 of 56 Turbo tasks; the outer smoke steps took 110 and 80 seconds.
+The installs use separate directories. Both settle before temporary files are
+removed, including on failure. macOS measured 24.7 seconds sequential versus
+26.6 seconds concurrent, so it retains sequential consumer checks. These are
+paired measurements, not a promised workflow-wide saving.
+
+The same experiment restored an 81 MB macOS Turbo archive bounded to 256 MB,
+reused 54 of 56 tasks, and finished its outer smoke step in 44 seconds versus
+68 seconds without the archive. macOS package and Node compatibility jobs now
+use that cap and retain only the current run's referenced hashes. Package and
+compatibility smoke installs omit the mobile workspace, while retaining desktop
+and native dependencies. Full cross-platform smokes remain enabled.
+
+[Cold app experiment 37808270869](https://github.com/get-bb/bb/actions/runs/37808270869)
+ran the complete Linux app suite with four and eight shards. Summed job runtime
+was 496 versus 668 seconds, but the slowest cold test step increased from 81 to
+112 seconds with four shards. The workflow retains eight to protect app-only PR
+latency and preserve cache reuse between PRs and main.
+
+Narrower Windows installs were also tested against cold suites. Selecting only
+the tested packages missed app CSS needed by plugin generation. Adding the app
+prerequisites restored host/plugin suites, but build and other-package suites
+still required CLI and server generator dependencies outside their declared
+closures. The passing host/plugin candidates did not demonstrate faster installs
+in the paired run. These speculative install filters are not shipped; the
+existing scoped app/server installs and broader remaining installs are retained.
+Resolving the PR comparison base avoids paying these setup costs for unrelated
+main changes without dropping coverage for changes actually in the PR.
+
+The parent-notification tests wait for their persisted result after advancing the
+batch timer. A controlled one-millisecond delay at the existing workspace RPC
+responder made five prior assertions fail; all seven tests pass with the wait.
+Settings dropdown tests drain deferred unmount cleanup before jsdom teardown.
+The storage-retention wide-tree fixture retains twenty directories and two
+hundred files, but creates and accounts for independent directories concurrently
+instead of performing every filesystem operation serially. No timeout or
+assertion was relaxed.
+
+The SDK version check also hit its five-minute timeout twice while fetching all
+branches and tags for PR #5220. PR runs now fetch two levels of history and point
+the comparison ref at the tested merge's first parent. A fresh shallow fetch of
+the actual PR merge verified that Git resolves that parent as the merge base and
+that the existing SDK check runs successfully. The push-triggered full-history
+checkout then hit the same timeout. SDK checkouts now use `filter: blob:none`
+to retain commit history without historical file contents. A fresh fetch of all
+branches and tags completed with a 23 MB pack, and the unchanged SDK check passed
+against that full-history checkout.

@@ -60,7 +60,11 @@ export interface SystemExecutionOptionsArgs extends SystemExecutionOptionsQuery 
   signal?: AbortSignal;
 }
 
-export interface SystemUsageLimitsArgs extends SystemUsageLimitsQuery {
+export interface SystemUsageLimitsArgs extends Omit<
+  SystemUsageLimitsQuery,
+  "refresh"
+> {
+  refresh?: boolean;
   signal?: AbortSignal;
 }
 
@@ -390,6 +394,12 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
             query: {
               hostId: input.hostId,
               providerId: input.providerId,
+              refresh:
+                input.refresh === undefined
+                  ? undefined
+                  : input.refresh
+                    ? "true"
+                    : "false",
             },
           },
           ...signalRequestArgs(input.signal),

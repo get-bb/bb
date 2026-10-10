@@ -6,7 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import DashedLineCircleIcon from "@hugeicons/core-free-icons/DashedLineCircleIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import ViewOffSlashIcon from "@hugeicons/core-free-icons/ViewOffSlashIcon";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -28,7 +28,10 @@ function SecretRequestInteraction({
   );
   const [values, setValues] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    "submit" | "cancel" | null
+  >(null);
+  const busy = pendingAction !== null;
   const [formError, setFormError] = useState<string | null>(null);
 
   if (!parsed.success) {
@@ -64,25 +67,25 @@ function SecretRequestInteraction({
       return;
     }
     setFormError(null);
-    setBusy(true);
+    setPendingAction("submit");
     try {
-      try {
-        await submit({ values });
-        setValues({});
-      } catch {}
-    } finally {
-      setBusy(false);
+      await submit({ values });
+    } catch {
+      setPendingAction(null);
     }
   };
   const cancelRequest = async () => {
+    setPendingAction("cancel");
     try {
       await cancel();
-    } catch {}
+    } catch {
+      setPendingAction(null);
+    }
   };
 
   return (
     <form
-      className="space-y-4"
+      className="@container/secrets space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         void submitValues();
@@ -178,12 +181,12 @@ function SecretRequestInteraction({
         </p>
       ) : null}
 
-      <div className="sticky -bottom-3 -mb-3 z-10 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-4 sm:flex-row sm:items-center sm:justify-end">
+      <div className="sticky -bottom-3 -mb-3 z-10 flex flex-col-reverse gap-2 border-t border-border/70 bg-surface-recessed-solid pb-3 pt-4 @min-[24rem]/secrets:flex-row @min-[24rem]/secrets:items-center @min-[24rem]/secrets:justify-end">
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="w-full sm:w-auto"
+          className="w-full @min-[24rem]/secrets:w-auto"
           disabled={busy}
           onClick={() => void cancelRequest()}
         >
@@ -192,12 +195,12 @@ function SecretRequestInteraction({
         <Button
           type="submit"
           size="sm"
-          className="w-full sm:w-auto"
+          className="w-full @min-[24rem]/secrets:w-auto"
           disabled={busy}
         >
-          {busy ? (
+          {pendingAction === "submit" ? (
             <HugeiconsIcon
-              icon={DashedLineCircleIcon}
+              icon={Loading03Icon}
               className="size-3 animate-spin"
               aria-hidden="true"
             />

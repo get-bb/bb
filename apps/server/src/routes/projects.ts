@@ -91,7 +91,10 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
-import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import {
+  readWorkspaceAgentContext,
+  type WorkspaceAgentContext,
+} from "../services/threads/workspace-agent-context.js";
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import {
   providerHasNativeRootSurface,
@@ -306,11 +309,18 @@ function assertPathMatchesHostPlatform(
   args: { hostId: string; path: string },
 ): void {
   const platform = deps.hub.getDaemonPlatformForHost(args.hostId);
-  if (
-    platform !== null &&
-    platform !== "unknown" &&
-    isWindowsHostPath(args.path)
-  ) {
+  if (platform === null || platform === "unknown") {
+    return;
+  }
+  const isWindowsPath = isWindowsHostPath(args.path);
+  if (platform === "win32" && !isWindowsPath) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "This machine uses Windows paths. Use an absolute path like C:\\Users\\me\\repo.",
+    );
+  }
+  if (platform !== "win32" && isWindowsPath) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -743,22 +753,29 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         cwd: workspace.cwd,
       });
     };
-    const [result, projectSkillSources, sharedSkills] = await Promise.all([
-      listProviderCommands(),
+    const readWorkspaceSkills = async (): Promise<
+      Pick<WorkspaceAgentContext, "projectSkillSources" | "sharedSkills">
+    > =>
       workspace.cwd === null
-        ? Promise.resolve([])
-        : resolveWorkspaceProjectSkills(deps, {
+        ? {
+            projectSkillSources: [],
+            sharedSkills: await resolveSharedSkills(deps, {
+              hostId: workspace.hostId,
+              cwd: null,
+            }),
+          }
+        : readWorkspaceAgentContext(deps, {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
-          }),
-      resolveSharedSkills(deps, {
-        hostId: workspace.hostId,
-        cwd: workspace.cwd,
-      }),
+            includeAgentInstructions: false,
+          });
+    const [result, workspaceSkills] = await Promise.all([
+      listProviderCommands(),
+      readWorkspaceSkills(),
     ]);
     const skillCatalog = resolveSkillCatalog(deps, {
-      projectSkillSources,
-      sharedSkillSources: sharedSkills.runtimeSources,
+      projectSkillSources: workspaceSkills.projectSkillSources,
+      sharedSkillSources: workspaceSkills.sharedSkills.runtimeSources,
     });
     return context.json(
       buildCommandListResponse({

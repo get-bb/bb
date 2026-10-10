@@ -7,7 +7,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 
 The Thread list plugin owns the sidebar's layout state. Read it with
 `bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
-`environmentGrouping`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
+`environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
 `collapsedSections`, `collapsedProjects`, `collapsedThreads`,
@@ -38,17 +38,31 @@ is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
 
 `rowActions` picks up to three quick-action buttons a thread row shows on
-hover, left to right before its actions menu. Choose from `split`, `copyLink`, `read`,
-`pin`, `move` (opens a section menu), `rename`, and `archive`; the default is `'["archive"]'` and `'[]'`
-leaves only the menu. For example,
-`bb thread-list prefs set rowActions '["pin","archive"]'`. In the app, a thread
-row's actions menu has Customize row actions, which previews the row's three
-action slots; each slot picks an action or Hide, and filled slots drag to reorder.
+hover, left to right before its actions menu, as thread action keys: bb's
+`bb--core/split`, `bb--core/copyLink`, `bb--core/read`, `bb--core/pin`,
+`bb--core/rename`, `bb--core/archive`, `bb--core/delete`, the list's
+`thread-list/move` (opens a section menu), or another plugin's
+`<pluginId>/<actionId>`. Bare legacy ids such as `archive` and `core/<id>`
+keys still work. The default is `'["bb--core/archive"]'` and `'[]'` leaves
+only the menu. For example,
+`bb thread-list prefs set rowActions '["bb--core/pin","bb--core/archive"]'`.
+In the app, a thread
+row's actions menu has Customize row actions, which turns that row's quick
+actions into three editable slots in place; each slot picks an action, a filled
+slot can Hide, and filled slots drag to reorder. Done, Escape, or a click
+elsewhere finishes.
 
 Organize → Rows → Provider icons toggles the icon before each thread title.
-`showProviderIcons` defaults to `false`; use
-`bb thread-list prefs set showProviderIcons true` to show them. Unknown
+`showProviderIcons` defaults to `true`; use
+`bb thread-list prefs set showProviderIcons false` to hide them. Unknown
 provider ids have no icon.
+
+Organize → Groups → By read status lists threads that show the unread dot above
+the rest, keeping the selected sort within each group. `groupByReadStatus`
+defaults to `false`; use `bb thread-list prefs set groupByReadStatus true` to
+turn it on. Parents start collapsed while it is on, without changing
+`collapsedThreads`, and `environmentGrouping` is ignored. The open thread keeps
+its place until another thread is opened.
 
 New threads inherit the sidebar group where creation was invoked. Pinned
 creates pinned threads; custom sections supply their section; project, machine,

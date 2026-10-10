@@ -35,6 +35,7 @@ const mentionSchema = z.discriminatedUnion("kind", [
     origin: z.enum(["builtin", "project", "user"]),
     argumentHint: z.string().nullable(),
   }),
+  z.object({ ...range, kind: z.literal("attachment"), path: z.string() }),
   z.object({
     ...range,
     kind: z.literal("plugin"),
@@ -47,14 +48,26 @@ const mentionSchema = z.discriminatedUnion("kind", [
     icon: z.string().nullable().optional(),
   }),
 ]);
+const attachmentFields = {
+  type: z.enum(["localImage", "localFile"]),
+  path: z.string().min(1),
+  name: z.string(),
+  mimeType: z.string().optional(),
+  sizeBytes: z.number().nonnegative().optional(),
+};
 const attachmentsSchema = z.array(
-  z.object({
-    type: z.enum(["localImage", "localFile"]),
-    path: z.string().min(1),
-    name: z.string(),
-    mimeType: z.string().optional(),
-    sizeBytes: z.number().nonnegative(),
-  }),
+  z.union([
+    z.object({
+      ...attachmentFields,
+      hostId: z.string().min(1),
+      sourceProjectId: z.undefined().optional(),
+    }),
+    z.object({
+      ...attachmentFields,
+      sourceProjectId: z.string().min(1).optional(),
+      hostId: z.undefined().optional(),
+    }),
+  ]),
 );
 const replacementSchema = z
   .object({

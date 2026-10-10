@@ -32,6 +32,24 @@ describe("HashNavigationScroll", () => {
     });
   });
 
+  it.each([false, true])(
+    "leaves message fragments to the timeline (matching DOM id: %s)",
+    (hasMatchingId) => {
+      const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+      const observe = vi.spyOn(MutationObserver.prototype, "observe");
+
+      render(
+        <MemoryRouter initialEntries={["/threads/thr_main#msg=187"]}>
+          <HashNavigationScroll />
+          {hasMatchingId ? <div id="msg=187" /> : null}
+        </MemoryRouter>,
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      expect(observe).not.toHaveBeenCalled();
+    },
+  );
+
   it("waits for lazy plugin surfaces to mount", async () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
     const view = render(

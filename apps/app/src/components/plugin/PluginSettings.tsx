@@ -161,9 +161,13 @@ function PluginSettingField({
         ariaDescribedBy={ariaDescribedBy}
         ariaInvalid={ariaInvalid}
         ariaLabel={descriptor.label}
-        valueLabel={value.length > 0 ? value : "Select…"}
+        valueLabel={
+          value.length > 0
+            ? (descriptor.experimental_optionLabels?.[value] ?? value)
+            : "Select…"
+        }
         options={descriptor.options.map((option) => ({
-          label: option,
+          label: descriptor.experimental_optionLabels?.[option] ?? option,
           value: option,
         }))}
         onSelect={onChange}
@@ -224,7 +228,7 @@ function PluginSettingField({
         aria-invalid={ariaInvalid}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
-        className="h-7 w-full text-xs sm:w-64"
+        className="h-7 w-full text-xs @min-[36rem]/settings:w-64"
       />
     );
   }
@@ -269,7 +273,7 @@ function PluginSettingField({
       placeholder={isSecret ? (secretIsSet ? "[set]" : "[not set]") : undefined}
       onChange={(event) => onChange(event.target.value)}
       onBlur={onBlur}
-      className="h-7 w-full text-xs sm:w-64"
+      className="h-7 w-full text-xs @min-[36rem]/settings:w-64"
     />
   );
 }

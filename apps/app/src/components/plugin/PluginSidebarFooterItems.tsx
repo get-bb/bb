@@ -45,7 +45,7 @@ import {
   type FooterItem,
   type BuiltinFooterId,
 } from "@/components/sidebar/sidebarFooterPreferences";
-import { SIDEBAR_FOOTER_ACTION_CLASS } from "@/components/sidebar/sidebarRowClasses";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
@@ -284,7 +284,7 @@ export function PluginSidebarFooterItems({
           />
         ) : null,
       )}
-      <SidebarMenuItem className="min-w-0 flex-1">
+      <SidebarMenuItem className="min-w-8 flex-1 max-md:pointer-coarse:min-w-9">
         <SidebarMenu ref={menuRef} className="flex-row items-center gap-1">
           {visible.map((item) => {
             const builtin =

@@ -41,6 +41,7 @@ describe("ThreadTimelineSurface load-older control", () => {
     );
     const anchor = {
       captureScrollAnchor: vi.fn(),
+      holdContentPosition: vi.fn(),
       getScrollElement: () => scrollElement,
       isAtBottom: false,
       scrollElementIntoView: vi.fn(),
@@ -82,5 +83,85 @@ describe("ThreadTimelineSurface load-older control", () => {
 
     emitLatestSentinelIntersection();
     expect(onLoadOlderRows).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ThreadTimelineSurface catch-up indicator", () => {
+  const props = {
+    activeThinking: null,
+    contextBoundarySeq: null,
+    isThreadTimelinePending: false,
+    showOngoingIndicator: false,
+    threadId: "catch-up",
+    threadRuntimeDisplayStatus: "idle" as const,
+    timelineError: false,
+    timelineRows: [],
+    workspaceRootPath: undefined,
+  };
+
+  it("never shows loading for a catch-up that finishes within one second", async () => {
+    vi.useFakeTimers();
+    const view = render(
+      <ThreadTimelineSurface {...props} isCatchingUpTimeline />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(900);
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    view.rerender(
+      <ThreadTimelineSurface {...props} isCatchingUpTimeline={false} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("delays each thread's indicator and hides immediately when caught up", async () => {
+    vi.useFakeTimers();
+    const view = render(
+      <ThreadTimelineSurface {...props} isCatchingUpTimeline />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByRole("status").textContent).toBe(
+      "Loading latest messages…",
+    );
+    view.rerender(
+      <ThreadTimelineSurface
+        {...props}
+        threadId="another-thread"
+        isCatchingUpTimeline
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole("status").textContent).toBe(
+      "Loading latest messages…",
+    );
+    view.rerender(
+      <ThreadTimelineSurface
+        {...props}
+        threadId="another-thread"
+        isCatchingUpTimeline={false}
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    view.rerender(
+      <ThreadTimelineSurface
+        {...props}
+        threadId="another-thread"
+        isCatchingUpTimeline
+      />,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

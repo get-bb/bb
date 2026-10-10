@@ -31,6 +31,7 @@ function conversationRow({
     turnId: `turn_${Math.floor(index / 2)}`,
     sourceSeqStart: index + 1,
     sourceSeqEnd: index + 1,
+    messageSeq: index + 1,
     startedAt: now + index * 1_000,
     createdAt: now + index * 1_000,
     kind: "conversation" as const,
@@ -74,12 +75,13 @@ const timelineRows: TimelineRow[] = Array.from(
       attachments:
         turnIndex === 2
           ? {
-              webImages: 0,
-              localImages: 1,
+              webImages: 1,
+              localImages: 0,
               localFiles: 0,
-              imageUrls: [],
-              localImagePaths: ["/workspace/design-reference.png"],
+              imageUrls: ["/icon-192.png"],
+              localImagePaths: [],
               localFilePaths: [],
+              localFileDetails: [],
             }
           : null,
     }),

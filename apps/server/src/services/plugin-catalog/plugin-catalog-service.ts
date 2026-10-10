@@ -1,7 +1,10 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { PLUGIN_CATALOG_CATEGORIES as BUILTIN_DISCOVERY_CATEGORIES } from "@bb/domain";
+import {
+  PLUGIN_CATALOG_CATEGORIES as BUILTIN_DISCOVERY_CATEGORIES,
+  type PluginMarketplaceCategory,
+} from "@bb/domain";
 import {
   deletePluginMarketplace,
   getInstalledPlugin,
@@ -72,6 +75,7 @@ import {
   entrySourceDisplay,
   curatedMarketplaceManifestUrls,
   isBundledMarketplaceEntry,
+  marketplaceCategories,
   marketplaceCollections,
   marketplaceRowIconBase,
   parseMarketplaceManifestJson,
@@ -119,10 +123,16 @@ export interface PluginCatalogService {
   }): Promise<PluginMarketplaceRefreshResult[]>;
   search(query: string): Promise<PluginCatalogSearchResult[]>;
   collections(): PluginCatalogCollection[];
+  categories(): PluginMarketplaceCategory[];
   installPlan(
     selector: PluginCatalogEntrySelector,
   ): Promise<PluginCatalogInstallPlan>;
   install(input: PluginCatalogInstallInput): Promise<InstalledPlugin>;
+  describeEntry(selector: PluginCatalogEntrySelector): {
+    entryId: string;
+    marketplace: string;
+    displayName: string;
+  };
   icon(
     marketplace: string,
     entryId: string,
@@ -142,6 +152,7 @@ type ResolvedCatalogEntry = {
 interface ReservedCollectionIndex {
   catalogsByMarketplace: ReadonlyMap<string, MarketplaceManifest>;
   collections: readonly PluginCatalogCollection[];
+  categories: readonly PluginMarketplaceCategory[];
   membershipsByEntry: ReadonlyMap<
     string,
     readonly PluginCatalogCollectionMembership[]
@@ -166,12 +177,6 @@ export function createPluginCatalogService(deps: {
     deps.bundledPlugins ?? listBundledPluginRegistrations();
   const curatedManifestUrls = curatedMarketplaceManifestUrls(
     deps.marketplaceUrl,
-  );
-  const categoryOrder = new Map<string, number>(
-    BUILTIN_DISCOVERY_CATEGORIES.map((category, index) => [
-      category.displayName,
-      index,
-    ]),
   );
   const fetchMarketplace = deps.fetch ?? publicMarketplaceFetch;
   const stagingDir = join(deps.dataDir, "marketplaces", "staging");
@@ -346,9 +351,20 @@ export function createPluginCatalogService(deps: {
         });
       }
     }
+    const curated = catalogsByMarketplace.get(CURATED_PLUGIN_MARKETPLACE_NAME);
+    const categoriesById = new Map<string, PluginMarketplaceCategory>();
+    for (const category of [
+      ...(curated === undefined ? [] : marketplaceCategories(curated)),
+      ...BUILTIN_DISCOVERY_CATEGORIES,
+    ]) {
+      if (!categoriesById.has(category.id)) {
+        categoriesById.set(category.id, category);
+      }
+    }
     return {
       catalogsByMarketplace,
       collections: [...collectionsByKey.values()],
+      categories: [...categoriesById.values()],
       membershipsByEntry,
     };
   }
@@ -508,6 +524,7 @@ export function createPluginCatalogService(deps: {
       official,
       author: entryAuthor(entry),
       installed,
+      installedByDefault: bundled?.autoInstall ?? false,
       conflictingInstallSource:
         installed || installedPlugin === undefined
           ? null
@@ -997,6 +1014,10 @@ export function createPluginCatalogService(deps: {
       return [...reservedCollections.collections];
     },
 
+    categories() {
+      return [...reservedCollections.categories];
+    },
+
     async addMarketplace(rawSource) {
       return withLock(ADD_LOCK_KEY, async () => {
         const source = parseMarketplaceSource(rawSource);
@@ -1078,6 +1099,12 @@ export function createPluginCatalogService(deps: {
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
       const collectionIndex = reservedCollections;
+      const categoryOrder = new Map<string, number>(
+        collectionIndex.categories.map((category, index) => [
+          category.displayName,
+          index,
+        ]),
+      );
       const curatedRow = getPluginMarketplace(
         deps.db,
         CURATED_PLUGIN_MARKETPLACE_NAME,
@@ -1206,6 +1233,15 @@ export function createPluginCatalogService(deps: {
       };
     },
 
+    describeEntry(selector) {
+      const { row, entry } = resolveEntry(selector);
+      return {
+        entryId: bundledRegistration(entry)?.name ?? entry.id,
+        marketplace: row.name,
+        displayName: entry.displayName,
+      };
+    },
+
     async install(input) {
       const resolved = resolveEntry(input);
       return withLock(resolved.row.name, async () => {
@@ -1311,7 +1347,10 @@ function installedPluginMayComeFromEntry(
 }
 
 function gitRepositoryKey(url: string): string {
-  return url.replace(/\/+$/u, "").replace(/\.git$/u, "").toLowerCase();
+  return url
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/u, "")
+    .toLowerCase();
 }
 
 function catalogEntryKey(marketplace: string, entryId: string): string {

@@ -16,6 +16,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb settings ai-services set`
 - `bb settings ai-services test`
 - `bb settings general`
+- `bb settings replay-onboarding`
 - `bb settings completed-turns`
 - `bb settings experiment`
 - `bb settings keyboard`
@@ -32,6 +33,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb settings version`
 - `bb settings reload`
 
+`bb settings usage` accepts `--refresh` to fetch fresh provider usage.
+
 ## project
 
 - `bb project`
@@ -43,6 +46,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb project attachment upload`
 - `bb project attachment download`
 - `bb project list`
+- `bb project discover`
 - `bb project history`
 - `bb project reorder`
 - `bb project branches`
@@ -205,6 +209,8 @@ move and downloads the new server's bb-app package for its service.
 - `bb thread stop`
 - `bb thread compact`
 - `bb thread context`
+- `bb thread commands`
+- `bb thread options`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`
@@ -272,8 +278,11 @@ move and downloads the new server's bb-app package for its service.
 - `bb plugin list`
 - `bb plugin source`
 - `bb plugin install`
+- `bb plugin install-jobs`
+- `bb plugin cancel-install`
 - `bb plugin outdated`
 - `bb plugin update`
+- `bb plugin update-jobs`
 - `bb plugin new`
 - `bb plugin types`
 - `bb plugin migrate`
@@ -287,6 +296,7 @@ move and downloads the new server's bb-app package for its service.
 - `bb plugin enable`
 - `bb plugin disable`
 - `bb plugin safe-mode`
+- `bb plugin prune`
 - `bb plugin config`
 - `bb plugin token`
 - `bb plugin run`
@@ -359,3 +369,6 @@ Standalone `bb machine create` machines remain until explicitly removed.
 To enroll an existing machine, run `bb machine create --provider manual`, then
 run its printed enrollment command on the target. The CLI waits until the daemon
 connects. With `--no-wait`, it returns the creating host ID immediately.
+
+- `bb plugin update <id> --yes --no-wait`: start a background update.
+- `bb plugin update-jobs [job-id] [--json]`: inspect update progress and recent results.

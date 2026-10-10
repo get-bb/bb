@@ -1,6 +1,6 @@
 import { getThread } from "@bb/db";
 import type { ExtensionKind, JsonValue, ThreadEvent } from "@bb/domain";
-import { parseExtensionKind } from "@bb/domain";
+import { coreThreadStateSchema, parseExtensionKind } from "@bb/domain";
 import type { HostDaemonEventEnvelope } from "@bb/host-daemon-contract";
 import type {
   StandardSchemaV1,
@@ -128,6 +128,18 @@ async function validateSite(
   site: ExtensionPayloadSite,
   providerId: string | null,
 ): Promise<ValidationOutcome> {
+  const coreSchema =
+    site.surface === "state" ? coreThreadStateSchema(site.kind) : null;
+  if (coreSchema !== null) {
+    const bytes = Buffer.byteLength(JSON.stringify(site.payload));
+    if (bytes > EXTENSION_PAYLOAD_MAX_BYTES) {
+      return {
+        ok: false,
+        reason: `payload is ${bytes} bytes; the limit is ${EXTENSION_PAYLOAD_MAX_BYTES}`,
+      };
+    }
+    return validateAgainstSchema(coreSchema, site.payload);
+  }
   const ownership = extensionOwnershipProblem(deps, site, providerId);
   if (ownership !== null) {
     return { ok: false, reason: ownership };

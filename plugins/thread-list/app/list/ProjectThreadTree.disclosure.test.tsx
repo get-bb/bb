@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import { cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { SidebarThread } from "../model/sidebar-thread.js";
@@ -10,12 +11,19 @@ import {
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { makeSidebarThread } from "../model/fixtures.js";
+import { SidebarRenameProvider } from "../rows/SidebarInlineRename.js";
 
 installTestPluginRuntime();
 const { ProjectThreadTree } = await import("./ProjectRow.js");
 
 function Slot({ children }: { children: ReactNode }) {
-  return <TooltipProvider>{children}</TooltipProvider>;
+  return (
+    <TooltipProvider>
+      <ThreadRowNavigationProvider>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </ThreadRowNavigationProvider>
+    </TooltipProvider>
+  );
 }
 
 function makePlainThreads(count: number): SidebarThread[] {

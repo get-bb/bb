@@ -1,3 +1,4 @@
+import { VoiceInputButton } from "./VoiceInputButton";
 import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
 import { registerThreadMentionDropTarget } from "@/lib/thread-mention-drop";
@@ -7,9 +8,19 @@ import type {
   PromptTextMention,
 } from "@bb/domain";
 import type { ComposerView } from "@get-bb/plugin-sdk";
+import type { ThreadResponse } from "@bb/server-contract";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useThreadTitleMentionResources } from "@/components/thread/ThreadTitleMentions";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import type { Node as ProseMirrorNode, Slice } from "@tiptap/pm/model";
+import { CommandManager } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { useEditor, type Editor } from "@tiptap/react";
+import { nanoid } from "nanoid";
 import {
   useCallback,
   useContext,
@@ -63,6 +74,17 @@ import {
   useResolvedComposerPopups,
 } from "@/components/plugin/composer-slot-hooks";
 import { PluginComposerPopup } from "@/components/plugin/PluginComposerPopup";
+import { PluginComposerCommands } from "@/components/plugin/PluginComposerCommands";
+import {
+  APP_COMPOSER_SELECTOR,
+  composerOwnsCommand,
+  resolveComposerCommandScope,
+} from "@/lib/composer-command-ownership";
+import {
+  ComposerCommand,
+  ComposerCommandOwnerProvider,
+} from "./composer-commands";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import { ComposerPopupHost } from "./ComposerPopupHost";
 import {
   composerScopeIdentity,
@@ -87,7 +109,6 @@ import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   type PluginMentionTrigger,
 } from "@bb/client-core";
-import { useRichTextEditingPreference } from "@/lib/rich-text-editing-preference";
 import {
   clearComposerEditorBridge,
   publishComposerEditorBridge,
@@ -103,7 +124,13 @@ import {
 } from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PROMPT_STACK_EDGE_CARET_BUTTON_WIDTH_CLASS } from "./banner/PromptStackCard";
-import { AttachmentPreview } from "./AttachmentPreview";
+import { AttachmentPreview, isImageAttachment } from "./AttachmentPreview";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { isProjectAttachmentPath } from "@/lib/file-content-urls";
+import {
+  withAttachmentMentionSuggestions,
+  type AttachmentMentionSuggestion,
+} from "@/hooks/promptMentionCandidates";
 import { VoiceRecordingBar } from "./VoiceRecordingBar";
 import {
   ComposerPlusMenuSlot,
@@ -117,6 +144,15 @@ import {
 } from "./editor/prompt-decoration-extension";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { promptEditorExtensions } from "./editor/prompt-editor-extensions";
+import {
+  AttachmentHistory,
+  attachmentHistoryTransaction,
+} from "./editor/attachment-history";
+import {
+  cancelPromptThreadLinkPaste,
+  createPromptThreadLinkPasteExtension,
+  promptThreadLinkPasteKey,
+} from "./editor/prompt-thread-link-paste";
 import {
   promptCommandResourceFromSuggestion,
   promptEditorClipboardTextFromSlice,
@@ -133,8 +169,6 @@ import {
   insertParagraphBeforeBlockquote,
   removeEmptyBlockquotes,
 } from "./editor/prompt-editor-blockquote";
-import { exitHeading } from "./editor/prompt-editor-heading";
-import { applyPromptListNewline } from "./editor/prompt-editor-list";
 import { applyPromptParagraphNewline } from "./editor/prompt-editor-paragraph";
 import {
   MentionMenu,
@@ -143,6 +177,12 @@ import {
 } from "./mentions/MentionMenu";
 import { useTypeaheadMenuMaxHeight } from "./useTypeaheadMenuMaxHeight";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
+import {
+  readMessageClipboardHtml,
+  readMessageClipboardImage,
+} from "@/lib/message-clipboard";
+import { appToast } from "@/components/ui/app-toast";
+import { findPastedThreadLinkCandidates } from "./mentions/pasted-thread-link-candidates";
 import {
   blurPromptEditor,
   ComposerEditorSlot,
@@ -228,6 +268,38 @@ function mentionPillTrailingText(
 const COLLAPSING_GRID_CLASS =
   "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 const VOICE_ACTION_TRANSITION_MS = 180;
+const PASTED_TEXT_ATTACHMENT_MIN_LENGTH = 5_000;
+
+function uniqueAttachmentName(
+  name: string,
+  takenNames: ReadonlySet<string>,
+): string {
+  const extensionStart = name.lastIndexOf(".");
+  const stem = extensionStart > 0 ? name.slice(0, extensionStart) : name;
+  const extension = extensionStart > 0 ? name.slice(extensionStart) : "";
+  let candidate = name;
+  for (let index = 2; takenNames.has(candidate); index += 1) {
+    candidate = `${stem} ${index}${extension}`;
+  }
+  return candidate;
+}
+
+function withUniqueAttachmentNames(
+  files: readonly File[],
+  existingNames: ReadonlySet<string>,
+): File[] {
+  const takenNames = new Set(existingNames);
+  return files.map((file) => {
+    const name = uniqueAttachmentName(file.name, takenNames);
+    takenNames.add(name);
+    return name === file.name
+      ? file
+      : new File([file], name, {
+          type: file.type,
+          lastModified: file.lastModified,
+        });
+  });
+}
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
 export const DEFAULT_COMPOSER_SCOPE = {
@@ -254,6 +326,25 @@ export interface PromptBoxSubmissionConfig {
   onModifierSubmit?: () => void;
   swapSubmitActions?: boolean;
   showModifierSubmitAction?: boolean;
+}
+
+function suppressTouchCompatibilityClick(ownerDocument: Document) {
+  const clear = () => {
+    window.clearTimeout(timeout);
+    ownerDocument.removeEventListener("click", handleClick, true);
+    ownerDocument.removeEventListener("pointerdown", clear, true);
+    ownerDocument.removeEventListener("keydown", clear, true);
+  };
+  const handleClick = (event: MouseEvent) => {
+    if (event.detail === 0) return;
+    clear();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  const timeout = window.setTimeout(clear, 1000);
+  ownerDocument.addEventListener("click", handleClick, true);
+  ownerDocument.addEventListener("pointerdown", clear, true);
+  ownerDocument.addEventListener("keydown", clear, true);
 }
 
 interface PromptSubmitButtonProps {
@@ -335,6 +426,7 @@ function PromptSubmitButton({
         ) {
           return;
         }
+        suppressTouchCompatibilityClick(event.currentTarget.ownerDocument);
         onTouchSubmit();
       }}
       onMouseDown={(event) => event.preventDefault()}
@@ -433,9 +525,50 @@ export interface AttachmentsConfig {
   pendingUploads?: readonly PendingAttachmentUpload[];
   isAttaching?: boolean;
   error?: string | null;
-  onAttachFiles?: (files: File[]) => void | Promise<void>;
-  onRemove?: (path: string) => void;
+  onAttachFiles?: (files: File[]) => Promise<PromptDraftAttachment[]>;
+  onUpdate?: (
+    update: (attachments: PromptDraftAttachment[]) => PromptDraftAttachment[],
+  ) => void;
   projectId?: string;
+}
+
+interface AttachmentHistoryEntry {
+  attachments: PromptDraftAttachment[] | null;
+  draftKey: string | null;
+  positions: number[];
+  present: boolean;
+}
+
+function recordAttachmentHistory(
+  view: EditorView,
+  id: string,
+  present: boolean,
+): void {
+  view.dispatch(attachmentHistoryTransaction(view.state.tr, id, present));
+  view.dispatch(closeHistory(view.state.tr));
+}
+
+function recordPastedTextHistory(
+  editor: Editor,
+  id: string,
+  value: PromptEditorValue,
+): void {
+  const { view } = editor;
+  const insert = closeHistory(view.state.tr);
+  const from = view.state.selection.from;
+  new CommandManager({ editor })
+    .createChain(insert, true)
+    .insertContent(promptEditorInlineContentFromValue(value))
+    .run();
+  const inserted = view.state.applyTransaction(insert).state;
+  const replaced = inserted.applyTransaction(
+    attachmentHistoryTransaction(
+      inserted.tr.delete(insert.mapping.map(from, -1), inserted.selection.from),
+      id,
+      true,
+    ),
+  ).state;
+  view.updateState(replaced.applyTransaction(closeHistory(replaced.tr)).state);
 }
 
 interface PromptBoxCompactConfig {
@@ -454,6 +587,7 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
+  microphoneWarning: string | null;
   isSupported: boolean;
   unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
@@ -503,6 +637,7 @@ interface PromptBoxInternalProps {
   attachments?: AttachmentsConfig;
   promptActions?: readonly PromptBoxAction[];
   suppressPluginComposerCustomizations?: boolean;
+  onFocusCommand?: () => void;
   editorLayout?: ComposerEditorLayout;
   onCollapse?: () => void;
   compact?: PromptBoxCompactConfig;
@@ -535,6 +670,7 @@ interface PromptEditorSelectionRevealArgs {
 }
 
 interface ParsedRichClipboardValue {
+  threadLinks: { text: string; literal: boolean }[];
   hasMentions: boolean;
   value: PromptEditorValue;
 }
@@ -739,6 +875,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
   let hasMentions = false;
   let listMarkerPending = false;
   const mentions: PromptTextMention[] = [];
+  const literalRanges: { from: number; to: number }[] = [];
 
   const flushListMarker = () => {
     if (!listMarkerPending) {
@@ -748,11 +885,16 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     text += RICH_PASTE_LIST_MARKER;
   };
 
-  const appendText = (appendedText: string) => {
+  const appendText = (appendedText: string, literal = false) => {
     if (appendedText.length === 0) {
       return;
     }
     flushListMarker();
+    if (literal)
+      literalRanges.push({
+        from: text.length,
+        to: text.length + appendedText.length,
+      });
     text += appendedText;
   };
 
@@ -763,7 +905,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
   };
 
-  const appendCollapsedText = (rawText: string) => {
+  const appendCollapsedText = (rawText: string, literal: boolean) => {
     const collapsedText = rawText.replace(/\s+/gu, " ");
     if (collapsedText.trim().length === 0) {
       if (listMarkerPending) {
@@ -774,7 +916,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
       }
       return;
     }
-    appendText(collapsedText);
+    appendText(collapsedText, literal);
   };
 
   const appendClipboardMention = (element: Element): boolean => {
@@ -795,29 +937,42 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     return true;
   };
 
-  const visitChildren = (node: Node, preserveWhitespace: boolean) => {
+  const visitChildren = (
+    node: Node,
+    preserveWhitespace: boolean,
+    literal = false,
+  ) => {
     for (const childNode of node.childNodes) {
-      visitNode(childNode, preserveWhitespace);
+      visitNode(childNode, preserveWhitespace, literal);
     }
   };
 
-  const visitNode = (node: Node, preserveWhitespace: boolean) => {
+  const visitNode = (
+    node: Node,
+    preserveWhitespace: boolean,
+    literal: boolean,
+  ) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const rawText = node.textContent ?? "";
       if (preserveWhitespace) {
-        appendText(normalizePastedPlainText(rawText));
+        appendText(normalizePastedPlainText(rawText), literal);
         return;
       }
-      appendCollapsedText(rawText);
+      appendCollapsedText(rawText, literal);
       return;
     }
 
     if (!(node instanceof Element)) {
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       return;
     }
 
     const tagName = node.tagName.toUpperCase();
+    literal ||=
+      tagName === "CODE" ||
+      tagName === "BLOCKQUOTE" ||
+      (tagName === "A" &&
+        node.getAttribute("href") !== node.textContent?.trim());
     if (RICH_PASTE_IGNORED_TAGS.has(tagName)) {
       return;
     }
@@ -830,34 +985,44 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
     }
     if (tagName === "PRE") {
       appendNewline();
-      appendText(normalizePastedPlainText(node.textContent ?? ""));
+      appendText(normalizePastedPlainText(node.textContent ?? ""), true);
       appendNewline();
       return;
     }
     if (tagName === "LI") {
       appendNewline();
       listMarkerPending = true;
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       listMarkerPending = false;
       appendNewline();
       return;
     }
     if (RICH_PASTE_BLOCK_TAGS.has(tagName)) {
       appendNewline();
-      visitChildren(node, preserveWhitespace);
+      visitChildren(node, preserveWhitespace, literal);
       appendNewline();
       return;
     }
 
-    visitChildren(node, preserveWhitespace);
+    visitChildren(node, preserveWhitespace, literal);
   };
 
   visitChildren(document.body, false);
+  const threadLinks = findPastedThreadLinkCandidates({
+    text,
+    origin: window.location.origin,
+  }).map((link) => ({
+    text: link.text,
+    literal: literalRanges.some(
+      (range) => range.from < link.to && range.to > link.from,
+    ),
+  }));
 
   if (hasMentions) {
     const trimmedText = text.replace(/\n+$/u, "");
     return {
       hasMentions,
+      threadLinks,
       value: {
         text: trimmedText,
         mentions: mentions.filter(
@@ -872,6 +1037,7 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 
   return {
     hasMentions,
+    threadLinks,
     value: {
       text: text
         .replace(/[ \t]+\n/gu, "\n")
@@ -886,14 +1052,10 @@ function promptEditorValueFromRichHtml(html: string): ParsedRichClipboardValue {
 function promptEditorValueFromClipboardPaste(
   clipboardData: DataTransfer | null,
   promptActions?: readonly PromptBoxAction[],
+  richValue?: ParsedRichClipboardValue | null,
 ): PromptEditorValue | null {
-  const html = clipboardData?.getData("text/html") ?? "";
-  const hasHtml = html.trim().length > 0;
-  if (hasHtml) {
-    const richValue = promptEditorValueFromRichHtml(html);
-    if (richValue.hasMentions) {
-      return withPromptActionCommandMentions(richValue.value, promptActions);
-    }
+  if (richValue?.hasMentions) {
+    return withPromptActionCommandMentions(richValue.value, promptActions);
   }
 
   const plainText = clipboardData?.getData("text/plain") ?? "";
@@ -901,11 +1063,7 @@ function promptEditorValueFromClipboardPaste(
     return promptEditorValueFromPlainText(plainText, promptActions);
   }
 
-  if (!hasHtml) {
-    return null;
-  }
-
-  return promptEditorValueFromRichHtml(html).value;
+  return richValue?.value ?? null;
 }
 
 function runAfterClipboardCut(callback: () => void): void {
@@ -1121,6 +1279,7 @@ export function PromptBoxInternal({
   attachments: attachmentConfig = {},
   promptActions,
   suppressPluginComposerCustomizations = false,
+  onFocusCommand,
   editorLayout = "thread",
   onCollapse,
   compact,
@@ -1181,9 +1340,33 @@ export function PromptBoxInternal({
     isAttaching = false,
     error: attachmentError = null,
     onAttachFiles,
-    onRemove: onRemoveAttachment,
+    onUpdate: onUpdateAttachments,
     projectId: attachmentProjectId,
   } = attachmentConfig;
+  const openAttachment = useAttachmentOpener();
+  const resolveEditorMentionLink: PromptMentionLinkResolver = (resource) => {
+    if (resource.kind !== "attachment") {
+      return mentionResolveLink?.(resource) ?? null;
+    }
+    const attachment = attachments.find(
+      (item) => item.path === resource.path,
+    );
+    const projectId = attachment?.sourceProjectId ?? attachmentProjectId;
+    if (
+      !attachment ||
+      !openAttachment ||
+      !projectId ||
+      !isProjectAttachmentPath(attachment)
+    ) {
+      return null;
+    }
+    return () =>
+      openAttachment({
+        name: attachment.name,
+        path: attachment.path,
+        projectId,
+      });
+  };
   const isPointerCoarse = usePointerCoarse();
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
   const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
@@ -1214,6 +1397,11 @@ export function PromptBoxInternal({
     );
   }, [containerCompactPlaceholder]);
   const editorRef = useRef<Editor | null>(null);
+  const pasteWithoutFormattingRef = useRef(false);
+  const threadTitleResources = useThreadTitleMentionResources();
+  const queryClient = useContext(QueryClientContext);
+  const threadLinkCacheRef = useRef({ threadTitleResources, queryClient });
+  threadLinkCacheRef.current = { threadTitleResources, queryClient };
   const editorScrollContainerRef = useRef<HTMLDivElement>(null);
   const revealSelectionFrameRef = useRef<number | null>(null);
   const promptActionFocusFrameRef = useRef<number | null>(null);
@@ -1233,6 +1421,22 @@ export function PromptBoxInternal({
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   const syncTriggerStateRef = useRef<(editor: Editor) => void>(() => {});
   const onAttachFilesRef = useRef(onAttachFiles);
+  const attachmentNamesRef = useRef<ReadonlySet<string>>(new Set());
+  const attachmentItemsRef = useRef<PromptDraftAttachment[]>([]);
+  const onUpdateAttachmentsRef = useRef(onUpdateAttachments);
+  const attachmentDraftKeyRef = useRef<string | null>(null);
+  const attachmentHistoryRef = useRef(
+    new Map<string, AttachmentHistoryEntry>(),
+  );
+  const setAttachmentPresenceRef = useRef<
+    (id: string, present: boolean) => void
+  >(() => {});
+  const attachFilesWithHistoryRef = useRef<
+    (
+      files: File[],
+      recordHistory?: (id: string, editor: Editor) => void,
+    ) => void
+  >(() => {});
   const dismissedTriggerRef = useRef<DismissedTriggerRange | null>(null);
   const isRestoringAppliedMentionRef = useRef(false);
   const [composerMenu, setComposerMenuState] =
@@ -1466,6 +1670,137 @@ export function PromptBoxInternal({
     onAttachFilesRef.current = onAttachFiles;
   }, [onAttachFiles]);
 
+  useEffect(() => {
+    attachmentItemsRef.current = attachments;
+    attachmentNamesRef.current = new Set([
+      ...attachments.map((attachment) => attachment.name),
+      ...(pendingUploads ?? []).map((upload) => upload.file.name),
+    ]);
+  }, [attachments, pendingUploads]);
+
+  useEffect(() => {
+    onUpdateAttachmentsRef.current = onUpdateAttachments;
+  }, [onUpdateAttachments]);
+
+  useEffect(() => {
+    attachmentDraftKeyRef.current = pluginComposerHost?.textEffectKey ?? null;
+  }, [pluginComposerHost?.textEffectKey]);
+
+  const removeHistoryAttachments = useCallback(
+    (entry: AttachmentHistoryEntry, attachments: PromptDraftAttachment[]) => {
+      const update = onUpdateAttachmentsRef.current;
+      if (!update || attachments.length === 0) return;
+      const paths = new Set(attachments.map((attachment) => attachment.path));
+      entry.positions = attachments.map((attachment) =>
+        attachmentItemsRef.current.findIndex(
+          (item) => item.path === attachment.path,
+        ),
+      );
+      update((current) => current.filter((item) => !paths.has(item.path)));
+    },
+    [],
+  );
+
+  const restoreHistoryAttachments = useCallback(
+    (entry: AttachmentHistoryEntry, attachments: PromptDraftAttachment[]) => {
+      const update = onUpdateAttachmentsRef.current;
+      if (!update || attachments.length === 0) return;
+      const restored = attachments
+        .map((attachment, index) => ({
+          attachment,
+          position: entry.positions[index] ?? -1,
+        }))
+        .sort((left, right) => left.position - right.position);
+      update((current) => {
+        const next = current.filter(
+          (item) =>
+            !restored.some(({ attachment }) => attachment.path === item.path),
+        );
+        for (const { attachment, position } of restored) {
+          next.splice(
+            position < 0 ? next.length : Math.min(position, next.length),
+            0,
+            attachment,
+          );
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setAttachmentPresence = useCallback(
+    (id: string, present: boolean) => {
+      const entry = attachmentHistoryRef.current.get(id);
+      if (
+        !entry ||
+        entry.present === present ||
+        entry.draftKey !== attachmentDraftKeyRef.current
+      )
+        return;
+      entry.present = present;
+      if (entry.attachments === null) return;
+      if (present) restoreHistoryAttachments(entry, entry.attachments);
+      else removeHistoryAttachments(entry, entry.attachments);
+    },
+    [removeHistoryAttachments, restoreHistoryAttachments],
+  );
+
+  const attachFilesWithHistory = useCallback(
+    (files: File[], recordHistory?: (id: string, editor: Editor) => void) => {
+      const attach = onAttachFilesRef.current;
+      if (!attach || files.length === 0) return;
+      const id = nanoid();
+      const entry: AttachmentHistoryEntry = {
+        attachments: null,
+        draftKey: attachmentDraftKeyRef.current,
+        positions: [],
+        present: true,
+      };
+      attachmentHistoryRef.current.set(id, entry);
+      const currentEditor = editorRef.current;
+      if (currentEditor && !currentEditor.isDestroyed) {
+        if (recordHistory) recordHistory(id, currentEditor);
+        else recordAttachmentHistory(currentEditor.view, id, true);
+      }
+      void attach(
+        withUniqueAttachmentNames(files, attachmentNamesRef.current),
+      ).then((added) => {
+        entry.attachments = added;
+        if (!entry.present) removeHistoryAttachments(entry, added);
+      });
+    },
+    [removeHistoryAttachments],
+  );
+
+  const removeAttachment = useCallback(
+    (path: string) => {
+      const attachment = attachmentItemsRef.current.find(
+        (item) => item.path === path,
+      );
+      if (!attachment) return;
+      const id = nanoid();
+      const entry: AttachmentHistoryEntry = {
+        attachments: [attachment],
+        draftKey: attachmentDraftKeyRef.current,
+        positions: [],
+        present: false,
+      };
+      attachmentHistoryRef.current.set(id, entry);
+      removeHistoryAttachments(entry, [attachment]);
+      const currentEditor = editorRef.current;
+      if (currentEditor && !currentEditor.isDestroyed) {
+        recordAttachmentHistory(currentEditor.view, id, false);
+      }
+    },
+    [removeHistoryAttachments],
+  );
+
+  useEffect(() => {
+    setAttachmentPresenceRef.current = setAttachmentPresence;
+    attachFilesWithHistoryRef.current = attachFilesWithHistory;
+  }, [attachFilesWithHistory, setAttachmentPresence]);
+
   const revealEditorSelection = useCallback(() => {
     const currentEditor = editorRef.current;
     const scrollContainer = editorScrollContainerRef.current;
@@ -1639,16 +1974,39 @@ export function PromptBoxInternal({
     syncTriggerStateRef.current = syncTriggerState;
   }, [syncTriggerState]);
 
-  const [richTextEditing] = useRichTextEditingPreference();
   const editorExtensions = useMemo(
-    () =>
-      promptEditorExtensions({
-        richTextEditing,
+    () => [
+      ...promptEditorExtensions({
         getPlaceholder: () => placeholderRef.current,
         getDecorationSources: () => pluginDecorationSourcesRef.current,
         getDraftObservers: () => pluginDraftObserversRef.current,
       }),
-    [richTextEditing],
+      createPromptThreadLinkPasteExtension({
+        getOrigin: () => window.location.origin,
+        getCachedThread: (threadId) => {
+          const cache = threadLinkCacheRef.current;
+          const thread =
+            cache.threadTitleResources.threadById.get(threadId) ??
+            cache.queryClient?.getQueryData<ThreadResponse>(
+              threadQueryKey(threadId),
+            );
+          return thread
+            ? {
+                threadId,
+                projectId: thread.projectId,
+                label: getThreadDisplayTitle(thread),
+              }
+            : null;
+        },
+        resolveThreads: (threadIds, signal) =>
+          sdk.threads.resolveMentions({ threadIds, signal }),
+      }),
+      AttachmentHistory.configure({
+        onChange: (id, present) =>
+          setAttachmentPresenceRef.current(id, present),
+      }),
+    ],
+    [],
   );
 
   const initialEditorContent = useMemo(() => {
@@ -1658,12 +2016,10 @@ export function PromptBoxInternal({
     };
     return {
       value: initialValue,
-      content: promptEditorContentFromValue(initialValue, {
-        richTextMarkdown: richTextEditing,
-      }),
+      content: promptEditorContentFromValue(initialValue),
     };
     // oxlint-disable-next-line react/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
-  }, [richTextEditing]);
+  }, []);
 
   const editor = useEditor(
     {
@@ -1701,6 +2057,7 @@ export function PromptBoxInternal({
             return false;
           },
           blur: () => {
+            pasteWithoutFormattingRef.current = false;
             if (composerMenuRef.current?.kind === "suggestions")
               dismissComposerMenu();
             if (dismissedTriggerRef.current) {
@@ -1725,6 +2082,10 @@ export function PromptBoxInternal({
             return false;
           },
           keydown: (_view, event) => {
+            pasteWithoutFormattingRef.current =
+              (event.metaKey || event.ctrlKey) &&
+              event.shiftKey &&
+              event.key.toLowerCase() === "v";
             if (
               !_view.editable ||
               !isIPadOSWebKitDevice ||
@@ -1747,6 +2108,10 @@ export function PromptBoxInternal({
 
             return handleEditorKeyDownRef.current(event, true);
           },
+          keyup: () => {
+            pasteWithoutFormattingRef.current = false;
+            return false;
+          },
           click: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
           },
@@ -1761,6 +2126,34 @@ export function PromptBoxInternal({
           return handleEditorKeyDownRef.current(event);
         },
         handlePaste: (view, event, slice) => {
+          const skipThreadLinks = pasteWithoutFormattingRef.current;
+          pasteWithoutFormattingRef.current = false;
+          const html = event.clipboardData?.getData("text/html") ?? "";
+          const richClipboard = html.trim()
+            ? promptEditorValueFromRichHtml(html)
+            : null;
+          const threadLinkMetadata = (pastedValue: PromptEditorValue) => {
+            const links = richClipboard?.threadLinks ?? [];
+            if (!links.some((link) => link.literal))
+              return { skip: skipThreadLinks };
+            const pastedLinks = findPastedThreadLinkCandidates({
+              text: pastedValue.text,
+              origin: window.location.origin,
+            });
+            if (
+              pastedLinks.length !== links.length ||
+              pastedLinks.some(
+                (link, index) => link.text !== links[index]?.text,
+              )
+            )
+              return { skip: true };
+            return {
+              skip: skipThreadLinks,
+              literalLinkIndexes: links.flatMap((link, index) =>
+                link.literal ? [index] : [],
+              ),
+            };
+          };
           const attachFiles = onAttachFilesRef.current;
           const clipboardItems = Array.from(event.clipboardData?.items ?? []);
           const pastedFiles = clipboardItems
@@ -1768,12 +2161,89 @@ export function PromptBoxInternal({
             .map((item) => item.getAsFile())
             .filter((file): file is File => file !== null);
 
-          if (attachFiles && pastedFiles.length > 0) {
+          const copiedMessage = skipThreadLinks
+            ? null
+            : readMessageClipboardHtml(html);
+          if (copiedMessage) {
             event.preventDefault();
-            void attachFiles(pastedFiles);
+            editorRef.current
+              ?.chain()
+              .focus()
+              .insertContent(
+                promptEditorInlineContentFromValue({
+                  text: copiedMessage.text,
+                  mentions: [],
+                }),
+              )
+              .setMeta("uiEvent", "paste")
+              .setMeta(promptThreadLinkPasteKey, { skip: skipThreadLinks })
+              .run();
+            if (attachFiles) {
+              if (pastedFiles.length > 0) {
+                attachFilesWithHistoryRef.current(pastedFiles);
+              } else {
+                const editor = editorRef.current;
+                const href = window.location.href;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 30000);
+                void readMessageClipboardImage(
+                  copiedMessage.imageUrl,
+                  controller.signal,
+                )
+                  .then((file) => {
+                    if (
+                      editor &&
+                      !editor.isDestroyed &&
+                      editorRef.current === editor &&
+                      window.location.href === href
+                    )
+                      attachFilesWithHistoryRef.current([file]);
+                  })
+                  .catch(() => {
+                    if (
+                      editor &&
+                      !editor.isDestroyed &&
+                      editorRef.current === editor &&
+                      window.location.href === href
+                    )
+                      appToast.error("The copied image could not be attached");
+                  })
+                  .finally(() => clearTimeout(timer));
+              }
+            }
+            return true;
           }
 
           const plainText = event.clipboardData?.getData("text/plain") ?? "";
+          if (attachFiles && pastedFiles.length > 0) {
+            event.preventDefault();
+            attachFilesWithHistoryRef.current(pastedFiles);
+          } else if (
+            attachFiles &&
+            plainText.length >= PASTED_TEXT_ATTACHMENT_MIN_LENGTH
+          ) {
+            event.preventDefault();
+            const file = new File([plainText], "Pasted text.txt", {
+              type: "text/plain",
+            });
+            attachFilesWithHistoryRef.current([file], (id, currentEditor) => {
+              const previousDoc = currentEditor.state.doc;
+              recordPastedTextHistory(
+                currentEditor,
+                id,
+                promptEditorValueFromPlainText(plainText, promptActions),
+              );
+              if (currentEditor.state.doc.eq(previousDoc)) return;
+              const nextValue = trimTrailingPromptNewlines(
+                promptEditorValueFromDoc(currentEditor.state.doc),
+              );
+              lastSyncedEditorValueRef.current = nextValue;
+              onChangeRef.current(nextValue.text, nextValue.mentions);
+            });
+            view.focus();
+            return true;
+          }
+
           const sliceHasBlockquote = promptEditorSliceHasBlockquote(slice);
           if (sliceHasBlockquote || plainTextHasQuoteLine(plainText)) {
             event.preventDefault();
@@ -1786,14 +2256,16 @@ export function PromptBoxInternal({
 
             const currentEditor = editorRef.current;
             const pastedContent =
-              promptEditorContentFromValue(pastedValue, {
-                richTextMarkdown: richTextEditing,
-              }).content ?? [];
+              promptEditorContentFromValue(pastedValue).content ?? [];
             currentEditor
               ?.chain()
               .focus()
               .insertContent(pastedContent)
               .setMeta("uiEvent", "paste")
+              .setMeta(
+                promptThreadLinkPasteKey,
+                threadLinkMetadata(pastedValue),
+              )
               .run();
             if (currentEditor && !currentEditor.isDestroyed) {
               const nextValue = trimTrailingPromptNewlines(
@@ -1808,6 +2280,7 @@ export function PromptBoxInternal({
           const pastedValue = promptEditorValueFromClipboardPaste(
             event.clipboardData ?? null,
             promptActions,
+            richClipboard,
           );
           if (pastedValue === null) {
             return attachFiles !== undefined && pastedFiles.length > 0;
@@ -1821,6 +2294,7 @@ export function PromptBoxInternal({
             .focus()
             .insertContent(promptEditorInlineContentFromValue(pastedValue))
             .setMeta("uiEvent", "paste")
+            .setMeta(promptThreadLinkPasteKey, threadLinkMetadata(pastedValue))
             .run();
           return true;
         },
@@ -1863,7 +2337,7 @@ export function PromptBoxInternal({
         }
       },
     },
-    [richTextEditing],
+    [],
   );
 
   useEffect(() => {
@@ -1880,7 +2354,25 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     editorRef.current = editor;
+    return () => {
+      editorRef.current = null;
+    };
   }, [editor]);
+
+  useLayoutEffect(() => {
+    if (editor) cancelPromptThreadLinkPaste(editor);
+  }, [
+    editor,
+    composerScopeKey,
+    pluginComposerHost?.textEffectKey,
+    focusScopeKey,
+  ]);
+
+  useLayoutEffect(() => {
+    if (editor && (isSubmitting || composerInputLocked)) {
+      cancelPromptThreadLinkPaste(editor);
+    }
+  }, [editor, isSubmitting, composerInputLocked]);
 
   useLayoutEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -1975,11 +2467,8 @@ export function PromptBoxInternal({
 
     try {
       skipEditorChangeRef.current = true;
-      editor.commands.setContent(
-        promptEditorContentFromValue(nextValue, {
-          richTextMarkdown: richTextEditing,
-        }),
-      );
+      cancelPromptThreadLinkPaste(editor);
+      editor.commands.setContent(promptEditorContentFromValue(nextValue));
       lastSyncedEditorValueRef.current = nextValue;
     } finally {
       skipEditorChangeRef.current = false;
@@ -1989,7 +2478,6 @@ export function PromptBoxInternal({
   }, [
     editor,
     mentionRanges,
-    richTextEditing,
     scheduleRevealEditorSelection,
     syncTriggerState,
     value,
@@ -2128,14 +2616,51 @@ export function PromptBoxInternal({
     () => orderCommandSuggestions(commandSuggestions, activeCommandQuery),
     [activeCommandQuery, commandSuggestions],
   );
+  const activeMentionQuery =
+    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
+  const isDefaultMentionTrigger =
+    activeTrigger?.kind === "mention" &&
+    activeTrigger.char === DEFAULT_PLUGIN_MENTION_TRIGGER;
+  const attachmentMentionSuggestions = useMemo(
+    () =>
+      attachments
+        .filter((attachment) => !isImageAttachment(attachment))
+        .map((attachment): AttachmentMentionSuggestion => ({
+          kind: "attachment",
+          path: attachment.path,
+          name: attachment.name,
+          replacement: `@${attachment.name}`,
+        })),
+    [attachments],
+  );
+  const composerMentionResults = useMemo(
+    () =>
+      isDefaultMentionTrigger
+        ? withAttachmentMentionSuggestions({
+            attachments: attachmentMentionSuggestions,
+            query: activeMentionQuery,
+            results: mentionResults,
+          })
+        : mentionResults,
+    [
+      activeMentionQuery,
+      attachmentMentionSuggestions,
+      isDefaultMentionTrigger,
+      mentionResults,
+    ],
+  );
   const activeSuggestions = useMemo<readonly TypeaheadSuggestion[]>(
     () =>
       activeTriggerKind === "command"
         ? orderedCommandSuggestions
         : activeTriggerKind === "mention"
-          ? mentionResults.suggestions
+          ? composerMentionResults.suggestions
           : [],
-    [activeTriggerKind, mentionResults.suggestions, orderedCommandSuggestions],
+    [
+      activeTriggerKind,
+      composerMentionResults.suggestions,
+      orderedCommandSuggestions,
+    ],
   );
   const selectedSuggestionIndex = useMemo(() => {
     if (selectedSuggestionKey === null) return -1;
@@ -2146,16 +2671,16 @@ export function PromptBoxInternal({
   }, [activeSuggestions, selectedSuggestionKey]);
   const selectedIndex = Math.max(0, selectedSuggestionIndex);
 
-  const activeMentionQuery =
-    activeTrigger?.kind === "mention" ? activeTrigger.query.trim() : "";
   const mentionMenuState: MentionMenuState =
-    activeMentionQuery.length === 0
-      ? { kind: "hint" }
-      : mentionLoading
-        ? { kind: "loading" }
-        : mentionError
-          ? { kind: "error" }
-          : { kind: "results", results: mentionResults };
+    composerMentionResults !== mentionResults
+      ? { kind: "results", results: composerMentionResults }
+      : activeMentionQuery.length === 0
+        ? { kind: "hint" }
+        : mentionLoading
+          ? { kind: "loading" }
+          : mentionError
+            ? { kind: "error" }
+            : { kind: "results", results: mentionResults };
 
   const commandMenuState: CommandMenuState = commandLoading
     ? { kind: "loading" }
@@ -2443,6 +2968,19 @@ export function PromptBoxInternal({
     [composerMenuOpen, dismissComposerMenu, popupOpen],
   );
 
+  const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
+  const ownsCommandTarget = useCallback(
+    (target: EventTarget | null) =>
+      composerOwnsCommand(
+        resolveComposerCommandScope({
+          composer: formRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+          target,
+          isFocusedPane,
+        }),
+      ),
+    [isFocusedPane],
+  );
+
   const openPopupForPlugin = useCallback(
     (pluginId: string, popupId: string) => {
       const contribution = popups.find(
@@ -2699,16 +3237,14 @@ export function PromptBoxInternal({
       insertion
         .insertContent(
           block
-            ? promptEditorContentFromValue(value, {
-                richTextMarkdown: richTextEditing,
-              })
+            ? promptEditorContentFromValue(value)
             : promptEditorInlineContentFromValue(value),
         )
         .run();
       if (!isPointerCoarse) scheduleRevealEditorSelection();
       return true;
     },
-    [isPointerCoarse, richTextEditing, scheduleRevealEditorSelection],
+    [isPointerCoarse, scheduleRevealEditorSelection],
   );
   const composerEditorBridge = useMemo<ComposerEditorBridge | null>(
     () =>
@@ -2782,29 +3318,9 @@ export function PromptBoxInternal({
     showCompactLayout &&
     canStartVoiceInput &&
     (!showVoiceAsPrimaryAction || showStop);
-  const stopGestureButtonRef = useRef<HTMLButtonElement | null>(null);
-  const handleStopPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      stopGestureButtonRef.current = event.currentTarget;
-    },
-    [],
-  );
-  const handleStopClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const gestureButton = stopGestureButtonRef.current;
-      stopGestureButtonRef.current = null;
-      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
-      onStop?.();
-    },
-    [onStop],
-  );
-  const voiceGestureButtonRef = useRef<HTMLButtonElement | null>(null);
   const handleVoicePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (event.button !== 0) return;
-      voiceGestureButtonRef.current = event.currentTarget;
-      if (!isPointerCoarse) return;
+      if (!isPointerCoarse || event.button !== 0) return;
 
       event.preventDefault();
     },
@@ -2819,15 +3335,6 @@ export function PromptBoxInternal({
     }
     void voice?.start();
   }, [isPointerCoarse, voice]);
-  const handleVoiceClick = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      const gestureButton = voiceGestureButtonRef.current;
-      voiceGestureButtonRef.current = null;
-      if (event.detail > 0 && gestureButton !== event.currentTarget) return;
-      startVoiceInput();
-    },
-    [startVoiceInput],
-  );
   const cancelVoiceInput = useCallback(() => {
     if (voiceActionRevealFrameRef.current !== null) {
       window.cancelAnimationFrame(voiceActionRevealFrameRef.current);
@@ -2843,18 +3350,11 @@ export function PromptBoxInternal({
       ? submitDisabledReason
       : submitTitle;
 
-  const emitAttachmentFiles = useCallback(
-    (files: File[]) => {
-      if (!onAttachFiles || files.length === 0) return;
-      void onAttachFiles(files);
-    },
-    [onAttachFiles],
-  );
-
   const submitPrompt = useCallback(() => {
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
     if (!canPrimarySubmit) return;
+    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
     onSubmit?.();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
@@ -2923,6 +3423,7 @@ export function PromptBoxInternal({
 
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
+    if (editorRef.current) cancelPromptThreadLinkPaste(editorRef.current);
     onModifierSubmit();
   }, [canModifierSubmit, onModifierSubmit]);
 
@@ -2958,10 +3459,10 @@ export function PromptBoxInternal({
     (event: ChangeEvent<HTMLInputElement>) => {
       const fileList = event.target.files;
       if (!fileList || fileList.length === 0) return;
-      emitAttachmentFiles(Array.from(fileList));
+      attachFilesWithHistory(Array.from(fileList));
       event.target.value = "";
     },
-    [emitAttachmentFiles],
+    [attachFilesWithHistory],
   );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -3156,15 +3657,6 @@ export function PromptBoxInternal({
       if (
         isBlockquoteExitKey &&
         currentEditor &&
-        applyPromptListNewline(currentEditor)
-      ) {
-        event.preventDefault();
-        return true;
-      }
-
-      if (
-        isBlockquoteExitKey &&
-        currentEditor &&
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
       ) {
@@ -3178,11 +3670,6 @@ export function PromptBoxInternal({
         !event.altKey &&
         !event.ctrlKey &&
         (event.shiftKey || !canSubmitWithEnterKey);
-      if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
-        event.preventDefault();
-        return true;
-      }
-
       if (
         isPromptNewlineKey &&
         currentEditor &&
@@ -3262,7 +3749,7 @@ export function PromptBoxInternal({
         event.preventDefault();
         if (!event.dataTransfer?.files || event.dataTransfer.files.length === 0)
           return;
-        emitAttachmentFiles(Array.from(event.dataTransfer.files));
+        attachFilesWithHistory(Array.from(event.dataTransfer.files));
       }}
       className={cn(
         "group/promptbox relative w-full rounded-xl border border-border bg-background shadow-lift",
@@ -3314,7 +3801,9 @@ export function PromptBoxInternal({
               attachmentProjectId={attachmentProjectId}
               expandedImageIndex={expandedImageIndex}
               onExpandedImageIndexChange={setExpandedImageIndex}
-              onRemoveAttachment={onRemoveAttachment}
+              onRemoveAttachment={
+                onUpdateAttachments ? removeAttachment : undefined
+              }
             />
           ) : null}
           <div
@@ -3375,16 +3864,29 @@ export function PromptBoxInternal({
               isCompactLayout={showCompactLayout}
               minHeight={minHeight}
               layout={editorLayout}
-              resolveMentionLink={mentionResolveLink}
+              resolveMentionLink={resolveEditorMentionLink}
             />
           </div>
 
           <PluginComposerViewProvider value={composerView}>
+            <ComposerCommandOwnerProvider value={ownsCommandTarget}>
+              {onFocusCommand !== undefined ? (
+                <ComposerCommand
+                  command="composer.focus"
+                  run={onFocusCommand}
+                />
+              ) : null}
+              {pluginComposerHost !== null &&
+              !suppressPluginComposerCustomizations ? (
+                <PluginComposerCommands />
+              ) : null}
+            </ComposerCommandOwnerProvider>
             <ComposerPopupHost
               open={composerMenuOpen}
               placement={mentionMenuPlacement}
               label={popupContribution?.popup.label ?? "Suggestions"}
               interactive={popupContribution !== null}
+              popupKey={popupContribution?.key ?? null}
               popupRef={typeaheadMenuRef}
               composerRef={formRef}
               onClose={dismissComposerMenu}
@@ -3421,7 +3923,9 @@ export function PromptBoxInternal({
                   attachmentProjectId={attachmentProjectId}
                   expandedImageIndex={expandedImageIndex}
                   onExpandedImageIndexChange={setExpandedImageIndex}
-                  onRemoveAttachment={onRemoveAttachment}
+                  onRemoveAttachment={
+                    onUpdateAttachments ? removeAttachment : undefined
+                  }
                 />
 
                 {attachmentError ? (
@@ -3459,6 +3963,7 @@ export function PromptBoxInternal({
                     isCompact={showCompactLayout}
                     state={renderedVoiceActionState}
                     stream={voice.stream}
+                    microphoneWarning={voice.microphoneWarning}
                     submitIcon={submitIcon ?? "CornerDownLeft"}
                     onConfirm={voice.stop}
                     onSend={voice.send}
@@ -3511,7 +4016,8 @@ export function PromptBoxInternal({
                       {voice &&
                       !showVoiceActionGroup &&
                       (!showVoiceAsPrimaryAction || showStop) ? (
-                        <Button
+                        <VoiceInputButton
+                          warning={voice?.microphoneWarning ?? null}
                           data-promptbox-expanded-only={
                             showCompactLayout ? undefined : ""
                           }
@@ -3527,7 +4033,7 @@ export function PromptBoxInternal({
                           }
                           disabled={!canStartVoiceInput}
                           onPointerDown={handleVoicePointerDown}
-                          onClick={handleVoiceClick}
+                          onClick={startVoiceInput}
                           className={
                             showCompactLayout
                               ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3535,7 +4041,7 @@ export function PromptBoxInternal({
                           }
                         >
                           <Icon name="Mic" className="size-4" />
-                        </Button>
+                        </VoiceInputButton>
                       ) : null}
                     </>
                   ) : null}
@@ -3550,8 +4056,7 @@ export function PromptBoxInternal({
                         size="icon"
                         variant="secondary"
                         aria-label="Stop run"
-                        onPointerDown={handleStopPointerDown}
-                        onClick={handleStopClick}
+                        onClick={onStop}
                         className={
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3564,14 +4069,15 @@ export function PromptBoxInternal({
                         />
                       </Button>
                     ) : showVoiceAsPrimaryAction ? (
-                      <Button
+                      <VoiceInputButton
+                        warning={voice?.microphoneWarning ?? null}
                         data-promptbox-submit-action=""
                         type="button"
                         size={showCompactLayout ? "icon" : "sm"}
                         variant="default"
                         aria-label="Start voice input"
                         onPointerDown={handleVoicePointerDown}
-                        onClick={handleVoiceClick}
+                        onClick={startVoiceInput}
                         className={cn(
                           showCompactLayout
                             ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
@@ -3583,7 +4089,7 @@ export function PromptBoxInternal({
                         )}
                       >
                         <Icon name="Mic" className="size-4" />
-                      </Button>
+                      </VoiceInputButton>
                     ) : (
                       <ComposerSendMenu
                         isPointerCoarse={isPointerCoarse}

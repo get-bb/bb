@@ -57,7 +57,8 @@ function truncateRow(row: TimelineRow, max: number): TimelineRow {
     }
     case "delegation": {
       const output = truncateString(row.output, max);
-      const childRows = truncateRows(row.childRows, max);
+      const childRows =
+        row.childRows === null ? null : truncateRows(row.childRows, max);
       if (output === row.output && childRows === row.childRows) {
         return row;
       }

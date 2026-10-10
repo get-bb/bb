@@ -1997,66 +1997,73 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
-  it("rejects a second active interaction on the same thread", async () => {
+  it("keeps a provider approval blocking alongside open plugin cards", async () => {
     await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-pending-interaction-concurrent-reject",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
+      const thread = seedPluginInteractionThread(harness.deps, "alongside");
+      const lifecycle = harness.deps.pendingInteractions;
+      const notifyThread = vi.spyOn(harness.hub, "notifyThread");
+      const olderCard = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        name: "OLDER",
       });
 
-      const created = registerPendingInteraction(
-        harness.deps,
-        harness.deps.pendingInteractions,
-        {
-          threadId: thread.id,
-          turnId: "turn-concurrent-reject-1",
-          providerId: "codex",
-          providerThreadId: "provider-thread-concurrent-reject",
-          providerRequestId: "request-concurrent-reject-1",
-          payload: createCommandApprovalPayload({
-            itemId: "item-concurrent-reject-1",
-            reason: "Needs approval",
-            command: "git push",
-            cwd: "/tmp/project",
-          }),
-        },
-      );
-      if (created.outcome === "rejected") {
-        throw new Error(
-          `Expected interaction registration to succeed: ${created.reason}`,
-        );
+      const approval = registerPendingInteraction(harness.deps, lifecycle, {
+        threadId: thread.id,
+        turnId: "turn-alongside",
+        providerId: "codex",
+        providerThreadId: "provider-thread-alongside",
+        providerRequestId: "request-alongside",
+        payload: createCommandApprovalPayload({
+          itemId: "item-alongside",
+          reason: "Needs approval",
+          command: "git push",
+          cwd: "/tmp/project",
+        }),
+      });
+      if (approval.outcome === "rejected") {
+        throw new Error(`Expected the approval to open: ${approval.reason}`);
       }
+      const newerCard = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        name: "NEWER",
+      });
 
-      expect(
-        registerPendingInteraction(
-          harness.deps,
-          harness.deps.pendingInteractions,
+      expect(lifecycle.listPendingThreadInteractions(thread.id)).toHaveLength(
+        3,
+      );
+      expect(lifecycle.hasTurnBoundPendingThreadInteraction(thread.id)).toBe(
+        true,
+      );
+
+      harness.db.transaction((tx) =>
+        lifecycle.completeResolvingInteractionInTransaction(
+          { db: tx, hub: harness.deps.hub },
           {
-            threadId: thread.id,
-            turnId: "turn-concurrent-reject-2",
-            providerId: "codex",
-            providerThreadId: "provider-thread-concurrent-reject",
-            providerRequestId: "request-concurrent-reject-2",
-            payload: createFileChangeApprovalPayload({
-              itemId: "item-concurrent-reject-2",
-              reason: "Needs file write approval",
-            }),
+            interactionId: approval.interaction.id,
+            resolution: createAllowOnceResolution(),
           },
         ),
-      ).toEqual({
-        outcome: "rejected",
-        reason: `Thread ${thread.id} is already awaiting user interaction`,
-      });
+      );
+
+      expect(lifecycle.hasTurnBoundPendingThreadInteraction(thread.id)).toBe(
+        false,
+      );
+      expect(notifyThread).toHaveBeenLastCalledWith(
+        thread.id,
+        ["interactions-changed"],
+        expect.objectContaining({ hasPendingInteraction: true }),
+      );
+
+      lifecycle.interruptPluginInteractions("secrets");
+      await expect(Promise.all([olderCard, newerCard])).resolves.toEqual([
+        { outcome: "cancelled", reason: "plugin-disposed" },
+        { outcome: "cancelled", reason: "plugin-disposed" },
+      ]);
+      expect(notifyThread).toHaveBeenLastCalledWith(
+        thread.id,
+        ["interactions-changed"],
+        expect.objectContaining({ hasPendingInteraction: false }),
+      );
     });
   });
 

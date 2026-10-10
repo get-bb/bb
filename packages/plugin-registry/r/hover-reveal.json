@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "hover-reveal",
+  "type": "registry:ui",
+  "title": "hover-reveal",
+  "description": "BB ui \"hover-reveal\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/hover-reveal.ts",
+      "content": "export const HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS =\n  \"[@media(hover:none)]:opacity-100\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/hover-reveal.ts"
+    }
+  ]
+}

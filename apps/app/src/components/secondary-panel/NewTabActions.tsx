@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from "react";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -12,8 +12,8 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { useAppCommandShortcut } from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
-import { useReorderDnd } from "@/components/ui/useReorderDnd";
+import { useSidebarSortable } from "@bb/shared-ui/sortable-motion";
+import { useReorderDnd } from "@bb/shared-ui/use-reorder-dnd";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { arrangeByStoredOrder, reorderStoredOrder } from "@/lib/stored-order";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
@@ -27,7 +27,7 @@ import { newTabActionOrderAtom } from "./newTabActionsAtoms";
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 
-export interface NewTabActionsProps {
+export interface UseNewTabActionsArgs {
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   startTerminalDisabled?: boolean;
@@ -35,7 +35,11 @@ export interface NewTabActionsProps {
   pluginActions?: readonly PluginPanelActionEntry[];
 }
 
-interface NewTabAction {
+export interface NewTabActionsProps {
+  actions: readonly NewTabAction[];
+}
+
+export interface NewTabAction {
   id: string;
   icon: ReactNode;
   label: string;
@@ -80,13 +84,14 @@ function actionIcon(iconName: IconName): ReactNode {
   );
 }
 
-export function NewTabActions({
+export function useNewTabActions({
   onOpenBrowser,
   onStartTerminal,
   pluginActions,
   startTerminalDisabled = false,
   startTerminalTrailing,
-}: NewTabActionsProps) {
+}: UseNewTabActionsArgs): NewTabAction[] {
+  const storedOrder = useAtomValue(newTabActionOrderAtom);
   const terminalShortcut = useAppCommandShortcut("terminal.open");
   const showOpenBrowser =
     onOpenBrowser !== undefined && isDesktopBrowserAvailable();
@@ -132,6 +137,37 @@ export function NewTabActions({
     });
   }
 
+  return arrangeByStoredOrder({
+    items: actions,
+    getId: (action) => action.id,
+    storedOrder,
+  }).ordered;
+}
+
+function toSearchWords(label: string): string[] {
+  return label
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 0);
+}
+
+export function matchNewTabActions(
+  actions: readonly NewTabAction[],
+  query: string,
+): NewTabAction[] {
+  const queryWords = toSearchWords(query);
+  if (queryWords.length === 0) {
+    return [];
+  }
+  return actions.filter((action) => {
+    const words = toSearchWords(action.label);
+    return queryWords.every((queryWord) =>
+      words.some((word) => word.startsWith(queryWord)),
+    );
+  });
+}
+
+export function NewTabActions({ actions }: NewTabActionsProps) {
   if (actions.length === 0) {
     return null;
   }
@@ -148,27 +184,20 @@ export function NewTabActions({
 
 function NewTabActionList({ actions }: NewTabActionListProps) {
   const [storedOrder, setStoredOrder] = useAtom(newTabActionOrderAtom);
-  const { ordered, normalizedOrder } = useMemo(
+  const { normalizedOrder } = useMemo(
     () =>
       arrangeByStoredOrder({
-        items: actions.map((action) => action.id),
-        getId: (id) => id,
+        items: actions,
+        getId: (action) => action.id,
         storedOrder,
       }),
     [actions, storedOrder],
   );
-  const orderedActions = useMemo(() => {
-    const byId = new Map(actions.map((action) => [action.id, action]));
-    return ordered.flatMap((id) => {
-      const action = byId.get(id);
-      return action ? [action] : [];
-    });
-  }, [actions, ordered]);
 
-  if (orderedActions.length < 2) {
+  if (actions.length < 2) {
     return (
       <div className="flex flex-col gap-px">
-        {orderedActions.map((action) => (
+        {actions.map((action) => (
           <NewTabActionRow key={action.id} action={action} />
         ))}
       </div>
@@ -177,7 +206,7 @@ function NewTabActionList({ actions }: NewTabActionListProps) {
 
   return (
     <ReorderableNewTabActionList
-      actions={orderedActions}
+      actions={actions}
       normalizedOrder={normalizedOrder}
       onOrderChange={setStoredOrder}
     />

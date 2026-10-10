@@ -33,11 +33,10 @@ function controllerArgs(
   visibility: PanelVisibility,
 ): ThreadTerminalControllerArgs {
   return {
-    canCreateTerminal: true,
     isPanelOpen: visibility.isPanelOpen,
     isPanelPersistedOpen: visibility.isPanelPersistedOpen,
-    syncThreadId: null,
     target: { kind: "thread", threadId: "thr_1" },
+    terminalId: session.id,
   };
 }
 
@@ -104,5 +103,26 @@ describe("useThreadTerminalController terminal view mounting", () => {
     expect(result.current.shouldMountTerminalView).toBe(false);
     rerender({ isPanelOpen: true, isPanelPersistedOpen: true });
     expect(result.current.shouldMountTerminalView).toBe(true);
+  });
+
+  it("never shows a sibling terminal in place of its own missing terminal", async () => {
+    const sibling = makeTerminalSession({
+      id: "term_sibling",
+      threadId: "thr_1",
+    });
+    vi.mocked(sdk.terminals.list).mockResolvedValue({ sessions: [sibling] });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadTerminalController(
+          controllerArgs({ isPanelOpen: true, isPanelPersistedOpen: true }),
+        ),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.terminals.list).toHaveBeenCalled();
+    });
+    expect(result.current.activeSession).toBeNull();
   });
 });

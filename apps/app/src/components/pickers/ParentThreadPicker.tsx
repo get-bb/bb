@@ -1,3 +1,5 @@
+import { ListLoadingPlaceholder } from "@/components/ui/ListLoadingPlaceholder";
+import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
 import { useCallback, useMemo, useState } from "react";
 import {
   Command,
@@ -7,7 +9,6 @@ import {
   CommandList,
 } from "@bb/shared-ui/command";
 import {
-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_ICON_SIZE_CLASS,
   COARSE_POINTER_TEXT_SM_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -93,30 +94,33 @@ export function ParentThreadPicker({
           />
           <Icon
             name="ChevronDown"
-            className={cn(
-              COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-              "text-muted-foreground",
-            )}
+            className="size-3 shrink-0 text-subtle-foreground max-md:pointer-coarse:size-5"
           />
         </button>
       </PopoverTrigger>
       <PopoverContent
+        mobileClassName={PICKER_MOBILE_CLASS_NAME}
         align="start"
-        className="w-72 p-0"
+        className="flex min-h-0 w-72 flex-col p-0 max-md:flex-1"
         mobileTitle="Assign parent thread"
       >
-        <Command label="Search parent threads" shouldFilter={false}>
+        <Command
+          label="Search parent threads"
+          shouldFilter={false}
+          className="min-h-0"
+        >
           <CommandInput
             aria-label="Search parent threads"
             placeholder="Search threads…"
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
-          <CommandList ref={listRef} className="max-h-72">
+          <CommandList
+            ref={listRef}
+            className="min-h-0 max-h-72 max-md:max-h-none max-md:flex-1"
+          >
             {isLoading ? (
-              <div className="px-3 py-2 text-sm text-muted-foreground">
-                Loading threads…
-              </div>
+              <ListLoadingPlaceholder label="Loading threads…" />
             ) : isError ? (
               <CommandGroup>
                 <CommandItem

@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import type { InstalledPlugin } from "@bb/server-contract";
-import {
-  pluginCatalogSearchQueryKey,
-  pluginListQueryKey,
-} from "@/hooks/queries/query-keys";
-import { appToast } from "@/components/ui/app-toast.js";
+import type { PluginInstallJob } from "@bb/server-contract";
+import { pluginInstallJobsQueryKey } from "@/hooks/queries/query-keys";
 import { AddPluginDialog } from "./AddPluginDialog";
 
 interface RecordedRequest {
@@ -63,40 +58,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const INSTALLED_PLUGIN_RESPONSE = {
-  ok: true,
-  plugin: {
-    id: "linear",
-    source: "npm:@bb-plugins/linear",
-    rootDir: "/plugins/linear",
-    version: "1.6.2",
-    provenance: "direct",
-    publisherLabel: null,
-    isOrphanedBuiltin: false,
-    sourceDisplay: "npm · @bb-plugins/linear · pinned",
-    updateState: {},
-    enabled: true,
-    description: "Linear integration",
-    name: "Linear",
-    screenshots: [],
-    collections: [],
-    icon: null,
-    iconUrl: null,
-    status: "running",
-    statusDetail: null,
-    handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
-    services: [],
-    schedules: [],
-    cliCommand: null,
-    capabilities: [],
-    hasSettings: false,
-    app: { hasApp: false, bundle: null },
-    logoUrl: null,
-    logoDarkUrl: null,
-    providerIds: [],
-    icons: {},
-  },
+const STARTED_JOB: PluginInstallJob = {
+  id: "job-1",
+  target: { kind: "catalog", entryId: "linear", marketplace: "bb-official" },
+  displayName: "Linear",
+  state: "queued",
 };
+
+const STARTED_JOB_RESPONSE = { ok: true, job: STARTED_JOB };
 
 afterEach(() => {
   cleanup();
@@ -105,8 +74,8 @@ afterEach(() => {
 });
 
 function stubFetch(
-  installBody: unknown = INSTALLED_PLUGIN_RESPONSE,
-  installStatus = 200,
+  installBody: unknown = STARTED_JOB_RESPONSE,
+  installStatus = 202,
 ): RecordedRequest[] {
   const requests: RecordedRequest[] = [];
   vi.stubGlobal(
@@ -130,16 +99,10 @@ function stubFetch(
 
 function renderDialog(
   initial?: Parameters<typeof AddPluginDialog>[0]["initial"],
-  onInstalled?: Parameters<typeof AddPluginDialog>[0]["onInstalled"],
 ) {
   const { wrapper } = createQueryClientTestHarness();
   return render(
-    <AddPluginDialog
-      open
-      onOpenChange={() => {}}
-      initial={initial}
-      onInstalled={onInstalled}
-    />,
+    <AddPluginDialog open onOpenChange={() => {}} initial={initial} />,
     { wrapper },
   );
 }
@@ -238,15 +201,19 @@ describe("AddPluginDialog", () => {
     });
   });
 
-  it("reports progress while an install is in flight", async () => {
-    let release: (() => void) | undefined;
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () =>
-        new Promise<Response>((resolve) => {
-          release = () => resolve(jsonResponse(INSTALLED_PLUGIN_RESPONSE));
-        }),
+  it("closes once the server accepts the install and records its job", async () => {
+    stubFetch();
+    const onOpenChange = vi.fn();
+    const onInstallStarted = vi.fn();
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    render(
+      <AddPluginDialog
+        open
+        onOpenChange={onOpenChange}
+        onInstallStarted={onInstallStarted}
+      />,
+      { wrapper },
     );
-    renderDialog();
 
     fireEvent.change(screen.getByLabelText("Plugin source"), {
       target: { value: "./plugins/linear" },
@@ -254,17 +221,12 @@ describe("AddPluginDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
 
     await vi.waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /installing plugin/i }),
-      ).toBeTruthy();
+      expect(onOpenChange).toHaveBeenCalledWith(false);
     });
-    expect(screen.getByRole("progressbar")).toBeTruthy();
-    expect(screen.queryByTestId("full-trust-warning")).toBeNull();
-
-    release?.();
-    await vi.waitFor(() => {
-      expect(screen.queryByRole("progressbar")).toBeNull();
-    });
+    expect(onInstallStarted).toHaveBeenCalledWith(STARTED_JOB);
+    expect(
+      queryClient.getQueryData<PluginInstallJob[]>(pluginInstallJobsQueryKey()),
+    ).toEqual([STARTED_JOB]);
   });
 
   it("describes each catalog source kind truthfully", () => {
@@ -393,81 +355,36 @@ describe("AddPluginDialog", () => {
     expect(document.querySelector(`img[src="${iconUrl}"]`)).not.toBeNull();
   });
 
-  it("returns the installed plugin so the caller can open canonical details", async () => {
-    stubFetch();
-    const onInstalled = vi.fn();
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData<InstalledPlugin[]>(pluginListQueryKey(true), []);
+  it("keeps the dialog open with the reason when the server refuses to start", async () => {
+    stubFetch({ error: 'unknown plugin catalog entry "linear"' }, 422);
+    const onOpenChange = vi.fn();
+    const { wrapper } = createQueryClientTestHarness();
     render(
       <AddPluginDialog
         open
-        onOpenChange={() => {}}
+        onOpenChange={onOpenChange}
         initial={{
           entryId: "linear",
           pluginId: "linear",
           marketplace: "bb-official",
           publisherLabel: "BB Official",
           displayName: "Linear",
-          icon: "Github",
+          icon: null,
           iconUrl: null,
           iconTinted: false,
           source: "builtin:linear",
         }}
-        onInstalled={(plugin) => {
-          onInstalled(plugin);
-          expect(
-            queryClient
-              .getQueryData<InstalledPlugin[]>(pluginListQueryKey(true))
-              ?.some((candidate) => candidate.id === plugin.id),
-          ).toBe(true);
-        }}
       />,
       { wrapper },
     );
-
     fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
 
     await vi.waitFor(() => {
-      expect(onInstalled).toHaveBeenCalledWith(
-        INSTALLED_PLUGIN_RESPONSE.plugin,
+      expect(screen.getByRole("alert").textContent).toBe(
+        'unknown plugin catalog entry "linear"',
       );
     });
-  });
-
-  it("names and links a catalog plugin when installation fails", async () => {
-    const errorToast = vi.spyOn(appToast, "error").mockReturnValue("toast");
-    stubFetch(
-      { ok: false, error: "requires bb >= 0.15 — you have 0.14.1" },
-      422,
-    );
-    renderDialog({
-      entryId: "linear",
-      pluginId: "linear",
-      marketplace: "bb-official",
-      publisherLabel: "BB Official",
-      displayName: "Linear",
-      icon: null,
-      iconUrl: null,
-      iconTinted: false,
-      source: "builtin:linear",
-    });
-    fireEvent.click(screen.getByRole("button", { name: /install linear/i }));
-
-    await vi.waitFor(() => {
-      expect(errorToast).toHaveBeenCalledTimes(1);
-    });
-    expect(screen.getByRole("alert").textContent).toBe(
-      "requires bb >= 0.15 — you have 0.14.1",
-    );
-    expect(errorToast.mock.calls[0]?.[0]).toBe("Plugin installation failed");
-    render(
-      <MemoryRouter>{errorToast.mock.calls[0]?.[1]?.description}</MemoryRouter>,
-    );
-    const pluginLink = screen.getByRole("link", { name: "Linear" });
-    expect(pluginLink.getAttribute("href")).toBe("/plugins/linear");
-    expect(pluginLink.parentElement?.textContent).toBe(
-      "Linear — requires bb >= 0.15 — you have 0.14.1",
-    );
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 
   it("shows a third-party listing's resolved source before confirming", async () => {
@@ -550,24 +467,5 @@ describe("AddPluginDialog", () => {
         request.url.startsWith("/api/v1/plugin-catalog/install-plan"),
       ),
     ).toBe(false);
-  });
-
-  it("invalidates catalog-search queries after a successful install", async () => {
-    stubFetch();
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-    queryClient.setQueryData(pluginCatalogSearchQueryKey(""), []);
-    render(<AddPluginDialog open onOpenChange={() => {}} />, { wrapper });
-
-    fireEvent.change(screen.getByLabelText("Plugin source"), {
-      target: { value: "npm:@bb-plugins/linear" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
-
-    await vi.waitFor(() => {
-      expect(
-        queryClient.getQueryState(pluginCatalogSearchQueryKey(""))
-          ?.isInvalidated,
-      ).toBe(true);
-    });
   });
 });

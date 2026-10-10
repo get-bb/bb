@@ -14,6 +14,7 @@ interface VoiceRecordingBarProps {
   isCompact: boolean;
   state: "recording" | "transcribing";
   stream: MediaStream | null;
+  microphoneWarning: string | null;
   submitIcon: IconName;
   onConfirm: () => void;
   onSend: () => void;
@@ -29,6 +30,7 @@ export function VoiceRecordingBar({
   isCompact,
   state,
   stream,
+  microphoneWarning,
   submitIcon,
   onConfirm,
   onSend,
@@ -70,6 +72,11 @@ export function VoiceRecordingBar({
           {isTranscribing ? "Transcribing" : "Recording"}
         </span>
       </div>
+      {state === "recording" && microphoneWarning ? (
+        <span role="status" className="sr-only">
+          {microphoneWarning}
+        </span>
+      ) : null}
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <TooltipTrigger asChild>

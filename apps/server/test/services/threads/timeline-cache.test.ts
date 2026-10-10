@@ -31,6 +31,8 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    providerCommands: null,
+    sessionOptions: null,
     modelFallback: null,
     maxSeq: 0,
     timelinePage: {
@@ -55,7 +57,9 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   environmentId: null,
   page: latestPage,
   includeNestedRows: false,
+  deferContent: false,
   summaryOnly: false,
+  includeClearedContextHistory: false,
   includeDiagnosticOperations: false,
   completedTurnDisplay: "collapse",
 };

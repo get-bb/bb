@@ -2,6 +2,7 @@ import type {
   BbSdkAreas,
   ThreadForkArgs,
   ThreadMutationResult,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
@@ -16,13 +17,30 @@ import {
 } from "@/hooks/cache-owners/environment-workspace-cache-owner";
 import {
   applyThreadMetadataBatchResult,
+  applyPinnedThreadOrderResult,
+  beginArchiveEnvironmentThreadsTransaction,
+  rollbackArchiveThreadsTransaction,
+  settleArchiveThreadsTransaction,
   beginThreadMetadataBatchTransaction,
+  beginUnarchiveThreadTransaction,
+  rollbackThreadListMutationTransaction,
+  settleThreadListMembershipMutation,
   invalidateThreadMetadataBatch,
   rollbackThreadMetadataBatchTransaction,
+  applyThreadReadStateResult,
+  beginThreadReadStateTransaction,
+  rollbackThreadReadStateTransaction,
+  settleThreadReadStateTransaction,
 } from "@/hooks/cache-owners/thread-state-cache-owner";
 
-interface PendingThreadUpdate {
+import {
+  applySidebarSectionCreateResult,
+  beginSidebarGroupTransaction,
+} from "@/hooks/cache-owners/sidebar-group-cache-owner";
+
+interface PendingThreadMutation {
   args: ThreadUpdateArgs;
+  operation: "update" | "pin" | "unpin";
   reject: (reason: unknown) => void;
   resolve: (thread: ThreadMutationResult) => void;
 }
@@ -35,11 +53,11 @@ function hasThreadMetadataUpdate(args: ThreadUpdateArgs): boolean {
   );
 }
 
-function createOptimisticThreadUpdateBatcher(
+function createOptimisticThreadMutationBatcher(
   sdk: BbSdkAreas,
   queryClient: QueryClient,
-): (args: ThreadUpdateArgs) => Promise<ThreadMutationResult> {
-  let pending: PendingThreadUpdate[] = [];
+): Pick<BbSdkAreas["threads"], "update" | "pin" | "unpin"> {
+  let pending: PendingThreadMutation[] = [];
   let scheduled = false;
 
   const flush = async () => {
@@ -50,11 +68,16 @@ function createOptimisticThreadUpdateBatcher(
     try {
       transaction = await beginThreadMetadataBatchTransaction({
         queryClient,
-        updates: batch.map(({ args }) => ({
+        updates: batch.map(({ args, operation }) => ({
           threadId: args.threadId,
           title: args.title,
           sectionId: args.sectionId,
           parentThreadId: args.parentThreadId,
+          ...(operation === "pin"
+            ? { pinnedAt: Date.now() }
+            : operation === "unpin"
+              ? { pinnedAt: null }
+              : {}),
         })),
       });
     } catch (error) {
@@ -62,9 +85,21 @@ function createOptimisticThreadUpdateBatcher(
       return;
     }
 
+    const previousByThread = new Map<string, Promise<ThreadMutationResult>>();
     const results = await Promise.allSettled(
-      batch.map(({ args }) => sdk.threads.update(args)),
+      batch.map(({ args, operation }) => {
+        const request = (
+          previousByThread.get(args.threadId) ?? Promise.resolve()
+        ).then(() =>
+          operation === "update"
+            ? sdk.threads.update(args)
+            : sdk.threads[operation]({ threadId: args.threadId }),
+        );
+        previousByThread.set(args.threadId, request);
+        return request;
+      }),
     );
+    transaction.releasePendingPatches();
     const fulfilledThreads = results.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : [],
     );
@@ -88,15 +123,47 @@ function createOptimisticThreadUpdateBatcher(
     });
   };
 
-  return (args) => {
-    if (!hasThreadMetadataUpdate(args)) return sdk.threads.update(args);
-    return new Promise<ThreadMutationResult>((resolve, reject) => {
-      pending.push({ args, reject, resolve });
+  const enqueue = (
+    operation: PendingThreadMutation["operation"],
+    args: ThreadUpdateArgs,
+  ) =>
+    new Promise<ThreadMutationResult>((resolve, reject) => {
+      pending.push({ operation, args, reject, resolve });
       if (scheduled) return;
       scheduled = true;
       queueMicrotask(() => void flush());
     });
+  return {
+    update: (args) =>
+      hasThreadMetadataUpdate(args)
+        ? enqueue("update", args)
+        : sdk.threads.update(args),
+    pin: (args) => enqueue("pin", args),
+    unpin: (args) => enqueue("unpin", args),
   };
+}
+
+async function withOptimisticReadState(
+  queryClient: QueryClient,
+  threadId: string,
+  lastReadAt: number | null,
+  request: () => ReturnType<BbSdkAreas["threads"]["markRead"]>,
+): ReturnType<BbSdkAreas["threads"]["markRead"]> {
+  const transaction = await beginThreadReadStateTransaction({
+    lastReadAt,
+    queryClient,
+    threadId,
+  });
+  try {
+    const thread = await request();
+    applyThreadReadStateResult({ queryClient, thread });
+    return thread;
+  } catch (error) {
+    rollbackThreadReadStateTransaction({ queryClient, threadId, transaction });
+    throw error;
+  } finally {
+    settleThreadReadStateTransaction({ queryClient, transaction });
+  }
 }
 
 function withPluginThreadAttribution<
@@ -116,11 +183,36 @@ export function bindSdkToPlugin(
   pluginId: string,
   queryClient: QueryClient,
 ): PluginBrowserBbSdk {
-  const updateThread = createOptimisticThreadUpdateBatcher(sdk, queryClient);
+  const threadMutations = createOptimisticThreadMutationBatcher(
+    sdk,
+    queryClient,
+  );
   return {
     ...sdk,
     environments: {
       ...sdk.environments,
+      async archiveThreads(args) {
+        const transaction = await beginArchiveEnvironmentThreadsTransaction({
+          environmentId: args.environmentId,
+          queryClient,
+        });
+        let response:
+          | Awaited<ReturnType<typeof sdk.environments.archiveThreads>>
+          | undefined;
+        try {
+          response = await sdk.environments.archiveThreads(args);
+          return response;
+        } catch (error) {
+          rollbackArchiveThreadsTransaction({ queryClient, transaction });
+          throw error;
+        } finally {
+          settleArchiveThreadsTransaction({
+            queryClient,
+            response,
+            transaction,
+          });
+        }
+      },
       async update(args) {
         const transaction =
           args.name === undefined
@@ -147,15 +239,158 @@ export function bindSdkToPlugin(
         }
       },
     },
+    projects: {
+      ...sdk.projects,
+      async update(args) {
+        const transaction =
+          args.name === undefined
+            ? undefined
+            : await beginSidebarGroupTransaction({
+                queryClient,
+                mutation: {
+                  kind: "project",
+                  id: args.projectId,
+                  name: args.name,
+                },
+              });
+        try {
+          return await sdk.projects.update(args);
+        } catch (error) {
+          transaction?.rollback();
+          throw error;
+        } finally {
+          transaction?.settle();
+        }
+      },
+      async delete(args) {
+        const transaction = await beginSidebarGroupTransaction({
+          queryClient,
+          mutation: { kind: "project", id: args.projectId, name: null },
+        });
+        try {
+          return await sdk.projects.delete(args);
+        } catch (error) {
+          transaction.rollback();
+          throw error;
+        } finally {
+          transaction.settle();
+        }
+      },
+    },
+    hosts: {
+      ...sdk.hosts,
+      async update(args) {
+        const transaction =
+          args.name === undefined
+            ? undefined
+            : await beginSidebarGroupTransaction({
+                queryClient,
+                mutation: { kind: "host", id: args.hostId, name: args.name },
+              });
+        try {
+          return await sdk.hosts.update(args);
+        } catch (error) {
+          transaction?.rollback();
+          throw error;
+        } finally {
+          transaction?.settle();
+        }
+      },
+    },
+    threadSections: {
+      ...sdk.threadSections,
+      async create(args) {
+        const section = await sdk.threadSections.create(args);
+        applySidebarSectionCreateResult({ queryClient, section });
+        return section;
+      },
+      async update(args) {
+        const transaction = await beginSidebarGroupTransaction({
+          queryClient,
+          mutation: { kind: "section", id: args.id, name: args.name },
+        });
+        try {
+          return await sdk.threadSections.update(args);
+        } catch (error) {
+          transaction.rollback();
+          throw error;
+        } finally {
+          transaction.settle();
+        }
+      },
+      async delete(args) {
+        const transaction = await beginSidebarGroupTransaction({
+          queryClient,
+          mutation: { kind: "section", id: args.id, name: null },
+        });
+        try {
+          return await sdk.threadSections.delete(args);
+        } catch (error) {
+          transaction.rollback();
+          throw error;
+        } finally {
+          transaction.settle();
+        }
+      },
+    },
     threads: {
       ...sdk.threads,
-      update: updateThread,
+      ...threadMutations,
+      markRead(args) {
+        return withOptimisticReadState(
+          queryClient,
+          args.threadId,
+          Date.now(),
+          () => sdk.threads.markRead(args),
+        );
+      },
+      markUnread(args) {
+        return withOptimisticReadState(queryClient, args.threadId, null, () =>
+          sdk.threads.markUnread(args),
+        );
+      },
+      async reorderPinned(args) {
+        const orderedRoots = await sdk.threads.reorderPinned(args);
+        applyPinnedThreadOrderResult({ queryClient, orderedRoots });
+        return orderedRoots;
+      },
+      async unarchive(args) {
+        const transaction = await beginUnarchiveThreadTransaction({
+          queryClient,
+          threadId: args.threadId,
+        });
+        try {
+          return await sdk.threads.unarchive(args);
+        } catch (error) {
+          rollbackThreadListMutationTransaction({
+            queryClient,
+            threadId: args.threadId,
+            transaction,
+          });
+          throw error;
+        } finally {
+          settleThreadListMembershipMutation({
+            queryClient,
+            threadId: args.threadId,
+          });
+        }
+      },
       getPluginMetadata(
         args: Omit<ThreadPluginMetadataArgs, "pluginId"> & {
           pluginId?: string;
         },
       ) {
         return sdk.threads.getPluginMetadata({
+          ...args,
+          pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
         });

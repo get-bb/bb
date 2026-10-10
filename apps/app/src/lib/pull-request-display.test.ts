@@ -1,9 +1,11 @@
 import type { ThreadPullRequest } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
-  getPullRequestAttentionDisplay,
   getPullRequestGithubCheckStatus,
+  describePullRequestStatus,
+  getPullRequestNextStep,
   getPullRequestStateDisplay,
+  isPullRequestAutoMergeOn,
 } from "./pull-request-display";
 
 function pullRequest(
@@ -39,23 +41,89 @@ function pullRequest(
 
 describe("pull request signals", () => {
   it.each([
-    ["blocked", "success", "text-attention"],
-    ["review_requested", "success", "text-attention"],
-    ["checks_pending", "success", "text-attention"],
-    ["queued", "success", "text-attention"],
-    ["conflicts", "success", "text-destructive"],
-    ["changes_requested", "success", "text-destructive"],
-    ["checks_failed", "success", "text-destructive"],
-    ["ready_to_merge", "success", "text-success"],
-    ["none", "success", "text-muted-foreground"],
+    ["checks_failed", "failing", "Checks failing", "action"],
+    ["changes_requested", "passing", "Changes requested", "action"],
+    ["conflicts", "passing", "Conflicts with main", "action"],
+    ["checks_pending", "pending", "Checks running", "waiting"],
+    ["review_requested", "passing", "Review requested", "waiting"],
+    ["queued", "passing", "Queued to merge", "waiting"],
+    ["ready_to_merge", "passing", "Ready to merge", "ready"],
+    ["none", "no_checks", "No checks", "waiting"],
+    ["draft", "pending", "Checks running", "waiting"],
+    ["draft", "unknown", "Checks unknown", "waiting"],
   ] as const)(
-    "keeps passing checks separate from %s attention",
-    (attention, badge, color) => {
+    "names one next step for %s with %s checks",
+    (attention, checksState, label, tone) => {
       const pr = pullRequest({ attention });
-      expect(getPullRequestGithubCheckStatus(pr)).toBe(badge);
-      expect(getPullRequestAttentionDisplay(pr).className).toBe(color);
+      pr.checks.state = checksState;
+      expect(getPullRequestNextStep(pr)).toMatchObject({ label, tone });
     },
   );
+
+  it.each([
+    ["BEHIND", "Behind main"],
+    ["HAS_HOOKS", "Blocked by hooks"],
+    ["BLOCKED", "Blocked by rules"],
+  ] as const)("explains a %s block", (mergeStateStatus, label) => {
+    const pr = pullRequest();
+    pr.mergeability.mergeStateStatus = mergeStateStatus;
+    expect(getPullRequestNextStep(pr)).toMatchObject({ label, tone: "action" });
+  });
+
+  it("marks only running checks as animated", () => {
+    const pending = pullRequest({ attention: "checks_pending" });
+    expect(getPullRequestNextStep(pending)).toMatchObject({
+      icon: "Clock",
+      running: true,
+    });
+    const passing = pullRequest({ attention: "none" });
+    expect(getPullRequestNextStep(passing)).toMatchObject({
+      icon: "CircleCheck",
+      running: false,
+    });
+    expect(getPullRequestNextStep(pullRequest())?.icon).toBeNull();
+  });
+
+  it("separates review required from a requested review", () => {
+    const pr = pullRequest({
+      attention: "review_requested",
+      review: { state: "review_required", reviewRequestCount: 0 },
+    });
+    expect(getPullRequestNextStep(pr)?.label).toBe("Review required");
+  });
+
+  it.each(["merged", "closed"] as const)(
+    "has no next step once a pull request is %s",
+    (state) => {
+      const pr = pullRequest({ state, attention: state, autoMerge: true });
+      expect(getPullRequestNextStep(pr)).toBeNull();
+      expect(isPullRequestAutoMergeOn(pr)).toBe(false);
+      expect(getPullRequestGithubCheckStatus(pr)).toBeNull();
+      expect(getPullRequestStateDisplay(pr).label).toBe(
+        state[0]!.toUpperCase() + state.slice(1),
+      );
+    },
+  );
+
+  it("describes lifecycle, next step, and auto-merge for assistive text", () => {
+    const pr = pullRequest({
+      state: "draft",
+      attention: "draft",
+      autoMerge: true,
+    });
+    expect(describePullRequestStatus(pr)).toBe("Draft, Checks passing");
+    const open = pullRequest({ autoMerge: true, attention: "queued" });
+    expect(describePullRequestStatus(open)).toBe(
+      "Open, Queued to merge, auto-merge on",
+    );
+  });
+
+  it("keeps auto-merge out of the next step", () => {
+    const pr = pullRequest({ autoMerge: true, attention: "checks_pending" });
+    pr.checks.state = "pending";
+    expect(getPullRequestNextStep(pr)?.label).toBe("Checks running");
+    expect(isPullRequestAutoMergeOn(pr)).toBe(true);
+  });
 
   it.each([
     ["passing", "success"],
@@ -63,79 +131,9 @@ describe("pull request signals", () => {
     ["pending", "pending"],
     ["no_checks", null],
     ["unknown", null],
-  ] as const)(
-    "uses checks %s for the favicon despite merge automation",
-    (state, status) => {
-      const pr = pullRequest({
-        autoMerge: true,
-        inMergeQueue: true,
-        attention: "queued",
-      });
-      pr.checks.state = state;
-      expect(getPullRequestGithubCheckStatus(pr)).toBe(status);
-    },
-  );
-
-  it("shows approved auto-merge waiting without suggesting manual merge", () => {
-    const pr = pullRequest({
-      autoMerge: true,
-      attention: "checks_pending",
-      checks: {
-        state: "pending",
-        totalCount: 1,
-        passedCount: 0,
-        failedCount: 0,
-        pendingCount: 1,
-      },
-    });
-    expect(getPullRequestAttentionDisplay(pr)).toMatchObject({
-      label: "Auto-merge on",
-      className: "text-attention",
-    });
-    expect(getPullRequestStateDisplay(pr)).toMatchObject({
-      icon: "GitPullRequestArrow",
-      className: "text-success",
-    });
-    const ready = { ...pr, attention: "ready_to_merge" as const };
-    expect(getPullRequestAttentionDisplay(ready).label).toBe("Auto-merge on");
-    expect(getPullRequestGithubCheckStatus(ready)).toBe("pending");
+  ] as const)("maps checks %s to the favicon badge", (state, status) => {
+    const pr = pullRequest();
+    pr.checks.state = state;
+    expect(getPullRequestGithubCheckStatus(pr)).toBe(status);
   });
-
-  it.each(["checks_failed", "conflicts", "changes_requested"] as const)(
-    "keeps %s ahead of automation labels",
-    (attention) => {
-      const pr = pullRequest({
-        autoMerge: true,
-        inMergeQueue: true,
-        attention,
-      });
-      expect(getPullRequestAttentionDisplay(pr)).toMatchObject({
-        label: {
-          checks_failed: "Checks failing",
-          conflicts: "Conflicts",
-          changes_requested: "Changes requested",
-        }[attention],
-        className: "text-destructive",
-      });
-      expect(getPullRequestGithubCheckStatus(pr)).toBe("success");
-    },
-  );
-
-  it.each(["merged", "closed", "draft"] as const)(
-    "preserves %s lifecycle with stale auto-merge metadata",
-    (state) => {
-      const pr = pullRequest({
-        state,
-        attention: state,
-        autoMerge: true,
-        inMergeQueue: true,
-      });
-      expect(getPullRequestStateDisplay(pr).label).toBe(
-        state[0]!.toUpperCase() + state.slice(1),
-      );
-      expect(getPullRequestGithubCheckStatus(pr)).toBe(
-        state === "draft" ? "success" : null,
-      );
-    },
-  );
 });

@@ -21,7 +21,11 @@ export interface BridgeDeltaEventCollector {
 export function createBridgeDeltaEventCollector(
   providerId = "pi",
 ): BridgeDeltaEventCollector {
-  const assembler = createDeltaAssembler({ providerId, textDeltaFlushMs: 0 });
+  const assembler = createDeltaAssembler({
+    providerId,
+    textDeltaFlushMs: 0,
+    now: () => 0,
+  });
   return {
     assembler,
     assembleMessage(message) {

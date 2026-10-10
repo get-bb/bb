@@ -1,3 +1,5 @@
+import { buildPendingSteerMessagesFromEvents } from "../src/build-thread-timeline.js";
+import { assertTimelineSourceOwnership } from "./timeline-source-ownership.js";
 import {
   buildThreadEvent,
   encodeClientTurnRequestIdNumber,
@@ -33,6 +35,7 @@ import type {
 } from "../src/event-projection-types.js";
 import {
   buildThreadTimelineFromEvents,
+  buildThreadTimelineTurnDetailsFromEvents,
   formatThreadTimelineText,
 } from "../src/index.js";
 import { EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT } from "../src/accepted-client-request-context.js";
@@ -1438,7 +1441,7 @@ export function flattenTimelineRows(
       return [row, ...flattenTimelineRows(row.children ?? [])];
     }
     if (row.kind === "work" && row.workKind === "delegation") {
-      return [row, ...flattenTimelineRows(row.childRows)];
+      return [row, ...flattenTimelineRows(row.childRows ?? [])];
     }
     return [row];
   });
@@ -1496,6 +1499,43 @@ export function renderTimelineFixture(
     },
   });
   const rows = timeline.rows;
+  const ownershipProjection =
+    includeNestedRows || args.projectionOptions.turnMessageDetail === "full"
+      ? projection
+      : buildEventProjection(decodedEvents, {
+          ...args.projectionOptions,
+          threadName: args.projectionOptions.threadName ?? "",
+          turnMessageDetail: "full",
+        });
+  const pendingMessages = buildPendingSteerMessagesFromEvents(
+    EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+    decodedEvents,
+    commonProjectionOptions,
+  );
+  const lazyRows = rows.map((row) => {
+    if (row.kind !== "turn") return row;
+    const details = buildThreadTimelineTurnDetailsFromEvents({
+      events: decodedEvents,
+      options: {
+        ...commonProjectionOptions,
+        sourceSeqStart: row.sourceSeqStart,
+        turnId: row.turnId,
+      },
+    });
+    if (details.kind !== "matched") {
+      throw new Error(`Missing lazy details for timeline summary ${row.id}`);
+    }
+    return { ...row, children: details.rows };
+  });
+  for (const candidateRows of [rows, lazyRows]) {
+    assertTimelineSourceOwnership(
+      decodedEvents,
+      ownershipProjection,
+      candidateRows,
+      pendingMessages,
+    );
+  }
+
   const messages = flattenEventProjectionMessagesDeep(projection);
   const text = formatThreadTimelineText(rows, {
     color: false,

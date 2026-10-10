@@ -79,8 +79,8 @@ function createHarness() {
   const store = createStore();
   const modeAtom = createSyncedPreferenceAtom("sidebar.organizationMode");
   const orderAtom = createSyncedPreferenceAtom("sidebar.sectionOrder");
-  const collapsedAtom = createSyncedPreferenceAtom("sidebar.collapsedProjects");
-  return { collapsedAtom, modeAtom, orderAtom, queryClient, store };
+  const hiddenFooterAtom = createSyncedPreferenceAtom("sidebar.hiddenFooterItems");
+  return { hiddenFooterAtom, modeAtom, orderAtom, queryClient, store };
 }
 
 describe("ui preferences sync", () => {
@@ -103,6 +103,24 @@ describe("ui preferences sync", () => {
 
   afterEach(() => {
     resetUiPreferencesSyncForTest();
+  });
+
+  it("hydrates a preference whose module loads after sync starts", () => {
+    const queryClient = new QueryClient();
+    const store = createStore();
+    setCachedUiPreferences(
+      queryClient,
+      serverResponse({
+        "infoPanel.collapsedSections": { revision: 3, value: ["commits"] },
+      }),
+    );
+    startUiPreferencesSync({ queryClient, store });
+
+    const collapsedSectionsAtom = createSyncedPreferenceAtom(
+      "infoPanel.collapsedSections",
+    );
+
+    expect(store.get(collapsedSectionsAtom)).toEqual(["commits"]);
   });
 
   it("retains a local section order when the initial cache lacks its entry", () => {
@@ -344,33 +362,33 @@ describe("ui preferences sync", () => {
   });
 
   it("composes functional updates queued behind an in-flight write into one request", async () => {
-    const { collapsedAtom, queryClient, store } = createHarness();
+    const { hiddenFooterAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     setCachedUiPreferences(
       queryClient,
       serverResponse({
-        "sidebar.collapsedProjects": { revision: 1, value: [] },
+        "sidebar.hiddenFooterItems": { revision: 1, value: [] },
       }),
     );
-    store.set(collapsedAtom, (current) => [...current, "prj_a"]);
-    store.set(collapsedAtom, (current) => [...current, "prj_b"]);
-    store.set(collapsedAtom, (current) =>
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_a"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_b"]);
+    store.set(hiddenFooterAtom, (current) =>
       current.filter((id) => id !== "prj_a"),
     );
-    expect(store.get(collapsedAtom)).toEqual(["prj_b"]);
+    expect(store.get(hiddenFooterAtom)).toEqual(["prj_b"]);
     await waitForUiPreferenceWrites();
     expect(mocks.set).toHaveBeenCalledTimes(2);
     expect(mocks.set).toHaveBeenNthCalledWith(1, {
       expectedRevision: 1,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       value: ["prj_a"],
     });
     expect(mocks.set).toHaveBeenNthCalledWith(2, {
       expectedRevision: 2,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       value: ["prj_b"],
     });
-    expect(store.get(collapsedAtom)).toEqual(["prj_b"]);
+    expect(store.get(hiddenFooterAtom)).toEqual(["prj_b"]);
   });
 
   it("skips a write whose value already matches the server", async () => {
@@ -448,12 +466,12 @@ describe("ui preferences sync", () => {
   });
 
   it("re-applies every queued functional update when their write conflicts", async () => {
-    const { collapsedAtom, queryClient, store } = createHarness();
+    const { hiddenFooterAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     setCachedUiPreferences(
       queryClient,
       serverResponse({
-        "sidebar.collapsedProjects": { revision: 1, value: [] },
+        "sidebar.hiddenFooterItems": { revision: 1, value: [] },
       }),
     );
     let releaseFirst: (() => void) | null = null;
@@ -463,7 +481,7 @@ describe("ui preferences sync", () => {
           new Promise((resolve) => {
             releaseFirst = () =>
               resolve({
-                key: "sidebar.collapsedProjects",
+                key: "sidebar.hiddenFooterItems",
                 revision: 2,
                 value: ["prj_a"],
               });
@@ -472,30 +490,30 @@ describe("ui preferences sync", () => {
       .mockRejectedValueOnce(conflict(3));
     mocks.list.mockResolvedValueOnce(
       serverResponse({
-        "sidebar.collapsedProjects": {
+        "sidebar.hiddenFooterItems": {
           revision: 3,
           value: ["prj_a", "remote"],
         },
       }),
     );
-    store.set(collapsedAtom, (current) => [...current, "prj_a"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_a"]);
     await vi.waitFor(() => expect(mocks.set).toHaveBeenCalledTimes(1));
-    store.set(collapsedAtom, (current) => [...current, "prj_b"]);
-    store.set(collapsedAtom, (current) => [...current, "prj_c"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_b"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_c"]);
     releaseFirst!();
     await waitForUiPreferenceWrites();
     expect(mocks.set).toHaveBeenCalledTimes(3);
     expect(mocks.set).toHaveBeenNthCalledWith(2, {
       expectedRevision: 2,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       value: ["prj_a", "prj_b", "prj_c"],
     });
     expect(mocks.set).toHaveBeenNthCalledWith(3, {
       expectedRevision: 3,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       value: ["prj_a", "remote", "prj_b", "prj_c"],
     });
-    expect(store.get(collapsedAtom)).toEqual([
+    expect(store.get(hiddenFooterAtom)).toEqual([
       "prj_a",
       "remote",
       "prj_b",
@@ -504,23 +522,23 @@ describe("ui preferences sync", () => {
   });
 
   it("evaluates a functional update against the server value when local state is stale", async () => {
-    const { collapsedAtom, queryClient, store } = createHarness();
-    store.set(collapsedAtom, ["stale_local"]);
+    const { hiddenFooterAtom, queryClient, store } = createHarness();
+    store.set(hiddenFooterAtom, ["stale_local"]);
     startUiPreferencesSync({ queryClient, store });
     mocks.list.mockResolvedValueOnce(
       serverResponse({
-        "sidebar.collapsedProjects": { revision: 4, value: ["remote"] },
+        "sidebar.hiddenFooterItems": { revision: 4, value: ["remote"] },
       }),
     );
-    store.set(collapsedAtom, (current) => [...current, "prj_a"]);
-    expect(store.get(collapsedAtom)).toEqual(["stale_local", "prj_a"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "prj_a"]);
+    expect(store.get(hiddenFooterAtom)).toEqual(["stale_local", "prj_a"]);
     await waitForUiPreferenceWrites();
     expect(mocks.set).toHaveBeenCalledWith({
       expectedRevision: 4,
-      key: "sidebar.collapsedProjects",
+      key: "sidebar.hiddenFooterItems",
       value: ["remote", "prj_a"],
     });
-    expect(store.get(collapsedAtom)).toEqual(["remote", "prj_a"]);
+    expect(store.get(hiddenFooterAtom)).toEqual(["remote", "prj_a"]);
   });
 
   it("applies a queued functional update on top of a conflicting in-flight write", async () => {
@@ -566,12 +584,12 @@ describe("ui preferences sync", () => {
   });
 
   it("reconciles the mirror to the cached entry once the pending write settles", async () => {
-    const { collapsedAtom, queryClient, store } = createHarness();
+    const { hiddenFooterAtom, queryClient, store } = createHarness();
     startUiPreferencesSync({ queryClient, store });
     setCachedUiPreferences(
       queryClient,
       serverResponse({
-        "sidebar.collapsedProjects": { revision: 1, value: [] },
+        "sidebar.hiddenFooterItems": { revision: 1, value: [] },
       }),
     );
     let release: (() => void) | null = null;
@@ -580,23 +598,23 @@ describe("ui preferences sync", () => {
         new Promise((resolve) => {
           release = () =>
             resolve({
-              key: "sidebar.collapsedProjects",
+              key: "sidebar.hiddenFooterItems",
               revision: 2,
               value: [],
             });
         }),
     );
-    store.set(collapsedAtom, (current) => [...current, "deleted"]);
+    store.set(hiddenFooterAtom, (current) => [...current, "deleted"]);
     await vi.waitFor(() => expect(mocks.set).toHaveBeenCalledTimes(1));
     const broadcast = serverResponse({
-      "sidebar.collapsedProjects": { revision: 2, value: [] },
+      "sidebar.hiddenFooterItems": { revision: 2, value: [] },
     });
     setCachedUiPreferences(queryClient, broadcast);
     reconcileUiPreferences(broadcast);
-    expect(store.get(collapsedAtom)).toEqual(["deleted"]);
+    expect(store.get(hiddenFooterAtom)).toEqual(["deleted"]);
     release!();
     await waitForUiPreferenceWrites();
-    expect(store.get(collapsedAtom)).toEqual([]);
+    expect(store.get(hiddenFooterAtom)).toEqual([]);
     expect(mocks.list).not.toHaveBeenCalled();
   });
 });

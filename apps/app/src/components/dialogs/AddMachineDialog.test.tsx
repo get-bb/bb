@@ -89,6 +89,7 @@ function stubManualLaunch(configure?: () => void) {
   vi.mocked(sdk.hosts.experimental_create).mockResolvedValue(reservedHost);
   vi.mocked(sdk.hosts.experimental_getEnrollmentCommand).mockResolvedValue({
     command: "bb machine enroll test",
+    windowsCommand: "irm windows-command | iex",
     expiresAt: Date.now() + 60_000,
   });
   vi.mocked(sdk.hosts.get).mockImplementation(() => new Promise(() => {}));
@@ -169,6 +170,7 @@ it("retrieves the enrollment command after asynchronous access preparation", asy
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
         command: "delayed enrollment command",
+        windowsCommand: "irm windows-command | iex",
         expiresAt: Date.now() + 60_000,
       });
     vi.mocked(sdk.hosts.get).mockResolvedValue({
@@ -187,6 +189,7 @@ it("marks a previously available command as used when the server withdraws it", 
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand)
       .mockResolvedValueOnce({
         command: "single-use enrollment command",
+        windowsCommand: "irm windows-command | iex",
         expiresAt: Date.now() + 60_000,
       })
       .mockResolvedValue(null);
@@ -250,6 +253,7 @@ it("reuses the launch key on retry and replaces it on regeneration without rando
     );
     vi.mocked(sdk.hosts.experimental_getEnrollmentCommand).mockResolvedValue({
       command: "expired enrollment command",
+      windowsCommand: "irm windows-command | iex",
       expiresAt: Date.now() - 1_000,
     });
   });

@@ -8,10 +8,16 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
+      "@/components/ui/icon": [
+        "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
+      ],
+      "@/components/ui/question-form-host": [
+        "../../packages/plugin-registry/flavors/components/ui/question-form-host.tsx"
+      ],
       "@/*": ["../../packages/shared-ui/src/*"]
     },
     "types": ["node"],
     "jsx": "react-jsx"
   },
-  "include": ["server.ts", "src", "vitest.config.ts", "app.tsx", "app.test.tsx"]
+  "include": ["server.ts", "app.tsx", "src", "vitest.config.ts", "app.test.tsx"]
 }

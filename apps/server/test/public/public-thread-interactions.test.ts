@@ -1308,7 +1308,7 @@ describe("public thread interaction routes", () => {
               command: "git push",
               cwd: "/tmp/project",
               status: "pending",
-              approvalStatus: "waiting_for_approval",
+              approvalStatus: null,
             }),
           ]),
         }),

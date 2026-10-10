@@ -1,6 +1,4 @@
-import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Thread } from "@bb/domain";
 import type {
   ThreadArchiveAllResponse,
   ThreadResponse,
@@ -18,7 +16,6 @@ import {
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
   beginUnarchiveThreadTransaction,
-  beginUnpinAndMoveThreadTransaction,
   beginUnpinThreadTransaction,
   rollbackArchiveThreadsTransaction,
   rollbackDeleteThreadTransaction,
@@ -29,6 +26,7 @@ import {
   settleDeleteThreadTransaction,
   settleThreadListMembershipMutation,
   settleThreadReadStateTransaction,
+  settleThreadPatchTransaction,
   type ArchiveThreadsTransaction,
   type DeleteThreadTransaction,
   type ThreadListMutationTransaction,
@@ -39,15 +37,6 @@ interface ThreadMutationRequest {
 }
 
 type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
-type UnpinAndMoveThreadMutationRequest = ThreadMutationRequest & {
-  sectionId: string | null;
-};
-
-interface MoveThreadToSectionRequest {
-  sectionId: string | null;
-  thread: Pick<Thread, "id" | "pinnedAt" | "sectionId">;
-}
-
 interface UpdateThreadMutationOptions {
   errorMessage?: string | undefined;
   lifecycleOperation?: LifecycleErrorOperation | undefined;
@@ -125,6 +114,9 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
     },
+    onSettled: (_data, _error, _variables, context) => {
+      settleThreadPatchTransaction(context);
+    },
   });
 }
 
@@ -153,7 +145,8 @@ export function usePinThread() {
     onSuccess: (thread) => {
       applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -183,75 +176,14 @@ export function useUnpinThread() {
     onSuccess: (thread) => {
       applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
       });
     },
   });
-}
-
-export function useUnpinAndMoveThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation<
-    ThreadResponse,
-    Error,
-    UnpinAndMoveThreadMutationRequest,
-    ThreadListMutationTransaction
-  >({
-    meta: {
-      errorMessage: "Failed to unpin and move thread.",
-    },
-    mutationFn: async ({ sectionId, id }) => {
-      await sdk.threads.unpin({ threadId: id });
-      return sdk.threads.update({ sectionId, threadId: id });
-    },
-    onMutate: async ({ sectionId, id }) =>
-      beginUnpinAndMoveThreadTransaction({
-        sectionId,
-        queryClient,
-        threadId: id,
-      }),
-    onError: (_error, variables, context) => {
-      rollbackThreadListMutationTransaction({
-        queryClient,
-        threadId: variables.id,
-        transaction: context,
-      });
-    },
-    onSuccess: (thread) => {
-      applyThreadPinStateResult({ queryClient, thread, pinSortKey: null });
-    },
-    onSettled: (_data, _error, variables) => {
-      settleThreadListMembershipMutation({
-        queryClient,
-        threadId: variables.id,
-      });
-    },
-  });
-}
-
-export function useMoveThreadToSection() {
-  const { mutate: updateThread } = useUpdateThread();
-  const { mutate: unpinThread } = useUnpinThread();
-  const { mutate: unpinAndMoveThread } = useUnpinAndMoveThread();
-
-  return useCallback(
-    ({ thread, sectionId }: MoveThreadToSectionRequest) => {
-      if (thread.pinnedAt !== null) {
-        if (thread.sectionId === sectionId) {
-          unpinThread({ id: thread.id });
-        } else {
-          unpinAndMoveThread({ id: thread.id, sectionId });
-        }
-      } else if (thread.sectionId !== sectionId) {
-        updateThread({ id: thread.id, sectionId });
-      }
-    },
-    [unpinAndMoveThread, unpinThread, updateThread],
-  );
 }
 
 export function useArchiveThreadAndChildren() {
@@ -315,7 +247,8 @@ export function useUnarchiveThread() {
         transaction: context,
       });
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: (_data, _error, variables, context) => {
+      settleThreadPatchTransaction(context);
       settleThreadListMembershipMutation({
         queryClient,
         threadId: variables.id,
@@ -354,10 +287,9 @@ export function useDeleteThread() {
     },
     onMutate: async ({ id }): Promise<DeleteThreadTransaction> =>
       beginDeleteThreadTransaction({ queryClient, threadId: id }),
-    onError: (_error, variables, context) => {
+    onError: (_error, _variables, context) => {
       rollbackDeleteThreadTransaction({
         queryClient,
-        threadId: variables.id,
         transaction: context,
       });
     },

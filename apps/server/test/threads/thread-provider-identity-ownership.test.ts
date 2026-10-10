@@ -11,6 +11,7 @@ import {
 import {
   type HostRpcHandlerResult,
   registerHostRpcResponder,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
 } from "../helpers/host-rpc.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
@@ -326,15 +327,9 @@ describe("provider session ownership on dispatch", () => {
                 result: { providerThreadId: "session-fresh" },
               };
             case "turn.submit":
-              return { ok: true, result: {} };
-            case "host.list_files":
-              return { ok: true, result: { files: [], truncated: false } };
-            case "host.read_file":
-              return {
-                ok: false,
-                errorCode: "ENOENT",
-                errorMessage: "Missing",
-              };
+              return { ok: true, result: { trace: { spans: [] } } };
+            case "host.read_workspace_agent_context":
+              return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
             default:
               throw new Error(`Unexpected command: ${command.type}`);
           }

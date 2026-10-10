@@ -66,6 +66,9 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
+  public readonly themeColorListeners: Array<
+    (event: Event, color: string | null) => void
+  > = [];
 
   constructor(id: number) {
     this.id = id;
@@ -77,10 +80,21 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     }
   }
 
-  on(...args: Parameters<DesktopContextMenuWebContents["on"]>): void {
+  on(...args: Parameters<DesktopContextMenuWebContents["on"]>): void;
+  on(
+    eventName: "did-change-theme-color",
+    listener: (event: Event, color: string | null) => void,
+  ): void;
+  on(
+    ...args:
+      | Parameters<DesktopContextMenuWebContents["on"]>
+      | ["did-change-theme-color", (event: Event, color: string | null) => void]
+  ): void {
     const [eventName, listener] = args;
     if (eventName === "context-menu") {
       this.contextMenuListeners.push(listener);
+    } else {
+      this.themeColorListeners.push(listener);
     }
   }
 
@@ -102,6 +116,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
   public readonly loadedUrls: string[] = [];
   public readonly options: BrowserWindowConstructorOptions;
   public readonly webContents: FakeDesktopWindowWebContents;
+  public backgroundColor: string;
   public fullScreen = false;
   public maximized = false;
   public minimized = false;
@@ -113,6 +128,7 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
 
   constructor(args: FakeDesktopWindowArgs) {
     this.options = args.options;
+    this.backgroundColor = args.options.backgroundColor ?? "#ffffff";
     this.id = FakeDesktopWindow.nextWindowId;
     FakeDesktopWindow.nextWindowId += 1;
     this.webContents = new FakeDesktopWindowWebContents(
@@ -190,6 +206,10 @@ class FakeDesktopWindow implements DesktopBrowserWindow {
     this.minimized = false;
   }
 
+  setBackgroundColor(color: string): void {
+    this.backgroundColor = color;
+  }
+
   setFullScreen(isFullScreen: boolean): void {
     this.fullScreen = isFullScreen;
   }
@@ -227,6 +247,9 @@ async function createFactoryHarness(
     isMac: true,
     isLinuxTransparent: false,
     isLinuxFrameless: false,
+    shouldUseDarkColors() {
+      return true;
+    },
     isQuitting() {
       return false;
     },
@@ -239,6 +262,41 @@ async function createFactoryHarness(
 }
 
 describe("desktop window factory", () => {
+  it.each([true, false])(
+    "matches each window's page color without resetting on missing metadata (dark: %s)",
+    async (dark) => {
+      const { createdWindows, factory } = await createFactoryHarness({
+        shouldUseDarkColors: () => dark,
+      });
+      await factory.createWindow({ initialUrl: null, stateKey: null });
+      await factory.createWindow({ initialUrl: null, stateKey: null });
+      const [first, second] = createdWindows;
+      if (!first || !second) throw new Error("Expected two windows");
+      expect(first.backgroundColor).toBe(dark ? "#151515" : "#ffffff");
+      for (const color of ["#151515", "#ffffff", "#29344a", null]) {
+        for (const listener of first.webContents.themeColorListeners) {
+          listener(new Event("did-change-theme-color"), color);
+        }
+        expect(first.backgroundColor).toBe(color ?? "#29344a");
+        expect(second.backgroundColor).toBe(dark ? "#151515" : "#ffffff");
+      }
+    },
+  );
+
+  it("preserves transparent Linux backgrounds when the page supplies an opaque theme color", async () => {
+    const { createdWindows, factory } = await createFactoryHarness({
+      isMac: false,
+      isLinuxTransparent: true,
+    });
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+    const window = createdWindows[0];
+    if (!window) throw new Error("Expected a window");
+    for (const listener of window.webContents.themeColorListeners) {
+      listener(new Event("did-change-theme-color"), "#29344a");
+    }
+    expect(window.backgroundColor).toBe("#00000000");
+  });
+
   it("creates distinct windows that load the same URL", async () => {
     const generatedStateKeys: WindowStateKey[] = ["window-second"];
     const { createdWindows, factory, userDataPath } =
@@ -263,6 +321,7 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options.minHeight).toBe(MIN_WINDOW_HEIGHT);
     expect(createdWindows[0]?.options.minWidth).toBe(MIN_WINDOW_WIDTH);
     expect(createdWindows[0]?.options.titleBarStyle).toBe("hiddenInset");
+    expect(createdWindows[0]?.options).not.toHaveProperty("autoHideMenuBar");
     expect(createdWindows[0]?.options.webPreferences?.spellcheck).toBe(true);
     expect(createdWindows[0]?.webContents.spellCheckerEnabledValues).toEqual([
       true,
@@ -382,21 +441,25 @@ describe("desktop window factory", () => {
       name: "keeps the native frame",
       isLinuxFrameless: false,
       isLinuxTransparent: false,
-      present: {},
+      present: { autoHideMenuBar: true },
       absent: ["frame", "titleBarStyle", "trafficLightPosition"],
     },
     {
       name: "enables transparency when requested",
       isLinuxFrameless: false,
       isLinuxTransparent: true,
-      present: { transparent: true, backgroundColor: "#00000000" },
+      present: {
+        autoHideMenuBar: true,
+        transparent: true,
+        backgroundColor: "#00000000",
+      },
       absent: ["frame"],
     },
     {
       name: "removes the native frame when requested",
       isLinuxFrameless: true,
       isLinuxTransparent: false,
-      present: { frame: false },
+      present: { autoHideMenuBar: true, frame: false },
       absent: ["titleBarStyle", "trafficLightPosition"],
     },
   ])(

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +9,7 @@ import {
 import {
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
+  normalizeProviderNativeRoots,
 } from "@bb/domain";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
@@ -105,48 +105,45 @@ function registerRemoteRuntimeFileResponder(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: ({ command }) => {
-      if (command.type === "host.list_files") {
-        const prefix = `${command.path}${path.sep}`;
-        const files = [...args.files.keys()]
-          .filter((filePath) => filePath.startsWith(prefix))
-          .map((filePath) => path.relative(command.path, filePath))
-          .filter((relativePath) => {
-            const segments = relativePath.split(path.sep);
-            return segments.length === 2 && segments[1] === "SKILL.md";
-          })
-          .sort()
-          .slice(0, command.limit)
-          .map((relativePath) => ({
-            name: path.basename(relativePath),
-            path: relativePath.split(path.sep).join("/"),
-          }));
-        return { ok: true, result: { files, truncated: false } };
-      }
-      if (command.type === "host.read_file") {
-        const content = args.files.get(command.path);
-        if (content === undefined) {
-          return {
-            ok: false,
-            errorCode: "ENOENT",
-            errorMessage: `Path does not exist: ${command.path}`,
-          };
-        }
-        const bytes = Buffer.from(content, "utf8");
+      if (command.type === "host.read_workspace_agent_context") {
+        const skillsRootPath = path.posix.join(
+          command.rootPath,
+          ".bb",
+          "skills",
+        );
+        const projectSkills = [...args.files.entries()]
+          .map(([filePath, content]) => ({
+            segments: path.posix
+              .relative(skillsRootPath, filePath)
+              .split(path.posix.sep),
+            content,
+          }))
+          .filter(
+            ({ segments }) =>
+              segments.length === 2 &&
+              segments[0] !== ".." &&
+              segments[1] === "SKILL.md",
+          )
+          .map(({ segments, content }) => ({
+            kind: "file" as const,
+            directoryName: segments[0]!,
+            content,
+          }))
+          .sort((left, right) =>
+            left.directoryName.localeCompare(right.directoryName),
+          );
+        const agentInstructions =
+          args.files
+            .get(path.posix.join(command.rootPath, ".bb", "AGENTS.md"))
+            ?.trim() || null;
         return {
           ok: true,
           result: {
-            path: command.path,
-            content,
-            contentEncoding: "utf8",
-            sha256: createHash("sha256").update(bytes).digest("hex"),
-            sizeBytes: bytes.length,
+            agentInstructions,
+            projectSkills,
+            projectSkillsTruncated: false,
+            sharedSkills: args.sharedSkills ?? [],
           },
-        };
-      }
-      if (command.type === "host.list_skills") {
-        return {
-          ok: true,
-          result: { skills: args.sharedSkills ?? [] },
         };
       }
       throw new Error(`Unexpected remote runtime RPC ${command.type}`);
@@ -771,7 +768,7 @@ describe("thread runtime config", () => {
           { threadId: thread.id },
         ),
       ).rejects.toThrow(
-        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: low, medium, high, xhigh, max, ultra.",
+        "Provider codex does not support ultracode reasoning level. Supported reasoning levels: none, low, medium, high, xhigh, max, ultra.",
       );
     });
   });
@@ -1240,7 +1237,7 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-agents-workspace";
-      const agentInstructionsPath = path.join(
+      const agentInstructionsPath = path.posix.join(
         workspacePath,
         ".bb",
         "AGENTS.md",
@@ -1281,17 +1278,12 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).toContain(
         "# Remote Rules\n\nRead me from the remote daemon.",
       );
-      expect(responder.requests).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "host.read_file",
-              path: agentInstructionsPath,
-              rootPath: workspacePath,
-            }),
-          }),
-        ]),
-      );
+      expect(responder.requests.map(({ command }) => command)).toEqual([
+        expect.objectContaining({
+          type: "host.read_workspace_agent_context",
+          rootPath: workspacePath,
+        }),
+      ]);
     });
   });
 
@@ -1351,13 +1343,13 @@ describe("thread runtime config", () => {
         ...defaultExperiments,
       });
       const workspacePath = "/remote/runtime-skills-workspace";
-      const skillRootPath = path.join(
+      const skillRootPath = path.posix.join(
         workspacePath,
         ".bb",
         "skills",
         "remote-review",
       );
-      const skillFilePath = path.join(skillRootPath, "SKILL.md");
+      const skillFilePath = path.posix.join(skillRootPath, "SKILL.md");
       const responder = registerRemoteRuntimeFileResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
@@ -1402,23 +1394,12 @@ describe("thread runtime config", () => {
         sourceRootPath: skillRootPath,
         skillFilePath,
       });
-      expect(responder.requests).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "host.list_files",
-              path: path.join(workspacePath, ".bb", "skills"),
-            }),
-          }),
-          expect.objectContaining({
-            command: expect.objectContaining({
-              type: "host.read_file",
-              path: skillFilePath,
-              rootPath: workspacePath,
-            }),
-          }),
-        ]),
-      );
+      expect(responder.requests.map(({ command }) => command)).toEqual([
+        expect.objectContaining({
+          type: "host.read_workspace_agent_context",
+          rootPath: workspacePath,
+        }),
+      ]);
     });
   });
 
@@ -1435,14 +1416,14 @@ describe("thread runtime config", () => {
           id: "host-runtime-shared-skills",
         });
         const workspacePath = "/remote/runtime-shared-skills";
-        const skillFilePath = path.join(
+        const skillFilePath = path.posix.join(
           workspacePath,
           ".agents",
           "skills",
           "portable-review",
           "SKILL.md",
         );
-        registerRemoteRuntimeFileResponder(harness, {
+        const responder = registerRemoteRuntimeFileResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
           files: new Map(),
@@ -1482,9 +1463,26 @@ describe("thread runtime config", () => {
           sourceType: "shared-project",
           name: "portable-review",
           description: "Review code from one shared source.",
-          sourceRootPath: path.dirname(skillFilePath),
+          sourceRootPath: path.posix.dirname(skillFilePath),
           skillFilePath,
         });
+        expect(responder.requests.map(({ command }) => command)).toMatchObject([
+          {
+            type: "host.read_workspace_agent_context",
+            includeAgentInstructions: true,
+            projectSkillRead: {
+              limit: 1_000,
+              maxFileBytes: 10 * 1024 * 1024,
+              maxContentBytes: 32 * 1024 * 1024,
+              excludeNames: expect.arrayContaining(["venv", "node_modules"]),
+            },
+            rootPath: workspacePath,
+            sharedSkillRoots: normalizeProviderNativeRoots({
+              user: [".agents/skills"],
+              project: [".agents/skills"],
+            }),
+          },
+        ]);
       },
     );
   });

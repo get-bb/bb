@@ -26,19 +26,20 @@
     "bb-plugin-github": "workspace:*",
     "bb-plugin-inline-vis": "workspace:*",
     "bb-plugin-keep-awake": "workspace:*",
-    "bb-plugin-navigation": "workspace:*",
     "bb-plugin-memory": "workspace:*",
     "bb-plugin-monaco-editor": "workspace:*",
     "bb-plugin-pdf-preview": "workspace:*",
     "bb-plugin-plugin-api-docs": "workspace:*",
     "bb-plugin-plugin-api-tester": "workspace:*",
     "bb-plugin-provider-acp": "workspace:*",
+    "bb-plugin-bb--provider-acp-next": "workspace:*",
     "bb-plugin-provider-claude-code": "workspace:*",
     "bb-plugin-provider-codex": "workspace:*",
     "bb-plugin-provider-pi": "workspace:*",
     "bb-plugin-provider-retry": "workspace:*",
     "bb-plugin-bb--provider-usage": "workspace:*",
     "bb-plugin-push-notifications": "workspace:*",
+    "bb-plugin-bb--prompt-library": "workspace:*",
     "bb-plugin-scheduled-send": "workspace:*",
     "bb-plugin-secrets": "workspace:*",
     "bb-plugin-side-chat": "workspace:*",
@@ -46,6 +47,7 @@
     "bb-plugin-tasks": "workspace:*",
     "bb-plugin-theme-preview": "workspace:*",
     "bb-plugin-thread-list": "workspace:*",
-    "bb-plugin-workflows": "workspace:*"
+    "bb-plugin-workflows": "workspace:*",
+    "bb-plugin-bb--storage-retention": "workspace:*"
   }
 }

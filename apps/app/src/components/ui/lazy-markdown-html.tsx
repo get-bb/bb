@@ -4,7 +4,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 
 export const LazyMarkdownHtml = defineSplit<Options>({
   id: "markdown-html",
-  preload: "render",
+  tier: "intent",
   load: () => import("./markdown-html").then((module) => module.MarkdownHtml),
   loading: (props) => (
     <>

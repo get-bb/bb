@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_copyToClipboard,
   UrlLink as UrlLink,
   useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
@@ -333,17 +335,16 @@ function UrlHero({ url, showOpen }: { url: string; showOpen: boolean }) {
   }, []);
 
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(url).then(
-      () => {
-        setCopyState("copied");
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
-      },
-      () => {
+    void experimental_copyToClipboard({ text: url }).then((copied) => {
+      if (!copied) {
         selectUrl();
         setCopyState("manual");
-      },
-    );
+        return;
+      }
+      setCopyState("copied");
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopyState("idle"), 1500);
+    });
   }, [url, selectUrl]);
 
   return (
@@ -394,14 +395,12 @@ function QuietCopyButton({ text, label }: { text: string; label: string }) {
     [],
   );
   const copy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopied(true);
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), 1500);
-      },
-      () => {},
-    );
+    void experimental_copyToClipboard({ text }).then((written) => {
+      if (!written) return;
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    });
   }, [text]);
   return (
     <Button
@@ -575,69 +574,72 @@ function MobilePairingCard({
   const expired = remainingMs !== null && remainingMs <= 0;
   const qrText = encodeMobilePairingPayload(payload);
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-recessed/50 px-3 py-3 sm:flex-row sm:items-start">
-      <div
-        className={cn(
-          "shrink-0 self-center sm:self-start",
-          expired && "opacity-40 saturate-0",
-        )}
-      >
-        <QrCodeImage
-          value={qrText}
-          alt="QR code to pair the bb mobile app"
-          className="size-40"
-        />
-      </div>
-      <div className="min-w-0 flex-1 space-y-2">
-        <p className="text-sm">
-          {expired
-            ? "Generate a new code, then scan it or enter it in the bb mobile app."
-            : "Scan this with the bb mobile app, or enter the code by hand."}
-        </p>
-        <div className="flex max-w-xs items-center gap-1 rounded-lg border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate font-mono text-sm font-medium tracking-widest",
-              expired
-                ? "text-muted-foreground line-through"
-                : "text-foreground",
-            )}
-            aria-label="Mobile pairing code"
-          >
-            {payload.code}
-          </span>
-          {expired ? null : (
-            <QuietCopyButton text={payload.code} label="Copy pairing code" />
+    <div className="@container/connect-pairing min-w-0">
+      <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-recessed/50 px-3 py-3 @min-[32rem]/connect-pairing:flex-row @min-[32rem]/connect-pairing:items-start">
+        <div
+          className={cn(
+            "shrink-0 self-center @min-[32rem]/connect-pairing:self-start",
+            expired && "opacity-40 saturate-0",
           )}
+        >
+          <QrCodeImage
+            value={qrText}
+            alt="QR code to pair the bb mobile app"
+            className="size-40"
+          />
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle-foreground">
-          {expired ? (
-            <>
-              <span>Code expired</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                disabled={minting}
-                onClick={onRenew}
-              >
-                {minting ? (
-                  <Icon name="Spinner" className="size-4 animate-spin" />
-                ) : null}
-                Generate a new code
-              </Button>
-            </>
-          ) : remainingMs !== null ? (
-            <span className="tabular-nums">
-              Code expires in {formatCountdown(remainingMs)}
+        <div className="min-w-0 flex-1 space-y-2">
+          <p className="text-sm">
+            {expired
+              ? "Generate a new code, then scan it or enter it in the bb mobile app."
+              : "Scan this with the bb mobile app, or enter the code by hand."}
+          </p>
+          <div className="flex max-w-xs items-center gap-1 rounded-lg border border-border bg-surface-recessed py-1 pl-3.5 pr-1">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate font-mono text-sm font-medium tracking-widest",
+                expired
+                  ? "text-muted-foreground line-through"
+                  : "text-foreground",
+              )}
+              aria-label="Mobile pairing code"
+            >
+              {payload.code}
             </span>
-          ) : null}
+            {expired ? null : (
+              <QuietCopyButton text={payload.code} label="Copy pairing code" />
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-subtle-foreground">
+            {expired ? (
+              <>
+                <span>Code expired</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  disabled={minting}
+                  onClick={onRenew}
+                >
+                  {minting ? (
+                    <Icon name="Spinner" className="size-4 animate-spin" />
+                  ) : null}
+                  Generate a new code
+                </Button>
+              </>
+            ) : remainingMs !== null ? (
+              <span className="tabular-nums">
+                Code expires in {formatCountdown(remainingMs)}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-subtle-foreground/75">
+            {expired ? "Each new code works once." : "This code works once."}{" "}
+            You can revoke your phone’s access from the {dashboardHost}{" "}
+            dashboard.
+          </p>
         </div>
-        <p className="text-xs text-subtle-foreground/75">
-          {expired ? "Each new code works once." : "This code works once."} You
-          can revoke your phone’s access from the {dashboardHost} dashboard.
-        </p>
       </div>
     </div>
   );
@@ -1272,7 +1274,7 @@ function NotPairedContent({
   const dashboardHost = hostOf(dashboardUrl);
   const [codeOpen, setCodeOpen] = useState(false);
   return (
-    <div className="space-y-4">
+    <div className="@container/connect-controls space-y-4">
       <p className="text-sm text-muted-foreground">
         Remote access uses your bb account. Once you sign in, this bb gets a
         private URL like{" "}
@@ -1282,7 +1284,7 @@ function NotPairedContent({
         . Your code and data stay on this machine.
       </p>
 
-      <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex flex-col items-start gap-2 @min-[32rem]/connect-controls:flex-row @min-[32rem]/connect-controls:flex-wrap @min-[32rem]/connect-controls:items-center">
         <AccountSignInCard onSignedIn={onPaired} />
         <Button
           type="button"
@@ -1298,13 +1300,9 @@ function NotPairedContent({
         <PairForm dashboardUrl={dashboardUrl} onPaired={onPaired} />
       ) : null}
 
-      <p className="flex items-start gap-1.5 text-xs text-subtle-foreground">
-        <Icon
-          name="AlertTriangle"
-          className="mt-px size-3.5 shrink-0 opacity-70"
-        />
-        Anyone signed in to your {dashboardHost} account gets full control of
-        this bb. Manage the account under Plugins → bb account.
+      <p className="text-xs text-subtle-foreground">
+        Only your {dashboardHost} account can open this bb. Manage the account
+        under Plugins → bb account.
       </p>
     </div>
   );
@@ -1511,12 +1509,17 @@ function OffContent({
 
 function useConnectStatus() {
   const rpc = useRpc<typeof connectRpcContract>();
+  const connectionState = useRealtimeConnectionState();
+  const previousConnectionState = useRef(connectionState);
   const [status, setStatus] = useState<ConnectStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const latestStatusRequest = useRef(0);
 
   const refetch = useCallback(() => {
+    const request = ++latestStatusRequest.current;
     rpc.call("status").then(
       (result) => {
+        if (request !== latestStatusRequest.current) return;
         const next = asStatus(result);
         if (next !== null) {
           setStatus(next);
@@ -1525,13 +1528,24 @@ function useConnectStatus() {
           setLoadError("Unexpected status payload.");
         }
       },
-      (error: unknown) => setLoadError(errorText(error)),
+      (error: unknown) => {
+        if (request !== latestStatusRequest.current) return;
+        setLoadError(errorText(error));
+      },
     );
   }, [rpc]);
 
   useEffect(() => {
     refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    const previous = previousConnectionState.current;
+    previousConnectionState.current = connectionState;
+    if (connectionState === "connected" && previous !== "connected") {
+      refetch();
+    }
+  }, [connectionState, refetch]);
 
   useRealtime(CONNECT_REALTIME_CHANNEL, (payload) => {
     const next = asStatus(payload);

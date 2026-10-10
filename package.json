@@ -17,6 +17,7 @@
     "start:worktree-remote": "cross-env BB_SERVER_BIND_HOST=0.0.0.0 pnpm run start:worktree",
     "desktop": "cross-env NODE_ENV=production dotenv -c production -- node --conditions=source --import tsx packages/scripts/src/commands/run-desktop.ts",
     "desktop:worktree": "cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-desktop.ts --worktree",
+    "mobile:apk:dev": "pnpm exec turbo run build:android:dev --filter=@bb/mobile",
     "dev:remote": "cross-env BB_DEV_APP_HOST=0.0.0.0 BB_SERVER_BIND_HOST=0.0.0.0 pnpm run dev",
     "cloud:dev": "node --conditions=source --import tsx scripts/bb-cloud-dev.mjs",
     "dev:restart": "cross-env NODE_ENV=development node --conditions=source --import tsx packages/scripts/src/commands/request-dev-restart.ts both",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "4.1.1",
+    "@vitest/utils": "4.1.1",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.0",
@@ -91,7 +93,9 @@
       "react-native-screens@4.26.2": "patches/react-native-screens@4.26.2.patch",
       "@hugeicons/react-native@1.0.15": "patches/@hugeicons__react-native@1.0.15.patch",
       "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch",
-      "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch"
+      "@tiptap/extension-blockquote@3.26.0": "patches/@tiptap__extension-blockquote@3.26.0.patch",
+      "@better-auth/api-key@1.6.23": "patches/@better-auth__api-key@1.6.23.patch",
+      "@tanstack/virtual-core@3.17.1": "patches/@tanstack__virtual-core@3.17.1.patch"
     }
   }
 }

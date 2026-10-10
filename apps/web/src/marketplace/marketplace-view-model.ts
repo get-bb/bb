@@ -175,6 +175,23 @@ export function sortMarketplaceEntries(
   });
 }
 
+export function indexableMarketplaceCategories(
+  manifest: MarketplaceV2Manifest,
+): MarketplaceCategory[] {
+  const listed = new Set(
+    marketplaceCategoryOptions(manifest, manifest.plugins).map(
+      (option) => option.id,
+    ),
+  );
+  return manifest.categories.filter((category) => listed.has(category.id));
+}
+
+export function marketplaceIndexPath(categoryId: string | undefined): string {
+  return categoryId === undefined
+    ? "/marketplace"
+    : `/marketplace?category=${encodeURIComponent(categoryId)}`;
+}
+
 export function parseMarketplaceCategory(input: unknown): string | undefined {
   const values = Array.isArray(input) ? input : [input];
   return values.find(
@@ -196,6 +213,7 @@ export function marketplaceAuthorPath(github: string): string {
 }
 
 export function marketplaceAssetUrl(declared: string): string {
+  if (declared.startsWith("/") && !declared.startsWith("//")) return declared;
   return new URL(declared, "https://getbb.app/marketplace/v2/marketplace.json")
     .href;
 }
@@ -205,6 +223,9 @@ export function marketplaceInstallCommand(entryId: string): string {
 }
 
 export function marketplaceRepositoryUrl(entry: MarketplaceV2Entry): string {
+  if ("bundled" in entry.source) {
+    return `https://github.com/get-bb/bb/tree/main/plugins/${entry.source.bundled.plugin}`;
+  }
   if ("npm" in entry.source) {
     if (entry.source.npm.registry === undefined) {
       return `https://www.npmjs.com/package/${entry.source.npm.package}`;

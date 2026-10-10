@@ -284,6 +284,7 @@ type ExpectedHostsKey =
   | "delete"
   | "experimental_deleteOldServerCopy"
   | "directory"
+  | "experimental_discoverRepos"
   | "get"
   | "installProviderCli"
   | "list"
@@ -302,7 +303,10 @@ type ExpectedPluginsKey =
   | "experimental_discoverRpc"
   | "experimental_getSafeMode"
   | "experimental_setSafeMode"
+  | "experimental_pruneCache"
   | "applyUpdate"
+  | "experimental_startUpdate"
+  | "experimental_updateJobs"
   | "callRpc"
   | "catalog"
   | "checkUpdates"
@@ -311,17 +315,26 @@ type ExpectedPluginsKey =
   | "getSettings"
   | "getSource"
   | "install"
+  | "installJobs"
   | "list"
   | "listUpdateResults"
   | "marketplaces"
   | "reload"
   | "remove"
+  | "startInstall"
   | "token"
   | "updateSettings";
 
-type ExpectedPluginCatalogKey = "install" | "installPlan" | "search" | "status";
+type ExpectedPluginCatalogKey =
+  | "install"
+  | "installPlan"
+  | "search"
+  | "startInstall"
+  | "status";
 
 type ExpectedPluginMarketplacesKey = "add" | "list" | "refresh" | "remove";
+
+type ExpectedPluginInstallJobsKey = "cancel" | "get" | "list";
 
 type ExpectedExperimentalPromptHistoryKey = "list";
 
@@ -389,6 +402,9 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "experimental_listAncestors"
+  | "experimental_listDescendants"
+  | "experimental_listPluginMetadata"
   | "getPluginMetadata"
   | "updatePluginMetadata"
   | "context"
@@ -412,6 +428,7 @@ type ExpectedThreadsKey =
   | "listRunning"
   | "markRead"
   | "markUnread"
+  | "message"
   | "open"
   | "output"
   | "paneAction"
@@ -454,6 +471,8 @@ type ExpectedThreadInteractionsKey =
 type ExpectedThreadQueuedMessagesKey =
   | "create"
   | "delete"
+  | "experimental_holdForEdit"
+  | "experimental_releaseEditHold"
   | "list"
   | "reorder"
   | "send"
@@ -563,6 +582,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["plugins"]["marketplaces"]
     >().toEqualTypeOf<ExpectedPluginMarketplacesKey>();
+    expectTypeOf<
+      keyof RootBbSdk["plugins"]["installJobs"]
+    >().toEqualTypeOf<ExpectedPluginInstallJobsKey>();
     expectTypeOf<
       keyof RootBbSdk["projects"]
     >().toEqualTypeOf<ExpectedProjectsKey>();

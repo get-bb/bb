@@ -8,7 +8,7 @@ import {
 export function installedPluginCatalogEntry<
   Entry extends Pick<
     PluginCatalogSearchEntry,
-    "pluginId" | "entryId" | "marketplace" | "source"
+    "pluginId" | "entryId" | "marketplace" | "source" | "installed"
   >,
 >(
   plugin: Pick<
@@ -31,6 +31,15 @@ export function installedPluginCatalogEntry<
         (plugin.catalogEntryId === null ||
           entry.entryId === plugin.catalogEntryId),
     );
+  }
+  if (
+    plugin.catalogEntryId === null &&
+    plugin.catalogMarketplaceName === null
+  ) {
+    const listings = entries.filter(
+      (entry) => entry.pluginId === plugin.id && entry.installed,
+    );
+    if (listings.length === 1) return listings[0];
   }
   if (
     !allowSourceFallback &&

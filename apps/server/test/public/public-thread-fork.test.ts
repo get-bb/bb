@@ -68,6 +68,8 @@ function seedForkSource(
     permissionMode?: "accept-edits" | "auto" | "full";
     reasoningLevel?: string;
     serviceTier?: string;
+    title?: string | null;
+    titleFallback?: string | null;
   } = {},
 ) {
   const { host } = seedHostSession(harness.deps);
@@ -92,6 +94,10 @@ function seedForkSource(
   const sourceThread = seedThread(harness.deps, {
     environmentId: environment.id,
     projectId: project.id,
+    ...(args.title === undefined ? {} : { title: args.title }),
+    ...(args.titleFallback === undefined
+      ? {}
+      : { titleFallback: args.titleFallback }),
   });
   seedThreadRuntimeState(harness.deps, {
     environmentId: environment.id,
@@ -476,6 +482,76 @@ describe("public thread fork route", () => {
       });
     },
   );
+
+  it.each([
+    { source: { title: "foo" }, expected: "(1) foo" },
+    { source: { title: "(1) foo" }, expected: "(2) foo" },
+    { source: { title: "(9) foo" }, expected: "(10) foo" },
+    {
+      source: { title: "", titleFallback: "fix the flaky test" },
+      expected: "(1) fix the flaky test",
+    },
+  ])(
+    "numbers a visible fork after its source title: $expected",
+    async ({ source, expected }) => {
+      await withTestHarness(async (harness) => {
+        const { sourceThread } = seedForkSource(harness, source);
+
+        const response = await postFork(harness, {
+          sourceThreadId: sourceThread.id,
+        });
+
+        expect(response.status).toBe(201);
+        const fork = threadResponseSchema.parse(await readJson(response));
+        expect(fork.title).toBe(expected);
+        expect(getThread(harness.db, fork.id)?.title).toBe(expected);
+      });
+    },
+  );
+
+  it("keeps prompt-derived titling for a fork created with a first message", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness, { title: "foo" });
+
+      const fork = threadResponseSchema.parse(
+        await readJson(
+          await postFork(harness, {
+            sourceThreadId: sourceThread.id,
+            input: textInput("Try the other approach"),
+          }),
+        ),
+      );
+
+      expect(fork.title).toBeNull();
+      expect(fork.titleFallback).toBe("Try the other approach");
+    });
+  });
+
+  it("keeps an explicit fork title and leaves hidden forks untitled", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedForkSource(harness, { title: "foo" });
+
+      const titled = threadResponseSchema.parse(
+        await readJson(
+          await postFork(harness, {
+            sourceThreadId: sourceThread.id,
+            title: "Chosen title",
+          }),
+        ),
+      );
+      const hidden = threadResponseSchema.parse(
+        await readJson(
+          await postFork(harness, {
+            sourceThreadId: sourceThread.id,
+            visibility: "hidden",
+          }),
+        ),
+      );
+
+      expect(titled.title).toBe("Chosen title");
+      expect(hidden.title).toBeNull();
+    });
+  });
 
   it("runs optional input from the requested fork point", async () => {
     await withTestHarness(async (harness) => {

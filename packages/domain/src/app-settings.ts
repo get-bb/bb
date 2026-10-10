@@ -16,9 +16,11 @@ export const managedBranchPrefixSchema = z
 export const appSettingsSchema = z
   .object({
     showKeyboardHints: z.boolean(),
+    showGitChanges: z.boolean(),
     steerActiveThreadOnEnter: z.boolean(),
     confirmThreadArchive: z.boolean(),
     showDiagnosticEvents: z.boolean(),
+    keepHistoryAfterContextClear: z.boolean(),
     providerOrder: z.array(z.string().min(1)),
     defaultProviderId: z.string().min(1).nullable(),
     providerCompletedTurnDisplay: z.record(
@@ -43,15 +45,18 @@ export const appSettingsSchema = z
       .nullable(),
     machineGitCredentialsEnabled: z.boolean(),
     defaultMachineAccess: z.string().min(1).nullable(),
+    onboardingCompletedAt: z.string().min(1).nullable(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
+  showGitChanges: true,
   steerActiveThreadOnEnter: true,
   confirmThreadArchive: true,
   showDiagnosticEvents: false,
+  keepHistoryAfterContextClear: false,
   providerOrder: [],
   defaultProviderId: null,
   providerCompletedTurnDisplay: {},
@@ -62,6 +67,7 @@ export const defaultAppSettings: AppSettings = {
   machineServerUrl: null,
   defaultMachineAccess: null,
   machineGitCredentialsEnabled: true,
+  onboardingCompletedAt: null,
 };
 
 export const disabledProviderIdsSchema = z.array(z.string().min(1));
@@ -71,13 +77,19 @@ export const appSettingsUpdateSchema = z.union([
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
+    showGitChanges: z.boolean().optional(),
+    keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
+    onboardingCompletedAt: z.string().min(1).nullable().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
     allowFastServiceTier: z.boolean().optional(),
     telemetryEnabled: z.boolean().optional(),
     confirmThreadArchive: z.boolean().optional(),
+    showGitChanges: z.boolean().optional(),
+    keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
+    onboardingCompletedAt: z.string().min(1).nullable().optional(),
   }),
 ]);
 export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;

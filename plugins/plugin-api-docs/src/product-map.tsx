@@ -61,10 +61,13 @@ const DESKTOP_SLIDES: GuideSlide[] = SURFACE_GROUPS.map((group) => ({
 }));
 const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
   if (group.id === "composer") {
-    return [{
-      ...group,
-      blurb: "Plugins can add banners, actions, providers, and rich text to the prompt box.",
-    }];
+    return [
+      {
+        ...group,
+        blurb:
+          "Plugins can add banners, actions, providers, and rich text to the prompt box.",
+      },
+    ];
   }
   if (group.id === "app-shell") {
     return [
@@ -73,9 +76,14 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         title: "Sidebar",
         blurb: "Plugins can add navigation, thread status, and footer controls.",
         appShellScene: "navigation" as const,
-        surfaces: group.surfaces.filter((surface) => [
-          "sidebar-navigation", "nav-panel", "thread-row-status", "thread-list", "sidebar-footer",
-        ].includes(surface.id)),
+        surfaces: group.surfaces.filter((surface) =>
+          [
+            "nav-panel",
+            "thread-row-status",
+            "thread-list",
+            "sidebar-footer",
+          ].includes(surface.id),
+        ),
       },
       {
         ...group,
@@ -83,10 +91,17 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         title: "Thread",
         blurb: "Plugins can extend the thread header, conversation, and composer.",
         appShellScene: "conversation" as const,
-        surfaces: group.surfaces.filter((surface) => [
-          "thread-header", "timeline-renderers", "message-directives", "message-actions",
-          "pending-interaction", "app-overlay", "content-scripts",
-        ].includes(surface.id)),
+        surfaces: group.surfaces.filter((surface) =>
+          [
+            "thread-header",
+            "timeline-renderers",
+            "message-directives",
+            "message-actions",
+            "pending-interaction",
+            "app-overlay",
+            "content-scripts",
+          ].includes(surface.id),
+        ),
       },
       {
         ...group,
@@ -94,9 +109,14 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         title: "Side panel",
         blurb: "Explore plugin controls and content in the side panel’s tabs.",
         appShellScene: "panel" as const,
-        surfaces: group.surfaces.filter((surface) => [
-          "code-renderers", "browser-toolbar", "thread-panel", "file-opener",
-        ].includes(surface.id)),
+        surfaces: group.surfaces.filter((surface) =>
+          [
+            "code-renderers",
+            "browser-toolbar",
+            "thread-panel",
+            "file-opener",
+          ].includes(surface.id),
+        ),
       },
     ];
   }
@@ -104,7 +124,9 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
     return [
       {
         ...group,
-        surfaces: group.surfaces.filter((surface) => surface.id === "homepage-section"),
+        surfaces: group.surfaces.filter(
+          (surface) => surface.id === "homepage-section",
+        ),
       },
       {
         ...group,
@@ -112,7 +134,9 @@ const MOBILE_SLIDES: GuideSlide[] = DESKTOP_SLIDES.flatMap((group) => {
         title: "New thread actions",
         blurb: "Plugins can add an action to the new-thread panel launcher.",
         homePanel: true,
-        surfaces: group.surfaces.filter((surface) => surface.id === "new-thread-panel"),
+        surfaces: group.surfaces.filter(
+          (surface) => surface.id === "new-thread-panel",
+        ),
       },
     ];
   }
@@ -197,7 +221,7 @@ function PlatformSlide({ group }: { group: GuideSlide }) {
             <h3 className="text-xs font-medium uppercase tracking-wide text-subtle-foreground">
               {section.title}
             </h3>
-            <ul className="mt-1 grid gap-1.5 sm:grid-cols-2">
+            <ul className="mt-1 grid gap-1.5 @min-[40rem]/guide:grid-cols-2">
               {surfaces.map((surface) => (
                 <li key={surface.id} className="min-w-0">
                   <PlatformCard surface={surface} />
@@ -401,6 +425,87 @@ function SpatialFixture({
   );
 }
 
+const PHONE_COLUMN_WIDTH = 350;
+const PHONE_TOOLBAR_RESERVE = 72;
+
+function PhoneFixture({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({
+    scale: 1,
+    height: null as number | null,
+    offsetX: 0,
+  });
+
+  useBrowserLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const measure = () => {
+      const viewport = outer.closest<HTMLElement>(
+        "[data-guide-stage-viewport]",
+      );
+      const viewportHeight =
+        viewport?.clientHeight ?? document.documentElement.clientHeight;
+      const naturalHeight = inner.offsetHeight;
+      if (naturalHeight === 0 || outer.clientWidth === 0) return;
+      const scale = Math.min(
+        1,
+        outer.clientWidth / PHONE_COLUMN_WIDTH,
+        (viewportHeight - PHONE_TOOLBAR_RESERVE) / naturalHeight,
+      );
+      const height = Math.ceil(naturalHeight * scale);
+      const offsetX = Math.max(
+        0,
+        (outer.clientWidth - PHONE_COLUMN_WIDTH * scale) / 2,
+      );
+      setFit((current) =>
+        Math.abs(current.scale - scale) < 0.001 &&
+        current.height === height &&
+        Math.abs(current.offsetX - offsetX) < 0.5
+          ? current
+          : { scale, height, offsetX },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(outer);
+    observer.observe(inner);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={outerRef}
+      data-guide-responsive-strategy="mobile"
+      data-guide-scale={fit.scale.toFixed(4)}
+      className="w-full overflow-x-clip"
+      style={{ height: fit.height ?? undefined }}
+    >
+      <div
+        ref={innerRef}
+        className="origin-top-left"
+        style={
+          {
+            width: PHONE_COLUMN_WIDTH,
+            marginLeft: fit.offsetX,
+            transform: fit.scale === 1 ? undefined : `scale(${fit.scale})`,
+            [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(
+              fit.scale,
+            ),
+          } as CSSProperties
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function SlideContent({
   group,
   mobile = false,
@@ -410,7 +515,9 @@ function SlideContent({
 }) {
   switch (group.groupId) {
     case "app-shell":
-      return <AppShellWireframe mobile={mobile} mobileScene={group.appShellScene} />;
+      return (
+        <AppShellWireframe mobile={mobile} mobileScene={group.appShellScene} />
+      );
     case "command-palette":
       return <CommandPaletteWireframe mobile={mobile} />;
     case "composer":
@@ -463,20 +570,17 @@ function CardReserveProbe({ group }: { group: GuideSlide }) {
 function Slide({
   group,
   mobile,
-  viewportMobile,
+  compactLayout,
 }: {
   group: GuideSlide;
   mobile: boolean;
-  viewportMobile: boolean;
+  compactLayout: boolean;
 }) {
-  if (mobile && viewportMobile && group.id !== "headless") {
+  if (mobile && compactLayout && group.id !== "headless") {
     return (
-      <div
-        data-guide-responsive-strategy="mobile"
-        className="mx-auto w-full max-w-[430px]"
-      >
+      <PhoneFixture>
         <SlideContent group={group} mobile />
-      </div>
+      </PhoneFixture>
     );
   }
   if (fixtureResponsiveStrategy(group) === "reflow") {
@@ -489,7 +593,7 @@ function Slide({
   return (
     <>
       <SpatialFixture
-        band={mobile ? { min: 430, max: 430 } : FIXTURE_WIDTH_BANDS[group.groupId]}
+        band={mobile ? { min: 390, max: 390 } : FIXTURE_WIDTH_BANDS[group.groupId]}
         maxScale={mobile ? 1 : MAX_FIXTURE_SCALE}
       >
         <SlideContent group={group} mobile={mobile} />
@@ -499,7 +603,13 @@ function Slide({
   );
 }
 
-function SlideTitle({ title }: { title: string }) {
+function SlideTitle({
+  title,
+  brandMark,
+}: {
+  title: string;
+  brandMark?: ReactNode;
+}) {
   const parts = title.split(/\bbb\b/);
   if (parts.length === 1) {
     return <>{title}</>;
@@ -508,7 +618,9 @@ function SlideTitle({ title }: { title: string }) {
     <>
       {parts.map((part, index) => (
         <Fragment key={index}>
-          {index > 0 ? <span className="font-bold italic">bb</span> : null}
+          {index > 0
+            ? (brandMark ?? <span className="font-bold italic">bb</span>)
+            : null}
           {part}
         </Fragment>
       ))}
@@ -617,12 +729,16 @@ export function ProductMap({
   initialSlideId,
   onSlideChange,
   onCopyForAgent,
+  brandMark,
+  mobileOnlyOnCompactViewport = false,
 }: {
   pluginPageHref?: (displayName: string) => string | null;
   renderPluginIcon?: (displayName: string) => ReactNode;
   initialSlideId?: string;
   onSlideChange?: (slideId: string) => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
+  brandMark?: ReactNode;
+  mobileOnlyOnCompactViewport?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -638,17 +754,43 @@ export function ProductMap({
       typeof window !== "undefined" &&
       window.matchMedia?.("(max-width: 767px)").matches === true,
   );
+  const [compactContainer, setCompactContainer] = useState<boolean | null>(
+    null,
+  );
+  const compactLayout = compactContainer ?? viewportMobile;
+  useBrowserLayoutEffect(() => {
+    const container = containerRef.current;
+    if (container === null) return;
+    const measure = () => {
+      const width = container.getBoundingClientRect().width;
+      if (width > 0) setCompactContainer(width < 768);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
   const [displayMode, setDisplayMode] = useState<"mobile" | "desktop" | null>(
     null,
   );
+  const desktopLocked = mobileOnlyOnCompactViewport && viewportMobile;
   const mobile =
-    displayMode === null ? viewportMobile : displayMode === "mobile";
+    desktopLocked ||
+    (displayMode === null ? compactLayout : displayMode === "mobile");
   const slides = mobile ? MOBILE_SLIDES : DESKTOP_SLIDES;
-  const numbers = useMemo(() => new Map(
-    slides.filter((slide) => slide.groupId !== "headless").flatMap((slide) =>
-      slide.surfaces.map((surface, index) => [surface.id, index + 1] as const),
-    ),
-  ), [slides]);
+  const numbers = useMemo(
+    () =>
+      new Map(
+        slides
+          .filter((slide) => slide.groupId !== "headless")
+          .flatMap((slide) =>
+            slide.surfaces.map(
+              (surface, index) => [surface.id, index + 1] as const,
+            ),
+          ),
+      ),
+    [slides],
+  );
   useEffect(() => {
     const query = window.matchMedia?.("(max-width: 767px)");
     if (!query) return;
@@ -676,13 +818,18 @@ export function ProductMap({
     }
   }, [mobile, card.openId, slides, slideId, onSlideChange]);
   const selectedSlide = MOBILE_SLIDES.find((slide) => slide.id === slideId);
-  const index = Math.max(0, slides.findIndex((slide) =>
-    slide.id === slideId || (!mobile && slide.id === selectedSlide?.groupId),
-  ));
+  const index = Math.max(
+    0,
+    slides.findIndex(
+      (slide) =>
+        slide.id === slideId ||
+        (!mobile && slide.id === selectedSlide?.groupId),
+    ),
+  );
   const stage = useStageHeight(index, slideRefs);
 
   useEffect(() => {
-    if (viewportMobile) return;
+    if (compactLayout) return;
     const list = pageListRef.current;
     const button = pageButtonRefs.current[index];
     if (!list || !button) return;
@@ -692,7 +839,7 @@ export function ProductMap({
     const rightDelta = buttonRect.right - listRect.right;
     if (leftDelta < 0) list.scrollLeft += leftDelta;
     else if (rightDelta > 0) list.scrollLeft += rightDelta;
-  }, [index, viewportMobile]);
+  }, [index, compactLayout]);
 
   const openSurface = card.openId ? SURFACES_BY_ID.get(card.openId) : undefined;
   const carets = panCarets(index, slides.length);
@@ -766,7 +913,7 @@ export function ProductMap({
     >
       <SurfaceCard
         surface={openSurface}
-        mobile={viewportMobile}
+        mobile={compactLayout}
         number={numbers.get(openSurface.id) ?? null}
         onDismiss={card.close}
         onCopyForAgent={onCopyForAgent}
@@ -787,11 +934,7 @@ export function ProductMap({
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (target.closest('[role="dialog"]')) return;
-      if (
-        target.closest(
-          'a[href^="#surface-"], [data-guide-display-mode]',
-        )
-      )
+      if (target.closest('a[href^="#surface-"], [data-guide-display-mode]'))
         return;
       card.close();
     };
@@ -810,14 +953,18 @@ export function ProductMap({
             onKeyDown={onKeyDown}
             className="mt-2"
           >
-            <div className="mb-3 border-b border-border-hairline pb-3">
-              <h2 className="text-base font-semibold">
-                <SlideTitle title={slides[index].title} />
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
-                {slides[index].blurb}
-              </p>
-            </div>
+            {desktopLocked ? (
+              <h2 className="sr-only">{slides[index].title}</h2>
+            ) : (
+              <div className="mb-3 border-b border-border-hairline pb-3">
+                <h2 className="text-base font-semibold">
+                  <SlideTitle title={slides[index].title} brandMark={brandMark} />
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-subtle-foreground/75">
+                  {slides[index].blurb}
+                </p>
+              </div>
+            )}
             <div
               data-guide-navigation-toolbar
               className="flex w-full items-center gap-2"
@@ -833,13 +980,13 @@ export function ProductMap({
                   data-guide-page-list-scroll
                   data-no-secondary-panel-swipe
                   className={cn(
-                    viewportMobile
+                    compactLayout
                       ? "min-w-0 flex-1 touch-pan-y overflow-hidden"
                       : "min-w-0 overflow-x-auto",
                     SCROLLBAR_HIDDEN_CLASS,
                   )}
                   style={
-                    viewportMobile
+                    compactLayout
                       ? undefined
                       : scrollEdgeFadeStyle(
                           pageListEdges.canScrollLeft,
@@ -850,7 +997,7 @@ export function ProductMap({
                     suppressClickUntil.current = 0;
                     const touch = event.touches[0];
                     touchStart.current =
-                      viewportMobile && event.touches.length === 1 && touch
+                      compactLayout && event.touches.length === 1 && touch
                         ? { x: touch.clientX, y: touch.clientY }
                         : null;
                   }}
@@ -878,7 +1025,7 @@ export function ProductMap({
                 >
                   <ul
                     className={
-                      viewportMobile
+                      compactLayout
                         ? "flex w-full flex-nowrap items-center"
                         : "flex w-max flex-nowrap items-center gap-1"
                     }
@@ -886,8 +1033,8 @@ export function ProductMap({
                     {slides.map((entry, slideIndex) => (
                       <li
                         key={entry.id}
-                        hidden={viewportMobile && slideIndex !== index}
-                        className={cn("shrink-0", viewportMobile && "w-full")}
+                        hidden={compactLayout && slideIndex !== index}
+                        className={cn("shrink-0", compactLayout && "w-full")}
                       >
                         <button
                           ref={(element) => {
@@ -900,7 +1047,7 @@ export function ProductMap({
                           }
                           className={cn(
                             "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-2.5 text-sm @2xl/guide:py-1 @2xl/guide:text-xs transition-colors",
-                            viewportMobile && "block w-full truncate",
+                            compactLayout && "block w-full truncate",
                             FOCUS_RING_CLASS,
                             slideIndex === index
                               ? "bg-surface-selected text-foreground"
@@ -933,16 +1080,21 @@ export function ProductMap({
                       mode === "mobile" ? "Mobile layout" : "Desktop layout"
                     }
                     title={
-                      mode === "mobile" ? "Mobile layout" : "Desktop layout"
+                      mode === "mobile"
+                        ? "Mobile layout"
+                        : desktopLocked
+                          ? "Desktop layout is available on wider screens"
+                          : "Desktop layout"
                     }
                     aria-pressed={(mobile ? "mobile" : "desktop") === mode}
+                    disabled={mode === "desktop" && desktopLocked}
                     onClick={() => setDisplayMode(mode)}
                     className={cn(
-                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md",
+                      "inline-flex size-10 @2xl/guide:size-8 cursor-pointer items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-40",
                       FOCUS_RING_CLASS,
                       (mobile ? "mobile" : "desktop") === mode
                         ? "bg-surface-selected text-foreground"
-                        : "text-muted-foreground hover:bg-state-hover",
+                        : "text-muted-foreground enabled:hover:bg-state-hover",
                     )}
                   >
                     <HugeiconsIcon
@@ -985,13 +1137,21 @@ export function ProductMap({
                     }
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
-                    <Slide group={entry} mobile={mobile} viewportMobile={viewportMobile} />
+                    <Slide
+                      group={entry}
+                      mobile={mobile}
+                      compactLayout={compactLayout}
+                    />
                   </div>
                 ))}
               </div>
             </div>
 
-            {viewportMobile ? <MobileCardFlow>{cardNode}</MobileCardFlow> : cardNode}
+            {compactLayout ? (
+              <MobileCardFlow>{cardNode}</MobileCardFlow>
+            ) : (
+              cardNode
+            )}
           </section>
         </div>
       </div>

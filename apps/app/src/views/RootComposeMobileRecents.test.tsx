@@ -1,13 +1,21 @@
 // @vitest-environment jsdom
 
 import type { ThreadListEntry } from "@bb/domain";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Provider, createStore } from "jotai";
-import { collapsedThreadIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
+import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { SystemEnvironmentProvider } from "@bb/server-contract";
 import { systemEnvironmentProvidersQueryKey } from "@/hooks/queries/environment-provider-queries";
 import {
@@ -16,6 +24,29 @@ import {
   RootComposeMobileRecents,
 } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
+import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
+
+const threadActions = vi.hoisted(() => ({
+  requestArchive: vi.fn(),
+  requestDelete: vi.fn(),
+  requestRename: vi.fn(),
+  togglePin: vi.fn(),
+  toggleRead: vi.fn(),
+  unarchiveThread: vi.fn(),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => threadActions,
+}));
+
+const sdkThreads = vi.hoisted(() => ({
+  pin: vi.fn(async ({ threadId }: { threadId: string }) => ({
+    id: threadId,
+  })),
+}));
+
+vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
 
 const personalProvider: SystemEnvironmentProvider = {
   machineProviderId: null,
@@ -47,7 +78,13 @@ function TestProviders({
   return (
     <Provider store={store}>
       <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>{children}</MemoryRouter>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={CORE_THREAD_ACTIONS}
+            requestRename={() => {}}
+          />
+          {children}
+        </MemoryRouter>
       </QueryClientProvider>
     </Provider>
   );
@@ -55,7 +92,7 @@ function TestProviders({
 
 function storeWithCollapsedThreads(threadIds: string[]) {
   const store = createStore();
-  store.set(collapsedThreadIdsAtom, threadIds);
+  store.set(mobileRecentsCollapsedThreadIdsAtom, threadIds);
   return store;
 }
 
@@ -108,6 +145,8 @@ function makeIdleThread(
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.useRealTimers();
+  vi.clearAllMocks();
 });
 
 const NONE: ReadonlySet<string> = new Set();
@@ -442,7 +481,7 @@ describe("mobile recents hierarchy interaction", () => {
     );
 
     expect(screen.getByText("Audit folder query paths")).not.toBeNull();
-    expect(store.get(collapsedThreadIdsAtom)).toEqual([]);
+    expect(store.get(mobileRecentsCollapsedThreadIdsAtom)).toEqual([]);
   });
 
   it("de-emphasizes the provider tile on child rows only", () => {
@@ -657,6 +696,45 @@ describe("mobile recent thread rows", () => {
 });
 
 describe("RootComposeMobileRecents", () => {
+  it("opens thread actions on a long press without following the thread link", async () => {
+    vi.useFakeTimers();
+    const thread = makeThread();
+    render(
+      <TestProviders>
+        <CompactViewportOverrideProvider isCompactViewport>
+          <RootComposeMobileRecents
+            highlightedThreadId={null}
+            projectNamesById={new Map()}
+            providersById={new Map()}
+            showCreatingRow={false}
+            threads={[thread]}
+          />
+        </CompactViewportOverrideProvider>
+      </TestProviders>,
+    );
+    const link = screen.getByRole("link");
+    fireEvent.pointerDown(link, {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    act(() => vi.advanceTimersByTime(700));
+    fireEvent.pointerUp(link, { pointerId: 1, pointerType: "touch" });
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    fireEvent(link, click);
+    expect(click.defaultPrevented).toBe(true);
+    act(() => vi.advanceTimersByTime(500));
+    const pin = screen.getByRole("menuitem", { name: "Pin" });
+    fireEvent.pointerDown(pin, { pointerType: "touch" });
+    fireEvent.click(pin);
+    vi.useRealTimers();
+    await waitFor(() =>
+      expect(sdkThreads.pin).toHaveBeenCalledWith({ threadId: thread.id }),
+    );
+  });
+
   it("shows concurrent Plan activity before the runtime spinner", () => {
     render(
       <TestProviders>

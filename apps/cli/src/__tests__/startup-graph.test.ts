@@ -90,10 +90,10 @@ describe("bb startup module graph", () => {
             "--import",
             "tsx",
             "--import",
-            registerHooksPath,
+            pathToFileURL(registerHooksPath).href,
             "src/index.ts",
           ]
-        : ["--import", registerHooksPath, distEntry];
+        : ["--import", pathToFileURL(registerHooksPath).href, distEntry];
     const { stdout } = await execFileAsync(
       process.execPath,
       [...entryArgs, ...args],

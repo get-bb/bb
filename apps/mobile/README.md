@@ -12,7 +12,9 @@ own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,
 reload the page, clear website data), push registration and notification
 taps, deep links, quick actions, share intents and the connection banner.
-The `Mobile E2E` GitHub workflow drives the shell flows.
+External links use the web app's `shellOpenExternal` helper and the native
+bridge to open through the OS URL handler. The `Mobile E2E` GitHub workflow
+drives the shell flows.
 
 ## Structure
 
@@ -123,6 +125,47 @@ directories to PATH. Start an emulator or attach an Android phone with USB
 debugging enabled.
 
 ### Android local APK and verification
+
+For development threads, build the standalone **bb dev** app from the repo root:
+
+```bash
+pnpm mobile:apk:dev
+adb install -r apps/mobile/build-output/bb-dev.apk
+```
+
+The APK is `apps/mobile/build-output/bb-dev.apk`. It has an orange bb launcher
+icon, favicon, and splash logo, the name **bb dev**, and package `app.getbb.mobile.dev`, so it
+installs alongside the regular app with separate saved servers and data. It
+embeds the Release JS bundle and runs without Metro, EAS, Firebase, or production
+signing credentials. Pair it with the development server through Add server or
+a pairing code. It does not claim production HTTPS app links or use the
+production Firebase configuration; Android themed icons use the system tint.
+Dev launcher assets tint the existing shaded mobile artwork using the orange
+palette and tinting method from `apps/app/scripts/generate-pwa-icons.mjs`,
+preserving the original dimensions, alpha, and launcher padding. The transparent
+splash asset stores the original light logo's shading in orange RGB and uses
+the dark logo's silhouette alpha. This keeps transparency at the edges rather
+than throughout the shaded mark, avoiding darkening during native image
+generation. Both light and dark splash screens use the orange logo.
+
+Use `pnpm mobile:apk:dev -- x86_64` for an Intel emulator. The default is
+`arm64-v8a` for a physical phone. Install Android SDK/build tools and JDK 17
+first; the script detects the standard macOS SDK and Homebrew JDK 17 paths when
+`ANDROID_HOME` and `JAVA_HOME` are unset. Both local commands regenerate the
+gitignored Android project, so do not run them concurrently in the same checkout
+or keep manual edits in `apps/mobile/android`.
+Concurrent builds are rejected. If a force-killed build leaves a stale lock,
+remove `apps/mobile/build-output/.android-build-lock` after confirming no build
+is running, then retry.
+
+When a thread is asked to build a dev APK, use this command, wait for successful
+completion, and provide a clickable link to the resulting APK. Record the
+source commit and any uncommitted changes. For a durable per-thread copy, copy
+the APK into `$BB_THREAD_STORAGE` and link that absolute path. Do not publish it
+to the public `android-testing` release. Builds use the generated debug signing
+key; Android updates require the same key as the installed dev app.
+
+The existing local build retains the regular app identity for smoke tests:
 
 ```bash
 pnpm exec turbo run build:android:local --filter=@bb/mobile
@@ -330,7 +373,7 @@ as the first argument drives a dev client through Metro instead.
   waits for `/health`), runs `ci-run-flows.sh`, and uploads
   `e2e-artifacts/` (per-flow Maestro output, backend log, simulator log).
 
-## bb connect (Phase 5)
+## bb connect
 
 - Pair through Settings → Mobile → Add mobile device or `bb connect machine-code`. No experiment is required.
 - Enrollment (`src/screens/connect`, `src/data/connect`, route `/connect`):
@@ -434,7 +477,7 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   response because their URL stays the same. Concurrent 410 responses update
   the profile once.
 
-## Push notifications and deep links (Phase 5)
+## Push notifications and deep links
 
 Android disables Firebase Messaging auto-initialization and Analytics collection
 in the generated manifest. The app requests a push token only for a server with
@@ -446,7 +489,6 @@ enabled servers. Failed server-subscription removal is retained for retry;
 local token deletion does not require that server to be reachable. This does not
 delete the Firebase installation ID or previously processed provider data.
 iOS keeps its existing APNs registration behavior.
-
 
 - Registration: `PushNotificationsHost` (mounted once in `app/_layout.tsx`)
   registers the phone's Expo push token with each enabled server through
@@ -706,7 +748,29 @@ both public links. Add `--details --json` or call `system.mobileAppReleases()`
 upload date. The server fetches only public metadata, caches it for five minutes,
 and returns `android: null` if unavailable or inconsistent. Download links remain
 usable during metadata failures. iOS version and release date are shown in TestFlight.
-Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+Inside the Android app, Settings → Mobile also shows the installed version and
+compares its native build number with the published APK: up to date, update
+available, or newer than the published release. Older apps without build-number
+reporting and unavailable release metadata show that update status cannot be
+determined. The download button remains available in every state.
+The nightly release pipeline builds and publishes an Android preview APK after
+a successful npm nightly publication, alongside the iOS build. This runs on the
+daily 3 AM America/Los_Angeles schedule, a manual nightly publish, and the
+nightly publication following a stable release. Successful builds replace the
+APK and version metadata used by Settings → Mobile. These builds do not submit
+to Google Play.
+
+The Android version name matches the published bb-app nightly version, including
+its full `-nightly.RUN.ATTEMPT` suffix. EAS continues to increment the integer
+Android build number independently. The APK's version name and build number
+are also used in the Settings → Mobile download metadata.
+
+For an immediate update, run **Mobile Android (EAS)**, profile `preview`,
+**publish** on, or
+`gh workflow run mobile-android-eas.yml --ref main -f profile=preview -f publish=true -f submit=false`.
+Add `-f version=X.Y.Z-nightly.RUN.ATTEMPT` to assign a specific nightly version,
+or `-f version=X.Y.Z` for a stable version. Leaving it empty uses the committed
+mobile version.
 The preview Gradle command builds `arm64-v8a` and `armeabi-v7a`, supporting
 both 64-bit and 32-bit ARM phones. It omits Intel x86/x86_64 libraries to reduce
 the direct download; Intel devices and x86 emulators cannot install this APK.
@@ -714,3 +778,67 @@ Production AABs retain all architectures so Google Play can deliver
 device-specific packages. Keep EAS signing credentials unchanged so existing
 sideload installations can update. The smaller APK still undergoes browser
 security scanning; reduced size does not guarantee a fix for scanning hangs.
+
+## Android keyboard image paste
+
+The `react-native-webview` patch receives keyboard image content through
+AndroidX `InputConnectionCompat`. It is enabled only for WebViews with BB's
+injected mobile bridge. The bridge captures the focused prompt editor, then
+replays the image as a clipboard file through the existing web paste handler.
+The WebView serves a temporary, single-use URL from the keyboard's content
+stream. Image bytes stay binary instead of passing through base64 or a
+JavaScript string. Reads run off the UI thread, stop at the composer's 35 MB
+attachment limit, and must complete within 30 seconds. At most four transfers
+can be pending per WebView. Completion, timeout, navigation, and WebView
+destruction close the stream and release URI permissions. The bridge delivers
+the file only after the complete body and native success confirmation arrive;
+failed reads and removed or navigated editors discard the result. This requires
+an updated Android APK but works with the existing web composer without a
+server update.
+
+For a device smoke test:
+
+1. Copy a screenshot to the Android clipboard and focus a thread composer.
+2. Open Gboard's clipboard panel and tap the image. Check that its attachment
+   preview appears and finishes uploading.
+3. Paste ordinary clipboard text and check that it still appears in the editor.
+4. Paste a large image up to 35 MB and check that it completes without closing
+   the app. An image above the limit must not create an attachment.
+5. With a test content provider, delay one image read beyond 30 seconds, then
+   paste another image. The second image must arrive while the first expires.
+6. Navigate away during a delayed read and check that its result does not attach
+   to another composer.
+7. Remove the test attachments and text without sending a message.
+
+Bridge regression tests run with
+`pnpm exec turbo run test typecheck --filter=@bb/mobile-bridge`.
+
+## Android message copy
+
+For messages containing text and an image, Android Copy uses the shell's
+`copyRichText` method to publish `text/plain` plus `text/html`. The HTML carries
+hidden, versioned BB metadata with the exact message text and an image URL.
+BB's regular Paste handler validates that metadata, inserts the text and
+fetches the image from the same server with the current session. Downloads
+reject redirects and non-image responses, enforce the 35 MB attachment limit,
+and time out after 30 seconds. A failed download preserves the pasted text and
+reports that the image could not be attached. Results from removed editors or
+pages that navigated away are discarded.
+
+Android WebView's long-press Paste delivers the HTML. Gboard's text suggestion
+and clipboard-history text entries insert plain text without a rich paste
+event, so those paths paste text only. BB does not compare inserted text with
+previous messages or retain a copied-message cache. HTML-aware destinations
+can also render the text and image reference; plain text destinations receive
+only the text. The image reference requires access to the original server and
+image. Copying image bytes for external image targets uses the image-only path.
+
+Image-only messages use `copyTextAndImage` to download the image into the app
+cache and expose its URI through the WebView FileProvider. Downloads are
+limited to 35 MB, reject redirects, and expire after 25 seconds with 10-second
+network timeouts. Old cache files are removed on the next copy after 24 hours.
+
+Both the APK and served BB web app need this change. Older APKs retain the
+previous combined image/text item behavior. Verify mixed-message Copy followed
+by long-press Paste, Gboard text insertion, image-only Copy/Paste, ordinary text,
+and a missing image. Remove test drafts without sending them.

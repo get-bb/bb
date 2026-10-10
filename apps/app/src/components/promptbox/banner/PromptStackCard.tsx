@@ -1,5 +1,4 @@
 import { type CSSProperties, type ReactNode, type Ref } from "react";
-import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 import {
@@ -9,6 +8,7 @@ import {
 } from "@bb/shared-ui/chrome-style-tokens";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
+export const PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT = 35;
 export const PROMPT_STACK_CARD_HEADER_BUTTON_CLASS =
   "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80";
 export const PROMPT_STACK_INLAY_INSET_CLASS = CONTEXT_CARD_INSET_CLASS;
@@ -53,25 +53,5 @@ export function PromptStackCard({
     >
       {children}
     </div>
-  );
-}
-
-export function PromptStackCardChevron({
-  isExpanded,
-  className,
-}: {
-  isExpanded: boolean;
-  className: string;
-}) {
-  return (
-    <Icon
-      name="ChevronDown"
-      className={cn(
-        className,
-        "size-3.5 shrink-0 transition-transform duration-200",
-        isExpanded && "rotate-180",
-      )}
-      aria-hidden="true"
-    />
   );
 }

@@ -21,8 +21,6 @@ const sidebarChronologicalSortSchema = z.enum([
 
 const sidebarThreadGroupingSchema = z.union([z.literal("auto"), z.boolean()]);
 
-const collapsibleSidebarSectionIdSchema = z.enum(["pinned", "threads"]);
-
 const uiPreferenceStringSchema = z
   .string()
   .min(1)
@@ -44,19 +42,12 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.manualSectionOrder",
   "sidebar.machineSectionOrder",
   "sidebar.hiddenGroups",
-  "sidebar.collapsedSections",
-  "sidebar.collapsedProjects",
-  "sidebar.collapsedThreads",
-  "sidebar.collapsedEnvironments",
-  "sidebar.collapsedThreadSections",
-  "sidebar.collapsedMachines",
   "sidebar.footerOrder",
   "sidebar.hiddenFooterItems",
   "sidebar.pluginPanelOrder",
   "sidebar.visiblePluginPanels",
-  "sidebar.navigationProvider",
-  "sidebar.headerProvider",
   "sidebar.threadListProvider",
+  "infoPanel.collapsedSections",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -120,38 +111,6 @@ export const uiPreferenceDefinitions = {
     [],
     "Project, custom section, and machine groups moved into More, using project:<id>, section:<id>, or machine:<id>. Setting this list replaces the hidden groups across all sidebar organizations; reset shows every group.",
   ),
-  "sidebar.collapsedSections": defineUiPreference(
-    z
-      .array(collapsibleSidebarSectionIdSchema)
-      .max(UI_PREFERENCE_LIST_MAX_LENGTH),
-    [],
-    "Built-in sidebar sections that are collapsed.",
-  ),
-  "sidebar.collapsedProjects": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Project ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreads": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread ids whose child threads are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedEnvironments": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Environment ids whose sidebar rows are collapsed.",
-  ),
-  "sidebar.collapsedThreadSections": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Thread section ids that are collapsed in the sidebar.",
-  ),
-  "sidebar.collapsedMachines": defineUiPreference(
-    uiPreferenceStringListSchema,
-    [],
-    "Machine ids whose sidebar rows are collapsed.",
-  ),
   "sidebar.footerOrder": defineUiPreference(
     uiPreferenceStringListSchema,
     [],
@@ -172,26 +131,17 @@ export const uiPreferenceDefinitions = {
     null,
     "Navigation entries shown in the sidebar navigation strip; null shows every entry.",
   ),
-  "sidebar.navigationProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__builtin__" ? "navigation/navigation" : value,
-    ),
-    "__automatic__",
-    "Plugin that renders the sidebar navigation, or __automatic__ for the first installed navigation plugin other than the bundled navigation/navigation, falling back to it. Legacy __builtin__ resolves to navigation/navigation.",
-  ),
-  "sidebar.headerProvider": defineUiPreference(
-    uiPreferenceStringSchema.transform((value) =>
-      value === "__automatic__" ? "__builtin__" : value,
-    ),
-    "__builtin__",
-    "Plugin that renders controls beside the sidebar toggle, or __builtin__ for bb's own header only.",
-  ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>
       value === "__builtin__" ? "thread-list/thread-list" : value,
     ),
     "__automatic__",
     "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
+  ),
+  "infoPanel.collapsedSections": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Thread Info panel section ids that are collapsed, such as commits, uncommittedChanges, forks, or threadStorage.",
   ),
 } as const satisfies Record<UiPreferenceKey, UiPreferenceDefinition>;
 

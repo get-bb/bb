@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,11 +58,20 @@ afterAll(async () => {
     const closed = new Promise<void>((resolve) =>
       worker.once("close", () => resolve()),
     );
-    worker.kill("SIGTERM");
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/pid", String(worker.pid), "/t", "/f"]);
+    } else {
+      worker.kill("SIGTERM");
+    }
     await closed;
   }
   if (stateDirectory)
-    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(stateDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    });
   expect(output).not.toContain("Uncaught");
 });
 
@@ -93,10 +102,7 @@ it("serves the sidebar plugin frontends", async () => {
   const catalog = pluginListResponseSchema.parse(
     await (await fetch(`${origin}/api/v1/plugins`)).json(),
   );
-  expect(catalog.plugins.map((plugin) => plugin.id)).toEqual([
-    "navigation",
-    "thread-list",
-  ]);
+  expect(catalog.plugins.map((plugin) => plugin.id)).toEqual(["thread-list"]);
   await Promise.all(
     catalog.plugins.flatMap((plugin) => {
       if (plugin.app.bundle === null)
@@ -182,7 +188,7 @@ it("keeps unsupported API and mutation requests out of the SPA fallback", async 
 });
 
 it("isolates automatic sidebar preference writes by client and validates revisions and values", async () => {
-  const key = "sidebar.collapsedThreads";
+  const key = "sidebar.hiddenFooterItems";
   const firstClient = {
     "cf-connecting-ip": "192.0.2.1",
     "content-type": "application/json",

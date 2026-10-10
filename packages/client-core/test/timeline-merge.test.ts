@@ -42,6 +42,7 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     turnId: "turn-1",
     sourceSeqStart: args.sequence,
     sourceSeqEnd: args.endSequence ?? args.sequence,
+    messageSeq: args.endSequence ?? args.sequence,
     startedAt: args.sequence,
     createdAt: args.sequence,
     kind: "conversation",
@@ -120,6 +121,8 @@ function makeTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    providerCommands: null,
+    sessionOptions: null,
     modelFallback: null,
     maxSeq,
     timelinePage: {

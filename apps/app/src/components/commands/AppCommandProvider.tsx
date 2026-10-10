@@ -40,6 +40,7 @@ type AppCommandHandler = (invocation: AppCommandInvocation) => boolean;
 
 interface AppCommandHandlerRegistration {
   handler: AppCommandHandler;
+  isAvailable: (invocation: AppCommandInvocation) => boolean;
   priority: number;
   sequence: number;
 }
@@ -229,6 +230,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
           right.priority - left.priority || right.sequence - left.sequence,
       );
       for (const registration of ordered) {
+        if (!registration.isAvailable({ target })) continue;
         if (registration.handler({ target })) return true;
       }
       return false;
@@ -263,7 +265,14 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   const isCommandAvailable = useCallback(
     (command: KeyboardCommandId, target: EventTarget | null): boolean => {
       const registrations = handlersRef.current.get(command);
-      if (registrations === undefined || registrations.size === 0) return false;
+      if (
+        registrations === undefined ||
+        ![...registrations.values()].some((registration) =>
+          registration.isAvailable({ target }),
+        )
+      ) {
+        return false;
+      }
       const applicable = defaultKeybindings.filter(
         (binding) =>
           binding.command === command &&
@@ -436,6 +445,7 @@ export function useAppCommandHandler(
   handler: AppCommandHandler,
   priority = 0,
   enabled = true,
+  isAvailable?: (invocation: AppCommandInvocation) => boolean,
 ): void {
   const commands = useMemo(() => [command], [command]);
   useIndexedAppCommandHandlers(
@@ -443,6 +453,9 @@ export function useAppCommandHandler(
     (_index, invocation) => handler(invocation),
     priority,
     enabled,
+    isAvailable === undefined
+      ? undefined
+      : (_index, invocation) => isAvailable(invocation),
   );
 }
 
@@ -451,17 +464,22 @@ export function useIndexedAppCommandHandlers(
   handler: (index: number, invocation: AppCommandInvocation) => boolean,
   priority = 0,
   enabled = true,
+  isAvailable?: (index: number, invocation: AppCommandInvocation) => boolean,
 ): void {
   const registerHandler = useContext(AppCommandContextValue)?.registerHandler;
   const handlerRef = useRef(handler);
+  const isAvailableRef = useRef(isAvailable);
   useLayoutEffect(() => {
     handlerRef.current = handler;
-  }, [handler]);
+    isAvailableRef.current = isAvailable;
+  }, [handler, isAvailable]);
   useEffect(() => {
     if (!registerHandler || !enabled) return;
     const unregister = commands.map((command, index) =>
       registerHandler(command, {
         handler: (invocation) => handlerRef.current(index, invocation),
+        isAvailable: (invocation) =>
+          isAvailableRef.current?.(index, invocation) ?? true,
         priority,
       }),
     );

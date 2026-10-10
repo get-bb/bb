@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PendingAttachmentUpload } from "./usePendingAttachmentUploads";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
+import { isProjectAttachmentPath } from "@/lib/file-content-urls";
 import {
   getWrappedImageIndex,
   ImageLightbox,
@@ -22,7 +24,10 @@ function resolveAttachmentPreviewSrc(
   );
 }
 
-function isImageAttachment(attachment: PromptDraftAttachment): boolean {
+const FILE_ATTACHMENT_PILL_CLASS =
+  "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground";
+
+export function isImageAttachment(attachment: PromptDraftAttachment): boolean {
   return (
     attachment.type === "localImage" ||
     attachment.mimeType?.toLowerCase().startsWith("image/") === true
@@ -39,41 +44,72 @@ interface AttachmentPreviewProps {
   onRemoveAttachment?: (path: string) => void;
 }
 
-function UploadPreview({ file }: { file: File }) {
+function isImageUpload(upload: PendingAttachmentUpload): boolean {
+  return upload.file.type.startsWith("image/");
+}
+
+function ImageUploadPreview({ file }: { file: File }) {
   const [previewUrl, setPreviewUrl] = useState<string>();
-  const isImage = file.type.startsWith("image/");
   useEffect(() => {
-    if (!isImage) return;
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file, isImage]);
+  }, [file]);
 
   return (
     <div
       role="status"
       aria-label={`Uploading ${file.name}`}
-      className={isImage
-        ? "relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
-        : "inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"}
+      className="relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
     >
-      {isImage ? (
-        <>
-          <span className="block h-16 w-24">
-            {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
-          </span>
-          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
-            <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
-            Uploading
-          </span>
-        </>
-      ) : (
-        <>
-          <Icon name="Loading" className="size-3 shrink-0 animate-spin motion-reduce:animate-none" />
-          <span className="truncate">{file.name}</span>
-        </>
-      )}
+      <span className="block h-16 w-24">
+        {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
+      </span>
+      <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
+        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+        Uploading
+      </span>
     </div>
+  );
+}
+
+function FileAttachmentName({
+  name,
+  path,
+  projectId,
+}: {
+  name: string;
+  path: string;
+  projectId: string | undefined;
+}) {
+  const openAttachment = useAttachmentOpener();
+  if (!openAttachment || !projectId || !isProjectAttachmentPath({ path })) {
+    return <span className="truncate">{name}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => openAttachment({ name, path, projectId })}
+      className="truncate hover:underline focus-visible:outline-none focus-visible:underline"
+    >
+      {name}
+    </button>
+  );
+}
+
+function FileUploadPreview({ file }: { file: File }) {
+  return (
+    <span
+      role="status"
+      aria-label={`Uploading ${file.name}`}
+      className={FILE_ATTACHMENT_PILL_CLASS}
+    >
+      <span className="truncate">{file.name}</span>
+      <span className="inline-flex size-4 shrink-0 items-center justify-center">
+        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+      </span>
+    </span>
   );
 }
 
@@ -90,9 +126,14 @@ export function AttachmentPreview({
   const nonImageAttachments = attachments.filter(
     (attachment) => !isImageAttachment(attachment),
   );
+  const imageUploads = pendingUploads.filter(isImageUpload);
+  const fileUploads = pendingUploads.filter((upload) => !isImageUpload(upload));
   const attachmentImageItems = imageAttachments.map((attachment) => ({
     alt: attachment.name,
-    src: resolveAttachmentPreviewSrc(attachment.path, attachmentProjectId),
+    src: resolveAttachmentPreviewSrc(
+      attachment.path,
+      attachment.sourceProjectId ?? attachmentProjectId,
+    ),
   }));
   const hasMultipleAttachmentImages = imageAttachments.length > 1;
   const currentAttachmentImage =
@@ -132,7 +173,7 @@ export function AttachmentPreview({
         </span>
       ) : (
         <div className="mx-3 mb-1 mt-1">
-          {imageAttachments.length > 0 || pendingUploads.length > 0 ? (
+          {imageAttachments.length > 0 || imageUploads.length > 0 ? (
             <div className="mb-1.5 flex flex-wrap gap-2">
               {imageAttachments.map((attachment, index) => (
                 <div key={`${attachment.path}-${index}`} className="relative">
@@ -169,18 +210,22 @@ export function AttachmentPreview({
                   ) : null}
                 </div>
               ))}
-              {pendingUploads.map((upload) => <UploadPreview key={upload.id} file={upload.file} />)}
+              {imageUploads.map((upload) => <ImageUploadPreview key={upload.id} file={upload.file} />)}
             </div>
           ) : null}
 
-          {nonImageAttachments.length > 0 ? (
+          {nonImageAttachments.length > 0 || fileUploads.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {nonImageAttachments.map((attachment) => (
                 <span
                   key={attachment.path}
-                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface-recessed px-2 py-0.5 text-xs text-muted-foreground"
+                  className={FILE_ATTACHMENT_PILL_CLASS}
                 >
-                  <span className="truncate">{attachment.name}</span>
+                  <FileAttachmentName
+                    name={attachment.name}
+                    path={attachment.path}
+                    projectId={attachment.sourceProjectId ?? attachmentProjectId}
+                  />
                   {onRemoveAttachment ? (
                     <span className="relative size-4 shrink-0">
                       <button
@@ -201,6 +246,7 @@ export function AttachmentPreview({
                   ) : null}
                 </span>
               ))}
+              {fileUploads.map((upload) => <FileUploadPreview key={upload.id} file={upload.file} />)}
             </div>
           ) : null}
         </div>

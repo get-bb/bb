@@ -7,6 +7,7 @@
 - macOS persistent host
 - Linux persistent host
 - Windows via Ubuntu on WSL2
+- Windows 11 x64 native host (alpha)
 
 Minimum runtime: Node.js 22.19. Pi no longer sets the floor: its bridge is a
 plugin and the `pi` CLI is user-installed like `codex` and `claude`, so the
@@ -24,24 +25,34 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
-Windows support means the Linux stack runs entirely inside WSL2:
+Windows has two host paths. Inside WSL2 the Linux stack runs unchanged:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
 - Node.js, Git, provider CLIs, and pnpm for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
-- native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-  supported product paths
+
+The native Windows host is alpha. It runs from the Windows desktop installer or
+`npx bb-app` in PowerShell or CMD:
+
+- Git for Windows is required; bb uses its Git and its bash for environment
+  setup and teardown scripts
+- project paths are drive-letter paths such as `C:\Users\me\repo`; UNC paths
+  are refused
+- terminals run PowerShell 7 when installed, otherwise Windows PowerShell
+- a Windows machine can be added to another server from Settings → Machines
+  with the PowerShell command; its daemon runs in the signed-in user's session
+- the server cannot be moved to a Windows machine
 
 ## Mobile app
 
-[`apps/mobile`](../apps/mobile) is a native phone client for a bb server
-(Expo / React Native). It runs no agents, host daemon, or plugins itself; it
-talks to a server over the same HTTP + WebSocket contract as the web app.
+[`apps/mobile`](../apps/mobile/README.md) is an Expo / React Native shell
+around the server's PWA in one WebView, connected through `@bb/mobile-bridge`.
+Pairing, saved servers, device, appearance and notification settings are native;
+threads, projects, server settings and plugin frontends run in the page.
+Agents, host daemons and plugin backends run on the server or enrolled hosts.
 
-- Platforms: iOS first (iPhone; iPad runs the phone layout). Android is
-  planned next; the code is platform-neutral but no Android build has been
-  produced or tested yet.
+- Platforms: iOS (iPhone; iPad runs the phone layout) and Android alpha.
 - Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
   (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
   `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
@@ -52,30 +63,28 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
   `bb connect machine-code`, without an experiment), keeps the credential in the device keychain, and mints
   seven-day rolling sessions that end when the device is revoked; see
   [multiple-devices.md](multiple-devices.md).
-- Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
-  runtime) today; TestFlight / Play builds go through EAS once the Expo
-  account exists (see `apps/mobile/README.md`). No store release yet.
-- The built-in Push notifications plugin works on iOS when the bb server can
-  reach `exp.host`. The server needs no Apple or Google keys. Android push
-  support remains untested.
+- Distribution: iOS beta through TestFlight and Android alpha APKs from the
+  [Android testing release](https://github.com/get-bb/bb/releases/tag/android-testing).
+  EAS builds and developer builds from source are available; see the
+  [mobile README](../apps/mobile/README.md#release-eas). No public store release yet.
+- The built-in Push notifications plugin works on iOS and Android when the bb
+  server can reach `exp.host`. The server needs no Apple or Google keys.
+  Android builds need Firebase configuration and an FCM V1 credential in EAS;
+  see the [Android setup](../apps/mobile/README.md#android-production-setup).
 
-Not available on the phone (use the web app or desktop for these):
+Plugin nav panels, DOM settings pages and other web plugin surfaces render
+in the PWA; usability depends on their responsive UI and required capabilities.
 
-- Plugin **frontends**: nav panels (Automations, Tasks, Docs, GitHub), DOM
-  `settingsSection` pages (connect Remote access, memory, custom
-  instructions, keep-awake), composer customization, message-action callbacks,
-  content scripts, side-chat panels. Plugin backends (tools, CLI, mentions,
-  declarative settings, pending-interaction forms for `ask-user-question` and
-  `secrets`) work.
-- Provider sign-in (`codex login`, `claude /login`): still needs a terminal on
+Device boundaries:
+
+- Provider sign-in (`codex login --device-auth`, `claude auth login`): still needs a terminal on
   the host; the phone assumes a signed-in host.
 - Local editor integration, "Open in …", native folder picker, local daemon
   features: phones have no host daemon. The remote path browser works.
-- Custom CSS themes and plugin themes: only the built-in palettes map to the
-  native tokens.
-- Splits, drag reorder, the keyboard shortcut editor, desktop browser
-  automation. Text-selection quoting is per paragraph. KaTeX / Mermaid render
-  as source; video files open outside the app.
+- Web CSS and plugin themes apply to the page; native shell screens use the
+  native theme tokens and built-in palettes.
+- Desktop browser automation requires a desktop host. Page features use the
+  web app implementation, subject to touch layout and WebView/OS capabilities.
 
 ## Support Boundaries
 
@@ -122,12 +131,12 @@ Not available on the phone (use the web app or desktop for these):
   filesystem.
 - A machine that reported macOS, Linux, or WSL refuses Windows drive-letter
   paths at the app/server boundary so unsupported input fails clearly. Use the
-  `/mnt/c/...` form from inside WSL2.
+  `/mnt/c/...` form from inside WSL2. A machine that reported Windows refuses
+  POSIX paths the same way.
 
 ### Windows drive-letter paths
 
-Native Windows hosts are not a supported product path yet, but the path model
-accepts their project and workspace paths:
+Native Windows hosts use drive-letter paths for projects and workspaces:
 
 - A drive-letter path such as `C:\Users\me\repo` is stored in one spelling:
   upper-case drive letter, backslash separators, and no trailing separator.
@@ -144,7 +153,7 @@ accepts their project and workspace paths:
 
 - workspace-owned QA helpers under [`tests/qa/`](../tests/qa/)
 - dev restart internals that are not part of the shipped product path
-- native Windows PowerShell, CMD, and host-daemon runtime flows
+- source-development flows (`pnpm dev`, `pnpm bb:dev`) on native Windows
 
 ## Dependency Policy
 
@@ -205,8 +214,8 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The repository enforces LF checkout for supported text files via
   [.gitattributes](../.gitattributes).
 - Supported Linux and WSL2 flows must work with those repository rules applied.
-- Native Windows checkouts are outside the support contract unless we later
-  choose to support a native Windows product path.
+- A native Windows checkout of this repository must keep those LF rules; the
+  Windows CI jobs build and package from such a checkout.
 
 ## CI And Validation
 
@@ -223,9 +232,11 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
   smoke jobs do not run on pull requests and should not be configured as
   required PR checks.
-- Native Windows CI is intentionally not required because Windows support uses
-  the Linux runtime path inside WSL2 rather than a separate native Windows
-  product path.
+- Native Windows CI runs on every pull request, described in
+  [windows-ci.md](windows-ci.md): the host package tests with lint and
+  typecheck, the remaining test suites in seven shards, and an app smoke that
+  boots `bb-app`, runs the `bb-app` tarball smoke, packages the desktop app, and
+  smoke tests the packaged app.
 - `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
   `Checks` and the `Tests (packages-*)` jobs like every other workspace package. The
   iOS simulator Maestro flows run in `Mobile E2E`

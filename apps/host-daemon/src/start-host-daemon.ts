@@ -21,6 +21,7 @@ import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
   createUserShellPathResolver,
   prepareRuntimeShellEnv,
+  resolvePowerShellExecutionPolicyDefault,
   resolveBbExecutablePathInDirectory,
   resolveLocalBbExecutablePath,
 } from "./runtime-shell-env.js";
@@ -157,6 +158,8 @@ export async function startHostDaemon(
         bbExecutablePath,
         hostDaemonPort: localApiConfig.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
+        powershellExecutionPolicy:
+          await resolvePowerShellExecutionPolicyDefault(),
         serverUrl: machineAuthProxy?.serverUrl ?? serverUrl,
       });
     const runtimeShellEnv = await resolveRuntimeShellEnv();

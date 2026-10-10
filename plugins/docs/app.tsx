@@ -9,6 +9,7 @@ import {
 import {
   definePluginApp,
   experimental_FileLink as FileLink,
+  experimental_copyToClipboard,
   useBbNavigate,
   useComposer,
   useRpc,
@@ -902,10 +903,9 @@ function InlineDocument({
     state.proposal?.status === "undone" &&
     state.proposal.baseSha256 === state.sha256;
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(state.draft);
+    if (await experimental_copyToClipboard({ text: state.draft })) {
       toast.success("Document copied");
-    } catch {
+    } else {
       toast.error("Could not copy the document");
     }
   };
@@ -2405,7 +2405,7 @@ export default definePluginApp((app) => {
         panelId: "docs",
         id: "navigation",
         title: "Navigation",
-        icon: "ListView",
+        icon: "FileText",
         component: NotesNavigationPanel,
         layout: "flush",
       },

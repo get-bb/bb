@@ -74,12 +74,6 @@ export function audioInputDeviceOptions(
   return options;
 }
 
-async function enumerateAudioInputDevices(
-  mediaDevices: MediaDevices,
-): Promise<AudioInputDeviceOption[]> {
-  return audioInputDeviceOptions(await mediaDevices.enumerateDevices());
-}
-
 function stopMediaStream(stream: MediaStream | null): void {
   stream?.getTracks().forEach((track) => track.stop());
 }
@@ -87,6 +81,7 @@ function stopMediaStream(stream: MediaStream | null): void {
 export function useAudioInputDevices() {
   const [devices, setDevices] = useState<AudioInputDeviceOption[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasDeviceAccess, setHasDeviceAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSupported, setIsSupported] = useState(
     () => getMediaDevices() !== null,
@@ -108,7 +103,16 @@ export function useAudioInputDevices() {
         if (options.requestPermission) {
           permissionStream = await mediaDevices.getUserMedia({ audio: true });
         }
-        setDevices(await enumerateAudioInputDevices(mediaDevices));
+        const availableDevices = await mediaDevices.enumerateDevices();
+        if (
+          permissionStream ||
+          availableDevices.some(
+            (device) => device.kind === "audioinput" && device.label.length > 0,
+          )
+        ) {
+          setHasDeviceAccess(true);
+        }
+        setDevices(audioInputDeviceOptions(availableDevices));
         setErrorMessage(null);
       } catch (error) {
         setErrorMessage(resolveAudioInputDeviceErrorMessage(error));
@@ -132,14 +136,22 @@ export function useAudioInputDevices() {
     const handleDeviceChange = () => {
       void refresh();
     };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", handleDeviceChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     mediaDevices.addEventListener("devicechange", handleDeviceChange);
     return () => {
       mediaDevices.removeEventListener("devicechange", handleDeviceChange);
+      window.removeEventListener("focus", handleDeviceChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [refresh]);
 
   return {
     devices,
+    hasDeviceAccess,
     errorMessage,
     isLoading,
     isSupported,

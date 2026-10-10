@@ -22,6 +22,7 @@
     "*.test.tsx",
     "app.tsx",
     "vitest.config.ts",
-    "components"
+    "components",
+    "testing"
   ]
 }

@@ -1,3 +1,5 @@
+import { prepareCachedQuery } from "../connection.js";
+import { markThreadPruningPolicyWork } from "./thread-pruning-work.js";
 import { copyProjectAttachmentOwnership } from "./project-attachments.js";
 import {
   and,
@@ -5,7 +7,6 @@ import {
   count,
   desc,
   eq,
-  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -13,6 +14,7 @@ import {
   lt,
   ne,
   or,
+  placeholder,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -53,7 +55,7 @@ export const THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT = 20;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
 const THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD = 1;
-const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
+const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
 const THREAD_SEARCH_SNIPPET_MAX_CHARS = 160;
 const THREAD_SEARCH_SNIPPET_LEAD_CHARS = 40;
@@ -143,6 +145,7 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 }
 
 interface ListThreadSearchMatchRowsArgs {
+  allTokensMatchQuery: string;
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
@@ -385,8 +388,15 @@ export function createThread(
   return thread;
 }
 
+const prepareGetThread = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(threads)
+    .where(eq(threads.id, placeholder("id")))
+    .prepare();
+
 export function getThread(db: ThreadWriteConnection, id: string) {
-  return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+  return prepareCachedQuery(db, prepareGetThread).get({ id }) ?? null;
 }
 
 export interface ThreadMentionRow {
@@ -994,36 +1004,55 @@ function listThreadSearchMatchRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
 ): ThreadSearchMatchRow[] {
-  const tokenMatchSelects = args.tokenMatchQueries.map(
-    (matchQuery, tokenIndex) => sql`
-      SELECT
-        s.thread_id AS threadId,
-        ${tokenIndex} AS tokenIndex,
-        MIN(thread_search_segments_fts.rank) AS tokenRank
+  const tokenThreadSelects = args.tokenMatchQueries.map(
+    (matchQuery) => sql`
+      SELECT DISTINCT s.thread_id AS threadId
       FROM thread_search_segments_fts
       JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       WHERE thread_search_segments_fts MATCH ${matchQuery}
-      GROUP BY s.thread_id
     `,
   );
   const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
+  const matchesAllTokensFirst =
+    args.tokenMatchQueries.length > 1
+      ? sql`thread_search_segments.rowid IN (
+          SELECT segmentRowid FROM all_token_segments
+        ) DESC,`
+      : sql``;
 
   return db.all<ThreadSearchMatchRow>(sql`
-    WITH token_matches AS (
-      ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
+    WITH all_token_segments AS MATERIALIZED (
+      SELECT rowid AS segmentRowid
+      FROM thread_search_segments_fts
+      WHERE thread_search_segments_fts MATCH ${args.allTokensMatchQuery}
+    ),
+    matching_threads AS (
+      ${sql.join(tokenThreadSelects, sql` INTERSECT `)}
+    ),
+    title_matching_threads AS (
+      SELECT DISTINCT thread_search_segments.thread_id AS threadId
+      FROM all_token_segments
+      JOIN thread_search_segments
+        ON thread_search_segments.rowid = all_token_segments.segmentRowid
+      JOIN threads AS titled ON titled.id = thread_search_segments.thread_id
+      WHERE thread_search_segments.source_kind = 'title'
+        OR (
+          thread_search_segments.source_kind = 'title_fallback'
+          AND COALESCE(titled.title, '') = ''
+        )
     ),
     ranked_threads AS (
       SELECT
-        token_matches.threadId AS threadId,
-        MIN(token_matches.tokenRank) AS bestRank,
-        MAX(t.updated_at) AS threadUpdatedAt,
-        MAX(t.archived_at IS NOT NULL) AS archived
-      FROM token_matches
-      JOIN threads AS t ON t.id = token_matches.threadId
+        matching_threads.threadId AS threadId,
+        t.archived_at IS NOT NULL AS archived,
+        matching_threads.threadId IN (
+          SELECT threadId FROM title_matching_threads
+        ) AS titleMatch,
+        t.updated_at AS threadUpdatedAt
+      FROM matching_threads
+      JOIN threads AS t ON t.id = matching_threads.threadId
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
-      GROUP BY threadId
-      HAVING COUNT(*) = ${args.tokenMatchQueries.length}
     ),
     ordered_threads AS (
       SELECT
@@ -1031,7 +1060,7 @@ function listThreadSearchMatchRows(
         archived,
         ROW_NUMBER() OVER (
           PARTITION BY archived
-          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+          ORDER BY titleMatch DESC, threadUpdatedAt DESC, threadId DESC
         ) AS threadOrder,
         COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
@@ -1049,7 +1078,7 @@ function listThreadSearchMatchRows(
         ROW_NUMBER() OVER (
           PARTITION BY thread_search_segments.thread_id, ${isTitleSegment}
           ORDER BY
-            thread_search_segments_fts.rank ASC,
+            ${matchesAllTokensFirst}
             COALESCE(thread_search_segments.source_seq, -1) ASC,
             thread_search_segments.id ASC
         ) AS segmentOrder,
@@ -1058,12 +1087,13 @@ function listThreadSearchMatchRows(
         thread_search_segments.source_seq AS sourceSeq,
         thread_search_segments.rowid AS segmentRowid,
         thread_search_segments.thread_id AS threadId
-      FROM thread_search_segments_fts
-      JOIN thread_search_segments
-        ON thread_search_segments.rowid = thread_search_segments_fts.rowid
+      FROM thread_search_segments
       JOIN limited_threads
         ON limited_threads.threadId = thread_search_segments.thread_id
-      WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      WHERE thread_search_segments.rowid IN (
+        SELECT rowid FROM thread_search_segments_fts
+        WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
+      )
     )
     SELECT
       archived,
@@ -1160,6 +1190,7 @@ export function searchThreadsWithPendingInteractionState(
   );
 
   const rows = listThreadSearchMatchRows(db, {
+    allTokensMatchQuery: tokenMatchQueries.join(" AND "),
     anyTokenMatchQuery,
     limitPerGroup,
     tokenMatchQueries,
@@ -1369,36 +1400,22 @@ export interface ArchivedTeardownThreadRow {
 export function listArchivedThreadsPendingTeardown(
   db: DbQueryConnection,
 ): ArchivedTeardownThreadRow[] {
+  const selection = {
+    archivedAt: threads.archivedAt,
+    environmentId: threads.environmentId,
+    id: threads.id,
+    status: threads.status,
+  };
+  const archived = and(isNotNull(threads.archivedAt), isNull(threads.deletedAt));
   return db
-    .select({
-      archivedAt: threads.archivedAt,
-      environmentId: threads.environmentId,
-      id: threads.id,
-      status: threads.status,
-    })
+    .select(selection)
     .from(threads)
-    .where(
-      and(
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        or(
-          inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES]),
-          exists(
-            db
-              .select({ id: terminalSessions.id })
-              .from(terminalSessions)
-              .where(
-                and(
-                  eq(terminalSessions.threadId, threads.id),
-                  inArray(
-                    terminalSessions.status,
-                    NON_TERMINAL_SESSION_STATUSES,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      ),
+    .where(and(archived, inArray(threads.status, [...ARCHIVED_TEARDOWN_THREAD_STATUSES])))
+    .union(
+      db
+        .select(selection)
+        .from(threads)
+        .where(and(archived, inArray(threads.id, db.select({ threadId: terminalSessions.threadId }).from(terminalSessions).where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))))),
     )
     .all();
 }
@@ -1967,6 +1984,104 @@ export function deleteThread(
   return true;
 }
 
+export function listThreadAncestors(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): Array<{ threadId: string; ancestorIds: string[] }> {
+  if (threadIds.length === 0) return [];
+  const rows = db.all<{ id: string; parentId: string | null }>(sql`
+    WITH RECURSIVE chain(id, parent_id) AS (
+      SELECT id, parent_thread_id FROM threads WHERE ${inArray(threads.id, [...threadIds])}
+      UNION
+      SELECT t.id, t.parent_thread_id FROM threads t JOIN chain c ON t.id = c.parent_id
+    )
+    SELECT id, parent_id AS parentId FROM chain
+  `);
+  const parentById = new Map(rows.map((row) => [row.id, row.parentId]));
+  const result: Array<{ threadId: string; ancestorIds: string[] }> = [];
+  for (const threadId of new Set(threadIds)) {
+    if (!parentById.has(threadId)) continue;
+    const ancestorIds: string[] = [];
+    let parentId = parentById.get(threadId) ?? null;
+    while (
+      parentId !== null &&
+      parentById.has(parentId) &&
+      parentId !== threadId &&
+      !ancestorIds.includes(parentId)
+    ) {
+      ancestorIds.push(parentId);
+      parentId = parentById.get(parentId) ?? null;
+    }
+    result.push({ threadId, ancestorIds });
+  }
+  return result;
+}
+
+export interface ListThreadDescendantsOptions {
+  includeArchived: boolean;
+  includeHidden: boolean;
+}
+
+export function listThreadDescendants(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+  options: ListThreadDescendantsOptions,
+): Array<{ threadId: string; descendantIds: string[] }> {
+  if (threadIds.length === 0) return [];
+  const rows = db.all<{
+    id: string;
+    parentId: string | null;
+    archived: number;
+    hidden: number;
+  }>(sql`
+    WITH RECURSIVE tree(id, parent_id, archived, hidden) AS (
+      SELECT id, parent_thread_id, archived_at IS NOT NULL, visibility = 'hidden' FROM threads
+      WHERE ${inArray(threads.id, [...threadIds])} AND deleted_at IS NULL
+      UNION
+      SELECT t.id, t.parent_thread_id, t.archived_at IS NOT NULL, t.visibility = 'hidden'
+      FROM threads t JOIN tree ON t.parent_thread_id = tree.id
+      WHERE t.deleted_at IS NULL
+    )
+    SELECT id, parent_id AS parentId, archived, hidden FROM tree
+  `);
+  const omittedIds = new Set(
+    rows
+      .filter(
+        (row) =>
+          (!options.includeArchived && row.archived === 1) ||
+          (!options.includeHidden && row.hidden === 1),
+      )
+      .map((row) => row.id),
+  );
+  const childIdsByParent = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.parentId === null) continue;
+    const siblings = childIdsByParent.get(row.parentId);
+    if (siblings === undefined) childIdsByParent.set(row.parentId, [row.id]);
+    else if (!siblings.includes(row.id)) siblings.push(row.id);
+  }
+  const knownIds = new Set(rows.map((row) => row.id));
+  const result: Array<{ threadId: string; descendantIds: string[] }> = [];
+  for (const threadId of new Set(threadIds)) {
+    if (!knownIds.has(threadId)) continue;
+    const visited = new Set([threadId]);
+    const descendantIds: string[] = [];
+    for (let index = -1; index < descendantIds.length; index += 1) {
+      const parentId = index < 0 ? threadId : descendantIds[index]!;
+      for (const childId of childIdsByParent.get(parentId) ?? []) {
+        if (visited.has(childId)) continue;
+        visited.add(childId);
+        descendantIds.push(childId);
+      }
+    }
+    result.push({
+      threadId,
+      descendantIds: descendantIds.filter((id) => !omittedIds.has(id)),
+    });
+  }
+  return result;
+}
+
 function lifecycleThreadTreeIds(seed: SQL): SQL {
   return sql`(WITH RECURSIVE owned(id) AS (
     ${seed} UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
@@ -2053,18 +2168,22 @@ export function archiveThread(
   id: string,
 ) {
   const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({ archivedAt: now, updatedAt: now })
-    .where(
-      and(
-        inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .returning()
-    .all();
+  const updated = db.transaction((tx) => {
+    const archived = tx
+      .update(threads)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(
+        and(
+          inArray(threads.id, lifecycleThreadTreeIdsForThread(id)),
+          isNull(threads.archivedAt),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .returning()
+      .all();
+    markThreadPruningPolicyWork(tx, archived.map((thread) => thread.id), "rate-limits");
+    return archived;
+  });
   for (const thread of updated) {
     notifier.notifyThread(thread.id, ["archived-changed"], {
       projectId: thread.projectId,
@@ -2089,12 +2208,15 @@ export function unarchiveThread(
           return null;
       }
       const now = Date.now();
-      return tx
+      const unarchived = tx
         .update(threads)
         .set({ archivedAt: null, updatedAt: now })
         .where(and(eq(threads.id, id), isNotNull(threads.archivedAt)))
         .returning()
         .get();
+      if (unarchived)
+        markThreadPruningPolicyWork(tx, [unarchived.id], "rate-limits");
+      return unarchived;
     },
     { behavior: "immediate" },
   );

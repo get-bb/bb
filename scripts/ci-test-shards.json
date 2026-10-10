@@ -1,0 +1,170 @@
+{
+  "tests": [
+    {
+      "shard": "server-1",
+      "filter": "--filter=@bb/server",
+      "args": "--shard=1/2"
+    },
+    {
+      "shard": "server-2",
+      "filter": "--filter=@bb/server",
+      "args": "--shard=2/2"
+    },
+    {
+      "shard": "app-1",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=1/8"
+    },
+    {
+      "shard": "app-2",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=2/8"
+    },
+    {
+      "shard": "app-3",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=3/8"
+    },
+    {
+      "shard": "app-4",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=4/8"
+    },
+    {
+      "shard": "app-5",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=5/8"
+    },
+    {
+      "shard": "app-6",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=6/8"
+    },
+    {
+      "shard": "app-7",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=7/8"
+    },
+    {
+      "shard": "app-8",
+      "filter": "--filter=@bb/app",
+      "args": "--shard=8/8"
+    },
+    {
+      "shard": "integration",
+      "filter": "--filter=@bb/integration-tests",
+      "args": ""
+    },
+    {
+      "shard": "plugins",
+      "filter": "--filter='bb-plugin-*'",
+      "args": ""
+    },
+    {
+      "shard": "packages-host",
+      "filter": "--filter=@bb/host-daemon --filter=@bb/cli --filter=@bb/agent-runtime --filter=@bb/provider-parity --filter=@bb/db",
+      "args": ""
+    },
+    {
+      "shard": "packages-build",
+      "filter": "--filter=@bb/templates --filter=bb-app --filter=@bb/demo-server --filter=@bb/desktop --filter=@bb/plugin-build",
+      "args": ""
+    },
+    {
+      "shard": "packages-other",
+      "filter": "--filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests' --filter='!bb-plugin-*' --filter='!@bb/host-daemon' --filter='!@bb/cli' --filter='!@bb/agent-runtime' --filter='!@bb/provider-parity' --filter='!@bb/db' --filter='!@bb/templates' --filter='!bb-app' --filter='!@bb/demo-server' --filter='!@bb/desktop' --filter='!@bb/plugin-build'",
+      "args": ""
+    }
+  ],
+  "windows-tests": [
+    {
+      "shard": "server-1",
+      "filter": "--filter=@bb/server",
+      "concurrency": 4,
+      "args": "-- --shard=1/3"
+    },
+    {
+      "shard": "server-2",
+      "filter": "--filter=@bb/server",
+      "concurrency": 4,
+      "args": "-- --shard=2/3"
+    },
+    {
+      "shard": "server-3",
+      "filter": "--filter=@bb/server",
+      "concurrency": 4,
+      "args": "-- --shard=3/3"
+    },
+    {
+      "shard": "app-1",
+      "filter": "--filter=@bb/app",
+      "concurrency": 4,
+      "args": "-- --shard=1/4"
+    },
+    {
+      "shard": "app-2",
+      "filter": "--filter=@bb/app",
+      "concurrency": 4,
+      "args": "-- --shard=2/4"
+    },
+    {
+      "shard": "app-3",
+      "filter": "--filter=@bb/app",
+      "concurrency": 4,
+      "args": "-- --shard=3/4"
+    },
+    {
+      "shard": "app-4",
+      "filter": "--filter=@bb/app",
+      "concurrency": 4,
+      "args": "-- --shard=4/4"
+    },
+    {
+      "shard": "plugins-1",
+      "filter": "--filter=bb-plugin-provider-* --filter=bb-plugin-tasks --filter=bb-plugin-connect --filter=bb-plugin-thread-list",
+      "concurrency": 2,
+      "args": ""
+    },
+    {
+      "shard": "plugins-2",
+      "filter": "--filter=bb-plugin-* --filter=!bb-plugin-provider-* --filter=!bb-plugin-tasks --filter=!bb-plugin-connect --filter=!bb-plugin-thread-list",
+      "concurrency": 2,
+      "args": ""
+    },
+    {
+      "shard": "packages-host",
+      "filter": "--filter=@bb/host-daemon --filter=@bb/cli",
+      "concurrency": 1,
+      "args": ""
+    },
+    {
+      "shard": "integration",
+      "filter": "--filter=@bb/integration-tests",
+      "concurrency": 1,
+      "args": ""
+    },
+    {
+      "shard": "packages-build",
+      "filter": "--filter=@bb/templates --filter=bb-app --filter=@bb/demo-server --filter=@bb/desktop --filter=@bb/plugin-build",
+      "concurrency": 2,
+      "args": ""
+    },
+    {
+      "shard": "packages-other",
+      "filter": "--filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-* --filter=!@bb/host-daemon --filter=!@bb/cli --filter=!@bb/integration-tests --filter=!@bb/templates --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop --filter=!@bb/plugin-build --filter=!@bb/process-utils --filter=!@bb/host-workspace --filter=!@bb/host-watcher --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol --filter=!@bb/provider-bridge-acp --filter=!@bb/host-daemon-contract --filter=!@bb/config --filter=!@bb/db",
+      "concurrency": 2,
+      "args": ""
+    }
+  ],
+  "foundation": [
+    "@bb/process-utils",
+    "@bb/host-workspace",
+    "@bb/host-watcher",
+    "@bb/agent-runtime",
+    "@bb/provider-bridge-protocol",
+    "@bb/provider-bridge-acp",
+    "@bb/host-daemon-contract",
+    "@bb/config",
+    "@bb/db"
+  ]
+}

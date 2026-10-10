@@ -146,13 +146,13 @@ export function Overview() {
             <ConversationMessageContent
               role="user"
               initiator="system"
-              originKind={null}
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}
               systemMessageKind={row.systemMessageKind}
               systemMessageSubject={row.systemMessageSubject}
               text={row.text}
+              timestamp={0}
               attachments={null}
               mentions={row.mentions ?? []}
               projectId="proj_demo"
@@ -169,13 +169,13 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="agent"
-            originKind={null}
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="Can you take the migration step from here? I've finished the schema changes and pushed to the branch."
+            timestamp={0}
             attachments={null}
             mentions={[]}
             projectId="proj_demo"
@@ -191,13 +191,13 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="system"
-            originKind={null}
             senderThreadId={null}
             senderThreadTitle={null}
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="A system message persisted before the taxonomy existed."
+            timestamp={0}
             attachments={null}
             mentions={[]}
             projectId="proj_demo"
@@ -220,13 +220,13 @@ export function ClippedAgentMessage() {
           <ConversationMessageContent
             role="user"
             initiator="agent"
-            originKind={null}
             senderThreadId="thr_host_hermes"
             senderThreadTitle="Host Hermes on Flue"
             senderIsPluginSideChat={false}
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text="TEST RESULT refines the diagnosis — RULE OUT eviction. A fire-and-forget direct POST with no wait parameter and no client-held stream should still render the complete report after expansion, including the exact follow-up checks the other agent already ran."
+            timestamp={0}
             attachments={null}
             mentions={[]}
             projectId="proj_demo"

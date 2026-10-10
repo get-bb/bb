@@ -27,6 +27,8 @@ If there are no findings, say so directly and mention any meaningful test gap or
 - Does the change do what it claims to do?
 - Are authorization, validation, query filters, ordering, pagination, and persistence correct at the layer that enforces them?
 - Are changed route, command, event, and database fields implemented end to end?
+- Update `apps/mobile/README.md` and `docs/platform-support.md` in the same
+  PR as a mobile architecture restructure.
 - Are accepted fields actually used?
 - Are defaults applied once at the boundary instead of hidden behind optional internal fields?
 - Do tests assert outcomes that would fail for the bug or regression?

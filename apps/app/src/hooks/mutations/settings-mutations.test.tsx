@@ -76,6 +76,7 @@ describe("general settings mutation", () => {
     const configKey = systemConfigQueryKey();
     const timelineKey = threadTimelineQueryKey("thread-1");
     const summaryKey = threadTimelineTurnSummaryDetailsQueryKey({
+      itemId: null,
       threadId: "thread-1",
       turnId: "turn-1",
       sourceSeqStart: 1,
@@ -166,6 +167,92 @@ describe("general settings mutation", () => {
       expect(result.current.providers.isError).toBe(outcome === "failure");
     },
   );
+
+  it("shows rapid patches at once and sends each write with every earlier patch", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(configKey, systemConfig());
+    const firstWrite = createDeferredPromise<typeof defaultAppSettings>();
+    const secondWrite = createDeferredPromise<typeof defaultAppSettings>();
+    vi.mocked(sdk.system.updateGeneralSettings)
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(secondWrite.promise);
+    const { result } = renderHook(() => useUpdateGeneralSettings(), {
+      wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({ showGitChanges: false });
+      result.current.mutate({ confirmThreadArchive: false });
+    });
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData<SystemConfigResponse>(configKey)
+          ?.generalSettings,
+      ).toMatchObject({ showGitChanges: false, confirmThreadArchive: false }),
+    );
+    expect(sdk.system.updateGeneralSettings).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      firstWrite.resolve({ ...defaultAppSettings, showGitChanges: false });
+    });
+    await waitFor(() =>
+      expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(2),
+    );
+    expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(false);
+    expect(
+      vi.mocked(sdk.system.updateGeneralSettings).mock.calls[1]?.[0],
+    ).toMatchObject({ showGitChanges: false, confirmThreadArchive: false });
+
+    await act(async () => {
+      secondWrite.resolve({
+        ...defaultAppSettings,
+        showGitChanges: false,
+        confirmThreadArchive: false,
+      });
+    });
+    await waitFor(() =>
+      expect(queryClient.getQueryState(configKey)?.isInvalidated).toBe(true),
+    );
+  });
+
+  it("rolls back only the failed patch and keeps a later pending one", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const configKey = systemConfigQueryKey();
+    queryClient.setQueryData(configKey, systemConfig());
+    const firstWrite = createDeferredPromise<typeof defaultAppSettings>();
+    vi.mocked(sdk.system.updateGeneralSettings)
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(new Promise(() => {}));
+    const { result } = renderHook(() => useUpdateGeneralSettings(), {
+      wrapper,
+    });
+
+    act(() => {
+      result.current.mutate({ showGitChanges: false });
+      result.current.mutate({ confirmThreadArchive: false });
+    });
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData<SystemConfigResponse>(configKey)
+          ?.generalSettings.confirmThreadArchive,
+      ).toBe(false),
+    );
+    await act(async () => {
+      firstWrite.reject(new Error("write failed"));
+    });
+    await waitFor(() =>
+      expect(sdk.system.updateGeneralSettings).toHaveBeenCalledTimes(2),
+    );
+
+    expect(
+      queryClient.getQueryData<SystemConfigResponse>(configKey)
+        ?.generalSettings,
+    ).toMatchObject({ showGitChanges: true, confirmThreadArchive: false });
+    expect(
+      vi.mocked(sdk.system.updateGeneralSettings).mock.calls[1]?.[0],
+    ).toMatchObject({ showGitChanges: true, confirmThreadArchive: false });
+  });
 
   it("drops cached model catalogs when streamer mode flips", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();

@@ -59,6 +59,7 @@ import {
 
 const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   ...configFixture,
+  performanceDiagnosticsAvailable: false,
   generalSettings: defaultAppSettings,
   experiments: { ...defaultExperiments },
   appearance: defaultAppTheme,
@@ -171,28 +172,17 @@ function createUiPreferences(): UiPreferenceEntries {
       "sidebar.machineSectionOrder",
     ),
     "sidebar.hiddenGroups": uiPreferenceEntry("sidebar.hiddenGroups"),
-    "sidebar.collapsedSections": uiPreferenceEntry("sidebar.collapsedSections"),
-    "sidebar.collapsedProjects": uiPreferenceEntry("sidebar.collapsedProjects"),
-    "sidebar.collapsedThreads": uiPreferenceEntry("sidebar.collapsedThreads"),
-    "sidebar.collapsedEnvironments": uiPreferenceEntry(
-      "sidebar.collapsedEnvironments",
-    ),
-    "sidebar.collapsedThreadSections": uiPreferenceEntry(
-      "sidebar.collapsedThreadSections",
-    ),
-    "sidebar.collapsedMachines": uiPreferenceEntry("sidebar.collapsedMachines"),
     "sidebar.footerOrder": uiPreferenceEntry("sidebar.footerOrder"),
     "sidebar.hiddenFooterItems": uiPreferenceEntry("sidebar.hiddenFooterItems"),
     "sidebar.pluginPanelOrder": uiPreferenceEntry("sidebar.pluginPanelOrder"),
     "sidebar.visiblePluginPanels": uiPreferenceEntry(
       "sidebar.visiblePluginPanels",
     ),
-    "sidebar.navigationProvider": uiPreferenceEntry(
-      "sidebar.navigationProvider",
-    ),
-    "sidebar.headerProvider": uiPreferenceEntry("sidebar.headerProvider"),
     "sidebar.threadListProvider": uiPreferenceEntry(
       "sidebar.threadListProvider",
+    ),
+    "infoPanel.collapsedSections": uiPreferenceEntry(
+      "infoPanel.collapsedSections",
     ),
   };
 }
@@ -541,6 +531,8 @@ export class DemoWorld {
       activeBackgroundCommands: [],
       pendingTodos: null,
       goal: null,
+      providerCommands: null,
+      sessionOptions: null,
       modelFallback: null,
       contextWindowUsage: {
         estimated: false,

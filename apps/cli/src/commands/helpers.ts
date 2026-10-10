@@ -101,7 +101,7 @@ export function parseReasoningLevel(
     return parsed.data;
   }
   throw new Error(
-    `Invalid reasoning level '${value}'. Expected ${joinValues(REASONING_LEVELS)}.`,
+    `Invalid reasoning level '${value}'. Expected a level id the model lists, such as ${joinValues(REASONING_LEVELS)}.`,
   );
 }
 

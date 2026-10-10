@@ -19,6 +19,13 @@ user-installed plugins come from `bb plugin install` or the official store.
 Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file,
 secrets, logs).
 
+The builtin Prompt Library plugin is disabled by default. Enable it with
+`bb plugin enable bb--prompt-library` or Settings → Plugins. Open **+ → Prompts…**
+or press **Ctrl+R** in a composer to search, preview, star, and insert prompts.
+`bb prompts search [query...] [--project ID | --thread ID] [--json]` searches
+history; `bb prompts list [--json]`, `bb prompts star <text...> [--json]`, and
+`bb prompts unstar <id> [--json]` manage starred text and mentions. History restores text, mentions, and attachments into an empty composer. Inserting never sends a message.
+
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
@@ -155,7 +162,10 @@ Codex and Claude Code turns after structured provider overloads and subscription
 window limits. A pending retry is a queued row on the thread, so a server
 restart does not lose it, and that row — on the queue card above the composer,
 with its reason, its time and its own Cancel — is the only place the wait is
-narrated. Inspect it with `bb provider-retry status`. See
+narrated. Inspect it with `bb provider-retry status`; use
+`bb provider-retry explain <thread-id>` for the last scheduling or skip decision.
+Pooled rate limits use Account Pooler’s availability even without provider quota
+events. See
 `bb guide providers` for the eligibility rules. The plugin only reacts to a
 failed turn — it never blocks a send. Prior output or tool activity does not
 block recovery. Its `maximumWait` setting defaults to `6 hours`; choose
@@ -322,6 +332,16 @@ added/updated/unchanged counts.
                                  Installing a local path for an id that is
                                  already installed from another local path
                                  moves it there and keeps its settings
+                                 Installs run one at a time as server jobs
+                                 that continue if the CLI or app disconnects;
+                                 a repeat request joins the active job.
+                                 --no-wait starts the job and prints its id
+  bb plugin install-jobs         List queued, running, and recently finished
+                                 installs (--json for the jobs)
+  bb plugin cancel-install <job> Cancel an install: a queued job is dropped;
+                                 a running job stops its download or build
+                                 and installs nothing, unless it already
+                                 started registering, which then finishes
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -366,6 +386,15 @@ added/updated/unchanged counts.
                                  secrets, and schedules (managed git:/npm:
                                  files deleted; local path sources stay on
                                  disk; builtin removals are remembered)
+  bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
+                                 installed plugin uses (left by earlier bb
+                                 releases, rolled-back updates, or
+                                 interrupted operations) and leftover cache
+                                 directories, and print what was freed.
+                                 Updates and removals already delete what
+                                 they replace. Never touches a running
+                                 version or a local path source. Also in the
+                                 command palette
   bb plugin new <name>           Scaffold a todo-list plugin (server.ts,
                                  app.tsx with a sidebar page, a `bb <id>` CLI
                                  command, and a skill) and install its npm
@@ -503,6 +532,13 @@ them itself rather than repeating a publisher's claim.
 
 BB Official entries use the same counts. bb finds each count in the BB
 Community `stats.json` file by the plugin id.
+
+The store, getbb.app, and the Installs column of `bb plugin search` turn
+each count into the same badge. Plugins that ship installed with bb show
+"Built in". A count of 25 or more shows as is. Below 25, a plugin published
+in the last 30 days shows "New", and an older one shows its real count.
+`bb plugin search --json` returns the raw `installs` and
+`installedByDefault` fields.
 
 Third-party marketplaces
 
@@ -680,14 +716,12 @@ Frontend entries (app.tsx) default-export `definePluginApp` from
 `@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title),
-navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
-arrives as the component's subPath prop for panel-internal deep links; the
-host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling; optional
-experimental_sidebarAccessory mounts a presentational live-value component at
-the trailing edge of the sidebar row on wide viewports, bounded to one short
-line, replaced visually by the host options button on hover/focus, and omitted
-on compact viewports),
+navPanel (own navigation rail destination + /plugins/<id>/<path>/* route; the
+remainder arrives as the component's subPath prop for panel-internal deep
+links; the host always renders the shared plugin title bar and the component
+owns a zero-padding full-bleed body, including its scrolling; the optional
+experimental_sidebarAccessory field is accepted, but no host surface mounts it
+because the rail is icon-only),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can
@@ -713,7 +747,9 @@ useBbNavigate (including openUrl(url), which applies the current
 client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
-workspace/host/thread-storage files), and useComposer (one stable handle for
+workspace/host/thread-storage files, and experimental_openTerminal({
+terminalId }), which shows a terminal created with useSdk().terminals.create
+in the current surface's terminal panel), and useComposer (one stable handle for
 the bound composer: read its text, mentions, reactive picker selection, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,
@@ -972,3 +1008,9 @@ Modal image debugging: `bb modal image build [--json]` prepares the saved image;
 `bb plugin rpc list [plugin-id] [--method <exact-name>] [--json]` lists discoverable methods from running plugins, optionally restricted to one plugin. `bb plugin rpc inspect <plugin-id> [method] [--json]` dumps registration and method descriptions plus input/output JSON Schemas. Copy the relevant schema into your consumer and call the existing plugin RPC endpoint. Discovery is opt-in advertising, not access control; method names may carry versions such as `provider-usage.v1.listResources`.
 
 `bb plugin rpc call <plugin-id> <method> [--input-file <json-path>] [--json]` invokes a method using server-side schema validation. Omitting the input file sends JSON null. Input files avoid putting sensitive values in command arguments.
+
+### Background updates
+
+`bb plugin update <id> --yes` starts a server job and waits by polling, so the activation stability check does not hold one HTTP request open. Add `--no-wait` to return immediately. Use `bb plugin update-jobs [job-id] --json` for progress and results, including automatic rollback. Queued/running updates continue after the CLI or app disconnects. Finished jobs remain for ten minutes; jobs do not survive server restarts. Running updates cannot be cancelled midway through activation.
+
+SDK: `plugins.applyUpdate({ pluginId })` waits; `plugins.experimental_startUpdate({ pluginId })` returns the job. Inspect with `plugins.experimental_updateJobs.list()` or `.get({ jobId })`. Raw HTTP callers opt in with `Prefer: respond-async`; legacy callers still receive the completed result.

@@ -113,6 +113,15 @@ const MENTIONS: PromptTextMention[] = [
       label: "PR #1",
     },
   },
+  {
+    start: 45,
+    end: 54,
+    resource: {
+      kind: "attachment",
+      path: "attachments/spec.txt",
+      label: "spec.txt",
+    },
+  },
 ];
 
 function makeTarget(
@@ -154,7 +163,7 @@ const emptyDraft: PromptDraftState = {
 describe("composer handle", () => {
   it("round-trips every mention kind from draft through insert", () => {
     const source = makeTarget({
-      text: "x".repeat(44),
+      text: "x".repeat(54),
       mentions: MENTIONS,
       attachments: [],
     });
@@ -164,6 +173,7 @@ describe("composer handle", () => {
       "path",
       "command",
       "plugin",
+      "attachment",
     ]);
     expect(mentions[3]).toMatchObject({
       pluginId: "github",
@@ -178,7 +188,7 @@ describe("composer handle", () => {
       MENTIONS.map((mention) => mention.resource),
     );
     expect(destination.current().text).toBe(
-      "@thread:thr_1@src/app//review@PR #1",
+      "@thread:thr_1@src/app//review@PR #1@spec.txt",
     );
   });
 
@@ -432,13 +442,14 @@ describe.each(["core", "plugin"] as const)(
     const attachment = {
       type: "localFile",
       path: "attachments/spec.txt",
+      sourceProjectId: "proj_source",
       name: "spec.txt",
       sizeBytes: 12,
     } as const;
 
     it("restores a structured history snapshot atomically and replaces pills even when text is unchanged", () => {
       const history: PromptDraftState = {
-        text: "x".repeat(44),
+        text: "x".repeat(54),
         mentions: MENTIONS,
         attachments: [attachment],
       };
@@ -507,7 +518,7 @@ describe.each(["core", "plugin"] as const)(
 
     it("rejects invalid, throwing, and mutating updaters without altering any draft content", () => {
       const stored = makeTarget({
-        text: "x".repeat(44),
+        text: "x".repeat(54),
         mentions: MENTIONS,
         attachments: [attachment],
       });
@@ -540,7 +551,7 @@ describe.each(["core", "plugin"] as const)(
 
     it("quotes with attachments in one write, preserves existing pills, and deduplicates attachment-only additions", () => {
       const initial: PromptDraftState = {
-        text: "x".repeat(44),
+        text: "x".repeat(54),
         mentions: MENTIONS,
         attachments: [attachment],
       };

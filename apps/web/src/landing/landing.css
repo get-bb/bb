@@ -55,6 +55,7 @@
   --add: oklch(0.4 0.13 163); /* --diff-added */
   --del: oklch(0.4 0.17 28); /* --diff-removed */
   --spark: oklch(0.55 0.14 50); /* --warning-text */
+  --attention: oklch(0.74 0.15 80);
   --radius: 0.5rem;
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
@@ -90,12 +91,25 @@
   --add: oklch(0.77 0.17 163); /* --diff-added (dark) */
   --del: oklch(0.72 0.19 22); /* --diff-removed (dark) */
   --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
+  --attention: oklch(0.8 0.15 80);
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer landing-reset {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  code,
+  .mono {
+    font-family: var(--font-mono);
+  }
 }
 
 /* The hero's faint full-bleed wash (::before/::after) extends past the wrap on
@@ -119,16 +133,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-code,
-.mono {
-  font-family: var(--font-mono);
-}
-
 .wrap {
   max-width: 980px;
   margin: 0 auto;
@@ -142,6 +146,8 @@ code,
   align-items: center;
   justify-content: space-between;
   padding: 22px 0;
+  position: relative;
+  z-index: 10;
   animation: hdr-down 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -194,9 +200,130 @@ code,
   color: var(--ink);
 }
 
-.nav-links .nav-current {
+.nav-links .nav-current,
+.nav-links a.nav-current {
   color: var(--ink);
-  font-weight: 500;
+}
+
+.nav-menu {
+  position: relative;
+}
+
+.nav-menu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  color: var(--dim);
+  cursor: pointer;
+  list-style: none;
+}
+
+.nav-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-menu summary:hover,
+.nav-menu[open] summary,
+.nav-links .nav-menu summary.nav-current {
+  color: var(--ink);
+}
+
+.nav-menu summary svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nav-menu[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.nav-menu summary:focus-visible,
+.nav-menu-panel a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -10px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 12%, transparent);
+}
+
+.nav-links .nav-menu-panel a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.nav-links .nav-menu-panel a:hover,
+.nav-links .nav-menu-panel a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--heading);
+}
+
+.nav-sub {
+  position: relative;
+}
+
+.nav-links .nav-sub-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  color: var(--dim);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-sub-trigger svg {
+  width: 14px;
+  height: 14px;
+}
+
+.nav-links .nav-sub-trigger:hover,
+.nav-links .nav-sub.open > .nav-sub-trigger {
+  background: var(--surface);
+  color: var(--heading);
+}
+
+.nav-sub-trigger:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.nav-sub-panel {
+  position: absolute;
+  top: -6px;
+  left: calc(100% + 12px);
+  display: none;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--shade) 12%, transparent);
+}
+
+.nav-sub.open > .nav-sub-panel {
+  display: flex;
 }
 
 .nav-icon-button {
@@ -315,6 +442,17 @@ code,
   line-height: 1.5;
 }
 
+.nav-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nav-download .btn-ic {
+  width: 14px;
+  height: 14px;
+}
+
 .btn-ic {
   width: 16px;
   height: 16px;
@@ -430,6 +568,31 @@ code,
 
 .install-note-link:hover {
   color: var(--ink);
+}
+
+.install-choice .install-send,
+.install-choice .install-note-touch {
+  display: none;
+}
+
+.install-send {
+  position: relative;
+  font-family: var(--font-sans);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .install-choice .install-download,
+  .install-choice .install-note-desktop {
+    display: none;
+  }
+
+  .install-choice .install-send {
+    display: inline-flex;
+  }
+
+  .install-choice .install-note-touch {
+    display: inline;
+  }
 }
 
 /* ── Hero ───────────────────────────────────────────────────────── */
@@ -736,7 +899,8 @@ code,
   display: flex;
   align-items: center;
   width: max-content;
-  animation: company-proof-scroll 42s linear infinite;
+  animation: company-proof-scroll calc(var(--company-proof-logos, 11) * 8s)
+    linear infinite;
   will-change: transform;
 }
 
@@ -747,6 +911,39 @@ code,
 .company-proof.is-offscreen .company-proof-track {
   animation-play-state: paused;
   will-change: auto;
+}
+
+.company-proof-track.is-reverse {
+  animation-direction: reverse;
+}
+
+.company-proof-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .company-proof-rows:hover .company-proof-track {
+    animation-play-state: paused;
+  }
+
+  .company-proof-heading {
+    position: relative;
+  }
+
+  .company-proof-toggle {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 6px);
+    transform: translateY(-50%);
+  }
+
+  .company-proof:not(.is-paused) .company-proof-toggle:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .company-proof-logos {
@@ -2481,6 +2678,37 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
 /* ── Spawn sidebar (Band 5): a worker thread per provider, nested ──── */
 
+@keyframes rc-step {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes rc-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes rc-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rc-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes rc-leave {
+  to {
+    opacity: 0;
+  }
+}
+
 .spawnbar {
   width: 100%;
   background: var(--bg);
@@ -2698,6 +2926,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   text-align: center;
 }
 
+.closer h2,
+.closer p {
+  text-wrap: balance;
+}
+
 .closer p {
   color: var(--dim);
   margin-top: 12px;
@@ -2799,20 +3032,89 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer {
-  padding: 32px 0 52px;
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: 0.65fr 0.95fr 1.2fr 1.2fr 0.7fr;
+  gap: 32px;
+  padding: 56px 0 64px;
+  border-top: 1px solid var(--border-soft);
   color: var(--subtle);
   font-size: 14px;
+}
+
+.footer a {
+  color: var(--subtle);
 }
 
 .footer a:hover {
   color: var(--ink);
 }
 
+.footer a[aria-current="page"] {
+  color: var(--heading-sub);
+  font-weight: 500;
+}
+
+.footer-mark {
+  display: block;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.footer-brand p {
+  max-width: 170px;
+  margin-top: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.footer-x {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.footer-brand .footer-legal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.footer-brand .footer-legal a {
+  white-space: nowrap;
+}
+
+.footer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.footer-column ul {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+  list-style: none;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 860px) {
+  .footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 24px;
+  }
+
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
+
+  .footer-brand p {
+    max-width: none;
+  }
+}
 
 @media (max-width: 820px) {
   .band-grid {
@@ -2937,18 +3239,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     justify-content: flex-start;
   }
 
-  /* Stack the two CTAs full-width so neither wraps awkwardly. */
-  .install-actions {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .btn-install {
-    width: 100%;
-    justify-content: center;
-  }
-
   /* The full download CTA is repeated immediately below in the hero. Hide the
      nav copy on mobile so the three utility links retain comfortable spacing. */
   .nav-links .btn {
@@ -2964,6 +3254,27 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 600px) {
+  .install-actions {
+    width: 100%;
+    max-width: 420px;
+    margin-inline: auto;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn-install {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 500px) {
+  .nav-links .nav-wide {
+    display: none;
+  }
+}
+
 /* Give the remaining utility links a little more room on narrow phones. */
 @media (max-width: 430px) {
   .nav-links {
@@ -2971,7 +3282,57 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
     font-size: 13px;
   }
 
-  .updates-label {
+  .nav-menu {
+    position: static;
+  }
+
+  .nav-menu-panel {
+    right: 0;
+    left: auto;
+    max-width: 100%;
+  }
+
+  .nav-links .nav-menu-panel a {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 760px) {
+  .nav-menu-panel:has(> .nav-sub.open) > :not(.nav-sub.open) {
+    display: none;
+  }
+
+  .nav-sub-panel {
+    position: static;
+    min-width: 0;
+    padding: 4px 0 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .nav-links .nav-sub.open > .nav-sub-trigger {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 8px 8px 0 0;
+    background: none;
+    font-weight: 600;
+    color: var(--heading);
+  }
+
+  .nav-sub.open > .nav-sub-trigger svg {
+    transform: rotate(180deg);
+  }
+}
+
+@media (max-width: 359px) {
+  .nav-links {
+    gap: 10px;
+  }
+
+  .nav-links .nav-icon-button {
     display: none;
   }
 }

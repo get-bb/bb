@@ -197,6 +197,7 @@ async function startIntegrationServer(
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },
     isDevelopment: false,
+    performanceDiagnosticsAvailable: false,
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
@@ -242,10 +243,13 @@ async function startIntegrationServer(
   });
   pendingInteractions.start();
   const appVersion = createAppVersionService({
+    installKind: null,
+    sourceCommit: null,
     config,
     logger: testLogger,
   });
   const appUpdate = createAppUpdateService({
+    currentCommit: null,
     appSurface: "web",
     appVersion,
     config,
@@ -277,7 +281,7 @@ async function startIntegrationServer(
     watchInterests,
     workspaceReadCaches,
   };
-  const { app, injectWebSocket, pluginService } = createApp(
+  const { app, closeWebSockets, injectWebSocket, pluginService } = createApp(
     serverDeps,
     options.staticDir === undefined
       ? undefined
@@ -330,7 +334,8 @@ async function startIntegrationServer(
     machineAuth,
     providerRegistry,
     async close(): Promise<void> {
-      await new Promise<void>((resolve, reject) => {
+      await pluginService.stop();
+      const closed = new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
             reject(error);
@@ -339,6 +344,8 @@ async function startIntegrationServer(
           resolve();
         });
       });
+      await closeWebSockets();
+      await closed;
     },
   };
 }

@@ -18,6 +18,7 @@ vi.mock("@/hooks/useVoiceInput", () => ({
 
 const voiceInput = {
   state: "transcribing" as const,
+  microphoneWarning: null,
   isSupported: true,
   unsupportedReason: null,
   stream: null,
@@ -164,32 +165,56 @@ describe("usePromptVoice", () => {
     );
   });
 
-  it("does not submit into a replacement composer after navigating away", () => {
-    vi.mocked(useVoiceInput).mockReturnValue({
-      ...voiceInput,
-      state: "recording",
-      isRecording: true,
-      isProcessing: false,
-      isListening: true,
-    });
-    const sendVoiceTranscript = vi.fn();
-    const promptBoxRef = {
-      current: {
-        captureHeightForLayoutChange: vi.fn(),
-        focusEnd: vi.fn(),
-        getTextBeforeCursor: vi.fn(),
-        insertTextAtCursor: vi.fn(),
-        sendVoiceTranscript,
-        playVoiceCompletionTransition: vi.fn(),
-      } satisfies PromptBoxHandle,
-    };
-    const { result, unmount } = renderHook(() => usePromptVoice(promptBoxRef));
-    const options = vi.mocked(useVoiceInput).mock.calls[0]?.[0];
-    act(() => result.current.send());
-    unmount();
-    options?.onTranscript("late transcript");
-    expect(sendVoiceTranscript).not.toHaveBeenCalled();
-  });
+  it.each(["send", "stop"] as const)(
+    "preserves %s intent for the originating draft after navigating away",
+    async (action) => {
+      vi.mocked(useVoiceInput).mockReturnValue({
+        ...voiceInput,
+        state: "recording",
+        isRecording: true,
+        isProcessing: false,
+        isListening: true,
+      });
+      const sendVoiceTranscript = vi.fn();
+      const promptBoxRef = {
+        current: {
+          captureHeightForLayoutChange: vi.fn(),
+          focusEnd: vi.fn(),
+          getTextBeforeCursor: vi.fn(),
+          insertTextAtCursor: vi.fn(),
+          sendVoiceTranscript,
+          playVoiceCompletionTransition: vi.fn(),
+        } satisfies PromptBoxHandle,
+      };
+      let draft: PromptDraftState = {
+        text: "Existing",
+        mentions: [],
+        attachments: [],
+      };
+      const submit = vi.fn(async () => {
+        expect(draft.text).toBe("Existing and later edits late transcript");
+      });
+      const origin = {
+        getCurrent: () => draft,
+        setDraft: (next: PromptDraftState) => {
+          draft = next;
+        },
+        submit,
+      };
+      const { result, unmount } = renderHook(() =>
+        usePromptVoice(promptBoxRef, origin),
+      );
+      const options = vi.mocked(useVoiceInput).mock.calls[0]?.[0];
+      act(() => result.current[action]());
+      unmount();
+      draft = { ...draft, text: "Existing and later edits" };
+      await options?.onTranscript("late transcript");
+      expect(draft.text).toBe("Existing and later edits late transcript");
+      expect(sendVoiceTranscript).not.toHaveBeenCalled();
+      expect(promptBoxRef.current.insertTextAtCursor).not.toHaveBeenCalled();
+      expect(submit).toHaveBeenCalledTimes(action === "send" ? 1 : 0);
+    },
+  );
 
   it("appends a completed transcript to the originating draft after unmount", () => {
     vi.mocked(useVoiceInput).mockReturnValue({

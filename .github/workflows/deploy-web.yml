@@ -7,7 +7,21 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/domain/src/plugin-install-badge.ts"
+      - "packages/shared-ui/src/**"
+      - "plugins/plugin-api-docs/src/**"
       - "changelog-parser.ts"
+      - "apps/server/scripts/generate-bb-official-marketplace.ts"
+      - "apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts"
+      - "apps/server/src/services/plugins/builtin-registry.ts"
+      - "packages/domain/src/plugin-catalog-category.ts"
+      - "packages/domain/src/plugin-id.ts"
+      - "packages/domain/src/plugin-manifest.ts"
+      - "plugins/bb-official.json"
+      - "plugins/*/package.json"
+      - "plugins/*/PLUGIN_OVERVIEW.md"
+      - "plugins/*/icons/*.svg"
+      - "plugins/*/*.svg"
   workflow_dispatch:
 
 env:

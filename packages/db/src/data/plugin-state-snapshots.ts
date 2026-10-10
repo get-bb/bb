@@ -200,24 +200,30 @@ export function replacePluginSnapshotState(
 
 export function listGarbageCollectablePluginArtifacts(
   db: DbConnection,
-  args: { now: number; cutoff: number },
+  args: {
+    retention: { now: number; cutoff: number } | null;
+    pluginId: string | null;
+  },
 ): Array<typeof pluginArtifacts.$inferSelect> {
   const activeArtifact = db
     .select({ id: installedPlugins.id })
     .from(installedPlugins)
     .where(eq(installedPlugins.activeArtifactId, pluginArtifacts.id));
+  const pendingRollback = inArray(pluginStateSnapshots.status, [
+    "rollback-pending",
+    "restoring",
+  ]);
   const retainingSnapshot = db
     .select({ id: pluginStateSnapshots.id })
     .from(pluginStateSnapshots)
     .where(
       and(
-        or(
-          gt(pluginStateSnapshots.retainedUntil, args.now),
-          inArray(pluginStateSnapshots.status, [
-            "rollback-pending",
-            "restoring",
-          ]),
-        ),
+        args.retention === null
+          ? pendingRollback
+          : or(
+              gt(pluginStateSnapshots.retainedUntil, args.retention.now),
+              pendingRollback,
+            ),
         or(
           eq(pluginStateSnapshots.fromArtifactId, pluginArtifacts.id),
           eq(pluginStateSnapshots.toArtifactId, pluginArtifacts.id),
@@ -229,7 +235,12 @@ export function listGarbageCollectablePluginArtifacts(
     .from(pluginArtifacts)
     .where(
       and(
-        lte(pluginArtifacts.updatedAt, args.cutoff),
+        args.retention === null
+          ? undefined
+          : lte(pluginArtifacts.updatedAt, args.retention.cutoff),
+        args.pluginId === null
+          ? undefined
+          : eq(pluginArtifacts.pluginId, args.pluginId),
         notExists(activeArtifact),
         notExists(retainingSnapshot),
       ),

@@ -6,6 +6,7 @@ import {
   changedMessageLenientSchema,
   changedMessageSchema,
   gitBranchNameSchema,
+  threadUsageCostSchema,
   gitBranchSelectionSchema,
   jsonValueSchema,
 } from "@bb/domain";
@@ -35,6 +36,7 @@ export const threadContextWindowUsageSchema = z.object({
   usedTokens: z.number(),
   modelContextWindow: z.number(),
   estimated: z.boolean(),
+  cost: threadUsageCostSchema.optional(),
 });
 export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema

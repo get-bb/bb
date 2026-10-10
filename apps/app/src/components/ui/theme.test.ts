@@ -115,10 +115,8 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
-  it("keeps coarse mobile sidebar titles stable under hover and open action states", () => {
-    const mobileRules = css.slice(
-      css.indexOf("@media (max-width: 767px) and (pointer: coarse)"),
-    );
+  it("keeps touch sidebar titles stable under hover and open action states", () => {
+    const mobileRules = css.slice(css.indexOf("@media (hover: none)"));
 
     expect(mobileRules).toMatch(
       /\.bb-sidebar-hover-actions-row:is\(:hover, :has\(:focus-visible\)\)\s+\.bb-sidebar-hover-actions-inset,\s+\.bb-sidebar-hover-actions-row:has\(\s+\.bb-sidebar-hover-actions\[data-sidebar-hover-actions-open="true"\]\s+\)\s+\.bb-sidebar-hover-actions-inset\s*\{\s*padding-right:\s*0;/,
@@ -132,6 +130,17 @@ describe("theme.css neutral ramp", () => {
 
     expect(rule).toContain(
       "linear-gradient(var(--state-active), var(--state-active))",
+    );
+    expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
+  });
+
+  it("backs accent-tinted sticky sidebar rows with an opaque sidebar layer", () => {
+    const rule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-accent-row:is\([^{]+\)\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain(
+      "linear-gradient(var(--sidebar-accent), var(--sidebar-accent))",
     );
     expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
   });
@@ -210,12 +219,6 @@ describe("theme.css neutral ramp", () => {
     expect(
       stickyRule?.match(/var\(--bb-sidebar-open-in-split-background\)/g),
     ).toHaveLength(2);
-
-    const interactiveRule = css.match(
-      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row:is\([^{]+\)\s*\{([^}]*)\}/s,
-    )?.[1];
-    expect(interactiveRule).toContain("background-image: linear-gradient(");
-    expect(interactiveRule?.match(/var\(--sidebar-accent\)/g)).toHaveLength(2);
   });
 
   for (const mode of MODES) {

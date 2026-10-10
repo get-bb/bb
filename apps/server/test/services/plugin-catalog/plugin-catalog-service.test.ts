@@ -229,7 +229,20 @@ describe("plugin catalog service", () => {
       publisherLabel: "BB Official",
       author: { name: "BB", url: null },
       installed: false,
+      installedByDefault: false,
       compatible: true,
+    });
+    expect(
+      Object.fromEntries(
+        results.map((entry) => [entry.entryId, entry.installedByDefault]),
+      ),
+    ).toEqual({
+      ...Object.fromEntries(
+        BUNDLED_PLUGINS.map((plugin) => [plugin.name, plugin.autoInstall]),
+      ),
+      ...Object.fromEntries(
+        BUNDLED_CURATED_MARKETPLACE.plugins.map((entry) => [entry.id, false]),
+      ),
     });
     expect(catalog.collections()).toEqual([
       {
@@ -578,6 +591,10 @@ describe("plugin catalog service", () => {
           displayName: "New & notable",
           pluginIds: ["widgets"],
         },
+      ]);
+      expect(catalog.categories().map((category) => category.id)).toEqual([
+        "acme-tools",
+        ...PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
       ]);
     });
 

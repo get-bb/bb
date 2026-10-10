@@ -2,7 +2,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useRef } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SidebarFooterCustomizeHeader } from "./SidebarFooterCustomizeHeader";
-import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import {
   useMeasureSidebarFooterCapacity,
   useSidebarFooterPreferences,
@@ -74,5 +74,5 @@ export const LazySidebarFooterCustomize = defineSplit<{ onDone: () => void }>({
     ),
   loading: FooterCustomizePlaceholder,
   error: FooterCustomizePlaceholder,
-  preload: "render",
+  tier: "intent",
 });

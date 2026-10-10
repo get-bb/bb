@@ -272,7 +272,9 @@ describe("thread command dispatch", () => {
     await expect(fs.readFile(stagedImage.path, "utf8")).resolves.toBe(
       "content:screenshot-uploaded.png",
     );
-    expect((await fs.stat(stagedFile.path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(stagedFile.path)).mode & 0o777).toBe(0o600);
+    }
 
     await fs.rm(path.join(threadStorageRootPath, "thread-attachments"), {
       recursive: true,
@@ -699,7 +701,7 @@ describe("thread command dispatch", () => {
           fetchProjectAttachment,
         },
       ),
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ trace: { spans: [] } });
 
     expect(fetchProjectAttachment).toHaveBeenCalledTimes(1);
     expect(harness.runtimeState.resumedThreadId).toBe(threadId);
@@ -760,7 +762,7 @@ describe("thread command dispatch", () => {
     ).rejects.toThrow();
   });
 
-  it("stages prompt attachments in a readable flat attachments directory", async () => {
+  it("stages beside an earlier turn's differing attachment instead of overwriting it", async () => {
     const threadStorageRootPath = await makeTempDir("bb-restage-attachments-");
     const harness = createHarness();
     const requestId = nextClientRequestId();
@@ -814,11 +816,77 @@ describe("thread command dispatch", () => {
       },
     );
 
-    await expect(fs.readFile(restagedPath, "utf8")).resolves.toBe("fresh");
+    await expect(fs.readFile(restagedPath, "utf8")).resolves.toBe("stale");
     await expect(fs.readdir(stagingDir)).resolves.toEqual([
       "fresh-uploaded-2.txt",
+      "fresh-uploaded-3.txt",
       "fresh-uploaded.txt",
     ]);
+    expect(
+      harness.runtimeState.startedInput?.map((input) =>
+        "path" in input ? path.basename(input.path) : input.type,
+      ),
+    ).toEqual(["fresh-uploaded-2.txt", "fresh-uploaded-3.txt"]);
+  });
+
+  it("reuses an identical earlier attachment and keeps it when the runtime fails", async () => {
+    const threadStorageRootPath = await makeTempDir("bb-reuse-attachments-");
+    const harness = createHarness();
+    harness.runtime.startThread = async () => {
+      throw new Error("runtime start failed");
+    };
+    const stagingDir = path.join(
+      threadStorageRootPath,
+      "thread-reuse-attachments",
+      "Attachments",
+    );
+    const earlierPath = path.join(stagingDir, "same-uploaded.txt");
+    await fs.mkdir(stagingDir, { recursive: true });
+    await fs.writeFile(earlierPath, "same");
+    const fetchProjectAttachment = vi.fn<FetchProjectAttachment>(async () => ({
+      bytes: Buffer.from("same"),
+    }));
+
+    await expect(
+      dispatchCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "thread.start",
+          environmentId: "env-reuse-attachments",
+          threadId: "thread-reuse-attachments",
+          workspaceContext: {
+            workspacePath: "/tmp/env-reuse-attachments",
+          },
+          projectId: "project-reuse-attachments",
+          providerId: "fake",
+          requestId: nextClientRequestId(),
+          input: [{ type: "localFile", path: "same-uploaded.txt" }],
+          options: {
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "medium",
+            providerOptions: {},
+            permissionMode: "full",
+            permissionScope: "full",
+            approvalReviewer: null,
+            permissionEscalation: null,
+          },
+          instructions: "Be a helpful coding agent.",
+          dynamicTools: [],
+          contributedEnv: [],
+          injectedSkillSources: [],
+          instructionMode: "append",
+        },
+        {
+          ...harness.dispatchOptions({ threadStorageRootPath }),
+          fetchProjectAttachment,
+        },
+      ),
+    ).rejects.toThrow("runtime start failed");
+    await expect(fs.readdir(stagingDir)).resolves.toEqual([
+      "same-uploaded.txt",
+    ]);
+    await expect(fs.readFile(earlierPath, "utf8")).resolves.toBe("same");
   });
 
   it("stages grouped prompt attachments with shared filename uniqueness", async () => {
@@ -1656,8 +1724,8 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(runResult).toEqual({});
-    expect(steerResult).toEqual({});
+    expect(runResult).toEqual({ trace: { spans: [] } });
+    expect(steerResult).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("hello");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(runRequestId);
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
@@ -1754,7 +1822,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("resume work");
     expect(harness.runtimeState.resumedThreadId).toBeUndefined();
     expect(harness.manager.listActiveThreads()).toEqual([
@@ -1809,7 +1877,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.steeredTurnId).toBe("turn-1");
     expect(harness.manager.listActiveThreads()).toEqual([
       {
@@ -1876,7 +1944,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(steeredTurnIds).toEqual(["turn-old", "turn-new"]);
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
   });
@@ -1952,7 +2020,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(steeredTurnIds).toEqual(["turn-old", "turn-new"]);
     expect(waitCalls).toBe(1);
     expect(harness.runtimeState.ranTurnClientRequestId).toBeUndefined();
@@ -2011,7 +2079,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("strict steer");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(requestId);
   });
@@ -2065,7 +2133,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.runtimeState.ranTurnText).toBe("send without active turn");
     expect(harness.runtimeState.ranTurnClientRequestId).toBe(requestId);
     expect(harness.runtimeState.steeredTurnId).toBeUndefined();
@@ -2115,7 +2183,7 @@ describe("thread command dispatch", () => {
       harness.dispatchOptions(),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(harness.provisions).toEqual([
       expect.objectContaining({
         path: "/tmp/env-lazy",
@@ -2213,7 +2281,7 @@ describe("thread command dispatch", () => {
       makeDispatchOptions({ runtimeManager: manager }),
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(createRuntimeCalls).toBe(2);
     expect(replacementFake.state.resumedThreadId).toBe("thread-1");
     expect(replacementFake.state.ranTurnText).toBe("after exit");

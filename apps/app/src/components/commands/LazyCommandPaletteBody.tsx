@@ -1,3 +1,4 @@
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useId } from "react";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -30,6 +31,7 @@ function CommandPaletteBodyPlaceholder({
   retry,
 }: CommandPaletteBodyProps & { retry?: () => void }) {
   const descriptionId = useId();
+  const isCompact = useIsCompactViewport();
   return (
     <>
       <PaletteInputBand>
@@ -39,7 +41,7 @@ function CommandPaletteBodyPlaceholder({
           aria-describedby={descriptionId}
           autoComplete="off"
           spellCheck={false}
-          className={PALETTE_INPUT_CLASS}
+          className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
           placeholder={COMMAND_PALETTE_INPUT.placeholder}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -48,7 +50,7 @@ function CommandPaletteBodyPlaceholder({
           {COMMAND_PALETTE_INPUT.description}
         </span>
       </PaletteInputBand>
-      <div className="rounded-b-[inherit] bg-background">
+      <div className="min-h-0 overflow-hidden rounded-b-[inherit] bg-background">
         {retry ? (
           <SplitLoadFailure retry={retry} />
         ) : (
@@ -75,5 +77,5 @@ export const LazyCommandPaletteBody = defineSplit<CommandPaletteBodyProps>({
     import("./CommandPaletteBody").then((module) => module.CommandPaletteBody),
   loading: CommandPaletteBodyPlaceholder,
   error: CommandPaletteBodyPlaceholder,
-  preload: "idle",
+  tier: "preload",
 });

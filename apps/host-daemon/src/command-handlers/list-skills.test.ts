@@ -291,8 +291,12 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     });
   });
 
-  it("classifies configured shared user and project roots", async () => {
+  it("classifies configured shared user and project roots without the bb project root", async () => {
     const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".bb", "skills", "bb-project-skill", "SKILL.md"),
+      "bb-project-skill",
+    );
     await writeSkill(
       path.join(
         fixture.homeDir,
@@ -320,6 +324,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     expect(byName(skills, "project-shared")?.rootKind).toBe("shared-project");
     expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
+    expect(byName(skills, "bb-project-skill")).toBeUndefined();
   });
 
   it("discovers a project skill through a symlinked shared root", async () => {

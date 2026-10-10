@@ -1,6 +1,7 @@
 import { createEventId, getThread } from "@bb/db";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
+  THREAD_CONTEXT_CLEARED_DETAIL,
   threadScope,
   type Environment,
   type Thread,
@@ -65,8 +66,7 @@ export async function clearThreadContext(
         operation: THREAD_CONTEXT_CLEAR_OPERATION,
         operationId: createEventId(),
         status: "completed",
-        message:
-          "Earlier chat is hidden from the active timeline. Durable history and workspace are unchanged.",
+        message: THREAD_CONTEXT_CLEARED_DETAIL,
       },
     });
     deps.hub.notifyThread(

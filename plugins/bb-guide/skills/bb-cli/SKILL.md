@@ -42,6 +42,10 @@ one page.
   stdin. Inside double quotes the shell runs `backticks` and `$(...)` before
   bb sees the text, which silently corrupts Markdown and can execute commands.
 - Timeouts take seconds or a duration with a unit (`90s`, `20m`, `4h`).
+- Examples here use POSIX shell syntax. On a Windows machine the agent shell
+  is usually PowerShell: read an environment variable as `$env:NAME`
+  (`"$env:BB_THREAD_ID"`), separate commands with `;` instead of `&&`, and
+  continue a line with a backtick instead of a backslash.
 
 A standalone CLI targets http://127.0.0.1:38886. Use BB_SERVER_URL and
 BB_HOST_DAEMON_PORT only for an intentional non-default target.
@@ -107,7 +111,7 @@ BB_HOST_DAEMON_PORT only for an intentional non-default target.
   server. An imported server keeps its connect tunnel and bb account off
   until `bb server allow-connect`. On the computer a server moved away from,
   `bb server install-machine-service` installs the persistent, self-updating
-  machine service (needs Node.js 22.19+ on the PATH).
+  machine service (macOS and Linux only; needs Node.js 22.19+ on the PATH).
 - Use `bb machine suspend|resume <id-or-name>` only for providers that expose
   suspend and resume. Resume waits for pending suspension and is a no-op
   when already active. Use `bb machine retry-cleanup <id-or-name>` to retry a
@@ -174,6 +178,13 @@ plugins; do not add plugin command manuals here.
 ## Native mobile builds
 
 For Android mobile builds and distribution, see `apps/mobile/README.md`.
+When a thread is asked for a development APK, run `pnpm mobile:apk:dev` from the
+source checkout root, wait for success, and link `apps/mobile/build-output/bb-dev.apk`.
+Copy it into `$BB_THREAD_STORAGE` for a durable per-thread artifact. The app is
+named **bb dev**, has orange icons, and installs separately as `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator; the default is ARM64. It runs without
+Metro or production credentials. The command sets `BB_MOBILE_VARIANT=dev`;
+direct Expo commands default to `production` and reject other variant values.
 `GOOGLE_SERVICES_JSON` points to the optional Firebase Android config file;
 local builds fall back to `apps/mobile/google-services.json`. EAS uses a file
 environment variable. See `bb guide customization` for push controls.
@@ -187,7 +198,9 @@ estimates in `providerDetails` when available. Provider inventory failures are
 reported; this is not billing/invoice data. Suspension requires idle live threads
 and no open terminals; empty machines can use an opted-in provider idle policy.
 
-`bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
+`bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`. When the provider reports the session's cumulative cost, `usage.cost` is `{ amount, currency }`.
+
+`bb thread commands [id] [--self] [--json]` lists the slash commands the thread's agent has advertised for its current session (ACP agents report these live; the list is empty until the agent sends one). `bb thread options [id] [--self] [--json]` lists the session options the agent reports, such as a mode, with each option's current value and allowed values. `--set <option=value>` (repeatable) chooses a value that is applied on the thread's next turn; `--clear <option>` drops a choice that has not been applied yet. Use `true` or `false` for an on/off option. To choose before the first message, pass `--option <option=value>` to `bb thread spawn`; `bb provider models <provider>` lists the options a provider's models declare.
 
 `bb machine reconcile <id-or-name> [--json]` asks core to enforce its recorded
 suspended state through the provider and waits for completion. It leaves active

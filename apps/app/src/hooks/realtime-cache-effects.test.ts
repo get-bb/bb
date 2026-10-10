@@ -11,6 +11,7 @@ import {
 import type { QueryClient } from "@tanstack/react-query";
 import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
 import { createAppQueryClient } from "@/lib/query-client";
+import { hasThreadTimelineUnseenEvents } from "./cache-owners/thread-timeline-unseen-events";
 import {
   archivedThreadsListQueryKey,
   environmentDiffFilesQueryKey,
@@ -523,6 +524,7 @@ describe("createRealtimeCacheEffects", () => {
     const configKey = systemConfigQueryKey();
     const timelineKey = threadTimelineQueryKey("thr_1");
     const summaryKey = threadTimelineTurnSummaryDetailsQueryKey({
+      itemId: null,
       threadId: "thr_1",
       turnId: "turn_1",
       sourceSeqStart: 1,
@@ -860,64 +862,87 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("marks the timeline of an unviewed thread stale without scheduling a refetch", async () => {
-    vi.useFakeTimers();
-    const { effects, queryClient } = createRealtimeEffectsTestContext();
-    const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
-    const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
-    queryClient.setQueryData(unviewedTimelineKey, { rows: [] });
-    const viewedTimelineQueryFn = vi.fn(async () => ({ rows: [] }));
-    const viewedObserver = new QueryObserver(queryClient, {
-      queryKey: viewedTimelineKey,
-      queryFn: viewedTimelineQueryFn,
-      staleTime: Infinity,
-    });
-    const unsubscribeViewed = viewedObserver.subscribe(() => {});
-    await vi.advanceTimersByTimeAsync(0);
-    viewedTimelineQueryFn.mockClear();
-    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-
-    for (const threadId of ["thr_viewed", "thr_unviewed"]) {
-      effects.handleChanged({
-        type: "changed",
-        entity: "thread",
-        id: threadId,
-        metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
-        changes: ["events-appended"],
+  it.each([
+    { cachedSequence: 1, isBehind: true },
+    { cachedSequence: 2, isBehind: false },
+    { cachedSequence: 3, isBehind: false },
+  ])(
+    "compares unviewed timeline sequence $cachedSequence with the notified sequence without refetching",
+    async ({ cachedSequence, isBehind }) => {
+      vi.useFakeTimers();
+      const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const viewedTimelineKey = threadTimelineQueryKey("thr_viewed");
+      const unviewedTimelineKey = threadTimelineQueryKey("thr_unviewed");
+      queryClient.setQueryData(unviewedTimelineKey, {
+        rows: [],
+        maxSeq: cachedSequence,
       });
-    }
-    await vi.advanceTimersByTimeAsync(50);
+      const viewedTimelineQueryFn = vi.fn(async () => ({
+        rows: [],
+        maxSeq: 2,
+      }));
+      const viewedObserver = new QueryObserver(queryClient, {
+        queryKey: viewedTimelineKey,
+        queryFn: viewedTimelineQueryFn,
+        staleTime: Infinity,
+      });
+      const unsubscribeViewed = viewedObserver.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      viewedTimelineQueryFn.mockClear();
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
-    expect(queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated).toBe(
-      true,
-    );
-    const unviewedInvalidations = invalidateSpy.mock.calls.filter(
-      ([filters]) =>
-        JSON.stringify(filters?.queryKey) ===
-        JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
-    );
-    expect(unviewedInvalidations).toHaveLength(1);
-    expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
-    const viewedInvalidations = invalidateSpy.mock.calls.filter(
-      ([filters]) =>
-        JSON.stringify(filters?.queryKey) ===
-        JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
-    );
-    expect(viewedInvalidations).toHaveLength(1);
-    expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
-    expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+      for (const threadId of ["thr_viewed", "thr_unviewed"]) {
+        effects.handleChanged({
+          type: "changed",
+          entity: "thread",
+          id: threadId,
+          metadata: {
+            eventTypes: ["item/completed"],
+            projectId: "project-1",
+            timelineSequence: 2,
+          },
+          changes: ["events-appended"],
+        });
+      }
+      await vi.advanceTimersByTimeAsync(50);
 
-    invalidateSpy.mockRestore();
-    unsubscribeViewed();
-    effects.dispose();
-  });
+      expect(
+        queryClient.getQueryState(unviewedTimelineKey)?.isInvalidated,
+      ).toBe(true);
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_unviewed")).toBe(
+        isBehind,
+      );
+      expect(hasThreadTimelineUnseenEvents(queryClient, "thr_viewed")).toBe(
+        false,
+      );
+      const unviewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_unviewed")),
+      );
+      expect(unviewedInvalidations).toHaveLength(1);
+      expect(unviewedInvalidations[0]?.[0]?.refetchType).toBe("none");
+      const viewedInvalidations = invalidateSpy.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) ===
+          JSON.stringify(threadTimelineQueryKeyPrefix("thr_viewed")),
+      );
+      expect(viewedInvalidations).toHaveLength(1);
+      expect(viewedInvalidations[0]?.[0]?.refetchType).toBeUndefined();
+      expect(viewedTimelineQueryFn).toHaveBeenCalledTimes(1);
+
+      invalidateSpy.mockRestore();
+      unsubscribeViewed();
+      effects.dispose();
+    },
+  );
 
   it("refreshes the full conversation outline once at turn completion, not for streaming deltas", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadId = "thr_outline";
     const timelineKey = threadTimelineQueryKey(threadId);
-    const outlineKey = threadConversationOutlineQueryKey(threadId);
+    const outlineKey = threadConversationOutlineQueryKey(threadId, "user");
     const timelineQueryFn = vi.fn(async () => ({ rows: [] }));
     const outlineQueryFn = vi.fn(async () => ({ items: [], maxSeq: 1 }));
     const timelineObserver = new QueryObserver(queryClient, {
@@ -1728,6 +1753,7 @@ describe("createRealtimeCacheEffects", () => {
     const timelineKey = threadTimelineQueryKey("thr_1");
     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
     const turnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      itemId: null,
       threadId: "thr_1",
       turnId: "turn_1",
       sourceSeqStart: 1,
@@ -1847,7 +1873,11 @@ describe("createRealtimeCacheEffects", () => {
       type: "changed",
       entity: "thread",
       id: "thr_1",
-      metadata: { eventTypes: ["item/completed"], projectId: "project-1" },
+      metadata: {
+        eventTypes: ["item/completed"],
+        projectId: "project-1",
+        timelineSequence: 2,
+      },
       changes: ["events-appended"],
     });
     await vi.advanceTimersByTimeAsync(50);
@@ -2651,8 +2681,9 @@ describe("createRealtimeCacheEffects", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const timelineKey = threadTimelineQueryKey("thr_1");
-    const outlineKey = threadConversationOutlineQueryKey("thr_1");
+    const outlineKey = threadConversationOutlineQueryKey("thr_1", "user");
     const turnDetailsKey = threadTimelineTurnSummaryDetailsQueryKey({
+      itemId: null,
       threadId: "thr_1",
       turnId: "turn_1",
       sourceSeqStart: 1,
@@ -2892,6 +2923,85 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
+    it("writes a carried status into the open thread and sidebar row without refetching", () => {
+      vi.useFakeTimers();
+      const visibility = createFakeVisibility();
+      const { effects, queryClient } =
+        createRealtimeEffectsTestContext(visibility);
+      const threadKey = threadQueryKey("thr_1");
+      const sidebarNavigationKey = sidebarNavigationQueryKey();
+      const activeThread = {
+        id: "thr_1",
+        lastReadAt: 100,
+        latestAttentionAt: 100,
+        runtime: { displayStatus: "active" },
+        status: "active",
+        title: "Thread",
+        updatedAt: 100,
+      };
+      queryClient.setQueryData(threadKey, activeThread);
+      queryClient.setQueryData(sidebarNavigationKey, {
+        projects: [
+          { threads: [{ ...activeThread, activity: NO_THREAD_ACTIVITY }] },
+        ],
+        personalProject: { threads: [] },
+      });
+      const idleChange = {
+        activity: NO_THREAD_ACTIVITY,
+        latestAttentionAt: 300,
+        runtime: { displayStatus: "idle" },
+        status: "idle",
+        updatedAt: 300,
+      } as const;
+
+      visibility.setVisible(false);
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { projectId: "project-1", statusChange: idleChange },
+        changes: ["status-changed"],
+      });
+
+      expect(queryClient.getQueryData(threadKey)).toEqual({
+        ...activeThread,
+        latestAttentionAt: 300,
+        runtime: { displayStatus: "idle" },
+        status: "idle",
+        updatedAt: 300,
+      });
+      expect(
+        queryClient.getQueryData<{
+          projects: { threads: { latestAttentionAt: number }[] }[];
+        }>(sidebarNavigationKey)?.projects[0]?.threads[0]?.latestAttentionAt,
+      ).toBe(300);
+      expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(false);
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          projectId: "project-1",
+          statusChange: {
+            ...idleChange,
+            runtime: { displayStatus: "active" },
+            status: "active",
+            updatedAt: 200,
+          },
+        },
+        changes: ["status-changed"],
+      });
+      expect(queryClient.getQueryData(threadKey)).toMatchObject({
+        status: "idle",
+        updatedAt: 300,
+      });
+
+      visibility.setVisible(true);
+      expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+      effects.dispose();
+    });
+
     it("refetches when a bare status-changed follows one that carried the row", () => {
       vi.useFakeTimers();
       const visibility = createFakeVisibility();
@@ -2942,7 +3052,7 @@ describe("createRealtimeCacheEffects", () => {
         queryClient.getQueryData<{
           projects: { threads: (typeof idleRow)[] }[];
         }>(sidebarNavigationKey)?.projects[0]?.threads[0],
-      ).toBe(idleRow);
+      ).toMatchObject({ status: "active", updatedAt: 200 });
       expect(
         queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated,
       ).toBe(true);

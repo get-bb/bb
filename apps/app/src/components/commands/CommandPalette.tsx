@@ -1,5 +1,6 @@
-import { useSplitPreload } from "@/lib/define-split";
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { defineSplit } from "@/lib/define-split";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   pluginCommandId,
   pluginCommandIdSchema,
@@ -22,19 +23,27 @@ import {
   readPaletteRecents,
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
-import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
+import {
+  buildPluginComposerCommandActions,
+  buildPluginPaletteActions,
+} from "@/lib/command-palette/palette-plugin-actions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 import type { PluginSettingsCandidate } from "@/components/settings/plugin-settings-entries";
 import { appQueryClient } from "@/lib/app-query-client";
 import { LazyCommandPaletteBody } from "./LazyCommandPaletteBody";
+import { ThreadSearchPalettePlaceholder } from "./ThreadSearchPalettePlaceholder";
 
-const ThreadSearchPaletteMode = lazy(() =>
-  import("./ThreadSearchPaletteMode").then((module) => ({
-    default: module.ThreadSearchPaletteMode,
-  })),
-);
+const ThreadSearchPaletteMode = defineSplit({
+  id: "thread-search-palette-mode",
+  load: () =>
+    import("./ThreadSearchPaletteMode").then(
+      (module) => module.ThreadSearchPaletteMode,
+    ),
+  loading: (props) => <ThreadSearchPalettePlaceholder {...props} />,
+  tier: "preload",
+});
 
 const THREAD_SEARCH_ACTION_ID = paletteActionIdForCommand("thread.search");
 
@@ -53,7 +62,7 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
-  useSplitPreload(LazyCommandPaletteBody);
+  const isCompact = useIsCompactViewport();
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
 
@@ -77,8 +86,29 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
     [pluginSlots.commandPaletteActions],
   );
   const pluginShortcuts = useAppCommandShortcuts(pluginCommandIds);
-  useIndexedAppCommandHandlers(pluginCommandIds, (index) => {
-    const slot = pluginSlots.commandPaletteActions[index];
+  const appPluginCommands = useMemo(
+    () =>
+      pluginSlots.commandPaletteActions.filter(
+        (command) => command.target === "app",
+      ),
+    [pluginSlots.commandPaletteActions],
+  );
+  const composerPluginCommands = useMemo(
+    () =>
+      pluginSlots.commandPaletteActions.filter(
+        (command) => command.target === "composer",
+      ),
+    [pluginSlots.commandPaletteActions],
+  );
+  const appPluginCommandIds = useMemo(
+    () =>
+      appPluginCommands.map((command) =>
+        pluginCommandId(command.pluginId, command.id),
+      ),
+    [appPluginCommands],
+  );
+  useIndexedAppCommandHandlers(appPluginCommandIds, (index) => {
+    const slot = appPluginCommands[index];
     if (!slot) return false;
     const action = buildPluginPaletteActions({
       slots: [slot],
@@ -101,25 +131,34 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
         dispatch: runner.dispatch,
         shortcuts,
       }),
-      ...buildPluginPaletteActions({
-        slots: pluginSlots.commandPaletteActions,
-        threadId,
-        projectId,
-        openThreadPanel: getActiveThreadPanelOpener(),
-      }).map((action) => ({
+      ...[
+        ...buildPluginPaletteActions({
+          slots: appPluginCommands,
+          threadId,
+          projectId,
+          openThreadPanel: getActiveThreadPanelOpener(),
+        }),
+        ...buildPluginComposerCommandActions({
+          slots: composerPluginCommands,
+          target,
+          isCommandAvailable: runner.isCommandAvailable,
+          dispatch: runner.dispatch,
+        }),
+      ].map((action) => ({
         ...action,
         shortcut:
           pluginShortcuts.get(pluginCommandIdSchema.parse(action.id)) ?? null,
       })),
     ],
     [
+      appPluginCommands,
+      composerPluginCommands,
       projectId,
       pluginShortcuts,
       runner.dispatch,
       runner.isCommandAvailable,
       shortcuts,
       threadId,
-      pluginSlots.commandPaletteActions,
     ],
   );
 
@@ -213,7 +252,8 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
       <DialogContent
         hideCloseButton
         aria-describedby={undefined}
-        className="top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl"
+        compactContentClassName="h-[min(32rem,80dvh)]"
+        className={`top-[12%] max-w-[640px] translate-y-0 gap-0 p-0 shadow-lg sm:rounded-xl ${isCompact ? "min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)]" : ""}`}
         onAfterCloseAutoFocus={handleAfterCloseAutoFocus}
         onKeyDownCapture={(event) => {
           if (
@@ -257,21 +297,12 @@ export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
             onChoose={chooseAction}
           />
         ) : (
-          <Suspense
-            fallback={
-              <p
-                role="status"
-                className="px-3 py-4 text-sm text-muted-foreground"
-              >
-                Loading threads
-              </p>
-            }
-          >
-            <ThreadSearchPaletteMode
-              onExit={exitMode}
-              runAfterClose={runAfterClose}
-            />
-          </Suspense>
+          <ThreadSearchPaletteMode
+            query={query}
+            onQueryChange={setQuery}
+            onExit={exitMode}
+            runAfterClose={runAfterClose}
+          />
         )}
       </DialogContent>
     </Dialog>

@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
@@ -201,6 +202,63 @@ afterEach(() => {
 });
 
 describe("MachinesSettingsSection", () => {
+  it("explains offline machines and removes the warning after reconnection", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+    const { queryClient } = renderSectionWithClient();
+    const banner = await screen.findByRole("region", {
+      name: "dev-vm is offline",
+    });
+    expect(within(banner).getByText("dev-vm is offline")).toBeTruthy();
+    expect(within(banner).queryByRole("button")).toBeNull();
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      { ...offlineHost, status: "connected" },
+    ]);
+    await queryClient.invalidateQueries();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "dev-vm is offline" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("shows the cleanup error in the warning and keeps recovery in the machine menu", async () => {
+    const failedHost = {
+      ...offlineHost,
+      lifecycle: {
+        ...offlineHost.lifecycle,
+        phase: "removing" as const,
+        message: "Provider credentials expired.",
+        teardown: { status: "failed" as const, attempt: 3 },
+      },
+    };
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, failedHost]);
+    vi.mocked(sdk.hosts.experimental_retryCleanup).mockResolvedValue({
+      ok: true,
+    });
+    stubSidebarBootstrapFetch();
+    renderSection();
+    const banner = await screen.findByRole("region", {
+      name: "Machines need attention",
+    });
+    expect(
+      within(banner).getByText("Provider credentials expired."),
+    ).toBeTruthy();
+    expect(within(banner).queryByRole("button")).toBeNull();
+    await openHostMenu(failedHost.name);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Retry cleanup" }),
+    );
+    await waitFor(() =>
+      expect(sdk.hosts.experimental_retryCleanup).toHaveBeenCalledWith({
+        hostId: "host_remote",
+      }),
+    );
+  });
+
   it("reveals sandboxes in the machine list behind Show all machines", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, sandboxHost]);
@@ -371,7 +429,7 @@ describe("MachinesSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("shows protocol versions when a machine needs an update", async () => {
+  it("prioritizes offline status while keeping the retry update action available", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([
       primaryHost,
@@ -384,11 +442,8 @@ describe("MachinesSettingsSection", () => {
 
     renderSection();
 
-    const updateStatus = await screen.findByText(
-      `Needs update · daemon protocol ${HOST_DAEMON_PROTOCOL_VERSION - 1} · server protocol ${HOST_DAEMON_PROTOCOL_VERSION}`,
-    );
-    expect(updateStatus.className).toContain("min-w-0");
-    expect(updateStatus.className).not.toContain("shrink-0");
+    await screen.findByText(/^Offline · last seen/);
+    expect(screen.queryByText(/Needs update|daemon protocol/)).toBeNull();
     await openHostMenu("dev-vm");
     const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
     const retryItem = await screen.findByRole("menuitem", {
@@ -441,10 +496,6 @@ describe("MachinesSettingsSection", () => {
     });
     expect(addMachine.textContent).toBe("Add a machine");
     expect(addMachine.querySelector('[data-icon="Plus"]')).not.toBeNull();
-    const action = addMachine.parentElement;
-    expect(action?.className).toContain("self-start");
-    expect(action?.parentElement?.className).toContain("flex-col");
-    expect(action?.parentElement?.className).toContain("sm:flex-row");
     fireEvent.click(addMachine);
     expect(
       await screen.findByRole("heading", { name: "Set up machine access" }),
@@ -839,6 +890,8 @@ describe("MachinesSettingsSection", () => {
     vi.mocked(sdk.hosts.experimental_reconnect).mockResolvedValue({
       command:
         "curl -fsSL -H 'X-BB-Enrollment: bbde_test' 'https://bb.example.com/install.sh' | sh",
+      windowsCommand:
+        "irm -Headers @{ 'X-BB-Enrollment' = 'bbde_test' } 'https://bb.example.com/install.ps1' | iex",
       expiresAt: NOW + 15 * 60 * 1000,
       hostId: offlineHost.id,
     });

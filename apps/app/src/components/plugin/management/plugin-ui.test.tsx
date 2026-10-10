@@ -101,9 +101,22 @@ it("gives every built-in category its own icon and unknowns none", () => {
   expect(pluginCatalogCategoryIconName("future-category")).toBeUndefined();
 });
 
-it("labels install counts only when the catalog knows them", () => {
-  expect(pluginInstallCountPresentation(null)).toBeUndefined();
-  expect(pluginInstallCountPresentation(1)?.accessibleLabel).toBe("1 install");
-  expect(pluginInstallCountPresentation(2)?.accessibleLabel).toBe("2 installs");
-  expect(pluginInstallCountPresentation(0)?.accessibleLabel).toBe("0 installs");
+it("labels built-in, new, and counted plugins", () => {
+  const now = Date.parse("2026-10-02T00:00:00Z");
+  const label = (entry: Parameters<typeof pluginInstallCountPresentation>[0]) =>
+    pluginInstallCountPresentation(entry, now);
+  expect(label({ installedByDefault: true, installs: 2 })?.display).toBe(
+    "Built in",
+  );
+  expect(
+    label({
+      installedByDefault: false,
+      installs: 3,
+      publishedAt: "2026-09-20T00:00:00Z",
+    })?.display,
+  ).toBe("New");
+  expect(
+    label({ installedByDefault: false, installs: 1 })?.accessibleLabel,
+  ).toBe("1 install");
+  expect(label({ installedByDefault: false, installs: null })).toBeUndefined();
 });

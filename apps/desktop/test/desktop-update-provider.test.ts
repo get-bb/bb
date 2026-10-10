@@ -33,14 +33,14 @@ describe("desktop update support", () => {
     ).toEqual({ autoUpdate: true, versionCheck: true });
   });
 
-  it("neither checks nor installs updates on Windows until a feed is published", () => {
+  it("checks for and installs updates on Windows", () => {
     expect(
       resolveDesktopUpdateSupport({
         canReplaceAppImage: alwaysReplaceable,
         env: { APPIMAGE: APP_IMAGE_PATH },
         platform: "windows",
       }),
-    ).toEqual({ autoUpdate: false, versionCheck: false });
+    ).toEqual({ autoUpdate: true, versionCheck: true });
   });
 
   it("installs updates on Linux only inside an AppImage", () => {

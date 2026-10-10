@@ -243,7 +243,6 @@ describe("POST /api/ai/v1/complete", () => {
     expect(calls[0].headers.get("x-title")).toBe("bb");
     expect(calls[0].body).toEqual({
       model: MODELS[0],
-      models: MODELS.slice(1),
       messages: [{ role: "user", content: prompt }],
       max_tokens: 128,
       temperature: 0.2,
@@ -276,13 +275,35 @@ describe("POST /api/ai/v1/complete", () => {
     expect(JSON.stringify(logs)).not.toContain("Fix the login flow");
   });
 
-  it("omits the fallback list when only one model is configured", async () => {
-    const { deps, calls } = harness({ config: { models: [MODELS[0]] } });
+  it("gives the next model its own attempt when one hangs", async () => {
+    const { deps, calls } = harness({
+      upstreamTimeoutMs: 20,
+      upstream: ({ body, signal }) =>
+        body.model === MODELS[0]
+          ? new Promise<Response>((_resolve, reject) => {
+              signal?.addEventListener("abort", () =>
+                reject(new DOMException("aborted", "AbortError")),
+              );
+            })
+          : Response.json({
+              model: MODELS[1],
+              choices: [
+                { message: { role: "assistant", content: "Retitled" } },
+              ],
+              usage: { prompt_tokens: 120, completion_tokens: 2, cost: 0.0001 },
+            }),
+    });
     const response = await complete(deps, { prompt: "Write a title" });
 
     expect(response.status).toBe(200);
-    expect(calls[0].body).toMatchObject({ model: MODELS[0] });
-    expect(calls[0].body).not.toHaveProperty("models");
+    expect(await response.json()).toMatchObject({
+      text: "Retitled",
+      model: MODELS[1],
+      usage: { costMicros: RESERVE_MICROS },
+    });
+    expect(calls.map((call) => call.body.model)).toEqual(MODELS.slice(0, 2));
+    expect(calls.every((call) => !("models" in call.body))).toBe(true);
+    expect(calls[1]?.signal?.aborted).toBe(false);
   });
 
   it("accepts the credential in either auth header", async () => {
@@ -489,6 +510,7 @@ describe("POST /api/ai/v1/complete", () => {
     ];
     let index = 0;
     const { deps } = harness({
+      config: { models: [MODELS[0]] },
       upstream: () => {
         const next = responses[index];
         index += 1;
@@ -543,6 +565,7 @@ describe("POST /api/ai/v1/complete", () => {
       reservedMicros: 0,
     });
     expect(db.select().from(aiRequestLog).get()).toMatchObject({
+      model: MODELS.at(-1),
       outcome: "timeout",
       costMicros: RESERVE_MICROS,
     });
@@ -695,7 +718,7 @@ describe("POST /api/ai/v1/transcribe", () => {
     }
   });
 
-  it("falls back to the next model when one refuses, but not after a timeout", async () => {
+  it("falls back to the next model when one refuses", async () => {
     const { deps, calls } = harness({
       upstream: ({ body }) =>
         body.model === TRANSCRIBE_MODELS[0]
@@ -713,8 +736,56 @@ describe("POST /api/ai/v1/transcribe", () => {
       usage: { costMicros: 40 },
     });
     expect(calls.map((call) => call.body.model)).toEqual(TRANSCRIBE_MODELS);
+  });
 
-    const slow = harness({
+  it("gives each model its own timeout and charges the reserve for one that timed out", async () => {
+    const { deps, calls } = harness({
+      transcribeTimeoutMs: 20,
+      upstream: ({ body, signal }) =>
+        body.model === TRANSCRIBE_MODELS[0]
+          ? new Promise<Response>((_resolve, reject) => {
+              signal?.addEventListener("abort", () =>
+                reject(new DOMException("aborted", "AbortError")),
+              );
+            })
+          : okTranscript(0.00004, "fallback text"),
+    });
+    const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      text: "fallback text",
+      model: TRANSCRIBE_MODELS[1],
+      usage: { costMicros: TRANSCRIBE_RESERVE_MICROS },
+    });
+    expect(calls.map((call) => call.body.model)).toEqual(TRANSCRIBE_MODELS);
+    expect(calls[1]?.signal?.aborted).toBe(false);
+  });
+
+  it("charges the reserve when a timeout is followed by a model refusal", async () => {
+    const { deps } = harness({
+      transcribeTimeoutMs: 20,
+      upstream: ({ body, signal }) =>
+        body.model === TRANSCRIBE_MODELS[0]
+          ? new Promise<Response>((_resolve, reject) => {
+              signal?.addEventListener("abort", () =>
+                reject(new DOMException("aborted", "AbortError")),
+              );
+            })
+          : Response.json(
+              { error: { code: 503, message: "no endpoint" } },
+              { status: 503 },
+            ),
+    });
+    const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
+    expect(response.status).toBe(503);
+    expect(usageRow("u1", utcDay(NOON))).toMatchObject({
+      spentMicros: TRANSCRIBE_RESERVE_MICROS,
+      reservedMicros: 0,
+    });
+  });
+
+  it("answers 504 and charges the reserve when every model times out", async () => {
+    const { deps, calls } = harness({
       transcribeTimeoutMs: 20,
       upstream: ({ signal }) =>
         new Promise<Response>((_resolve, reject) => {
@@ -723,14 +794,11 @@ describe("POST /api/ai/v1/transcribe", () => {
           );
         }),
     });
-    const timedOut = await transcribe(slow.deps, {
-      audio: AUDIO,
-      format: "ogg",
-    });
-    expect(timedOut.status).toBe(504);
-    expect(slow.calls).toHaveLength(1);
+    const response = await transcribe(deps, { audio: AUDIO, format: "ogg" });
+    expect(response.status).toBe(504);
+    expect(calls).toHaveLength(TRANSCRIBE_MODELS.length);
     expect(usageRow("u1", utcDay(NOON))).toMatchObject({
-      spentMicros: 40 + TRANSCRIBE_RESERVE_MICROS,
+      spentMicros: TRANSCRIBE_RESERVE_MICROS,
       reservedMicros: 0,
     });
   });

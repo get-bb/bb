@@ -697,29 +697,6 @@ function ThreadTocFixture() {
   );
 }
 
-const NEW_THREAD_ACTIONS = [
-  {
-    icon: "MessageSquarePlus",
-    title: "New thread",
-    description: "Start a new conversation",
-  },
-  {
-    icon: "FolderGit",
-    title: "Automatically import my projects",
-    description: "Find repos touched in the last 30 days",
-  },
-  {
-    icon: "FolderPlus",
-    title: "New project",
-    description: "Create one from a local folder",
-  },
-  {
-    icon: "Explore",
-    title: "Learn what bb can do",
-    description: "Get a tour of its capabilities",
-  },
-] as const;
-
 function Thread({
   title = "Endless theme family — blacklight pass",
   active = true,
@@ -757,74 +734,16 @@ function Thread({
     >
       {empty ? (
         <div
-          data-tp-new-welcome=""
+          data-tp-new-thread=""
           style={{
             flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: narrow ? 22 : 34,
-            padding: `0 ${pad}px`,
+            width: "100%",
+            maxWidth: 760,
+            margin: "0 auto",
+            padding: `56px ${pad}px 16px`,
           }}
         >
-          <div
-            role="img"
-            aria-label="bb"
-            style={{
-              fontSize: narrow ? 28 : 34,
-              lineHeight: 1,
-              fontWeight: 700,
-              letterSpacing: "-0.08em",
-              color: v("foreground"),
-            }}
-          >
-            bb
-          </div>
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 360,
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-            }}
-          >
-            {NEW_THREAD_ACTIONS.map((action) => (
-              <BbButton
-                key={action.title}
-                type="button"
-                variant="ghost"
-                className="h-auto w-full cursor-pointer justify-start gap-3 px-3 py-2.5 text-left"
-              >
-                <Icon
-                  name={action.icon}
-                  className="size-5 shrink-0 text-subtle-foreground"
-                />
-                <span
-                  style={{
-                    minWidth: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: v("foreground"),
-                    }}
-                  >
-                    {action.title}
-                  </span>
-                  <span style={{ fontSize: 12, color: v("muted-foreground") }}>
-                    {action.description}
-                  </span>
-                </span>
-              </BbButton>
-            ))}
-          </div>
+          <Composer focused={active} empty />
         </div>
       ) : (
         <>
@@ -1220,7 +1139,10 @@ function SettingsPage({
       variant="outline"
       size="sm"
       aria-label={label}
-      className="h-7 w-full min-w-0 cursor-pointer justify-between border-border/60 bg-card px-2 text-xs sm:w-36"
+      className={cn(
+        "h-7 min-w-0 cursor-pointer justify-between border-border/60 bg-card px-2 text-xs",
+        narrow ? "w-full" : "w-36",
+      )}
     >
       <span
         style={{
@@ -1382,9 +1304,7 @@ function SettingsSidebarFixture() {
         data-tp-settings-sidebar=""
         className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-2"
       >
-        <MockSidebarRow label="Back to app" icon="ChevronLeft" interactive />
-        <MockSidebarLabel roomy>Settings</MockSidebarLabel>
-        <div className="mt-1 flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5">
           {SETTINGS_NAV_ITEMS.map((item) => (
             <MockSidebarRow
               key={item.label}

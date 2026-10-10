@@ -135,10 +135,11 @@ describe("plugin service", () => {
 
   function createTelemetryTrackedService(
     captured: TelemetryEvent[],
+    fixture = { db, workDir },
   ): PluginService {
     return createPluginService({
       aiServices: createAiServiceRegistry(),
-      db,
+      db: fixture.db,
       hub: {
         getDaemonSessionIdForHost: () => null,
         notifyPluginSignal: () => 0,
@@ -149,7 +150,7 @@ describe("plugin service", () => {
         ...createNoopTelemetryService(),
         capture: (event) => captured.push(event),
       },
-      dataDir: join(workDir, "data"),
+      dataDir: join(fixture.workDir, "data"),
       appVersion: "0.9.0",
       bundledPlugins: [],
       loadTimeoutMs: 2000,
@@ -1081,41 +1082,47 @@ describe("plugin service", () => {
 
   it("holds every plugin a hold names at start without running its factory or starting its services", async () => {
     const globals = globalThis as Record<string, unknown>;
-    const heldAccountRoot = await writePlugin(workDir, {
-      name: "bb-plugin-held-account",
-      serverSource: `export default function plugin() {
-        const g = globalThis as any;
-        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
-      }`,
-    });
-    const heldRoot = await writePlugin(workDir, {
-      name: "bb-plugin-held-tunnel",
-      serverSource: `export default function plugin(bb: any) {
-        const g = globalThis as any;
-        g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
-        bb.background.service("tunnel", {
-          start(signal: any) {
-            g.__heldServiceStarts = (g.__heldServiceStarts ?? 0) + 1;
-            return new Promise<void>((resolve) => {
-              signal.addEventListener("abort", () => resolve());
-            });
-          },
-        });
-      }`,
-    });
-    const otherRoot = await writePlugin(workDir, {
-      name: "bb-plugin-unheld",
-      serverSource: `export default function plugin() {}`,
-    });
-    const held = await service.installPath(heldRoot);
-    const heldAccount = await service.installPath(heldAccountRoot);
-    await service.installPath(otherRoot);
-    await service.stop();
-    globals.__heldFactoryRuns = 0;
-    globals.__heldServiceStarts = 0;
-    service = createTelemetryTrackedService([]);
+    const db = createConnection(":memory:");
+    migrate(db);
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-hold-test-"));
+    const fixture = { db, workDir };
+    let service = createTelemetryTrackedService([], fixture);
 
     try {
+      const heldAccountRoot = await writePlugin(workDir, {
+        name: "bb-plugin-held-account",
+        serverSource: `export default function plugin() {
+          const g = globalThis as any;
+          g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
+        }`,
+      });
+      const heldRoot = await writePlugin(workDir, {
+        name: "bb-plugin-held-tunnel",
+        serverSource: `export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__heldFactoryRuns = (g.__heldFactoryRuns ?? 0) + 1;
+          bb.background.service("tunnel", {
+            start(signal: any) {
+              g.__heldServiceStarts = (g.__heldServiceStarts ?? 0) + 1;
+              return new Promise<void>((resolve) => {
+                signal.addEventListener("abort", () => resolve());
+              });
+            },
+          });
+        }`,
+      });
+      const otherRoot = await writePlugin(workDir, {
+        name: "bb-plugin-unheld",
+        serverSource: `export default function plugin() {}`,
+      });
+      const held = await service.installPath(heldRoot);
+      const heldAccount = await service.installPath(heldAccountRoot);
+      await service.installPath(otherRoot);
+      await service.stop();
+      globals.__heldFactoryRuns = 0;
+      globals.__heldServiceStarts = 0;
+      service = createTelemetryTrackedService([], fixture);
+
       await service.start({
         hold: {
           sources: [held.source, heldAccount.source],
@@ -1136,8 +1143,14 @@ describe("plugin service", () => {
       expect(globals.__heldServiceStarts).toBe(0);
       expect(service.getApi("unheld")).toBeDefined();
     } finally {
-      delete globals.__heldFactoryRuns;
-      delete globals.__heldServiceStarts;
+      try {
+        await service.stop();
+      } finally {
+        db.$client.close();
+        delete globals.__heldFactoryRuns;
+        delete globals.__heldServiceStarts;
+        await rm(workDir, { recursive: true, force: true });
+      }
     }
   });
 

@@ -7,7 +7,6 @@ import {
 import { atom, useAtom, useSetAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { ForkThreadCreateSeed } from "@bb/client-core";
 import { createTabScopedStorage } from "./browser-storage";
 
 const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
@@ -82,8 +81,6 @@ export function useRootComposePlacement() {
   return useAtom(rootComposePlacementAtom);
 }
 
-const rootComposeForkSeedAtom = atom<ForkThreadCreateSeed | null>(null);
-
 export function useRootComposeProjectId() {
   return useAtom(rootComposeProjectIdAtom);
 }
@@ -94,8 +91,4 @@ export function useSetRootComposeProjectId() {
 
 export function useRootComposeReuseEnvironment() {
   return useAtom(rootComposeReuseEnvironmentAtom);
-}
-
-export function useRootComposeForkSeed() {
-  return useAtom(rootComposeForkSeedAtom);
 }

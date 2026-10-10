@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PromptInput } from "@bb/domain";
 import {
   collectInvokedPromptCommands,
+  deriveForkTitle,
   deriveTitleFallback,
   sanitizeGeneratedTitle,
   shouldGenerateThreadTitle,
@@ -174,5 +175,27 @@ describe("thread title generation", () => {
 
     expect(fallback).toBe(`${"𠮷".repeat(38)}...`);
     expect(fallback).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u);
+  });
+});
+
+describe("deriveForkTitle", () => {
+  it.each([
+    [{ title: "foo", titleFallback: null }, "(1) foo"],
+    [{ title: "(1) foo", titleFallback: null }, "(2) foo"],
+    [{ title: "(41) foo (1) bar", titleFallback: null }, "(42) foo (1) bar"],
+    [{ title: "(1)foo", titleFallback: null }, "(1) (1)foo"],
+    [{ title: "(1) ", titleFallback: null }, "(1) (1)"],
+    [{ title: "(x) foo", titleFallback: null }, "(1) (x) foo"],
+    [{ title: "  ", titleFallback: "from prompt" }, "(1) from prompt"],
+    [
+      { title: "(99999999999999999999) foo", titleFallback: null },
+      "(100000000000000000000) foo",
+    ],
+  ])("numbers %j as %s", (source, expected) => {
+    expect(deriveForkTitle(source)).toBe(expected);
+  });
+
+  it("leaves an untitled source without a fork title", () => {
+    expect(deriveForkTitle({ title: null, titleFallback: null })).toBeNull();
   });
 });

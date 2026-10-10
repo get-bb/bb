@@ -48,6 +48,9 @@ const updateThreadFake = vi.fn(
     }),
 );
 
+const pinThreadFake = vi.fn(async () => undefined as never);
+const unpinThreadFake = vi.fn(async () => undefined as never);
+
 function resolveUpdateThread(value: unknown): void {
   updateThreadDeferred?.resolve(value as never);
 }
@@ -116,6 +119,7 @@ interface HarnessProps {
 function renderSectionThreadDnd(
   initialRootItems = ROOT_ITEMS,
   pinnedThreads: readonly SidebarThread[] = [],
+  grouping: { groups?: boolean; containerProjectId?: string } = {},
 ) {
   const result: { current: SectionThreadDndState | null } = { current: null };
   const pinnedState = buildPinnedSidebarState({
@@ -126,6 +130,7 @@ function renderSectionThreadDnd(
     result.current = useSectionThreadDnd({
       containerId: CHRONOLOGICAL_CONTAINER_ID,
       enabled: true,
+      ...grouping,
       rootItems,
       topLevelSectionOrder: ["pinned", "section:a", "section:b", "threads"],
       onTopLevelSectionOrderChange: vi.fn(),
@@ -140,7 +145,15 @@ function renderSectionThreadDnd(
   const slot = renderSlot(
     { component: Harness },
     { rootItems: initialRootItems },
-    { sdk: { threads: { update: updateThreadFake } } },
+    {
+      sdk: {
+        threads: {
+          update: updateThreadFake,
+          pin: pinThreadFake,
+          unpin: unpinThreadFake,
+        },
+      },
+    },
   );
   return {
     inspection: slot.inspection,
@@ -150,7 +163,7 @@ function renderSectionThreadDnd(
 }
 
 describe("useSectionThreadDnd pin mutations", () => {
-  it("routes drag pinning through the optimistic sidebar action", async () => {
+  it("pins a dropped thread through the plugin SDK", async () => {
     const { inspection, result } = renderSectionThreadDnd();
     const props = () => result.current!.dndContextProps;
 
@@ -158,16 +171,12 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd("loose", "pinned")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "loose", pinned: true },
+    expect(inspection.sdkCalls).toEqual([
+      { method: "threads.pin", args: [{ threadId: "loose" }] },
     ]);
-    expect(inspection.sdkCalls).not.toContainEqual({
-      method: "threads.pin",
-      args: [{ threadId: "loose" }],
-    });
   });
 
-  it("routes drag unpinning through the optimistic sidebar action", async () => {
+  it("unpins a dropped thread through the plugin SDK", async () => {
     const pinned = createThread({
       id: "pinned-thread",
       pinnedAt: 42,
@@ -180,10 +189,7 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd(pinned.id, "section:a")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: pinned.id, pinned: false },
-    ]);
-    expect(inspection.sdkCalls).not.toContainEqual({
+    expect(inspection.sdkCalls).toContainEqual({
       method: "threads.unpin",
       args: [{ threadId: pinned.id }],
     });
@@ -243,7 +249,9 @@ describe("useSectionThreadDnd pin mutations", () => {
     expect(
       inspection.sdkCalls.filter((call) => call.method === "threads.update"),
     ).toHaveLength(2);
-    expect(inspection.sidebarActionCalls).toEqual([]);
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.pin"),
+    ).toEqual([]);
     expect(result.current!.activeItemId).toBeNull();
   });
 
@@ -270,9 +278,11 @@ describe("useSectionThreadDnd pin mutations", () => {
         },
       ]),
     );
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "first", pinned: true },
-      { method: "setPinned", threadId: "second", pinned: true },
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.pin"),
+    ).toEqual([
+      { method: "threads.pin", args: [{ threadId: "first" }] },
+      { method: "threads.pin", args: [{ threadId: "second" }] },
     ]);
   });
 
@@ -318,9 +328,11 @@ describe("useSectionThreadDnd pin mutations", () => {
     act(() => props().onDragEnd?.(dragEnd(activeId, "section:b")));
     await flushTasks();
 
-    expect(inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "first", pinned: false },
-      { method: "setPinned", threadId: "second", pinned: false },
+    expect(
+      inspection.sdkCalls.filter((call) => call.method === "threads.unpin"),
+    ).toEqual([
+      { method: "threads.unpin", args: [{ threadId: "first" }] },
+      { method: "threads.unpin", args: [{ threadId: "second" }] },
     ]);
     expect(inspection.sdkCalls).toEqual(
       expect.arrayContaining([
@@ -346,6 +358,72 @@ function notePointerMove() {
 afterEach(() => {
   cleanup();
   updateThreadDeferred = null;
+});
+
+describe("useSectionThreadDnd project drop targets", () => {
+  const rootItems = buildSectionThreadList(
+    [
+      createThread({ id: "own", sectionId: "project" }),
+      createThread({ id: "foreign", projectId: "other", sectionId: "other" }),
+      createThread({ id: "personal-thread", projectId: "personal" }),
+    ],
+    undefined,
+    [
+      { id: "project", name: "Own project" },
+      { id: "other", name: "Other project" },
+      { id: "empty", name: "Empty project" },
+    ],
+  ).map((item): ProjectThreadItem =>
+    item.kind === "section"
+      ? { ...item, group: { ...item.group, key: `project:${item.group.id}` } }
+      : item,
+  );
+
+  it.each(["project:other", "foreign", "project:empty", "threads"])(
+    "does not offer or commit a project move onto %s",
+    async (targetId) => {
+      const pinned = createThread({ id: "dragged", pinnedAt: 42 });
+      const { result, inspection } = renderSectionThreadDnd(
+        rootItems,
+        [pinned],
+        { groups: true, containerProjectId: "personal" },
+      );
+      const props = () => result.current!.dndContextProps;
+      const rect = {
+        top: 0,
+        left: 0,
+        width: 200,
+        height: 28,
+        right: 200,
+        bottom: 28,
+      };
+      const collide = (id: string) =>
+        props().collisionDetection!({
+          active: { id: "dragged" },
+          collisionRect: rect,
+          droppableRects: new Map([[id, rect]]),
+          droppableContainers: [{ id }],
+          pointerCoordinates: { x: 20, y: 14 },
+        } as unknown as Parameters<CollisionDetection>[0]);
+
+      act(() => props().onDragStart?.(dragStart("dragged")));
+      expect(collide("project:project").map(({ id }) => id)).toEqual([
+        "project:project",
+      ]);
+      act(() => props().onDragOver?.(dragOver("dragged", "project:project")));
+      expect(result.current?.dragOverParentKey).toBe("project:project");
+
+      expect(collide(targetId)).toEqual([]);
+      act(() => props().onDragOver?.(dragOver("dragged", targetId)));
+      expect(result.current?.dragOverParentKey).toBeNull();
+      expect(result.current?.unchangedParentKey).toBeNull();
+      expect(result.current?.nestTarget).toBeNull();
+      act(() => props().onDragEnd?.(dragEnd("dragged", targetId)));
+      await flushTasks();
+      expect(result.current?.activeThread).toBeNull();
+      expect(inspection.sdkCalls).toEqual([]);
+    },
+  );
 });
 
 describe("useSectionThreadDnd projection feedback loop (#1830)", () => {
@@ -631,6 +709,51 @@ describe("useSectionThreadDnd settled drop cleanup", () => {
     rerender({ rootItems: withoutDraggedRootItems });
     expect(result.current?.nestTarget).toBeNull();
     expect(result.current?.activeThread).toBeNull();
+  });
+
+  const movedToBRootItems = buildSectionThreadList(
+    [
+      createThread({ id: "dragged", sectionId: "b" }),
+      createThread({ id: "peer-a", sectionId: "a", createdAt: 2 }),
+      createThread({ id: "in-b", sectionId: "b", createdAt: 3 }),
+      createThread({ id: "loose", createdAt: 4 }),
+    ],
+    undefined,
+    SECTIONS,
+  );
+
+  async function dropDraggedIntoSectionB() {
+    const view = renderSectionThreadDnd();
+    const props = () => view.result.current!.dndContextProps;
+    act(() => props().onDragStart?.(dragStart("dragged")));
+    act(() => props().onDragOver?.(dragOver("dragged", "section:b")));
+    act(() => props().onDragEnd?.(dragEnd("dragged", "section:b")));
+    await flushTasks();
+    expect(updateThreadDeferred).not.toBeNull();
+    view.rerender({ rootItems: movedToBRootItems });
+    return { ...view, props };
+  }
+
+  it("does not resurrect the drop projection when a refresh reverts the landed row before the write settles", async () => {
+    const { result, rerender } = await dropDraggedIntoSectionB();
+    expect(result.current?.activeThread).toBeNull();
+
+    rerender({ rootItems: ROOT_ITEMS });
+    expect(result.current?.activeThread).toBeNull();
+    expect(result.current?.activeItemId).toBeNull();
+    expect(result.current?.dragOverParentKey).toBeNull();
+  });
+
+  it("keeps a newer drag when an earlier drop's write settles", async () => {
+    const { props, result } = await dropDraggedIntoSectionB();
+
+    act(() => props().onDragStart?.(dragStart("peer-a")));
+    act(() => props().onDragOver?.(dragOver("peer-a", "section:b")));
+    resolveUpdateThread(createThread({ id: "dragged", sectionId: "b" }));
+    await flushTasks();
+
+    expect(result.current?.activeThread?.id).toBe("peer-a");
+    expect(result.current?.dragOverParentKey).toBe(SECTION_B_PARENT_KEY);
   });
 
   it("clears the nest projection when the drop mutation fails", async () => {

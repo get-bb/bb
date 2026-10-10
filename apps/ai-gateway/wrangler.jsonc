@@ -9,7 +9,7 @@
   "observability": { "enabled": true },
   "vars": {
     "AI_DAILY_BUDGET_MICROS": "500000",
-    "AI_MODELS": "inception/mercury-2.5,google/gemini-2.5-flash-lite,nvidia/nemotron-3.5-lightning",
+    "AI_MODELS": "google/gemini-2.5-flash-lite,inception/mercury-2.5",
     "AI_TRANSCRIBE_MODELS": "microsoft/mai-transcribe-2,openai/whisper-large-v3-turbo",
     "AI_UPSTREAM_BASE_URL": "https://openrouter.ai/api/v1",
   },
@@ -36,7 +36,7 @@
       "workers_dev": false,
       "vars": {
         "AI_DAILY_BUDGET_MICROS": "500000",
-        "AI_MODELS": "inception/mercury-2.5,google/gemini-2.5-flash-lite,nvidia/nemotron-3.5-lightning",
+        "AI_MODELS": "google/gemini-2.5-flash-lite,inception/mercury-2.5",
         "AI_TRANSCRIBE_MODELS": "microsoft/mai-transcribe-2,openai/whisper-large-v3-turbo",
         "AI_UPSTREAM_BASE_URL": "https://openrouter.ai/api/v1",
       },

@@ -277,6 +277,8 @@ export default function bbExtension(pi) {
         return { leafId: currentLeafId() };
       case "model-scope":
         return currentModelScope();
+      case "refresh-models":
+        return refreshModels();
       default:
         throw new Error("unknown bridge request " + String(message.method));
     }
@@ -295,6 +297,15 @@ export default function bbExtension(pi) {
         ? sessionContext.model.provider + "/" + sessionContext.model.id
         : null,
     };
+  }
+
+  async function refreshModels() {
+    const registry = sessionContext?.modelRegistry;
+    if (typeof registry?.refresh !== "function") {
+      return { refreshed: false, reason: "unsupported" };
+    }
+    await registry.refresh({ allowNetwork: false });
+    return { refreshed: true };
   }
 
   for (const tool of tools) {

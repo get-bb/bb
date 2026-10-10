@@ -83,7 +83,6 @@ describe("threadQueuedMessages", () => {
           type: "localImage",
           path: "/tmp/image.png",
           name: "image.png",
-          sizeBytes: 0,
         },
       ],
     });

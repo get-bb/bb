@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 
 export type SaveIndicator = "clean" | "dirty" | "saving" | "error";
@@ -7,6 +8,9 @@ export type SaveIndicator = "clean" | "dirty" | "saving" | "error";
 export interface FileToolbarProps {
   path: string;
   indicator: SaveIndicator;
+  saveDisabled: boolean;
+  saveConflict: boolean;
+  onSave: () => void;
   isRefreshing: boolean;
   onRefresh: () => void;
   isFilesOpen: boolean;
@@ -16,6 +20,9 @@ export interface FileToolbarProps {
 export function FileToolbar({
   path,
   indicator,
+  saveDisabled,
+  saveConflict,
+  onSave,
   isRefreshing,
   onRefresh,
   isFilesOpen,
@@ -38,6 +45,16 @@ export function FileToolbar({
         </ToolbarButton>
       </div>
       <SaveDot indicator={indicator} />
+      <ToolbarButton
+        label={indicator === "saving" ? "Saving…" : "Save"}
+        onClick={onSave}
+        disabled={saveDisabled}
+        unavailableReason={
+          saveConflict ? "Resolve the file conflict below" : undefined
+        }
+      >
+        <SaveIcon />
+      </ToolbarButton>
       <ToolbarButton
         label={isFilesOpen ? "Hide files" : "Show in files"}
         onClick={onToggleFiles}
@@ -90,15 +107,16 @@ function CopyablePath({ path }: { path: string }) {
   );
 
   const copy = useCallback(() => {
-    void navigator.clipboard
-      .writeText(path)
-      .then(() => {
-        setCopied(true);
-        if (timerRef.current !== null) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => setCopied(false), 1500);
-        toast.success("File path copied");
-      })
-      .catch(() => toast.error("Failed to copy file path"));
+    void experimental_copyToClipboard({ text: path }).then((copiedPath) => {
+      if (!copiedPath) {
+        toast.error("Failed to copy file path");
+        return;
+      }
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+      toast.success("File path copied");
+    });
   }, [path]);
 
   return (
@@ -123,26 +141,32 @@ function ToolbarButton({
   label,
   onClick,
   disabled,
+  unavailableReason,
   pressed,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  unavailableReason?: string;
   pressed?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={unavailableReason ? undefined : onClick}
       disabled={disabled}
-      title={label}
+      title={unavailableReason ?? label}
       aria-label={label}
+      aria-disabled={unavailableReason ? true : undefined}
+      aria-description={unavailableReason}
       {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
       className={cn(
-        "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md",
-        "transition-colors hover:bg-state-hover hover:text-foreground",
+        "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+        unavailableReason
+          ? "cursor-default opacity-50"
+          : "cursor-pointer hover:bg-state-hover hover:text-foreground",
         "focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
         "disabled:pointer-events-none disabled:opacity-50",
         pressed ? "bg-state-hover text-foreground" : "text-muted-foreground",
@@ -150,6 +174,20 @@ function ToolbarButton({
     >
       {children}
     </button>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-3.5" aria-hidden>
+      <path
+        d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h12l4 4v12a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8V3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

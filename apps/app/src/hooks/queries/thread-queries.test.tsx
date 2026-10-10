@@ -28,7 +28,6 @@ import { usePaletteRecentArchivedThreads } from "./palette-thread-queries";
 import {
   COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT,
   didThreadDetailBootstrapRefreshAfterMount,
-  isPendingInteractionStateUnknown,
   useArchivedThreads,
   useChildThreads,
   useThread,
@@ -251,6 +250,7 @@ describe("useThreadDetailBootstrap", () => {
 
     await waitFor(() => {
       expect(sdk.threads.timeline).toHaveBeenCalledWith({
+        deferContent: "true",
         afterSequence: "7",
         signal: expect.any(AbortSignal),
         threadId: "thread-1",
@@ -461,11 +461,6 @@ describe("useThreadQueuedMessages", () => {
 });
 
 describe("useThreadPendingInteractions", () => {
-  it("keeps cached empty interactions unknown while their refresh is pending", () => {
-    expect(isPendingInteractionStateUnknown([], true)).toBe(true);
-    expect(isPendingInteractionStateUnknown([], false)).toBe(false);
-  });
-
   it("reuses the first owner's fresh baseline when a second owner mounts", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const first = renderHook(() => useThreadPendingInteractions("thread-1"), {
@@ -830,6 +825,7 @@ describe("useThreadTimeline segment limit", () => {
       expect(result.current.isSuccess).toBe(true);
     });
     expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toEqual({
+      deferContent: "true",
       threadId: "thread-1",
       segmentLimit: String(COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT),
       signal: expect.any(AbortSignal),
@@ -839,6 +835,7 @@ describe("useThreadTimeline segment limit", () => {
       queryKey: threadTimelineQueryKey("thread-1"),
     });
     expect(vi.mocked(sdk.threads.timeline).mock.calls[1]?.[0]).toEqual({
+      deferContent: "true",
       threadId: "thread-1",
       segmentLimit: String(COMPACT_THREAD_TIMELINE_SEGMENT_LIMIT),
       afterSequence: "0",
@@ -857,6 +854,7 @@ describe("useThreadTimeline segment limit", () => {
       expect(result.current.isSuccess).toBe(true);
     });
     expect(vi.mocked(sdk.threads.timeline).mock.calls[0]?.[0]).toEqual({
+      deferContent: "true",
       threadId: "thread-1",
       signal: expect.any(AbortSignal),
     });
@@ -1006,6 +1004,7 @@ describe("thread open cache retention", () => {
     });
 
     expect(vi.mocked(sdk.threads.timeline).mock.calls[1]?.[0]).toEqual({
+      deferContent: "true",
       afterSequence: "7",
       signal: expect.any(AbortSignal),
       threadId: "thread-1",

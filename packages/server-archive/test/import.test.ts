@@ -281,9 +281,11 @@ describe("installImportedServerFiles and removeImportedServerFiles", () => {
       sharedSkillRoots: SOURCE_CONFIG.sharedSkillRoots,
       serverUrl: "http://127.0.0.1:39886",
     });
-    expect((await stat(path.join(dataDir, "config.json"))).mode & 0o777).toBe(
-      0o600,
-    );
+    if (process.platform !== "win32") {
+      expect((await stat(path.join(dataDir, "config.json"))).mode & 0o777).toBe(
+        0o600,
+      );
+    }
     expect(await readJson(dataDir, "env.json")).toEqual({
       env: { SHARED: "from-source", SOURCE_ONLY: "1", TARGET_ONLY: "1" },
     });

@@ -8,6 +8,10 @@ import { Command, Option } from "commander";
 import { z } from "zod";
 import { derivePluginId, jsonValueSchema } from "@bb/domain";
 import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
+import {
+  pluginInstallBadge,
+  type PluginInstallBadge,
+} from "@bb/domain/plugin-install-badge";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -67,6 +71,24 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
     packageName,
     directoryName: `bb-plugin-${pluginId}`,
   };
+}
+
+function pluginInstallBadgeLabel(badge: PluginInstallBadge | null): string {
+  if (badge === null) return "";
+  if (badge.kind === "builtin") return "Built in";
+  if (badge.kind === "new") return "New";
+  return badge.installs.toLocaleString("en-US");
+}
+
+function formatCacheBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 || value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
 function toolchainBaseDir(): string {
@@ -317,14 +339,23 @@ async function warnIfSdkVersionUnpublished(): Promise<void> {
   );
 }
 
+async function execNpm(
+  args: readonly string[],
+  options: { cwd?: string; timeout?: number; killSignal?: NodeJS.Signals },
+): Promise<{ stdout: string; stderr: string }> {
+  const { exec, execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  if (process.platform === "win32") {
+    return promisify(exec)(["npm", ...args].join(" "), options);
+  }
+  return promisify(execFile)("npm", [...args], options);
+}
+
 async function probeSdkVersionPublished(): Promise<
   "published" | "missing" | "unknown"
 > {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    const { stdout } = await promisify(execFile)(
-      "npm",
+    const { stdout } = await execNpm(
       ["view", `@get-bb/plugin-sdk@${PLUGIN_SDK_VERSION}`, "version", "--json"],
       { timeout: 5_000, killSignal: "SIGKILL" },
     );
@@ -365,14 +396,10 @@ function npmFailureDetail(cause: unknown): string {
 async function installScaffoldDependencies(
   targetDir: string,
 ): Promise<boolean> {
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
   try {
-    await promisify(execFile)(
-      "npm",
-      ["install", "--include=dev", "--no-fund", "--no-audit"],
-      { cwd: targetDir },
-    );
+    await execNpm(["install", "--include=dev", "--no-fund", "--no-audit"], {
+      cwd: targetDir,
+    });
   } catch (cause) {
     console.warn(
       `Could not run npm install — run it in the plugin directory before \`bb plugin build\`.${npmFailureDetail(cause)}`,
@@ -884,19 +911,17 @@ export function registerPluginCommands(
           return;
         }
         const showMarketplace = results.some((result) => !result.official);
-        const showInstalls = results.some((result) => result.installs !== null);
-        const rows = results.map((result) => [
+        const now = Date.now();
+        const badges = results.map((result) =>
+          pluginInstallBadgeLabel(pluginInstallBadge(result, now)),
+        );
+        const showInstalls = badges.some((badge) => badge !== "");
+        const rows = results.map((result, index) => [
           result.displayName,
           result.description,
           result.category ?? "Uncategorized",
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
-          ...(showInstalls
-            ? [
-                result.installs === null
-                  ? ""
-                  : result.installs.toLocaleString("en-US"),
-              ]
-            : []),
+          ...(showInstalls ? [badges[index]] : []),
           result.installed
             ? "✓ installed"
             : !result.compatible
@@ -1021,6 +1046,10 @@ export function registerPluginCommands(
       "Resolve a git: semver range over <prefix>vX.Y.Z tags (monorepo tagging)",
     )
     .option("--yes", "Skip the confirmation prompt")
+    .option(
+      "--no-wait",
+      "Start the install in the background and print its job; follow it with `bb plugin install-jobs`",
+    )
     .option("--json", "Output JSON")
     .action(
       action(
@@ -1031,6 +1060,7 @@ export function registerPluginCommands(
             subdirectory?: string;
             plugin?: string;
             tagPrefix?: string;
+            wait: boolean;
           },
         ) => {
           if (opts.subdirectory !== undefined && opts.plugin !== undefined) {
@@ -1101,26 +1131,55 @@ export function registerPluginCommands(
             "Refusing to install without confirmation — re-run with --yes.",
             opts.yes === true,
           );
-          const plugin =
+          const plugins = createCliBbSdk(getUrl()).plugins;
+          const request =
             intent.kind === "source"
-              ? await createCliBbSdk(getUrl()).plugins.install({
-                  source: intent.source,
-                  ...(opts.subdirectory === undefined
-                    ? {}
-                    : { subdirectory: opts.subdirectory }),
-                  ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
-                })
-              : await createCliBbSdk(getUrl()).plugins.catalog.install(
-                  intent.plan.kind === "marketplace"
-                    ? {
-                        entryId: intent.plan.entryId,
-                        marketplace: intent.plan.marketplace,
-                        ...(intent.plan.official
-                          ? {}
-                          : { confirmedSource: intent.plan.resolvedSource }),
-                      }
-                    : { entryId: intent.plan.entryId },
-                );
+              ? {
+                  kind: "source" as const,
+                  args: {
+                    source: intent.source,
+                    ...(opts.subdirectory === undefined
+                      ? {}
+                      : { subdirectory: opts.subdirectory }),
+                    ...(opts.plugin === undefined
+                      ? {}
+                      : { plugin: opts.plugin }),
+                  },
+                }
+              : {
+                  kind: "catalog" as const,
+                  args:
+                    intent.plan.kind === "marketplace"
+                      ? {
+                          entryId: intent.plan.entryId,
+                          marketplace: intent.plan.marketplace,
+                          ...(intent.plan.official
+                            ? {}
+                            : { confirmedSource: intent.plan.resolvedSource }),
+                        }
+                      : { entryId: intent.plan.entryId },
+                };
+          if (!opts.wait) {
+            const job =
+              request.kind === "source"
+                ? await plugins.startInstall(request.args)
+                : await plugins.catalog.startInstall(request.args);
+            if (opts.json) {
+              outputJson(opts, { ok: true as const, job });
+              return;
+            }
+            console.log(
+              `Installing ${job.displayName} in the background (job ${job.id}).`,
+            );
+            console.log(
+              `Follow it with \`bb plugin install-jobs\`; cancel it with \`bb plugin cancel-install ${job.id}\`.`,
+            );
+            return;
+          }
+          const plugin =
+            request.kind === "source"
+              ? await plugins.install(request.args)
+              : await plugins.catalog.install(request.args);
           const result = { ok: true as const, plugin };
           if (opts.json) {
             outputJson(opts, result);
@@ -1130,6 +1189,68 @@ export function registerPluginCommands(
           printPlugin(plugin);
         },
       ),
+    );
+
+  plugin
+    .command("install-jobs")
+    .description(
+      "List plugin installs that are queued or running, and those that finished in the last ten minutes. Installs run one at a time on the server and continue when the CLI or app disconnects",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        const jobs = await createCliBbSdk(getUrl()).plugins.installJobs.list();
+        if (opts.json) {
+          outputJson(opts, { jobs });
+          return;
+        }
+        if (jobs.length === 0) {
+          console.log("No recent plugin installs.");
+          return;
+        }
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Job", "Plugin", "State", "Detail"],
+              colWidths: [38, 28, 12, 60],
+              trimTrailingWhitespace: true,
+            },
+            jobs.map((job) => [
+              job.id,
+              job.displayName,
+              job.state,
+              job.state === "failed"
+                ? job.error
+                : job.state === "succeeded"
+                  ? job.plugin.id
+                  : "",
+            ]),
+          ),
+        );
+      }),
+    );
+
+  plugin
+    .command("cancel-install <job-id>")
+    .description(
+      "Cancel a plugin install. A queued install is dropped; a running install stops its current download or build and leaves nothing installed, unless it has already started registering the plugin, in which case it finishes",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (jobId: string, opts: JsonOutputOptions) => {
+        const job = await createCliBbSdk(getUrl()).plugins.installJobs.cancel({
+          jobId,
+        });
+        if (opts.json) {
+          outputJson(opts, { job });
+          return;
+        }
+        console.log(
+          job.state === "cancelling"
+            ? `Cancelling the ${job.displayName} install.`
+            : `The ${job.displayName} install is ${job.state}.`,
+        );
+      }),
     );
 
   plugin
@@ -1170,8 +1291,57 @@ export function registerPluginCommands(
     );
 
   plugin
+    .command("update-jobs [job-id]")
+    .description(
+      "Show background plugin updates and results retained for ten minutes; running jobs survive client disconnections, but not a server restart",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (jobId: string | undefined, opts: JsonOutputOptions) => {
+        const updates =
+          createCliBbSdk(getUrl()).plugins.experimental_updateJobs;
+        const jobs =
+          jobId === undefined
+            ? await updates.list()
+            : [await updates.get({ jobId })];
+        if (opts.json) {
+          outputJson(opts, { jobs });
+          return;
+        }
+        if (jobs.length === 0) {
+          console.log("No recent plugin updates.");
+          return;
+        }
+        console.log(
+          renderBorderlessTable(
+            {
+              head: ["Job", "Plugin", "State", "Detail"],
+              colWidths: [38, 28, 12, 60],
+              trimTrailingWhitespace: true,
+            },
+            jobs.map((job) => [
+              job.id,
+              job.displayName,
+              job.state,
+              job.state === "running"
+                ? job.phase
+                : job.state === "failed"
+                  ? job.error
+                  : job.state === "completed"
+                    ? (job.result.detail ?? job.result.outcome)
+                    : "",
+            ]),
+          ),
+        );
+      }),
+    );
+
+  plugin
     .command("update [id]")
-    .description("Update one plugin, or all plugins with --all")
+    .description(
+      "Update one plugin, or all plugins with --all; waits for the server job by default",
+    )
+    .option("--no-wait", "Start background updates and return their job IDs")
     .option("--all", "Update every plugin with a compatible update")
     .option("--yes", "Skip confirmation prompts")
     .action(
@@ -1181,6 +1351,7 @@ export function registerPluginCommands(
           opts: {
             all?: boolean;
             yes?: boolean;
+            wait?: boolean;
           },
         ) => {
           if ((id === undefined) === !opts.all) {
@@ -1233,6 +1404,19 @@ export function registerPluginCommands(
               "Refusing to update without confirmation — re-run with --yes.",
               opts.yes === true,
             );
+
+            if (opts.wait === false) {
+              const job = await sdk.plugins.experimental_startUpdate({
+                pluginId: result.id,
+              });
+              console.log(
+                `Updating ${job.displayName} in the background (job ${job.id}).`,
+              );
+              console.log(
+                `Follow it with \`bb plugin update-jobs ${job.id}\`.`,
+              );
+              continue;
+            }
 
             let mutation: PluginApplyUpdateResult;
             try {
@@ -1634,6 +1818,37 @@ export function registerPluginCommands(
           for (const problem of problems) console.error(problem);
         }
         if (problems.length > 0) process.exit(1);
+      }),
+    );
+
+  plugin
+    .command("prune")
+    .description(
+      "Delete cached plugin versions that no installed plugin uses, such as versions left by earlier bb releases, rolled-back updates, or interrupted operations, and unrecorded cache directories. Updates and removals already delete what they replace. Never touches a version an installed plugin runs or a local path source",
+    )
+    .option("--dry-run", "List what would be deleted without deleting it")
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions & { dryRun?: boolean }) => {
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).plugins.experimental_pruneCache({ dryRun: opts.dryRun === true });
+        if (opts.json) {
+          outputJson(opts, result);
+          return;
+        }
+        if (result.removed.length === 0) {
+          console.log("No unused cached plugin versions.");
+          return;
+        }
+        for (const entry of result.removed) {
+          console.log(
+            `${formatCacheBytes(entry.bytes).padStart(9)}  ${entry.pluginId ?? "(unrecorded)"}@${entry.version}  ${entry.path}`,
+          );
+        }
+        console.log(
+          `${result.dryRun ? "Would free" : "Freed"} ${formatCacheBytes(result.bytes)} from ${result.removed.length} cached plugin version${result.removed.length === 1 ? "" : "s"}.`,
+        );
       }),
     );
 

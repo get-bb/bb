@@ -1,4 +1,7 @@
-import { PLUGIN_CATALOG_CATEGORIES, pluginCatalogCategory } from "@bb/domain";
+import {
+  PLUGIN_CATALOG_CATEGORIES,
+  type PluginMarketplaceCategory,
+} from "@bb/domain";
 import type { PluginCatalogCollection } from "@bb/server-contract";
 import type {
   PluginCatalogSearchEntry,
@@ -25,10 +28,22 @@ export interface PluginBrowseCategoryOption {
   count: number;
 }
 
+function orderedCategories(
+  categories: readonly PluginMarketplaceCategory[],
+): Map<string, PluginMarketplaceCategory> {
+  const ordered = new Map<string, PluginMarketplaceCategory>();
+  for (const category of [...categories, ...PLUGIN_CATALOG_CATEGORIES]) {
+    if (!ordered.has(category.id)) ordered.set(category.id, category);
+  }
+  return ordered;
+}
+
 export function pluginCategoryFilterOptions(
   entries: readonly Pick<PluginCatalogSearchEntry, "categoryId" | "category">[],
   selected: readonly string[],
+  categories: readonly PluginMarketplaceCategory[] = [],
 ): PluginBrowseCategoryOption[] {
+  const knownCategories = orderedCategories(categories);
   const labels = new Map<string, string>();
   const counts = new Map<string, number>();
   const unknownIds: string[] = [];
@@ -37,7 +52,7 @@ export function pluginCategoryFilterOptions(
     if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID) continue;
     if (!labels.has(id)) {
       labels.set(id, entry.category ?? id);
-      if (pluginCatalogCategory(id) === undefined) {
+      if (!knownCategories.has(id)) {
         unknownIds.push(id);
       }
     }
@@ -45,16 +60,14 @@ export function pluginCategoryFilterOptions(
   }
   for (const id of selected) {
     if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID || labels.has(id)) continue;
-    const category = pluginCatalogCategory(id);
+    const category = knownCategories.get(id);
     labels.set(id, category?.displayName ?? id);
     if (category === undefined) {
       unknownIds.push(id);
     }
   }
   const orderedIds = [
-    ...PLUGIN_CATALOG_CATEGORIES.map((category) => category.id).filter((id) =>
-      labels.has(id),
-    ),
+    ...[...knownCategories.keys()].filter((id) => labels.has(id)),
     ...unknownIds,
   ];
   return orderedIds.map((id) => ({
@@ -93,7 +106,9 @@ function collectionEntries(
 export function pluginBrowseShelves({
   entries,
   collections,
+  categories,
 }: PluginCatalogSearchData): PluginBrowseShelf[] {
+  const knownCategories = orderedCategories(categories);
   const shelves: PluginBrowseShelf[] = collections.flatMap((collection) => {
     const shelfEntries = collectionEntries(entries, collection);
     return shelfEntries.length === 0
@@ -119,31 +134,28 @@ export function pluginBrowseShelves({
     if (categoryEntries === undefined) {
       entriesByCategory.set(categoryId, [entry]);
       categoryLabels.set(categoryId, categoryLabel);
-      if (pluginCatalogCategory(categoryId) === undefined) {
+      if (!knownCategories.has(categoryId)) {
         unknownCategoryOrder.push(categoryId);
       }
     } else {
       categoryEntries.push(entry);
     }
   }
-  const categoryOrder = [
-    ...PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
-    ...unknownCategoryOrder,
-  ];
+  const categoryOrder = [...knownCategories.keys(), ...unknownCategoryOrder];
   for (const categoryId of categoryOrder) {
     const shelfEntries = entriesByCategory.get(categoryId);
     if (shelfEntries === undefined || shelfEntries.length === 0) continue;
-    const builtInCategory = pluginCatalogCategory(categoryId);
+    const knownCategory = knownCategories.get(categoryId);
     shelves.push({
       key: `category:${categoryId}`,
       categoryId,
       label:
-        builtInCategory?.displayName ??
+        knownCategory?.displayName ??
         categoryLabels.get(categoryId) ??
         categoryId,
-      ...(builtInCategory === undefined
+      ...(knownCategory === undefined
         ? {}
-        : { description: builtInCategory.description }),
+        : { description: knownCategory.description }),
       entries: shelfEntries,
       kind: "category",
     });

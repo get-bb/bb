@@ -72,6 +72,10 @@ export const rpcContract = defineRpcContract({
   },
 });
 
+function hostPathApi(hostPath: string): path.PlatformPath {
+  return /^(?:[A-Za-z]:[\\/]|\\\\)/.test(hostPath) ? path.win32 : path.posix;
+}
+
 function isBundleStale(moduleDir: string, bundleDir: string): boolean {
   const builtAtMs = statSync(path.join(bundleDir, "editor.js")).mtimeMs;
   const entryDir = path.join(moduleDir, "monaco-bundle");
@@ -151,7 +155,7 @@ export default async function plugin(bb: BbPluginApi) {
         threadId: source.threadId,
       });
       return {
-        path: path.join(storageRootPath, filePath),
+        path: hostPathApi(storageRootPath).join(storageRootPath, filePath),
         rootPath: storageRootPath,
         hostId,
       };
@@ -174,7 +178,7 @@ export default async function plugin(bb: BbPluginApi) {
         throw new Error("This project has no matching source checkout");
       }
       return {
-        path: path.join(checkout.path, filePath),
+        path: hostPathApi(checkout.path).join(checkout.path, filePath),
         rootPath: checkout.path,
         hostId: checkout.hostId,
       };
@@ -199,14 +203,14 @@ export default async function plugin(bb: BbPluginApi) {
       throw new Error("This environment has no workspace path");
     }
     return {
-      path: path.join(environment.path, filePath),
+      path: hostPathApi(environment.path).join(environment.path, filePath),
       rootPath: environment.path,
       ...(environment.hostId ? { hostId: environment.hostId } : {}),
     };
   }
 
   function relativeTo(root: string, target: string): string {
-    const api = path.win32.isAbsolute(root) ? path.win32 : path.posix;
+    const api = hostPathApi(root);
     return api.relative(root, target) || api.basename(target);
   }
 

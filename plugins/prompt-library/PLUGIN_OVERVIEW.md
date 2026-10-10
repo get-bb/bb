@@ -1,0 +1,24 @@
+Find any prompt you have sent before, star the ones you reuse, and drop them back into the composer without retyping.
+
+Disabled by default. Enable **Prompt Library** in Settings → Plugins or run
+`bb plugin enable bb--prompt-library`.
+
+## What you get
+
+- A **Prompts…** entry in the composer plus menu, also bound to **Ctrl+R** (rebind it as "Search prompts" in keyboard settings).
+- A search box that finds previous prompts by words, word starts, abbreviations, or words with a typo as you type.
+- **Starred** prompts pinned above **Recent** ones, most recently used first. Searching shows one ranked list: prompts that start with your query first, then the closest word matches, favoring prompts that started threads in the new-thread composer, follow-ups in a thread, and recent prompts.
+- Scope toggles: **Thread**, **Project**, and **All** in a thread; **Project** and **All** in the new-thread composer. The last choice is remembered on this device.
+- `bb prompts search|list|star|unstar` for the same data from the terminal.
+
+## How it works
+
+1. Press **Ctrl+R** in the composer, or open the plus menu and choose **Prompts…**.
+2. Type to search. Click a prompt or use the arrow keys to preview it, **Tab** to switch scope, and **Enter** or **Insert** to insert. Moving the mouse leaves the selection unchanged.
+3. Press **Cmd+S** (**Ctrl+S** elsewhere) or click the star to star or unstar the highlighted prompt. With text in the composer, **Star current draft** stars it.
+
+If a search fails or takes more than 5 seconds, click **Retry** to repeat it without closing the picker or retyping. Previously loaded prompts stay available while searching or after an error.
+
+Inserting into an empty composer restores the whole prompt, including mentions and attachments. Otherwise the prompt's text and mentions go where the cursor was. Starred prompts keep text and mentions; attachments are dropped.
+
+Previous prompts come from bb's prompt history: messages you sent yourself, not ones sent by agents.

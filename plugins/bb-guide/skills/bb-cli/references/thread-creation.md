@@ -58,7 +58,10 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   source environment. Anchor with
   `--source-seq-end` on a completed source turn (the clone and inherited
   timeline both end with the turn containing that sequence). Permission mode
-  inherits the source thread unless explicitly overridden.
+  inherits the source thread unless explicitly overridden. A visible idle fork
+  without `--title` is named after its source with a numbered prefix (`foo` →
+  `(1) foo`, `(1) foo` → `(2) foo`); a fork with a first prompt is titled from
+  that prompt.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention. `bb thread list` excludes them by
@@ -108,10 +111,13 @@ worktree` only; a provider takes its branch through `--environment-inputs`.
   CLI update state across every machine — the CLI counterpart of Settings →
   Updates. `bb updates apply [--machine <id-or-name>]` runs every available
   provider CLI install/update sequentially. `bb updates app` shows whether bb
-  can update itself, which needs bb started with `--in-app-updates`;
+  can update itself, which it cannot when started with `--no-in-app-updates`;
   `bb updates app apply [--yes] [--no-wait]` downloads the
   update and restarts bb into it, without rolling back if it fails to start.
   Running it from a thread restarts bb and interrupts that thread.
+  Source installs show their Git revision and use manual Git updates without the
+  update shim. They are never compared with npm releases; unavailable release
+  checks report “Latest unknown”.
 - Use `bb project create --name <name> --root <path> --machine <id-or-name>`
   to bind a new project's local path to a connected enrolled machine. Use
   `--host` as an alias. Without a selector, the CLI asks its local host daemon.
@@ -282,7 +288,8 @@ self-updating machine service there after the move; until that succeeds, and
 after a move from `bb-app`, the machine stays connected only while the app runs.
 `bb server install-machine-service [--data-dir <dir>] [--yes] [--json]` stops
 bb there and runs `install-machine.sh --adopt --data-dir <dir>` to install the
-persistent, self-updating service with the same machine ID. It needs Node.js
+persistent, self-updating service with the same machine ID. It runs on macOS
+and Linux only and refuses on Windows. It needs Node.js
 22.19 or newer on the PATH, and `bb server unlock` refuses while the service
 exists. `bb server unlock` removes the lock so
 the old copy can start again; everything since the move is lost there, and the

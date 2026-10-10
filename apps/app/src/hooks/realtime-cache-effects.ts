@@ -23,6 +23,7 @@ import {
   subscribeToDocumentVisibility,
 } from "@/lib/document-visibility";
 import {
+  applyRealtimeThreadPatches,
   collectCachedThreadIdsForEnvironment,
   createFlushOncePredicate,
   disposeTrailingActiveRefetches,
@@ -146,6 +147,12 @@ function mergeThreadChangeMetadata({
     ? next.statusChange
     : (next.statusChange ?? current?.statusChange);
   const metadata: ThreadChangeMetadata = {};
+  const sequences = [current?.timelineSequence, next.timelineSequence].filter(
+    (sequence): sequence is number => sequence !== undefined,
+  );
+  if (sequences.length > 0) {
+    metadata.timelineSequence = Math.max(...sequences);
+  }
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
   }
@@ -203,6 +210,7 @@ function flushThreadInvalidations(
       context: {
         backgroundActivityChanged: undefined,
         eventTypes: undefined,
+        timelineSequence: undefined,
         flushOnce,
         hasPendingInteraction: undefined,
         projectId: undefined,
@@ -221,6 +229,7 @@ function flushThreadInvalidations(
         context: {
           backgroundActivityChanged: metadata?.backgroundActivityChanged,
           eventTypes: metadata?.eventTypes,
+          timelineSequence: metadata?.timelineSequence,
           flushOnce,
           hasPendingInteraction: metadata?.hasPendingInteraction,
           projectId: metadata?.projectId,
@@ -262,6 +271,7 @@ function applyImmediateThreadChanges({
       context: {
         backgroundActivityChanged: merged?.backgroundActivityChanged,
         eventTypes: merged?.eventTypes,
+        timelineSequence: merged?.timelineSequence,
         flushOnce,
         hasPendingInteraction: merged?.hasPendingInteraction,
         projectId: merged?.projectId,
@@ -492,6 +502,14 @@ export function createRealtimeCacheEffects({
       const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread": {
+          if (message.id) {
+            applyRealtimeThreadPatches(message.changes, {
+              hasPendingInteraction: message.metadata?.hasPendingInteraction,
+              queryClient,
+              statusChange: message.metadata?.statusChange,
+              threadId: message.id,
+            });
+          }
           if (!documentVisible) {
             recordThreadChange(threadChangeState, message);
             hasDeferredThreadChanges = true;

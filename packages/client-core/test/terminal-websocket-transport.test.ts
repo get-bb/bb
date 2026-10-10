@@ -169,8 +169,51 @@ describe("TerminalWebSocketTransport", () => {
     ).toEqual([0, 2]);
     expect(gaps).toHaveBeenCalledWith(1, 2);
     expect(harness.urls).toEqual([
-      "ws://example.test/ws/terminals/term-1?sinceSeq=0",
-      "ws://example.test/ws/terminals/term-1?sinceSeq=1",
+      "ws://example.test/ws/terminals/term-1?sinceSeq=0&outputAcks=1",
+      "ws://example.test/ws/terminals/term-1?sinceSeq=1&outputAcks=1",
+    ]);
+    harness.transport.dispose();
+  });
+
+  it("sends one acknowledgement for the furthest output parsed in a task", async () => {
+    const harness = createHarness();
+    harness.transport.start();
+    harness.sockets[0]?.open();
+
+    harness.transport.acknowledgeOutput(1);
+    harness.transport.acknowledgeOutput(3);
+    harness.transport.acknowledgeOutput(2);
+    await Promise.resolve();
+
+    expect(
+      harness.sockets[0]?.sent.map((payload) => JSON.parse(payload)),
+    ).toEqual([{ type: "ack", nextSeq: 3 }]);
+    harness.transport.dispose();
+  });
+
+  it("reports a hidden document again after reconnecting", () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    harness.transport.setVisible(false);
+    harness.transport.start();
+    harness.sockets[0]?.open();
+    harness.sockets[0]?.close();
+    vi.advanceTimersByTime(100);
+    harness.sockets[1]?.open();
+    harness.transport.setVisible(true);
+
+    expect(
+      harness.sockets.map((socket) =>
+        socket.sent
+          .map((payload) => JSON.parse(payload))
+          .filter((message) => message.type === "visibility"),
+      ),
+    ).toEqual([
+      [{ type: "visibility", visible: false }],
+      [
+        { type: "visibility", visible: false },
+        { type: "visibility", visible: true },
+      ],
     ]);
     harness.transport.dispose();
   });
@@ -203,6 +246,36 @@ describe("TerminalWebSocketTransport", () => {
         .filter((message) => message.type === "output")
         .map((message) => message.chunk.seq),
     ).toEqual([5]);
+    harness.transport.dispose();
+  });
+
+  it("stays reconnecting with growing backoff when sockets open but never attach", () => {
+    vi.useFakeTimers();
+    const harness = createHarness({ reconnectDelaysMs: [100, 250, 500] });
+
+    harness.transport.start();
+    harness.sockets[0]?.open();
+    harness.sockets[0]?.close();
+    vi.advanceTimersByTime(100);
+    harness.sockets[1]?.open();
+    harness.sockets[1]?.close();
+    vi.advanceTimersByTime(249);
+    expect(harness.sockets).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(harness.sockets).toHaveLength(3);
+    expect(harness.states).not.toContain("attached");
+
+    harness.sockets[2]?.open();
+    harness.sockets[2]?.receive({
+      type: "attached",
+      session: terminalSession(),
+      replayStartSeq: 0,
+      nextSeq: 0,
+    });
+    expect(harness.states.at(-1)).toBe("attached");
+    harness.sockets[2]?.close();
+    vi.advanceTimersByTime(100);
+    expect(harness.sockets).toHaveLength(4);
     harness.transport.dispose();
   });
 

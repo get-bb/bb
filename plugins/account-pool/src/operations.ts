@@ -281,6 +281,21 @@ export class PoolOperations {
     return false;
   }
 
+  async routesOnlyApiKeys(provider: PoolProvider): Promise<boolean> {
+    let usable = false;
+    for (const account of await this.accounts.list()) {
+      if (!account.enabled || account.provider !== provider) continue;
+      try {
+        await this.accounts.readSecret(account.id);
+      } catch {
+        continue;
+      }
+      if (account.kind !== "api-key") return false;
+      usable = true;
+    }
+    return usable;
+  }
+
   async routedThreadsWithoutLocalLogin(): Promise<RoutedThreadStatus[]> {
     const routed = await this.routing.listRoutedSince(
       this.now() - ROUTED_WINDOW_MS,

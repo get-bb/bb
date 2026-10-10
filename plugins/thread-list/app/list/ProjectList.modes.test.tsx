@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { ThreadRowNavigationProvider } from "../rows/threadRowNavigation.js";
 import { useMemo, type ReactNode } from "react";
 import {
   act,
@@ -8,9 +9,9 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarRenameProvider } from "../rows/SidebarInlineRename.js";
 import {
   createStore,
   Provider as JotaiProvider,
@@ -198,7 +199,13 @@ interface HarnessProps {
 }
 
 function Harness({ store, children }: HarnessProps) {
-  return <JotaiProvider store={store}>{children}</JotaiProvider>;
+  return (
+    <JotaiProvider store={store}>
+      <ThreadRowNavigationProvider>
+        <SidebarRenameProvider>{children}</SidebarRenameProvider>
+      </ThreadRowNavigationProvider>
+    </JotaiProvider>
+  );
 }
 
 function renderMachineMode(
@@ -375,8 +382,12 @@ describe("sidebar organization mode sections", () => {
     renderMachineMode(store, [makeThread()]);
 
     expect(screen.queryByText("Machine activity")).toBeNull();
-    expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expect(
+      Array.from(
+        document.querySelectorAll("[data-thread-status-glyph]"),
+        (glyph) => glyph.getAttribute("data-thread-status-glyph"),
+      ),
+    ).toEqual(["plan-mode"]);
   });
 
   it("marks More and the hidden section as the breadcrumb to the selected thread", async () => {
@@ -421,7 +432,9 @@ describe("sidebar organization mode sections", () => {
     renderMachineMode(store, [makeThread()]);
 
     const more = screen.getByRole("button", { name: "More machines" });
-    expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
+    expect(
+      more.querySelector('[data-thread-status-glyph="plan-mode"]'),
+    ).not.toBeNull();
     expect(screen.queryByText("No machine")).toBeNull();
     expect(screen.queryByText("Machine activity")).toBeNull();
 
@@ -430,7 +443,9 @@ describe("sidebar organization mode sections", () => {
     expect(screen.queryByText("Machine activity")).toBeNull();
     fireEvent.keyDown(section, { key: "ArrowRight" });
     expect(await screen.findByText("Machine activity")).not.toBeNull();
-    expect(within(more).getByLabelText("Plan mode active")).not.toBeNull();
+    expect(
+      more.querySelector('[data-thread-status-glyph="plan-mode"]'),
+    ).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add to list" }));
 
     await waitFor(() =>

@@ -20,7 +20,6 @@ export async function resolveHostEnvironment(
     dataDir: deps.config.dataDir,
   });
   const builtIn =
-    primaryHostId !== null &&
     primaryHostId !== context.hostId &&
     getAppSettings(deps.db).machineGitCredentialsEnabled
       ? await resolveGitCredentials()

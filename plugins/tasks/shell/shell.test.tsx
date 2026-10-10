@@ -250,7 +250,7 @@ describe("tasks app shell", () => {
       {
         id: "navigation",
         title: "Navigation",
-        icon: "ListView",
+        icon: "ListTodo",
         layout: "flush",
       },
     ]);

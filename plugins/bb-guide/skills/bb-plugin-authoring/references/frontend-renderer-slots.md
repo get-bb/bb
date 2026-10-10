@@ -69,12 +69,15 @@ openWorkspaceFile }` — register a leaf
   iframe preview, including relative assets and normal web loading).
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu. Host-rendered chrome, no plugin
+  assistant-message text-selection menu. Slot actions are limited to the main
+  timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, run }`. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
   `message` is a narrow stable reference
-  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd }` (never
-  an internal timeline row); `selectedText` is present only for
+  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
+  an internal timeline row); `experimental_messageSeq` is the recorded message
+  sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
+  while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
   registered `threadPanelAction` components in the current thread's side
@@ -109,6 +112,9 @@ openWorkspaceFile }` — register a leaf
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A command that acts on the composer the user is typing in registers through
+  `app.composer.experimental_registerCommand` instead; see the composer
+  section of frontend-hooks-and-ui.
 - `experimental_timelineRenderer` → the expanded body of the timeline rows a
   provider plugin owns. Registration: `{ kind, component }`, where `kind` is
   one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as

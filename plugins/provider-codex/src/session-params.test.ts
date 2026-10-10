@@ -539,8 +539,7 @@ describe("buildCodexConfig", () => {
   it("disables provider user-input requests without overriding web search", () => {
     const config = configFor(FULL_OPTIONS);
 
-    expect(config).toMatchObject({
-    });
+    expect(config).toMatchObject({});
     expect(JSON.stringify(config)).not.toContain("tools.web_search");
   });
 
@@ -596,9 +595,9 @@ describe("buildCodexConfig", () => {
     expect(() =>
       configFor({ ...FULL_OPTIONS, reasoningLevel: "ultracode" }),
     ).toThrow("Codex does not support the ultracode reasoning level.");
-    expect(() =>
+    expect(
       configFor({ ...FULL_OPTIONS, reasoningLevel: "none" }),
-    ).toThrow("Codex does not support the none reasoning level.");
+    ).toMatchObject({ model_reasoning_effort: "none" });
   });
 
   it("omits the writable-roots key for a full-access session", () => {
@@ -689,6 +688,7 @@ describe("toCodexUserInput", () => {
       { type: "image", url: "https://example.com/a.png" },
       { type: "localImage", path: "/tmp/shot.png" },
       { type: "localFile", path: "/tmp/notes.md" },
+      { type: "localFile", path: "/tmp/paste.txt", name: "Pasted text 2.txt" },
     ];
 
     expect(toCodexUserInput(input)).toEqual([
@@ -698,6 +698,11 @@ describe("toCodexUserInput", () => {
       {
         type: "text",
         text: "[Attached file: /tmp/notes.md]",
+        text_elements: [],
+      },
+      {
+        type: "text",
+        text: '[Attached file "Pasted text 2.txt": /tmp/paste.txt]',
         text_elements: [],
       },
     ]);

@@ -1366,7 +1366,9 @@ describe("buildThreadTimelineFromEvents", () => {
       throw new Error("Expected a delegation row");
     }
     expect(
-      collectWorkflowRows(delegation.childRows).map((row) => row.taskType),
+      collectWorkflowRows(delegation.childRows ?? []).map(
+        (row) => row.taskType,
+      ),
     ).toEqual(["local_workflow"]);
     expect(delegation.childRows).toEqual(
       expect.arrayContaining([
@@ -1729,6 +1731,40 @@ describe("buildThreadTimelineFromEvents", () => {
         sourceSeqEnd: 3,
       }),
     ]);
+  });
+
+  it("keeps an accepted steer's request seq as its message seq", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Also check the tests",
+    });
+    const events = fromRows([
+      event.turnStarted({ turnId: "turn-1" }),
+      steerRequest,
+      event.inputAccepted({
+        clientRequestId: steerRequest.data.requestId,
+        turnId: "turn-1",
+      }),
+    ]);
+    const [, requestEvent, acceptedEvent] = events;
+
+    const userRows = rowsOfKind(
+      buildTimelineRows(events, "active"),
+      "conversation",
+    ).filter((row) => row.role === "user");
+
+    expect(userRows).toEqual([
+      expect.objectContaining({
+        text: "Also check the tests",
+        messageSeq: requestEvent?.meta.seq,
+        sourceSeqStart: acceptedEvent?.meta.seq,
+        sourceSeqEnd: acceptedEvent?.meta.seq,
+      }),
+    ]);
+    expect(acceptedEvent?.meta.seq).toBeGreaterThan(
+      requestEvent?.meta.seq ?? 0,
+    );
   });
 
   it("uses accepted context to suppress pending steers without rendering future accepted rows", () => {
@@ -3114,7 +3150,7 @@ it("keeps a canonical disclosure ID when completed reasoning gains a delegation 
     ]),
   );
   const [delegation] = collectDelegationRows(rows);
-  const completed = delegation?.childRows.find((row) => row.kind === "system");
+  const completed = delegation?.childRows?.find((row) => row.kind === "system");
   expect(live.activeThinking?.id).toBeTruthy();
   expect(completed).toMatchObject({
     reasoningId: live.activeThinking?.id,

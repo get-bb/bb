@@ -12,6 +12,7 @@ import {
   targetsResourceAction,
 } from "@bb/shared-ui/resource-list";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
+import { AttentionBanner } from "@/components/ui/attention-banner";
 import { appToast } from "@/components/ui/app-toast";
 import { machineActions } from "@/components/machines/machine-actions";
 import { MachineReconnectDialog } from "@/components/machines/MachineReconnectDialog";
@@ -43,11 +44,11 @@ import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-quer
 import { useServerMoveStatus } from "@/hooks/queries/server-move-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { machineAttentionIssue } from "@/hooks/useMachineAttention";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { formatHostUpdateStatus } from "@/lib/host-update-status";
 
 const PERMISSION_MODE_PRESENTATION: Record<
   PermissionMode,
@@ -60,6 +61,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  win32: "Windows",
   unknown: null,
 };
 
@@ -113,7 +115,6 @@ export function MachineRowContent({
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel = machineStatusLabel({ host, now });
-  const updateStatus = formatHostUpdateStatus(host);
 
   return (
     <SettingsRow>
@@ -160,11 +161,6 @@ export function MachineRowContent({
                 >
                   {permission.label}
                 </span>
-                {updateStatus === null ? null : (
-                  <span className="min-w-0 text-warning-text">
-                    {updateStatus}
-                  </span>
-                )}
               </div>
             </div>
           </Link>
@@ -237,6 +233,18 @@ export function MachinesSettingsSection() {
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
   const persistentHosts = hosts?.filter((host) => host.type === "persistent");
+  const attentionHosts = (hosts ?? []).flatMap((host) => {
+    const issue = machineAttentionIssue(host);
+    return issue === null ? [] : [{ host, issue }];
+  });
+  const allAttentionHostsOffline = attentionHosts.every(
+    ({ issue }) => issue.offline,
+  );
+  const [firstAttentionHost] = attentionHosts;
+  const singleOfflineHost =
+    attentionHosts.length === 1 && firstAttentionHost?.issue.offline
+      ? firstAttentionHost.host
+      : null;
   const sandboxHosts = hosts?.filter((host) => host.type === "ephemeral");
   const visibleHosts =
     showAllMachines && sandboxHosts !== undefined
@@ -349,6 +357,41 @@ export function MachinesSettingsSection() {
           </Button>
         }
       >
+        {attentionHosts.length > 0 ? (
+          <AttentionBanner
+            title={
+              singleOfflineHost !== null
+                ? `${singleOfflineHost.name} is offline`
+                : allAttentionHostsOffline
+                  ? `${attentionHosts.length} machines are offline`
+                  : "Machines need attention"
+            }
+          >
+            {singleOfflineHost === null ? (
+              <ul className="space-y-2">
+                {attentionHosts.map(({ host, issue }) => (
+                  <li key={host.id} className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">
+                        {allAttentionHostsOffline ? host.name : issue.label}
+                      </p>
+                      {!issue.offline && host.lifecycle.message ? (
+                        <details className="text-xs text-muted-foreground">
+                          <summary className="cursor-pointer">
+                            Error details
+                          </summary>
+                          <p className="whitespace-pre-wrap py-1">
+                            {host.lifecycle.message}
+                          </p>
+                        </details>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </AttentionBanner>
+        ) : null}
         <div
           role="note"
           aria-label="About the bb server"

@@ -60,7 +60,7 @@ export function useResolvedLiveFileTarget(
     if (target.kind === "thread-storage") {
       if (storageQuery.isLoading) return { status: "loading" };
       const location = storageQuery.data;
-      if (storageQuery.isError || location === undefined) {
+      if (location === undefined) {
         return { status: "unavailable" };
       }
       return {
@@ -101,7 +101,6 @@ export function useResolvedLiveFileTarget(
     isLocalDaemonHost,
     options.enabled,
     storageQuery.data,
-    storageQuery.isError,
     storageQuery.isLoading,
     target,
   ]);

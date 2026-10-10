@@ -5,6 +5,7 @@ import {
   type McpSdkServerConfigWithInstance,
   type Options,
   type Query,
+  type Settings,
   type SDKMessage,
   type SDKUserMessage,
   type SpawnedProcess,
@@ -29,6 +30,7 @@ export interface SdkSessionOptions {
   effort?: Options["effort"];
   sessionId?: string;
   permissionMode?: ClaudePermissionMode;
+  allowBypassPermissions: boolean;
   sandbox?: Options["sandbox"];
   hooks?: Options["hooks"];
   mcpServers?: Record<string, McpSdkServerConfigWithInstance>;
@@ -73,6 +75,7 @@ interface SdkPermissionOptions {
 }
 
 interface BuildSdkPermissionOptionsArgs {
+  allowBypassPermissions: boolean;
   permissionMode: ClaudePermissionMode | undefined;
 }
 
@@ -88,8 +91,8 @@ interface BuildSdkDoneErrorMessageArgs {
 
 const SDK_STDERR_TAIL_MAX_CHARS = 4_000;
 
-function isCurrentProcessRoot(): boolean {
-  return process.getuid?.() === 0;
+export function isBypassPermissionsAvailable(): boolean {
+  return process.getuid?.() !== 0;
 }
 
 function appendBoundedText(args: AppendBoundedTextArgs): string {
@@ -139,12 +142,15 @@ function buildSdkPermissionOptions(
   args: BuildSdkPermissionOptionsArgs,
 ): SdkPermissionOptions {
   const permissionMode = args.permissionMode ?? "default";
-  if (permissionMode !== "bypassPermissions") {
+  if (!args.allowBypassPermissions) {
     return { permissionMode };
   }
 
-  if (isCurrentProcessRoot()) {
-    return { permissionMode: "default" };
+  if (!isBypassPermissionsAvailable()) {
+    return {
+      permissionMode:
+        permissionMode === "bypassPermissions" ? "default" : permissionMode,
+    };
   }
 
   return {
@@ -185,8 +191,14 @@ export class SdkSession {
   }
 
   async setPermissionMode(mode: ClaudePermissionMode): Promise<void> {
-    this.options.permissionMode = mode;
     await this.query?.setPermissionMode(mode);
+    this.options.permissionMode = mode;
+  }
+
+  async applyPermissionSettings(
+    settings: Pick<Settings, "sandbox" | "permissions">,
+  ): Promise<void> {
+    await this.query?.applyFlagSettings(settings);
   }
 
   async getContextUsage(): Promise<unknown> {
@@ -222,6 +234,7 @@ export class SdkSession {
 
     this.stderrTail = "";
     const permissionOptions = buildSdkPermissionOptions({
+      allowBypassPermissions: this.options.allowBypassPermissions,
       permissionMode: this.options.permissionMode,
     });
     const onStderr = (data: string): void => {

@@ -1,5 +1,9 @@
 import type { Post } from "../blog/parse-post.js";
 import type { PublicMarketplaceData } from "../marketplace/marketplace-data.js";
+import {
+  indexableMarketplaceCategories,
+  marketplaceIndexPath,
+} from "../marketplace/marketplace-view-model.js";
 
 interface SitemapPage {
   path: string;
@@ -26,13 +30,16 @@ function escapeXml(value: string): string {
 export function sitemapXml(
   origin: string,
   posts: readonly Post[],
+  contentPaths: readonly string[],
   marketplace: PublicMarketplaceData,
 ): string {
   const pages: SitemapPage[] = [
     { path: "/" },
     { path: "/blog" },
     { path: "/changelog" },
+    { path: "/plugin-guide" },
     { path: "/privacy" },
+    ...contentPaths.map((path) => ({ path })),
     ...posts.map((post) => ({
       path: `/blog/${encodeURIComponent(post.slug)}`,
       lastmod: post.dateIso,
@@ -41,6 +48,11 @@ export function sitemapXml(
 
   if (marketplace.status === "available") {
     pages.push({ path: "/marketplace" });
+    for (const category of indexableMarketplaceCategories(
+      marketplace.manifest,
+    )) {
+      pages.push({ path: marketplaceIndexPath(category.id) });
+    }
     for (const plugin of marketplace.manifest.plugins) {
       pages.push({
         path: `/marketplace/${encodeURIComponent(plugin.id)}`,

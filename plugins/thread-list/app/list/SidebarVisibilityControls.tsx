@@ -29,12 +29,13 @@ import {
 } from "@/components/ui/coarse-pointer-sizing";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { SIDEBAR_DISCLOSURE_ACTION_CLASS } from "@/components/ui/chrome-style-tokens";
+import type { SidebarVisibilityItem } from "@/components/ui/sidebar-visibility-customize";
 import { cn } from "@/lib/utils";
 import {
   PROJECT_LIST_ACTION_BUTTON_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
-} from "../rows/sidebarRowClasses.js";
-import { CONTEXT_SELECTION_SURFACE_CLASS } from "../ui/context-selection.js";
+} from "@/components/ui/sidebar-row-classes";
+import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
 
 const OVERFLOW_ROW_BUTTON_CLASS =
   "w-full justify-start gap-2 rounded-sm px-2 text-xs font-normal hover:bg-state-hover focus-visible:bg-state-hover";
@@ -48,18 +49,6 @@ const CompactOverflowContext = createContext<{
   page: CompactOverflowPage | null;
   setPage: (page: CompactOverflowPage | null) => void;
 } | null>(null);
-
-export interface SidebarVisibilityItem {
-  id: string;
-  title: string;
-  icon?: ReactNode;
-  disabled?: boolean;
-}
-
-export interface SidebarActivationModifiers {
-  metaKey: boolean;
-  ctrlKey: boolean;
-}
 
 export function SidebarCustomizeActionContent({ label }: { label: string }) {
   return (
@@ -367,5 +356,3 @@ export function SidebarOverflowItem({
     </DropdownMenuSub>
   );
 }
-
-export { SidebarVisibilityCustomize } from "./SidebarVisibilityCustomize.js";

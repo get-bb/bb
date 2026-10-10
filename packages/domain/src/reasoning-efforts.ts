@@ -1,5 +1,9 @@
 import type { ModelReasoningEffort } from "./provider-types.js";
-import type { ReasoningLevel } from "./shared-types.js";
+import {
+  isStandardReasoningLevel,
+  type ReasoningLevel,
+  type StandardReasoningLevel,
+} from "./shared-types.js";
 
 export const NONE_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "none",
@@ -35,20 +39,26 @@ const ULTRA_REASONING_EFFORT: ModelReasoningEffort = {
   description: "Maximum reasoning with automatic task delegation",
 };
 
-const REASONING_EFFORT_BY_LEVEL: Record<ReasoningLevel, ModelReasoningEffort> =
-  {
-    none: NONE_REASONING_EFFORT,
-    low: LOW_REASONING_EFFORT,
-    medium: MEDIUM_REASONING_EFFORT,
-    high: HIGH_REASONING_EFFORT,
-    xhigh: XHIGH_REASONING_EFFORT,
-    ultracode: ULTRACODE_REASONING_EFFORT,
-    max: MAX_REASONING_EFFORT,
-    ultra: ULTRA_REASONING_EFFORT,
-  };
+const REASONING_EFFORT_BY_LEVEL: Record<
+  StandardReasoningLevel,
+  ModelReasoningEffort
+> = {
+  none: NONE_REASONING_EFFORT,
+  low: LOW_REASONING_EFFORT,
+  medium: MEDIUM_REASONING_EFFORT,
+  high: HIGH_REASONING_EFFORT,
+  xhigh: XHIGH_REASONING_EFFORT,
+  ultracode: ULTRACODE_REASONING_EFFORT,
+  max: MAX_REASONING_EFFORT,
+  ultra: ULTRA_REASONING_EFFORT,
+};
 
 export function reasoningEffortsForLevels(
   levels: readonly ReasoningLevel[],
 ): ModelReasoningEffort[] {
-  return levels.map((level) => ({ ...REASONING_EFFORT_BY_LEVEL[level] }));
+  return levels.map((level) =>
+    isStandardReasoningLevel(level)
+      ? { ...REASONING_EFFORT_BY_LEVEL[level] }
+      : { reasoningEffort: level, description: level },
+  );
 }

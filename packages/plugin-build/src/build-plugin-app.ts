@@ -3,7 +3,6 @@ import {
   mkdtemp,
   readFile,
   realpath,
-  rename,
   rm,
   stat,
   writeFile,
@@ -16,6 +15,7 @@ import {
   PLUGIN_THEME_CSS,
   TW_ANIMATE_CSS,
 } from "./generated/plugin-theme.generated.js";
+import { renameIntoPlace } from "./rename-into-place.js";
 import { RUNTIME_EXPORT_MANIFEST } from "./generated/runtime-export-manifest.generated.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
@@ -31,6 +31,7 @@ import {
   RUNTIME_SLOT_BY_SPECIFIER,
   SHARED_UI_ICON_SPECIFIER,
   SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
+  SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
 } from "./runtime-shims.mjs";
 import {
   pluginScopeRoots,
@@ -52,6 +53,10 @@ const SHARED_UI_RUNTIME_MODULES: ReadonlyMap<string, string> = new Map([
   [
     "/shared-ui/src/components/ui/question-form-host",
     SHARED_UI_QUESTION_FORM_HOST_SPECIFIER,
+  ],
+  [
+    "/shared-ui/src/components/ui/voice-input-textarea",
+    SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER,
   ],
 ]);
 
@@ -150,7 +155,7 @@ export function runtimeShimPlugin(pluginSdkAppModuleUrl?: string): Plugin {
         namespace: SHIM_NAMESPACE,
       }));
       build.onResolve(
-        { filter: /(^|\/)(icon|question-form-host)(\.[jt]sx?)?$/ },
+        { filter: /(^|\/)(icon|question-form-host|voice-input-textarea)(\.[jt]sx?)?$/ },
         (args) => {
           if (args.namespace !== "file" || !args.path.startsWith(".")) {
             return undefined;
@@ -488,9 +493,9 @@ export async function buildPluginApp(
       ) + "\n",
     );
 
-    await rename(stagedJsPath, jsPath);
-    await rename(stagedCssPath, cssPath);
-    await rename(stagedMetaPath, metaPath);
+    await renameIntoPlace(stagedJsPath, jsPath);
+    await renameIntoPlace(stagedCssPath, cssPath);
+    await renameIntoPlace(stagedMetaPath, metaPath);
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }

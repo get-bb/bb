@@ -8,7 +8,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
@@ -50,6 +50,13 @@ import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
 import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir, scriptsRoot } from "./script-files.js";
+
+const BASH_SCRIPT_RUNS_ARE_POSIX_ONLY =
+  "script automations spawn `bash` by name, which Windows does not provide";
+
+function pastedShellArg(value: string): string {
+  return process.platform === "win32" ? `'${value}'` : value;
+}
 
 function createTestDb(): Db {
   const db = new Database(":memory:");
@@ -806,66 +813,72 @@ describe("automation data access", () => {
     expect(restored?.lastRunStatus).toBe("failed");
   });
 
-  it("does not claim due agent automations when no host is connected", async () => {
-    const db = createTestDb();
-    const automation = createScheduledAutomation(db, 1000);
-    const bb = {
-      sdk: {
-        hosts: {
-          list: async () => [
-            {
-              id: "host_test",
-              name: "host",
-              status: "disconnected",
-              lastSeenAt: null,
-              createdAt: 1,
-              updatedAt: 1,
+  it.each([1000, 2000])(
+    "leaves undispatched agent automations unchanged when next due at %s",
+    async (nextRunAt) => {
+      const db = createTestDb();
+      const automation = createScheduledAutomation(db, nextRunAt);
+      const bb = {
+        sdk: {
+          hosts: {
+            list: vi.fn(async () => {
+              return [
+                {
+                  id: "host_test",
+                  name: "host",
+                  status: "disconnected",
+                  lastSeenAt: null,
+                  createdAt: 1,
+                  updatedAt: 1,
+                },
+              ];
+            }),
+          },
+          projects: {
+            get: async () => {
+              throw new Error("not expected");
             },
-          ],
-        },
-        projects: {
-          get: async () => {
-            throw new Error("not expected");
+          },
+          system: {
+            config: async () => {
+              throw new Error("not expected");
+            },
+          },
+          threads: {
+            get: async () => {
+              throw new Error("not expected");
+            },
+            send: async () => {
+              throw new Error("not expected");
+            },
+            spawn: async () => {
+              throw new Error("not expected");
+            },
           },
         },
-        system: {
-          config: async () => {
-            throw new Error("not expected");
-          },
+        realtime: { publish: () => undefined },
+        log: {
+          debug: () => undefined,
+          error: () => undefined,
+          info: () => undefined,
+          warn: () => undefined,
         },
-        threads: {
-          get: async () => {
-            throw new Error("not expected");
-          },
-          send: async () => {
-            throw new Error("not expected");
-          },
-          spawn: async () => {
-            throw new Error("not expected");
-          },
-        },
-      },
-      realtime: { publish: () => undefined },
-      log: {
-        debug: () => undefined,
-        error: () => undefined,
-        info: () => undefined,
-        warn: () => undefined,
-      },
-    };
+      };
 
-    await sweepDueAutomations(bb, db, {
-      pluginDataDir: "/tmp",
-      serverUrl: "http://127.0.0.1:38886",
-      serverHostId: "host_server",
-      now: 1000,
-    });
+      await sweepDueAutomations(bb, db, {
+        pluginDataDir: "/tmp",
+        serverUrl: "http://127.0.0.1:38886",
+        serverHostId: "host_server",
+        now: 1000,
+      });
 
-    expect(getAutomation(db, automation.id)?.runCount).toBe(0);
-    expect(
-      listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
-    ).toHaveLength(0);
-  });
+      expect(bb.sdk.hosts.list).toHaveBeenCalledTimes(nextRunAt > 1000 ? 0 : 1);
+      expect(getAutomation(db, automation.id)?.runCount).toBe(0);
+      expect(
+        listAutomationRuns(db, { automationId: automation.id, limit: 10 }),
+      ).toHaveLength(0);
+    },
+  );
 
   it("does not repeatedly select degraded agent executions for sweeping", () => {
     const db = createTestDb();
@@ -1723,7 +1736,7 @@ describe("automation CLI --script-file", () => {
       expect(created.stdout).toContain(`Copied ${sourcePath}`);
       expect(created.stdout).toContain(`to ${storedPath}`);
       expect(created.stdout).toContain(
-        `bb automation update ${automationId} --project proj_test --script-file ${sourcePath} --interpreter bash --working-directory project --timeout 120000`,
+        `bb automation update ${automationId} --project proj_test --script-file ${pastedShellArg(sourcePath)} --interpreter bash --working-directory project --timeout 120000`,
       );
       expect(created.stdout).toContain("Working dir: /server/project");
 
@@ -1847,7 +1860,7 @@ describe("automation CLI --script-file", () => {
         `Copied ${sourcePath} (host host_laptop)`,
       );
       expect(inThread.stdout).toContain(
-        `--script-file ${sourcePath} --host host_laptop --interpreter bash --working-directory project`,
+        `--script-file ${pastedShellArg(sourcePath)} --host host_laptop --interpreter bash --working-directory project`,
       );
 
       const byName = await t.cli.run(
@@ -2017,26 +2030,30 @@ describe("bb CLI injection for script runs", () => {
       })[0],
     ).toBe("/daemon/bundle/bb");
     expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
-      "/daemon/bundle/bb",
+      join("/daemon/bundle", "bb"),
     );
   });
 
   it("expands PATH itself so every candidate is absolute", () => {
-    expect(bbBinaryCandidates({ PATH: "/usr/bin:/opt/tools" })).toEqual([
-      "/usr/bin/bb",
-      "/opt/tools/bb",
+    expect(
+      bbBinaryCandidates({ PATH: ["/usr/bin", "/opt/tools"].join(delimiter) }),
+    ).toEqual([
+      join("/usr/bin", "bb"),
+      join("/opt/tools", "bb"),
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
     expect(
-      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => c.startsWith("/")),
+      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => isAbsolute(c)),
     ).toBe(true);
   });
 
   it("drops entries that would resolve against the wrong directory", () => {
-    expect(bbBinaryCandidates({ PATH: "/usr/bin::/bin" })).toEqual([
-      "/usr/bin/bb",
-      "/bin/bb",
+    expect(
+      bbBinaryCandidates({ PATH: ["/usr/bin", "", "/bin"].join(delimiter) }),
+    ).toEqual([
+      join("/usr/bin", "bb"),
+      join("/bin", "bb"),
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
@@ -2050,7 +2067,7 @@ describe("bb CLI injection for script runs", () => {
 
   it("prepends bb's directory to PATH only when it is absolute", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
-      "/daemon/bundle:/usr/bin:/bin",
+      `${dirname("/daemon/bundle/bb")}${delimiter}/usr/bin:/bin`,
     );
     expect(scriptPathEnv("bb", "/usr/bin:/bin")).toBe("/usr/bin:/bin");
     expect(scriptPathEnv(null, "/usr/bin:/bin")).toBe("/usr/bin:/bin");
@@ -2082,7 +2099,10 @@ async function isProcessRunning(pid: number): Promise<boolean> {
 }
 
 describe("script process containment", () => {
-  it("terminates descendant processes when a script times out", async () => {
+  it("terminates descendant processes when a script times out", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
     const pluginDataDir = await mkdtemp(
       join(tmpdir(), "bb-auto-process-group-"),
     );
@@ -2286,7 +2306,10 @@ describe("script project context", () => {
     }
   }
 
-  it("runs in the actual server-host source instead of a remote primary source", async () => {
+  it("runs in the actual server-host source instead of a remote primary source", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
     const serverProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-server-"));
     const remoteProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-remote-"));
     await mkdir(join(serverProjectDir, "bin"));
@@ -2324,7 +2347,10 @@ describe("script project context", () => {
     }
   });
 
-  it("reports a resolved directory equal to the process working directory", async () => {
+  it("reports a resolved directory equal to the process working directory", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
     const serverProjectDir = await mkdtemp(join(tmpdir(), "bb-auto-server-"));
     const explicitDir = await mkdtemp(join(tmpdir(), "bb-auto-explicit-"));
     const sources = [
@@ -2436,7 +2462,10 @@ describe("script project context", () => {
     });
   });
 
-  it("includes the first stderr line in a failed run summary", async () => {
+  it("includes the first stderr line in a failed run summary", async ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", BASH_SCRIPT_RUNS_ARE_POSIX_ONLY);
     const result = await runScriptAutomation({
       script:
         "printf 'stdout kept\\n'\nprintf '\\n  missing project file  \\nlater detail\\n' >&2\nexit 2\n",

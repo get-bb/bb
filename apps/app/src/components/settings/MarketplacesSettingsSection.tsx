@@ -9,7 +9,7 @@ import { appToast } from "@/components/ui/app-toast";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginMarketplaces } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -133,7 +133,7 @@ export function MarketplacesSettingsSection() {
             className="flex items-start gap-3 rounded-md border border-border p-3"
           >
             <div className="min-w-0 flex-1 space-y-1">
-              <p className="flex items-center gap-2 text-sm text-foreground">
+              <div className="flex items-center gap-2 text-sm text-foreground">
                 {marketplace.displayName}
                 <span className="font-mono text-2xs text-subtle-foreground">
                   {marketplace.name}
@@ -143,7 +143,7 @@ export function MarketplacesSettingsSection() {
                     Official
                   </Badge>
                 ) : null}
-              </p>
+              </div>
               <p className="truncate font-mono text-2xs text-subtle-foreground">
                 {marketplace.source}
               </p>

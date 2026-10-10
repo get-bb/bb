@@ -1,15 +1,8 @@
 {
   "$comment": "Shared UI-anatomy contract between the Plugin Guide surface fixtures (wireframes.tsx) and the real app. Ordered regions are rendered by both sides. surfaceFixtures records authoritative source anchors plus the minimum deterministic fidelity and states for interaction-heavy fixtures.",
-  "appSidebar": ["top-reserve", "sidebar-navigation", "thread-list", "footer"],
-  "sidebarFooter": ["settings", "plugin-footer-items", "bug-report"],
-  "messageActionBar": [
-    "copy",
-    "edit",
-    "add-to-chat",
-    "send-to-main-thread",
-    "fork",
-    "plugin-actions"
-  ],
+  "appSidebar": ["top-reserve", "thread-list", "footer"],
+  "sidebarFooter": ["plugin-footer-items", "bug-report"],
+  "messageActionBar": ["copy", "edit", "plugin-actions", "message-menu"],
   "mobileLayout": {
     "sources": [
       {
@@ -118,42 +111,6 @@
             "fixed inset-0 z-50 bg-black/40",
             "bg-background p-6 shadow-sm",
             "sm:rounded-lg"
-          ]
-        }
-      ]
-    },
-    "sidebar-navigation": {
-      "groupId": "app-shell",
-      "fidelity": "state",
-      "responsiveStrategy": "scale-together",
-      "requiredStates": ["owner", "replacement", "fallback"],
-      "labels": {
-        "owner": ["New thread", "Search threads", "Plugins", "Skills"],
-        "replacement": ["Custom navigation"],
-        "fallback": ["New thread", "Search threads", "Plugins", "Skills"]
-      },
-      "fixtureClassAnchors": ["px-2 py-2", "px-2 pb-2"],
-      "sources": [
-        {
-          "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.tsx",
-          "anchors": [
-            "data-testid=\"sidebar-navigation-region\"",
-            "NavigationProvider",
-            "SidebarNavigationCustomize"
-          ]
-        },
-        {
-          "path": "plugins/navigation/app/Navigation.tsx",
-          "anchors": [
-            "data-testid=\"plugin-nav-sidebar-items\"",
-            "experimental_useSidebarNavigation"
-          ]
-        },
-        {
-          "path": "apps/app/src/components/sidebar/SidebarNavigationRegion.test.tsx",
-          "anchors": [
-            "routes Search through the quick palette without inline search UI",
-            "replaces a crashed provider with a reload placeholder"
           ]
         }
       ]

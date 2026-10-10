@@ -1015,7 +1015,7 @@ describe("who may use bb account", () => {
     ).rejects.toThrow();
     expect(Date.now() - started).toBeLessThan(5_000);
     release();
-    for (const timeoutMs of [999, 15_001, 1_500.5]) {
+    for (const timeoutMs of [999, 65_001, 1_500.5]) {
       await expect(
         host.harness.callRpc(FETCH_METHOD, {
           target: "api",

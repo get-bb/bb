@@ -7,7 +7,7 @@ import type { CSSProperties } from "react";
 import {
   getSidebarThreadRowPaddingLeft,
   SIDEBAR_ROW_BASE_CLASS,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 
 export const SIDEBAR_THREAD_DRAG_CHIP_CLASS = cn(
   SIDEBAR_ROW_BASE_CLASS,

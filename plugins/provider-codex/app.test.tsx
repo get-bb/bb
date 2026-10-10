@@ -17,18 +17,21 @@ const request = {
 function render(data: unknown, submit = vi.fn(async (_: unknown) => {})) {
   return {
     submit,
-    view: renderSlot(app.pendingInteractions[0]!, {
-      interaction: {
-        id: "pint_test",
-        threadId: "thr_test",
-        title: "MCP request",
-        payload: data as never,
-        createdAt: 0,
-        expiresAt: null,
+    view: renderSlot(
+      app.pendingInteractions.find((slot) => slot.id === "mcp-elicitation")!,
+      {
+        interaction: {
+          id: "pint_test",
+          threadId: "thr_test",
+          title: "MCP request",
+          payload: data as never,
+          createdAt: 0,
+          expiresAt: null,
+        },
+        submit,
+        cancel: async () => {},
       },
-      submit,
-      cancel: async () => {},
-    }),
+    ),
   };
 }
 it.each([
@@ -112,3 +115,34 @@ it.each(["constructor", "toString"])(
     );
   },
 );
+
+it("keeps upstream async questions usable alongside MCP consent", async () => {
+  const submit = vi.fn(async (_: unknown) => {});
+  const view = renderSlot(
+    app.pendingInteractions.find((slot) => slot.id === "async-question")!,
+    {
+      interaction: {
+        id: "pint_async",
+        threadId: "thr_test",
+        title: "Question",
+        payload: {
+          questions: [
+            { title: "Choose a target", options: ["Local", "Remote"] },
+          ],
+        },
+        createdAt: 0,
+        expiresAt: null,
+      },
+      submit,
+      cancel: async () => {},
+    },
+  );
+  expect(submit).not.toHaveBeenCalled();
+  fireEvent.click(view.getByRole("button", { name: "Remote" }));
+  fireEvent.click(view.getByRole("button", { name: "Submit answer" }));
+  await vi.waitFor(() =>
+    expect(submit).toHaveBeenCalledWith({
+      answers: { "question-1": { selected: ["option-2"] } },
+    }),
+  );
+});

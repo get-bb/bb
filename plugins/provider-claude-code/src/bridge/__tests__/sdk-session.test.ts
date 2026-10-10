@@ -26,6 +26,7 @@ import { SdkSession, type SdkSessionOptions } from "../sdk-session.js";
 const defaultOptions: SdkSessionOptions = {
   cwd: "/tmp/test",
   systemPrompt: "You are a test assistant.",
+  allowBypassPermissions: false,
 };
 
 interface ClaudeQueryPromptCall {
@@ -216,13 +217,14 @@ describe("SdkSession", () => {
   });
 
   it("only enables dangerous permission skipping for bypass mode", () => {
-    mockProcessUid(1000);
+    if (process.platform !== "win32") mockProcessUid(1000);
     const onMessage = vi.fn();
     const onDone = vi.fn();
     const session = new SdkSession(
       {
         ...defaultOptions,
         permissionMode: "bypassPermissions",
+        allowBypassPermissions: true,
       },
       onMessage,
       onDone,
@@ -240,7 +242,34 @@ describe("SdkSession", () => {
     );
   });
 
-  it("does not send root-forbidden bypass flags when running as root", () => {
+  it("launches full access sessions that start in plan mode able to switch to bypass mode", () => {
+    if (process.platform !== "win32") mockProcessUid(1000);
+    const session = new SdkSession(
+      {
+        ...defaultOptions,
+        permissionMode: "plan",
+        allowBypassPermissions: true,
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    session.start();
+
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          permissionMode: "plan",
+          allowDangerouslySkipPermissions: true,
+        }),
+      }),
+    );
+  });
+
+  it("does not send root-forbidden bypass flags when running as root", ({
+    skip,
+  }) => {
+    skip(process.platform === "win32", "Windows has no root uid");
     mockProcessUid(0);
     const onMessage = vi.fn();
     const onDone = vi.fn();
@@ -248,6 +277,7 @@ describe("SdkSession", () => {
       {
         ...defaultOptions,
         permissionMode: "bypassPermissions",
+        allowBypassPermissions: true,
       },
       onMessage,
       onDone,

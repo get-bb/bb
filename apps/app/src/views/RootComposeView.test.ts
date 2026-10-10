@@ -20,6 +20,7 @@ import {
 import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
 import {
   buildRootComposeTerminalSessions,
+  isRootComposeTerminalSession,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
   hasSingleUseRootComposeTargetState,
@@ -29,7 +30,6 @@ import {
   readInitialPromptFromLocationState,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
-  shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
 import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
@@ -782,32 +782,6 @@ describe("shouldStartComposingFromLocationState", () => {
   });
 });
 
-describe("shouldNavigateAfterThreadCreate", () => {
-  it("follows the preference for ordinary new threads", () => {
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: false,
-        navigateToThreadAfterCreate: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: false,
-        navigateToThreadAfterCreate: true,
-      }),
-    ).toBe(true);
-  });
-
-  it("always navigates for submitted fork drafts", () => {
-    expect(
-      shouldNavigateAfterThreadCreate({
-        isForkDraft: true,
-        navigateToThreadAfterCreate: false,
-      }),
-    ).toBe(true);
-  });
-});
-
 describe("resolveRootComposeEffectiveEnvironmentValue", () => {
   const checkoutProvider = makeProjectProvider("project-checkout");
   const worktreeProvider = makeProjectProvider("git-worktree");
@@ -1171,6 +1145,30 @@ describe("buildRootComposeTerminalSessions", () => {
         },
       }),
     ).toEqual([matching]);
+  });
+});
+
+describe("isRootComposeTerminalSession", () => {
+  it("accepts only threadless terminals of the root environment", () => {
+    const target = { kind: "environment" as const, environmentId: "env_1" };
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_1" }),
+        target,
+      ),
+    ).toBe(true);
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_1", threadId: "thr_1" }),
+        target,
+      ),
+    ).toBe(false);
+    expect(
+      isRootComposeTerminalSession(
+        makeTerminalSession({ environmentId: "env_2" }),
+        target,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -17,7 +17,7 @@ export function BrowseArchetypeCards({
         <h3 className="text-xs font-medium text-subtle-foreground">
           Start from an example
         </h3>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
           {BROWSE_ARCHETYPES.map((archetype) => (
             <ShowcaseExampleCard
               key={archetype.id}
@@ -32,7 +32,7 @@ export function BrowseArchetypeCards({
         <h4 className="mt-5 text-2xs font-medium text-subtle-foreground">
           Explore plugin capabilities
         </h4>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
           {UTILITY_EXAMPLES.map((example) => (
             <ShowcaseExampleCard
               key={example.id}

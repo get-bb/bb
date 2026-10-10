@@ -1,5 +1,5 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
-import { isServerMachineHost } from "../hosts/primary-host.js";
+import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
 import { and, desc, eq } from "drizzle-orm";
 import {
@@ -1398,12 +1398,17 @@ export async function sweepMachineLifecycles(
   options?: { background: true },
 ): Promise<void> {
   const pending: Promise<void>[] = [];
+  const primaryHostId = readPrimaryHostIdFromDataDir({
+    dataDir: deps.config.dataDir,
+  });
+  const operations = perDbRegistry(machineSweepOperations, deps.db);
   for (const record of listMachineProviders()) {
     for (const machine of listProviderMachines(deps.db, record.provider.id)) {
-      if (isServerMachineHost(deps, machine.id)) continue;
-      requestAutomaticMachineRemoval(deps, machine.id);
+      if (machine.id === primaryHostId) continue;
+      if (operations.has(machine.id))
+        requestAutomaticMachineRemoval(deps, machine.id);
       const sweeping = runTrackedOperation({
-        map: perDbRegistry(machineSweepOperations, deps.db),
+        map: operations,
         key: machine.id,
         run: async () => sweepProviderMachine(deps, machine.id),
       }).done;

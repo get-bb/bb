@@ -1,4 +1,5 @@
 import { unlink } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
@@ -16,6 +17,11 @@ import {
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
 } from "./rpc-types.js";
+
+function storedScriptPathPattern(automationId: string): RegExp {
+  const suffix = join(sep, "scripts", automationId, "script.sh");
+  return new RegExp(`${suffix.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")}$`);
+}
 
 const PROJECT_ID = "proj_test";
 const MISSING_PROJECT_ID = "proj_missing";
@@ -406,7 +412,7 @@ describe("automations server plugin harness", () => {
       mode: "script",
       scriptFile: "script.sh",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        storedScriptPathPattern(created.id),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
@@ -424,7 +430,7 @@ describe("automations server plugin harness", () => {
       mode: "script",
       script: "echo updated",
       storedScriptPath: expect.stringMatching(
-        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+        storedScriptPathPattern(created.id),
       ),
       interpreter: "bash",
       workingDirectory: { type: "project" },
@@ -1343,6 +1349,70 @@ describe("automations server plugin harness", () => {
     await reloaded.harness.dispose();
   });
 
+  it("discovers a late-enrolled server host before dispatching a project script", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const host = await bootAutomationsPlugin();
+    const { harness } = host;
+    const source = project();
+    source.sources[0]!.path = dirname(host.bb.storage.database().name);
+    harness.sdk.stub("projects.get", async () => source);
+    const created = await harness.runCli([
+      "create",
+      "--project",
+      PROJECT_ID,
+      "--name",
+      "Late enrollment",
+      "--in",
+      "1m",
+      "--script",
+      "printf 'late enrollment OK'",
+      "--interpreter",
+      "sh",
+      "--working-directory",
+      "project",
+      "--json",
+    ]);
+    expect(created.exitCode).toBe(0);
+    const automation = automationDetailResponseSchema.parse(
+      JSON.parse(created.stdout!),
+    );
+    let primaryHostId: string | null = null;
+    harness.sdk.stub("system.config", () => ({ primaryHostId }));
+    const initialCalls = harness.sdk.callsTo("system.config").length;
+    const service = harness.runService("automation-sweep");
+    try {
+      await vi.waitFor(() =>
+        expect(harness.sdk.callsTo("system.config")).toHaveLength(
+          initialCalls + 1,
+        ),
+      );
+      primaryHostId = "host_fake";
+      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.waitFor(async () => {
+        const { runs } = automationRunListResponseSchema.parse(
+          await harness.callRpc("automations_runs", {
+            projectId: PROJECT_ID,
+            automationId: automation.id,
+          }),
+        );
+        expect(runs[0]).toMatchObject({
+          status: "succeeded",
+          output: expect.stringMatching(/(?:^|\n)late enrollment OK$/),
+          exitCode: 0,
+          error: null,
+        });
+      });
+      const calls = harness.sdk.callsTo("system.config").length;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(harness.sdk.callsTo("system.config")).toHaveLength(calls);
+    } finally {
+      service.controller.abort();
+      await service.done;
+      await harness.dispose();
+    }
+  });
+
   it("dispatches a due agent automation from one sweep tick and closes it from thread.idle", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
@@ -1364,6 +1434,7 @@ describe("automations server plugin harness", () => {
     expect(harness.sdk.callsTo("threads.spawn")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.spawn")[0]?.[0]).toMatchObject({
       projectId: PROJECT_ID,
+      prompt: `[bb automation due:${automation.id}]\n\nsummarize the inbox`,
       title: "Sweep",
       origin: "plugin",
       originPluginId: "automations",

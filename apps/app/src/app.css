@@ -29,6 +29,8 @@
   :root {
     --bb-app-chrome-row-height: 3rem;
     --bb-shell-height: 100dvh;
+    --bb-window-frame-top: 0px;
+    --bb-window-frame-lip: 0px;
     --secondary-panel-width-mobile: min(76vw, 320px);
     --bb-sidebar-control-size: 28px;
     --bb-sidebar-control-icon-size: 16px;
@@ -219,7 +221,7 @@
   [data-promptbox-compact-content] .ProseMirror[contenteditable] > *,
   [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
-    :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
+    :where(blockquote, p) {
     display: inline;
     margin: 0;
     padding: 0;
@@ -238,14 +240,9 @@
     + *::before,
   [data-promptbox-compact-content]
     .ProseMirror[contenteditable]
-    :where(blockquote, li)
+    :where(blockquote)
     > *
-    + *::before,
-  [data-promptbox-compact-content]
-    .ProseMirror[contenteditable]
-    :where(ol, ul)
-    > li
-    + li::before {
+    + *::before {
     content: " ";
   }
 
@@ -429,9 +426,16 @@
     }
   }
 
-  @media (width < 48rem) {
+  @media (width < 48rem) and (pointer: coarse) {
     [data-new-thread-footer] button {
       min-block-size: 2.75rem;
+    }
+  }
+
+  @media (width < 48rem) {
+    [data-new-thread-footer]
+      [data-promptbox-shrinkable-control]:has(~ :not(:empty)) {
+      flex-shrink: 0 !important;
     }
 
     [data-new-thread-footer]
@@ -593,7 +597,7 @@
     [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
-    :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
+    :where(blockquote, p) {
     display: inline;
     margin: 0;
     padding: 0;
@@ -616,16 +620,9 @@
     [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
-    :where(blockquote, li)
+    :where(blockquote)
     > *
-    + *::before,
-  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-voice-active])
-    [data-promptbox-editor-content]
-    .ProseMirror[contenteditable]
-    :where(ol, ul)
-    > li
-    + li::before {
+    + *::before {
     content: " ";
   }
 
@@ -726,11 +723,13 @@
   }
 
   @media (hover: none) and (pointer: coarse) {
-    .thread-scrollbar {
+    .thread-scrollbar,
+    [data-sidebar="content"] {
       scrollbar-width: none;
     }
 
-    .thread-scrollbar::-webkit-scrollbar {
+    .thread-scrollbar::-webkit-scrollbar,
+    [data-sidebar="content"]::-webkit-scrollbar {
       display: none;
     }
   }
@@ -746,19 +745,21 @@
     background-color: transparent;
   }
 
-  [data-vaul-drawer-direction] [data-sidebar="content"]:hover {
-    scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
-      transparent;
-  }
+  @media (hover: hover) and (pointer: fine) {
+    [data-vaul-drawer-direction] [data-sidebar="content"]:hover {
+      scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent)
+        transparent;
+    }
 
-  [data-vaul-drawer-direction]
-    [data-sidebar="content"]:hover::-webkit-scrollbar-thumb {
-    background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
-  }
+    [data-vaul-drawer-direction]
+      [data-sidebar="content"]:hover::-webkit-scrollbar-thumb {
+      background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+    }
 
-  [data-vaul-drawer-direction]
-    [data-sidebar="content"]:hover::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    [data-vaul-drawer-direction]
+      [data-sidebar="content"]:hover::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in oklab, var(--foreground) 40%, transparent);
+    }
   }
 
   /*
@@ -820,25 +821,69 @@
   }
 }
 
-/* Briefly highlight a conversation message that a thread-search result
- * deep-links to, then fade back to transparent. */
 @keyframes bb-search-flash {
-  from {
-    background-color: color-mix(in oklch, var(--ring) 22%, transparent);
+  0%,
+  25% {
+    background-color: var(--state-hover);
   }
-  to {
+  100% {
     background-color: transparent;
   }
 }
 
 .bb-search-flash {
   border-radius: var(--radius-lg, 0.5rem);
-  animation: bb-search-flash 1.6s ease-out;
+  background-color: var(--state-hover);
+  animation: bb-search-flash 1.6s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .bb-search-flash {
     animation: none;
+  }
+}
+
+@keyframes bb-count-flash {
+  0%,
+  35% {
+    background-color: var(--foreground);
+    color: var(--background);
+  }
+}
+
+@keyframes bb-count-roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+@keyframes bb-count-roll-out {
+  to {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+}
+
+.bb-count-flash {
+  animation: bb-count-flash 1.2s ease-out;
+}
+
+.bb-count-roll-in {
+  animation: bb-count-roll-in 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bb-count-roll-out {
+  animation: bb-count-roll-out 280ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-count-roll-in {
+    animation: none;
+  }
+
+  .bb-count-roll-out {
+    display: none;
   }
 }
 

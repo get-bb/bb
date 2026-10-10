@@ -30,7 +30,7 @@ import {
 import {
   copyProjectAttachments,
   storeAttachment,
-  validatePromptAttachmentReferences,
+  resolvePromptAttachmentReferences,
 } from "../../src/services/projects/attachments.js";
 import {
   pruneProjectAttachments,
@@ -352,10 +352,11 @@ describe("project attachment accounting", () => {
       expect((await pruneProjectAttachments(h.deps, project.id)).status).toBe(
         "backfill-pending",
       );
-      await validatePromptAttachmentReferences({
+      await resolvePromptAttachmentReferences({
         db: h.db,
         dataDir: h.config.dataDir,
         projectId: project.id,
+        hostId: null,
         input: input("./event.txt"),
       });
       await completeBackfill(h, project.id);
@@ -435,10 +436,11 @@ describe("project attachment accounting", () => {
         getProjectAttachment(h.db, project.id, orphan.path),
       ).toBeUndefined();
       await expect(
-        validatePromptAttachmentReferences({
+        resolvePromptAttachmentReferences({
           db: h.db,
           dataDir: h.config.dataDir,
           projectId: project.id,
+          hostId: null,
           input: input("../escape.txt"),
         }),
       ).rejects.toThrow("escapes project directory");

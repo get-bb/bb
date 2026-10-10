@@ -44,7 +44,7 @@ Wants=network-online.target
 [Service]
 ExecStart="/opt/node 22/bin/node" "/home/me/.bb-machines/npm/bin/bb-app" host-daemon --auto-update --host-daemon-port "38887" --server-url "${args.serverUrl}"
 Environment="BB_APP_NPM_PREFIX=/home/me/.bb-machines/npm"
-Environment="BB_DATA_DIR=${args.dataDir}"
+Environment="BB_DATA_DIR=${args.dataDir.replaceAll("\\", "\\\\")}"
 Restart=always
 RestartSec=2
 
@@ -246,11 +246,13 @@ describe("service definition rewrites", () => {
       'ExecStart="/opt/node 22/bin/node" "/home/me/.bb-machines/npm/bin/bb-app" "host-daemon" "--auto-update" "--host-daemon-port" "38887" "--server-url" "https://new.example.test"',
     );
     expect(content).toContain(
-      `Environment="BB_DATA_DIR=${dataDir.replace("%", "%%")}"`,
+      `Environment="BB_DATA_DIR=${dataDir.replace("%", "%%").replaceAll("\\", "\\\\")}"`,
     );
     expect(content).toContain("Restart=always");
     expect(content).toContain("WantedBy=default.target");
-    expect((await stat(unitPath)).mode & 0o777).toBe(0o644);
+    if (process.platform !== "win32") {
+      expect((await stat(unitPath)).mode & 0o777).toBe(0o644);
+    }
     const reparsed = parseSystemdUnit(content, "bb-host-daemon-x.service");
     expect(reparsed?.programArguments.at(-1)).toBe("https://new.example.test");
     expect(reparsed?.environment.BB_DATA_DIR).toBe(dataDir);

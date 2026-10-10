@@ -9,10 +9,8 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setCompactSidebarDrawerShowing } from "@/components/ui/sidebar-mobile-drawer-visibility";
-import {
-  SidebarTouchSensor,
-  useSidebarReorderDnd,
-} from "./useSidebarReorderDnd";
+import { useSidebarReorderDnd } from "@bb/shared-ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "./sidebarTouchSensor";
 
 const DRAG_START_EVENT = { active: { id: "thread-1" } } as DragStartEvent;
 const DRAG_END_EVENT = {
@@ -29,7 +27,11 @@ afterEach(() => {
 describe("useSidebarReorderDnd", () => {
   it("allows callers to opt into unrestricted pointer movement", () => {
     const { result } = renderHook(() =>
-      useSidebarReorderDnd({ axis: "free", onDragEnd: vi.fn() }),
+      useSidebarReorderDnd({
+        axis: "free",
+        onDragEnd: vi.fn(),
+        touchSensor: SidebarTouchSensor,
+      }),
     );
 
     expect(result.current.dndContextProps.modifiers).toEqual([]);
@@ -38,7 +40,7 @@ describe("useSidebarReorderDnd", () => {
   it("marks the document as dragging until end, cancel, or unmount", () => {
     const onDragEnd = vi.fn();
     const { result, unmount } = renderHook(() =>
-      useSidebarReorderDnd({ onDragEnd }),
+      useSidebarReorderDnd({ onDragEnd, touchSensor: SidebarTouchSensor }),
     );
 
     act(() => result.current.dndContextProps.onDragStart?.(DRAG_START_EVENT));
@@ -59,7 +61,11 @@ describe("useSidebarReorderDnd", () => {
   it("clears app-owned drag state when Escape preempts dnd-kit cancellation", () => {
     const onDragCancel = vi.fn();
     const { result } = renderHook(() =>
-      useSidebarReorderDnd({ onDragEnd: vi.fn(), onDragCancel }),
+      useSidebarReorderDnd({
+        onDragEnd: vi.fn(),
+        onDragCancel,
+        touchSensor: SidebarTouchSensor,
+      }),
     );
 
     act(() => result.current.dndContextProps.onDragStart?.(DRAG_START_EVENT));

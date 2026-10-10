@@ -82,6 +82,7 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
   linux: "Linux",
   wsl: "WSL",
+  win32: "Windows",
   unknown: null,
 };
 
@@ -454,7 +455,7 @@ export function MachineSettingsView() {
               ) : (
                 <>
                   {installedProviders.length > 0 ? (
-                    <span className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-1 sm:justify-end">
+                    <span className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-1 @min-[36rem]/settings:justify-end">
                       {installedProviders.map((entry) => (
                         <span
                           key={entry.providerId}

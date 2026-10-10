@@ -1,4 +1,5 @@
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
+import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import {
   markThreadDeleted,
@@ -6,12 +7,15 @@ import {
   getProjectSourceByHost,
   getThread,
 } from "@bb/db";
-import type {
-  ProjectExecutionDefaults,
-  Project,
-  Thread,
-  ThreadOriginKind,
-  ThreadVisibility,
+import {
+  describeSessionOptionConflict,
+  modelSessionOptionConflict,
+  type ProjectExecutionDefaults,
+  type Project,
+  type SessionOptionSelections,
+  type Thread,
+  type ThreadOriginKind,
+  type ThreadVisibility,
 } from "@bb/domain";
 import type {
   AppDeps,
@@ -29,7 +33,7 @@ import {
   rememberProjectExecutionDefaultsForCreate,
   resolveProjectExecutionDefaultsForCreate,
 } from "./project-execution-defaults.js";
-import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import { resolvePromptAttachmentReferences } from "../projects/attachments.js";
 import {
   appendPluginMentionContext,
   captureUserMessageSentTelemetry,
@@ -63,7 +67,7 @@ import {
   type ThreadCreateServiceRequest,
 } from "./thread-create-request.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
-import { deriveTitleFallback } from "./title-generation.js";
+import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
 import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
 import {
@@ -133,6 +137,63 @@ async function loadCatalogDefaultForProvider(
     providerId: args.providerId,
     model: defaultModel.model,
   });
+}
+
+interface ResolveSessionOptionExecutionDefaultsArgs {
+  cwd?: string;
+  executionDefaults: ProjectExecutionDefaults | null;
+  hostId: string | null;
+  providerId: string;
+  requestedModel: string | null;
+  selections: SessionOptionSelections;
+}
+
+async function resolveSessionOptionExecutionDefaults(
+  deps: ThreadCreateDeps,
+  args: ResolveSessionOptionExecutionDefaultsArgs,
+): Promise<ProjectExecutionDefaults | null> {
+  const model = args.requestedModel ?? args.executionDefaults?.model ?? null;
+  if (
+    model === null ||
+    args.hostId === null ||
+    Object.keys(args.selections).length === 0
+  ) {
+    return args.executionDefaults;
+  }
+  const catalog = await resolveSystemProviderModels(deps, {
+    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+    hostId: args.hostId,
+    providerId: args.providerId,
+  });
+  if (catalog.modelLoadError !== null) {
+    return args.executionDefaults;
+  }
+  const chosen = [...catalog.models, ...catalog.selectedOnlyModels].find(
+    (candidate) => candidate.model === model,
+  );
+  const conflict =
+    chosen === undefined
+      ? null
+      : modelSessionOptionConflict(chosen, args.selections);
+  const compatible = catalog.models.filter(
+    (candidate) =>
+      modelSessionOptionConflict(candidate, args.selections) === null,
+  );
+  const replacement =
+    compatible.find((candidate) => candidate.isDefault) ?? compatible[0];
+  if (chosen === undefined || conflict === null || replacement === undefined) {
+    return args.executionDefaults;
+  }
+  if (args.requestedModel !== null) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `${chosen.displayName || chosen.model} cannot run with the chosen options: ${describeSessionOptionConflict(conflict)}. ${replacement.displayName || replacement.model} can.`,
+    );
+  }
+  return args.executionDefaults === null
+    ? null
+    : { ...args.executionDefaults, model: replacement.model };
 }
 
 async function resolveCatalogExecutionDefaults(
@@ -405,6 +466,10 @@ async function createPendingThreadAndAttemptFirstDispatch(
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   try {
+    seedThreadSessionOptionSelections(deps, {
+      thread,
+      selections: args.request.sessionOptions ?? {},
+    });
     if (
       args.fork !== null &&
       args.fork.historyEndSequence !== null &&
@@ -623,12 +688,6 @@ export async function createThreadFromRequest(
       );
     }
   }
-  await validatePromptAttachmentReferences({
-    db: deps.db,
-    dataDir: deps.config.dataDir,
-    input: requestInput.input,
-    projectId: requestInput.projectId,
-  });
   await deps.providerRegistry.whenRegistrationsSettled();
   const {
     executionDefaults,
@@ -683,6 +742,18 @@ export async function createThreadFromRequest(
     providerId,
     titleFallback: deriveTitleFallback(requestInput.input),
   };
+  if (
+    request.title === undefined &&
+    request.originKind === "fork" &&
+    request.visibility === "visible" &&
+    request.input.every((item) => item.visibility === "agent-only") &&
+    sourceThread !== null
+  ) {
+    const forkTitle = deriveForkTitle(sourceThread);
+    if (forkTitle !== null) {
+      request.title = forkTitle;
+    }
+  }
   const resolvedEnvironment =
     requestedEnvironment.type === "provider"
       ? null
@@ -719,23 +790,31 @@ export async function createThreadFromRequest(
             request.environment.machine.hostId,
           )
         : undefined;
-  const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
+  const catalogExecutionDefaults = await resolveCatalogExecutionDefaults(deps, {
+    ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
+    executionDefaults,
+    hostId: childHostId,
+    providerId,
+    providerFallbackCandidates,
+    requestedModel,
+  });
+  if (
+    catalogExecutionDefaults !== null &&
+    catalogExecutionDefaults.providerId !== request.providerId
+  ) {
+    request.providerId = catalogExecutionDefaults.providerId;
+  }
+  const resolvedExecutionDefaults = await resolveSessionOptionExecutionDefaults(
     deps,
     {
       ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
-      executionDefaults,
+      executionDefaults: catalogExecutionDefaults,
       hostId: childHostId,
-      providerId,
-      providerFallbackCandidates,
+      providerId: request.providerId,
       requestedModel,
+      selections: request.sessionOptions ?? {},
     },
   );
-  if (
-    resolvedExecutionDefaults !== null &&
-    resolvedExecutionDefaults.providerId !== request.providerId
-  ) {
-    request.providerId = resolvedExecutionDefaults.providerId;
-  }
 
   const { environmentId, environmentIntent } =
     await resolveThreadEnvironmentPlacement(deps, {
@@ -748,6 +827,13 @@ export async function createThreadFromRequest(
       projectId: request.projectId,
       requestedEnvironment: request.environment,
     });
+  request.input = await resolvePromptAttachmentReferences({
+    db: deps.db,
+    dataDir: deps.config.dataDir,
+    input: request.input,
+    projectId: request.projectId,
+    hostId: hostIdForEnvironmentIntent(deps, environmentIntent),
+  });
 
   const fork = resolveForkPoint(deps, {
     originKind: request.originKind ?? null,

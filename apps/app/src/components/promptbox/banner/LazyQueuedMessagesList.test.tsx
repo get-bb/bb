@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import { makeThreadQueuedMessage } from "@bb/test-helpers/domain-fixtures";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   LazyQueuedMessagesList,
@@ -27,6 +35,7 @@ function Queue({
 }: {
   queuedMessages: readonly ThreadQueuedMessage[];
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <LazyQueuedMessagesList
       attachedToComposer
@@ -41,6 +50,8 @@ function Queue({
       onSetGroupBoundary={noop}
       onEdit={noop}
       onDelete={noop}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
     />
   );
 }
@@ -51,7 +62,9 @@ it("downloads the queue only for queued work, warming it from the pending summar
   expect(view.container.innerHTML).toBe("");
   expect(mocks.imported).not.toHaveBeenCalled();
 
-  view.rerender(<QueuedMessagesPendingCard queuedMessageCount={2} />);
+  view.rerender(
+    <QueuedMessagesPendingCard expanded={false} queuedMessageCount={2} />,
+  );
   await waitFor(() => expect(mocks.imported).toHaveBeenCalledOnce());
   await act(() => LazyQueuedMessagesList.preload());
   expect(mocks.imported).toHaveBeenCalledOnce();
@@ -71,6 +84,9 @@ it("downloads the queue only for queued work, warming it from the pending summar
   expect(
     screen.queryByRole("status", { name: "Loading queued messages" }),
   ).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Toggle queued messages" }),
+  );
   screen.getByRole("button", { name: "Send queued message 1 now" });
   screen.getByRole("button", { name: "Reorder queued message 2" });
 });

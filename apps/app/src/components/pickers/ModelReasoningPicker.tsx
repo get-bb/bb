@@ -1,4 +1,3 @@
-import { useSplitPreload } from "@/lib/define-split";
 import {
   useCallback,
   useEffect,
@@ -67,6 +66,10 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
+  APP_COMPOSER_SELECTOR,
+  resolveComposerCommandScope,
+} from "@/lib/composer-command-ownership";
+import {
   ownsModelPickerCycleChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
@@ -76,6 +79,13 @@ import {
   nextCycleValue,
   previousCycleValue,
 } from "./modelPickerCycle";
+import type {
+  SessionOptionChoice,
+  SessionOptionMenuSection,
+} from "./SessionOptionsMenu";
+
+const NO_AGENT_SECTIONS: readonly SessionOptionMenuSection[] = [];
+function ignoreAgentOptionChange(): void {}
 
 interface ResolvedProviderPreview {
   providerId: string;
@@ -183,6 +193,8 @@ interface ModelReasoningPickerProps {
   serviceTierValue: ServiceTier | undefined;
   serviceTierOptions: readonly ProviderOptionDescriptor[];
   onServiceTierChange: (value: ServiceTier) => void;
+  agentSections?: readonly SessionOptionMenuSection[];
+  onAgentOptionChange?: (optionId: string, value: SessionOptionChoice) => void;
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
@@ -215,6 +227,8 @@ export function ModelReasoningPicker({
   serviceTierValue,
   serviceTierOptions,
   onServiceTierChange,
+  agentSections = NO_AGENT_SECTIONS,
+  onAgentOptionChange = ignoreAgentOptionChange,
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
   className,
@@ -224,7 +238,6 @@ export function ModelReasoningPicker({
   disabled,
   handoff,
 }: ModelReasoningPickerProps) {
-  useSplitPreload(ModelReasoningMenu);
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -355,15 +368,6 @@ export function ModelReasoningPicker({
     ...providerRouting,
     providerId: isPreviewing ? previewProviderId : undefined,
   });
-  const previewCatalogIsVerified =
-    isPreviewing &&
-    previewQuery.data !== undefined &&
-    !previewQuery.isPlaceholderData &&
-    !previewQuery.isError &&
-    previewQuery.data.modelLoadError === null;
-  const previewSelectionBlocked =
-    requireVerifiedProviderPreview && isPreviewing && !previewCatalogIsVerified;
-
   const previewProvider = useMemo(
     () =>
       isPreviewing
@@ -373,12 +377,26 @@ export function ModelReasoningPicker({
         : undefined,
     [isPreviewing, previewProviderId, previewQuery.data?.providers],
   );
+  const previewCatalogIsVerified =
+    isPreviewing &&
+    previewProvider !== undefined &&
+    previewQuery.data !== undefined &&
+    !previewQuery.isPlaceholderData &&
+    !previewQuery.isError &&
+    previewQuery.data.modelLoadError === null;
+  const previewSelectionBlocked =
+    isPreviewing &&
+    (previewProvider === undefined ||
+      (requireVerifiedProviderPreview && !previewCatalogIsVerified));
+
   const previewSelection = useMemo(
     () =>
       isPreviewing
         ? resolveModelCatalogSelection({
-            models: previewQuery.data?.models ?? [],
-            selectedOnlyModels: previewQuery.data?.selectedOnlyModels ?? [],
+            models: previewProvider ? (previewQuery.data?.models ?? []) : [],
+            selectedOnlyModels: previewProvider
+              ? (previewQuery.data?.selectedOnlyModels ?? [])
+              : [],
             selectedModel: "",
             preferredReasoningLevel: reasoningValue,
             provider: previewProvider,
@@ -683,31 +701,19 @@ export function ModelReasoningPicker({
   const isSplitPane = paneContext?.isSplitPane ?? false;
   const resolveCommandScope = useCallback(
     (target: EventTarget | null): ModelPickerScope => {
-      const pickerComposer =
-        triggerRef.current?.closest("[data-app-composer]") ?? null;
-      const caretComposer =
-        target instanceof HTMLElement
-          ? target.closest("[data-app-composer]")
-          : null;
-      const pickerPane =
-        triggerRef.current?.closest("[data-split-pane-id]") ?? null;
-      const caretPane = caretComposer?.closest("[data-split-pane-id]") ?? null;
-      return {
-        disabled: disabled ?? false,
+      const scope = resolveComposerCommandScope({
+        composer: triggerRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
+        target,
         isFocusedPane,
+      });
+      return {
+        ...scope,
+        disabled: disabled ?? false,
         isSplitPane,
-        isPrimaryComposer:
-          pickerComposer?.getAttribute("data-app-composer-role") !==
-          "secondary",
-        caretInThisComposer:
-          caretComposer !== null && caretComposer === pickerComposer,
-        caretInOtherComposerOfPane:
-          caretComposer !== null &&
-          caretComposer !== pickerComposer &&
-          pickerPane !== null &&
-          caretPane === pickerPane,
         editableOutsideComposer:
-          caretComposer === null && isEditableKeyboardTarget(target),
+          !scope.caretInThisComposer &&
+          !scope.caretInOtherComposer &&
+          isEditableKeyboardTarget(target),
       };
     },
     [disabled, isFocusedPane, isSplitPane],
@@ -738,7 +744,9 @@ export function ModelReasoningPicker({
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
-      const options = handoffMode ? activeModelOptions : modelOptions;
+      const options = (handoffMode ? activeModelOptions : modelOptions).filter(
+        (option) => option.disabled !== true,
+      );
       const value =
         handoffMode && isPreviewing
           ? (previewSelection?.selectedModel ?? "")
@@ -882,6 +890,7 @@ export function ModelReasoningPicker({
         if (!row) return;
         event.preventDefault();
         if (row.kind === "model") {
+          if (row.option.disabled === true) return;
           handleModelSelect(row.option.value);
         } else {
           toggleShowMoreModels();
@@ -1015,11 +1024,12 @@ export function ModelReasoningPicker({
   }
 
   const showSearchInput =
-    hasActiveModelOptions &&
-    !activeModelIsLoading &&
-    !isShowingModelError &&
-    activeModelOptions.length + activeMoreModelOptions.length >
-      MODEL_SEARCH_MIN_OPTIONS;
+    isCompactViewport ||
+    (hasActiveModelOptions &&
+      !activeModelIsLoading &&
+      !isShowingModelError &&
+      activeModelOptions.length + activeMoreModelOptions.length >
+        MODEL_SEARCH_MIN_OPTIONS);
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={modal}>
@@ -1027,9 +1037,10 @@ export function ModelReasoningPicker({
       <PopoverContent
         align={align}
         mobileTitle={handoffMode ? "Handoff to new thread" : "Model"}
-        mobileClassName={
-          handoffMode ? HANDOFF_DRAWER_TOP_CLASS_NAME : undefined
-        }
+        mobileClassName={cn(
+          "h-[min(32rem,80dvh)]",
+          handoffMode && HANDOFF_DRAWER_TOP_CLASS_NAME,
+        )}
         onKeyDown={handleReasoningArrowKeyDown}
         onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         autoFocusRef={showSearchInput ? searchInputRef : undefined}
@@ -1037,7 +1048,7 @@ export function ModelReasoningPicker({
           "flex min-h-0 flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           isCompactViewport
-            ? "overflow-y-hidden"
+            ? "flex-1 overflow-y-hidden"
             : "max-h-[min(var(--radix-popover-content-available-height),calc(100dvh-0.5rem))] overflow-hidden",
         )}
       >
@@ -1141,6 +1152,8 @@ export function ModelReasoningPicker({
           serviceTierOptions={activeServiceTierOptions}
           serviceTierValue={serviceTierValue}
           onServiceTierChange={onServiceTierChange}
+          agentSections={isPreviewing ? NO_AGENT_SECTIONS : agentSections}
+          onAgentOptionChange={onAgentOptionChange}
           onStartHandoff={
             handoff !== undefined && !handoffMode && providerOptions.length > 0
               ? startHandoffMode

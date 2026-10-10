@@ -344,6 +344,11 @@
   white-space: nowrap;
 }
 
+.marketplace-section-head.is-category p {
+  max-width: none;
+  white-space: normal;
+}
+
 .marketplace-section-head > a {
   padding: 6px 10px;
   flex: 0 0 auto;
@@ -411,17 +416,6 @@
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.marketplace-new-chip {
-  padding: 2px 7px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 14%, var(--bg));
-  color: var(--accent);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 1.4;
 }
 
 .marketplace-artwork {
@@ -525,6 +519,18 @@
   font-weight: 700;
 }
 
+.marketplace-author-avatar.is-official {
+  display: inline-grid;
+  place-items: center;
+}
+
+.marketplace-author-mark {
+  width: 72%;
+  height: 60%;
+  background-size: 177.78% 210.99%;
+  background-position: 50% 50.5%;
+}
+
 .marketplace-author-avatar.is-large {
   width: 64px;
   height: 64px;
@@ -546,8 +552,7 @@
   height: 12px;
 }
 
-.marketplace-card-installs.is-new,
-.marketplace-detail-installs.is-new {
+.marketplace-card-installs.is-new {
   color: var(--accent);
   font-weight: 600;
 }
@@ -1248,7 +1253,7 @@ a.marketplace-detail-author:hover {
 
   .marketplace-sort-control,
   .marketplace-category-select .marketplace-count,
-  .marketplace-flat-results > .marketplace-section-head {
+  .marketplace-flat-results > .marketplace-section-head:not(.is-category) {
     display: none;
   }
 

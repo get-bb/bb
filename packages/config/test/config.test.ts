@@ -118,6 +118,20 @@ describe("common config", () => {
     ).toBe(path.join(os.homedir(), "custom-bb"));
   });
 
+  it.runIf(process.platform === "win32")(
+    "expands a home-directory override written with a backslash on Windows",
+    () => {
+      expect(
+        loadCommonConfig({
+          env: {
+            BB_DATA_DIR: "~\\custom-bb",
+            NODE_ENV: "production",
+          },
+        }).BB_DATA_DIR,
+      ).toBe(path.join(os.homedir(), "custom-bb"));
+    },
+  );
+
   it("rejects whitespace-only BB_DATA_DIR overrides", () => {
     expect(() =>
       loadCommonConfig({
@@ -292,6 +306,7 @@ describe("consumer-specific config", () => {
       }),
     });
 
+    expect(serverConfig.BB_PERF_DIAGNOSTICS).toBe(false);
     expect(serverConfig.BB_SERVER_PORT).toBe(4444);
     expect(serverConfig.BB_HOST_DAEMON_PORT).toBe(5555);
     expect(serverConfig.databasePath).toBe(path.resolve("/tmp/bb-data/bb.db"));
@@ -303,6 +318,19 @@ describe("consumer-specific config", () => {
       placeholder: false,
       timelineWindowEventBudget: 1_500,
     });
+  });
+
+  it("validates the opt-in performance diagnostics setting", () => {
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_PERF_DIAGNOSTICS: "1" }),
+      }).BB_PERF_DIAGNOSTICS,
+    ).toBe(true);
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_PERF_DIAGNOSTICS: "typo" }),
+      }),
+    ).toThrow("BB_PERF_DIAGNOSTICS must be a boolean");
   });
 
   it("carries the launcher's server launch id only when it is set", () => {

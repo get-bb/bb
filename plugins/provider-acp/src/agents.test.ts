@@ -111,8 +111,8 @@ describe("parseCustomAcpAgents", () => {
   it.each([
     ["an absolute skill root", { nativeSkillRoots: { user: ["/etc/skills"] } }],
     [
-      "a level outside bb's ladder",
-      { reasoningCli: { flag: "-e", supportedLevels: ["turbo"] } },
+      "an empty level id",
+      { reasoningCli: { flag: "-e", supportedLevels: [""] } },
     ],
     [
       "a default level it does not support",
@@ -191,7 +191,8 @@ describe("custom agents that report usage", () => {
 
     expect(customAcpAgentDefinition(agent).providerUsage).toBe(true);
     expect(
-      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance?.usage,
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
+        ?.usage,
     ).toBe(true);
   });
 
@@ -205,7 +206,8 @@ describe("custom agents that report usage", () => {
 
     expect(customAcpAgentDefinition(agent).providerUsage).toBeUndefined();
     expect(
-      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance?.usage,
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
+        ?.usage,
     ).toBe(false);
   });
 });

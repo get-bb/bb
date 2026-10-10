@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   definePluginApp,
+  experimental_Icon as Icon,
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
 import { loadPdfBlob, resolvePdfUrl } from "./pdf-source.js";
@@ -80,7 +81,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         role="status"
         aria-label={`Loading ${path}`}
       >
-        <span className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+        <Icon name="Spinner" className="size-4 animate-spin" aria-hidden />
         Loading PDF…
       </div>
     );
@@ -94,7 +95,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           role="status"
           aria-label={`Rendering ${path}`}
         >
-          <span className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+          <Icon name="Spinner" className="size-4 animate-spin" aria-hidden />
           Rendering PDF…
         </div>
       )}

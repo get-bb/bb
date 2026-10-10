@@ -36,6 +36,15 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
 
 Use these before spawning threads if you are unsure which provider or model to use.
 
+When a provider's models declare options (a mode, an on/off switch), `bb provider
+models` lists them under the table with their ids, values and defaults; `--json`
+carries them per model as `sessionOptions`. Choose values at creation with
+`bb thread spawn --option <id>=<value>` and on an existing thread with
+`bb thread options --set <id>=<value>`. A model may accept only some values
+(`fixed: true` on an on/off option, or a shorter `values` list): a spawn
+without `--model` starts on a model that fits the chosen options, and a spawn
+whose `--model` cannot run with them is refused with the name of one that can.
+
 Service tiers are provider-defined ids. `bb provider list --json` reports each
 provider's `serviceTiers` ({id, label, description?}); `default` always means
 the provider's standard tier. A model may narrow that list: `bb provider
@@ -104,8 +113,16 @@ settings, or run:
   bb plugin config provider-retry set maximumWait "24 hours"
 
   bb provider-retry status [thread-id] [--json]    Inspect pending retries
+  bb provider-retry explain [thread-id] [--json]   Explain the last retry decision
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
   bb provider-retry retry <thread-id> [--json]     Send a pending retry now
+
+For Account Pooler routes, the pool supplies the earliest usable account for
+the failed request’s model, including parent pools. A generic 429 without a
+provider quota snapshot can still schedule a retry. Unknown resets,
+authentication failures, and unavailable pool sources are not retried.
+`explain` reports the last recorded decision, including skips; it is historical,
+while `status` reports the current queue. Decisions are not backfilled.
 
 A pending retry is a queued row on the thread, so it survives a server restart
 and appears above the composer with its reason and time. Credit and

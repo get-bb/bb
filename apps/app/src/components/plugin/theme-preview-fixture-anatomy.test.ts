@@ -22,7 +22,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "The mock sidebar carries `fixed bg-sidebar` so theme blocks scoped to `.fixed.bg-sidebar` (token overrides, noise overlays) apply to it exactly as they do in the app.",
   },
   {
-    file: "plugins/thread-list/app/rows/sidebarRowClasses.ts",
+    file: "packages/shared-ui/src/components/ui/sidebar-row-classes.ts",
     mustContain: [
       "SIDEBAR_ROW_BASE_CLASS =",
       "SIDEBAR_ROW_INTERACTIVE_STATE_CLASS =",
@@ -45,7 +45,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "Mock sidebars use BB's shared button primitive, section-label token, padding, and project-row anatomy.",
   },
   {
-    file: "apps/app/src/components/ui/context-selection.ts",
+    file: "packages/shared-ui/src/components/ui/context-selection.ts",
     mustContain: ['CONTEXT_SELECTION_SURFACE_CLASS = "bg-state-active"'],
     because: "The open thread's row in the mock paints state-active.",
   },
@@ -179,17 +179,24 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   ],
   new: [
     {
-      file: "apps/app/src/views/RootComposeEmptyWelcome.tsx",
+      file: "apps/app/src/views/RootComposeView.tsx",
       mustContain: [
-        'title="New thread"',
-        'description="Start a new conversation"',
-        'title="Automatically import my projects"',
-        'title="New project"',
-        'title="Learn what bb can do"',
-        "hover:bg-state-hover",
+        'ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS = "pt-14"',
+        "{promptBox}",
       ],
       because:
-        "The New thread projection uses BB's current empty-welcome actions, hierarchy, and hover state.",
+        "The New thread projection opens on the composer alone, aligned under the sidebar actions.",
+    },
+    {
+      file: "apps/app/src/views/RootComposeSecondaryContent.tsx",
+      mustContain: ['ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]"'],
+      because: "The New thread projection keeps BB's home column width.",
+    },
+    {
+      file: "apps/app/src/components/promptbox/NewThreadPromptBox.tsx",
+      mustContain: ['"Ask anything."'],
+      because:
+        "The empty composer uses the current new-thread prompt language.",
     },
   ],
   split: [
@@ -209,11 +216,7 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
   settings: [
     {
       file: "apps/app/src/components/settings/SettingsSidebar.tsx",
-      mustContain: [
-        'backLabel="Back to app"',
-        "<SectionSidebarLabel>Settings</SectionSidebarLabel>",
-        "activeSection === section.id",
-      ],
+      mustContain: ["activeSection === section.id"],
       because:
         "The Appearance projection uses BB's settings navigation hierarchy and selected-row state.",
     },

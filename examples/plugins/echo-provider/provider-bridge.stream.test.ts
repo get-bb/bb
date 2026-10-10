@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -253,9 +254,12 @@ describe("the echo bridge's grammar v3 stream", () => {
     ).toBe(true);
 
     expect(completedItem(events, "fileRead")).toMatchObject({
-      path: `${CWD}/README.md`,
+      path: join(CWD, "README.md"),
       status: "completed",
-      presentation: { icon: { glyph: "FileText" }, title: `${CWD}/README.md` },
+      presentation: {
+        icon: { glyph: "FileText" },
+        title: join(CWD, "README.md"),
+      },
     });
     expect(completedItem(events, "search")).toMatchObject({
       mode: "content",

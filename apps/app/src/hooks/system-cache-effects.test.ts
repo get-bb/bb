@@ -104,8 +104,10 @@ describe("system cache effects", () => {
     const threadKey = threadQueryKey("thread-1");
     const threadBootstrapKey = threadDetailBootstrapQueryKey("thread-1");
     const timelineKey = threadTimelineQueryKey("thread-1");
-    const conversationOutlineKey =
-      threadConversationOutlineQueryKey("thread-1");
+    const conversationOutlineKey = threadConversationOutlineQueryKey(
+      "thread-1",
+      "user",
+    );
     const queuedMessagesKey = threadQueuedMessagesQueryKey("thread-1");
     const promptHistoryKey = threadPromptHistoryQueryKey("thread-1");
     const pendingInteractionsKey =
@@ -204,6 +206,8 @@ describe("system cache effects", () => {
     queryClient.setQueryData(versionKey, {
       currentVersion: "0.0.5",
       latestVersion: "0.0.6",
+      currentCommit: null,
+      installKind: "npm",
       source: "npm",
       updateAvailable: true,
       isDevelopment: false,
@@ -237,7 +241,7 @@ describe("system cache effects", () => {
       observeIdleQuery(queryClient, threadTimelineQueryKey("thread-1")),
       observeIdleQuery(
         queryClient,
-        threadConversationOutlineQueryKey("thread-1"),
+        threadConversationOutlineQueryKey("thread-1", "user"),
       ),
     ];
 

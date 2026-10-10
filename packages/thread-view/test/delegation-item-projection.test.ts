@@ -163,7 +163,7 @@ describe("delegation item projection", () => {
       }),
     );
     expect(
-      row.childRows.map((child) =>
+      (row.childRows ?? []).map((child) =>
         child.kind === "conversation" ? child.text : child.kind,
       ),
     ).toContain("README says hello.");
@@ -205,4 +205,132 @@ describe("delegation item projection", () => {
       }),
     );
   });
+
+  it.each([
+    { lastRoundCompletes: true, status: "completed", completedAt: 21_000 },
+    { lastRoundCompletes: false, status: "pending", completedAt: null },
+  ] as const)(
+    "reopens a nested delegation per follow-up instead of repeating it (last round completes: $lastRoundCompletes)",
+    ({ lastRoundCompletes, status, completedAt }) => {
+      const event = createTimelineEventFactory({ threadId: "thread-1" });
+      const reviewer = { childRef: "reviewer", label: "/root/review" };
+      const checker = { childRef: "checker", label: "/root/review/check" };
+      const reviewerRound = (round: number, at: number) => [
+        event.delegationStarted({
+          turnId: "parent-turn",
+          itemId: "review",
+          ...reviewer,
+          createdAt: at,
+        }),
+        event.turnStarted({
+          turnId: `review-turn-${round}`,
+          parentToolCallId: "review",
+          createdAt: at + 1,
+        }),
+        ...[0, 1].flatMap((checkRound) => [
+          event.delegationStarted({
+            turnId: `review-turn-${round}`,
+            parentToolCallId: "review",
+            itemId: "check",
+            ...checker,
+            createdAt: at + 2 + checkRound * 4,
+          }),
+          event.turnStarted({
+            turnId: `check-turn-${round}-${checkRound}`,
+            parentToolCallId: "check",
+            createdAt: at + 3 + checkRound * 4,
+          }),
+          event.assistantCompleted({
+            turnId: `check-turn-${round}-${checkRound}`,
+            parentToolCallId: "check",
+            itemId: `check-message-${round}-${checkRound}`,
+            text: `check ${round}.${checkRound}`,
+            createdAt: at + 4 + checkRound * 4,
+          }),
+          event.turnCompleted({
+            turnId: `check-turn-${round}-${checkRound}`,
+            createdAt: at + 5 + checkRound * 4,
+          }),
+          event.delegationCompleted({
+            turnId: `review-turn-${round}`,
+            parentToolCallId: "review",
+            itemId: "check",
+            ...checker,
+            summary: `checked ${round}.${checkRound}`,
+            createdAt: at + 6 + checkRound * 4,
+          }),
+        ]),
+        event.turnCompleted({
+          turnId: `review-turn-${round}`,
+          createdAt: at + 20,
+        }),
+      ];
+      const timeline = renderTimelineFixture({
+        events: [
+          event.turnStarted({ turnId: "parent-turn", createdAt: 0 }),
+          ...reviewerRound(0, 1_000),
+          event.delegationCompleted({
+            turnId: "parent-turn",
+            itemId: "review",
+            ...reviewer,
+            summary: "first review",
+            createdAt: 11_000,
+          }),
+          ...reviewerRound(1, 20_000),
+          ...(lastRoundCompletes
+            ? [
+                event.delegationCompleted({
+                  turnId: "parent-turn",
+                  itemId: "review",
+                  ...reviewer,
+                  summary: "second review",
+                  createdAt: 21_000,
+                }),
+                event.turnCompleted({
+                  turnId: "parent-turn",
+                  createdAt: 22_000,
+                }),
+              ]
+            : []),
+        ],
+        projectionOptions: {
+          threadStatus: lastRoundCompletes ? "idle" : "active",
+          turnMessageDetail: "full",
+        },
+      });
+
+      const delegationRows = (
+        rows: readonly TimelineRow[],
+      ): TimelineDelegationRow[] =>
+        rows.flatMap((row) => {
+          if (row.kind === "turn") return delegationRows(row.children ?? []);
+          if (row.kind === "work" && row.workKind === "delegation") {
+            return [row, ...delegationRows(row.childRows ?? [])];
+          }
+          return [];
+        });
+      expect(delegationRows(timeline.rows).map((row) => row.callId)).toEqual([
+        "review",
+        "check",
+      ]);
+      expect(findDelegationRow(timeline.rows, "review")).toEqual(
+        expect.objectContaining({ status, completedAt }),
+      );
+      const check = findDelegationRow(
+        findDelegationRow(timeline.rows, "review").childRows ?? [],
+        "check",
+      );
+      expect(check).toEqual(
+        expect.objectContaining({
+          status: "completed",
+          output: "checked 1.1",
+        }),
+      );
+      expect(
+        (check.childRows ?? []).flatMap((row) =>
+          row.kind === "conversation" ? [row.text] : [],
+        ),
+      ).toEqual(["check 0.0", "check 0.1", "check 1.0", "check 1.1"]);
+    },
+  );
 });

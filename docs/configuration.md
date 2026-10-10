@@ -17,6 +17,15 @@ npx bb-app config unset BB_APP_URL
 npx bb-app config refresh
 ```
 
+BB accepts request hosts that are `localhost`, IP addresses (including LAN and
+Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or reverse
+proxy, set `npx bb-app config set BB_APP_URL https://bb.example.com` before
+connecting, including from the CLI or SDK. A matching `Host` and `Origin`, or
+`X-Forwarded-Host`, cannot authorize an unconfigured DNS name. A proxy can
+preserve the configured host or forward to localhost. BB Connect rewrites
+requests to the local server address and needs no additional configuration.
+`BB_SERVER_BIND_HOST=0.0.0.0` remains supported for direct remote access.
+
 Use `bb-app env` for provider credentials and provider-specific environment:
 
 ```bash
@@ -149,12 +158,19 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## In-App Updates
 
-In-app updates are off unless you start bb with `--in-app-updates`:
-`npx bb-app start --in-app-updates` (or a global `bb-app`), or
-`pnpm start --in-app-updates` from a source checkout. bb then runs under a small
+In-app updates are on when you start bb with `npx bb-app start` (or a global
+`bb-app`) or with `pnpm start` from a source checkout. bb runs under a small
 update shim, so Settings → Updates and `bb updates app apply` can update bb
-without a terminal. Without the flag, bb starts as before and Settings → Updates
-shows the upgrade command.
+without a terminal. Pass `--no-in-app-updates` to turn them off: bb then starts
+without the shim and Settings → Updates shows the npm upgrade command for
+release installs. `--in-app-updates`, which earlier releases needed, is still
+accepted and changes nothing. Source checkouts show their
+Git revision, or a labeled build version when unavailable, and are never compared
+with npm releases. Without the update shim, no freshness indicator is shown.
+Failed checks report “Latest unknown”; release checks can be retried in the UI,
+with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
+`GET /api/v1/system/version` and `sdk.system.version()` expose nullable
+`installKind` (`desktop`, `npm`, or `source`) and `currentCommit` fields.
 
 - **npm installs** download the new release into
   `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
@@ -193,8 +209,9 @@ app's own relaunch update) separately. `pnpm dev`, `bb-server`, and a standalone
 `bb-host-daemon` do not offer in-app updates. Updating restarts bb,
 which interrupts running threads; the app and CLI ask first.
 
-`BB_APP_UPDATE_MODE` is an internal marker the launcher passes to its server
-child; do not set it yourself.
+`BB_APP_UPDATE_MODE`, `BB_APP_INSTALL_KIND`, `BB_APP_SOURCE_ORIGIN`, and
+`BB_APP_SOURCE_COMMIT` are internal markers the launcher passes to its server
+child; do not set them yourself.
 
 ## Common Keys
 
@@ -257,11 +274,34 @@ another voice service.
 bb accepts voice recordings up to 25 MB. A service may set a lower limit;
 Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
 
-The microphone picker in Settings → Voice Input is client-local. It stores the
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
+The microphone preference is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
 `bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
-back to the system default when it is disconnected, then uses the saved
-preference again when it reconnects. Select System default to follow system
+back to the system default and other available inputs when it is disconnected,
+then uses the saved preference again when it reconnects. Select System default to follow system
 microphone changes; it does not change which service
 transcribes.
 
@@ -275,7 +315,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -316,6 +367,9 @@ setting. When a read-modify-write payload contains conflicting values, the
 value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
 
+The prompt box uses plain-text editing. Markdown delimiters remain visible while
+editing.
+
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
@@ -328,6 +382,26 @@ it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
 
+The "Show Git changes and Commit button" switch in Settings → General defaults to on.
+Turn it off to hide the untracked, uncommitted, and committed file summary and
+expanded file list above every thread composer, the pull-request status and actions
+in that shelf, and the Commit action in the thread header and overflow menu.
+Thread relationships and workspace warnings remain visible. This server-wide preference persists
+across reloads and applies to every connected app client. Set it with
+`bb settings general showGitChanges false` or read the current config and call
+`sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
+Older clients that omit the field preserve the saved value.
+
+The "Show messages from before a context clear" switch in Settings → General defaults
+to off. When off, a thread's timeline, conversation outline, and message lookup
+start at its latest `Context cleared` boundary. Turn it on to keep earlier
+messages above the boundary; they load on scroll like other older activity and
+appear in the outline and `bb thread log --message` lookups. Clearing still starts a
+fresh provider conversation and resets the context meter either way. Set it
+with `bb settings general keepHistoryAfterContextClear true` or
+`bb.sdk.system.updateGeneralSettings` using `keepHistoryAfterContextClear`.
+Older clients that omit the field preserve the saved value.
+
 The "Thread archive confirmation" switch in Settings → General defaults to on.
 Turn it off to archive a thread and its child threads immediately without a
 confirmation popup. The archive toast still offers Undo. This server-wide
@@ -335,6 +409,13 @@ preference applies to all connected app clients. Set it with
 `bb settings general confirmThreadArchive false` or
 `bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
 CLI and SDK archive operations remain non-interactive.
+
+A new install opens a first-run setup guide (connect an agent, add projects,
+pick plugins, set up devices). `onboardingCompletedAt` in general settings
+records when it was finished or skipped; `bb settings replay-onboarding`, or
+Settings → General → Setup guide, clears it so the guide shows again.
+The projects step lists what `bb project discover` and
+`bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
@@ -367,6 +448,69 @@ start a valid git branch name, such as one with a space or a leading `-`, and
 the prefix is at most 64 characters. The prefix applies to branches bb creates
 after you change it; it does not rename an existing branch or worktree. Set it
 with `bb settings general managedBranchPrefix <prefix>`.
+
+The bundled **Storage & retention** plugin is disabled by default. Enable it with
+`bb plugin enable bb--storage-retention`, then open its sidebar panel. Both policies
+default to Never. The plugin stores its policy and latest run in its own storage;
+there are no general app settings for retention. Preview with
+`bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`
+to save. Use `never` to turn either policy off. Days range from 1 to 3650.
+
+The plugin also offers **Delete thread storage on archive**, off by default.
+All retention settings save immediately in the panel.
+Set it with `bb storage retention --delete-storage-on-archive true --save --yes`
+(or `false` to disable). It clears storage for future manual and automatic
+archives, including cascaded children, preserving conversations and uploaded
+attachments and skipping pinned threads. Pending cleanup persists across reloads
+and retries every minute until the core archive undo grace has elapsed (currently
+30 seconds), the thread has stopped, and its machine is online. Bulk archived-file
+cleanup also respects this grace and rechecks eligibility before each batch.
+Unarchiving cancels pending cleanup. Existing archives are not cleared by enabling
+this setting; use the explicit archived-file cleanup action for those.
+
+**Delete development data when its checkout is removed** is a separate,
+off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(use `false` to disable). It scans online persistent machines on plugin startup, machine reconnect, and hourly, and
+cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
+scans, including existing data. The machine rechecks absence before deletion,
+stops servers working inside removed checkouts, and keeps existing or unresolved
+sources. Offline/busy machines and failed cleanup retry on later scans. Thread
+retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running cleanup there to finish. Startup and
+periodic scans recover missed events by checking the filesystem; no removal
+history is stored in the core database.
+
+The hourly plugin schedule processes up to 50 trees per action across all projects.
+Archive eligibility uses each affected member's updatedAt; deletion requires every
+lifecycle member to have been archived past the cutoff. Pinned members exempt the
+group. Cross-plugin protection is deferred: pin automation targets to keep them.
+Archiving may remove worktrees including uncommitted changes; deletion removes
+history and thread storage. Disabling the plugin stops retention
+without losing the saved policy. The plugin uses existing SDK thread listing and
+archive/delete APIs, accepting changes between inspection and mutation.
+
+Storage reads use cached reports and never trigger disk scans. Start a background
+scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
+scan every online machine; rerun usage to see its status and results. Bulk cleanup runs one job at a time per machine; scans run alongside cleanup, and a finished scan leaves out anything cleared while it ran. The existing
+bounded idle orphan sweep remains independent of the plugin.
+`bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
+`bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
+or more from archived threads' storage, keeping smaller files and skipping
+pinned and running threads. The page starts this cleanup in the background,
+reports its running/completed/failed status, and survives navigation or reconnects.
+`bb storage usage` also exposes that status as `largeFileCleanup`. The CLI waits
+for deletion to finish;
+`bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
+whole storage folders, including small files, skipping pinned and running threads;
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
+instances whose source checkout no longer exists, first stopping servers still
+running from that checkout; add `--instance NAME` to remove one entry of any
+kind, stopping its dev server first if it is running;
+`bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
+`bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
+The plugin owns the disk scanner, cached reports, classification, and host-worker
+file operations. Reports are snapshots; changes outside the plugin appear after
+a rescan. These actions are available through its typed plugin RPC. See the
+[plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
 
 Settings → Providers lists every registered agent provider in picker order.
 Move a provider up or down to change the order and choose the default for new
@@ -465,7 +609,17 @@ pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
-`Control+Shift+[/]` on the web.
+`Control+Shift+[/]` on the web; they follow the sidebar order.
+
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows: they move through the pages opened
+in the current window, like browser history. They use `Mod+[` / `Mod+]` on
+desktop and the web; in the browser, bb handles the key instead of the
+browser's own Back while it has somewhere to go. At either end the desktop app
+does nothing, while the web app leaves the key to the browser's own Back or
+Forward. The commands appear in the command palette only when there is
+somewhere to go, and they don't run while the in-app browser has focus.
+Hovering an arrow shows its current shortcut.
 
 On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
 `Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
@@ -476,6 +630,9 @@ On the selected New tab page, `panel.previousNewTabItem` /
 move through search, enabled actions, and recent items in displayed order.
 Search results replace actions and recents while searching. Enter activates
 the focused item.
+The initially unassigned `panel.fullScreen.toggle` command runs the right
+panel's Full Screen / Exit Full Screen control while the panel is open. In a
+split right panel it maximizes the focused group.
 Chat splits use `pane.focus.left` / `right` / `up` / `down` with
 `Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
 spatially to the adjacent chat pane, including stacked splits, and stop at the
@@ -530,6 +687,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Go back / go forward                      | Surface defaults above            | Desktop / web            |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
 | Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
@@ -635,6 +793,23 @@ Known ACP agents appear when their CLI is installed on the host. bb exposes
 CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
 listed.
+
+The rebuilt ACP adapter ships as a second built-in plugin, "ACP providers (new
+adapter)", which is off by default. Turn it on in Settings → Plugins or with
+`bb plugin enable bb--provider-acp-next`. It registers the same provider ids,
+so existing threads keep working, and only one of the two ACP plugins runs at
+a time: turning the new one on turns "ACP providers" off, turning it off
+turns "ACP providers" back on, and the `customAgents` list follows the switch
+in both directions. The new adapter adds agent options in the model picker
+(the agent's mode stays in the composer footer), live slash commands in the
+composer, agent questions as question cards, sign-in
+guidance, and the official ACP registry: its settings page lists the
+registry's agents with an Add button, and `bb acp registry`, `bb acp add
+<agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding
+one writes a `customAgents` entry that runs the registry's `npx` or `uvx`
+package on the thread's host, so the host needs Node.js or uv. Agents the
+registry ships only as a downloadable binary are listed but must be installed
+by hand and added as a custom agent.
 
 Add your own agent through the ACP providers plugin's `customAgents` setting,
 which holds a JSON array. In the app it is the multi-line editor on the
@@ -871,7 +1046,7 @@ a transient failure.
 
 ## Sidebar preferences
 
-Sidebar layout preferences are stored on the server in a keyed registry so
+Sidebar and Info panel layout preferences are stored on the server in a keyed registry so
 every window, device, and the CLI read the same value. Each key has a typed
 schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
@@ -886,19 +1061,12 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
 | `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
 | `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
 | `sidebar.footerOrder`                | Footer action order                                                                       |
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
-| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
-| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                  |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
@@ -909,17 +1077,20 @@ Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-The sidebar navigation works the same way: `sidebar.navigationProvider` defaults to
-`__automatic__`, which prefers an installed navigation plugin over the bundled
-Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
-resolve to the bundled plugin. Order and visibility stay in
-`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
-navigation plugin.
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+order and show or hide rail destinations.
 
-`sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
-row, between the sidebar toggle and the back and forward buttons. It defaults to
-`__builtin__`, which leaves only bb's controls there. Set it with
-`bb settings ui set sidebar.headerProvider <plugin-id>/<slot-id>`.
+In the macOS desktop app, wide windows add a title bar holding the window
+controls, Back and Forward, and the sidebar toggle. It shares the rail's
+background, and the sidebar and page sit in a card below it. On narrow windows
+and phones the rail sits inside the drawer: Home, Plugins, Skills, and Settings
+swap the list beside it and leave the drawer open, and a plugin page closes it.
 
 New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
 Migrated installations with existing projects, threads, or UI preferences fall back
@@ -1028,21 +1199,30 @@ same operations to its app client.
 
 **Customize row actions**, in a thread row's actions menu, picks
 the quick-action buttons a thread row shows on hover, left of its actions menu.
-It previews a thread row with three action slots; click a slot to pick an
-action for it or Hide to empty it. Picking an action that is already in another slot swaps
+It turns that row's quick actions into three editable slots in place, with the
+rest of the list still visible; click a slot to pick an action for it, or Hide
+to empty a filled slot. Picking an action that is already in another slot swaps
 the two. Drag a filled slot onto another to reorder them. Hiding every slot
-leaves only the actions menu.
+leaves only the actions menu. Done, Escape, or a click elsewhere finishes;
+each change saves immediately.
 Archived rows keep their unarchive button regardless of this setting.
 
-The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
-`archive`, in display order. Duplicates are deduplicated. `split` is skipped
-where a split is unavailable, and `move` is skipped for threads that cannot
-move to another section. `move` opens a menu of sections.
+The Thread list plugin's `rowActions` preference stores up to three thread
+action keys in display order and defaults to `["bb--core/archive"]`. bb's
+keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
+`bb--core/copyLink`, `bb--core/read`, `bb--core/pin`, `bb--core/rename`,
+`bb--core/archive`, and `bb--core/delete`; the thread list's own Move to
+section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
+Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
+accepted and migrate to their current keys. Duplicates are deduplicated. A key
+whose action is hidden for a row (`bb--core/split` for the thread in view,
+`thread-list/move` for a thread that cannot move) or whose plugin is not
+installed is skipped on that row. `bb--core/split` reads Focus split for a
+thread open in another split pane. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '["bb--core/pin","bb--core/copyLink","bb--core/archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```
@@ -1065,14 +1245,14 @@ visibility, and every action in More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
-stable IDs: `builtin:settings`, `builtin:report-bug`, and
+stable IDs: `builtin:mobile`, `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
 Unknown and disabled-plugin IDs are retained across reloads; new actions default
 visible. The existing SDK UI preferences and CLI manage the same values:
 
 ```sh
 bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
-bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:mobile"]'
 bb settings ui reset sidebar.hiddenFooterItems
 ```
 
@@ -1473,6 +1653,20 @@ login, such as a CI runner. Mint the token with `claude setup-token`, which is
 long-lived where the credentials from `/login` are not. A logged-in machine
 needs neither.
 
+### Ask User Question plugin
+
+The builtin Ask User Question plugin keeps an unanswered question card open for
+30 minutes by default. When it expires, the agent receives a timeout result and
+the card closes. Choose `1 hour`, `4 hours`, `8 hours`, `24 hours`, `3 days`, or
+`7 days` under the plugin settings, or configure it from the CLI:
+
+```bash
+bb plugin config ask-user-question set questionTimeout "24 hours"
+```
+
+The setting applies to questions asked after it changes. A server restart still
+closes every open card.
+
 ### Provider retry plugin
 
 The builtin Provider retry plugin is enabled on fresh installations. When a turn
@@ -1622,6 +1816,14 @@ directory and reused by subsequent runs. Its generated command accepts
 `--host-daemon-port <port>` when an explicit port is required.
 
 ## Source Development
+
+`pnpm mobile:apk:dev` builds the standalone Android development app, **bb dev**,
+with orange icons and package `app.getbb.mobile.dev`. Output is
+`apps/mobile/build-output/bb-dev.apk`; append `-- x86_64` for an Intel emulator.
+The build command sets `BB_MOBILE_VARIANT=dev` for Expo configuration. Direct
+Expo commands accept `BB_MOBILE_VARIANT=production` (the default) or `dev`;
+other values fail validation. The dev variant omits production Firebase and
+HTTPS app-link registration. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
 
 For source development only, `pnpm dev`, `pnpm start:worktree`,
 `pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,
@@ -1802,7 +2004,9 @@ supplies `GH_TOKEN`, Git's
 rewrites for github.com, and author/committer identity. The helper expands
 `GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
 store is installed. The primary host continues using its local Git authentication
-unless an explicit global or project `GH_TOKEN` overrides it. Private email uses
+unless an explicit global or project `GH_TOKEN` overrides it. A server without a
+local host daemon has no primary host, so every machine receives the built-in
+row. Private email uses
 `<id>+<login>@users.noreply.github.com`.
 A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction
@@ -1878,12 +2082,20 @@ takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
 
-### Thread list provider icons and lifecycle filter
+### Thread list provider icons, read status grouping, and lifecycle filter
 
-The Thread list plugin's `showProviderIcons` preference defaults to `false`.
+The Thread list plugin's `showProviderIcons` preference defaults to `true`.
 Organize → Rows → Provider icons or
-`bb thread-list prefs set showProviderIcons true` shows the agent provider
+`bb thread-list prefs set showProviderIcons false` hides the agent provider
 icon before each thread title. Unknown provider ids have no icon.
+
+The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
+By read status or `bb thread-list prefs set groupByReadStatus true` lists
+threads that show an unread dot above the rest, keeping the selected sort within
+each group. Parent threads start collapsed while it is on, without changing the
+saved collapsed state. The open thread keeps its place until another thread is
+opened, and pinned threads keep their manual order. It is exclusive with By
+environment: while it is on, worktree threads are not grouped.
 
 The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with
@@ -1922,3 +2134,31 @@ Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on
 
 The publishing workflow verifies the signed APK and publishes both the checksum-named
 asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+### Server performance diagnostics
+
+`BB_PERF_DIAGNOSTICS=1` permits opt-in CPU profiling and detailed server
+performance logs; the default is false. Restart to change it. The launcher
+flag `pnpm start --perf-diagnostics` (also `pnpm start:worktree` and `bb-app`)
+grants permission for that launch; the experiment must also be on. See [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics)
+for capture retention, overhead, and interpretation.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.
+
+## Prompt Library
+
+The bundled Prompt Library plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--prompt-library`. Its
+**Search prompts** command defaults to Ctrl+R and can be rebound in Keyboard
+Settings. Search scope is remembered in browser local storage separately for
+new-thread and follow-up composers. Starred text and mentions persist in the
+plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
+for CLI and SDK commands.

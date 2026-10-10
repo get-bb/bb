@@ -33,18 +33,40 @@ export const environmentGroupingSchema = z.union([
   z.boolean(),
 ]);
 
-export const THREAD_ROW_ACTION_IDS = [
-  "split",
-  "copyLink",
-  "read",
-  "pin",
-  "move",
-  "rename",
-  "archive",
-] as const;
 export const THREAD_ROW_ACTION_LIMIT = 3;
-export const threadRowActionIdSchema = z.enum(THREAD_ROW_ACTION_IDS);
-export type ThreadRowActionId = z.infer<typeof threadRowActionIdSchema>;
+const LEGACY_THREAD_ROW_ACTION_KEYS = {
+  split: "bb--core/split",
+  copyLink: "bb--core/copyLink",
+  read: "bb--core/read",
+  pin: "bb--core/pin",
+  move: "thread-list/move",
+  rename: "bb--core/rename",
+  archive: "bb--core/archive",
+} as const;
+type LegacyThreadRowActionId = keyof typeof LEGACY_THREAD_ROW_ACTION_KEYS;
+const LEGACY_CORE_KEY_PREFIX = "core/";
+
+function isLegacyThreadRowActionId(
+  value: string,
+): value is LegacyThreadRowActionId {
+  return Object.hasOwn(LEGACY_THREAD_ROW_ACTION_KEYS, value);
+}
+
+function migrateThreadRowActionKey(value: string): string {
+  if (isLegacyThreadRowActionId(value)) {
+    return LEGACY_THREAD_ROW_ACTION_KEYS[value];
+  }
+  return value.startsWith(LEGACY_CORE_KEY_PREFIX) ? `bb--${value}` : value;
+}
+
+export const threadRowActionKeySchema = z
+  .string()
+  .transform(migrateThreadRowActionKey)
+  .pipe(
+    z.string().regex(/^[^/\s]+\/[^/\s]+$/, {
+      message: "Row actions are thread action keys: <owner>/<id>",
+    }),
+  );
 
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
@@ -70,7 +92,7 @@ function definePreference<Schema extends z.ZodTypeAny>(
 export const preferenceDefinitions = {
   showProviderIcons: definePreference(
     z.boolean(),
-    false,
+    true,
     "Show each thread's agent provider icon before its title.",
     null,
   ),
@@ -95,6 +117,12 @@ export const preferenceDefinitions = {
     "auto",
     "Whether sibling threads sharing a worktree collapse into one row. auto groups them in every organization except chronological.",
     "sidebar.threadGrouping.environment",
+  ),
+  groupByReadStatus: definePreference(
+    z.boolean(),
+    false,
+    "List threads that show an unread dot above the rest, keeping the selected sort within each group. The open thread keeps its place until another thread is opened.",
+    null,
   ),
   chronologicalSort: definePreference(
     chronologicalSortSchema,
@@ -134,51 +162,51 @@ export const preferenceDefinitions = {
   ),
   rowActions: definePreference(
     z
-      .array(threadRowActionIdSchema)
+      .array(threadRowActionKeySchema)
       .max(LIST_MAX_LENGTH)
       .transform((value) => [...new Set(value)])
       .refine((value) => value.length <= THREAD_ROW_ACTION_LIMIT, {
         message: `Choose at most ${THREAD_ROW_ACTION_LIMIT} row actions`,
       }),
-    ["archive"],
-    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu: split, copyLink, read, pin, move, rename, or archive. An empty list shows only the menu.`,
+    ["bb--core/archive"],
+    `Up to ${THREAD_ROW_ACTION_LIMIT} quick actions shown on a thread row's hover, left to right before its actions menu, as thread action keys: bb--core/split, bb--core/copyLink, bb--core/read, bb--core/pin, thread-list/move, bb--core/rename, bb--core/archive, or a plugin's <pluginId>/<actionId>. Bare legacy ids such as archive and core/<id> keys are accepted. An empty list shows only the menu.`,
     null,
   ),
   collapsedSections: definePreference(
     z.array(collapsibleSectionIdSchema).max(LIST_MAX_LENGTH),
     [],
     "Built-in sections (pinned, threads) that are collapsed.",
-    "sidebar.collapsedSections",
+    null,
   ),
   collapsedProjects: definePreference(
     stringListSchema,
     [],
     "Project ids whose rows are collapsed.",
-    "sidebar.collapsedProjects",
+    null,
   ),
   collapsedThreads: definePreference(
     stringListSchema,
     [],
     "Thread ids whose child threads are collapsed.",
-    "sidebar.collapsedThreads",
+    null,
   ),
   collapsedEnvironments: definePreference(
     stringListSchema,
     [],
     "Environment ids whose rows are collapsed.",
-    "sidebar.collapsedEnvironments",
+    null,
   ),
   collapsedThreadSections: definePreference(
     stringListSchema,
     [],
     "Custom section ids that are collapsed.",
-    "sidebar.collapsedThreadSections",
+    null,
   ),
   collapsedMachines: definePreference(
     stringListSchema,
     [],
     "Machine ids whose rows are collapsed.",
-    "sidebar.collapsedMachines",
+    null,
   ),
 } as const;
 
@@ -241,9 +269,10 @@ export function parseStoredPreferenceValue<Key extends PreferenceKey>(
 
 function knownRowActions(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
-  const known = value.filter(
-    (id) => threadRowActionIdSchema.safeParse(id).success,
-  );
+  const known = value.flatMap((id) => {
+    const parsed = threadRowActionKeySchema.safeParse(id);
+    return parsed.success ? [parsed.data] : [];
+  });
   return [...new Set(known)].slice(0, THREAD_ROW_ACTION_LIMIT);
 }
 

@@ -92,7 +92,15 @@ import {
   type AppRevision,
   type AppUpdateMode,
 } from "@bb/config/app-update";
+import {
+  APP_INSTALL_KIND_ENV_NAME,
+  APP_SOURCE_COMMIT_ENV_NAME,
+  APP_SOURCE_ORIGIN_ENV_NAME,
+  appInstallEnv,
+  type AppInstall,
+} from "@bb/config/app-install";
 import { z } from "zod";
+import { resolveAppInstall } from "./app-install.js";
 import {
   createLauncherAppUpdateController,
   type LauncherAppUpdateController,
@@ -165,6 +173,7 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_HOST_DAEMON_PORT",
   "BB_INHERITED_SKILLS_ROOTS",
   "BB_LOG_LEVEL",
+  "BB_PERF_DIAGNOSTICS",
   "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD",
   "BB_POSTHOG_API_KEY",
   "BB_SERVER_BIND_HOST",
@@ -339,11 +348,12 @@ interface LauncherCliOptions {
   dataDir?: string;
   enrollKey?: string;
   help: boolean;
-  inAppUpdates?: boolean;
+  performanceDiagnostics?: boolean;
   hostDaemonPort?: string;
   hostId?: string;
   joinCode?: string;
   json?: boolean;
+  noInAppUpdates?: boolean;
   serverBindHost?: string;
   serverPort?: string;
   serverUrl?: string;
@@ -606,6 +616,7 @@ interface CreateSharedEnvArgs {
 interface CreateServerEnvArgs {
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
+  install: AppInstall;
 }
 
 interface CreateServerBaseEnvArgs {
@@ -613,6 +624,7 @@ interface CreateServerBaseEnvArgs {
   env: NodeJS.ProcessEnv;
   envFile: ManagedEnvFile;
   serverBindHostOverride?: string;
+  performanceDiagnostics?: boolean;
 }
 
 interface CreateDaemonEnvArgs {
@@ -817,6 +829,8 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
       "enroll-key": { type: "string" },
       "host-daemon-port": { type: "string" },
       "in-app-updates": { type: "boolean" },
+      "no-in-app-updates": { type: "boolean" },
+      "perf-diagnostics": { type: "boolean" },
       "host-id": { type: "string" },
       "join-code": { type: "string" },
       "server-bind-host": { type: "string" },
@@ -841,8 +855,16 @@ export function parseLauncherArgs(args: string[]): ParsedLauncherArgs {
   if (readBooleanOption(parsed.values.bundled)) {
     options.bundled = true;
   }
-  if (readBooleanOption(parsed.values["in-app-updates"])) {
-    options.inAppUpdates = true;
+  if (readBooleanOption(parsed.values["no-in-app-updates"])) {
+    if (readBooleanOption(parsed.values["in-app-updates"])) {
+      throw new Error(
+        "--in-app-updates and --no-in-app-updates cannot be used together",
+      );
+    }
+    options.noInAppUpdates = true;
+  }
+  if (readBooleanOption(parsed.values["perf-diagnostics"])) {
+    options.performanceDiagnostics = true;
   }
   const dataDir = readStringOption(parsed.values["data-dir"]);
   const enrollKey = readStringOption(parsed.values["enroll-key"]);
@@ -962,6 +984,9 @@ function createEnvFromOptions(
   args: CreateEnvFromOptionsArgs,
 ): NodeJS.ProcessEnv {
   const env = { ...args.env };
+  if (args.options.performanceDiagnostics === true) {
+    env.BB_PERF_DIAGNOSTICS = "1";
+  }
   if (args.options.dataDir !== undefined) {
     env.BB_DATA_DIR = args.options.dataDir;
   }
@@ -1036,6 +1061,9 @@ function createServerBaseEnv(args: CreateServerBaseEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     ...args.config.config,
     ...args.envFile.env,
+    ...(args.performanceDiagnostics === true
+      ? { BB_PERF_DIAGNOSTICS: "1" }
+      : {}),
     ...(args.serverBindHostOverride !== undefined
       ? { BB_SERVER_BIND_HOST: args.serverBindHostOverride }
       : {}),
@@ -1377,6 +1405,7 @@ export async function resolveBbAppRuntimeState(
           envFile,
           env: initialEnv,
           serverBindHostOverride: args.options.serverBindHost,
+          performanceDiagnostics: args.options.performanceDiagnostics,
         }),
       ),
     );
@@ -1418,6 +1447,7 @@ export async function resolveBbAppRuntimeState(
           envFile,
           env: initialEnv,
           serverBindHostOverride: args.options.serverBindHost,
+          performanceDiagnostics: args.options.performanceDiagnostics,
         }),
       ),
     ),
@@ -1528,7 +1558,8 @@ Usage:
 Startup-only server and launcher keys:
   BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
   BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INHERITED_SKILLS_ROOTS,
-  BB_LOG_LEVEL, BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
+  BB_LOG_LEVEL, BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_PERF_DIAGNOSTICS,
+  BB_POSTHOG_API_KEY,
   BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, and BB_FF_* feature
   flags.
   Changes require a full bb-app restart with bb-app stop && bb-app start,
@@ -2465,9 +2496,27 @@ function resolveServerAppSurface(env: NodeJS.ProcessEnv): AppSurface {
   return parseAppSurface(env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB;
 }
 
+function resolveOwnAppInstall(args: {
+  context: BbAppStartContext;
+  env: NodeJS.ProcessEnv;
+}): Promise<AppInstall> {
+  return resolveAppInstall({
+    desktop: resolveServerAppSurface(args.env) === APP_SURFACE_DESKTOP,
+    runner: runCommand,
+    sourceRoot: runsFromSourceCheckout(import.meta.url)
+      ? resolve(args.context.packageRoot, "..", "..")
+      : null,
+  });
+}
+
 export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
+  const inheritedEnv = { ...args.env };
+  delete inheritedEnv[APP_INSTALL_KIND_ENV_NAME];
+  delete inheritedEnv[APP_SOURCE_COMMIT_ENV_NAME];
+  delete inheritedEnv[APP_SOURCE_ORIGIN_ENV_NAME];
   return {
-    ...args.env,
+    ...inheritedEnv,
+    ...appInstallEnv(args.install),
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
     BB_CLI: join(args.context.daemonBundleDir, "bb"),
@@ -2746,6 +2795,10 @@ Exits with code 3 without starting when the server on this data directory moved 
     env: createServerEnv({
       context: runtime.context,
       env: runtime.serverEnv,
+      install: await resolveOwnAppInstall({
+        context: runtime.context,
+        env: runtime.serverEnv,
+      }),
     }),
   });
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
@@ -2983,12 +3036,14 @@ function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
 Usage:
-  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>] [--in-app-updates] [--bundled]
+  bb-app [--data-dir <path>] [--server-bind-host <host>] [--server-port <port>] [--host-daemon-port <port>] [--no-in-app-updates] [--bundled]
   bb-app start
 
-  --in-app-updates lets Settings → Updates and bb updates app update and
-  restart bb. bb-app then runs the newest of this package and any version
-  installed by an in-app update; --bundled runs this package regardless.
+  --perf-diagnostics permits CPU profiles and detailed logs when the performanceDiagnostics experiment is also on.
+  Settings → Updates and bb updates app can update and restart bb. bb-app
+  runs the newest of this package and any version installed by an in-app
+  update; --bundled runs this package regardless. --no-in-app-updates turns
+  in-app updates off and runs this package.
 
   bb-app stop
   bb-app config set <key> <value>
@@ -3760,13 +3815,13 @@ function isRunningUnderAppUpdateShim(env: NodeJS.ProcessEnv): boolean {
 }
 
 function shouldRunNpmAppUpdateShim(args: {
+  enabled: boolean;
   options: RunBbAppOptions;
-  requested: boolean;
   runtime: BbAppRuntimeState;
   underShim: boolean;
 }): boolean {
   return (
-    args.requested &&
+    args.enabled &&
     !args.underShim &&
     args.options.worktreePolicy === null &&
     !runsFromSourceCheckout(import.meta.url) &&
@@ -3809,7 +3864,7 @@ const shimOutput: ShimOutput = {
 export function shouldRunSourceAppUpdateShim(cliArgs: string[]): boolean {
   const parsed = parseLauncherArgs(cliArgs);
   return (
-    parsed.options.inAppUpdates === true &&
+    parsed.options.noInAppUpdates !== true &&
     !parsed.options.help &&
     resolveBbAppCommand(parsed.positionals).kind === "start"
   );
@@ -3999,7 +4054,7 @@ export async function runBbApp(
   if (
     shouldRunNpmAppUpdateShim({
       options,
-      requested: parsedArgs.options.inAppUpdates === true,
+      enabled: parsedArgs.options.noInAppUpdates !== true,
       runtime,
       underShim: underAppUpdateShim,
     })
@@ -4153,6 +4208,10 @@ export async function runBbApp(
                   ...fullStackRuntime.serverEnv,
                   [APP_UPDATE_MODE_ENV_NAME]: appUpdateMode,
                 },
+          install: await resolveOwnAppInstall({
+            context,
+            env: fullStackRuntime.serverEnv,
+          }),
         });
         const sharedEnv = createSharedEnv({
           context,
@@ -4231,7 +4290,7 @@ export async function runBbApp(
     await shutdown("SIGTERM");
     throw error;
   } finally {
-    appUpdateController?.dispose();
+    await appUpdateController?.dispose();
     removeSignalForwarding();
     if (runtimeRecordOwned) {
       await clearOwnBbAppRuntimeFile({

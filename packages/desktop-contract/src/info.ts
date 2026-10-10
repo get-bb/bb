@@ -1,3 +1,4 @@
+import type { BbDesktopServerChoice } from "./servers.js";
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
@@ -36,6 +37,16 @@ export type BbDesktopWindowState = z.infer<typeof bbDesktopWindowStateSchema>;
 export const bbDesktopThemeSchema = z.enum(["system", "light", "dark"]);
 export type BbDesktopTheme = z.infer<typeof bbDesktopThemeSchema>;
 
+export const bbDesktopClipboardContentSchema = z
+  .object({
+    text: z.string(),
+    html: z.string().optional(),
+  })
+  .strict();
+export type BbDesktopClipboardContent = z.infer<
+  typeof bbDesktopClipboardContentSchema
+>;
+
 export const bbDesktopZoomCommandSchema = z.enum(["in", "out", "reset"]);
 export type BbDesktopZoomCommand = z.infer<typeof bbDesktopZoomCommandSchema>;
 export const BB_DESKTOP_MIN_ZOOM_PERCENT = 50;
@@ -53,6 +64,11 @@ export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
+  getServerChoices?(): Promise<BbDesktopServerChoice[]>;
+  onServerChoicesChange?(
+    listener: (choices: BbDesktopServerChoice[]) => void,
+  ): () => void;
+  selectServer?(id: string): void;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   focusWindow?(): void;
@@ -73,9 +89,11 @@ export interface BbDesktopApi extends BbDesktopInfo {
   openDataDirectory?(): Promise<void>;
   openExternalUrl(url: string): void;
   openServerDaemonLogs?(): Promise<void>;
+  reloadWindow?(): void;
   setSplitNavigationEnabled?(
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],
   ): void;
   setTheme(theme: BbDesktopTheme): void;
+  writeClipboard?(content: BbDesktopClipboardContent): Promise<void>;
 }

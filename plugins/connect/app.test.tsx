@@ -122,7 +122,7 @@ describe("connect settings section", () => {
 
     await slot.findByRole("button", { name: "Sign in to your bb account" });
     slot.getByText("you.bb.localhost:42745");
-    slot.getByText(/your bb\.localhost:42745 account gets full control/);
+    slot.getByText(/Only your bb\.localhost:42745 account can open this bb/);
   });
 
   it("signs in through bb account, shows the code, and waits for approval", async () => {
@@ -749,5 +749,92 @@ describe("connect settings section", () => {
         input: { enabled: true },
       }),
     );
+  });
+});
+
+describe("Connect settings realtime recovery", () => {
+  it("refreshes missed status changes after each realtime reconnect", async () => {
+    let currentStatus = connected({ state: "reconnecting" });
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        rpc: { status: () => currentStatus },
+      },
+    );
+    await slot.findByText("Reconnecting…");
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(1);
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    currentStatus = connected();
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(1);
+    await slot.behavior.setRealtimeConnectionState("connected");
+
+    await slot.findByText("Connected");
+    expect(slot.queryByText("Reconnecting…")).toBeNull();
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(2);
+
+    await slot.behavior.setRealtimeConnectionState("reconnecting");
+    currentStatus = connected({ state: "reconnecting" });
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Reconnecting…");
+    expect(
+      slot.inspection.rpcCalls.filter((call) => call.method === "status"),
+    ).toHaveLength(3);
+  });
+
+  it("retries an initial failed status load when realtime connects", async () => {
+    let reachable = false;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        realtimeConnectionState: "connecting",
+        rpc: {
+          status: () => {
+            if (!reachable) throw new Error("offline");
+            return connected();
+          },
+        },
+      },
+    );
+    await slot.findByText("Failed to load remote-access status: offline");
+
+    reachable = true;
+    await slot.behavior.setRealtimeConnectionState("connected");
+
+    await slot.findByText("Connected");
+    expect(slot.queryByText(/Failed to load/)).toBeNull();
+  });
+
+  it("keeps the reconnect status when the earlier load settles late", async () => {
+    let failFirstLoad: (error: Error) => void = () => {};
+    const firstLoad = new Promise<ConnectStatus>((_, reject) => {
+      failFirstLoad = reject;
+    });
+    let calls = 0;
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      {
+        realtimeConnectionState: "connecting",
+        rpc: {
+          status: () => (++calls === 1 ? firstLoad : connected()),
+        },
+      },
+    );
+
+    await slot.behavior.setRealtimeConnectionState("connected");
+    await slot.findByText("Connected");
+    await act(async () => failFirstLoad(new Error("tunnel dropped")));
+
+    expect(slot.queryByText(/Failed to load/)).toBeNull();
+    expect(slot.getByText("Connected")).toBeTruthy();
   });
 });

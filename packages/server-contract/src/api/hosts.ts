@@ -34,6 +34,23 @@ export const hostDirectoryListingSchema = z.object({
 });
 export type HostDirectoryListing = z.infer<typeof hostDirectoryListingSchema>;
 
+export const hostDiscoveredRepoSchema = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1),
+  lastActivityAt: z.string().datetime(),
+  originUrl: z.string().min(1).nullable(),
+  projectId: z.string().min(1).nullable(),
+});
+export type HostDiscoveredRepo = z.infer<typeof hostDiscoveredRepoSchema>;
+
+export const hostDiscoveredReposResponseSchema = z.object({
+  repos: z.array(hostDiscoveredRepoSchema),
+  truncated: z.boolean(),
+});
+export type HostDiscoveredReposResponse = z.infer<
+  typeof hostDiscoveredReposResponseSchema
+>;
+
 export const hostCloneDefaultPathQuerySchema = z.object({
   projectId: z.string().min(1),
 });
@@ -65,6 +82,7 @@ export type CreateMachineRequest = z.infer<typeof createMachineRequestSchema>;
 export const hostEnrollmentCommandResponseSchema = z
   .object({
     command: z.string().min(1),
+    windowsCommand: z.string().min(1),
     expiresAt: z.number().int().positive(),
   })
   .nullable();
@@ -75,6 +93,7 @@ export type HostEnrollmentCommandResponse = z.infer<
 export const hostReconnectResponseSchema = z
   .object({
     command: z.string().min(1),
+    windowsCommand: z.string().min(1),
     expiresAt: z.number().int().positive(),
     hostId: z.string().min(1),
   })

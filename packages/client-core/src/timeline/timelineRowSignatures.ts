@@ -219,7 +219,9 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.subagentType,
         row.description,
         row.completedAt,
-        timelineRowsSignature(row.childRows),
+        row.childRows === null
+          ? "deferred"
+          : timelineRowsSignature(row.childRows),
       ]);
     case "workflow":
       return joinSignatureParts([

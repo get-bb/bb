@@ -742,6 +742,57 @@ describe("MarkdownPreview thread mentions", () => {
     ["without message directives", undefined],
     ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
   ])(
+    "links a message mention to that message in its thread %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="See @thread:thr_child#msg=42, then reply."
+          threadMentions={{
+            mentions: [],
+            preserveSoftBreaks: true,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+        [threadResponse({ projectId: "proj_target" })],
+      );
+
+      const pill = screen.getByRole("link", { name: /Rebuild comments/ });
+      expect(pill.textContent).toBe("Rebuild comments· message");
+      expect(pill.getAttribute("href")).toBe(
+        "/projects/proj_target/threads/thr_child#msg=42",
+      );
+      expect(screen.queryByText(/msg=42/)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
+    "falls back to a projectless message link when the project is unknown %s",
+    (_label, messageDirectives) => {
+      renderMarkdown(
+        <MarkdownPreview
+          content="See @thread:thr_unknown#msg=7 please."
+          threadMentions={{
+            mentions: [],
+            preserveSoftBreaks: true,
+          }}
+          messageDirectives={messageDirectives}
+        />,
+        [],
+      );
+
+      expect(
+        screen.getByRole("link", { name: /message/ }).getAttribute("href"),
+      ).toBe("/threads/thr_unknown#msg=7");
+    },
+  );
+
+  it.each([
+    ["without message directives", undefined],
+    ["with message directives", ACTIVE_MESSAGE_DIRECTIVES],
+  ])(
     "leaves a thread token inside an authored Markdown link %s",
     (_label, messageDirectives) => {
       renderMarkdown(

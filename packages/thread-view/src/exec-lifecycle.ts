@@ -1,4 +1,5 @@
 import {
+  isApprovalInteractionLifecycle,
   jsonValueSchema,
   type JsonObject,
   ThreadEvent,
@@ -129,6 +130,28 @@ export function parseExecLifecycleEvent(
 ): ExecLifecycleEvent | null {
   const parentToolCallId =
     parentToolCallIdOverride ?? getEventParentToolCallId(decoded);
+  if (
+    decoded.type === "system/interaction/lifecycle" &&
+    isApprovalInteractionLifecycle(decoded.interaction) &&
+    decoded.interaction.status === "resolved" &&
+    (decoded.interaction.resolution?.decision === "allow_once" ||
+      decoded.interaction.resolution?.decision === "allow_for_session") &&
+    decoded.interaction.payload.subject.kind === "command"
+  ) {
+    const subject = decoded.interaction.payload.subject;
+    return {
+      kind: "begin",
+      call: {
+        kind: "command",
+        callId: subject.itemId,
+        command: subject.command,
+        cwd: subject.cwd,
+        status: "pending",
+        approvalStatus: null,
+        completedAt: null,
+      },
+    };
+  }
   if (decoded.type === "item/commandExecution/outputDelta") {
     const callId = decoded.itemId;
     if (!callId) return null;

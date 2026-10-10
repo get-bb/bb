@@ -31,9 +31,9 @@ values. Native questions have no ACP interaction handler in BB; agents use the
 ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
 custom agents with `dialect: "opencode"` and does not change OpenCode config files.
 
-OpenCode ACP supports the core `bb thread compact` command; Cursor ACP does not
-expose compatible compaction. Check the actual agent's capabilities before
-attempting provider-specific recovery.
+OpenCode and Grok ACP support the core `bb thread compact` command; Cursor ACP
+does not expose compatible compaction. Check the actual agent's capabilities
+before attempting provider-specific recovery.
 
 OpenCode Go subscription usage is available in Provider usage when the selected
 machine has OpenCode installed and a Go subscription. Sign in to Go in OpenCode

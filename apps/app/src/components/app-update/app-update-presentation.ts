@@ -18,7 +18,7 @@ export function formatAppUpdateRevision(
 ): string {
   return revision.commit === null
     ? revision.version
-    : `${revision.version} (${revision.commit.slice(0, 7)})`;
+    : revision.commit.slice(0, 7);
 }
 
 export function formatAppUpdateTarget(
@@ -76,11 +76,14 @@ export function hasActionableNpmAppUpdate(
 
 export function restartingActivity(
   status: SystemAppUpdateStatus | undefined,
-): { startedAt: string; targetVersion: string } | null {
+): { startedAt: string; targetRevision: string } | null {
   return status?.activity.phase === "restarting"
     ? {
         startedAt: status.activity.startedAt,
-        targetVersion: status.activity.targetVersion,
+        targetRevision: formatAppUpdateRevision({
+          commit: status.activity.targetCommit,
+          version: status.activity.targetVersion,
+        }),
       }
     : null;
 }

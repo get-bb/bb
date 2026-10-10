@@ -1,51 +1,33 @@
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import { ThreadTerminalContent } from "./ThreadTerminalContent";
-import {
-  useThreadTerminalController,
-  type ThreadTerminalTarget,
-} from "./useThreadTerminalController";
 import type { TerminalCreateTarget } from "@bb/server-contract";
+import { ThreadTerminalContent } from "./ThreadTerminalContent";
+import { useThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalPanelProps {
   autoFocus?: boolean;
-  canCreateTerminal: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
-  fixedPanelTarget?: TerminalCreateTarget;
-  fixedTerminalId?: string;
   onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
-  panelStateId?: string;
-  syncThreadId: string | null;
-  terminalId?: string;
-  target: ThreadTerminalTarget;
+  terminalId: string;
+  target: TerminalCreateTarget;
 }
 
 export function ThreadTerminalPanel({
   autoFocus = false,
-  canCreateTerminal,
   isPanelOpen,
   isPanelPersistedOpen,
-  fixedPanelTarget,
-  fixedTerminalId,
   onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
-  panelStateId,
-  syncThreadId,
   terminalId,
   target,
 }: ThreadTerminalPanelProps) {
   const terminalController = useThreadTerminalController({
-    canCreateTerminal,
     isPanelOpen,
     isPanelPersistedOpen,
-    fixedPanelTarget,
-    fixedTerminalId,
-    panelStateId,
-    preferredTerminalId: terminalId,
-    syncThreadId,
+    terminalId,
     target,
   });
 

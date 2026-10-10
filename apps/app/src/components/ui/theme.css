@@ -268,14 +268,16 @@
   }
 
   [data-sidebar-sticky-stack]
-    [data-sidebar-sticky-tier].bb-sidebar-open-in-split-row:is(
+    [data-sidebar-sticky-tier].bb-sidebar-accent-row:is(
       :hover,
-      :has([data-state="open"])
-    ) {
-    background-image: linear-gradient(
-      var(--sidebar-accent),
-      var(--sidebar-accent)
-    );
+      :has([data-state="open"]),
+      :has([data-sidebar-rename-anchor]:focus-visible),
+      :has([data-row-actions-customize]),
+      [data-sidebar-nest-target="valid"]
+    ):not([data-sidebar-touch-armed="true"]) {
+    background-image:
+      linear-gradient(var(--sidebar-accent), var(--sidebar-accent)),
+      linear-gradient(var(--sidebar), var(--sidebar));
   }
 
   .bb-sidebar-hover-actions {
@@ -326,8 +328,8 @@
     opacity: 0;
   }
 
-  @media (max-width: 767px) and (pointer: coarse) {
-    /* The overlay is hidden on coarse phones, so no room is reserved. */
+  @media (hover: none) {
+    /* The overlay is hidden where the primary input cannot hover, so no room is reserved. */
     .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
       .bb-sidebar-hover-actions-inset,
     .bb-sidebar-hover-actions-row:has(

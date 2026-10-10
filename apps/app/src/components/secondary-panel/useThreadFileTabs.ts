@@ -13,6 +13,7 @@ import {
   createNewTabFixedPanelTab,
   createPluginPanelFixedPanelTab,
   createThreadStorageFilePreviewFixedPanelTab,
+  createAttachmentFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   type BrowserFixedPanelTab,
   type FixedPanelTab,
@@ -21,12 +22,13 @@ import {
   type NewTabFixedPanelTab,
   type PluginPanelFixedPanelTab,
   type ThreadStorageFilePreviewFixedPanelTab,
+  type AttachmentFilePreviewFixedPanelTab,
   type WorkspaceFilePreviewFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { allowBrowserViewRecreation } from "./browserViewVisibilityCoordinator";
 import { useFileOpenerPreferenceValue } from "@/lib/file-opener-preference";
 import {
-  createFileOpenerOriginalTab,
   createFileOpenerTabForRequest,
   fileOpenerIdFromActionId,
   parseFileOpenerParams,
@@ -60,6 +62,14 @@ import {
   setSecondaryPanelTabsInState,
   updateSecondaryPanelTabInState,
 } from "@bb/client-core";
+import {
+  getPanelTabHistoryKey,
+  rememberClosedPanelTab,
+  forgetClosedPanelTab,
+  takeClosedPanelTab,
+  type ClosedPanelContentTab,
+  type PluginDetailHistoryTarget,
+} from "./recentlyClosedPanelTabs";
 import { pruneTerminalTabsInFixedPanelState } from "./terminalPanelTabs";
 
 interface UseThreadFileTabsParams {
@@ -113,6 +123,12 @@ export type OpenSecondaryPanelTabRequest =
       tab: ThreadStorageFileTabState;
       threadId?: string;
     }
+  | {
+      kind: "attachment-file-preview";
+      name: string;
+      path: string;
+      projectId: string;
+    }
   | { kind: "browser"; url: string }
   | { kind: "new-tab" };
 
@@ -127,142 +143,38 @@ type SecondaryPanelTab =
   | WorkspaceFilePreviewFixedPanelTab
   | HostFilePreviewFixedPanelTab
   | ThreadStorageFilePreviewFixedPanelTab
+  | AttachmentFilePreviewFixedPanelTab
   | BrowserFixedPanelTab
   | NewTabFixedPanelTab
   | PluginPanelFixedPanelTab;
-
-type ReopenableSecondaryPanelTab = Exclude<
-  SecondaryPanelTab,
-  NewTabFixedPanelTab
->;
-
-interface RecentlyClosedPanelTab {
-  index: number;
-  tab: ReopenableSecondaryPanelTab;
-}
-
-interface RecentlyClosedPanelContext {
-  environmentId: string | null | undefined;
-  fileOwnerThreadId: string | null;
-  panelStateId: string;
-  projectHostId: string | null;
-  projectId: string | null;
-}
-
-interface IsReopenablePanelTabOwnedByContextArgs {
-  context: RecentlyClosedPanelContext;
-  tab: ReopenableSecondaryPanelTab;
-}
 
 interface StorageFileInventory {
   knownPaths: ReadonlySet<string>;
   truncated: boolean;
 }
 
-type RecentlyClosedPanelContextKey = string;
 type OpenResolvedTabBehavior = "open" | "replace-new-tab";
 
-const MAX_RECENTLY_CLOSED_PANEL_TABS = 25;
-const recentlyClosedPanelTabs = new Map<
-  RecentlyClosedPanelContextKey,
-  RecentlyClosedPanelTab[]
->();
+export { resetRecentlyClosedPanelTabsForTest } from "./recentlyClosedPanelTabs";
 
 function isReopenableSecondaryPanelTab(
   tab: FixedPanelTab,
-): tab is ReopenableSecondaryPanelTab {
+): tab is SecondaryPanelTab {
   switch (tab.kind) {
     case "workspace-file-preview":
     case "host-file-preview":
     case "thread-storage-file-preview":
+    case "attachment-file-preview":
     case "browser":
     case "plugin-panel":
+    case "new-tab":
       return true;
     case "thread-info":
     case "git-diff":
     case "plugin-page-fixed":
-    case "new-tab":
     case "terminal":
       return false;
   }
-}
-
-function rememberClosedPanelTab(
-  contextKey: RecentlyClosedPanelContextKey,
-  entry: RecentlyClosedPanelTab,
-): void {
-  const stack = recentlyClosedPanelTabs.get(contextKey) ?? [];
-  stack.push(entry);
-  if (stack.length > MAX_RECENTLY_CLOSED_PANEL_TABS) {
-    stack.splice(0, stack.length - MAX_RECENTLY_CLOSED_PANEL_TABS);
-  }
-  recentlyClosedPanelTabs.set(contextKey, stack);
-}
-
-function forgetClosedPanelTab(
-  contextKey: RecentlyClosedPanelContextKey,
-  tabId: string,
-): void {
-  const stack = recentlyClosedPanelTabs.get(contextKey);
-  if (stack === undefined) return;
-  const next = stack.filter((entry) => entry.tab.id !== tabId);
-  if (next.length === 0) {
-    recentlyClosedPanelTabs.delete(contextKey);
-    return;
-  }
-  recentlyClosedPanelTabs.set(contextKey, next);
-}
-
-function isReopenablePanelTabOwnedByContext({
-  context,
-  tab: reopenableTab,
-}: IsReopenablePanelTabOwnedByContextArgs): boolean {
-  const originalTab =
-    reopenableTab.kind === "plugin-panel"
-      ? createFileOpenerOriginalTab(reopenableTab)
-      : null;
-  const tab = originalTab ?? reopenableTab;
-  switch (tab.kind) {
-    case "workspace-file-preview":
-      return (
-        tab.environmentId === context.environmentId &&
-        tab.projectId ===
-          (context.environmentId === null ? context.projectId : null)
-      );
-    case "host-file-preview":
-      return (
-        tab.hostId !== null ||
-        (tab.environmentId === context.environmentId &&
-          tab.threadId === context.fileOwnerThreadId)
-      );
-    case "thread-storage-file-preview":
-      return tab.threadId === context.fileOwnerThreadId;
-    case "browser":
-      return tab.environmentId === context.environmentId;
-    case "plugin-panel":
-      return true;
-  }
-}
-
-function takeClosedPanelTab(
-  contextKey: RecentlyClosedPanelContextKey,
-  openTabIds: ReadonlySet<string>,
-): RecentlyClosedPanelTab | null {
-  const stack = recentlyClosedPanelTabs.get(contextKey);
-  if (stack === undefined) return null;
-  while (stack.length > 0) {
-    const entry = stack.pop();
-    if (entry === undefined) break;
-    if (openTabIds.has(entry.tab.id)) continue;
-    if (stack.length === 0) recentlyClosedPanelTabs.delete(contextKey);
-    return entry;
-  }
-  recentlyClosedPanelTabs.delete(contextKey);
-  return null;
-}
-
-export function resetRecentlyClosedPanelTabsForTest(): void {
-  recentlyClosedPanelTabs.clear();
 }
 
 function createTabForOpenRequest({
@@ -309,6 +221,12 @@ function createTabForOpenRequest({
         isPinned: false,
         tab: request.tab,
         threadId: storageThreadId,
+      });
+    case "attachment-file-preview":
+      return createAttachmentFilePreviewFixedPanelTab({
+        name: request.name,
+        path: request.path,
+        projectId: request.projectId,
       });
     case "browser":
       return createBrowserFixedPanelTab({
@@ -399,32 +317,13 @@ export function useThreadFileTabs({
           },
     [storageFiles],
   );
-  const recentlyClosedPanelContext = useMemo(
-    () =>
-      resolvedPanelStateId === null
-        ? null
-        : {
-            environmentId: resolvedEnvironmentId,
-            fileOwnerThreadId: resolvedFileOwnerThreadId,
-            panelStateId: resolvedPanelStateId,
-            projectHostId,
-            projectId,
-          },
-    [
-      projectHostId,
-      projectId,
-      resolvedEnvironmentId,
-      resolvedFileOwnerThreadId,
-      resolvedPanelStateId,
-    ],
-  );
-  const recentlyClosedPanelContextKey = useMemo(
-    () =>
-      recentlyClosedPanelContext === null
-        ? null
-        : JSON.stringify(recentlyClosedPanelContext),
-    [recentlyClosedPanelContext],
-  );
+  const recentlyClosedPanelContextKey = getPanelTabHistoryKey({
+    environmentId: resolvedEnvironmentId,
+    fileOwnerThreadId: resolvedFileOwnerThreadId,
+    panelStateId: resolvedPanelStateId,
+    projectHostId,
+    projectId,
+  });
 
   useEffect(() => {
     if (!resolvedFileOwnerThreadId) return;
@@ -635,7 +534,7 @@ export function useThreadFileTabs({
   );
 
   const closeTab = useCallback(
-    (tabId: string) => {
+    (tabId: string, options?: { remember: boolean }) => {
       let didCloseLastTab = false;
       updateFixedPanelTabsState((state) => {
         const tabIndex = state.secondary.tabs.findIndex(
@@ -646,16 +545,13 @@ export function useThreadFileTabs({
         didCloseLastTab = next !== state && next.secondary.tabs.length === 0;
         if (
           next !== state &&
-          recentlyClosedPanelContext !== null &&
           recentlyClosedPanelContextKey !== null &&
           tab !== undefined &&
           isReopenableSecondaryPanelTab(tab) &&
-          isReopenablePanelTabOwnedByContext({
-            context: recentlyClosedPanelContext,
-            tab,
-          })
+          options?.remember !== false
         ) {
           rememberClosedPanelTab(recentlyClosedPanelContextKey, {
+            kind: "content",
             index: tabIndex,
             tab,
           });
@@ -664,48 +560,64 @@ export function useThreadFileTabs({
       });
       if (didCloseLastTab) onCloseLastTab?.();
     },
-    [
-      onCloseLastTab,
-      recentlyClosedPanelContext,
-      recentlyClosedPanelContextKey,
-      updateFixedPanelTabsState,
-    ],
+    [onCloseLastTab, recentlyClosedPanelContextKey, updateFixedPanelTabsState],
   );
 
-  const reopenClosedTab = useCallback((): boolean => {
-    if (recentlyClosedPanelContextKey === null) return false;
-    const contextKey = recentlyClosedPanelContextKey;
+  const reopenClosedTab = useCallback(
+    (pluginDetails?: PluginDetailHistoryTarget): boolean => {
+      if (recentlyClosedPanelContextKey === null) return false;
+      const contextKey = recentlyClosedPanelContextKey;
 
-    const restoreEntry = (
-      state: FixedPanelTabsState,
-      entry: RecentlyClosedPanelTab,
-    ) => {
-      const index = Math.max(
-        0,
-        Math.min(entry.index, state.secondary.tabs.length),
-      );
-      const tabs = [...state.secondary.tabs];
-      tabs.splice(index, 0, entry.tab);
-      return setSecondaryPanelTabsInState({
-        activeTabId: entry.tab.id,
-        isOpen: true,
-        state,
-        tabs,
+      const restoreEntry = (
+        state: FixedPanelTabsState,
+        entry: ClosedPanelContentTab,
+      ) => {
+        const index = Math.max(
+          0,
+          Math.min(entry.index, state.secondary.tabs.length),
+        );
+        const tabs = [...state.secondary.tabs];
+        tabs.splice(index, 0, entry.tab);
+        return setSecondaryPanelTabsInState({
+          activeTabId: entry.tab.id,
+          isOpen: true,
+          state,
+          tabs,
+        });
+      };
+
+      const restoredDetails: Parameters<
+        PluginDetailHistoryTarget["restore"]
+      >[0][] = [];
+      let didReopen = false;
+      updateFixedPanelTabsState((state) => {
+        const entry = takeClosedPanelTab(
+          contextKey,
+          new Set([
+            ...state.secondary.tabs.map((tab) => tab.id),
+            ...(pluginDetails?.destinations.map(
+              (tab) => `marketplace-plugin:${tab.pluginId}`,
+            ) ?? []),
+          ]),
+          pluginDetails !== undefined,
+        );
+        if (entry === null) return state;
+        didReopen = true;
+        if (entry.kind === "plugin-detail") {
+          restoredDetails.push(entry);
+          return state;
+        }
+        if (entry.tab.kind === "browser" && entry.tab.desktopTarget) {
+          allowBrowserViewRecreation(entry.tab.id, entry.tab.desktopTarget);
+        }
+        return restoreEntry(state, entry);
       });
-    };
-
-    let didReopen = false;
-    updateFixedPanelTabsState((state) => {
-      const entry = takeClosedPanelTab(
-        contextKey,
-        new Set(state.secondary.tabs.map((tab) => tab.id)),
-      );
-      if (entry === null) return state;
-      didReopen = true;
-      return restoreEntry(state, entry);
-    });
-    return didReopen;
-  }, [recentlyClosedPanelContextKey, updateFixedPanelTabsState]);
+      for (const entry of restoredDetails) pluginDetails?.restore(entry);
+      if (didReopen && restoredDetails.length === 0) pluginDetails?.dismiss();
+      return didReopen;
+    },
+    [recentlyClosedPanelContextKey, updateFixedPanelTabsState],
+  );
 
   const openPluginPanel = useCallback(
     ({ pluginId, actionId, title, paramsJson }: OpenPluginPanelArgs) => {

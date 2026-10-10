@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { act } from "react";
+import { getDefaultStore } from "jotai";
+import { AUTOMATIC_REPLACEMENT_PROVIDER } from "@/lib/plugin-replacement-preference";
+import { sourceCodeRendererProviderAtom } from "./codeRendererProvider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginSourceCodeRendererProps } from "@get-bb/plugin-sdk";
 import {
@@ -13,13 +15,11 @@ import { SourceCodeHost } from "./SourceCodeHost";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const bbSourceCode = vi.hoisted(() => ({
-  loaded: false,
   lastProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("./BbSourceCode", async () => {
   const React = await import("react");
-  bbSourceCode.loaded = true;
   return {
     default: (props: Record<string, unknown>) => {
       bbSourceCode.lastProps = props;
@@ -47,7 +47,11 @@ function registerSourceCodeRenderer(
 }
 
 beforeEach(() => {
-  bbSourceCode.loaded = false;
+  window.localStorage.clear();
+  getDefaultStore().set(
+    sourceCodeRendererProviderAtom,
+    AUTOMATIC_REPLACEMENT_PROVIDER,
+  );
   bbSourceCode.lastProps = null;
   received.length = 0;
   resetPluginSlotStoreForTest();
@@ -61,21 +65,6 @@ afterEach(() => {
 });
 
 describe("SourceCodeHost", () => {
-  it("keeps BB's renderer chunk unloaded when a replacement never delegates", async () => {
-    registerSourceCodeRenderer((props) => {
-      received.push(props);
-      return <div data-testid="plugin-source">plugin source</div>;
-    });
-
-    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
-
-    await screen.findByTestId("plugin-source");
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(bbSourceCode.loaded).toBe(false);
-  });
-
   it("hands the replacement resolved semantic props, not BB's host-only inputs", async () => {
     registerSourceCodeRenderer((props) => {
       received.push(props);
@@ -120,7 +109,6 @@ describe("SourceCodeHost", () => {
     );
 
     expect(await screen.findByTestId("bb-source-code")).toBeDefined();
-    expect(bbSourceCode.loaded).toBe(true);
     expect(bbSourceCode.lastProps?.cacheKey).toBe("rev-2:src/app.ts");
     expect(bbSourceCode.lastProps?.scrollToHighlightedLines).toBe(true);
   });
@@ -146,6 +134,6 @@ describe("experimental_SourceCode", () => {
     await screen.findByTestId("plugin-source");
     expect(received.at(-1)?.content).toBe(CONTENT);
     expect(received.at(-1)?.highlightedLines).toBeNull();
-    expect(bbSourceCode.loaded).toBe(false);
+    expect(bbSourceCode.lastProps).toBeNull();
   });
 });

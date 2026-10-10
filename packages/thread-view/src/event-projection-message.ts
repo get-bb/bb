@@ -19,6 +19,7 @@ import type {
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { EventProjection } from "./event-projection.js";
 
 const eventProjectionMessageStatusValues = [
@@ -64,6 +65,7 @@ export type EventProjectionPluginFormLifecycle =
   (typeof eventProjectionPluginFormLifecycleValues)[number];
 
 export interface EventProjectionMessageBase {
+  sourceEvent: { seq: number; part: number };
   id: string;
   threadId: string;
   sourceSeqStart: number;
@@ -98,6 +100,7 @@ export interface EventProjectionTurnRequest {
 
 export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
+  messageSeq: number;
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
   systemMessageKind: SystemMessageKind;
@@ -112,6 +115,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
     imageUrls?: string[];
     localImagePaths?: string[];
     localFilePaths?: string[];
+    localFileDetails?: TimelineConversationAttachments["localFileDetails"];
   };
 }
 
@@ -486,6 +490,7 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   message: string;
   detail: string | null;
   rawType: string;
+  systemErrorCode: string | null;
   providerErrorInfo?: ProviderErrorInfo;
   willRetry?: boolean;
 }

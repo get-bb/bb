@@ -11,15 +11,17 @@ import {
   type ClientNotification,
   type PushSubscription,
 } from "./contract.js";
+import { notificationPreviewText, truncate } from "./notification-text.js";
+import {
+  NOTIFICATION_KINDS_BY_LEVEL,
+  type NotificationLevel,
+  type PushNotificationKind,
+} from "./preferences.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
 type PendingInteraction =
   PluginThreadEventPayloads["interaction.pending"]["interaction"];
-type PushNotificationKind =
-  | "pending-interaction"
-  | "turn-finished"
-  | "thread-error";
 
 const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
@@ -27,6 +29,11 @@ const PUSH_TITLE_MAX_LENGTH = 80;
 const PUSH_BODY_MAX_LENGTH = 180;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
+const FALLBACK_BODIES: Record<PushNotificationKind, string> = {
+  "pending-interaction": "Waiting for your input",
+  "thread-error": "The thread hit an error",
+  "turn-finished": "Finished and waiting for you",
+};
 const PUSH_KIND_PRIORITY: readonly PushNotificationKind[] = [
   "pending-interaction",
   "thread-error",
@@ -133,6 +140,10 @@ export interface CreatePushSenderArgs {
   bb: BbPluginApi;
   subscriptions: PushSubscriptionStore;
   getExpoPushUrl(): Promise<string>;
+  getNotificationLevel(thread: {
+    id: string;
+    parentThreadId: string | null;
+  }): Promise<NotificationLevel>;
   getDeliverySettings(): Promise<{
     mobileEnabled: boolean;
     webEnabled: boolean;
@@ -149,11 +160,6 @@ function firstLine(text: string): string {
     if (trimmed.length > 0) return trimmed;
   }
   return "";
-}
-
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function threadDisplayTitle(thread: ThreadResponse): string {
@@ -269,8 +275,12 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
   async function resolvePush(
     thread: ThreadResponse,
     entry: PendingThreadPush,
+    allowedKinds: ReadonlySet<PushNotificationKind>,
   ): Promise<{ kind: PushNotificationKind; body: string } | null> {
-    const kinds = new Set(entry.kinds);
+    const kinds = new Set(
+      [...entry.kinds].filter((kind) => allowedKinds.has(kind)),
+    );
+    if (kinds.size === 0) return null;
     let interaction: PendingInteraction | null = null;
     if (kinds.has("pending-interaction")) {
       const interactions = await bb.sdk.threads.interactions.list({
@@ -292,19 +302,20 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (kind === "pending-interaction") {
       return {
         kind,
-        body: interaction
-          ? describePendingInteraction(interaction)
-          : "Waiting for your input",
+        body: interaction ? describePendingInteraction(interaction) : "",
       };
     }
-    return {
-      kind,
-      body:
-        entry.bodies.get(kind) ??
-        (kind === "thread-error"
-          ? "The thread hit an error"
-          : "Finished and waiting for you"),
-    };
+    return { kind, body: entry.bodies.get(kind) ?? "" };
+  }
+
+  async function referencedThreadTitle(
+    threadId: string,
+  ): Promise<string | null> {
+    try {
+      return threadDisplayTitle(await bb.sdk.threads.get({ threadId }));
+    } catch {
+      return null;
+    }
   }
 
   async function flushThread(
@@ -328,10 +339,22 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     if (lastReadAt >= thread.latestAttentionAt && lastReadAt >= entry.eventAt) {
       return;
     }
-    const resolved = await resolvePush(thread, entry);
+    const level = await args.getNotificationLevel(thread);
+    const resolved = await resolvePush(
+      thread,
+      entry,
+      NOTIFICATION_KINDS_BY_LEVEL[level],
+    );
     if (resolved === null) return;
+    const preview = await notificationPreviewText(
+      resolved.body,
+      referencedThreadTitle,
+    );
     const title = truncate(threadDisplayTitle(thread), PUSH_TITLE_MAX_LENGTH);
-    const body = truncate(resolved.body, PUSH_BODY_MAX_LENGTH);
+    const body = truncate(
+      preview || FALLBACK_BODIES[resolved.kind],
+      PUSH_BODY_MAX_LENGTH,
+    );
     const config = await args.getDeliverySettings();
     const channels: ClientNotification["channels"] = [];
     if (config.webEnabled) channels.push("web");
@@ -481,21 +504,11 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       );
     },
     onThreadFailed({ thread, error }) {
-      schedule(
-        thread.id,
-        "thread-error",
-        firstLine(error ?? "") || "The thread hit an error",
-      );
+      schedule(thread.id, "thread-error", firstLine(error ?? ""));
     },
     onThreadIdle({ thread, lastAssistantText }) {
-      if (thread.parentThreadId !== null || thread.visibility !== "visible") {
-        return;
-      }
-      schedule(
-        thread.id,
-        "turn-finished",
-        firstLine(lastAssistantText ?? "") || "Finished and waiting for you",
-      );
+      if (thread.visibility !== "visible") return;
+      schedule(thread.id, "turn-finished", lastAssistantText ?? "");
     },
     settle,
     async start() {
