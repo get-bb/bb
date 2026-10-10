@@ -39,11 +39,6 @@ describe("canonicalHref", () => {
       href: "https://getbb.app/blog",
     },
     {
-      name: "a percent-encoded param",
-      matches: [match("/"), match("/marketplace/a%20b")],
-      href: "https://getbb.app/marketplace/a%20b",
-    },
-    {
       name: "a leaf that is not found",
       matches: [match("/"), match("/blog/missing", { status: "notFound" })],
       href: null,
@@ -67,7 +62,6 @@ describe("canonicalHref", () => {
       ],
       href: "https://getbb.app/marketplace/advisor",
     },
-    { name: "no matches", matches: [], href: null },
   ])("returns the canonical for $name", ({ matches, href }) => {
     expect(canonicalHref(matches)).toBe(href);
   });

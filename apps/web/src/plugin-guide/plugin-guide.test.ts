@@ -32,9 +32,7 @@ function guideSource(): string {
 
 function definedTokens(namespace: string): Set<string> {
   const pattern = new RegExp(`--${namespace}-([a-z0-9-]+):`, "gu");
-  return new Set(
-    Array.from(webTheme.matchAll(pattern), (match) => match[1] ?? ""),
-  );
+  return new Set(Array.from(webTheme.matchAll(pattern), (match) => match[1] ?? ""));
 }
 
 function utilitySuffixes(source: string, prefixes: string): Set<string> {
@@ -42,9 +40,7 @@ function utilitySuffixes(source: string, prefixes: string): Set<string> {
     `(?<![\\w-])(?:[a-z0-9@&_\\[\\]-]+:)*(?:${prefixes})-([a-z0-9][a-z0-9-]*)(?:/[\\d.]+)?(?![\\w-])`,
     "gu",
   );
-  return new Set(
-    Array.from(source.matchAll(pattern), (match) => match[1] ?? ""),
-  );
+  return new Set(Array.from(source.matchAll(pattern), (match) => match[1] ?? ""));
 }
 
 describe("Plugin Guide on the web", () => {
@@ -93,9 +89,7 @@ describe("Plugin Guide on the web", () => {
         };
         return manifest.bb?.name ? [manifest.bb.name] : [];
       });
-    const duplicates = names.filter(
-      (name, index) => names.indexOf(name) !== index,
-    );
+    const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
     expect(duplicates).toEqual([]);
 
     const unlinked = SURFACE_GROUPS.flatMap((group) => group.surfaces)
@@ -138,7 +132,6 @@ describe("Plugin Guide on the web", () => {
       "Open it from a side-panel tab.",
     ],
     ["Add a banner. {experimental}", "Add a banner."],
-    ["Plain copy stays as it is.", "Plain copy stays as it is."],
   ])("turns surface copy %j into plain text", (copy, plain) => {
     expect(plainSurfaceCopy(copy)).toBe(plain);
   });

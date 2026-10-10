@@ -26,18 +26,6 @@ export function validateMarketplaceSearch(search: Record<string, unknown>) {
   };
 }
 
-export function marketplaceIndexCategory(
-  marketplace: PublicMarketplaceData | undefined,
-  category: string | undefined,
-): MarketplaceCategory | undefined {
-  if (category === undefined || marketplace?.status !== "available") {
-    return undefined;
-  }
-  return indexableMarketplaceCategories(marketplace.manifest).find(
-    (candidate) => candidate.id === category,
-  );
-}
-
 export function marketplaceIndexMeta(
   available: boolean,
   category?: MarketplaceCategory,
@@ -105,7 +93,12 @@ export function marketplaceIndexHead(
   marketplace: PublicMarketplaceData | undefined,
   categoryId: string | undefined,
 ) {
-  const category = marketplaceIndexCategory(marketplace, categoryId);
+  const category =
+    categoryId === undefined || marketplace?.status !== "available"
+      ? undefined
+      : indexableMarketplaceCategories(marketplace.manifest).find(
+          (candidate) => candidate.id === categoryId,
+        );
   return {
     meta: marketplaceIndexMeta(marketplace?.status === "available", category),
     canonical: {

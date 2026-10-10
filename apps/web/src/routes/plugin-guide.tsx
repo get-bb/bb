@@ -74,7 +74,7 @@ function PluginGuideRoute() {
         </header>
       </div>
       <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-2 sm:px-7 sm:pt-6">
-        <div id="plugin-guide" ref={guideRef} className="scroll-mt-6">
+        <div ref={guideRef} className="scroll-mt-6">
           <LazyPluginGuide
             key={opened.count}
             initialSlideId={opened.slideId}

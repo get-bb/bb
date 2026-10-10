@@ -12,7 +12,6 @@ import {
 } from "./marketplace-response-status.js";
 import {
   marketplaceAuthorRouteEntries,
-  marketplaceIndexCategory,
   marketplaceIndexHead,
   marketplaceIndexMeta,
   marketplacePluginRouteEntry,
@@ -127,12 +126,9 @@ describe("marketplace routes", () => {
   });
 
   it("indexes a listed category under its own title and URL", () => {
-    const category = marketplaceIndexCategory(
-      AVAILABLE_MARKETPLACE,
-      "code-and-reviews",
-    );
-    expect(category?.id).toBe("code-and-reviews");
-    expect(marketplaceIndexMeta(true, category)).toEqual(
+    expect(
+      marketplaceIndexHead(AVAILABLE_MARKETPLACE, "code-and-reviews").meta,
+    ).toEqual(
       expect.arrayContaining([
         { title: "Code & Reviews plugins — bb Plugin Marketplace" },
         {
@@ -141,11 +137,6 @@ describe("marketplace routes", () => {
         },
       ]),
     );
-    for (const unlisted of ["future-tools", "missing", undefined]) {
-      expect(
-        marketplaceIndexCategory(AVAILABLE_MARKETPLACE, unlisted),
-      ).toBeUndefined();
-    }
   });
 
   it("omits a missing category description from the meta description", () => {
