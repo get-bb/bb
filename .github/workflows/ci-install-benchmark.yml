@@ -15,10 +15,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: ./.github/actions/setup-workspace-tools
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22.x'
-          pnpm-version: '9.15.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
       - name: Measure fresh dependency installation
         shell: bash
         env:
