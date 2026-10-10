@@ -150,6 +150,29 @@ removes these drafts. Older clients ignore this new storage namespace. Only the
 native question form and Ask User Question plugin opt in; secret-request forms
 do not use this storage.
 
+## Follow-up Draft Recovery
+
+Web follow-up composers persist the submitted draft under
+`<draft-storage-key>.pending-submissions` before clearing the editable draft.
+Server acceptance removes that recovery copy. A failed submission restores its
+text before newer composer text, adjusts mention ranges, and combines attachments
+by path. On page reload, interrupted submissions recover into the composer once.
+Recovery never automatically sends a message: an interrupted request may have
+reached the server before the browser lost its response, so inspect the timeline
+and queue before sending the recovered draft again.
+
+If the recovery copy cannot be persisted, submission stops and the composer stays
+intact. The browser's regular draft and recovery storage are client-local; this
+behavior does not change CLI or SDK queue admission. Recovery copies contain
+prompt text, mention resource IDs, and attachment references, not attachment file
+bytes. They use the browser origin's localStorage, scoped by project/thread draft
+key; embedded and full-thread composers intentionally share the same key. Copies
+have no expiry: acceptance or successful recovery removes them, and clearing that
+origin's browser site data removes all copies. Older clients ignore the new keys;
+rolling back does not recover pending copies until a recovery-aware client opens
+the draft again. Tabs share localStorage; a second page can recover an unresolved
+submission owned by another page, so recovered text always requires review.
+
 ## Native Draft Rollback
 
 Migration `0132_thread_drafts` now only adds the temporary `threads.draft`

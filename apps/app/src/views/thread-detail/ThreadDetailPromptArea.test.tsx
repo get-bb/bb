@@ -615,7 +615,8 @@ vi.mock("@/hooks/useCommandSuggestions", () => ({
   }),
 }));
 
-vi.mock("@/hooks/usePromptDraftStorage", () => ({
+vi.mock("@/hooks/usePromptDraftStorage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/usePromptDraftStorage")>()),
   usePromptDraftStorage: () => mocks.promptDraft,
 }));
 
@@ -952,6 +953,8 @@ beforeEach(() => {
   mocks.promptDraft.text = "";
   mocks.promptDraft.mentions = [];
   mocks.promptDraft.attachments = [];
+  mocks.promptDraft.clearIfCurrentMatches.mockReset();
+  mocks.promptDraft.restoreIfEmpty.mockReset();
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
     attachments: mocks.promptDraft.attachments,
     mentions: mocks.promptDraft.mentions,
@@ -2599,4 +2602,101 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
     expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledTimes(1);
   });
+});
+
+it("recovers a failed queue submission alongside a newer draft", async () => {
+  const { getPromptDraftAccessor } = await vi.importActual<
+    typeof import("@/hooks/usePromptDraftStorage")
+  >("@/hooks/usePromptDraftStorage");
+  const controller = getPromptDraftAccessor({
+    kind: "thread",
+    projectId: "proj_1",
+    threadId: "thr_1",
+  });
+  controller.setDraft({
+    text: "lost @old",
+    mentions: [
+      {
+        start: 5,
+        end: 9,
+        resource: { kind: "thread", threadId: "thr_old", label: "old" },
+      },
+    ],
+    attachments: [
+      {
+        type: "localFile",
+        path: "uploads/old.md",
+        name: "old.md",
+        sizeBytes: 1,
+      },
+    ],
+  });
+  mocks.promptDraft.text = controller.getCurrent().text;
+  mocks.promptDraft.mentions = controller.getCurrent().mentions;
+  mocks.promptDraft.attachments = controller.getCurrent().attachments;
+  mocks.promptDraft.getCurrent.mockImplementation(controller.getCurrent);
+  mocks.promptDraft.clearIfCurrentMatches.mockImplementation(
+    controller.clearIfCurrentMatches,
+  );
+  mocks.promptDraft.restoreIfEmpty.mockImplementation(
+    controller.restoreIfEmpty,
+  );
+  mocks.promptDraft.setDraft.mockImplementation(controller.setDraft);
+  const request = createDeferredPromise<ThreadQueuedMessage>();
+  mocks.createQueuedMessageMutateAsync.mockReturnValueOnce(request.promise);
+  renderPromptArea({
+    thread: makeThread({
+      status: "active",
+      runtime: { displayStatus: "active" },
+    }),
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+  await waitFor(() =>
+    expect(mocks.createQueuedMessageMutateAsync).toHaveBeenCalledTimes(1),
+  );
+  controller.setDraft({
+    text: "new @new",
+    mentions: [
+      {
+        start: 4,
+        end: 8,
+        resource: { kind: "thread", threadId: "thr_new", label: "new" },
+      },
+    ],
+    attachments: [
+      {
+        type: "localFile",
+        path: "uploads/old.md",
+        name: "old.md",
+        sizeBytes: 1,
+      },
+      {
+        type: "localFile",
+        path: "uploads/new.md",
+        name: "new.md",
+        sizeBytes: 2,
+      },
+    ],
+  });
+  await act(async () => request.reject(new Error("Connection lost")));
+  expect(controller.getCurrent().text).toBe("lost @old\n\nnew @new");
+  expect(window.localStorage.getItem(controller.storageKey)).toContain(
+    "lost @old",
+  );
+  expect(controller.getCurrent().mentions).toEqual([
+    {
+      start: 5,
+      end: 9,
+      resource: { kind: "thread", threadId: "thr_old", label: "old" },
+    },
+    {
+      start: 15,
+      end: 19,
+      resource: { kind: "thread", threadId: "thr_new", label: "new" },
+    },
+  ]);
+  expect(
+    controller.getCurrent().attachments.map((attachment) => attachment.path),
+  ).toEqual(["uploads/old.md", "uploads/new.md"]);
+  controller.clear();
 });
