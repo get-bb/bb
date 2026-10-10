@@ -471,6 +471,17 @@
   background: var(--primary);
   opacity: 0.88;
 }
+.pga .pga-primary,
+.pga-save .pga-primary {
+  color: var(--primary-foreground);
+}
+.pga .pga-danger {
+  color: var(--destructive);
+}
+.pga .pga-primary:disabled,
+.pga-save .pga-primary:disabled {
+  color: var(--muted-foreground);
+}
 .pga-primary:disabled {
   background: var(--muted);
   border-color: var(--border);
