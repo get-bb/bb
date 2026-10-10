@@ -1064,7 +1064,7 @@ A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
 destinations and Customize rail; Settings is at the bottom. New thread sits in
-the sidebar header. The list beside the rail swaps between the thread list,
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
 Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
 leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
 order and show or hide rail destinations.

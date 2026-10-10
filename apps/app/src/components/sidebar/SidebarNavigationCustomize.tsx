@@ -14,12 +14,14 @@ export function SidebarNavigationCustomize({
   const model = useSidebarNavigationModel();
   const items = useMemo<SidebarVisibilityItem[]>(
     () =>
-      model.state.items.map((item) => ({
-        id: item.id,
-        title: item.label,
-        icon: <SidebarNavigationIcon icon={item.icon} />,
-        ...(item.isDisabled ? { disabled: true } : {}),
-      })),
+      model.state.items
+        .filter((item) => item.action.kind !== "new-thread")
+        .map((item) => ({
+          id: item.id,
+          title: item.label,
+          icon: <SidebarNavigationIcon icon={item.icon} />,
+          ...(item.isDisabled ? { disabled: true } : {}),
+        })),
     [model.state.items],
   );
   const { arrangement, state } = model;

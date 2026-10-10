@@ -615,14 +615,35 @@ describe("AppNavRail", () => {
     }
   });
 
-  it("drops the header New thread button when the user hid New thread", () => {
+  it("keeps the header New thread button when stored preferences leave New thread out", () => {
     renderRail(THREAD_PATH, { visibleKeys: ["__bb__/extensions"] });
 
-    expect(screen.queryByRole("button", { name: "New thread" })).toBeNull();
-    cleanup();
-
-    renderRail(THREAD_PATH);
     fireEvent.click(screen.getByRole("button", { name: "New thread" }));
     expect(mocks.onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no New thread row in Customize rail", async () => {
+    renderRail(THREAD_PATH);
+
+    fireEvent.keyDown(railButton("More"), { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Customize rail" }),
+    );
+
+    const editor = await screen.findByTestId("nav-rail-customize");
+    const list = within(editor).getByRole("list", {
+      name: "Sidebar navigation",
+    });
+    expect(
+      within(list)
+        .getAllByRole("checkbox")
+        .map((checkbox) => checkbox.getAttribute("aria-label")),
+    ).toEqual([
+      "Show Search threads in sidebar",
+      "Show Plugins in sidebar",
+      "Show Skills in sidebar",
+      "Show Docs in sidebar",
+    ]);
+    expect(screen.getByRole("button", { name: "New thread" })).toBeDefined();
   });
 });
