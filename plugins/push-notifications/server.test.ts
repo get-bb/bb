@@ -127,18 +127,27 @@ async function setup(options: SetupOptions = {}) {
             return [{ threadId, ancestorIds }];
           }),
         }),
-        experimental_listDescendants: async ({ threadIds }) => ({
+        experimental_listDescendants: async ({
+          threadIds,
+          includeArchived = false,
+          includeHidden = false,
+        }) => ({
           threads: [...new Set(threadIds)].flatMap((threadId) => {
             if (!threads.has(threadId)) return [];
-            const descendantIds: string[] = [];
-            for (let index = -1; index < descendantIds.length; index += 1) {
-              const parentId = index < 0 ? threadId : descendantIds[index];
+            const walked: ThreadResponse[] = [];
+            for (let index = -1; index < walked.length; index += 1) {
+              const parentId = index < 0 ? threadId : walked[index]?.id;
               for (const thread of threads.values()) {
-                if (thread.parentThreadId === parentId) {
-                  descendantIds.push(thread.id);
-                }
+                if (thread.parentThreadId === parentId) walked.push(thread);
               }
             }
+            const descendantIds = walked
+              .filter(
+                (thread) =>
+                  (includeArchived || thread.archivedAt === null) &&
+                  (includeHidden || thread.visibility === "visible"),
+              )
+              .map((thread) => thread.id);
             return [{ threadId, descendantIds }];
           }),
         }),
@@ -1042,6 +1051,52 @@ describe("thread notification levels", () => {
       expect(host.levelUpdates().slice(published)).toEqual([
         { threads: { [worker.id]: capped, [subWorker.id]: capped } },
       ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("publishes only live, visible descendants and republishes a thread when it is unarchived", async () => {
+    const host = await setup();
+    try {
+      const root = host.setThread({ id: "root" });
+      const archived = host.setThread({
+        id: "archived",
+        parentThreadId: root.id,
+        archivedAt: 1,
+      });
+      const worker = host.setThread({
+        id: "worker",
+        parentThreadId: archived.id,
+      });
+      host.setThread({
+        id: "hidden",
+        parentThreadId: root.id,
+        visibility: "hidden",
+      });
+      const capped = {
+        own: "inherit",
+        ancestorCap: { level: "muted", threadId: root.id },
+      };
+
+      await host.setLevel(root.id, "muted");
+      expect(host.levelUpdates()).toEqual([
+        {
+          threads: {
+            [root.id]: { own: "muted", ancestorCap: null },
+            [worker.id]: capped,
+          },
+        },
+      ]);
+
+      const unarchived = { ...archived, archivedAt: null };
+      host.threads.set(archived.id, unarchived);
+      await host.harness.behavior.emitThreadEvent("thread.unarchived", {
+        thread: unarchived,
+      });
+      expect(host.levelUpdates().at(-1)).toEqual({
+        threads: { [archived.id]: capped, [worker.id]: capped },
+      });
     } finally {
       await host.cleanup();
     }
