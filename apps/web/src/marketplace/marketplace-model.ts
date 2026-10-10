@@ -10,7 +10,7 @@ export const MARKETPLACE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 export interface MarketplaceStats {
   schemaVersion: 1;
   generatedAt: string;
-  plugins: Record<string, { installs: number }>;
+  plugins: Record<string, { installs: number; recentInstalls?: number }>;
 }
 
 export function marketplaceEntryInstalls(

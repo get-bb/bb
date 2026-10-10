@@ -11,7 +11,10 @@ const marketplaceStatsSchema = z.object({
   generatedAt: z.string(),
   plugins: z.record(
     z.string(),
-    z.object({ installs: z.number().int().nonnegative() }),
+    z.object({
+      installs: z.number().int().nonnegative(),
+      recentInstalls: z.number().int().nonnegative().optional(),
+    }),
   ),
 });
 
@@ -39,15 +42,26 @@ export function parseMarketplaceStatsJson(
   };
 }
 
-export function installCountsFromStatsJson(
+export interface PluginInstallStats {
+  installs: number;
+  recentInstalls: number | null;
+}
+
+export function installStatsFromStatsJson(
   statsJson: string | null,
   onInvalid?: (message: string) => void,
-): ReadonlyMap<string, number> {
+): ReadonlyMap<string, PluginInstallStats> {
   if (statsJson === null) return new Map();
   try {
     const stats = parseMarketplaceStatsJson(statsJson, "stored install counts");
     return new Map(
-      Object.entries(stats.plugins).map(([id, entry]) => [id, entry.installs]),
+      Object.entries(stats.plugins).map(([id, entry]) => [
+        id,
+        {
+          installs: entry.installs,
+          recentInstalls: entry.recentInstalls ?? null,
+        },
+      ]),
     );
   } catch (error) {
     onInvalid?.(error instanceof Error ? error.message : String(error));

@@ -6,6 +6,10 @@ import {
   type PluginMarketplaceCategory,
 } from "@bb/domain";
 import {
+  BB_OFFICIAL_COLLECTION_ID,
+  rankPluginShelf,
+} from "@bb/domain/plugin-shelf-ranking";
+import {
   deletePluginMarketplace,
   getInstalledPlugin,
   getPluginMarketplace,
@@ -58,7 +62,8 @@ import {
 import { fetchMarketplaceIcons } from "./marketplace-icons.js";
 import {
   fetchMarketplaceStats,
-  installCountsFromStatsJson,
+  installStatsFromStatsJson,
+  type PluginInstallStats,
 } from "./marketplace-stats.js";
 import {
   marketplaceErrorMessage,
@@ -367,6 +372,62 @@ export function createPluginCatalogService(deps: {
       categories: [...categoriesById.values()],
       membershipsByEntry,
     };
+  }
+
+  function curatedInstallStats(): ReadonlyMap<string, PluginInstallStats> {
+    return installStatsFromStatsJson(
+      getPluginMarketplace(deps.db, CURATED_PLUGIN_MARKETPLACE_NAME)
+        ?.statsJson ?? null,
+      (message) => deps.warn?.(message),
+    );
+  }
+
+  function withRankedOfficialShelf(
+    index: ReservedCollectionIndex,
+    installStats: ReadonlyMap<string, PluginInstallStats>,
+    now: number,
+  ): ReservedCollectionIndex {
+    const bundledCatalog = index.catalogsByMarketplace.get(
+      BUNDLED_MARKETPLACE_NAME,
+    );
+    if (bundledCatalog === undefined) return index;
+    const publishedAtById = new Map(
+      bundledCatalog.plugins.flatMap((entry) =>
+        "publishedAt" in entry && entry.publishedAt !== undefined
+          ? [[entry.id, entry.publishedAt] as const]
+          : [],
+      ),
+    );
+    const membershipsByEntry = new Map(index.membershipsByEntry);
+    const collections = index.collections.map((collection) => {
+      if (collection.id !== BB_OFFICIAL_COLLECTION_ID) return collection;
+      const pluginIds = rankPluginShelf(
+        collection.pluginIds,
+        (pluginId) => {
+          const stats = installStats.get(pluginId);
+          const publishedAt = publishedAtById.get(pluginId);
+          return {
+            id: pluginId,
+            recentInstalls: stats?.recentInstalls ?? null,
+            ...(publishedAt === undefined ? {} : { publishedAt }),
+          };
+        },
+        now,
+      );
+      pluginIds.forEach((pluginId, rank) => {
+        const entryKey = catalogEntryKey(BUNDLED_MARKETPLACE_NAME, pluginId);
+        membershipsByEntry.set(
+          entryKey,
+          (membershipsByEntry.get(entryKey) ?? []).map((membership) =>
+            membership.id === collection.id
+              ? { ...membership, rank }
+              : membership,
+          ),
+        );
+      });
+      return { ...collection, pluginIds };
+    });
+    return { ...index, collections, membershipsByEntry };
   }
 
   function compatibilityProblem(ranges: {
@@ -1011,7 +1072,13 @@ export function createPluginCatalogService(deps: {
     },
 
     collections() {
-      return [...reservedCollections.collections];
+      return [
+        ...withRankedOfficialShelf(
+          reservedCollections,
+          curatedInstallStats(),
+          Date.now(),
+        ).collections,
+      ];
     },
 
     categories() {
@@ -1098,20 +1165,17 @@ export function createPluginCatalogService(deps: {
 
     async search(rawQuery) {
       const query = rawQuery.trim().toLowerCase();
-      const collectionIndex = reservedCollections;
+      const curatedInstalls = curatedInstallStats();
+      const collectionIndex = withRankedOfficialShelf(
+        reservedCollections,
+        curatedInstalls,
+        Date.now(),
+      );
       const categoryOrder = new Map<string, number>(
         collectionIndex.categories.map((category, index) => [
           category.displayName,
           index,
         ]),
-      );
-      const curatedRow = getPluginMarketplace(
-        deps.db,
-        CURATED_PLUGIN_MARKETPLACE_NAME,
-      );
-      const curatedInstalls = installCountsFromStatsJson(
-        curatedRow?.statsJson ?? null,
-        (message) => deps.warn?.(message),
       );
       const installedEntryIds = new Set(
         listInstalledPlugins(deps.db)
@@ -1144,7 +1208,7 @@ export function createPluginCatalogService(deps: {
               catalog,
               installedEntryIds,
               installs: isReservedMarketplace(row.name)
-                ? (curatedInstalls.get(pluginId) ?? null)
+                ? (curatedInstalls.get(pluginId)?.installs ?? null)
                 : null,
               collections:
                 collectionIndex.membershipsByEntry.get(

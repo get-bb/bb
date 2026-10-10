@@ -13,6 +13,7 @@ import {
   marketplaceShelves,
   moreInMarketplaceCategory,
   parseMarketplaceCategory,
+  rankMarketplaceShelves,
   sortMarketplaceEntries,
 } from "./marketplace-view-model.js";
 
@@ -31,6 +32,48 @@ describe("public marketplace view model", () => {
     ]);
     expect(shelves.at(-1)?.entries.map((entry) => entry.id)).toEqual([
       "orphan-tool",
+    ]);
+  });
+
+  it("ranks the BB Official shelf and keeps curated community shelves in order", () => {
+    const byId = new Map(
+      MARKETPLACE_V2_FIXTURE.plugins.map((entry) => [entry.id, entry]),
+    );
+    const entries = [
+      "review-notes",
+      "orphan-tool",
+      "review-companion",
+      "prompt-library",
+    ].flatMap((id) => byId.get(id) ?? []);
+    const ranked = rankMarketplaceShelves(
+      [
+        {
+          id: "bb-official",
+          label: "BB Official",
+          kind: "collection",
+          entries,
+        },
+        {
+          id: "new-and-notable",
+          label: "New & notable",
+          kind: "collection",
+          entries,
+        },
+      ],
+      {
+        ...MARKETPLACE_STATS_FIXTURE,
+        plugins: {
+          ...MARKETPLACE_STATS_FIXTURE.plugins,
+          "prompt-library": { installs: 1_204, recentInstalls: 50 },
+        },
+      },
+      Date.parse("2026-08-25T00:00:00Z"),
+    );
+    expect(
+      ranked.map((shelf) => shelf.entries.map((entry) => entry.id)),
+    ).toEqual([
+      ["prompt-library", "review-companion", "orphan-tool", "review-notes"],
+      ["review-notes", "orphan-tool", "review-companion", "prompt-library"],
     ]);
   });
 

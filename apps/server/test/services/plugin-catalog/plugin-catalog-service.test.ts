@@ -214,14 +214,7 @@ describe("plugin catalog service", () => {
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png",
       ],
-      collections: [
-        {
-          id: "bb-official",
-          rank: BUNDLED_PLUGINS.findIndex(
-            (plugin) => plugin.pluginId === "simple-notes",
-          ),
-        },
-      ],
+      collections: [{ id: "bb-official", rank: expect.any(Number) }],
       source: "builtin:docs",
       marketplace: "bb-official",
       marketplaceDisplayName: "BB Official",
@@ -244,13 +237,25 @@ describe("plugin catalog service", () => {
         BUNDLED_CURATED_MARKETPLACE.plugins.map((entry) => [entry.id, false]),
       ),
     });
-    expect(catalog.collections()).toEqual([
+    const collections = catalog.collections();
+    expect(collections).toEqual([
       {
         id: "bb-official",
         displayName: "BB Official",
-        pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+        pluginIds: expect.any(Array),
       },
     ]);
+    const officialOrder = collections[0]?.pluginIds ?? [];
+    expect([...officialOrder].sort()).toEqual(
+      BUNDLED_PLUGINS.map((plugin) => plugin.pluginId).sort(),
+    );
+    for (const entry of results.filter(
+      (result) => result.marketplace === "bb-official",
+    )) {
+      expect(entry.collections).toEqual([
+        { id: "bb-official", rank: officialOrder.indexOf(entry.pluginId) },
+      ]);
+    }
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
         .filter((entry) => entry.category === category.displayName)
@@ -584,7 +589,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+          pluginIds: expect.any(Array),
         },
         {
           id: "new-and-notable",
@@ -632,7 +637,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+          pluginIds: expect.any(Array),
         },
       ]);
     });
@@ -974,7 +979,7 @@ describe("plugin catalog service", () => {
 
   describe("install counts", () => {
     function statsResponse(
-      plugins: Record<string, { installs: number }>,
+      plugins: Record<string, { installs: number; recentInstalls?: number }>,
       generatedAt = "2026-08-21T00:00:00.000Z",
     ): Response {
       return jsonResponse({ schemaVersion: 1, generatedAt, plugins });
@@ -1015,6 +1020,36 @@ describe("plugin catalog service", () => {
       );
       expect(byId.get("widgets")?.installs).toBe(4_210);
       expect(byId.get(bundled.name)?.installs).toBe(12);
+    });
+
+    it("leads the official shelf with the plugin gaining the most installs", async () => {
+      const [quiet, rising] = OFFICIAL_PLUGINS.map(
+        (plugin) => plugin.pluginId,
+      ).slice(-2);
+      if (quiet === undefined || rising === undefined) {
+        throw new Error("official plugins missing");
+      }
+      const catalog = service({
+        fetch: fetchWith(() =>
+          statsResponse({
+            [quiet]: { installs: 50_000, recentInstalls: 0 },
+            [rising]: { installs: 20_000, recentInstalls: 20_000 },
+          }),
+        ),
+      });
+
+      await refreshCuratedMarketplace(catalog, 1_000);
+      const officialOrder = catalog.collections()[0]?.pluginIds ?? [];
+      expect(officialOrder[0]).toBe(rising);
+      expect(officialOrder.indexOf(rising)).toBeLessThan(
+        officialOrder.indexOf(quiet),
+      );
+      const risingEntry = (await catalog.search("")).find(
+        (entry) => entry.pluginId === rising,
+      );
+      expect(risingEntry?.collections).toEqual([
+        { id: "bb-official", rank: 0 },
+      ]);
     });
 
     it("leaves an entry the sidecar does not name uncounted", async () => {
