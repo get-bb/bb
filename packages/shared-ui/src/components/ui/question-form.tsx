@@ -84,17 +84,15 @@ function QuestionOptionRow({
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onSelect}
       className={cn(
-        "flex w-full rounded-md text-left transition-colors",
-        density === "compact"
-          ? "items-center gap-2 px-1.5 py-0.5"
-          : "items-start gap-2.5 px-2.5 py-1.5",
+        "flex w-full gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
+        density === "compact" ? "items-center" : "items-start",
         checked ? "bg-surface-selected" : "hover:bg-state-hover",
       )}
     >
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center border",
-          density === "compact" ? "size-3.5" : "mt-0.5 size-4",
+          "flex size-4 shrink-0 items-center justify-center border",
+          density === "compact" ? undefined : "mt-0.5",
           multiSelect ? "rounded" : "rounded-full",
           checked
             ? "border-primary bg-primary text-primary-foreground"
@@ -105,7 +103,7 @@ function QuestionOptionRow({
       </span>
       {density === "compact" ? (
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="shrink-0 text-xs text-foreground/90">{label}</span>
+          <span className="shrink-0 text-sm text-foreground">{label}</span>
           {description ? (
             <span className="min-w-0 truncate text-xs text-muted-foreground">
               {description}
@@ -128,8 +126,8 @@ function QuestionOptionRow({
         <kbd
           aria-hidden="true"
           className={cn(
-            "shrink-0 font-normal text-subtle-foreground",
-            density === "compact" ? "text-2xs" : "mt-0.5 text-xs",
+            "shrink-0 text-xs font-normal text-subtle-foreground",
+            density === "compact" ? undefined : "mt-0.5",
           )}
         >
           {shortcut.label}
@@ -272,7 +270,7 @@ function QuestionInputBlock({
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
       {!showPrompt ? null : density === "compact" ? (
-        <div className="text-xs text-foreground">{question.prompt}</div>
+        <div className="text-sm text-foreground">{question.prompt}</div>
       ) : question.prompt ? (
         <div className="text-sm font-semibold text-foreground">
           {question.prompt}
@@ -461,8 +459,7 @@ export function QuestionForm({
   if (!currentQuestion) return null;
 
   const currentState = answerStateFor(formState, currentQuestion);
-  const compactButtonClass =
-    density === "compact" ? "h-6 px-2 text-xs font-normal" : undefined;
+  const compactButtonClass = density === "compact" ? "font-normal" : undefined;
   const cancelButton = (
     <Button
       type="button"
