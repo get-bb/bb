@@ -308,6 +308,17 @@ async function loadExtension(path) {
       handlers.push(handler);
       extensionHandlers.set(type, handlers);
     },
+    sendMessage(message, options) {
+      const custom = { role: "custom", ...message };
+      event({ type: "message_start", message: custom });
+      event({ type: "message_end", message: custom });
+      if (isStreaming) {
+        steering.push(message.content);
+        if (holdAbort) holdAbort("steer");
+      } else if (options?.triggerTurn) {
+        void runPrompt(message.content).then(drainFollowUps);
+      }
+    },
     getActiveTools: () => [...activeTools],
     setActiveTools(names) {
       activeTools = [...names];
@@ -668,7 +679,7 @@ async function handle(command) {
     case "compact": {
       isCompacting = true;
       event({ type: "compaction_start", reason: "manual" });
-      await sleep(5);
+      await sleep(Number(process.env.FAKE_PI_COMPACT_DELAY_MS ?? 5));
       if (turnCounter === 0) {
         const errorMessage =
           "Compaction failed: Nothing to compact (session too small)";

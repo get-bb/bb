@@ -27,6 +27,26 @@ What lives here:
   option. Helper sessions without a dialog handler automatically cancel dialogs
   so extensions cannot block helper startup waiting for user input.
 
+## Background tasks
+
+Every BB Pi session includes `background_task` and `background_task_cancel`.
+Launch a shell command with a description, optional cwd, and optional timeout;
+the tool returns promptly with a task ID and output path. BB renders its task
+card and delivers a bounded completion message automatically, including when the
+agent is idle. Full stdout/stderr stays on disk.
+
+Tasks survive ordinary turn completion. Stopping or discarding the session kills
+its process trees and suppresses completion wakes. A pipe held by the bridge owns
+each detached worker: bridge failure closes the pipe and the worker terminates its
+own process group. Restart recovery reports pending registry entries as failed;
+it never kills a process by an unverified, persisted PID. Each BB thread has its
+own registry under `.bb-pi-bg`, including when threads share a workspace. Forks do
+not inherit running work; execution-setting changes within a thread preserve it.
+A replacement defers its reset until the next real turn, settling the old tracking
+generation and reopening running tasks for the same family in that turn.
+See the [Pi provider skill](skills/pi-provider/SKILL.md#background-shell-tasks) for
+CLI usage and the tool/lifecycle contract.
+
 ## Skills
 
 Pi's skill layout is the plugin's fact, so bb lists pi's skills beside its

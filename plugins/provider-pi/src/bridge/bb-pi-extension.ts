@@ -273,6 +273,9 @@ export default function bbExtension(pi) {
         }
         return { sessionFile: message.targetFile };
       }
+      case "background-task-completion":
+        pi.sendMessage({ customType: "bb-background-task", content: message.text, display: true }, { deliverAs: "steer", triggerTurn: true });
+        return { delivered: true };
       case "leaf":
         return { leafId: currentLeafId() };
       case "model-scope":
