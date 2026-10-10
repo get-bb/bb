@@ -128,8 +128,8 @@ function QuestionOptionRow({
         <kbd
           aria-hidden="true"
           className={cn(
-            "shrink-0 text-xs font-normal text-subtle-foreground",
-            density === "compact" ? undefined : "mt-0.5",
+            "shrink-0 font-normal text-subtle-foreground",
+            density === "compact" ? "text-2xs" : "mt-0.5 text-xs",
           )}
         >
           {shortcut.label}
@@ -462,7 +462,7 @@ export function QuestionForm({
 
   const currentState = answerStateFor(formState, currentQuestion);
   const compactButtonClass =
-    density === "compact" ? "h-6 px-2 text-xs" : undefined;
+    density === "compact" ? "h-6 px-2 text-xs font-normal" : undefined;
   const cancelButton = (
     <Button
       type="button"

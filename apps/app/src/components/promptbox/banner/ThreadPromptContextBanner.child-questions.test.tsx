@@ -241,6 +241,18 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
   });
 
+  it("drops the bottom collapse row while a question is open", () => {
+    render(bannerElement(section([newest])));
+    expect(
+      screen.getByRole("button", { name: /^Collapse \d+ child threads?$/ }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+
+    expect(
+      screen.queryByRole("button", { name: /^Collapse \d+ child threads?$/ }),
+    ).toBe(null);
+  });
+
   it("returns to the row list from the back button and focuses that row", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));

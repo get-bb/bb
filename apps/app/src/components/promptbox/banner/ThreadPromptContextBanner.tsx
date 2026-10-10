@@ -459,7 +459,7 @@ const CHILD_THREAD_ROW_CLASS =
   "flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-foreground/90 underline-offset-2 hover:underline";
 
 const CHILD_QUESTION_STEP_BUTTON_CLASS =
-  "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "flex size-6 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 function ChildThreadsBody({
   items,
@@ -572,31 +572,16 @@ function ChildQuestionBody({
   const position = `${index + 1} of ${total}`;
   return (
     <div className="px-3 pb-1 pt-1">
-      <div className="grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 text-xs">
+      <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
         <button
           ref={backButtonRef}
           type="button"
           onClick={onBack}
-          className="-ml-1.5 flex h-6 items-center gap-0.5 justify-self-start rounded-md pl-0.5 pr-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="-ml-1.5 flex h-6 items-center gap-0.5 justify-self-start rounded-md pl-0.5 pr-1.5 text-foreground/90 hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
           Back
         </button>
-        <span className="flex min-w-0 justify-center">
-          <ChildQuestionSummary
-            childTitle={
-              <NavLink
-                to={current.href}
-                className="no-underline underline-offset-2 hover:underline"
-              >
-                {current.childTitle}
-              </NavLink>
-            }
-            question={formatPendingInteractionSummary({
-              interaction: current.interaction,
-            })}
-          />
-        </span>
         {total > 1 ? (
           <div className="-mr-1.5 flex items-center justify-self-end">
             <button
@@ -629,6 +614,17 @@ function ChildQuestionBody({
           </div>
         ) : null}
       </div>
+      <p className="mt-1 text-xs text-foreground">
+        <NavLink to={current.href} className="underline underline-offset-2">
+          {current.childTitle}
+        </NavLink>
+        :{" "}
+        <span className="text-muted-foreground">
+          {formatPendingInteractionSummary({
+            interaction: current.interaction,
+          })}
+        </span>
+      </p>
       <span aria-live="polite" className="sr-only">
         {total > 1 ? `Question ${position}` : ""}
       </span>
@@ -1068,13 +1064,15 @@ function ActiveChildThreadsCard({
             onOpenQuestion={openQuestionById}
           />
         )}
-        <PromptStackCollapseRow
-          buttonRef={focus.collapseRef}
-          className="rounded-none"
-          controlsId={SECTION_IDS.childThreads.body}
-          label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
-          onCollapse={focus.onCollapseClick}
-        />
+        {currentQuestion ? null : (
+          <PromptStackCollapseRow
+            buttonRef={focus.collapseRef}
+            className="rounded-none"
+            controlsId={SECTION_IDS.childThreads.body}
+            label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
+            onCollapse={focus.onCollapseClick}
+          />
+        )}
       </AnimatedBody>
     </PromptStackCard>
   );
