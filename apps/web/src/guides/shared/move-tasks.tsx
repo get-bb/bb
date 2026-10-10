@@ -17,12 +17,13 @@ export type MoveTasksTool = {
   find: string;
   pause: string;
   checkOriginals: ReactNode;
+  changeNote: string;
   troubleshooting: GuideFaq[];
   faq: GuideFaq[];
 };
 
 function movePrompt(tool: MoveTasksTool): string {
-  return `Move my ${tool.name} ${tool.tasks} into bb automations, one automation each, then switch each one over: test it, turn it on in bb, and pause the original so nothing runs twice. Work everything out from my files. Only ask me when something is missing or a step fails twice.
+  return `Move my ${tool.name} ${tool.tasks} into bb automations, one automation each, then switch each one over: test it, turn it on in bb, and pause the original so nothing runs twice. Work everything out from my files. Only ask me when something is missing, a step fails twice, or before you quit an app I have open.
 Guide: https://getbb.app/guides/${tool.slug}
 
 Move every active one. Use this computer's timezone for every schedule: the part of \`readlink /etc/localtime\` after zoneinfo/.
@@ -148,7 +149,7 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
             Only one thing: it pauses each original after its bb automation
             passes a test, so nothing runs twice. It backs up the file first
             and leaves the prompt and schedule alone, so you can switch an
-            original back on in {tool.app}.
+            original back on in {tool.app}.{tool.changeNote}
           </p>
         ),
       },
@@ -186,7 +187,10 @@ export const MOVE_TASKS_TOOLS = {
    - Cloud routines live on my claude.ai account. List them with Claude Code's /schedule list, using my claude.ai login: \`claude -p "/schedule list"\`. Get each one's prompt, schedule, repository, and model. Each cloud run gets a fresh clone, so use a worktree for these. If you can't reach them, skip them and say so.
    - Skip /loop tasks. They end with their session.
    Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
-    pause: `   Pause the original. For a local routine, copy its scheduled-tasks.json to scheduled-tasks.before-bb.json once, then set only that entry's "enabled" to false with a JSON-aware edit, and read the file back. For a cloud routine, turn it off with /schedule update in \`claude -p\`.`,
+    pause: `   Pause the original. For a cloud routine, turn it off with /schedule update in \`claude -p\`.
+   The Claude desktop app reads scheduled-tasks.json only when it starts, so pause the local routines together after the last test: quit the app with \`osascript -e 'quit app "Claude"'\` and wait until it has closed, copy scheduled-tasks.json to scheduled-tasks.before-bb.json, set each moved entry's "enabled" to false with a JSON-aware edit, read the file back, then reopen the app with \`open -a Claude\`.`,
+    changeNote:
+      " To pause local routines, it quits and reopens the Claude Code desktop app.",
     checkOriginals: (
       <li>
         In the Claude Code desktop app, open <strong>Routines</strong>. Each
@@ -210,10 +214,10 @@ export const MOVE_TASKS_TOOLS = {
         question: "An original is still running",
         answer: (
           <p>
-            The Claude Code desktop app can put a routine back if it was open
-            while your agent paused it. Open it on <strong>Routines</strong>{" "}
-            and set it to <strong>Paused</strong>. For a cloud routine, turn off
-            the switch on its page at claude.ai/code/routines.
+            The Claude Code desktop app picks up a pause when it restarts. Quit
+            and reopen it, or open the routine on <strong>Routines</strong> and
+            set it to <strong>Paused</strong>. For a cloud routine, turn off the
+            switch on its page at claude.ai/code/routines.
           </p>
         ),
       },
@@ -287,7 +291,8 @@ export const MOVE_TASKS_TOOLS = {
    rrule is the schedule, cwds the project folders, and execution_environment is worktree or local. If that table doesn't exist, read each ~/.codex/automations/<id>/automation.toml instead; it has the same fields.
    A task with a target_thread_id runs inside a Codex chat. bb can't continue that chat, so move it as a regular automation and note it.
    Check: list each task's name, schedule in plain words, project folder, local or worktree, and model.`,
-    pause: `   Pause the original: back up the database once with \`sqlite3 "${CODEX_DB_SHELL}" ".backup ${CODEX_DB_SHELL.replace(".db", ".before-bb.db")}"\`, then run \`sqlite3 "${CODEX_DB_SHELL}" "UPDATE automations SET status = 'PAUSED' WHERE id = '<task id>'"\`, and read its status back.`,
+    pause: `   Pause the original. The app keeps each task twice: in ~/.codex/automations/<task id>/automation.toml and in the database, and it restores the database from the TOML file. So change both. Copy the TOML file to ~/.codex/automations-before-bb/<task id>.toml, set its status line to status = "PAUSED", then run \`sqlite3 "${CODEX_DB_SHELL}" "UPDATE automations SET status = 'PAUSED' WHERE id = '<task id>'"\`, and read both back.`,
+    changeNote: "",
     checkOriginals: (
       <li>
         In the ChatGPT desktop app, open <strong>Scheduled</strong>. Each
