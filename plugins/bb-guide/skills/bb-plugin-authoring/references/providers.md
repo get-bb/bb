@@ -185,8 +185,9 @@ Contributions override the host shell environment. If multiple plugins return
 the same name, the earlier registration wins and BB logs the conflict. A
 resolver that throws, times out after five seconds, or returns invalid entries
 contributes nothing for that command without blocking other plugins. BB passes
-values to the provider and reports them as-is in `provider.env-resolved`
-timeline events, provider output, and diagnostics.
+the real values to the provider but masks every value in
+`provider.env-resolved` timeline events, which keep only each entry's name,
+source, and reason. The provider can still print a value in its own output.
 
 When the contributed environment supplies credentials that replace a local
 login, pair the resolver with

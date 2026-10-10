@@ -89,6 +89,13 @@ describe("parseOperationMessage operation titles", () => {
           value: { masked: true },
           reason: "Authenticate provider traffic",
         },
+        {
+          name: "GH_TOKEN",
+          source: { core: "machine-git" },
+          value: { masked: true },
+          reason: "Server gh login",
+        },
+        { name: "BB_THREAD_ID", source: "shell", value: { masked: true } },
       ],
     };
     const message = parseOperationMessage(
@@ -107,9 +114,30 @@ describe("parseOperationMessage operation titles", () => {
     expect(message).toMatchObject({
       kind: "operation",
       title: "Provider environment resolved",
-      detail:
+      detail: [
         "PLUGIN_TOKEN=•••••• (auth-proxy) — Authenticate provider traffic",
+        "GH_TOKEN=•••••• (machine-git) — Server gh login",
+        "BB_THREAD_ID=•••••• (shell)",
+      ].join("\n"),
     });
+  });
+
+  it("still renders plaintext values from provider environment events recorded before masking", () => {
+    const event: ThreadEvent = {
+      type: "provider.env-resolved",
+      threadId: THREAD_ID,
+      providerThreadId: "provider-thread-1",
+      scope: { kind: "thread" },
+      entries: [{ name: "PATH", source: "shell", value: "/usr/bin" }],
+    };
+
+    expect(
+      parseOperationMessage(
+        event,
+        { id: "event-legacy-provider-env", seq: 1, createdAt: 1 },
+        { includeDiagnosticOperations: true, threadName: "" },
+      ),
+    ).toMatchObject({ detail: "PATH=/usr/bin (shell)" });
   });
 
   describe("provider-unhandled", () => {
