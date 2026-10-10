@@ -50,6 +50,7 @@
     // The docs' UI-anatomy manifest is the contract this test checks the real
     // app components against, so a manifest edit must re-run it.
     "@bb/app#test": {
+      "env": ["BB_CI_TEST_SHARD"],
       "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -677,6 +678,7 @@
     // condition that lets vitest read `src/` does not apply inside that
     // bundling step — so the SDK dist must exist before the suite runs.
     "@bb/server#test": {
+      "env": ["BB_CI_TEST_SHARD"],
       "dependsOn": [
         "@bb/agent-runtime#generate:test-bridges",
         "//#ensure-native-modules",
