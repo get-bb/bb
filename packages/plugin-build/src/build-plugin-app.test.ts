@@ -286,7 +286,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.ts"),
       'import "./app.css";\n' +
-        'export const utilityClass = "flex-col";\n' +
+        'export const utilityClass = "flex-col hover:underline focus:opacity-50 group-hover:block peer-disabled:opacity-50 space-y-3";\n' +
         'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
@@ -310,6 +310,13 @@ describe("plugin app runtime shim", () => {
     expect(css).toContain(`${scope} ${sibling}`);
     expect(css).not.toContain(`${scope}${sibling}`);
     expect(css).not.toContain("@scope");
+    expect(css).toContain(`${scope} .hover\\:underline:hover`);
+    expect(css).toContain(`${scope}.hover\\:underline:hover`);
+    expect(css).toContain(`${scope} .focus\\:opacity-50:focus`);
+    expect(css).not.toContain(`:is(${scope} .hover`);
+    expect(css).not.toContain(`:is(${scope} .group-hover`);
+    expect(css).not.toContain(`:is(${scope} .peer-disabled`);
+    expect(css).not.toContain(`:is(${scope} .space-y`);
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).not.toContain(`${scope}.bb71-authored-decoration`);
     expect(css.indexOf(".bb71-authored-decoration{")).toBeGreaterThan(
