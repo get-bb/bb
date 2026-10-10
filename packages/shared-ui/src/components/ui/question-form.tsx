@@ -16,7 +16,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type ReactNode,
   type RefObject,
 } from "react";
 import { Button } from "./button";
@@ -215,7 +214,6 @@ function QuestionTabs({
 }
 
 interface QuestionInputBlockProps {
-  actions: ReactNode;
   density: QuestionFormDensity;
   disabled: boolean;
   question: Question;
@@ -229,7 +227,6 @@ interface QuestionInputBlockProps {
 }
 
 function QuestionInputBlock({
-  actions,
   density,
   disabled,
   question,
@@ -273,12 +270,7 @@ function QuestionInputBlock({
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
       {density === "compact" ? (
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 truncate text-xs text-foreground">
-            {question.prompt}
-          </div>
-          {actions}
-        </div>
+        <div className="text-xs text-foreground">{question.prompt}</div>
       ) : question.prompt ? (
         <div className="text-sm font-semibold text-foreground">
           {question.prompt}
@@ -545,13 +537,6 @@ export function QuestionForm({
       <div>
         <QuestionInputBlock
           key={currentQuestion.id}
-          actions={
-            <div className="flex shrink-0 items-center gap-1">
-              {cancelButton}
-              {backButton}
-              {advanceButton}
-            </div>
-          }
           density={density}
           disabled={disabled}
           question={currentQuestion}
@@ -568,7 +553,13 @@ export function QuestionForm({
           shortcuts={shortcuts}
         />
       </div>
-      {density === "compact" ? null : (
+      {density === "compact" ? (
+        <div className="mt-1.5 flex shrink-0 items-center justify-end gap-1">
+          {cancelButton}
+          {backButton}
+          {advanceButton}
+        </div>
+      ) : (
         <div className="mt-3 flex shrink-0 items-center justify-between gap-2">
           {cancelButton}
           <div className="flex items-center gap-2">

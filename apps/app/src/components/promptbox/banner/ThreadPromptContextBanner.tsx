@@ -572,24 +572,24 @@ function ChildQuestionBody({
   const position = `${index + 1} of ${total}`;
   return (
     <div className="px-3 pb-1 pt-1">
-      <div className="flex min-w-0 items-center gap-1 text-xs">
+      <div className="grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 text-xs">
         <button
           ref={backButtonRef}
           type="button"
-          aria-label="Back to child threads"
           onClick={onBack}
-          className={cn("-ml-1.5", CHILD_QUESTION_STEP_BUTTON_CLASS)}
+          className="-ml-1.5 flex h-6 items-center gap-0.5 justify-self-start rounded-md pl-0.5 pr-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
+          Back
         </button>
         <NavLink
           to={current.href}
-          className="min-w-0 truncate text-foreground/90 no-underline underline-offset-2 hover:underline"
+          className="min-w-0 truncate text-center text-foreground/90 no-underline underline-offset-2 hover:underline"
         >
           {current.childTitle}
         </NavLink>
         {total > 1 ? (
-          <div className="-mr-1.5 ml-auto flex shrink-0 items-center">
+          <div className="-mr-1.5 flex items-center justify-self-end">
             <button
               type="button"
               aria-label="Previous question"

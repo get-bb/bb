@@ -180,7 +180,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Back to child threads" }),
+      screen.getByRole("button", { name: "Back" }),
     );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
@@ -245,9 +245,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Back to child threads" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
