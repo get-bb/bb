@@ -886,6 +886,45 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("preserves video HTML when autosaving an unrelated prose edit", async () => {
+    const video = `<div style="margin-block: 1rem;">
+  <video src="/rewinding-agents/partial-payments.mp4" autoplay loop muted playsinline preload="metadata" poster="/rewinding-agents/partial-payments-poster.jpg" width="1920" height="1080" aria-label="Two agents implement partial payments; rewinding Agent A preserves Agent B’s payment" style="width: 100%; height: auto; display: block; border-radius: 0.5rem;"></video>
+</div>`;
+    const saveNote = vi.fn((_input: unknown) => ({
+      outcome: "written",
+      sha256: "next-sha",
+    }));
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "personal/wiki-page.md" },
+      {
+        rpc: {
+          listNotes: () => listNotesResult([]),
+          readNote: () => ({
+            content: `# Wiki page\n\n${video}\n\nOriginal body.`,
+            sha256: "sha",
+          }),
+          preparePreview: () => preview,
+          renameToTitle: () => ({ path: "wiki-page.md" }),
+          saveNote,
+        },
+      },
+    );
+    const body = await slot.findByText("Original body.");
+    expect(slot.container.querySelector(".tiptap video")).toBeNull();
+    body.textContent = "Edited body.";
+    fireEvent.input(body);
+    await waitFor(() => expect(saveNote).toHaveBeenCalled(), {
+      timeout: 2_000,
+    });
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: expect.stringContaining(video),
+    });
+    expect(saveNote.mock.calls.at(-1)?.[0]).toMatchObject({
+      content: expect.stringContaining("Edited body."),
+    });
+  });
+
   it("hides and preserves YAML frontmatter when editing a document", async () => {
     const frontmatter = [
       "---\r\n",
@@ -1536,7 +1575,9 @@ describe("Docs nav panel", () => {
     const baselines = parse.mock.calls
       .map(([root]) => root)
       .filter((root) =>
-        root.textContent?.includes("Original formatted baseline"),
+        root.textContent?.includes(
+          "Original <strong>formatted baseline</strong>",
+        ),
       );
     expect(baselines.length).toBeGreaterThan(0);
     for (const root of baselines)
