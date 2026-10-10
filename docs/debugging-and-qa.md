@@ -1,5 +1,6 @@
 # Debugging And QA
 
+- `pnpm dev` and `pnpm start:worktree` save the absolute source checkout path in `<data dir>/bb-dev-instance.json`. Storage reports use this record to identify development data even after the checkout is removed. Older instances can be identified from `bb-app-runtime.json` or hash-verified path matches; unknown source paths are reported explicitly.
 - `pnpm dev` prints the active frontend URL, server API URL, host daemon port, data dir, and logs dir. Do not assume fixed dev ports.
 - `pnpm mobile:apk:dev` builds a standalone ARM64 Android APK at `apps/mobile/build-output/bb-dev.apk`, named **bb dev** with an orange icon and separate package/data from the installed app. Append `-- x86_64` for an Intel emulator. See [the mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification) for prerequisites, installation, and per-thread delivery.
 - `pnpm start:worktree` builds production artifacts and serves the optimized app bundle from the checkout-specific dev server URL, while keeping the same dev data directory and deterministic server/host-daemon ports. It has no Vite dev server or hot reload.
@@ -9,7 +10,7 @@
 - The packaged app defaults to server/frontend `:38886`, host daemon `:38887`, data dir `~/.bb/`, and logs under `~/.bb/logs/`.
 - `bb-app` (including `pnpm start`), `bb-server`, and `bb-host-daemon` capture service stdout and stderr directly in `logs/server-stdio.log` and `logs/host-daemon-stdio.log` under the selected data directory. These append across restarts and are separate from rotating application logs. Use `tail -F` on these files for console output and early startup errors; service output is no longer forwarded to the launcher's terminal.
 - Connect's `tunnel closed` warnings include the last transport error's original message and code, `connectedDurationMs`, and `lastHeartbeatAckAgeMs`. A null duration means the opening handshake never completed; a null acknowledgement age means no heartbeat acknowledgement arrived on that connection. They also carry the Cloudflare `colo` and `ray` the tunnel connected through, and `traffic`: open HTTP and WebSocket streams, bytes each way, how long each direction had been quiet, and bytes still buffered for sending. `tunnel connected` and `handshake timed out` lines carry the dial's timings in milliseconds since dialing: `lookupMs`, `connectMs`, `tlsMs`, and `upgradeMs` (the gate's 101 response). A timed-out dial with `tlsMs` set but no `upgradeMs` reached Cloudflare and was waiting on the gate. These warnings appear in the server logs and `<dataDir>/plugins/connect/logs/plugin.log`.
-- The bb connect gate answers every proxied request within the response-head timeout (30 s, 90 s for voice transcription), counted from when the Worker receives it. A request that misses it gets a 504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`. Workers Logs keeps only about 1% of gate requests, so the gate also writes these delays to the Analytics Engine dataset `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging): `blob1` is `stall` for a 504 or `slow` for a tunnel dial still unanswered after 3 s, then `blob2` stage, `blob3` method, `blob4` host, `blob5` path, `double1` elapsed milliseconds, and `double2` tunnel-object attempts (more than 1 means the object restarted and the gate replayed the dial). Query it with the Analytics Engine SQL API using a token with Account Analytics Read, for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp DESC`.
+- The bb connect gate answers every proxied request within the response-head timeout (30 s, 90 s for voice transcription), counted from when the Worker receives it. A request that misses it gets a 504 naming the stuck stage: `routing`, `tunnel-object`, `request-body`, `response-head`, or `finishing`. Workers Logs keeps only about 1% of gate requests, so the gate also writes these delays to the Analytics Engine dataset `bb_connect_gate_events` (`bb_connect_gate_events_staging` on staging): `blob1` is `stall` for a 504 or `slow` for a tunnel dial still unanswered after 3 s, then `blob2` stage, `blob3` method, `blob4` host, `blob5` path, `double1` elapsed milliseconds, and `double2` tunnel-object attempts (more than 1 means the object restarted and the gate replayed the dial). For a stall that reached the tunnel object, the gate then asks that object for its tunnel's state: `blob6` is `connected`, `disconnected`, or `unknown` (the object did not answer within 2 s), and `double3` is how many milliseconds ago the tunnel's last heartbeat was answered, or -1 when there is none. A bb heartbeats every 20 s, so an age of minutes means the tunnel is dead while the object still holds it open; a recent age means the bb is connected but its server did not answer. Routing stalls and `slow` events leave `blob6` empty and `double3` at -1. The tunnel object also writes a `tunnel-gap` event to the same dataset each time a server's tunnel opens after a period with none: `blob2` is how the previous tunnel ended (`closed`, `lost`, or `unreported` when its close never reached the object), `blob3` is `replaced-live` when that previous tunnel had itself replaced a working one, `blob4` is the host, `double1` is how long the server had no tunnel in milliseconds (measured from the previous open when the close was unreported), and `double2` is how long the previous tunnel lasted, or -1 when unreported. A bb whose own abandoned dial replaced its working tunnel shows as `replaced-live` with a short or unreported previous tunnel (on staging the abandoned tunnel was reported `lost` about 10 s after it opened); when `double1` plus `double2` is close to 300,000, that bb then waited out the five-minute takeover backoff. Query it with the Analytics Engine SQL API using a token with Account Analytics Read, for example `SELECT timestamp, blob1, blob2, blob5, double2 FROM bb_connect_gate_events WHERE blob4 = '<handle>.getbb.app' ORDER BY timestamp DESC`.
 - Entity IDs in URLs (`proj_*`, `thr_*`) are primary keys. Query them directly against the active data dir: `sqlite3 <data>/bb.db "SELECT * FROM threads WHERE id = 'thr_xxx';"`.
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
 - Use `curl` against the server API to isolate frontend issues from server behavior.
@@ -796,6 +797,27 @@ cannot start collection. Turning it off restores normal logging thresholds,
 stops the sampler and flushes the in-flight profile; existing files remain.
 The launch flag only grants permission and still requires a restart to change.
 
+### Turn traces
+
+While both gates are on, every message sent through the send API also writes
+one `Turn trace` info line once its first streamed output is stored and
+broadcast. `turnTrace.spans` holds milliseconds since the server received the
+send: `dispatch.checkpoint.done`, `runtimeConfig.*` (runtime configuration
+assembly, including the daemon reads it waits on), `command.sent`,
+`send.responded`, `command.settled`, and `firstOutput.batchReceived`,
+`firstOutput.committed`, `firstOutput.notified` for the first event batch that
+carries an agent message, reasoning, or plan delta. `turnTrace.rpcs` lists every
+daemon RPC the send awaited with its start offset and duration.
+`turnTrace.daemon.spans` are the daemon's own offsets from receiving
+`turn.submit`: `lanes.entered`, `skills.staged`, `runtime.ready`,
+`input.staged`, `bridge.turnStarted`, and `events.flushed`. Server and daemon
+offsets use different clocks, so compare durations rather than offsets:
+`command.settled - command.sent - daemon events.flushed` is the round trip
+spent on the network. `outcome` is `output`, `not-sent` (queued or refused),
+`command-failed`, `completed-without-output`, `superseded` by a newer traced
+send on the thread, or `no-output` after two minutes. Queue drains, retries,
+and other server-initiated dispatches are not traced.
+
 ### Diagnose a captured stall
 
 1. Record the affected request path and approximate UTC time. Find its
@@ -826,3 +848,23 @@ The launch flag only grants permission and still requires a restart to change.
 4. Repeat with a small control workload. Expected long polls can generate
    slow-request records without blocking the event loop; require corroborating
    loop delay, stage timings or sampled execution before calling them stalls.
+
+### Workspace context read limits
+
+The server supplies `host.read_workspace_agent_context` with project skill
+read policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
+`SKILL.md`, and 32 MiB total JSON-encoded content strings. The aggregate budget
+allows several large skills in one catalog while bounding retained content.
+It is a pragmatic starting policy, not a measured catalog-size requirement or
+a transport ceiling. JSON quotes and escapes count toward this budget;
+directory metadata, shared skill discovery, and workspace instructions do not.
+The daemon reads files sequentially with bounded buffers. Oversized files and
+files exceeding the remaining budget are skipped with server warnings; smaller
+later files can still fit. Enumeration remains sorted and reports count
+truncation separately. Only exact-case `SKILL.md` files are eligible, and
+symlinked skill directories/files and roots escaping the workspace are rejected
+or skipped before their contents are read.
+
+Command lookup sets `includeAgentInstructions: false`, so an invalid
+`.bb/AGENTS.md` cannot break the command catalog. Turn preparation sets it to
+`true` and continues to report instruction-read errors.

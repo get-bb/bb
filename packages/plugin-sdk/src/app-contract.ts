@@ -11,6 +11,7 @@ import type {
   ProviderInfo,
   ReasoningLevel,
   ServiceTier,
+  SessionOptionSelections,
   EnvironmentWorkspaceDisplayKind,
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
@@ -23,6 +24,8 @@ import type {
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
+  PluginThreadMetadataListArgs,
+  PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataResult,
   ThreadPluginMetadataUpdateArgs,
@@ -185,203 +188,6 @@ export interface PluginSidebarFooterActionProps {}
 export interface ExperimentalSidebarFooterDisclosureProps {
   /** Hide this disclosure without affecting another plugin's open disclosure. */
   dismiss(): void;
-}
-
-/** Display and accessibility metadata for a host-owned sidebar shortcut. */
-export interface ExperimentalSidebarNavigationShortcut {
-  label: string;
-  ariaKeyShortcuts: string;
-}
-
-/** Host-owned behavior represented by one sidebar navigation item. */
-export type ExperimentalSidebarNavigationAction =
-  | { kind: "new-thread" }
-  | { kind: "search-threads" }
-  | { kind: "open-extensions" }
-  | { kind: "open-skills" }
-  | {
-      kind: "open-plugin-panel";
-      pluginId: string;
-      panelId: string;
-    };
-
-/**
- * Semantic icon identity for one sidebar navigation item. Render it with
- * {@link PluginSdkApp.experimental_SidebarNavigationIcon} to match bb's
- * artwork, including panel icons with plugin branding as their fallback.
- */
-export type ExperimentalSidebarNavigationIcon =
-  | { kind: "host"; name: "new-thread" | "search" | "extensions" | "skills" }
-  | { kind: "plugin"; pluginId: string; icon: string | null };
-
-/** One host-owned destination or action a plugin may arrange. */
-export interface ExperimentalSidebarNavigationItem {
-  /**
-   * Arrangement key, stable across reloads: `__bb__/new-thread`,
-   * `__bb__/search-threads`, `__bb__/extensions`, `__bb__/skills`,
-   * `__bb__/automations`, or `<pluginId>/<panelId>`. The same keys appear in
-   * the `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
-   * settings.
-   */
-  id: string;
-  label: string;
-  icon: ExperimentalSidebarNavigationIcon;
-  action: ExperimentalSidebarNavigationAction;
-  isDisabled: boolean;
-  /**
-   * False when the user hid the item from the sidebar. Draw hidden items in an
-   * overflow menu rather than dropping them, so they stay reachable.
-   */
-  isVisible: boolean;
-  /**
-   * A plugin panel remembered from the last session whose bundle has not
-   * registered yet. Activating it does nothing until it loads.
-   */
-  isLoading: boolean;
-  /**
-   * The plugin that contributed this panel; null for bb's own items. Gates
-   * `openDetails` and `disablePlugin`.
-   */
-  pluginId: string | null;
-  shortcut: ExperimentalSidebarNavigationShortcut | null;
-  /**
-   * The panel's `experimental_sidebarAccessory`, already wrapped in the host's
-   * crash boundary. Null for bb's items, panels without an accessory, and on
-   * compact viewports. Keep it within one line, about 4rem by 1.25rem.
-   */
-  experimental_Accessory: ComponentType | null;
-}
-
-/** How the host should activate a sidebar navigation item. */
-export interface ExperimentalSidebarNavigationActivationOptions {
-  openInSplit: boolean;
-}
-
-/**
- * Host behavior for sidebar navigation items (see
- * {@link ExperimentalSidebarNavigationState}). Unknown item ids are ignored.
- * Calls made after the calling component unmounts do nothing.
- */
-export interface ExperimentalSidebarNavigationActions {
-  /**
-   * Run the item's host behavior and close the mobile sidebar drawer.
-   * `openInSplit` is ignored where splits are unavailable, and disabled or
-   * loading items do nothing.
-   */
-  activate(
-    itemId: string,
-    options: ExperimentalSidebarNavigationActivationOptions,
-  ): void;
-  /** Hide or show one item. Persists to `sidebar.visiblePluginPanels`. */
-  setVisible(itemId: string, isVisible: boolean): void;
-  /**
-   * Save a new order. Pass item ids in the order you want; unknown ids are
-   * dropped and ids you leave out keep their relative order after the ones
-   * you pass. Persists to `sidebar.pluginPanelOrder`.
-   */
-  setOrder(itemIds: readonly string[]): void;
-  /** Open bb's customize editor, which reorders and hides items. */
-  openCustomize(): void;
-  /** Open the owning plugin's details. Does nothing when `pluginId` is null. */
-  openDetails(itemId: string): void;
-  /**
-   * Disable the owning plugin, leave its panel if it is open, and show a
-   * toast. Rejects after the host's error toast when disabling fails. Does
-   * nothing when `pluginId` is null.
-   */
-  disablePlugin(itemId: string): Promise<void>;
-}
-
-/** What {@link PluginSdkApp.experimental_useSidebarNavigation} returns. */
-export interface ExperimentalSidebarNavigationState {
-  /** Every item in the user's saved order, visible and hidden. */
-  items: readonly ExperimentalSidebarNavigationItem[];
-  /** The item whose destination the route currently shows, or null. */
-  activeItemId: string | null;
-  /**
-   * True while the user holds the app command modifier, when bb's own rows
-   * reveal their `shortcut` labels. Show yours at the same time.
-   */
-  isShortcutModifierHeld: boolean;
-  actions: ExperimentalSidebarNavigationActions;
-}
-
-/**
- * Per-item drag-to-split support (see
- * {@link PluginSdkApp.experimental_useSidebarNavigationSplit}). Same contract
- * as {@link PluginSidebarThreadSplit}.
- */
-export interface ExperimentalSidebarNavigationSplit {
-  /**
-   * Spread onto the item's interactive element. Empty when the item cannot
-   * open in a pane, so spreading it is always safe.
-   */
-  splitProps: {
-    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
-  };
-  /**
-   * False for items that cannot open in a pane (Search, Plugins, Skills), on
-   * compact viewports, and when splits are unavailable.
-   */
-  isAvailable: boolean;
-  /** Where this item's destination sits in the split layout, or null. */
-  layout: { panes: readonly PluginSidebarSplitPane[] } | null;
-}
-
-/** Options for {@link PluginSdkApp.experimental_useSidebarNavigationSplit}. */
-export interface ExperimentalSidebarNavigationSplitOptions {
-  /**
-   * `sidebar` (the default) engages the drag once the pointer leaves the
-   * sidebar, so a row list with its own drag-to-reorder keeps working.
-   * `distance` engages after a short movement in any direction; use it for
-   * rows inside a menu or popover that covers the main area.
-   */
-  activation?: "sidebar" | "distance";
-  /** Called when the drag engages, for example to close the menu the row is in. */
-  onDragStart?: () => void;
-}
-
-/** Props for {@link PluginSdkApp.experimental_SidebarNavigationIcon}. */
-export interface ExperimentalSidebarNavigationIconProps {
-  icon: ExperimentalSidebarNavigationIcon;
-  className?: string;
-}
-
-/**
- * Props passed to an `experimental_sidebarNavigation` component. Read the
- * items and their actions with
- * {@link PluginSdkApp.experimental_useSidebarNavigation}.
- */
-export interface ExperimentalSidebarNavigationProps {
-  isCompactViewport: boolean;
-  /**
-   * Renders bb's bundled Navigation plugin, or nothing while it is disabled.
-   * Kept for plugins written before `experimental_useSidebarNavigation`;
-   * render items from that hook instead. Scheduled for removal.
-   *
-   * @deprecated
-   */
-  experimental_Original: ComponentType;
-}
-
-/**
- * Props passed to an `experimental_sidebarHeader` component, rendered in the
- * sidebar's header row between the sidebar toggle (and the macOS window
- * controls) and bb's back and forward buttons.
- */
-export interface ExperimentalSidebarHeaderProps {
-  /**
-   * Width in px of the space the component may use, updated when the sidebar
-   * resizes or the window chrome changes. It can be smaller than
-   * `controlSize` in a narrow sidebar.
-   */
-  width: number;
-  /**
-   * Width and height in px of the header's own buttons, equal to the
-   * `--bb-sidebar-control-size` CSS variable. Size your controls to match.
-   */
-  controlSize: number;
-  isCompactViewport: boolean;
 }
 
 /**
@@ -812,13 +618,12 @@ export interface PluginNavPanelRegistration {
    */
   fixedTabs?: readonly PluginFixedTabDeclaration[];
   /**
-   * Optional presentational component rendered at the trailing edge of this
-   * panel's sidebar row. It receives no props so it can own a narrow live
-   * value through the ordinary SDK hooks without coupling that state to the
-   * host sidebar. The host does not mount it on compact viewports and clips it
-   * to a small, single-line box on wider viewports. It shares the trailing
-   * action column, fading out for the host's options button on hover or focus;
-   * do not render controls or rely on unbounded content here.
+   * Optional presentational component for a narrow live value next to this
+   * panel's entry in the sidebar. It receives no props so it can own that
+   * value through the ordinary SDK hooks without coupling its state to the
+   * host sidebar. The host still validates it, but no host surface currently
+   * mounts it. Keep it to a small, single-line box; do not render controls or
+   * rely on unbounded content here.
    *
    * Experimental: see docs/api_to_audit.md.
    */
@@ -1367,6 +1172,16 @@ export interface PluginCodeThemeState {
 }
 
 /**
+ * What {@link PluginSdkApp.experimental_copyToClipboard} writes: plain text,
+ * plus an HTML representation for paste targets that accept rich text.
+ * Without `html`, only plain text is written.
+ */
+export interface ExperimentalClipboardContent {
+  text: string;
+  html?: string;
+}
+
+/**
  * The `threads` area of {@link PluginBrowserBbSdk}: bb's public thread API
  * with the calling plugin's identity filled in. `spawn` and `fork` stamp
  * `origin: "plugin"` and `originPluginId` unless the call names another
@@ -1375,11 +1190,16 @@ export interface PluginCodeThemeState {
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata"
+  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
   ): Promise<ThreadPluginMetadataResult>;
+  experimental_listPluginMetadata(
+    args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+      pluginId?: string;
+    },
+  ): Promise<PluginThreadMetadataListResult>;
   updatePluginMetadata(
     args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
       pluginId?: string;
@@ -1403,6 +1223,29 @@ export type PluginBrowserBbSdk = Omit<BbSdkAreas, "threads"> & {
 export interface PluginThreadTitleProps {
   /** A thread in the sidebar's live view; renders nothing for an unknown id. */
   threadId: string;
+}
+
+/**
+ * Props for {@link PluginSdkApp.experimental_ThreadStatusGlyph}: bb's thread
+ * status glyph, the one its own lists draw. The caller resolves the
+ * indicator, so a row can fold in state the host does not know about, such
+ * as collapsed children or a client-local draft.
+ */
+export interface PluginThreadStatusGlyphProps {
+  /** The indicator to draw; "none" draws nothing unless `rowStatus` shows. */
+  indicator: PluginSidebarThreadIndicator;
+  /** Draws the archive glyph instead of the indicator. */
+  archived?: boolean;
+  /**
+   * A status another plugin set on the row (see
+   * {@link PluginSdkApp.useSidebarThreadRowStatus}). It replaces every
+   * indicator except "runtime", "unread-error", and "waiting-for-input".
+   */
+  rowStatus?: PluginSidebarThreadRowStatus | null;
+  /** Hides the idle draft glyph from assistive technology. */
+  hideIdleDraftLabel?: boolean;
+  /** "compact" draws a 14 px glyph; "default" matches bb's sidebar rows. */
+  size?: "default" | "compact";
 }
 
 /**
@@ -1464,6 +1307,11 @@ export interface PluginSidebarThreadShortcut {
  * flow, so optimistic updates, toasts, dialogs, pane closing, and route repair
  * behave exactly as they do in the built-in sidebar. Unknown thread ids are
  * ignored by `open` and rejected by the rest.
+ *
+ * @internal Superseded by `app.slots.experimental_threadAction` and
+ * `experimental_ThreadActionsMenu`, `useSdk().threads` for data writes, and
+ * `useBbNavigate().toThread` / `toCompose` for navigation; kept for plugins
+ * built against older SDKs.
  */
 export interface PluginSidebarThreadActions {
   /**
@@ -1542,6 +1390,243 @@ export interface ExperimentalPluginBrowserToolbarActionRegistration {
   title: string;
   /** Component rendered beside the Browser address bar. */
   component: ComponentType<ExperimentalPluginBrowserToolbarActionProps>;
+}
+
+/**
+ * The thread a thread action is evaluated for: the fields bb's own actions
+ * read, copied from the thread payload by the surface that shows the menu.
+ */
+export interface PluginThreadActionTarget {
+  id: string;
+  projectId: string;
+  parentThreadId: string | null;
+  archivedAt: number | null;
+  pinnedAt: number | null;
+  sectionId: string | null;
+  isUnread: boolean;
+  status: ThreadStatus;
+  /**
+   * The thread's environment when a new thread can reuse it, null otherwise.
+   * `path` is the checkout path, null when the environment has none.
+   */
+  environment: { id: string; path: string | null } | null;
+}
+
+/** One row of a thread action's choice list. */
+export interface PluginThreadActionChoice {
+  id: string;
+  label: string;
+  icon?: BbIconName;
+  selected?: boolean;
+  disabled?: boolean;
+}
+
+/**
+ * A choice list instead of a direct action: a submenu in desktop menus, a step
+ * with Back in the compact drawer, and a popover from a row's quick-action
+ * button. `run` receives the picked choice's `id` as `value`.
+ */
+export interface PluginThreadActionChoices {
+  /**
+   * Title of the drawer step and the quick-action popover; defaults to the
+   * action's label. Desktop submenus show none: their trigger names them.
+   */
+  heading?: string;
+  /** Footnote below the choices, e.g. why the current value differs from the pick. */
+  hint?: string;
+  items: readonly PluginThreadActionChoice[];
+}
+
+/** What a thread action's `run` receives. */
+export interface PluginThreadActionRunInput {
+  /** The picked choice's `id` when the action has `choices`; otherwise undefined. */
+  value?: string;
+  /**
+   * Start renaming a thread with the editor of the surface that showed the
+   * menu: inline in the sidebar row or thread header, bb's rename dialog
+   * elsewhere.
+   */
+  requestRename(threadId: string): void;
+}
+
+/** One evaluated thread action: what a registration shows for one thread. */
+export interface PluginThreadAction {
+  label: string;
+  /**
+   * Short secondary text on a muted second line under the label, e.g. the
+   * current value of a choice list.
+   */
+  detail?: string;
+  icon: BbIconName;
+  variant?: "default" | "destructive";
+  disabled?: boolean;
+  choices?: PluginThreadActionChoices;
+  /**
+   * Runs when the user activates the action or picks a choice. Errors (sync
+   * or async) are contained and logged; they never break the menu.
+   */
+  run(input: PluginThreadActionRunInput): void | Promise<void>;
+}
+
+/** What a registration's `useData` receives. */
+export interface PluginThreadActionDataInput {
+  /**
+   * Every thread a visible surface currently shows actions for (sidebar rows
+   * on screen, the open thread's header, open menus); a hidden sidebar
+   * contributes none. Sorted, deduplicated, and published once the set has
+   * been quiet for 32 ms (at most 100 ms after the first change), so rows
+   * that mount a frame apart arrive together. Load per-thread state for these
+   * ids, fetching only ids not loaded yet.
+   */
+  threadIds: readonly string[];
+}
+
+/** What a registration's `item` receives for each thread it is shown for. */
+export interface PluginThreadActionItemInput<Data> {
+  thread: PluginThreadActionTarget;
+  /** What `useData` last returned; undefined when the registration has none. */
+  data: Data;
+  /** The registering plugin's `useSdk()` client. */
+  sdk: PluginBrowserBbSdk;
+  /**
+   * The registering plugin's `useBbNavigate()`. Thread menus are not inside a
+   * side panel, so `openThreadPanel` opens in the focused thread view, as
+   * plugin commands do, and returns false when no thread view is open.
+   */
+  navigate: BbNavigate;
+}
+
+/**
+ * Add an action to every thread actions menu: the thread header's menu, the
+ * sidebar row's menu and right-click menu, the compact long-press drawer, and,
+ * when the user picks it, a sidebar row's quick-action buttons. bb's own
+ * actions (Open in split, Copy thread link, Mark read, Pin, Rename, Archive,
+ * Delete, …) are registrations of this same shape.
+ *
+ * `useData` is a React hook the host calls once for the whole app, never per
+ * thread or per menu; read app-wide state there (preferences, a realtime
+ * channel, per-thread state for the `threadIds` it receives, fetched in one
+ * batch for the ids not loaded yet). `item` is pure and synchronous: it
+ * derives the action for one thread from that thread and `data`, closing over
+ * everything `run` needs, or returns null to hide it. A throw from either
+ * drops only this registration.
+ */
+export interface PluginThreadActionRegistration<Data = undefined> {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Static name, shown where the user picks a row's quick actions. */
+  title: string;
+  /** Static icon for that picker; the evaluated action's `icon` wins in menus. */
+  icon: BbIconName;
+  /**
+   * Menus and the quick-action picker sort by `group` (string compare) with a
+   * separator between groups, then by `order` within a group (unset sorts
+   * last), then by registration order. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_ACTION_GROUPS}; any other string
+   * is a group of its own, placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  useData?(input: PluginThreadActionDataInput): Data;
+  item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
+}
+
+/**
+ * A thread action as {@link PluginSdkApp.experimental_useThreadActions}
+ * returns it: `run` is bound to the caller's `requestRename` (or bb's rename
+ * dialog), contains errors, and resolves when the action settles.
+ */
+export interface PluginBoundThreadAction extends Omit<
+  PluginThreadAction,
+  "run"
+> {
+  /** `value` is the picked choice's `id` for an action with `choices`. */
+  run(value?: string): Promise<void>;
+}
+
+/**
+ * One row of {@link PluginSdkApp.experimental_useThreadActions}: `key` is
+ * `<owner>/<id>`, where the owner is the registering plugin's id or
+ * `bb--core` for bb's own actions.
+ */
+export interface PluginThreadActionEntry {
+  key: string;
+  pluginId: string;
+  /** The registration's group, for separators in a caller's own list. */
+  group: string;
+  action: PluginBoundThreadAction;
+}
+
+/** One row of {@link PluginSdkApp.experimental_useThreadActionRegistrations}. */
+export interface PluginThreadActionRegistrationInfo {
+  key: string;
+  pluginId: string;
+  title: string;
+  icon: BbIconName;
+}
+
+/** Options for {@link PluginSdkApp.experimental_useThreadActions}. */
+export interface PluginThreadActionsOptions {
+  /** Return only these keys, in this order. Omit for every action in menu order. */
+  keys?: readonly string[];
+  /**
+   * The surface's own rename editor, passed to `run` as `requestRename`.
+   * Omit to use bb's rename dialog.
+   */
+  requestRename?(threadId: string): void;
+}
+
+/**
+ * An action a surface adds to its own copy of the thread menu, not a
+ * registration: appended to the end of its `group`. `key` must be unique in
+ * the menu.
+ */
+export interface PluginThreadActionsInlineItem {
+  key: string;
+  group: string;
+  action: PluginThreadAction;
+}
+
+/**
+ * What a thread menu's `trigger` receives: the menu's ARIA state, event
+ * handlers, and ref. Spread all of them onto the button you render (compose
+ * your own handlers after calling theirs); a trigger that drops them never
+ * opens the menu.
+ */
+export type PluginThreadActionsTriggerProps = ComponentPropsWithRef<"button">;
+
+interface PluginThreadActionsMenuBaseProps {
+  thread: PluginThreadActionTarget;
+  inline?: readonly PluginThreadActionsInlineItem[];
+  /** See {@link PluginThreadActionsOptions.requestRename}. */
+  requestRename?(threadId: string): void;
+  onOpenChange?(open: boolean): void;
+  /** Radix's close auto-focus hook, to restore focus to the surface's own control. */
+  onCloseAutoFocus?(event: Event): void;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadActionsMenu`: bb's thread menu
+ * opened from the button `trigger` renders (see
+ * {@link PluginThreadActionsTriggerProps}), a drawer at compact width.
+ */
+export interface PluginThreadActionsMenuProps extends PluginThreadActionsMenuBaseProps {
+  trigger(props: PluginThreadActionsTriggerProps): ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
+}
+
+/**
+ * Props of the host-owned `experimental_ThreadActionsContextMenu`: bb's thread
+ * menu on right-click of `children`, or on touch long-press at compact width.
+ */
+export interface PluginThreadActionsContextMenuProps extends PluginThreadActionsMenuBaseProps {
+  children: ReactNode;
+  /** Suppresses the menu, e.g. while the row edits its title. */
+  disabled?: boolean;
+  /** Closes the menu and suppresses opening while the row is being dragged. */
+  dragging?: boolean;
 }
 
 /** One pane's place in the split layout, as fractions of the split area. */
@@ -1628,43 +1713,6 @@ export interface PluginThreadListRegistration {
   /** Optional one-line description shown with the provider choice. */
   description?: string;
   component: ComponentType<PluginThreadListProps>;
-}
-
-/**
- * Replace the navigation controls above the sidebar thread list. Exclusive:
- * bb ships its own rows as the bundled Navigation plugin
- * (`navigation/navigation`). By default the first registered provider other
- * than Navigation is active, falling back to Navigation; the user can pin one
- * provider under Settings → Appearance → Navigation. A pinned provider that is
- * disabled or removed falls back to Navigation; a crashing provider is
- * replaced by a placeholder with a Reload button.
- */
-export interface ExperimentalSidebarNavigationRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
-  id: string;
-  /** Label shown in Settings → Appearance and capability details. */
-  title: string;
-  /** Optional one-line description shown with the provider choice. */
-  description?: string;
-  component: ComponentType<ExperimentalSidebarNavigationProps>;
-}
-
-/**
- * Render a component in the sidebar's header row, between the sidebar toggle
- * and bb's back and forward buttons. Exclusive: the user picks at most one
- * header under Settings → Appearance, and by default the header shows only
- * bb's own controls. Content is clipped to the row, so it cannot move the
- * thread list or bb's controls. On macOS the empty space keeps dragging the
- * window; buttons, links, and inputs do not.
- */
-export interface ExperimentalSidebarHeaderRegistration {
-  /** Unique within the plugin; letters, digits, `-`, `_`. */
-  id: string;
-  /** Label shown in Settings → Appearance and capability details. */
-  title: string;
-  /** Optional one-line description shown with the provider choice. */
-  description?: string;
-  component: ComponentType<ExperimentalSidebarHeaderProps>;
 }
 
 /**
@@ -2119,18 +2167,6 @@ export interface PluginAppSlots {
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
   ): void;
-  /** Replace the bounded sidebar navigation controls. */
-  experimental_sidebarNavigation(
-    registration: ExperimentalSidebarNavigationRegistration,
-  ): void;
-  /**
-   * Render a component in the sidebar header row (see
-   * {@link ExperimentalSidebarHeaderRegistration}). Experimental: see
-   * docs/api_to_audit.md.
-   */
-  experimental_sidebarHeader(
-    registration: ExperimentalSidebarHeaderRegistration,
-  ): void;
   /**
    * Replace the sidebar's thread list (see
    * {@link PluginThreadListRegistration}). Experimental: see
@@ -2144,6 +2180,14 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /**
+   * Add an action to every thread actions menu (see
+   * {@link PluginThreadActionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadAction<Data = undefined>(
+    registration: PluginThreadActionRegistration<Data>,
   ): void;
   /** Render a component beside each Browser tab's address bar. */
   experimental_browserToolbarAction(
@@ -2565,6 +2609,11 @@ export type ComposerMention = {
       source: "skill" | "command";
       origin: "builtin" | "project" | "user";
       argumentHint: string | null;
+    }
+  | {
+      kind: "attachment";
+      /** The stored path of a file attached to the same draft. */
+      path: string;
     }
   | {
       kind: "plugin";
@@ -3131,6 +3180,12 @@ export interface NewThreadRequest {
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;
   /**
+   * Agent options the user chose in the model picker or the mode menu, keyed
+   * by option id. Present only when the user changed at least one option the
+   * selected provider declares. Forward it to `threads.spawn` unchanged.
+   */
+  sessionOptions?: SessionOptionSelections;
+  /**
    * Per-field provenance (caller-explicit vs. default) for the execution
    * options above, forwarded to `spawn` so the server records what the user
    * actually chose.
@@ -3357,7 +3412,13 @@ export interface BbContext {
 }
 
 export interface BbNavigate {
-  toThread(threadId: string): void;
+  /**
+   * Open a thread. `split: true` applies bb's split placement rules (a right
+   * split by default, focus when already open, replace at the pane cap) and
+   * falls back to plain navigation where splits are off. Opening also expands
+   * the thread's conversation if the side panel had collapsed it.
+   */
+  toThread(threadId: string, options?: { split?: boolean }): void;
   toProject(projectId: string): void;
   /**
    * Navigate to one of this plugin's own nav panels by its `path`.
@@ -3375,13 +3436,24 @@ export interface BbNavigate {
    * and section mention tokens become pills) and `focusPrompt` to focus the
    * composer on arrival — the pairing behind "Create via chat" style entry
    * points that drop the user into chat with a prefilled prompt.
+   * `projectId` makes that project the composer's selection; `placement`
+   * files the new thread in a section and pin state (omitted: unpinned,
+   * outside sections); `environmentId` reuses that environment and `hostId`
+   * picks a machine for a new one (`environmentId` wins when both are set).
    */
-  toCompose(options?: { initialPrompt?: string; focusPrompt?: boolean }): void;
+  toCompose(options?: {
+    projectId?: string;
+    initialPrompt?: string;
+    focusPrompt?: boolean;
+    placement?: { sectionId: string | null; pinned: boolean };
+    environmentId?: string;
+    hostId?: string;
+  }): void;
   /**
    * Open one of this plugin's registered panel actions in the current
    * surface's side panel: a `threadPanelAction` in a thread, or an
    * `experimental_newThreadPanelAction` on the New thread screen. Plugin
-   * commands use the same opener. Returns false when the surface has no side
+   * commands and thread actions use the focused thread view's opener. Returns false when the surface has no side
    * panel actions (plugin pages) or the action is unavailable.
    */
   openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
@@ -3516,8 +3588,64 @@ export interface PluginSdkApp {
    * Thread actions bound to the host's mutations (see
    * {@link PluginSidebarThreadActions}). Experimental: see
    * docs/api_to_audit.md.
+   *
+   * @internal Superseded by `experimental_useThreadActions`, the thread
+   * action components, `useSdk().threads`, and `useBbNavigate()`; kept for
+   * plugins built against older SDKs.
    */
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions;
+  /**
+   * Archive an environment's active thread trees the way bb's own list does:
+   * optimistic removal, closing their split panes, leaving a route that shows
+   * one of them, and one Undo toast that restores them and the route. The
+   * promise rejects after bb has shown an error toast. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useArchiveEnvironmentThreads(): (
+    environmentId: string,
+  ) => Promise<void>;
+  /**
+   * Every thread action for one thread, in menu order (see
+   * {@link PluginThreadAction} for grouping): bb's own registrations first,
+   * then plugins' in registration order. Registrations' `useData` hooks run
+   * once for the app, so calling this per sidebar row costs one store
+   * subscription and a pure `item` call per registration. Pass `keys` for a
+   * row's quick actions. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadActions(
+    thread: PluginThreadActionTarget,
+    options?: PluginThreadActionsOptions,
+  ): readonly PluginThreadActionEntry[];
+  /**
+   * Every registered thread action with its static title and icon, in menu
+   * order and independent of any thread: what a quick-action picker lists.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[];
+  /**
+   * bb's thread menu behind a trigger (see
+   * {@link PluginThreadActionsMenuProps}): the same items, order, choice
+   * submenus and compact drawer as the thread header's menu. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ThreadActionsMenu: ComponentType<PluginThreadActionsMenuProps>;
+  /**
+   * bb's thread menu on right-click or long-press (see
+   * {@link PluginThreadActionsContextMenuProps}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ThreadActionsContextMenu: ComponentType<PluginThreadActionsContextMenuProps>;
+  /**
+   * bb's thread menu groups, for a registration that joins one:
+   * `open` (split), `organize` (copy, read, pin, move, rename), `settings`,
+   * and `lifecycle` (archive, delete). Experimental: see docs/api_to_audit.md.
+   */
+  experimental_THREAD_ACTION_GROUPS: {
+    readonly open: "1_open";
+    readonly organize: "2_organize";
+    readonly settings: "3_settings";
+    readonly lifecycle: "4_lifecycle";
+  };
   /**
    * The pull request for one thread's branch (see
    * {@link PluginSidebarThreadPullRequestState}).
@@ -3540,30 +3668,6 @@ export interface PluginSdkApp {
   experimental_useSidebarThreadSplit(
     threadId: string,
   ): PluginSidebarThreadSplit;
-  /**
-   * The sidebar navigation items in the user's saved order, the active item,
-   * and the host actions that activate, hide, reorder, and customize them
-   * (see {@link ExperimentalSidebarNavigationState}). One model shared by
-   * every caller in the sidebar. Items keep their identity while unchanged.
-   * Outside the sidebar it returns no items and actions that do nothing.
-   * Experimental: see docs/api_to_audit.md.
-   */
-  experimental_useSidebarNavigation(): ExperimentalSidebarNavigationState;
-  /**
-   * Per-item drag-to-split support for navigation items (see
-   * {@link ExperimentalSidebarNavigationSplit}). Call it once per rendered
-   * item. Experimental: see docs/api_to_audit.md.
-   */
-  experimental_useSidebarNavigationSplit(
-    itemId: string,
-    options?: ExperimentalSidebarNavigationSplitOptions,
-  ): ExperimentalSidebarNavigationSplit;
-  /**
-   * bb's artwork for a navigation item's icon: bb's glyphs for its own items,
-   * and the panel's explicit icon, falling back to plugin branding, for plugin panels. Experimental:
-   * see docs/api_to_audit.md.
-   */
-  experimental_SidebarNavigationIcon: ComponentType<ExperimentalSidebarNavigationIconProps>;
   /**
    * Whether the composer holds an unsent draft for one thread (see
    * {@link PluginSidebarThreadDraftState}). Per row, because a draft is
@@ -3617,6 +3721,12 @@ export interface PluginSdkApp {
    */
   ThreadTitle: ComponentType<PluginThreadTitleProps>;
   /**
+   * bb's thread status glyph (see {@link PluginThreadStatusGlyphProps}): the
+   * same icons, colors, and accessible labels as bb's own thread lists.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
+  /**
    * bb's environment provider catalog (see
    * {@link PluginEnvironmentProvidersState}), the directory a thread's
    * `environment.providerId` points into. Reads the host's own cached
@@ -3638,8 +3748,8 @@ export interface PluginSdkApp {
    * together. Unarchive, environment-group archive, project/machine/environment
    * renames, and project/section removal are also optimistic and roll back on
    * failure. Created sections enter the cache when the server assigns their id.
-   * `experimental_useSidebarThreadActions()` owns navigation, read state,
-   * archive confirmation, and delete confirmation.
+   * Navigation belongs to `useBbNavigate()`; archive and delete
+   * confirmation to the thread action menus.
    *
    * The client is stable for the plugin's lifetime, so it is safe in effect
    * and callback dependency lists.
@@ -3659,6 +3769,19 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_useCodeTheme(): PluginCodeThemeState;
+  /**
+   * Writes content to the system clipboard through bb's own clipboard writer,
+   * the one bb's copy actions use. A plain function, callable from
+   * components, content scripts, and command callbacks. bb Desktop writes
+   * through the native clipboard, so copies work without window focus or a
+   * secure origin; browsers use the Clipboard API, then the copy command.
+   * Resolves true once the clipboard holds the content and false when every
+   * write path failed; it never rejects. Callers own their success and
+   * failure feedback. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_copyToClipboard(
+    content: ExperimentalClipboardContent,
+  ): Promise<boolean>;
   /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else

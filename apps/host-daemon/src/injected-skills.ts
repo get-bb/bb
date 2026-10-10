@@ -62,6 +62,7 @@ interface CopyInjectedSkillSourceArgs {
 
 interface CollectedSkillFile {
   bytes: Buffer;
+  contentSha256: string;
   mode: number;
   relativePath: string;
 }
@@ -137,6 +138,10 @@ interface CreateCatalogFileArgs {
   trees: readonly CollectedSkillTree[];
 }
 
+const MAX_COLLECTED_TREE_MEMOS = 256;
+
+const collectedTreeMemos = new Map<string, SkillTreeCollectionState>();
+const scheduledSkillStoreGcs = new Set<string>();
 const pendingStageRootWrites = new Map<string, Promise<string>>();
 const pendingSkillTreePulls = new Map<string, Promise<string>>();
 const skillStoreQueues = new Map<string, Promise<void>>();
@@ -288,6 +293,7 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
     const bytes = await fs.readFile(sourcePath);
     args.state.files.push({
       bytes,
+      contentSha256: sha256Hex(bytes),
       mode: entryStat.mode & 0o777,
       relativePath,
     });
@@ -335,21 +341,87 @@ async function collectSkillDirectory(
   return state;
 }
 
-async function collectSkillTree(
-  args: CollectSkillTreeArgs,
-): Promise<CollectedSkillTree> {
-  const state = await collectSkillDirectory({
-    name: args.source.name,
-    sourceRootPath: args.sourceRootPath,
-    skillFilePath: args.skillFilePath,
-  });
+function sha256Hex(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
+function rememberCollectedTree(
+  key: string,
+  tree: SkillTreeCollectionState,
+): void {
+  collectedTreeMemos.delete(key);
+  collectedTreeMemos.set(key, tree);
+  if (collectedTreeMemos.size > MAX_COLLECTED_TREE_MEMOS) {
+    const oldestKey = collectedTreeMemos.keys().next().value;
+    if (oldestKey !== undefined) {
+      collectedTreeMemos.delete(oldestKey);
+    }
+  }
+}
+
+function recallCollectedTree(key: string): SkillTreeCollectionState | null {
+  const tree = collectedTreeMemos.get(key);
+  if (tree === undefined) {
+    return null;
+  }
+  rememberCollectedTree(key, tree);
+  return tree;
+}
+
+function toCollectedSkillTree(
+  source: HostDaemonInjectedSkillSource,
+  state: SkillTreeCollectionState,
+): CollectedSkillTree {
   return {
     directories: state.directories,
     files: state.files,
-    source: args.source,
+    source,
     totalBytes: state.totalBytes,
   };
+}
+
+async function collectSkillTree(
+  args: CollectSkillTreeArgs,
+): Promise<CollectedSkillTree> {
+  return toCollectedSkillTree(
+    args.source,
+    await collectSkillDirectory({
+      name: args.source.name,
+      sourceRootPath: args.sourceRootPath,
+      skillFilePath: args.skillFilePath,
+    }),
+  );
+}
+
+function storedTreeMemoKey(
+  dataDir: string,
+  source: Extract<HostDaemonInjectedSkillSource, { kind: "tree" }>,
+): string {
+  return `tree\0${source.name}\0${dataDir}\0${source.treeHash}\0${source.entryPath}`;
+}
+
+export function scheduleSkillStoreGc(
+  dataDir: string,
+  logger: InjectedSkillsLogger,
+): void {
+  if (scheduledSkillStoreGcs.has(dataDir)) {
+    return;
+  }
+  scheduledSkillStoreGcs.add(dataDir);
+  void runInSerialLane(skillStoreQueues, dataDir, () => {
+    scheduledSkillStoreGcs.delete(dataDir);
+    return gcSkillStore(dataDir);
+  }).catch((error: unknown) => {
+    logger.warn(
+      {
+        reason:
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Unable to garbage-collect the skill store",
+      },
+      "Failed to garbage-collect the skill store",
+    );
+  });
 }
 
 function hashCollectedTrees(trees: readonly CollectedSkillTree[]): string {
@@ -372,7 +444,7 @@ function hashCollectedTrees(trees: readonly CollectedSkillTree[]): string {
       hash.update("\0file\0");
       hash.update(file.relativePath);
       hash.update("\0");
-      hash.update(createHash("sha256").update(file.bytes).digest("hex"));
+      hash.update(file.contentSha256);
       hash.update("\0");
       hash.update(file.mode.toString(8));
     }
@@ -637,7 +709,12 @@ function validatedTreeEntries(tree: HostDaemonSkillTree): CollectedSkillFile[] {
         `Skill tree exceeds max byte count ${MAX_STAGED_SKILL_BYTES}`,
       );
     }
-    files.push({ bytes, mode: entry.mode, relativePath: entry.path });
+    files.push({
+      bytes,
+      contentSha256: sha256Hex(bytes),
+      mode: entry.mode,
+      relativePath: entry.path,
+    });
   }
   return files.sort((left, right) =>
     compareStringsByCodePoint(left.relativePath, right.relativePath),
@@ -798,7 +875,6 @@ async function writeFetchedTreeToStore(args: {
     await fs.rm(tempRootPath, { recursive: true, force: true });
   }
   await touchStoredTree(treeRootPath);
-  await gcSkillStore(args.dataDir);
   return path.join(treeRootPath, STORE_CONTENT_DIR);
 }
 
@@ -816,7 +892,6 @@ export async function ensureStoredSkillTree(args: {
     const treeRootPath = resolveStoredTreeRootPath(args.dataDir, args.treeHash);
     if (await isStoredTreeComplete(treeRootPath)) {
       await touchStoredTree(treeRootPath);
-      await gcSkillStore(args.dataDir);
       return path.join(treeRootPath, STORE_CONTENT_DIR);
     }
     return writeFetchedTreeToStore({
@@ -847,14 +922,22 @@ export async function stageInjectedSkillSources(
   const stagedTreeHashes = sortedSources.flatMap((source) =>
     source.kind === "tree" ? [source.treeHash] : [],
   );
+  let pulledStoredTree = false;
   markActiveSkillTreeStages(args.dataDir, stagedTreeHashes);
   try {
     for (const source of sortedSources) {
       if (source.kind === "tree") {
+        const memoKey = storedTreeMemoKey(args.dataDir, source);
+        const remembered = recallCollectedTree(memoKey);
+        if (remembered !== null) {
+          trees.push(toCollectedSkillTree(source, remembered));
+          continue;
+        }
         try {
           if (args.fetchSkillTree === undefined) {
             throw new Error("Skill tree fetch transport is unavailable");
           }
+          pulledStoredTree = true;
           const sourceRootPath = await ensureStoredSkillTree({
             dataDir: args.dataDir,
             fetchSkillTree: args.fetchSkillTree,
@@ -866,9 +949,13 @@ export async function stageInjectedSkillSources(
               `Injected skill entry path escapes tree: ${source.entryPath}`,
             );
           }
-          trees.push(
-            await collectSkillTree({ source, sourceRootPath, skillFilePath }),
-          );
+          const tree = await collectSkillTree({
+            source,
+            sourceRootPath,
+            skillFilePath,
+          });
+          rememberCollectedTree(memoKey, tree);
+          trees.push(tree);
         } catch (error) {
           logger.warn(
             {
@@ -911,9 +998,9 @@ export async function stageInjectedSkillSources(
     }
   } finally {
     unmarkActiveSkillTreeStages(args.dataDir, stagedTreeHashes);
-    await runInSerialLane(skillStoreQueues, args.dataDir, () =>
-      gcSkillStore(args.dataDir),
-    );
+    if (pulledStoredTree) {
+      scheduleSkillStoreGc(args.dataDir, logger);
+    }
   }
 
   const sortedTrees = trees.sort(sortTreesByName);

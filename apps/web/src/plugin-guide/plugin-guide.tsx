@@ -1,5 +1,6 @@
 import bbLogoUrl from "../../../../assets/bb-logo.svg?url";
 import { ProductMap } from "../../../../plugins/plugin-api-docs/src/product-map";
+import { plainSurfaceCopy } from "../../../../plugins/plugin-api-docs/src/surface-copy";
 import {
   GROUP_BY_SURFACE_ID,
   type PluginSurface,
@@ -31,9 +32,7 @@ export function pluginSurfaceAgentPrompt(
   if (group) guideUrl.searchParams.set("slide", group.id);
   return [
     `Build a bb plugin that uses ${surface.title}.`,
-    surface.summary
-      .replace(/ With this, a plugin can:$/, "")
-      .replace(/\[([^\]]+)\]\([a-z0-9-]+\)/g, "$1"),
+    plainSurfaceCopy(surface.summary.replace(/ With this, a plugin can:$/, "")),
     `Plugin Guide surface: ${surface.title} (${surface.id}).`,
     `Relevant @get-bb/plugin-sdk symbols: ${surface.apiSymbols.join(", ")}.`,
     "Use the bb-plugin-authoring skill and the authoritative @get-bb/plugin-sdk declarations to build it.",

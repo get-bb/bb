@@ -12,10 +12,11 @@ Hooks:
   origin and the plugin-metadata calls default `pluginId`, exactly like the
   backend client. Thread title, section, and parent updates are optimistic in
   bb's own surfaces, and synchronous calls are applied in one cache transaction;
-  other writes refresh over realtime. Use
-  `experimental_useSidebarThreadActions()` for optimistic pin, read state,
-  rename, and archive actions. The client is stable, so it is safe in dependency
-  lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
+  other writes refresh over realtime, and pin, unpin, mark read, and mark
+  unread are optimistic too. For bb's archive and delete flows (child
+  confirmation, pane cleanup, Undo) render bb's thread menu or run its
+  thread actions; see "An action in every thread menu". The client is stable,
+  so it is safe in dependency lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
 } } })` and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.
@@ -153,6 +154,15 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   approximate the palette by reading bb's CSS variables: `--canvas` / `--ink`
   carry the app chrome, not the syntax colors, and a custom palette that
   declares its own code theme would not follow.
+- `experimental_copyToClipboard({ text, html? })` → `Promise<boolean>` — writes
+  the system clipboard through the same writer bb's own copy actions use. A
+  plain function, not a hook: call it from components, content scripts, and
+  command callbacks alike. bb Desktop writes through the native clipboard, so
+  copies work without window focus or a secure origin; browsers use the
+  Clipboard API, then the copy command. Pass `html` to add a rich-text
+  representation next to the plain text. Resolves true once the clipboard holds
+  the content and false when every path failed; it never rejects. Show your own
+  success or failure feedback. Never call `navigator.clipboard` directly.
 
 ```tsx
 const composer = useComposer();

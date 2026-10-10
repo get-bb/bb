@@ -3,6 +3,7 @@ import type { WorkspaceFile } from "@bb/server-contract";
 export interface ThreadStorageFolderNode {
   kind: "folder";
   path: string;
+  chainPaths: readonly string[];
   name: string;
   children: readonly ThreadStorageTreeNode[];
 }
@@ -17,9 +18,19 @@ export type ThreadStorageTreeNode =
   | ThreadStorageFolderNode
   | ThreadStorageFileNode;
 
-export interface ThreadStorageTreeRow {
-  node: ThreadStorageTreeNode;
-  depth: number;
+export type ThreadStorageTreeRow =
+  | { kind: "node"; node: ThreadStorageTreeNode; depth: number }
+  | {
+      kind: "more";
+      folderPath: string;
+      hiddenCount: number;
+      depth: number;
+    };
+
+export interface ThreadStorageFlattenOptions {
+  isExpanded: (folderPath: string) => boolean;
+  showsAllChildren: (folderPath: string) => boolean;
+  childLimit: number;
 }
 
 interface MutableFolder {
@@ -29,11 +40,13 @@ interface MutableFolder {
   files: ThreadStorageFileNode[];
 }
 
+const NAME_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
 const compareNames = (left: { name: string }, right: { name: string }) =>
-  left.name.localeCompare(right.name, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
+  NAME_COLLATOR.compare(left.name, right.name);
 
 function finalizeChildren(folder: MutableFolder): ThreadStorageTreeNode[] {
   const folders = [...folder.folders.values()]
@@ -46,15 +59,18 @@ function finalizeChildren(folder: MutableFolder): ThreadStorageTreeNode[] {
 function finalizeFolder(folder: MutableFolder): ThreadStorageFolderNode {
   let current = folder;
   let name = folder.name;
+  const chainPaths = [folder.path];
   while (current.files.length === 0 && current.folders.size === 1) {
     const [onlyChild] = current.folders.values();
     if (!onlyChild) break;
     current = onlyChild;
     name = `${name}/${onlyChild.name}`;
+    chainPaths.push(current.path);
   }
   return {
     kind: "folder",
     path: current.path,
+    chainPaths,
     name,
     children: finalizeChildren(current),
   };
@@ -101,14 +117,28 @@ export function threadStorageAncestorPaths(path: string): string[] {
 
 export function flattenThreadStorageNode(
   node: ThreadStorageTreeNode,
-  isExpanded: (folderPath: string) => boolean,
+  options: ThreadStorageFlattenOptions,
   depth = 0,
 ): ThreadStorageTreeRow[] {
-  const rows: ThreadStorageTreeRow[] = [{ node, depth }];
-  if (node.kind === "folder" && isExpanded(node.path)) {
-    for (const child of node.children) {
-      rows.push(...flattenThreadStorageNode(child, isExpanded, depth + 1));
-    }
+  const rows: ThreadStorageTreeRow[] = [{ kind: "node", node, depth }];
+  if (node.kind !== "folder" || !options.isExpanded(node.path)) return rows;
+  const { children } = node;
+  const capped =
+    children.length > options.childLimit + 1 &&
+    !options.showsAllChildren(node.path);
+  const visibleChildren = capped
+    ? children.slice(0, options.childLimit)
+    : children;
+  for (const child of visibleChildren) {
+    rows.push(...flattenThreadStorageNode(child, options, depth + 1));
+  }
+  if (capped) {
+    rows.push({
+      kind: "more",
+      folderPath: node.path,
+      hiddenCount: children.length - options.childLimit,
+      depth: depth + 1,
+    });
   }
   return rows;
 }

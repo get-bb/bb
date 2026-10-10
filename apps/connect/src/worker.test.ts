@@ -985,6 +985,18 @@ describe("gate request deadline", () => {
     return pending;
   }
 
+  async function recordedEvents(ctx: ExecutionContext) {
+    await vi.advanceTimersByTimeAsync(2_000);
+    await Promise.all(
+      vi.mocked(ctx.waitUntil).mock.calls.map(([pending]) => pending),
+    );
+  }
+
+  function isStatusCheck(request: Request | string): boolean {
+    const url = typeof request === "string" ? request : request.url;
+    return new URL(url).pathname === "/__control/status";
+  }
+
   it("answers 504 naming the stage when the tunnel object never answers", async () => {
     const { env, ctx } = makeEnv(() => new Promise<Response>(() => {}));
     const response = await settle(
@@ -1000,6 +1012,7 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: tunnel-object)");
+    await recordedEvents(ctx);
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
       indexes: ["sawyer.getbb.app"],
       blobs: [
@@ -1008,10 +1021,63 @@ describe("gate request deadline", () => {
         "GET",
         "sawyer.getbb.app",
         "/api/v1/threads",
+        "unknown",
       ],
-      doubles: [RESP_HEAD_TIMEOUT_MS, 1],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 1, -1],
     });
   });
+
+  it.each([
+    {
+      status: { connected: true, lastHeartbeatAgeMs: 95_000 },
+      tunnel: "connected",
+      heartbeatAgeMs: 95_000,
+    },
+    {
+      status: { connected: true, lastHeartbeatAgeMs: null },
+      tunnel: "connected",
+      heartbeatAgeMs: -1,
+    },
+    {
+      status: { connected: false, lastHeartbeatAgeMs: null },
+      tunnel: "disconnected",
+      heartbeatAgeMs: -1,
+    },
+  ])(
+    "records the tunnel's heartbeat age with a stall ($tunnel, $heartbeatAgeMs)",
+    async ({ status, tunnel, heartbeatAgeMs }) => {
+      const { env, ctx, routingKeys } = makeEnv((request) =>
+        isStatusCheck(request)
+          ? Response.json(status, { headers: { "x-bb-tunnel-status": "1" } })
+          : new Promise<Response>(() => {}),
+      );
+      await settle(
+        worker.fetch(
+          visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
+            headers: machineHeaders,
+          }),
+          env as never,
+          ctx,
+        ),
+        RESP_HEAD_TIMEOUT_MS,
+      );
+      await recordedEvents(ctx);
+
+      expect(routingKeys.at(-1)).toBe("sawyer");
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+        indexes: ["sawyer.getbb.app"],
+        blobs: [
+          "stall",
+          "tunnel-object",
+          "GET",
+          "sawyer.getbb.app",
+          "/api/v1/threads",
+          tunnel,
+        ],
+        doubles: [RESP_HEAD_TIMEOUT_MS, 1, heartbeatAgeMs],
+      });
+    },
+  );
 
   it("answers 504 when routing never finishes", async () => {
     mockResolveLabel.mockReturnValue(new Promise(() => {}));
@@ -1030,6 +1096,18 @@ describe("gate request deadline", () => {
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: routing)");
     expect(captured).toHaveLength(0);
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: [
+        "stall",
+        "routing",
+        "GET",
+        "sawyer.getbb.app",
+        "/api/v1/threads",
+        "",
+      ],
+      doubles: [RESP_HEAD_TIMEOUT_MS, 0, -1],
+    });
   });
 
   it("answers 504 naming the body stage when a relayed upload never ends", async () => {
@@ -1056,6 +1134,7 @@ describe("gate request deadline", () => {
 
     expect(response.status).toBe(504);
     expect(await response.text()).toContain("(stage: request-body)");
+    await recordedEvents(ctx);
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
         blobs: [
@@ -1064,6 +1143,7 @@ describe("gate request deadline", () => {
           "POST",
           "sawyer.getbb.app",
           "/api/v1/threads",
+          "unknown",
         ],
       }),
     );
@@ -1095,11 +1175,12 @@ describe("gate request deadline", () => {
       const cancel = vi.fn(async () => {});
       const socketEvents: string[] = [];
       let answer: (response: Response) => void = () => {};
-      const { env, ctx } = makeEnv(
-        () =>
-          new Promise<Response>((resolve) => {
-            answer = resolve;
-          }),
+      const { env, ctx } = makeEnv((request) =>
+        isStatusCheck(request)
+          ? new Promise<Response>(() => {})
+          : new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
       );
       const response = await settle(
         worker.fetch(
@@ -1158,11 +1239,15 @@ describe("gate request deadline", () => {
     const reachedTunnelObject = new Promise<void>((resolve) => {
       reachTunnelObject = resolve;
     });
+    let answer: (response: Response) => void = () => {};
+    const tunnelResponse = new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
     const { env, ctx } = makeEnv(() => {
       reachTunnelObject();
-      return new Promise<Response>(() => {});
+      return tunnelResponse;
     });
-    void worker.fetch(
+    const pending = worker.fetch(
       visitorRequest("sawyer.getbb.app", "/__tunnel?v=1", {
         headers: {
           authorization: `Bearer ${credential}`,
@@ -1179,9 +1264,18 @@ describe("gate request deadline", () => {
 
     expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
       indexes: ["sawyer.getbb.app"],
-      blobs: ["slow", "tunnel-object", "GET", "sawyer.getbb.app", "/__tunnel"],
-      doubles: [3_000, 1],
+      blobs: [
+        "slow",
+        "tunnel-object",
+        "GET",
+        "sawyer.getbb.app",
+        "/__tunnel",
+        "",
+      ],
+      doubles: [3_000, 1, -1],
     });
+    answer(new Response("connected"));
+    expect((await pending).status).toBe(200);
   });
 
   it("records nothing for a request that answers in time", async () => {
@@ -2142,6 +2236,7 @@ vi.stubGlobal("WebSocketRequestResponsePair", FakeWebSocketRequestResponsePair);
 
 type MockState = {
   addSocket: (ws: WebSocket, tags: string[]) => void;
+  autoResponded: (ws: WebSocket, at: Date) => void;
   storage: Map<string, unknown>;
   durable: Map<string, unknown>;
   restore: Promise<void>;
@@ -2152,6 +2247,7 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   const storage = new Map<string, unknown>(Object.entries(initialStorage));
   const durable = new Map<string, unknown>(storage);
   const entries: Array<{ ws: WebSocket; tags: string[] }> = [];
+  const autoResponses = new Map<WebSocket, Date>();
   let restore = Promise.resolve();
   const api = {
     getWebSockets: (tag?: string) =>
@@ -2164,6 +2260,8 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
       entries.push({ ws, tags });
     },
     setWebSocketAutoResponse: vi.fn(),
+    getWebSocketAutoResponseTimestamp: (ws: WebSocket) =>
+      autoResponses.get(ws) ?? null,
     abort: vi.fn((reason?: string) => {
       throw new Error(reason);
     }),
@@ -2195,6 +2293,9 @@ function mockDoState(initialStorage: Record<string, unknown> = {}): MockState {
   return {
     addSocket: (ws: WebSocket, tags: string[]) => {
       entries.push({ ws, tags });
+    },
+    autoResponded: (ws: WebSocket, at: Date) => {
+      autoResponses.set(ws, at);
     },
     storage,
     durable,
@@ -3096,6 +3197,167 @@ describe("TunnelDO holds visitors while a lost tunnel redials", () => {
   });
 });
 
+describe("TunnelDO records how long a server went without a tunnel", () => {
+  const RealResponse = globalThis.Response;
+
+  class WorkersResponse extends RealResponse {
+    readonly webSocket: WebSocket | null;
+    constructor(
+      body?: BodyInit | null,
+      init?: ResponseInit & { webSocket?: WebSocket | null },
+    ) {
+      if (init?.webSocket != null) {
+        super(null, { status: 200 });
+        Object.defineProperty(this, "status", { value: init.status });
+        this.webSocket = init.webSocket;
+      } else {
+        super(body ?? null, init);
+        this.webSocket = null;
+      }
+    }
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000_000);
+    class FakeWebSocketPair {
+      0 = fakeTunnelSocket();
+      1 = fakeTunnelSocket();
+    }
+    globalThis.Response = WorkersResponse as never;
+    (globalThis as { WebSocketPair?: unknown }).WebSocketPair =
+      FakeWebSocketPair;
+  });
+
+  afterEach(() => {
+    globalThis.Response = RealResponse;
+    delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+    vi.useRealTimers();
+  });
+
+  function dial(dob: TunnelDO) {
+    return dob.fetch(
+      new Request("https://sawyer.getbb.app/__tunnel?v=1&serverId=srv", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+  }
+
+  it("records the gap and how the last tunnel ended when a server redials", async () => {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: 10_000_000 - 3_600_000,
+      tunnelClosedAt: 10_000_000 - 4_000,
+      tunnelLostAt: 10_000_000 - 4_000,
+    });
+    const env = makeDoEnv();
+    const dob = new TunnelDO(state.api, env);
+    await state.restore;
+
+    await dial(dob);
+
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: ["tunnel-gap", "lost", "", "sawyer.getbb.app", "", ""],
+      doubles: [4_000, 3_596_000, -1],
+    });
+  });
+
+  it("marks a gap after a tunnel that replaced a live one and closed within a second", async () => {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: 10_000_000 - 300_400,
+      tunnelClosedAt: 10_000_000 - 300_000,
+      tunnelLostAt: 10_000_000 - 300_000,
+      tunnelReplacedLive: true,
+    });
+    const env = makeDoEnv();
+    const dob = new TunnelDO(state.api, env);
+    await state.restore;
+
+    await dial(dob);
+
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+      indexes: ["sawyer.getbb.app"],
+      blobs: [
+        "tunnel-gap",
+        "lost",
+        "replaced-live",
+        "sawyer.getbb.app",
+        "",
+        "",
+      ],
+      doubles: [300_000, 400, -1],
+    });
+  });
+
+  it("measures from the last open when the tunnel's close was never reported", async () => {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: 10_000_000 - 300_000,
+      tunnelClosedAt: 10_000_000 - 3_600_000,
+      tunnelReplacedLive: true,
+    });
+    const env = makeDoEnv();
+    const firstAttempt = new TunnelDO(state.api, env);
+    await state.restore;
+    await expect(dial(firstAttempt)).rejects.toThrow(
+      "the tunnel socket disappeared without a close",
+    );
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+    const restarted = new TunnelDO(state.api, env);
+    await state.restore;
+
+    await dial(restarted);
+
+    expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blobs: [
+          "tunnel-gap",
+          "unreported",
+          "replaced-live",
+          "sawyer.getbb.app",
+          "",
+          "",
+        ],
+        doubles: [300_000, -1, -1],
+      }),
+    );
+  });
+
+  it("records nothing when a dial replaces a live tunnel, and remembers that it did", async () => {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: 10_000_000 - 60_000,
+    });
+    state.addSocket(fakeTunnelSocket(), ["tunnel"]);
+    const env = makeDoEnv();
+    const dob = new TunnelDO(state.api, env);
+    await state.restore;
+
+    await dial(dob);
+
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+    expect(state.storage.get("tunnelReplacedLive")).toBe(true);
+  });
+
+  it("records nothing for a server's first tunnel", async () => {
+    const state = mockDoState({});
+    const env = makeDoEnv();
+    const dob = new TunnelDO(state.api, env);
+    await state.restore;
+
+    await dial(dob);
+
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+    expect(state.storage.get("tunnelReplacedLive")).toBe(false);
+  });
+});
+
 describe("gate error response", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -3383,14 +3645,45 @@ describe("TunnelDO status and on-change presence", () => {
       new Request("https://tunnel/__control/status"),
     );
     expect(offline.headers.get("x-bb-tunnel-status")).toBe("1");
-    await expect(offline.json()).resolves.toEqual({ connected: false });
+    await expect(offline.json()).resolves.toEqual({
+      connected: false,
+      lastHeartbeatAgeMs: null,
+    });
 
-    state.addSocket(fakeTunnelSocket(captureSent(sent)), ["tunnel"]);
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
     const online = await dob.fetch(
       new Request("https://tunnel/__control/status"),
     );
-    await expect(online.json()).resolves.toEqual({ connected: true });
+    await expect(online.json()).resolves.toEqual({
+      connected: true,
+      lastHeartbeatAgeMs: null,
+    });
     expect(sent).toEqual([]);
+  });
+
+  it("reports how long ago the tunnel's last heartbeat was answered", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const state = mockDoState({ protocolVersion: 1, serverId: "srv" });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket();
+    state.addSocket(tunnel, ["tunnel"]);
+    state.autoResponded(tunnel, new Date(1_000_000 - 95_000));
+
+    try {
+      const response = await dob.fetch(
+        new Request("https://tunnel/__control/status"),
+      );
+
+      await expect(response.json()).resolves.toEqual({
+        connected: true,
+        lastHeartbeatAgeMs: 95_000,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("writes last-seen when the tunnel closes and spaces the alarm to half an hour in on-change mode", async () => {

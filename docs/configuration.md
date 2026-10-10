@@ -315,7 +315,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -403,8 +414,7 @@ A new install opens a first-run setup guide (connect an agent, add projects,
 pick plugins, set up devices). `onboardingCompletedAt` in general settings
 records when it was finished or skipped; `bb settings replay-onboarding`, or
 Settings → General → Setup guide, clears it so the guide shows again.
-`setupChecklistVisible` controls the "Finish setting up bb" home-screen
-checklist. The projects step lists what `bb project discover` and
+The projects step lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
@@ -438,6 +448,69 @@ start a valid git branch name, such as one with a space or a leading `-`, and
 the prefix is at most 64 characters. The prefix applies to branches bb creates
 after you change it; it does not rename an existing branch or worktree. Set it
 with `bb settings general managedBranchPrefix <prefix>`.
+
+The bundled **Storage & retention** plugin is disabled by default. Enable it with
+`bb plugin enable bb--storage-retention`, then open its sidebar panel. Both policies
+default to Never. The plugin stores its policy and latest run in its own storage;
+there are no general app settings for retention. Preview with
+`bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`
+to save. Use `never` to turn either policy off. Days range from 1 to 3650.
+
+The plugin also offers **Delete thread storage on archive**, off by default.
+All retention settings save immediately in the panel.
+Set it with `bb storage retention --delete-storage-on-archive true --save --yes`
+(or `false` to disable). It clears storage for future manual and automatic
+archives, including cascaded children, preserving conversations and uploaded
+attachments and skipping pinned threads. Pending cleanup persists across reloads
+and retries every minute until the core archive undo grace has elapsed (currently
+30 seconds), the thread has stopped, and its machine is online. Bulk archived-file
+cleanup also respects this grace and rechecks eligibility before each batch.
+Unarchiving cancels pending cleanup. Existing archives are not cleared by enabling
+this setting; use the explicit archived-file cleanup action for those.
+
+**Delete development data when its checkout is removed** is a separate,
+off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(use `false` to disable). It scans online persistent machines on plugin startup, machine reconnect, and hourly, and
+cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
+scans, including existing data. The machine rechecks absence before deletion,
+stops servers working inside removed checkouts, and keeps existing or unresolved
+sources. Offline/busy machines and failed cleanup retry on later scans. Thread
+retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running cleanup there to finish. Startup and
+periodic scans recover missed events by checking the filesystem; no removal
+history is stored in the core database.
+
+The hourly plugin schedule processes up to 50 trees per action across all projects.
+Archive eligibility uses each affected member's updatedAt; deletion requires every
+lifecycle member to have been archived past the cutoff. Pinned members exempt the
+group. Cross-plugin protection is deferred: pin automation targets to keep them.
+Archiving may remove worktrees including uncommitted changes; deletion removes
+history and thread storage. Disabling the plugin stops retention
+without losing the saved policy. The plugin uses existing SDK thread listing and
+archive/delete APIs, accepting changes between inspection and mutation.
+
+Storage reads use cached reports and never trigger disk scans. Start a background
+scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
+scan every online machine; rerun usage to see its status and results. Bulk cleanup runs one job at a time per machine; scans run alongside cleanup, and a finished scan leaves out anything cleared while it ran. The existing
+bounded idle orphan sweep remains independent of the plugin.
+`bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
+`bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
+or more from archived threads' storage, keeping smaller files and skipping
+pinned and running threads. The page starts this cleanup in the background,
+reports its running/completed/failed status, and survives navigation or reconnects.
+`bb storage usage` also exposes that status as `largeFileCleanup`. The CLI waits
+for deletion to finish;
+`bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
+whole storage folders, including small files, skipping pinned and running threads;
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
+instances whose source checkout no longer exists, first stopping servers still
+running from that checkout; add `--instance NAME` to remove one entry of any
+kind, stopping its dev server first if it is running;
+`bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
+`bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
+The plugin owns the disk scanner, cached reports, classification, and host-worker
+file operations. Reports are snapshots; changes outside the plugin appear after
+a rescan. These actions are available through its typed plugin RPC. See the
+[plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
 
 Settings → Providers lists every registered agent provider in picker order.
 Move a provider up or down to change the order and choose the default for new
@@ -721,6 +794,23 @@ CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
 listed.
 
+The rebuilt ACP adapter ships as a second built-in plugin, "ACP providers (new
+adapter)", which is off by default. Turn it on in Settings → Plugins or with
+`bb plugin enable bb--provider-acp-next`. It registers the same provider ids,
+so existing threads keep working, and only one of the two ACP plugins runs at
+a time: turning the new one on turns "ACP providers" off, turning it off
+turns "ACP providers" back on, and the `customAgents` list follows the switch
+in both directions. The new adapter adds agent options in the model picker
+(the agent's mode stays in the composer footer), live slash commands in the
+composer, agent questions as question cards, sign-in
+guidance, and the official ACP registry: its settings page lists the
+registry's agents with an Add button, and `bb acp registry`, `bb acp add
+<agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding
+one writes a `customAgents` entry that runs the registry's `npx` or `uvx`
+package on the thread's host, so the host needs Node.js or uv. Agents the
+registry ships only as a downloadable binary are listed but must be installed
+by hand and added as a custom agent.
+
 Add your own agent through the ACP providers plugin's `customAgents` setting,
 which holds a JSON array. In the app it is the multi-line editor on the
 plugin's settings page (Settings → Plugins → ACP providers); from the CLI:
@@ -971,18 +1061,10 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
 | `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
 | `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
 | `sidebar.footerOrder`                | Footer action order                                                                       |
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Navigation entry order                                                                    |
-| `sidebar.visiblePluginPanels`        | Navigation entries shown, or `null` for every entry                                       |
-| `sidebar.navigationProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `sidebar.headerProvider`             | Plugin key, or `__builtin__` for bb's header only                                         |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                  |
 | `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
 | `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
 
@@ -995,17 +1077,20 @@ Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-The sidebar navigation works the same way: `sidebar.navigationProvider` defaults to
-`__automatic__`, which prefers an installed navigation plugin over the bundled
-Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
-resolve to the bundled plugin. Order and visibility stay in
-`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`, shared by every
-navigation plugin.
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+order and show or hide rail destinations.
 
-`sidebar.headerProvider` picks a plugin that draws controls in the sidebar header
-row, between the sidebar toggle and the back and forward buttons. It defaults to
-`__builtin__`, which leaves only bb's controls there. Set it with
-`bb settings ui set sidebar.headerProvider <plugin-id>/<slot-id>`.
+In the macOS desktop app, wide windows add a title bar holding the window
+controls, Back and Forward, and the sidebar toggle. It shares the rail's
+background, and the sidebar and page sit in a card below it. On narrow windows
+and phones the rail sits inside the drawer: Home, Plugins, Skills, and Settings
+swap the list beside it and leave the drawer open, and a plugin page closes it.
 
 New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
 Migrated installations with existing projects, threads, or UI preferences fall back
@@ -1122,15 +1207,22 @@ leaves only the actions menu. Done, Escape, or a click elsewhere finishes;
 each change saves immediately.
 Archived rows keep their unarchive button regardless of this setting.
 
-The Thread list plugin's `rowActions` preference defaults to `["archive"]` and
-accepts up to three of `split`, `copyLink`, `read`, `pin`, `move`, `rename`, and
-`archive`, in display order. Duplicates are deduplicated. `split` is skipped
-where a split is unavailable, and `move` is skipped for threads that cannot
-move to another section. `move` opens a menu of sections.
+The Thread list plugin's `rowActions` preference stores up to three thread
+action keys in display order and defaults to `["bb--core/archive"]`. bb's
+keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
+`bb--core/copyLink`, `bb--core/read`, `bb--core/pin`, `bb--core/rename`,
+`bb--core/archive`, and `bb--core/delete`; the thread list's own Move to
+section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
+Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
+accepted and migrate to their current keys. Duplicates are deduplicated. A key
+whose action is hidden for a row (`bb--core/split` for the thread in view,
+`thread-list/move` for a thread that cannot move) or whose plugin is not
+installed is skipped on that row. `bb--core/split` reads Focus split for a
+thread open in another split pane. `thread-list/move` opens a menu of sections.
 
 ```sh
 bb thread-list prefs get rowActions
-bb thread-list prefs set rowActions '["pin","copyLink","archive"]'
+bb thread-list prefs set rowActions '["bb--core/pin","bb--core/copyLink","bb--core/archive"]'
 bb thread-list prefs set rowActions '[]'
 bb thread-list prefs reset rowActions
 ```
@@ -1153,14 +1245,14 @@ visibility, and every action in More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
-stable IDs: `builtin:settings`, `builtin:report-bug`, and
+stable IDs: `builtin:mobile`, `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
 Unknown and disabled-plugin IDs are retained across reloads; new actions default
 visible. The existing SDK UI preferences and CLI manage the same values:
 
 ```sh
 bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
-bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:mobile"]'
 bb settings ui reset sidebar.hiddenFooterItems
 ```
 
@@ -1411,18 +1503,6 @@ Experimental surfaces are changed in Settings → Experiments or with
 bb stores only the experiments you set; the others follow the shipped default.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The default-off `navigationRail` experiment keeps a vertical rail of
-destinations on the left edge of the sidebar on every screen. Home returns to
-the last thread, Settings sits at the bottom, and New thread moves into the
-sidebar header. The sidebar beside the rail still swaps between the thread
-list, Plugins, Skills, and Settings. Collapsing the sidebar hides that list
-and leaves the rail in place. In the macOS desktop app the rail and a title
-bar across the top of the window share one background; the title bar holds
-the window controls, Back and Forward, and the sidebar toggle, and the
-sidebar and page sit in a card with a rounded top-left corner. While it is on, bb draws the navigation
-itself, so the Navigation and Header choices under Settings → Appearance are
-not used; they apply again when the experiment is turned off. Narrow windows
-and phones keep the regular drawer.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
@@ -1572,6 +1652,20 @@ every other. `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary;
 login, such as a CI runner. Mint the token with `claude setup-token`, which is
 long-lived where the credentials from `/login` are not. A logged-in machine
 needs neither.
+
+### Ask User Question plugin
+
+The builtin Ask User Question plugin keeps an unanswered question card open for
+30 minutes by default. When it expires, the agent receives a timeout result and
+the card closes. Choose `1 hour`, `4 hours`, `8 hours`, `24 hours`, `3 days`, or
+`7 days` under the plugin settings, or configure it from the CLI:
+
+```bash
+bb plugin config ask-user-question set questionTimeout "24 hours"
+```
+
+The setting applies to questions asked after it changes. A server restart still
+closes every open card.
 
 ### Provider retry plugin
 
@@ -1910,7 +2004,9 @@ supplies `GH_TOKEN`, Git's
 rewrites for github.com, and author/committer identity. The helper expands
 `GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
 store is installed. The primary host continues using its local Git authentication
-unless an explicit global or project `GH_TOKEN` overrides it. Private email uses
+unless an explicit global or project `GH_TOKEN` overrides it. A server without a
+local host daemon has no primary host, so every machine receives the built-in
+row. Private email uses
 `<id>+<login>@users.noreply.github.com`.
 A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction

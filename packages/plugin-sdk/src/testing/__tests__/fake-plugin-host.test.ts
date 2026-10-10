@@ -469,6 +469,18 @@ describe("settings", () => {
     ).toThrow('default for setting "broken" must be one of its options');
     expect(() =>
       bb.settings.define({
+        labelled: {
+          type: "select",
+          label: "L",
+          options: ["a"],
+          experimental_optionLabels: { a: "A", z: "Z" },
+        },
+      }),
+    ).toThrow(
+      'label for setting "labelled" names "z", which is not one of its options',
+    );
+    expect(() =>
+      bb.settings.define({
         pem: {
           type: "string",
           label: "Key",

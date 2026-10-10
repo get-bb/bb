@@ -13,7 +13,7 @@ Agent mode flags:
 --prompt <prompt>              Prompt to run when due
 --provider <id>                Provider ID
 --model <model>                Model ID
---reasoning <level>            none, low, medium, high, xhigh, ultracode, max, or ultra
+--reasoning <level>            Level id the model lists, such as low, medium, or high
 --service-tier <tier>          Literal tier id the provider lists, including none
 --clear-service-tier           Clear the tier; cannot combine with --service-tier
 --permission-mode <mode>       accept-edits, auto, or full

@@ -10,9 +10,13 @@ import {
 const marketplaceRoute = getRouteApi("/marketplace_");
 
 export const Route = createFileRoute("/marketplace_/$pluginId")({
-  loader: async ({ params, parentMatchPromise }) => {
+  loader: async ({ params, location, parentMatchPromise }) => {
     const { loaderData: marketplace } = await parentMatchPromise;
-    return marketplacePluginRouteEntry(marketplace, params.pluginId);
+    return marketplacePluginRouteEntry(
+      marketplace,
+      params.pluginId,
+      location.pathname,
+    );
   },
   head: ({ loaderData, params }) => {
     const entry = loaderData;
@@ -41,7 +45,6 @@ export const Route = createFileRoute("/marketplace_/$pluginId")({
             : undefined,
         ),
       ],
-      links: [{ rel: "canonical", href: `https://getbb.app${path}` }],
     };
   },
   component: MarketplaceDetailRoute,

@@ -21,7 +21,7 @@ interface SeqAnchoredRow {
   messageSeq?: number;
   sourceSeqStart: number;
   sourceSeqEnd: number;
-  childRows?: readonly SeqAnchoredRow[];
+  childRows?: readonly SeqAnchoredRow[] | null;
   children?: readonly SeqAnchoredRow[] | null;
 }
 
@@ -72,7 +72,7 @@ function containsSeq(row: SeqAnchoredRow, seq: number): boolean {
 }
 
 function getNestedRows(row: SeqAnchoredRow): readonly SeqAnchoredRow[] | null {
-  if (row.childRows) {
+  if (row.childRows !== undefined) {
     return row.childRows;
   }
   if ("children" in row) {

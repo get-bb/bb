@@ -8,6 +8,7 @@ export type GateStage =
 export interface GateProgress {
   stage: GateStage;
   tunnelObjectAttempts: number;
+  routingKey: string | null;
 }
 
 export interface GateDelay {

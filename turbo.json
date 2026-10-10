@@ -65,11 +65,7 @@
       "dependsOn": ["@bb/demo-server#build", "topo"]
     },
     "@bb/demo-server#build": {
-      "dependsOn": [
-        "@bb/app#build",
-        "bb-plugin-navigation#prepare:bundled",
-        "bb-plugin-thread-list#prepare:bundled"
-      ],
+      "dependsOn": ["@bb/app#build", "bb-plugin-thread-list#prepare:bundled"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/plugins/provider-codex/icons/codex.svg",
@@ -908,6 +904,13 @@
     // ---- In-repo plugins typecheck against the SDK's bundled .d.ts ----------
     // Either through a tsconfig `paths` map or through the workspace symlink's
     // package `types` field; both land on bundled-types/, a build output.
+    "bb-plugin-bb--storage-retention#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
     "bb-plugin-composer-customization#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -942,9 +945,6 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-replacement-lab-beta#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
-    },
-    "bb-plugin-sidebar-navigation#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-thread-chat-demo#typecheck": {
@@ -1251,6 +1251,24 @@
         "topo"
       ]
     },
+    "bb-plugin-bb--provider-acp-next#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--provider-acp-next#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
     "bb-plugin-provider-claude-code#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
@@ -1399,24 +1417,6 @@
       ]
     },
     "bb-plugin-theme-preview#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "@get-bb/plugin-sdk#build",
-        "topo"
-      ],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
-      ]
-    },
-    "bb-plugin-navigation#typecheck": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
-      ]
-    },
-    "bb-plugin-navigation#test": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",

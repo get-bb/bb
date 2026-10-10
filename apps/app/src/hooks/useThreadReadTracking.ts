@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import type { Thread } from "@bb/domain";
 import { isThreadRead, type ThreadReadState } from "@bb/client-core";
 import {
-  isDocumentVisible,
   useDocumentVisibilityRevision,
+  useDocumentVisible,
 } from "@/lib/document-visibility";
 
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
@@ -38,7 +38,7 @@ export function useThreadReadTracking({
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
   const visibilityRevision = useDocumentVisibilityRevision();
-  const isVisible = isDocumentVisible();
+  const isVisible = useDocumentVisible();
 
   useEffect(() => {
     const controllers = pendingReadControllersRef.current;

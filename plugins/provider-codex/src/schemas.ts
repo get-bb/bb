@@ -7,6 +7,7 @@ import {
   jsonRpcEnvelopeSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { codexAsyncQuestionSchema } from "./extension-kinds.js";
 import type { CodexErrorInfo as GeneratedCodexErrorInfo } from "./generated/codex-app-server/schema/v2/CodexErrorInfo.js";
 
 const codexTurnStatusSchema = z.enum([
@@ -365,6 +366,13 @@ export const codexSubAgentActivityItemSchema = z
 export type CodexSubAgentActivityItem = z.infer<
   typeof codexSubAgentActivityItemSchema
 >;
+
+export const codexAsyncQuestionItemSchema = z.object({
+  type: z.literal("agentMessage"),
+  id: z.string().min(1),
+  delivery: z.literal("async"),
+  questions: z.array(codexAsyncQuestionSchema).min(1),
+});
 
 export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
   z

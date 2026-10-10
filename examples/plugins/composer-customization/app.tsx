@@ -52,7 +52,7 @@ export default definePluginApp((app) => {
       {
         id: "append-checklist",
         label: "Append review checklist",
-        icon: "ListChecks",
+        icon: "ListTodo",
         description: "Add a short review checklist to the current draft.",
         disabled: (composer) => composer.isSubmitting,
         run: ({ composer }) => {

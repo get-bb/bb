@@ -36,9 +36,7 @@ const {
   useRealtimeConnectionState,
   useRpc,
   useSdk,
-  experimental_useSidebarNavigation,
-  experimental_useSidebarNavigationSplit,
-  experimental_SidebarNavigationIcon: SidebarNavigationIcon,
+  experimental_copyToClipboard,
 } = await import("../../app.js");
 
 function SdkProbe() {
@@ -527,79 +525,6 @@ const app = await loadPluginApp(
   }),
 );
 
-function NavigationProbe({ id }: { id: string }) {
-  const { activeItemId, actions, items } = experimental_useSidebarNavigation();
-  const split = experimental_useSidebarNavigationSplit(id);
-  const item = items.find((candidate) => candidate.id === id);
-  if (!item) return null;
-  return (
-    <button
-      type="button"
-      aria-current={item.id === activeItemId ? "page" : undefined}
-      {...split.splitProps}
-      onClick={() => {
-        actions.activate(item.id, { openInSplit: true });
-        actions.setVisible(item.id, false);
-        actions.setOrder([item.id]);
-        actions.openCustomize();
-      }}
-    >
-      <SidebarNavigationIcon icon={item.icon} />
-      {item.label}
-    </button>
-  );
-}
-
-describe("sidebar navigation test runtime", () => {
-  it("reports configured items and records every action", () => {
-    const slot = renderSlot(
-      { component: NavigationProbe },
-      { id: "garden/docs" },
-      {
-        sidebarNavigation: {
-          activeItemId: "garden/docs",
-          items: [
-            {
-              id: "garden/docs",
-              label: "Docs",
-              icon: { kind: "plugin", pluginId: "garden", icon: "BookOpen" },
-              action: {
-                kind: "open-plugin-panel",
-                pluginId: "garden",
-                panelId: "docs",
-              },
-              isDisabled: false,
-              isVisible: true,
-              isLoading: false,
-              pluginId: "garden",
-              shortcut: null,
-              experimental_Accessory: null,
-            },
-          ],
-        },
-      },
-    );
-
-    const button = slot.getByRole("button", { name: "Docs" });
-    expect(button.getAttribute("aria-current")).toBe("page");
-    expect(
-      button
-        .querySelector("[data-sidebar-navigation-icon]")
-        ?.getAttribute("data-sidebar-navigation-icon"),
-    ).toBe("garden/BookOpen");
-    fireEvent.pointerDown(button);
-    fireEvent.click(button);
-
-    expect(slot.inspection.sidebarNavigationCalls).toEqual([
-      { method: "beginSplitDrag", itemId: "garden/docs" },
-      { method: "activate", itemId: "garden/docs", openInSplit: true },
-      { method: "setVisible", itemId: "garden/docs", isVisible: false },
-      { method: "setOrder", itemIds: ["garden/docs"] },
-      { method: "openCustomize" },
-    ]);
-  });
-});
-
 describe("loadPluginApp", () => {
   beforeEach(() => {
     messageActionRuns.length = 0;
@@ -635,74 +560,6 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.experimental_appOverlay: duplicate id "office"');
-  });
-
-  it("captures and validates sidebar navigation registrations", async () => {
-    const captured = await loadPluginApp(
-      definePluginApp((builder) => {
-        builder.slots.experimental_sidebarNavigation({
-          id: "compact",
-          title: "Compact navigation",
-          description: "Groups the sidebar destinations.",
-          component: () => null,
-        });
-      }),
-    );
-
-    expect(captured.experimentalSidebarNavigations).toEqual([
-      {
-        id: "compact",
-        title: "Compact navigation",
-        description: "Groups the sidebar destinations.",
-        component: expect.any(Function),
-      },
-    ]);
-    const withHeader = await loadPluginApp(
-      definePluginApp((builder) => {
-        builder.slots.experimental_sidebarHeader({
-          id: "icons",
-          title: "Header icons",
-          component: () => null,
-        });
-      }),
-    );
-    expect(withHeader.experimentalSidebarHeaders).toEqual([
-      { id: "icons", title: "Header icons", component: expect.any(Function) },
-    ]);
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.experimental_sidebarHeader({
-            id: "icons",
-            title: "One",
-            component: () => null,
-          });
-          builder.slots.experimental_sidebarHeader({
-            id: "icons",
-            title: "Two",
-            component: () => null,
-          });
-        }),
-      ),
-    ).rejects.toThrow('slots.experimental_sidebarHeader: duplicate id "icons"');
-    await expect(
-      loadPluginApp(
-        definePluginApp((builder) => {
-          builder.slots.experimental_sidebarNavigation({
-            id: "compact",
-            title: "One",
-            component: () => null,
-          });
-          builder.slots.experimental_sidebarNavigation({
-            id: "compact",
-            title: "Two",
-            component: () => null,
-          });
-        }),
-      ),
-    ).rejects.toThrow(
-      'slots.experimental_sidebarNavigation: duplicate id "compact"',
-    );
   });
 
   it("captures and validates New thread panel action registrations", async () => {
@@ -797,6 +654,54 @@ describe("loadPluginApp", () => {
       "second:dispose",
       "first:dispose",
     ]);
+  });
+
+  it("routes clipboard writes to the content scripts or slot that mounted last", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.contentScripts.register({
+          id: "copier",
+          async mount() {
+            await experimental_copyToClipboard({
+              text: "plain",
+              html: "<b>rich</b>",
+            });
+          },
+        });
+        builder.slots.navPanel({
+          id: "panel",
+          title: "Panel",
+          icon: "Folder",
+          path: "panel",
+          component: () => <p>panel</p>,
+        });
+      }),
+    );
+
+    const mounted = await mountPluginContentScripts(captured, {
+      pluginId: "demo",
+      experimental_copyToClipboard: async () => false,
+    });
+    expect(mounted.inspection.experimental_clipboardWrites).toEqual([
+      { text: "plain", html: "<b>rich</b>" },
+    ]);
+    await expect(
+      experimental_copyToClipboard({ text: "later" }),
+    ).resolves.toBe(false);
+
+    const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
+    await expect(
+      experimental_copyToClipboard({ text: "from a command" }),
+    ).resolves.toBe(true);
+
+    expect(mounted.inspection.experimental_clipboardWrites).toEqual([
+      { text: "plain", html: "<b>rich</b>" },
+      { text: "later" },
+    ]);
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: "from a command" },
+    ]);
+    await mounted.lifecycle.dispose();
   });
 
   it("models current-host thread-row statuses, validation, and lifecycle cleanup", async () => {
@@ -2141,4 +2046,93 @@ it("reacts to attachment-only updates and atomic replacement through the public 
   expect(slot.getByRole("status").textContent).toBe("prefill:1:false");
   fireEvent.click(slot.getByRole("button", { name: "Replace all" }));
   expect(slot.getByRole("status").textContent).toBe(":0:true");
+});
+
+describe("thread actions menu fake", () => {
+  const thread = {
+    id: "thr_menu",
+    projectId: "proj_menu",
+    parentThreadId: null,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: null,
+    isUnread: false,
+    status: "idle" as const,
+    environment: null,
+  };
+
+  it("rejects a trigger that drops the props and ref it receives", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={() => <button type="button">Thread actions</button>}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /must spread the props and ref/,
+    );
+    error.mockRestore();
+  });
+
+  it("rejects a trigger that replaces the host's className", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button" className="mine">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    expect(() => renderSlot({ component: Probe }, {})).toThrow(
+      /replaced the host's className/,
+    );
+    error.mockRestore();
+  });
+
+  it("opens from a trigger that spreads its props", async () => {
+    const { experimental_ThreadActionsMenu: ThreadActionsMenu } =
+      await import("../../app.js");
+    const run = vi.fn(async () => {});
+    function Probe() {
+      return (
+        <ThreadActionsMenu
+          thread={thread}
+          trigger={(props) => (
+            <button {...props} type="button">
+              Thread actions
+            </button>
+          )}
+        />
+      );
+    }
+    const slot = renderSlot(
+      { component: Probe },
+      {},
+      {
+        threadActions: () => [
+          {
+            key: "bb--core/pin",
+            pluginId: "bb--core",
+            group: "2_organize",
+            action: { label: "Pin", icon: "Pin", run },
+          },
+        ],
+      },
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Thread actions" }));
+    fireEvent.click(slot.getByRole("menuitem", { name: "Pin" }));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
 });

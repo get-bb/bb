@@ -480,7 +480,6 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
 ];
 
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
-  settings: () => <MiniIcon icon="Settings" className="size-4" />,
   "plugin-footer-items": () => (
     <span className="flex items-center gap-1.5">
       <span className="flex size-5.5 items-center justify-center rounded-md">
@@ -494,6 +493,43 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
   "bug-report": () => <MiniIcon icon="Bug" className="size-4" />,
 };
 
+const RAIL_BUTTON_CLASS = "flex size-7 items-center justify-center rounded-md";
+
+function SidebarRail() {
+  return (
+    <div
+      data-guide-fixture="sidebar-rail"
+      className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border-hairline py-3"
+    >
+      <span className={cn(RAIL_BUTTON_CLASS, "bg-sidebar-accent")}>
+        <MiniIcon icon="Home" className="text-foreground" />
+      </span>
+      <span className={RAIL_BUTTON_CLASS}>
+        <MiniIcon icon="Plug02" />
+      </span>
+      <span className={RAIL_BUTTON_CLASS}>
+        <MiniIcon icon="Zap" />
+      </span>
+      <Mark
+        id="nav-panel"
+        label="Plugin nav panels, in the navigation rail"
+        className="z-[2] flex size-7 items-center justify-center text-sidebar-foreground"
+        showChip={false}
+      >
+        <PluginGlyph />
+        <span className="sr-only">Your panel</span>
+      </Mark>
+      <span className={RAIL_BUTTON_CLASS}>
+        <MiniIcon icon="MoreHorizontal" />
+      </span>
+      <span className="flex-1" />
+      <span className={RAIL_BUTTON_CLASS}>
+        <MiniIcon icon="Settings" />
+      </span>
+    </div>
+  );
+}
+
 const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
   "top-reserve": () => (
     <div
@@ -503,46 +539,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       <MiniIcon icon="ChevronLeft" className="size-3.5" />
       <MiniIcon icon="ChevronRight" className="ml-1.5 size-3.5" />
     </div>
-  ),
-  "sidebar-navigation": () => (
-    <RegionMark
-      id="sidebar-navigation"
-      label="The sidebar navigation controls, replaceable by one plugin"
-      showChip={false}
-    >
-      <div
-        data-guide-fixture="sidebar-navigation-primary-actions"
-        className="space-y-0.5 px-2 py-2"
-      >
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2 text-foreground">
-          <MiniIcon icon="MessageSquarePlus" className="text-foreground" />
-          New thread
-        </span>
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon="Search" />
-          Search threads
-        </span>
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon="Plug02" />
-          Plugins
-        </span>
-        <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-          <MiniIcon icon="Zap" />
-          Skills
-        </span>
-      </div>
-      <div className="px-2 pb-2">
-        <Mark
-          id="nav-panel"
-          label="Plugin nav panels, above the thread list"
-          className="z-[2] flex h-6.5 items-center gap-2 bg-sidebar-accent px-2 font-medium text-sidebar-foreground"
-          showChip={false}
-        >
-          <PluginGlyph />
-          Your panel
-        </Mark>
-      </div>
-    </RegionMark>
   ),
   "thread-list": () => (
     <RegionMark
@@ -972,16 +968,9 @@ export function AppShellWireframe({
         <>
           <MeasuredBadge
             id="nav-panel"
-            label="Plugin nav panels, above the thread list"
+            label="Plugin nav panels, in the navigation rail"
             anchor='[data-guide-region="nav-panel"]'
             at="start"
-          />
-          <MeasuredBadge
-            id="sidebar-navigation"
-            label="The sidebar navigation controls, replaceable by one plugin"
-            anchor='[data-guide-region="sidebar-navigation"]'
-            at="start"
-            align="start"
           />
           <MeasuredBadge
             id="thread-list"
@@ -997,6 +986,12 @@ export function AppShellWireframe({
             id="thread-header"
             label="Plugin thread-header control, left end of the action row"
             anchor='[data-guide-region="thread-header"]'
+            at="above"
+          />
+          <MeasuredBadge
+            id="thread-actions"
+            label="Plugin thread actions, in the thread menu"
+            anchor='[data-guide-region="thread-actions"]'
             at="above"
           />
           <MeasuredBadge
@@ -1042,18 +1037,21 @@ function AppShellWireframeBody({
   if (scene === "navigation") {
     return (
       <WindowFrame className={cn("flex bg-background", MOBILE_SCREEN_CLASS)}>
-        <div className="flex w-[86%] flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
-          <div className="flex h-12 items-center gap-3 px-3 text-sm">
-            <MiniIcon icon="PanelLeft" />
-            Navigation
+        <div className="flex w-[86%] border-r border-border-seam bg-sidebar text-sidebar-foreground">
+          <SidebarRail />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex h-12 items-center gap-3 px-3 text-sm">
+              <MiniIcon icon="MessageSquarePlus" />
+              New thread
+            </div>
+            {anatomy.appSidebar
+              .filter((key) => key !== "top-reserve")
+              .map((key) => (
+                <Fragment key={key}>
+                  {SIDEBAR_SECTION_RENDERERS[key]?.()}
+                </Fragment>
+              ))}
           </div>
-          {anatomy.appSidebar
-            .filter((key) => key !== "top-reserve")
-            .map((key) => (
-              <Fragment key={key}>
-                {SIDEBAR_SECTION_RENDERERS[key]?.()}
-              </Fragment>
-            ))}
         </div>
       </WindowFrame>
     );
@@ -1103,12 +1101,15 @@ function AppShellWireframeBody({
         }
       >
         {mobile ? null : (
-          <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
-            {anatomy.appSidebar.map((key) => (
-              <Fragment key={key}>
-                {SIDEBAR_SECTION_RENDERERS[key]?.()}
-              </Fragment>
-            ))}
+          <div className="flex w-[300px] shrink-0 border-r border-border-seam bg-sidebar text-sidebar-foreground">
+            <SidebarRail />
+            <div className="flex min-w-0 flex-1 flex-col">
+              {anatomy.appSidebar.map((key) => (
+                <Fragment key={key}>
+                  {SIDEBAR_SECTION_RENDERERS[key]?.()}
+                </Fragment>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1120,7 +1121,14 @@ function AppShellWireframeBody({
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
-            <MiniIcon icon="MoreHorizontal" className="size-3.5" />
+            <Mark
+              id="thread-actions"
+              label="Plugin thread actions, in the thread menu"
+              className="flex h-6.5 items-center px-1"
+              showChip={false}
+            >
+              <MiniIcon icon="MoreHorizontal" className="size-3.5" />
+            </Mark>
             <span className="flex-1" />
             <Mark
               id="thread-header"

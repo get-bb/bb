@@ -21,6 +21,7 @@
       "used": "required",
       "size": "optional",
       "estimated": "required",
+      "cost": "optional",
       "attach": "required",
       "providerTurnId": "optional"
     },
@@ -135,7 +136,8 @@
     },
     "thread.name": {
       "kind": "required",
-      "name": "required"
+      "name": "required",
+      "source": "optional"
     },
     "thread.started": {
       "kind": "required"

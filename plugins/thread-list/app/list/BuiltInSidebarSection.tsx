@@ -1,11 +1,11 @@
 import { ThreadCreationPlacementScope } from "./ThreadCreationPlacement.js";
 import { memo, type ReactNode } from "react";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   TopLevelSidebarSection,
   type TopLevelSidebarSectionProps,
 } from "./TopLevelSidebarSection.js";
-import { useSidebarSortable } from "../rows/sortableMotion.js";
+import { useSidebarSortable } from "@/components/ui/sortable-motion";
 import { CHRONOLOGICAL_CONTAINER_ID } from "../model/project-thread-groups.js";
 import type {
   CollapsibleSidebarSectionId,

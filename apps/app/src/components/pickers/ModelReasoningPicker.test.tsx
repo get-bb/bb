@@ -38,6 +38,11 @@ import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import type { PickerOption } from "./OptionPicker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
+import {
+  buildSessionOptionMenuSections,
+  type SessionOptionChoice,
+  type SessionOptionMenuSection,
+} from "./SessionOptionsMenu";
 
 type CapturedCommandHandler = (invocation: {
   target: EventTarget | null;
@@ -48,7 +53,11 @@ const commandHandlers = vi.hoisted(
 );
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { executionOptions: vi.fn() } },
+  sdk: {
+    system: {
+      executionOptions: vi.fn(() => new Promise<never>(() => undefined)),
+    },
+  },
 }));
 
 vi.mock("@/components/commands/AppCommandProvider", () => ({
@@ -161,7 +170,7 @@ function renderPicker({
   serviceTierValue,
   serviceTierOptions = [],
   serviceTierSupportByProvider,
-  alternateProvider,
+  alternateProvider = makeProviderInfo({ id: "claude-code" }),
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
   pickerReasoningOptions = reasoningOptions,
@@ -177,6 +186,8 @@ function renderPicker({
   splitPane = false,
   muted = false,
   handoff,
+  agentSections,
+  onAgentOptionChange = vi.fn(),
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -201,6 +212,8 @@ function renderPicker({
   splitPane?: boolean;
   muted?: boolean;
   handoff?: ModelReasoningPickerHandoff;
+  agentSections?: readonly SessionOptionMenuSection[];
+  onAgentOptionChange?: (optionId: string, value: SessionOptionChoice) => void;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -217,9 +230,7 @@ function renderPicker({
           isDefault: true,
         }),
       ],
-      ...(alternateProvider === undefined
-        ? {}
-        : { providers: [alternateProvider] }),
+      providers: [alternateProvider],
     }),
   );
 
@@ -247,6 +258,8 @@ function renderPicker({
         muted={muted}
         modal={false}
         handoff={handoff}
+        agentSections={agentSections}
+        onAgentOptionChange={onAgentOptionChange}
       />
       <button type="button">Composer action</button>
     </div>
@@ -274,6 +287,7 @@ function renderPicker({
     onModelChange,
     onReasoningChange,
     onServiceTierChange,
+    onAgentOptionChange,
   };
 }
 
@@ -466,6 +480,27 @@ describe("ModelReasoningPicker", () => {
       "https://developers.openai.com/codex/cli",
     );
     expect(screen.queryByText(/put `codex` on PATH/)).toBeNull();
+  });
+
+  it("shows the provider's sign-in instructions beneath a signed-out model-load error", () => {
+    renderPicker({
+      modelOptions: [],
+      modelValue: "",
+      pickerReasoningOptions: [],
+      modelLoadError: {
+        providerId: "codex",
+        code: "auth_required",
+        detail:
+          "Authentication required. To sign in, run this in a terminal on the machine that hosts the thread, then try again: agent login --device",
+      },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByText("Not signed in")).not.toBeNull();
+    expect(screen.getByText(/agent login --device$/)).not.toBeNull();
   });
 
   it("shows the underlying failure detail beneath a generic model-load error", () => {
@@ -793,6 +828,42 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exit handoff" }));
     expect(onExit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Exit handoff" })).toBeNull();
+  });
+
+  it("does not offer a fallback catalog as the removed handoff provider's models", () => {
+    const onSelect = vi.fn();
+    renderPicker({
+      alternateProvider: makeProviderInfo({ id: "codex" }),
+      alternateProviderModels: [
+        availableModel({
+          value: "fallback-model",
+          label: "Fallback model",
+          isDefault: true,
+        }),
+      ],
+      handoff: {
+        sourceProviderId: "codex",
+        active: false,
+        onStart: vi.fn(),
+        onExit: vi.fn(),
+        onSelect,
+      },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Handoff to new thread" }),
+    );
+    fireEvent.click(screen.getByTitle("Claude Code"));
+
+    expect(screen.queryByText("Fallback model")).toBeNull();
+    act(() => {
+      commandHandlers.get("modelPicker.cycleModel")?.({
+        target: document.body,
+      });
+    });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1363,6 +1434,125 @@ describe("ModelReasoningPicker service tiers", () => {
     });
 
     expect(screen.getByTitle(/\(Ultrafast mode\)$/)).toBeTruthy();
+  });
+
+  it("lists agent options below the models and reports each change", () => {
+    const { onAgentOptionChange } = renderPicker({
+      agentSections: buildSessionOptionMenuSections(
+        [
+          {
+            type: "boolean",
+            id: "daybreak",
+            label: "Daybreak",
+            description: null,
+            category: null,
+            value: false,
+            pendingValue: null,
+          },
+          {
+            type: "select",
+            id: "depth",
+            label: "Search depth",
+            description: null,
+            category: null,
+            value: "shallow",
+            pendingValue: "deep",
+            values: [
+              {
+                id: "shallow",
+                label: "Shallow",
+                description: null,
+                group: null,
+              },
+              { id: "deep", label: "Deep", description: null, group: null },
+            ],
+          },
+        ],
+        {},
+      ),
+    });
+    openPicker();
+
+    const toggle = screen.getByRole("switch", { name: "Daybreak" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onAgentOptionChange).toHaveBeenLastCalledWith("daybreak", true);
+
+    const depth = screen.getByRole("radiogroup", { name: "Search depth" });
+    expect(depth.parentElement?.textContent).toContain("from the next turn");
+    expect(
+      screen.getByRole("radio", { name: "Deep" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "Shallow" }));
+    expect(onAgentOptionChange).toHaveBeenLastCalledWith("depth", "shallow");
+  });
+
+  it("keeps up to six reasoning levels on one wrapping row and lays a longer ladder out as an even grid", () => {
+    const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+    const layoutOf = (
+      pickerReasoningOptions: readonly PickerOption<ReasoningLevel>[],
+    ) => {
+      renderPicker({
+        pickerReasoningOptions,
+        reasoningValue: "medium",
+        serviceTierOptions: [fast, ultrafast],
+        serviceTierValue: "default",
+      });
+      openPicker();
+      const classes = [
+        ...screen.getByRole("radiogroup", { name: "Reasoning" }).classList,
+      ].filter((name) => /^(flex|grid)/.test(name));
+      const speedWraps = screen
+        .getByRole("radiogroup", { name: "Speed" })
+        .classList.contains("flex-wrap");
+      cleanup();
+      return [classes.join(" "), speedWraps];
+    };
+
+    expect(layoutOf(reasoningOptions)).toEqual(["flex flex-wrap", true]);
+    expect(
+      layoutOf(levels.map((level) => ({ value: level, label: level }))),
+    ).toEqual(["grid grid-cols-4", true]);
+    expect(
+      layoutOf(
+        levels.map((level) => ({ value: level, label: `Thinking: ${level}` })),
+      ),
+    ).toEqual(["grid grid-cols-3", true]);
+  });
+
+  it("shows no agent options when the provider reports none", () => {
+    renderPicker();
+    openPicker();
+
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+
+  it("greys out a model the chosen options rule out and never selects it", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: [
+        { value: "gpt-5.5", label: "GPT-5.5" },
+        {
+          value: "gpt-5.2",
+          label: "GPT-5.2",
+          disabled: true,
+          disabledReason: "Turn off Daybreak to use this model",
+        },
+        { value: "o3", label: "o3" },
+      ],
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    commandHandlers.get("modelPicker.cycleModel")?.({ target: trigger });
+    expect(onModelChange).toHaveBeenLastCalledWith("o3");
+
+    openPicker();
+    const blocked = screen
+      .getByTitle("Turn off Daybreak to use this model")
+      .closest("button");
+    expect(blocked?.disabled).toBe(true);
+    if (blocked) fireEvent.click(blocked);
+    expect(onModelChange).toHaveBeenCalledTimes(1);
   });
 
   it("previews another provider with that provider's tiers for its model", async () => {

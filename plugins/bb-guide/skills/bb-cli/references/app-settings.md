@@ -19,9 +19,6 @@ every window and client sees the same value.
   or skipped; `null` means the guide is showing.
 - `bb settings replay-onboarding` clears it. Settings → General → Setup guide
   has the same button.
-- `setupChecklistVisible` shows the "Finish setting up bb" checklist on the
-  home screen. Turn it off with
-  `bb settings general setupChecklistVisible false`.
 - `bb project discover [--machine <id-or-name>]` lists the git repositories the
   guide offers to import; add one with `bb project create --name <name> --root <path>`.
 
@@ -36,19 +33,15 @@ Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
 `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
 another plugin. The SDK exposes the same setting through `uiPreferences`.
 
-The sidebar navigation works the same way: `sidebar.navigationProvider` defaults
-to `__automatic__`, which prefers an installed navigation plugin over the bundled
-Navigation plugin (`navigation/navigation`), and legacy `__builtin__` selections
-resolve to the bundled plugin. Navigation order and
-visibility stay in `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`,
-so they carry over between navigation plugins.
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show or
+hide the navigation rail's destinations (see Navigation rail below).
 
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
   (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
   `sidebar.chronologicalSort`, the section
   orders, the collapsed-id lists, `sidebar.hiddenGroups`,
-  `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
-  `sidebar.headerProvider`, `sidebar.threadListProvider`).
+  `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`,
+  `sidebar.threadListProvider`).
 - The same registry stores `infoPanel.collapsedSections`, the thread Info panel
   sections collapsed from their headings (`commits`, `uncommittedChanges`,
   `forks`, `threadStorage`). Read or change it with `bb settings ui get` and
@@ -249,18 +242,22 @@ so they carry over between navigation plugins.
 
 ## Navigation rail
 
-- The `navigationRail` experiment defaults to false.
-- Enable it with `bb settings experiment navigationRail true` to keep a
-  vertical rail of destinations on the left edge of the sidebar on every
-  screen: Home returns to the last thread, Settings sits at the bottom, and
-  New thread moves into the sidebar header.
+- A vertical rail of destinations sits on the left edge of the sidebar on
+  every screen size. Home is at the top and returns to the last thread; the
+  visible destinations (Plugins, Skills, and plugin panels) follow; More holds
+  hidden destinations and Customize rail; Settings is at the bottom.
+- New thread sits in the sidebar header and cannot be hidden. The list beside
+  the rail swaps between the thread list, Plugins, Skills, and Settings.
 - Collapsing the sidebar hides the list beside the rail and leaves the rail in
   place.
+- `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show
+  or hide rail destinations.
 - In the macOS desktop app, wide windows add a title bar that holds the window
   controls, Back and Forward, and the sidebar toggle. It shares the rail's
   background, and the sidebar and page sit in a card below it.
-- While it is on, the Navigation and Header choices under Settings →
-  Appearance are not used. Narrow windows and phones keep the regular drawer.
+- On narrow windows and phones the rail sits inside the drawer. Home, Plugins,
+  Skills, and Settings swap the list beside it and leave the drawer open; a
+  plugin page closes it.
 
 ## Timeline windowing
 
@@ -297,7 +294,7 @@ This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
 
 Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
-Both are string lists shared across clients. Keys are `builtin:settings`,
+Both are string lists shared across clients. Keys are `builtin:mobile`,
 `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
 The footer shows as many icons as fit the sidebar's width. More is always
 available and holds hidden actions plus actions that don't fit; apart from

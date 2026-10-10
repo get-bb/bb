@@ -127,15 +127,6 @@ export function hasReadyAgent(
   return providers?.some((provider) => provider.status === "ready") ?? false;
 }
 
-export function hasNoUsableAgent(
-  providers: readonly SystemProviderState[] | undefined,
-): boolean {
-  if (providers === undefined || providers.length === 0) return false;
-  return providers.every(
-    (provider) => provider.status !== "ready" && provider.status !== "unknown",
-  );
-}
-
 const RECENT_REPO_WINDOW_MS = 7 * 86_400_000;
 const DEFAULT_SELECTED_REPO_LIMIT = 5;
 

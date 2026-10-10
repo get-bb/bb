@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createAttachmentFilePreviewFixedPanelTab,
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createGitDiffFixedPanelTab,
@@ -300,6 +301,26 @@ describe("secondaryPanelTabState", () => {
         tabs: [firstTab, secondTab],
       }).map((tab) => tab.id),
     ).toEqual([firstTab.id, secondTab.id]);
+  });
+
+  it("shows an opened attachment preview among the panel's file tabs", () => {
+    const attachmentTab = createAttachmentFilePreviewFixedPanelTab({
+      name: "Pasted text.txt",
+      path: "Pasted-text-1791431248908-krajcq.txt",
+      projectId: "proj_app",
+    });
+    const state = openSecondaryPanelTabInState({
+      state: createEmptyFixedPanelTabsState(),
+      tab: attachmentTab,
+    });
+
+    expect(state.secondary.activeTabId).toBe(attachmentTab.id);
+    expect(
+      buildOrderedSecondaryPanelFileTabs({
+        resolvedEnvironmentId: "env-1",
+        tabs: state.secondary.tabs,
+      }),
+    ).toEqual([attachmentTab]);
   });
 
   it("replaces the transient new tab when selecting another tab", () => {

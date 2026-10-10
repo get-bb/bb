@@ -82,7 +82,9 @@ import {
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
   setDisabledPluginProviderCatalog,
+  getPluginSettingsValues,
   setInstalledPluginEnabled,
+  setPluginSettingsValues,
   setPluginSafeMode,
   type InstalledPluginRow,
   type PluginMarketplaceRow,
@@ -117,7 +119,10 @@ import {
   removeUnusedPluginArtifacts,
 } from "./plugin-artifact-gc.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
-import { listBundledPluginRegistrations } from "./builtin-registry.js";
+import {
+  BUNDLED_PLUGIN_REPLACEMENTS,
+  listBundledPluginRegistrations,
+} from "./builtin-registry.js";
 import {
   type BbPluginApi,
   type PluginAgentConfigurationContext,
@@ -589,6 +594,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   }
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
+  const pluginReplacements =
+    deps.bundledPluginReplacements ?? BUNDLED_PLUGIN_REPLACEMENTS;
   function isOrphanedBuiltinRow(row: InstalledPluginRow): boolean {
     return (
       row.sourceKind === "builtin" &&
@@ -1321,6 +1328,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     events: {
+      emitEnvironmentRemoved(removal) {
+        emitThreadEvent("experimental_environment.removed", () => ({
+          removal,
+        }));
+      },
       emitThreadEvents(threadId) {
         emitThreadEvent("experimental_thread.events", () => {
           const thread = getThread(deps.db, threadId);
@@ -1557,12 +1569,25 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       );
     },
     providerCatalog() {
-      return listInstalledPlugins(deps.db).flatMap((row) =>
-        pluginProviderCatalog(row).map((provider) => ({
-          ...provider,
-          pluginId: row.id,
-        })),
+      const rows = listInstalledPlugins(deps.db);
+      const enabledIds = new Set(
+        rows.filter((row) => row.enabled).map((row) => row.id),
       );
+      const standsAside = (row: InstalledPluginRow): boolean =>
+        !row.enabled &&
+        pluginReplacements.some(
+          (pair) =>
+            (pair.pluginId === row.id && enabledIds.has(pair.replaces)) ||
+            (pair.replaces === row.id && enabledIds.has(pair.pluginId)),
+        );
+      return rows
+        .filter((row) => !standsAside(row))
+        .flatMap((row) =>
+          pluginProviderCatalog(row).map((provider) => ({
+            ...provider,
+            pluginId: row.id,
+          })),
+        );
     },
 
     async install(source, selection) {
@@ -1714,32 +1739,79 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async setEnabled(id, enabled) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
-        const plugin = loaded.get(id);
-        if (!enabled && plugin !== undefined) {
-          setDisabledPluginProviderCatalog(
-            deps.db,
-            id,
-            plugin.handle
-              .listProviderDeclarations()
-              .map(({ id, displayName }) => ({ id, displayName })),
-          );
-        }
-        if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
-        if (enabled) {
-          const row = getInstalledPlugin(deps.db, id);
-          if (row) {
-            await withLifecycleLock(id, () => loadOne(row));
+        const applyEnabled = async (
+          pluginId: string,
+          nextEnabled: boolean,
+        ): Promise<boolean> => {
+          const plugin = loaded.get(pluginId);
+          if (!nextEnabled && plugin !== undefined) {
+            setDisabledPluginProviderCatalog(
+              deps.db,
+              pluginId,
+              plugin.handle
+                .listProviderDeclarations()
+                .map(({ id, displayName }) => ({ id, displayName })),
+            );
           }
-        } else {
-          await withLifecycleLock(id, async () => {
-            await disposeOne(id);
-            if ((hungServices.get(id)?.size ?? 0) === 0) {
-              setStatus(id, "disabled");
+          if (!setInstalledPluginEnabled(deps.db, pluginId, nextEnabled)) {
+            return false;
+          }
+          if (nextEnabled) {
+            const row = getInstalledPlugin(deps.db, pluginId);
+            if (row) {
+              await withLifecycleLock(pluginId, () => loadOne(row));
             }
-          });
+          } else {
+            await withLifecycleLock(pluginId, async () => {
+              await disposeOne(pluginId);
+              if ((hungServices.get(pluginId)?.size ?? 0) === 0) {
+                setStatus(pluginId, "disabled");
+              }
+            });
+            deps.onPluginUnregistered?.(pluginId);
+          }
+          return true;
+        };
+
+        if (getInstalledPlugin(deps.db, id) === undefined) return undefined;
+        const replacement =
+          pluginReplacements.find(
+            (pair) => pair.pluginId === id || pair.replaces === id,
+          ) ?? null;
+        const counterpartId =
+          replacement === null
+            ? null
+            : replacement.pluginId === id
+              ? replacement.replaces
+              : replacement.pluginId;
+        const counterpart =
+          counterpartId === null
+            ? undefined
+            : getInstalledPlugin(deps.db, counterpartId);
+        const carrySettings = (fromId: string, toId: string): void => {
+          const stored = getPluginSettingsValues(deps.db, fromId);
+          const carried = Object.fromEntries(
+            (replacement?.carriedSettings ?? []).flatMap((key) =>
+              Object.hasOwn(stored, key) ? [[key, stored[key]]] : [],
+            ),
+          );
+          if (Object.keys(carried).length > 0) {
+            setPluginSettingsValues(deps.db, toId, carried);
+          }
+        };
+        if (enabled && counterpart?.enabled === true) {
+          await applyEnabled(counterpart.id, false);
+          carrySettings(counterpart.id, id);
         }
-        if (!enabled) {
-          deps.onPluginUnregistered?.(id);
+        if (!(await applyEnabled(id, enabled))) return undefined;
+        if (
+          !enabled &&
+          replacement?.pluginId === id &&
+          counterpart !== undefined &&
+          !counterpart.enabled
+        ) {
+          carrySettings(id, counterpart.id);
+          await applyEnabled(counterpart.id, true);
         }
         await syncCliSkill();
         notifyPluginsChanged();

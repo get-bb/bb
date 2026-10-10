@@ -19,21 +19,33 @@ export function usePreferencesReady(): boolean {
   return useAtomValue(preferencesReadyAtom());
 }
 
-export function PreferencesSync() {
+let syncOwnerCount = 0;
+
+export function usePreferencesSync(): void {
   const rpc = useRpc<typeof threadListRpcContract>();
   const store = useStore();
   const pluginId = experimental_usePluginId();
   useEffect(() => {
     attachPreferencesStore(store, pluginId);
-    hydratePreferencesFromMirror();
-    void hydratePreferences(rpc).catch((error: unknown) => {
-      console.warn(
-        `${pluginId}: loading preferences failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
+    syncOwnerCount += 1;
+    if (syncOwnerCount === 1) {
+      hydratePreferencesFromMirror();
+      void hydratePreferences(rpc).catch((error: unknown) => {
+        console.warn(
+          `${pluginId}: loading preferences failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }
+    return () => {
+      syncOwnerCount -= 1;
+    };
   }, [pluginId, rpc, store]);
   useRealtime(PREFERENCES_CHANGED_CHANNEL, applyRemotePreferenceSignal);
+}
+
+export function PreferencesSync() {
+  usePreferencesSync();
   return null;
 }

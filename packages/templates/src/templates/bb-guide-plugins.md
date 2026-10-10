@@ -162,7 +162,10 @@ Codex and Claude Code turns after structured provider overloads and subscription
 window limits. A pending retry is a queued row on the thread, so a server
 restart does not lose it, and that row — on the queue card above the composer,
 with its reason, its time and its own Cancel — is the only place the wait is
-narrated. Inspect it with `bb provider-retry status`. See
+narrated. Inspect it with `bb provider-retry status`; use
+`bb provider-retry explain <thread-id>` for the last scheduling or skip decision.
+Pooled rate limits use Account Pooler’s availability even without provider quota
+events. See
 `bb guide providers` for the eligibility rules. The plugin only reacts to a
 failed turn — it never blocks a send. Prior output or tool activity does not
 block recovery. Its `maximumWait` setting defaults to `6 hours`; choose
@@ -713,14 +716,12 @@ Frontend entries (app.tsx) default-export `definePluginApp` from
 `@get-bb/plugin-sdk/app` and register UI slots: homepageSection (root compose),
 settingsSection (per-plugin settings page below the host-rendered settings
 form; no props in V1, optional host-rendered title),
-navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
-arrives as the component's subPath prop for panel-internal deep links; the
-host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling; optional
-experimental_sidebarAccessory mounts a presentational live-value component at
-the trailing edge of the sidebar row on wide viewports, bounded to one short
-line, replaced visually by the host options button on hover/focus, and omitted
-on compact viewports and in the navigationRail experiment's icon-only rail),
+navPanel (own navigation rail destination + /plugins/<id>/<path>/* route; the
+remainder arrives as the component's subPath prop for panel-internal deep
+links; the host always renders the shared plugin title bar and the component
+owns a zero-padding full-bleed body, including its scrolling; the optional
+experimental_sidebarAccessory field is accepted, but no host surface mounts it
+because the rail is icon-only),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

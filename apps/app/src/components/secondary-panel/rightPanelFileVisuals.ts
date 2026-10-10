@@ -17,13 +17,6 @@ export function getFileNameFromPath({ path }: GetFileNameFromPathArgs): string {
   return path.slice(path.lastIndexOf("/") + 1) || path;
 }
 
-export function getParentFolderPathFromPath({
-  path,
-}: GetFileNameFromPathArgs): string | null {
-  const slashIndex = path.lastIndexOf("/");
-  return slashIndex > 0 ? path.slice(0, slashIndex) : null;
-}
-
 function getFileExtension({ path }: GetFileExtensionArgs): string {
   const name = getFileNameFromPath({ path });
   const dotIndex = name.lastIndexOf(".");

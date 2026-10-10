@@ -6,7 +6,13 @@ import {
   getWrappedImageIndex,
 } from "../../ui/image-lightbox.js";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
+import {
+  buildProjectAttachmentContentUrl,
+  isAbsoluteLocalPath,
+  isProjectAttachmentPath,
+} from "@/lib/file-content-urls";
+import { formatByteSize } from "@/lib/format-byte-size";
+import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {
   ThreadTimelineLocalFileLinkHandler,
   UserAttachmentImageSrcResolver,
@@ -19,6 +25,7 @@ interface ConversationImageItem {
 
 export interface ConversationAttachmentItems {
   filePaths: string[];
+  fileDetails: TimelineConversationAttachments["localFileDetails"];
   imageItems: ConversationImageItem[];
 }
 
@@ -37,26 +44,6 @@ interface BuildAttachmentItemsArgs {
 interface ProjectAttachmentHrefArgs {
   path: string;
   projectId: string | undefined;
-}
-
-interface PathClassificationArgs {
-  path: string;
-}
-
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[a-zA-Z]:[\\/]/u;
-const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
-
-function isAbsoluteLocalPath({ path }: PathClassificationArgs): boolean {
-  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
-}
-
-function isProjectAttachmentPath({ path }: PathClassificationArgs): boolean {
-  return (
-    path.length > 0 &&
-    !path.startsWith("\\") &&
-    !isAbsoluteLocalPath({ path }) &&
-    !URL_SCHEME_PATTERN.test(path)
-  );
 }
 
 function projectAttachmentHref({
@@ -78,6 +65,7 @@ export function buildAttachmentItems({
   if (!attachments) {
     return {
       filePaths: [],
+      fileDetails: [],
       imageItems: [],
     };
   }
@@ -97,6 +85,7 @@ export function buildAttachmentItems({
 
   return {
     filePaths: attachments.localFilePaths,
+    fileDetails: attachments.localFileDetails,
     imageItems,
   };
 }
@@ -104,10 +93,12 @@ export function buildAttachmentItems({
 export function ConversationAttachments({
   align = "start",
   filePaths,
+  fileDetails,
   imageItems,
   onOpenLocalFileLink,
   projectId,
 }: ConversationAttachmentsProps) {
+  const openAttachment = useAttachmentOpener();
   const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
     null,
   );
@@ -169,10 +160,38 @@ export function ConversationAttachments({
                 ? "border-surface-selected-border bg-surface-raised"
                 : "border-border bg-surface-recessed",
             );
+            const detail = fileDetails.find((file) => file.path === path);
             const label = (
-              <span className="truncate">{fileNameFromPath(path)}</span>
+              <span className="truncate">
+                {detail?.name ?? fileNameFromPath(path)}
+                {detail?.sizeBytes == null
+                  ? ""
+                  : ` · ${formatByteSize(detail.sizeBytes)}`}
+              </span>
             );
             const attachmentHref = projectAttachmentHref({ path, projectId });
+
+            if (attachmentHref && openAttachment && projectId) {
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  className={cn(
+                    className,
+                    "cursor-pointer hover:bg-state-hover",
+                  )}
+                  onClick={() =>
+                    openAttachment({
+                      name: detail?.name ?? fileNameFromPath(path),
+                      path,
+                      projectId,
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              );
+            }
 
             if (attachmentHref) {
               return (

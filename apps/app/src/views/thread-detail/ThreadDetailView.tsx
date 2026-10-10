@@ -73,7 +73,6 @@ import {
 } from "../../hooks/queries/child-thread-pending-interactions";
 import {
   didThreadDetailBootstrapRefreshAfterMount,
-  getLatestPendingInteraction,
   useChildThreads,
   useProjectThreadSubset,
   useThread,
@@ -88,11 +87,14 @@ import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
+import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
-import {
-  ThreadActionsMenu,
-  type ThreadActionsMenuResponsiveAction,
-} from "@/components/thread/ThreadActionsMenu";
+import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk";
+import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
+import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
@@ -184,6 +186,7 @@ import {
   LazyHostFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -201,6 +204,10 @@ import {
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import {
+  AttachmentOpenerContext,
+  type OpenAttachmentRequest,
+} from "@/components/secondary-panel/AttachmentOpenerContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
@@ -275,9 +282,9 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { useWindowRightPanel } from "@/components/layout/WindowRightPanelToggle";
 import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
-import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
@@ -286,6 +293,7 @@ const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const DEFAULT_PULL_REQUEST_MERGE_METHOD: PullRequestMergeMethod = "merge";
+const THREAD_HEADER_ACTIONS_GROUP = "0_header";
 const PULL_REQUEST_MERGE_METHOD_STORAGE_KEY = "bb.pullRequest.mergeMethod";
 
 function isPullRequestMergeMethod(
@@ -608,8 +616,7 @@ function ThreadDetailViewInternal(
     },
   );
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
-  const hasPendingInteraction =
-    getLatestPendingInteraction(pendingInteractions) !== null;
+  const hasPendingInteraction = pendingInteractions.length > 0;
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,
@@ -786,6 +793,8 @@ function ThreadDetailViewInternal(
     contextBoundarySeq,
     contextWindowUsage,
     goal,
+    providerCommands,
+    sessionOptions,
     hasOlderTimelineRows,
     isCatchingUpTimeline,
     isLoadingOlderTimelineRows,
@@ -1303,6 +1312,7 @@ function ThreadDetailViewInternal(
     files: threadStorageFiles?.files,
     onSelectPath: handleSelectStorageBrowserPath,
     selectedPath: activeStorageFilePath,
+    threadId,
   });
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
@@ -1350,6 +1360,13 @@ function ThreadDetailViewInternal(
       ),
     [handleSecondaryPanelChange, threadFixedViewTabs],
   );
+  const openAttachment = useCallback(
+    (attachment: OpenAttachmentRequest) => {
+      openTab({ kind: "attachment-file-preview", ...attachment });
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openTab],
+  );
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
@@ -1363,6 +1380,16 @@ function ThreadDetailViewInternal(
       }
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
+      }
+      if (resource.kind === "attachment") {
+        const attachmentProjectId = projectId;
+        if (!attachmentProjectId) return null;
+        return () =>
+          openAttachment({
+            name: resource.label,
+            path: resource.path,
+            projectId: attachmentProjectId,
+          });
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;
@@ -1384,6 +1411,7 @@ function ThreadDetailViewInternal(
         });
     },
     [
+      openAttachment,
       navigate,
       navigateInPane,
       openStorageFile,
@@ -1485,6 +1513,7 @@ function ThreadDetailViewInternal(
     toggleSecondaryPanel();
     return true;
   });
+  useWindowRightPanel({ isOpen: isSecondaryPanelOpen, enabled: isFocused });
   useAppCommandHandler("panel.fullScreen.toggle", () => {
     if (
       !isFocused ||
@@ -2143,7 +2172,11 @@ function ThreadDetailViewInternal(
   );
 
   if (threadQueryState.status === "loading") {
-    return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
+    return (
+      <RouteLoadingSkeleton isBoundedPane={isBoundedPane}>
+        <ThreadTimelineLoadingSkeleton />
+      </RouteLoadingSkeleton>
+    );
   }
   if (!thread || thread.projectId !== projectId) {
     return (
@@ -2206,7 +2239,7 @@ function ThreadDetailViewInternal(
     workspaceDeleted: isWorkspaceDeleted,
   });
   const threadTitle = getThreadDisplayTitle(thread);
-  const responsiveWorkspaceActions: ThreadActionsMenuResponsiveAction[] =
+  const responsiveWorkspaceActions: PluginThreadActionsInlineItem[] =
     workspaceOpenPath && preferredDirectoryTarget
       ? [
           preferredDirectoryTarget,
@@ -2214,22 +2247,26 @@ function ThreadDetailViewInternal(
             (target) => target.id !== preferredDirectoryTarget.id,
           ),
         ].map((target) => ({
-          icon: "FolderOpen" as const,
-          label: `Open workspace in ${target.label}`,
-          onSelect: async () => {
-            if (target.id === preferredDirectoryTarget.id) {
-              await openPathInPreferredDirectoryTarget({
+          key: `workspace/${target.id}`,
+          group: THREAD_HEADER_ACTIONS_GROUP,
+          action: {
+            icon: "FolderOpen",
+            label: `Open workspace in ${target.label}`,
+            run: async () => {
+              if (target.id === preferredDirectoryTarget.id) {
+                await openPathInPreferredDirectoryTarget({
+                  lineNumber: null,
+                  path: workspaceOpenPath,
+                });
+                return;
+              }
+              await openPathInDirectoryTarget({
                 lineNumber: null,
                 path: workspaceOpenPath,
+                rememberTarget: true,
+                targetId: target.id,
               });
-              return;
-            }
-            await openPathInDirectoryTarget({
-              lineNumber: null,
-              path: workspaceOpenPath,
-              rememberTarget: true,
-              targetId: target.id,
-            });
+            },
           },
         }))
       : [];
@@ -2239,14 +2276,24 @@ function ThreadDetailViewInternal(
     executionUnavailable || !showGitChanges
       ? []
       : gitActions.threadHeaderGitActions;
-  const responsiveGitActions: ThreadActionsMenuResponsiveAction[] =
+  const responsiveGitActions: PluginThreadActionsInlineItem[] =
     threadHeaderGitActions.map((action) => ({
-      icon: "GitBranch" as const,
-      label: action.label,
-      onSelect: () => {
-        gitActions.threadGitActionDialog.onOpen(action.target);
+      key: `git/${action.label}`,
+      group: THREAD_HEADER_ACTIONS_GROUP,
+      action: {
+        icon: "GitBranch",
+        label: action.label,
+        run: () => {
+          gitActions.threadGitActionDialog.onOpen(action.target);
+        },
       },
     }));
+  const threadActionTarget = toThreadActionTarget(
+    thread,
+    isThreadOnReusableEnvironment && thread.environmentId !== null
+      ? { id: thread.environmentId, path: environment.path }
+      : null,
+  );
   const responsiveHeaderActions = [
     ...responsiveWorkspaceActions,
     ...responsiveGitActions,
@@ -2274,14 +2321,40 @@ function ThreadDetailViewInternal(
     ) : undefined;
   const timelineHeader = (
     <ThreadDetailHeader
-      actionsMenu={(includeResponsiveActions) => (
+      actionsMenu={({
+        includeResponsiveActions,
+        requestRename,
+        onCloseAutoFocus,
+      }) => (
         <ThreadActionsMenu
-          thread={thread}
-          onCreateNewThreadInEnvironment={onCreateNewThreadInEnvironment}
-          triggerClassName={HEADER_ICON_BUTTON_CLASS}
-          responsiveActions={
-            includeResponsiveActions ? responsiveHeaderActions : undefined
-          }
+          thread={threadActionTarget}
+          trigger={(triggerProps) => (
+            <Button
+              {...triggerProps}
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                triggerProps.className,
+                "rounded-md p-0",
+                "data-[state=open]:bg-state-active data-[state=open]:text-foreground",
+                HEADER_ICON_BUTTON_CLASS,
+              )}
+              aria-label="Thread actions"
+              onClick={(event) => {
+                triggerProps.onClick?.(event);
+                event.stopPropagation();
+              }}
+            >
+              <Icon
+                name="MoreHorizontal"
+                className={COARSE_POINTER_ICON_SIZE_CLASS}
+              />
+            </Button>
+          )}
+          inline={includeResponsiveActions ? responsiveHeaderActions : []}
+          requestRename={requestRename}
+          onCloseAutoFocus={onCloseAutoFocus}
         />
       )}
       childPillLabel={parentThreadId ? "child" : null}
@@ -2365,6 +2438,8 @@ function ThreadDetailViewInternal(
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      providerCommands={providerCommands}
+      sessionOptions={sessionOptions}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
@@ -2476,6 +2551,16 @@ function ThreadDetailViewInternal(
           />
         );
       }
+      case "attachment-file-preview":
+        return (
+          <LazyAttachmentFilePreviewTabContent
+            isPanelOpen={isSecondaryPanelOpen}
+            name={tab.name}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            path={tab.path}
+            projectId={tab.projectId}
+          />
+        );
       case "thread-storage-file-preview": {
         const copyPath = resolveAbsoluteFilePath({
           path: tab.path,
@@ -2608,6 +2693,14 @@ function ThreadDetailViewInternal(
             statusLabel: null,
             onSelect: () => handleActivateFileTab(tab.id),
           };
+        case "attachment-file-preview":
+          return {
+            ...shared,
+            label: tab.name,
+            leadingVisual: <RightPanelFileTabIcon path={tab.name} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
         case "new-tab":
           return {
             ...shared,
@@ -2651,7 +2744,9 @@ function ThreadDetailViewInternal(
           <ThreadDetailSecondaryContent
             footer={composerFooter}
             header={timelineHeader}
-            isMetadataLoading={environmentQuery.isLoading}
+            isMetadataLoading={
+              !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
+            }
             isSecondaryPanelOpen={isSecondaryPanelOpen}
             isConversationCollapsed={isConversationCollapsed}
             isBoundedPane={isBoundedPane}
@@ -2801,8 +2896,7 @@ function ThreadDetailViewInternal(
   );
   return (
     <>
-      <ThreadArchiveCommandHandler thread={thread} />
-      <ThreadRenameCommandHandler thread={thread} />
+      <ThreadArchiveCommandHandler thread={threadActionTarget} />
       <ThreadProviderContext.Provider value={threadProviderContextValue}>
         <PluginThreadPanelNavigationProvider
           openThreadPanel={handleOpenTimelinePluginPanel}
@@ -2811,7 +2905,9 @@ function ThreadDetailViewInternal(
             <MarkdownLocalFileOpenTargetsContext.Provider
               value={fileOpenTargets}
             >
-              {threadDetailContent}
+              <AttachmentOpenerContext.Provider value={openAttachment}>
+                {threadDetailContent}
+              </AttachmentOpenerContext.Provider>
             </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>
         </PluginThreadPanelNavigationProvider>

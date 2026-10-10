@@ -70,11 +70,6 @@
     "icon": "Brain"
   },
   {
-    "id": "navigation",
-    "name": "Navigation",
-    "icon": "PanelLeft"
-  },
-  {
     "id": "environment-modal-sandbox",
     "name": "Modal Sandbox [Experimental]",
     "icon": null
@@ -125,6 +120,11 @@
     "icon": "SideChat"
   },
   {
+    "id": "bb--storage-retention",
+    "name": "Storage & retention [Experimental]",
+    "icon": null
+  },
+  {
     "id": "tasks",
     "name": "Tasks",
     "icon": "ListTodo"
@@ -142,6 +142,11 @@
   {
     "id": "provider-acp",
     "name": "ACP providers",
+    "icon": null
+  },
+  {
+    "id": "bb--provider-acp-next",
+    "name": "ACP providers (new adapter)",
     "icon": null
   },
   {

@@ -1,13 +1,11 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { useSetAtom } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +19,7 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
+import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
@@ -31,7 +30,7 @@ import {
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
-import { SIDEBAR_FOOTER_ACTION_CLASS } from "./sidebarRowClasses";
+import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
@@ -44,23 +43,14 @@ import {
 } from "./sidebarThreadShortcuts";
 import {
   useAppCommandHandler,
-  useAppCommandShortcut,
   useAppCommandShortcuts,
   useIsAppCommandModifierHeld,
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
-import {
-  resolveCustomizeFocusReturnTarget,
-  SidebarNavigationRegion,
-} from "./SidebarNavigationRegion";
 import { SidebarNavigationModelProvider } from "./SidebarNavigationModel";
-import {
-  SIDEBAR_FOOTER_MORE_ID,
-  sidebarFooterSettingsInRailAtom,
-} from "./sidebarFooterPreferences";
+import { SIDEBAR_FOOTER_MORE_ID } from "./sidebarFooterPreferences";
 import { LazySidebarFooterCustomize } from "./LazySidebarFooterCustomize";
-import { SidebarHeaderSlot } from "./SidebarHeaderSlot";
 import {
   NavRailNewThreadButton,
   type NavRailCustomizeState,
@@ -71,30 +61,27 @@ const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 interface AppSidebarProps {
   onResizeMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
-  settingsRoutePath: string;
-  mobileHosted?: { hidden: boolean };
-  navRail?: {
-    hidden: boolean;
-    renderRail: (customize: NavRailCustomizeState) => ReactNode;
-    alternateBody: ReactNode;
-  };
+  isBodyHidden: boolean;
+  renderRail: (customize: NavRailCustomizeState) => ReactNode;
+  alternateBody: ReactNode;
 }
 
 export function AppSidebar({
   onResizeMouseDown,
   isResizing,
-  settingsRoutePath,
-  mobileHosted,
-  navRail,
+  isBodyHidden,
+  renderRail,
+  alternateBody,
 }: AppSidebarProps) {
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
   const closeOnMobile = useCloseMobileSidebar();
-  const { isCompactViewport, openMobile } = useSidebar();
+  const { isCompactViewport, open, openMobile } = useSidebar();
+  const isThreadListVisible =
+    !isBodyHidden && (isCompactViewport ? openMobile : open);
   const [isFooterCustomizing, setFooterCustomizing] = useState(false);
   const [isNavigationCustomizing, setNavigationCustomizing] = useState(false);
-  const customizeFocusReturnRef = useRef<HTMLElement | null>(null);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
     ReadonlyMap<string, SidebarThreadShortcutPresentation>
   >(EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS);
@@ -106,14 +93,7 @@ export function AppSidebar({
     THREAD_JUMP_APP_COMMAND_IDS,
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
-  const settingsShortcut = useAppCommandShortcut("settings.open");
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
-  const setFooterSettingsInRail = useSetAtom(sidebarFooterSettingsInRailAtom);
-  const hasNavRail = navRail !== undefined;
-  useLayoutEffect(() => {
-    setFooterSettingsInRail(hasNavRail);
-    return () => setFooterSettingsInRail(false);
-  }, [hasNavRail, setFooterSettingsInRail]);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -185,37 +165,24 @@ export function AppSidebar({
     [activeThreadId, closeOnMobile, navigate],
   );
 
-  const isHiddenHostedBody =
-    mobileHosted?.hidden === true || navRail?.hidden === true;
-  const isCompactCustomizeModeActive =
-    isCompactViewport && isNavigationCustomizing;
   useEffect(() => {
-    if (isCompactViewport && (!openMobile || isHiddenHostedBody)) {
-      setNavigationCustomizing(false);
-      setFooterCustomizing(false);
-    }
-  }, [isCompactViewport, isHiddenHostedBody, openMobile]);
-  const openNavigationCustomize = useCallback(() => {
-    customizeFocusReturnRef.current = resolveCustomizeFocusReturnTarget(
-      sidebarRef.current,
-    );
-    setFooterCustomizing(false);
-    setNavigationCustomizing(true);
-  }, []);
+    if (!isCompactViewport) return;
+    if (!openMobile || isBodyHidden) setFooterCustomizing(false);
+    if (!openMobile) setNavigationCustomizing(false);
+  }, [isBodyHidden, isCompactViewport, openMobile]);
   const activateVisibleThreadShortcut = useCallback(
-    (index: number) =>
-      isHiddenHostedBody ? false : activateThreadShortcut(index),
-    [activateThreadShortcut, isHiddenHostedBody],
+    (index: number) => (isBodyHidden ? false : activateThreadShortcut(index)),
+    [activateThreadShortcut, isBodyHidden],
   );
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
     activateVisibleThreadShortcut,
   );
   useAppCommandHandler("thread.previous", () =>
-    isHiddenHostedBody ? false : activateAdjacentThread(-1),
+    isBodyHidden ? false : activateAdjacentThread(-1),
   );
   useAppCommandHandler("thread.next", () =>
-    isHiddenHostedBody ? false : activateAdjacentThread(1),
+    isBodyHidden ? false : activateAdjacentThread(1),
   );
 
   useEffect(() => {
@@ -230,44 +197,23 @@ export function AppSidebar({
     <>
       <SidebarTopReserveRow
         testId="app-sidebar-top-reserve-row"
-        besideNavRail={navRail !== undefined}
-        renderHeaderSlot={(startInsetClassName) =>
-          navRail ? (
-            <div
-              data-testid="nav-rail-header"
-              data-sidebar-header-slot=""
-              className={cn(
-                "flex h-full min-w-0 flex-1 items-center",
-                startInsetClassName,
-              )}
-            >
-              <NavRailNewThreadButton />
-            </div>
-          ) : (
-            <SidebarHeaderSlot
-              hidden={isNavigationCustomizing}
-              startInsetClassName={startInsetClassName}
-            />
-          )
+        headerSlot={
+          <div
+            data-testid="nav-rail-header"
+            data-sidebar-header-slot=""
+            className="flex h-full min-w-0 flex-1 items-center"
+          >
+            <NavRailNewThreadButton />
+          </div>
         }
       />
-      {navRail ? null : (
-        <SidebarNavigationRegion
-          isCustomizing={isNavigationCustomizing}
-          onCustomizingChange={setNavigationCustomizing}
-          focusReturnTargetRef={customizeFocusReturnRef}
-          onNavigate={closeOnMobile}
-        />
-      )}
-      <SidebarContent
-        className={cn(isCompactCustomizeModeActive && "hidden")}
-        aria-hidden={isCompactCustomizeModeActive ? true : undefined}
-        inert={isCompactCustomizeModeActive ? true : undefined}
-      >
-        <PluginThreadList
-          replacement={threadListReplacement}
-          onNavigate={closeOnMobile}
-        />
+      <SidebarContent>
+        <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
+          <PluginThreadList
+            replacement={threadListReplacement}
+            onNavigate={closeOnMobile}
+          />
+        </ThreadActionSurfaceVisibility>
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
@@ -302,22 +248,6 @@ export function AppSidebar({
             onDisclosureCommand={pluginSidebarFooter.handleCommand}
             onNavigate={closeOnMobile}
             builtInActions={[
-              ...(navRail
-                ? []
-                : [
-                    {
-                      id: "settings" as const,
-                      href: settingsRoutePath,
-                      ariaLabel: settingsShortcut
-                        ? `Settings (${settingsShortcut.label})`
-                        : "Settings",
-                      ariaKeyShortcuts: settingsShortcut?.ariaKeyshortcuts,
-                      onActivate: () => {
-                        closeOnMobile();
-                        void navigate(settingsRoutePath);
-                      },
-                    },
-                  ]),
               {
                 id: "mobile",
                 href: "/settings/mobile",
@@ -356,40 +286,26 @@ export function AppSidebar({
         onNavigate={closeOnMobile}
         onNewChat={handleNewChat}
         onSearchThreads={closeOnMobile}
-        onOpenCustomize={openNavigationCustomize}
         splitEnabled
       >
-        {mobileHosted ? (
-          <div
-            ref={sidebarRef}
-            data-testid="app-sidebar-body"
-            hidden={mobileHosted.hidden}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            {body}
+        <Sidebar ref={sidebarRef}>
+          <div className="flex min-h-0 flex-1">
+            {renderRail({
+              isOpen: isNavigationCustomizing,
+              onOpenChange: setNavigationCustomizing,
+            })}
+            <SidebarCollapsibleBody data-testid="nav-rail-sidebar-body">
+              <div
+                data-testid="app-sidebar-body"
+                hidden={isBodyHidden}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {body}
+              </div>
+              {alternateBody}
+            </SidebarCollapsibleBody>
           </div>
-        ) : navRail ? (
-          <Sidebar ref={sidebarRef}>
-            <div className="flex min-h-0 flex-1">
-              {navRail.renderRail({
-                isOpen: isNavigationCustomizing,
-                onOpenChange: setNavigationCustomizing,
-              })}
-              <SidebarCollapsibleBody data-testid="nav-rail-sidebar-body">
-                <div
-                  data-testid="app-sidebar-body"
-                  hidden={navRail.hidden}
-                  className="flex min-h-0 min-w-0 flex-1 flex-col"
-                >
-                  {body}
-                </div>
-                {navRail.alternateBody}
-              </SidebarCollapsibleBody>
-            </div>
-          </Sidebar>
-        ) : (
-          <Sidebar ref={sidebarRef}>{body}</Sidebar>
-        )}
+        </Sidebar>
       </SidebarNavigationModelProvider>
     </SidebarThreadShortcutKeysContext.Provider>
   );

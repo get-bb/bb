@@ -1,3 +1,4 @@
+import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
 import { getLatestThreadSequence, updateThread } from "@bb/db";
@@ -745,16 +746,25 @@ async function runRemove(
         });
         return;
       }
-      writeEnvironment(deps, environmentId, {
-        teardownStatus: "removed",
-        teardownMessage: null,
-        claimPath: null,
-        resource: null,
-        retireAt: null,
+      deps.db.transaction(() => {
+        writeEnvironment(deps, environmentId, {
+          teardownStatus: "removed",
+          teardownMessage: null,
+          claimPath: null,
+          resource: null,
+          retireAt: null,
+        });
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId,
+          event: { type: "destroy.recorded" },
+        });
       });
-      applyLoggedEnvironmentLifecycleEvent(deps, {
+      emitPluginEnvironmentRemoved({
         environmentId,
-        event: { type: "destroy.recorded" },
+        removedAt: Date.now(),
+        hostId: row.hostId,
+        path: row.path,
+        providerOwnedPath: row.providerOwnsPath,
       });
     } catch (error) {
       writeEnvironment(deps, environmentId, {

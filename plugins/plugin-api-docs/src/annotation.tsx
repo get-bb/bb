@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { COPY_TOKEN } from "./surface-copy";
 
 export function annotationChipClass(active: boolean, className?: string) {
   return cn(
@@ -54,8 +55,6 @@ export interface SurfaceReference {
   otherPage: string | null;
   onOpen: () => void;
 }
-
-const COPY_TOKEN = /(`[^`]+`)|(\[[^\]]+\]\([a-z0-9-]+\))|(\{experimental\})/g;
 
 export function renderSurfaceCopy(
   text: string,

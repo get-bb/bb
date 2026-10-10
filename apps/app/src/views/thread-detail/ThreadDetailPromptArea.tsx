@@ -1,4 +1,5 @@
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import { useQueuedMessagesExpanded } from "@/components/promptbox/banner/queued-messages-expanded";
 import type { MachineRemovalStatus } from "@/lib/machine-removal-display";
 import { ThreadMachineStatus } from "@/components/promptbox/banner/ThreadMachineStatus";
 import {
@@ -34,6 +35,8 @@ import type {
   ThreadWithRuntime,
 } from "@bb/domain";
 import type {
+  ProviderCommand,
+  ThreadTimelineSessionOption,
   PullRequestMergeMethod,
   SendMessageRequest,
   ThreadTimelineResponse,
@@ -52,7 +55,7 @@ import {
   waitUntilComposerStateSettled,
   type CommittedComposerState,
 } from "@/components/promptbox/composer-selection-settle";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   type PluginComposerHost,
   useComposerHostDraftNotifier,
@@ -75,6 +78,14 @@ import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/Thre
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type { ModelReasoningPickerHandoffSelection } from "@/components/pickers/ModelReasoningPicker";
+import {
+  buildSessionOptionMenuSections,
+  sessionOptionViewSelections,
+  SessionOptionsMenu,
+  splitSessionOptionsByPlacement,
+  type SessionOptionChoices,
+} from "@/components/pickers/SessionOptionsMenu";
+import { useThreadSessionOptionChoices } from "./useThreadSessionOptionChoices";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -116,7 +127,7 @@ import {
   useUnarchiveThread,
 } from "@/hooks/mutations/thread-state-mutations";
 import {
-  getLatestPendingInteraction,
+  orderPendingInteractions,
   useThreadQueuedMessages,
   useThreadPromptHistory,
 } from "@/hooks/queries/thread-queries";
@@ -178,6 +189,7 @@ export interface ThreadDetailSentMessageEdit {
 }
 
 const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
+const NO_SESSION_OPTION_SELECTIONS: SessionOptionChoices = {};
 const EMPTY_QUEUED_MESSAGES: readonly ThreadQueuedMessage[] = [];
 const NO_INLINE_EDITOR_SELECTION: ExperimentalComposerSelection = {};
 
@@ -214,6 +226,8 @@ interface ThreadDetailPromptAreaProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   activePromptMode: ThreadTimelineActivePromptMode | null;
   goal: ThreadTimelineGoal | null;
+  providerCommands: readonly ProviderCommand[] | null;
+  sessionOptions: readonly ThreadTimelineSessionOption[] | null;
   modelFallback: ThreadTimelineModelFallback | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
@@ -429,6 +443,8 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   activePromptMode,
   goal,
+  providerCommands,
+  sessionOptions,
   modelFallback,
   activeWorkflows,
   activeBackgroundCommands,
@@ -525,7 +541,7 @@ export function ThreadDetailPromptArea({
     activeComposerDraft,
     activeComposerDraftInput,
     handleChangeMessage: handleComposerMessageChange,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
   } = useActiveComposerDraft({
     draftScope: {
       kind: "thread",
@@ -662,6 +678,10 @@ export function ThreadDetailPromptArea({
     setWorkflowStackExpandedThreadId(null);
   }
   const isWorkflowStackExpanded = workflowStackExpandedThreadId === thread.id;
+  const [queueExpanded, setQueueExpanded] = useQueuedMessagesExpanded({
+    threadId: thread.id,
+    queuedMessages: queuedMessagesQuery.data ?? null,
+  });
   const [isBackgroundCommandsExpanded, setIsBackgroundCommandsExpanded] =
     useState(false);
   const [isFollowUpShortcutSending, setIsFollowUpShortcutSending] =
@@ -669,6 +689,40 @@ export function ThreadDetailPromptArea({
   const promptHistoryDrafts = useMemo(
     () => promptHistoryEntriesToDrafts(promptHistoryEntries),
     [promptHistoryEntries],
+  );
+  const [handoffSourceSelection, setHandoffSourceSelection] = useState<{
+    threadId: string;
+    execution: ModelReasoningPickerHandoffSelection;
+    serviceTier: ServiceTier | undefined;
+    permissionMode: PermissionMode;
+    overriddenFallbackIdentity: string | null;
+  } | null>(null);
+  const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
+  const sessionOptionChoices = useThreadSessionOptionChoices({
+    threadId: thread.id,
+    options: sessionOptions,
+  });
+  const placedSessionOptions = useMemo(
+    () => splitSessionOptionsByPlacement(sessionOptions ?? []),
+    [sessionOptions],
+  );
+  const liveSessionOptionSelections = useMemo(
+    () =>
+      isHandoffSelection
+        ? NO_SESSION_OPTION_SELECTIONS
+        : sessionOptionViewSelections(
+            sessionOptions ?? [],
+            sessionOptionChoices.choices,
+          ),
+    [isHandoffSelection, sessionOptionChoices.choices, sessionOptions],
+  );
+  const pickerSessionOptionSections = useMemo(
+    () =>
+      buildSessionOptionMenuSections(
+        placedSessionOptions.picker,
+        sessionOptionChoices.choices,
+      ),
+    [placedSessionOptions.picker, sessionOptionChoices.choices],
   );
   const {
     executionOptionsRouting,
@@ -707,6 +761,7 @@ export function ThreadDetailPromptArea({
     environmentHostId,
     scope: "component-local",
     resetKey: thread.id,
+    sessionOptionSelections: liveSessionOptionSelections,
     initialProviderId: thread.providerId,
     initialModel:
       modelFallback?.fallbackModel ?? defaultExecutionOptions?.model,
@@ -721,14 +776,6 @@ export function ThreadDetailPromptArea({
   const [overriddenFallbackIdentity, setOverriddenFallbackIdentity] = useState<
     string | null
   >(null);
-  const [handoffSourceSelection, setHandoffSourceSelection] = useState<{
-    threadId: string;
-    execution: ModelReasoningPickerHandoffSelection;
-    serviceTier: ServiceTier | undefined;
-    permissionMode: PermissionMode;
-    overriddenFallbackIdentity: string | null;
-  } | null>(null);
-  const isHandoffSelection = handoffSourceSelection?.threadId === thread.id;
   const isFallbackModelActive =
     !isHandoffSelection &&
     selectedProviderId === thread.providerId &&
@@ -874,6 +921,8 @@ export function ThreadDetailPromptArea({
     environmentId: thread.environmentId,
     currentThreadId: thread.id,
     selectedProviderComposerActions,
+    threadProviderCommands:
+      selectedProviderId === thread.providerId ? providerCommands : null,
     resolveMentionLink,
   });
   const {
@@ -888,6 +937,7 @@ export function ThreadDetailPromptArea({
     selectedProviderComposerActions: providers.find(
       (provider) => provider.id === thread.providerId,
     )?.composerActions,
+    threadProviderCommands: providerCommands,
     resolveMentionLink,
   });
   const runtimeDisplayStatus = thread.runtime.displayStatus;
@@ -897,9 +947,9 @@ export function ThreadDetailPromptArea({
   const isStopRequested =
     thread.status === "stopping" ||
     (stopThread.isPending && stopThread.variables === thread.id);
-  const activePendingInteraction =
-    getLatestPendingInteraction(pendingInteractions);
-  const hasPendingInteraction = activePendingInteraction !== null;
+  const orderedPendingInteractions =
+    orderPendingInteractions(pendingInteractions);
+  const hasPendingInteraction = orderedPendingInteractions.length > 0;
   const shouldHideComposer =
     environmentGoneStatus !== null || thread.archivedAt !== null;
   const {
@@ -1484,7 +1534,7 @@ export function ThreadDetailPromptArea({
       pendingUploads: bottomPendingUploads,
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
-      onRemove: promptDraft.removeAttachment,
+      onUpdate: promptDraft.updateAttachments,
     }),
     [
       bottomAttachmentError,
@@ -1493,7 +1543,7 @@ export function ThreadDetailPromptArea({
       isAttachingBottomFiles,
       bottomPendingUploads,
       projectId,
-      promptDraft.removeAttachment,
+      promptDraft.updateAttachments,
     ],
   );
   const handleBottomComposerSubmit = useCallback(() => {
@@ -1635,8 +1685,18 @@ export function ThreadDetailPromptArea({
         onExit: exitHandoff,
         onSelect: handleHandoffSelect,
       },
+      ...(isHandoffSelection || pickerSessionOptionSections.length === 0
+        ? {}
+        : {
+            agentOptions: {
+              sections: pickerSessionOptionSections,
+              onChange: sessionOptionChoices.choose,
+            },
+          }),
     }),
     [
+      pickerSessionOptionSections,
+      sessionOptionChoices.choose,
       effectiveSelectedModel,
       executionOptionsRouting,
       hasMultipleProviders,
@@ -1901,7 +1961,7 @@ export function ThreadDetailPromptArea({
           pendingUploads: inlinePendingUploads,
           error: inlineAttachmentError,
           onAttachFiles: handleAttachInlineFiles,
-          onRemove: removeActiveComposerAttachment,
+          onUpdate: updateActiveComposerAttachments,
         },
         canModifierSubmit:
           activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
@@ -1952,7 +2012,7 @@ export function ThreadDetailPromptArea({
     promptPlaceholder,
     queuedComposerTextEffects,
     queuedMessagePluginComposerHost,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
     runtimeDisplayStatus,
     thread.id,
     inlineTypeaheadConfig,
@@ -2038,12 +2098,10 @@ export function ThreadDetailPromptArea({
             pendingUploads: sentMessagePendingUploads,
             error: sentMessageAttachmentError,
             onAttachFiles: handleAttachSentMessageFiles,
-            onRemove: (path) => {
+            onUpdate: (update) => {
               sentMessageEdit.updateDraft((current) => ({
                 ...current,
-                attachments: current.attachments.filter(
-                  (attachment) => attachment.path !== path,
-                ),
+                attachments: update(current.attachments),
               }));
             },
           },
@@ -2106,9 +2164,9 @@ export function ThreadDetailPromptArea({
   const childPendingInteractionBanners = useMemo(
     () =>
       childPendingInteractions.map((item) => (
-        <ThreadPendingInteractionBanner
-          key={item.interaction.id}
-          interaction={item.interaction}
+        <ThreadPendingInteractionBanners
+          key={item.childThreadId}
+          interactions={item.interactions}
           sourceThread={{ href: item.href, title: item.childTitle }}
           threadId={item.childThreadId}
         />
@@ -2200,7 +2258,10 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : queuedMessagesPending ? (
-          <QueuedMessagesPendingCard queuedMessageCount={queuedMessageCount} />
+          <QueuedMessagesPendingCard
+            expanded={queueExpanded}
+            queuedMessageCount={queuedMessageCount}
+          />
         ) : (
           <LazyQueuedMessagesList
             attachedToComposer={true}
@@ -2222,11 +2283,15 @@ export function ThreadDetailPromptArea({
             onSetGroupBoundary={handleSetQueuedMessageGroupBoundary}
             onEdit={beginEditQueuedMessage}
             onDelete={handleDeleteQueuedMessage}
+            expanded={queueExpanded}
+            onExpandedChange={setQueueExpanded}
           />
         )}
       </>
     ),
     [
+      queueExpanded,
+      setQueueExpanded,
       canUseGitUi,
       childPendingInteractionBanners,
       contextBannerMergeBase,
@@ -2280,16 +2345,21 @@ export function ThreadDetailPromptArea({
   );
 
   const pendingInteractionNode = useMemo(() => {
-    if (!activePendingInteraction || shouldHideComposer) {
+    if (!hasPendingInteraction || shouldHideComposer) {
       return null;
     }
     return (
-      <ThreadPendingInteractionBanner
-        interaction={activePendingInteraction}
+      <ThreadPendingInteractionBanners
+        interactions={orderedPendingInteractions}
         threadId={thread.id}
       />
     );
-  }, [activePendingInteraction, shouldHideComposer, thread.id]);
+  }, [
+    hasPendingInteraction,
+    orderedPendingInteractions,
+    shouldHideComposer,
+    thread.id,
+  ]);
   const pendingInteractionStack = useMemo(
     () => (
       <>
@@ -2306,6 +2376,15 @@ export function ThreadDetailPromptArea({
       goal,
     ],
   );
+
+  const sessionOptionsControl =
+    isHandoffSelection || placedSessionOptions.footer.length === 0 ? null : (
+      <SessionOptionsMenu
+        options={placedSessionOptions.footer}
+        choices={sessionOptionChoices.choices}
+        onChange={sessionOptionChoices.choose}
+      />
+    );
 
   const bottomContent = (
     <FollowUpPromptBox
@@ -2326,6 +2405,7 @@ export function ThreadDetailPromptArea({
       contextWindowUsage={contextWindowUsage ?? null}
       execution={bottomExecutionConfig}
       permission={bottomPermissionConfig}
+      sessionOptionsControl={sessionOptionsControl}
       typeahead={typeaheadConfig}
       promptActions={promptActions}
     />

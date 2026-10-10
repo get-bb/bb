@@ -1160,21 +1160,19 @@ async function resolveAgentLaunchArgs(
 }
 
 async function selectAcpNativeModel(args: {
-  connection: AcpAgentConnection;
+  session: AcpThreadSession;
   sessionId: string;
-  configOptions: readonly AcpConfigOption[] | undefined;
-  models: AcpSessionModels | undefined;
   modelSelection: AcpSessionParams["modelSelection"];
   nativeReasoning: AcpBridgeNativeReasoning | undefined;
-}): Promise<AcpNativeConfigState> {
+}): Promise<void> {
   const selection = args.modelSelection;
   if (!selection || !("modelId" in selection)) {
-    return { configOptions: args.configOptions, models: args.models };
+    return;
   }
-  let configOptions = args.configOptions;
-  let models = args.models;
-  const modelOption = findAcpModelConfigOption(args.configOptions);
-  const availableSessionModels = args.models?.availableModels ?? [];
+  const { session } = args;
+  const { configOptions, models } = session.nativeConfig;
+  const modelOption = findAcpModelConfigOption(configOptions);
+  const availableSessionModels = models?.availableModels ?? [];
   const sessionModelsIncludeSelection = availableSessionModels.some(
     (model) => model.modelId === selection.modelId,
   );
@@ -1182,13 +1180,13 @@ async function selectAcpNativeModel(args: {
     (modelOption && modelOption.currentValue !== selection.modelId) ||
     (!modelOption &&
       sessionModelsIncludeSelection &&
-      args.models?.currentModelId !== selection.modelId);
+      models?.currentModelId !== selection.modelId);
   if (shouldSetModel) {
     let configState: AcpConfigStateResult | null = null;
     let setModel = true;
     if (modelOption) {
       try {
-        configState = await args.connection.request({
+        configState = await session.connection.request({
           method: "session/set_config_option",
           params: {
             sessionId: args.sessionId,
@@ -1203,104 +1201,153 @@ async function selectAcpNativeModel(args: {
       }
     }
     if (setModel) {
-      configState = await args.connection.request({
+      configState = await session.connection.request({
         method: "session/set_model",
         params: { sessionId: args.sessionId, modelId: selection.modelId },
         resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
       });
     }
-    configOptions = configState?.configOptions ?? configOptions;
-    models = configState?.models ?? models;
+    const current = session.nativeConfig;
+    session.nativeConfig = {
+      configOptions:
+        configState?.configOptions ??
+        withAcpConfigValue(
+          current.configOptions,
+          modelOption?.id,
+          selection.modelId,
+        ),
+      models:
+        configState?.models ??
+        (current.models && {
+          ...current.models,
+          currentModelId: selection.modelId,
+        }),
+    };
   }
-  configOptions = await selectAcpNativeReasoning({
-    connection: args.connection,
+  await selectAcpNativeReasoning({
+    session,
     sessionId: args.sessionId,
-    configOptions,
     modelSelection: selection,
     nativeReasoning: args.nativeReasoning,
   });
-  configOptions = await selectAcpNativeServiceTier({
-    connection: args.connection,
+  await selectAcpNativeServiceTier({
+    session,
     sessionId: args.sessionId,
-    configOptions,
     modelSelection: selection,
   });
-  return { configOptions, models };
+}
+
+function withAcpConfigValue(
+  configOptions: readonly AcpConfigOption[] | undefined,
+  configId: string | undefined,
+  value: string,
+): readonly AcpConfigOption[] | undefined {
+  return configOptions?.map((option) =>
+    option.id === configId ? { ...option, currentValue: value } : option,
+  );
+}
+
+function recordAcpConfigValue(
+  session: AcpThreadSession,
+  configState: AcpConfigStateResult | null,
+  configId: string,
+  value: string,
+): void {
+  session.nativeConfig = {
+    ...session.nativeConfig,
+    configOptions:
+      configState?.configOptions ??
+      withAcpConfigValue(session.nativeConfig.configOptions, configId, value),
+  };
+}
+
+function acpNativeModelDrifted(
+  nativeConfig: AcpNativeConfigState,
+  modelSelection: AcpSessionParams["modelSelection"],
+): boolean {
+  if (!modelSelection || !("modelId" in modelSelection)) {
+    return false;
+  }
+  const currentModelId =
+    findAcpModelConfigOption(nativeConfig.configOptions)?.currentValue ??
+    nativeConfig.models?.currentModelId;
+  return (
+    currentModelId !== undefined && currentModelId !== modelSelection.modelId
+  );
 }
 
 async function selectAcpNativeReasoning(args: {
-  connection: AcpAgentConnection;
+  session: AcpThreadSession;
   sessionId: string;
-  configOptions: readonly AcpConfigOption[] | undefined;
   modelSelection: Extract<
     AcpSessionParams["modelSelection"],
     { modelId: string }
   >;
   nativeReasoning: AcpBridgeNativeReasoning | undefined;
-}): Promise<readonly AcpConfigOption[] | undefined> {
+}): Promise<void> {
   const reasoningLevel = args.modelSelection.reasoningLevel;
   if (reasoningLevel === undefined) {
-    return args.configOptions;
+    return;
   }
   const thoughtLevelOption =
-    findAcpThoughtLevelConfigOption(args.configOptions) ??
+    findAcpThoughtLevelConfigOption(args.session.nativeConfig.configOptions) ??
     nativeReasoningToThoughtLevelOption(args.nativeReasoning);
   if (!thoughtLevelOption) {
-    return args.configOptions;
+    return;
   }
   const value = acpNativeReasoningLevelToValue(
     reasoningLevel,
     thoughtLevelOption,
   );
   if (value === undefined) {
-    return args.configOptions;
+    return;
   }
+  let configState: AcpConfigStateResult | null;
   try {
-    const configState = await args.connection.request({
+    configState = await args.session.connection.request({
       method: "session/set_config_option",
       params: {
         sessionId: args.sessionId,
         configId: thoughtLevelOption.id,
         value,
       },
-      resultSchema: acpConfigStateResultSchema,
+      resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
     });
-    return configState.configOptions ?? args.configOptions;
   } catch {
-    return args.configOptions;
+    return;
   }
+  recordAcpConfigValue(args.session, configState, thoughtLevelOption.id, value);
 }
 
 async function selectAcpNativeServiceTier(args: {
-  connection: AcpAgentConnection;
+  session: AcpThreadSession;
   sessionId: string;
-  configOptions: readonly AcpConfigOption[] | undefined;
   modelSelection: Extract<
     AcpSessionParams["modelSelection"],
     { modelId: string }
   >;
-}): Promise<readonly AcpConfigOption[] | undefined> {
+}): Promise<void> {
   const serviceTier = args.modelSelection.serviceTier;
   if (serviceTier === undefined) {
-    return args.configOptions;
+    return;
   }
-  const fastOption = (args.configOptions ?? []).find(
+  const fastOption = (args.session.nativeConfig.configOptions ?? []).find(
     (option) => option.id === "fast" && option.type === "select",
   );
   const value = serviceTier === "fast" ? "true" : "false";
   if (!fastOption?.options?.some((option) => option.value === value)) {
-    return args.configOptions;
+    return;
   }
-  const configState = await args.connection.request({
+  const configState = await args.session.connection.request({
     method: "session/set_config_option",
     params: {
       sessionId: args.sessionId,
       configId: fastOption.id,
       value,
     },
-    resultSchema: acpConfigStateResultSchema,
+    resultSchema: z.union([acpConfigStateResultSchema, z.null()]),
   });
-  return configState.configOptions ?? args.configOptions;
+  recordAcpConfigValue(args.session, configState, fastOption.id, value);
 }
 
 function buildPromptContentBlocks(
@@ -1901,11 +1948,13 @@ async function startAgentSession(
       sessionId = newSession.sessionId;
       createdFreshSession = true;
       rememberGrokContextWindow(session, newSession.models);
-      session.nativeConfig = await selectAcpNativeModel({
-        connection,
-        sessionId,
+      session.nativeConfig = {
         configOptions: newSession.configOptions,
         models: newSession.models,
+      };
+      await selectAcpNativeModel({
+        session,
+        sessionId,
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
       });
@@ -1916,11 +1965,13 @@ async function startAgentSession(
         });
       }
     } else {
-      session.nativeConfig = await selectAcpNativeModel({
-        connection,
-        sessionId,
+      session.nativeConfig = {
         configOptions: loadedConfigOptions,
         models: loadedModels,
+      };
+      await selectAcpNativeModel({
+        session,
+        sessionId,
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
       });
@@ -2268,7 +2319,8 @@ function reconcileExecutionSettings(
     isDeepStrictEqual(
       construction.modelSelection,
       session.construction.modelSelection,
-    )
+    ) &&
+    !acpNativeModelDrifted(session.nativeConfig, construction.modelSelection)
   ) {
     session.construction = construction;
     return session;
@@ -2293,11 +2345,9 @@ async function applyNativeModelSelection(
   session: AcpThreadSession,
   construction: AcpSessionParams,
 ): Promise<AcpThreadSession> {
-  session.nativeConfig = await selectAcpNativeModel({
-    connection: session.connection,
+  await selectAcpNativeModel({
+    session,
     sessionId: session.providerThreadId,
-    configOptions: session.nativeConfig.configOptions,
-    models: session.nativeConfig.models,
     modelSelection: construction.modelSelection,
     nativeReasoning: construction.nativeReasoning,
   });

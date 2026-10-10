@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Button } from "@bb/shared-ui/button";
 import {
   Command,
@@ -17,12 +18,14 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useScrollOverflowState } from "../thread/timeline/useScrollOverflowState";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
 const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";
-const PROJECT_PICKER_ITEM_CLASS_NAME = "py-[0.3125rem] text-xs max-md:py-2";
+const PROJECT_PICKER_ITEM_CLASS_NAME =
+  "py-[0.3125rem] text-xs max-md:pointer-coarse:py-2";
 
 export interface ProjectSelectorOption {
   id: string;
@@ -70,9 +73,17 @@ export function ProjectSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedValue, setHighlightedValue] = useState(NO_HIGHLIGHT_VALUE);
   const commandRef = useRef<HTMLDivElement>(null);
+  const keyboardNavigationRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  const { scrollRef, belowOverflow } = useScrollOverflowState<HTMLDivElement>({
+    enabled: listElement !== null,
+    measureOverflow: true,
+  });
+  const composedListRef = useComposedRefs(listRef, scrollRef, setListElement);
   useLayoutEffect(() => {
+    if (!keyboardNavigationRef.current) return;
     const items =
       commandRef.current?.querySelectorAll<HTMLElement>("[cmdk-item]");
     const highlightedItem = Array.from(items ?? []).find(
@@ -198,6 +209,12 @@ export function ProjectSelector({
           shouldFilter={false}
           value={highlightedValue}
           onValueChange={setHighlightedValue}
+          onKeyDownCapture={() => {
+            keyboardNavigationRef.current = true;
+          }}
+          onPointerMoveCapture={() => {
+            keyboardNavigationRef.current = false;
+          }}
           className="min-h-0"
         >
           {showSearch ? (
@@ -214,11 +231,15 @@ export function ProjectSelector({
             {projects.length > 0 ? (
               <CommandGroup
                 heading="Project"
-                className="flex min-h-0 flex-col [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
+                className="flex min-h-0 flex-col pb-0 [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
               >
                 <div
-                  ref={listRef}
-                  className="min-h-0 overflow-y-auto overscroll-contain"
+                  ref={composedListRef}
+                  className={cn(
+                    "min-h-0 max-h-[calc(4.5*(1lh+0.625rem)+0.25rem)] overflow-y-auto overscroll-contain text-xs max-md:pointer-coarse:max-h-[calc(4.5*(1lh+1rem)+0.25rem)] md:max-h-[calc(7.5*1.625rem)]",
+                    belowOverflow &&
+                      "[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.25rem),transparent)] md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
+                  )}
                 >
                   {filteredProjects.map((project) => (
                     <CommandItem
@@ -248,7 +269,7 @@ export function ProjectSelector({
                     </CommandItem>
                   ))}
                   {showSearch && filteredProjects.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:pointer-coarse:py-2">
                       No projects found
                     </div>
                   ) : null}

@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDefaultStore } from "jotai";
 import { DndContext, useDraggable } from "@dnd-kit/core";
 import { CompactViewportOverrideProvider } from "@/components/ui/hooks/use-compact-viewport";
-import { useSidebarReorderDnd } from "../dnd/useSidebarReorderDnd.js";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "../dnd/sidebarTouchSensor.js";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarRenameProvider } from "./SidebarInlineRename.js";
 import type {
@@ -20,12 +21,14 @@ import type {
   PluginSidebarThread,
   PluginSidebarThreadRowStatus,
   PluginProvidersState,
+  PluginThreadActionEntry,
 } from "@get-bb/plugin-sdk/app";
 import {
   installTestPluginRuntime,
   renderSlot,
   type PluginSdkTestFakes,
   type RenderedSlot,
+  type TestThreadActionsResolver,
 } from "@get-bb/plugin-sdk/testing/app";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "../model/thread-activity.js";
 import {
@@ -33,11 +36,6 @@ import {
   makeSidebarThread,
 } from "../model/fixtures.js";
 import { sidebarShowProviderIconsAtom } from "../preferences/atoms.js";
-import {
-  SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
-  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-} from "./sidebarRowClasses.js";
-import type { ThreadSectionMoveDestination } from "./ThreadSectionMoveProvider.js";
 import type { ThreadRowOptions } from "./ThreadRow.js";
 import {
   preferenceValueAtom,
@@ -51,8 +49,8 @@ import {
 installTestPluginRuntime();
 const { SidebarDraftPresenceSync } =
   await import("../list/sidebarDraftPresence.js");
-const { ThreadSectionMoveProvider } =
-  await import("./ThreadSectionMoveProvider.js");
+const { ThreadRowNavigationProvider } =
+  await import("./threadRowNavigation.js");
 const { resetSidebarTitleDoubleClickForTest, ThreadRow } =
   await import("./ThreadRow.js");
 
@@ -90,7 +88,6 @@ interface HarnessProps {
   onRowEvent?: () => void;
   onCustomizeRowActions?: (threadId: string) => void;
   onFinishCustomizingRowActions?: (restoreFocus: boolean) => void;
-  sectionDestinations?: readonly ThreadSectionMoveDestination[];
 }
 
 function ThreadRowHarness({
@@ -102,7 +99,6 @@ function ThreadRowHarness({
   onRowEvent,
   onCustomizeRowActions,
   onFinishCustomizingRowActions,
-  sectionDestinations,
 }: HarnessProps) {
   const row = (
     <ThreadRow
@@ -115,33 +111,32 @@ function ThreadRowHarness({
   const content = (
     <TooltipProvider>
       <SidebarDraftPresenceSync />
-      <SidebarRenameProvider>
-        <CustomizeRowActionsContext.Provider
-          value={onCustomizeRowActions ?? null}
-        >
-          <ThreadRowActionsCustomizingContext.Provider
-            value={
-              onFinishCustomizingRowActions
-                ? { threadId: thread.id, onDone: onFinishCustomizingRowActions }
-                : null
-            }
+      <ThreadRowNavigationProvider>
+        <SidebarRenameProvider>
+          <CustomizeRowActionsContext.Provider
+            value={onCustomizeRowActions ?? null}
           >
-            <div
-              onPointerDown={onRowEvent}
-              onKeyDown={onRowEvent}
-              onClick={onRowEvent}
+            <ThreadRowActionsCustomizingContext.Provider
+              value={
+                onFinishCustomizingRowActions
+                  ? {
+                      threadId: thread.id,
+                      onDone: onFinishCustomizingRowActions,
+                    }
+                  : null
+              }
             >
-              {sectionDestinations ? (
-                <ThreadSectionMoveProvider destinations={sectionDestinations}>
-                  {row}
-                </ThreadSectionMoveProvider>
-              ) : (
-                row
-              )}
-            </div>
-          </ThreadRowActionsCustomizingContext.Provider>
-        </CustomizeRowActionsContext.Provider>
-      </SidebarRenameProvider>
+              <div
+                onPointerDown={onRowEvent}
+                onKeyDown={onRowEvent}
+                onClick={onRowEvent}
+              >
+                {row}
+              </div>
+            </ThreadRowActionsCustomizingContext.Provider>
+          </CustomizeRowActionsContext.Provider>
+        </SidebarRenameProvider>
+      </ThreadRowNavigationProvider>
     </TooltipProvider>
   );
   return isCompactViewport === undefined ? (
@@ -163,6 +158,7 @@ interface RenderThreadRowArgs extends Omit<HarnessProps, "thread"> {
   projects?: PluginSidebarProject[];
   providers?: PluginProvidersState["providers"];
   sdk?: PluginSdkTestFakes;
+  threadActions?: TestThreadActionsResolver;
 }
 
 function renderThreadRow({
@@ -175,6 +171,7 @@ function renderThreadRow({
   projects = [],
   providers = [],
   sdk,
+  threadActions = hostThreadActions(),
   ...harness
 }: RenderThreadRowArgs = {}): RenderedSlot & {
   rerenderThreadRow(nextThread: PluginSidebarThread): void;
@@ -200,6 +197,7 @@ function renderThreadRow({
         : {},
       sidebarSplitLayout: splitLayout,
       sdk,
+      threadActions,
     },
   );
   return Object.assign(slot, {
@@ -239,6 +237,23 @@ function renderSplitThreadRow(args: RenderThreadRowArgs = {}) {
   });
 }
 
+function renderedIndicators(): Array<string | null> {
+  return Array.from(
+    document.querySelectorAll("[data-thread-status-glyph]"),
+    (glyph) => glyph.getAttribute("data-thread-status-glyph"),
+  );
+}
+
+function statusGlyph(): HTMLElement {
+  const glyph = document.querySelector<HTMLElement>(
+    "[data-thread-status-glyph]",
+  );
+  if (!glyph) {
+    throw new Error("Expected a thread status glyph");
+  }
+  return glyph;
+}
+
 function openActionsMenu() {
   fireEvent.pointerDown(
     screen.getByRole("button", { name: "Thread actions" }),
@@ -256,6 +271,60 @@ function deferred() {
     reject = fail;
   });
   return { promise, resolve, reject };
+}
+
+interface RanThreadAction {
+  key: string;
+  threadId: string;
+}
+
+function hostThreadActions({
+  ran = [],
+  archiveRun,
+}: {
+  ran?: RanThreadAction[];
+  archiveRun?: () => Promise<void>;
+} = {}): TestThreadActionsResolver {
+  return (thread, { requestRename }) => {
+    const entry = (
+      key: string,
+      label: string,
+      icon: string,
+      run: () => Promise<void> = async () => {
+        ran.push({ key, threadId: thread.id });
+      },
+    ): PluginThreadActionEntry => ({
+      key,
+      pluginId: key.split("/")[0] ?? "bb--core",
+      group: "2_organize",
+      action: {
+        label,
+        icon,
+        run: () => run().catch(() => undefined),
+      },
+    });
+    const isArchived = thread.archivedAt !== null;
+    return [
+      entry("bb--core/copyLink", "Copy thread link", "Copy"),
+      entry(
+        "bb--core/pin",
+        thread.pinnedAt === null ? "Pin" : "Unpin",
+        thread.pinnedAt === null ? "Pin" : "PinOff",
+      ),
+      ...(thread.parentThreadId === null && !isArchived
+        ? [entry("thread-list/move", "Move to section", "SectionMove")]
+        : []),
+      entry("bb--core/rename", "Rename", "Edit", async () => {
+        requestRename(thread.id);
+      }),
+      entry(
+        "bb--core/archive",
+        isArchived ? "Unarchive" : "Archive",
+        isArchived ? "ArchiveRestore" : "Archive",
+        archiveRun,
+      ),
+    ];
+  };
 }
 
 afterEach(() => {
@@ -300,7 +369,7 @@ describe("ThreadRow", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByRole("img", { name: "Test Provider" })).toBeTruthy();
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(slot.inspection.navigateCalls).toEqual([]);
 
     slot.rerenderThreadRow(createThread({ providerId: "missing" }));
     expect(screen.queryByRole("img", { name: "Test Provider" })).toBeNull();
@@ -328,7 +397,7 @@ describe("ThreadRow", () => {
     expect(link.getAttribute("data-sidebar-rename-anchor")).toBe("");
     expect(link.closest("[data-sidebar-rename-row]")).not.toBeNull();
     fireEvent.click(link);
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
+    expect(slot.inspection.navigateCalls).toEqual([]);
   });
 
   it.each([
@@ -339,98 +408,107 @@ describe("ThreadRow", () => {
     const link = screen.getByRole("link", { name: "Open Thread" });
     const event = fireEvent.click(link, modifier);
     expect(event).toBe(false);
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "open", threadId: "thr_test", options: { split: true } },
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "thr_test", options: { split: true } },
     ]);
   });
 
   it("keeps desktop restore available, hides it on mobile, and blocks row event propagation", async () => {
     const thread = createThread({ archivedAt: 1, isArchived: true });
     const rowEvent = vi.fn();
-    const unarchive = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
+    const ran: RanThreadAction[] = [];
+    renderThreadRow({
       thread,
       onRowEvent: rowEvent,
-      sdk: { threads: { unarchive } },
+      threadActions: hostThreadActions({ ran }),
     });
-    const restore = screen.getByRole("button", { name: "Unarchive thread" });
+    const restore = screen.getByRole("button", { name: "Unarchive" });
     expect(restore.querySelector('[data-icon="ArchiveRestore"]')).toBeTruthy();
-    expect(restore.classList.contains("bg-state-hover")).toBe(false);
-    expect(restore.classList.contains("bg-state-active")).toBe(false);
     expect(restore.closest("[data-sidebar-hover-actions-open]")).toBeNull();
-    expect(restore.closest(".\\[\\@media\\(hover\\:none\\)\\]\\:hidden")).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    expect(
+      restore.closest(".\\[\\@media\\(hover\\:none\\)\\]\\:hidden"),
+    ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     fireEvent.pointerDown(restore, { pointerType: "touch", button: 0 });
     fireEvent.keyDown(restore, { key: "Enter" });
     fireEvent.click(restore);
     await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unarchive", args: [{ threadId: "thr_test" }] },
-      ]),
+      expect(ran).toEqual([{ key: "bb--core/archive", threadId: "thr_test" }]),
     );
     expect(rowEvent).not.toHaveBeenCalled();
   });
 
-  it("disables the restore button while its unarchive is in flight and recovers when it fails", async () => {
+  it("disables a row action button while its run is in flight and recovers when it fails", async () => {
     const pending = deferred();
-    const unarchive = vi.fn().mockReturnValue(pending.promise);
+    const archiveRun = vi.fn(() => pending.promise);
     renderThreadRow({
       thread: createThread({ archivedAt: 1, isArchived: true }),
-      sdk: { threads: { unarchive } },
+      threadActions: hostThreadActions({ archiveRun }),
     });
     const restore = screen.getByRole<HTMLButtonElement>("button", {
-      name: "Unarchive thread",
+      name: "Unarchive",
     });
     expect(restore.disabled).toBe(false);
     fireEvent.click(restore);
     await waitFor(() => expect(restore.disabled).toBe(true));
     fireEvent.click(restore);
-    expect(unarchive).toHaveBeenCalledTimes(1);
+    expect(archiveRun).toHaveBeenCalledTimes(1);
     await act(async () => {
       pending.reject(new Error("Unarchive failed"));
       await pending.promise.catch(() => undefined);
     });
     await waitFor(() => expect(restore.disabled).toBe(false));
-    fireEvent.click(restore);
-    expect(unarchive).toHaveBeenCalledTimes(2);
   });
 
-  it("archives through the host action from the hover control", () => {
-    const slot = renderThreadRow();
-    fireEvent.click(screen.getByRole("button", { name: "Archive thread" }));
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "archive", threadId: "thr_test" },
-    ]);
-  });
-
-  it("shows the configured row actions in order and reserves their width", () => {
+  it("shows the configured row actions in order and reserves their width", async () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
-      "pin",
-      "copyLink",
-      "archive",
+      "bb--core/pin",
+      "bb--core/copyLink",
+      "bb--core/archive",
     ]);
-    const slot = renderThreadRow();
+    const ran: RanThreadAction[] = [];
+    renderThreadRow({ threadActions: hostThreadActions({ ran }) });
     const controls = document.querySelector("[data-sidebar-row-controls]");
     expect(
       Array.from(controls?.querySelectorAll("button") ?? []).map((button) =>
         button.getAttribute("aria-label"),
       ),
-    ).toEqual(["Pin", "Copy thread link", "Archive thread", "Thread actions"]);
+    ).toEqual(["Pin", "Copy thread link", "Archive", "Thread actions"]);
     expect(
       document
         .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
         ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
     ).toBe("calc(var(--spacing) * 22.5)");
     fireEvent.click(screen.getByRole("button", { name: "Pin" }));
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "setPinned", threadId: "thr_test", pinned: true },
+    await waitFor(() =>
+      expect(ran).toEqual([{ key: "bb--core/pin", threadId: "thr_test" }]),
+    );
+  });
+
+  it("skips row action keys that have no action for the thread", () => {
+    getDefaultStore().set(preferenceValueAtom("rowActions"), [
+      "thread-list/move",
+      "plugin-gone/action",
+      "bb--core/archive",
     ]);
+    renderThreadRow({
+      thread: createThread({ parentThreadId: "thr_parent" }),
+    });
+    expect(
+      screen.queryByRole("button", { name: "Move to section" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeTruthy();
+    expect(
+      document
+        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
+        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
+    ).toBe("calc(var(--spacing) * 7.5)");
   });
 
   it("shows only the actions menu when every row action is turned off", () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), []);
     renderThreadRow();
-    expect(screen.queryByRole("button", { name: "Archive thread" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
     expect(screen.getByRole("button", { name: "Thread actions" })).toBeTruthy();
     expect(
       document
@@ -439,7 +517,10 @@ describe("ThreadRow", () => {
     ).toBe("calc(var(--spacing) * 0)");
   });
 
-  it.each([[[]], [["pin", "copyLink", "archive"]]] as const)(
+  it.each([
+    [[]],
+    [["bb--core/pin", "bb--core/copyLink", "bb--core/archive"]],
+  ] as const)(
     "reserves one action for an archived row whatever the row actions (%j)",
     (rowActions) => {
       getDefaultStore().set(preferenceValueAtom("rowActions"), [...rowActions]);
@@ -454,179 +535,43 @@ describe("ThreadRow", () => {
     },
   );
 
-  it.each([
-    {
-      item: "Mark read",
-      thread: createThread(),
-      call: { method: "setRead", threadId: "thr_test", read: true },
-    },
-    {
-      item: "Mark unread",
-      thread: createThread({ lastReadAt: 5, latestAttentionAt: 1 }),
-      call: { method: "setRead", threadId: "thr_test", read: false },
-    },
-    {
-      item: "Pin",
-      thread: createThread(),
-      call: { method: "setPinned", threadId: "thr_test", pinned: true },
-    },
-    {
-      item: "Unpin",
-      thread: createThread({ pinnedAt: 3, isPinned: true }),
-      call: { method: "setPinned", threadId: "thr_test", pinned: false },
-    },
-    {
-      item: "Archive",
-      thread: createThread(),
-      call: { method: "archive", threadId: "thr_test" },
-    },
-  ])(
-    "routes the $item menu item to the host action",
-    async ({ item, thread, call }) => {
-      const slot = renderThreadRow({ thread });
-      openActionsMenu();
-      fireEvent.click(await screen.findByRole("menuitem", { name: item }));
-      await waitFor(() =>
-        expect(slot.inspection.sidebarActionCalls).toEqual([call]),
-      );
-    },
-  );
-
-  it("drops split and move from the row when they are unavailable", async () => {
-    const { visibleThreadRowActions } = await import("./ThreadActionsMenu.js");
-    expect(
-      visibleThreadRowActions(["split", "move", "archive"], {
-        split: false,
-        move: false,
-      }),
-    ).toEqual(["archive"]);
-    expect(
-      visibleThreadRowActions(["split", "move", "archive"], {
-        split: true,
-        move: true,
-      }),
-    ).toEqual(["split", "move", "archive"]);
-  });
-
-  it("offers Move only on rows that can move", () => {
-    const destinations = [
-      { label: "Planning", sectionId: "sec_planning" },
-      { label: "Threads", sectionId: null },
-    ];
+  it("starts the inline rename directly from a Rename row action", async () => {
     getDefaultStore().set(preferenceValueAtom("rowActions"), [
-      "move",
-      "archive",
+      "bb--core/rename",
     ]);
-    renderThreadRow({ sectionDestinations: destinations });
+    renderThreadRow();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     expect(
-      screen.getByRole("button", { name: "Move to section" }),
-    ).toBeTruthy();
-    cleanup();
-    renderThreadRow({
-      thread: createThread({ parentThreadId: "thr_parent" }),
-      sectionDestinations: destinations,
-    });
-    expect(
-      screen.queryByRole("button", { name: "Move to section" }),
-    ).toBeNull();
-    expect(
-      document
-        .querySelector<HTMLElement>(".bb-sidebar-hover-actions-inset")
-        ?.style.getPropertyValue("--bb-sidebar-hover-actions-inset"),
-    ).toBe("calc(var(--spacing) * 7.5)");
+      await screen.findByRole("textbox", { name: "Thread name" }),
+    ).toHaveProperty("value", "Thread");
   });
 
-  it.each([false, true])(
-    "opens a new thread in the row's environment with pinned=%s",
-    async (pinned) => {
-      const slot = renderThreadRow({
-        isCompactViewport: true,
-        thread: createThread({
-          projectId: "proj_environment",
-          environment: makeSidebarEnvironment({
-            id: "env_existing",
-            path: "/repo",
-          }),
-          sectionId: "sec_building",
-          pinnedAt: pinned ? 1 : null,
-        }),
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-      fireEvent.click(
-        await screen.findByRole("menuitem", {
-          name: "New thread in environment",
-        }),
-      );
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        {
-          method: "openNewThread",
-          options: {
-            projectId: "proj_environment",
-            environmentId: "env_existing",
-            experimental_placement: { sectionId: "sec_building", pinned },
-            focusPrompt: true,
-          },
-        },
-      ]);
-    },
-  );
-
-  it.each([
-    { compact: true, environment: null },
-    { compact: true, environment: makeSidebarEnvironment() },
-    { compact: false, environment: makeSidebarEnvironment({ path: "/repo" }) },
-  ])(
-    "omits environment reuse for compact=$compact and environment=$environment",
-    async ({ compact, environment }) => {
-      renderThreadRow({
-        isCompactViewport: compact,
-        thread: createThread({ environment }),
-      });
-      if (compact)
+  it.each(["dropdown", "context"] as const)(
+    "adds Customize row actions to the %s menu",
+    async (surface) => {
+      const customize = vi.fn();
+      renderThreadRow({ onCustomizeRowActions: customize });
+      if (surface === "dropdown") {
         fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
-      else openActionsMenu();
-      await screen.findByRole("menuitem", { name: "Rename" });
-      expect(
-        screen.queryByRole("menuitem", { name: "New thread in environment" }),
-      ).toBeNull();
+      } else {
+        fireEvent.contextMenu(
+          screen.getByRole("link", { name: "Open Thread" }),
+        );
+      }
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "Customize row actions" }),
+      );
+      expect(customize).toHaveBeenCalledWith("thr_test");
     },
   );
 
-  it("orders the actions menu like the row actions, with customize before archive", async () => {
-    const customize = vi.fn();
-    renderThreadRow({
-      onCustomizeRowActions: customize,
-      sectionDestinations: [
-        { label: "Planning", sectionId: "sec_planning" },
-        { label: "Threads", sectionId: null },
-      ],
-    });
-    openActionsMenu();
-    const menu = await screen.findByRole("menu");
+  it("leaves Customize row actions out when the list cannot customize", async () => {
+    renderThreadRow();
+    fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+    await screen.findByRole("menuitem", { name: "Rename" });
     expect(
-      Array.from(menu.children).map((element) =>
-        element.getAttribute("role") === "separator"
-          ? "---"
-          : element.textContent?.trim(),
-      ),
-    ).toEqual([
-      "Open in split",
-      "---",
-      "Copy thread link",
-      "Mark read",
-      "Pin",
-      "Move to section",
-      "Rename",
-      "---",
-      "Customize row actions",
-      "---",
-      "Archive",
-      "Delete",
-    ]);
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Customize row actions" }),
-    );
-    expect(customize).toHaveBeenCalledWith("thr_test");
+      screen.queryByRole("menuitem", { name: "Customize row actions" }),
+    ).toBeNull();
   });
 
   it("customizes row actions on the real row until Done", () => {
@@ -643,155 +588,32 @@ describe("ThreadRow", () => {
     expect(finish).toHaveBeenCalledWith(true);
   });
 
-  it("asks the host to confirm deletion from the menu", async () => {
-    const slot = renderThreadRow();
-    openActionsMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        { method: "requestDelete", threadId: "thr_test" },
-      ]),
-    );
-  });
+  it.each(["dropdown", "context"] as const)(
+    "starts an inline rename once the %s menu has closed",
+    async (surface) => {
+      renderThreadRow();
+      if (surface === "dropdown") {
+        fireEvent.click(screen.getByRole("button", { name: "Thread actions" }));
+      } else {
+        fireEvent.contextMenu(
+          screen.getByRole("link", { name: "Open Thread" }),
+        );
+      }
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+      const input = await screen.findByRole("textbox", { name: "Thread name" });
+      expect(input).toHaveProperty("value", "Thread");
+    },
+  );
 
-  it("opens in a split from the menu and unarchives through the sdk", async () => {
-    const unarchive = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
-      thread: createThread({ archivedAt: 1, isArchived: true }),
-      sdk: { threads: { unarchive } },
-    });
-    openActionsMenu();
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Open in split" }),
-    );
+  it("suppresses the context menu while the title is being edited", async () => {
+    renderThreadRow();
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    await screen.findByRole("textbox", { name: "Thread name" });
     expect(
-      slot.inspection.sidebarActionCalls.filter((call) => call.options),
-    ).toEqual([
-      { method: "open", threadId: "thr_test", options: { split: true } },
-    ]);
-    openActionsMenu();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unarchive", args: [{ threadId: "thr_test" }] },
-      ]),
-    );
-  });
-
-  it("copies the canonical thread URL built from the href", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
-    renderThreadRow({
-      thread: createThread({ href: "/projects/proj_test/threads/thr_test" }),
-    });
-    openActionsMenu();
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Copy thread link" }),
-    );
-    await waitFor(() =>
-      expect(writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/projects/proj_test/threads/thr_test`,
-      ),
-    );
-    vi.unstubAllGlobals();
-  });
-
-  it("moves the thread to another section through the sdk", async () => {
-    const update = vi.fn().mockResolvedValue({ ok: true });
-    const slot = renderThreadRow({
-      thread: createThread({ sectionId: "sec_planning" }),
-      sdk: { threads: { update } },
-      sectionDestinations: [
-        { label: "Planning", sectionId: "sec_planning" },
-        { label: "Building", sectionId: "sec_building" },
-        { label: "Threads", sectionId: null },
-      ],
-    });
-    openActionsMenu();
-    const trigger = await screen.findByRole("menuitem", {
-      name: "Move to section",
-    });
-    fireEvent.keyDown(trigger, { key: "ArrowRight" });
-    const current = await screen.findByRole("menuitem", { name: "Planning" });
-    expect(current.getAttribute("aria-current")).toBe("true");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Building" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        {
-          method: "threads.update",
-          args: [{ threadId: "thr_test", sectionId: "sec_building" }],
-        },
-      ]),
-    );
-  });
-
-  it("unpins before moving a pinned thread and only unpins for its current section", async () => {
-    const unpin = vi.fn().mockResolvedValue({ ok: true });
-    const update = vi.fn().mockResolvedValue({ ok: true });
-    const destinations = [
-      { label: "Planning", sectionId: "sec_planning" },
-      { label: "Threads", sectionId: null },
-    ];
-    const slot = renderThreadRow({
-      thread: createThread({
-        sectionId: "sec_planning",
-        pinnedAt: 2,
-        isPinned: true,
-      }),
-      sdk: { threads: { unpin, update } },
-      sectionDestinations: destinations,
-    });
-    openActionsMenu();
-    fireEvent.keyDown(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-      { key: "ArrowRight" },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Threads" }));
-    await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toEqual([
-        { method: "threads.unpin", args: [{ threadId: "thr_test" }] },
-        {
-          method: "threads.update",
-          args: [{ threadId: "thr_test", sectionId: null }],
-        },
-      ]),
-    );
-    openActionsMenu();
-    fireEvent.keyDown(
-      await screen.findByRole("menuitem", { name: "Move to section" }),
-      { key: "ArrowRight" },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Planning" }));
-    await waitFor(() => expect(unpin).toHaveBeenCalledTimes(2));
-    expect(update).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens the context menu on right click and starts an inline rename from it", async () => {
-    const slot = renderThreadRow();
-    fireEvent.contextMenu(screen.getByRole("link", { name: "Open Thread" }));
-    const item = await screen.findByRole("menuitem", { name: "Rename" });
-    fireEvent.keyDown(item, { key: "Enter" });
-    const input = await screen.findByRole("textbox", { name: "Thread name" });
-    expect(input).toHaveProperty("value", "Thread");
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
-  });
-
-  it("does not select a menu item when the opening right click is released over it", async () => {
-    const slot = renderThreadRow();
-    fireEvent.contextMenu(screen.getByRole("link", { name: "Open Thread" }));
-    const pin = await screen.findByRole("menuitem", { name: "Pin" });
-
-    fireEvent.pointerUp(pin, { button: 2, pointerType: "mouse" });
-
-    expect(slot.inspection.sidebarActionCalls).toEqual([]);
-    expect(screen.getByRole("menuitem", { name: "Pin" })).toBe(pin);
-
-    fireEvent.click(pin);
-    await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        { method: "setPinned", threadId: "thr_test", pinned: true },
-      ]),
-    );
+      screen
+        .getByTestId("bb-thread-actions-context-menu")
+        .getAttribute("data-disabled"),
+    ).toBe("true");
   });
 
   const splitWorkingCases: Array<{
@@ -863,7 +685,7 @@ describe("ThreadRow", () => {
       expect(
         splitMap.closest("[data-sidebar-thread-trailing-indicator]"),
       ).not.toBeNull();
-      expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
+      expect(container.querySelector("[data-thread-status-glyph]")).toBeNull();
     },
   );
 
@@ -941,25 +763,24 @@ describe("ThreadRow", () => {
     },
   );
 
-  it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({
+  it("puts the draft glyph in the trailing status slot", () => {
+    renderThreadRow({
       hasComposerDraft: true,
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
     });
 
-    const draftIcon = container.querySelector('[data-icon="Edit"]');
-    expect(draftIcon).not.toBeNull();
+    const draftGlyph = statusGlyph();
+    expect(draftGlyph.getAttribute("data-thread-status-glyph")).toBe("draft");
+    expect(draftGlyph.hasAttribute("data-hide-idle-draft-label")).toBe(true);
     expect(
-      draftIcon?.closest("[data-sidebar-thread-trailing-indicator]"),
+      draftGlyph.closest("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Thread (unsubmitted draft)" }),
     ).not.toBeNull();
-    expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
-    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
   });
 
-  it("replaces the draft icon with a plugin status and restores it without one", () => {
+  it("passes a plugin status over the draft glyph and drops it without one", () => {
     const withStatus = renderThreadRow({
       hasComposerDraft: true,
       pluginStatus: {
@@ -969,19 +790,22 @@ describe("ThreadRow", () => {
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
     });
 
-    const runningIcon = screen.getByLabelText("Plugin improving draft");
-    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(withStatus.container.querySelector('[data-icon="Edit"]')).toBeNull();
+    expect(statusGlyph().getAttribute("data-thread-status-glyph")).toBe(
+      "draft",
+    );
+    expect(statusGlyph().getAttribute("data-row-status")).toBe(
+      "Plugin improving draft",
+    );
     withStatus.unmount();
 
-    const withoutStatus = renderThreadRow({
+    renderThreadRow({
       hasComposerDraft: true,
       thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
     });
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
-    expect(
-      withoutStatus.container.querySelector('[data-icon="Edit"]'),
-    ).not.toBeNull();
+    expect(statusGlyph().getAttribute("data-thread-status-glyph")).toBe(
+      "draft",
+    );
+    expect(statusGlyph().hasAttribute("data-row-status")).toBe(false);
   });
 
   it("shows a keyboard shortcut in place of a plugin status", () => {
@@ -994,7 +818,7 @@ describe("ThreadRow", () => {
     });
 
     expect(screen.getByText("⌘3")).not.toBeNull();
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(renderedIndicators()).toEqual([]);
   });
 
   it("shows a keyboard shortcut in place of a split mini-map", () => {
@@ -1004,7 +828,7 @@ describe("ThreadRow", () => {
     expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
   });
 
-  it("renders a plugin status with the semantic success tone", () => {
+  it("passes the plugin status tone through to the status glyph", () => {
     renderThreadRow({
       hasComposerDraft: true,
       pluginStatus: {
@@ -1014,67 +838,14 @@ describe("ThreadRow", () => {
       },
     });
 
-    const runningIcon = screen.getByLabelText("Plugin improving draft");
-    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(Array.from(runningIcon.classList)).toContain(
-      SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+    expect(statusGlyph().getAttribute("data-row-status")).toBe(
+      "Plugin improving draft",
     );
-    expect(Array.from(runningIcon.classList)).not.toContain(
-      SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-    );
+    expect(statusGlyph().getAttribute("data-row-status-tone")).toBe("success");
   });
 
-  it("automatically shimmers a plugin status with the running tone", () => {
+  it("keeps the runtime indicator ahead of a plugin status", () => {
     renderThreadRow({
-      hasComposerDraft: true,
-      pluginStatus: {
-        icon: "AiContentGenerator01",
-        label: "Plugin running",
-        tone: "running",
-      },
-    });
-
-    const runningIcon = screen.getByLabelText("Plugin running");
-    expect(runningIcon.getAttribute("data-icon")).toBe("AiContentGenerator01");
-    expect(Array.from(runningIcon.classList)).toContain("animate-shine-icon");
-    expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
-      "text-success",
-    );
-    expect(Array.from(runningIcon.parentElement?.classList ?? [])).toContain(
-      "motion-safe:animate-pulse",
-    );
-  });
-
-  it("renders a static destructive plugin status with the error tone", () => {
-    renderThreadRow({
-      hasComposerDraft: true,
-      pluginStatus: {
-        icon: "AlertCircle",
-        label: "Plugin failed",
-        tone: "error",
-      },
-    });
-
-    const errorIcon = screen.getByLabelText("Plugin failed");
-    expect(errorIcon.getAttribute("data-icon")).toBe("AlertCircle");
-    expect(Array.from(errorIcon.classList)).toContain("text-destructive");
-    expect(Array.from(errorIcon.classList)).not.toContain("animate-shine-icon");
-  });
-
-  it("disables runtime glyph rotation when reduced motion is requested", () => {
-    renderThreadRow({
-      thread: createThread({ status: "active", runtimeStatus: "active" }),
-    });
-
-    const runningIcon = screen.getByLabelText("Thread working");
-    expect(runningIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(runningIcon.classList)).toContain(
-      "motion-reduce:animate-none",
-    );
-  });
-
-  it("keeps the runtime spinner ahead of a plugin status", () => {
-    const { container } = renderThreadRow({
       pluginStatus: {
         icon: "AiContentGenerator01",
         label: "Plugin improving draft",
@@ -1082,17 +853,14 @@ describe("ThreadRow", () => {
       thread: createThread({ status: "active", runtimeStatus: "active" }),
     });
 
-    const runningIcon = screen.getByLabelText("Thread working");
-    expect(runningIcon.getAttribute("data-icon")).toBe("Loading");
-    expect(Array.from(runningIcon.classList)).toContain("animate-spin");
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(renderedIndicators()).toEqual(["runtime"]);
     expect(
-      container.querySelector("[data-sidebar-thread-trailing-indicator]"),
+      statusGlyph().closest("[data-sidebar-thread-trailing-indicator]"),
     ).not.toBeNull();
   });
 
   it.each([true, false] as const)(
-    "keeps the working-draft pencil ahead of the runtime spinner when isActive=%s",
+    "keeps the working-draft indicator ahead of the runtime indicator when isActive=%s",
     (isActive) => {
       renderThreadRow({
         hasComposerDraft: true,
@@ -1100,15 +868,7 @@ describe("ThreadRow", () => {
         thread: createThread({ status: "active", runtimeStatus: "active" }),
       });
 
-      const draftIcon = screen.getByLabelText(
-        "Thread working with unsubmitted draft",
-      );
-      expect(draftIcon.getAttribute("data-icon")).toBe("Edit");
-      expect(Array.from(draftIcon.classList)).toContain("animate-shine-icon");
-      expect(Array.from(draftIcon.classList)).toContain(
-        SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-      );
-      expect(screen.queryByLabelText("Thread working")).toBeNull();
+      expect(renderedIndicators()).toEqual(["working-draft"]);
     },
   );
 
@@ -1214,16 +974,12 @@ describe("ThreadRow", () => {
     ).toBeNull();
   });
 
-  it("uses the circle-question glyph when the thread needs user input", () => {
+  it("shows the needs-input indicator when the thread needs user input", () => {
     renderThreadRow({
       thread: createThread({ hasPendingInteraction: true }),
     });
 
-    expect(
-      screen
-        .getByLabelText("Thread needs user input")
-        .getAttribute("data-icon"),
-    ).toBe("CircleQuestion");
+    expect(renderedIndicators()).toEqual(["waiting-for-input"]);
   });
 
   it("clocks a thread with queued work, and drops the clock once it runs", () => {
@@ -1235,11 +991,7 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(
-      screen
-        .getByLabelText("Thread has a message waiting to send")
-        .getAttribute("data-icon"),
-    ).toBe("Clock");
+    expect(renderedIndicators()).toEqual(["queued-waiting"]);
 
     rerenderThreadRow(
       createThread({
@@ -1249,12 +1001,7 @@ describe("ThreadRow", () => {
         runtimeStatus: "active",
       }),
     );
-    expect(
-      screen.queryByLabelText("Thread has a message waiting to send"),
-    ).toBeNull();
-    expect(
-      screen.getByLabelText("Thread working").getAttribute("data-icon"),
-    ).toBe("Loading");
+    expect(renderedIndicators()).toEqual(["runtime"]);
   });
 
   it("shows unread success instead of queued work", () => {
@@ -1267,13 +1014,10 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
-    expect(
-      screen.queryByLabelText("Thread has a message waiting to send"),
-    ).toBeNull();
+    expect(renderedIndicators()).toEqual(["unread-success"]);
   });
 
-  it("gives a failed queued row the same glyph a failed thread gets", () => {
+  it("tells a failed queued row apart from a failed thread", () => {
     renderThreadRow({
       thread: createThread({
         lastReadAt: 1,
@@ -1281,7 +1025,7 @@ describe("ThreadRow", () => {
         queuedWork: "failed",
       }),
     });
-    const queueFailure = screen.getByLabelText("Queued message failed to send");
+    expect(renderedIndicators()).toEqual(["queued-failed"]);
 
     cleanup();
     renderThreadRow({
@@ -1291,15 +1035,7 @@ describe("ThreadRow", () => {
         latestAttentionAt: 10,
       }),
     });
-    const threadFailure = screen.getByLabelText("Unread thread failed");
-
-    expect(queueFailure.getAttribute("data-icon")).toBe("CircleX");
-    expect(threadFailure.getAttribute("data-icon")).toBe(
-      queueFailure.getAttribute("data-icon"),
-    );
-    expect(queueFailure.getAttribute("class")).toBe(
-      threadFailure.getAttribute("class"),
-    );
+    expect(renderedIndicators()).toEqual(["unread-error"]);
   });
 
   it.each([true, false])(
@@ -1478,7 +1214,7 @@ describe("ThreadRow", () => {
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
+    expect(renderedIndicators()).toEqual([]);
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -1498,69 +1234,36 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Unread thread failed")).toBeNull();
-    expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
-    expect(screen.queryByLabelText("Agent working")).toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
-    expect(screen.queryByLabelText("Background agent running")).toBeNull();
-    expect(screen.queryByLabelText("Background command running")).toBeNull();
-    expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
+    expect(renderedIndicators()).toEqual(["runtime"]);
   });
 
-  it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
+  it("shows the workflow indicator for an idle thread with an active workflow", () => {
     renderThreadRow({
       thread: createThread({ activity: activity({ workflows: 1 }) }),
     });
 
-    const workflowIcon = screen.getByLabelText("Workflow running");
-    const workflowIconClasses = Array.from(workflowIcon.classList);
-    expect(workflowIconClasses).toContain("animate-shine-icon");
-    expect(workflowIconClasses).toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
-    expect(screen.queryByLabelText("Agent working")).toBeNull();
+    expect(renderedIndicators()).toEqual(["workflow"]);
   });
 
   it.each([
     {
       activityKey: "backgroundAgents" as const,
-      label: "Background agent running",
-      icon: "UserRoundPlus",
-      absent: ["Background command running", "Workflow running"],
+      indicator: "background-agent",
     },
     {
       activityKey: "backgroundCommands" as const,
-      label: "Background command running",
-      icon: "Terminal",
-      absent: ["Workflow running", "Agent working"],
+      indicator: "background-command",
     },
-    {
-      activityKey: "planMode" as const,
-      label: "Plan mode active",
-      icon: "ListTodo",
-      absent: ["Background command running", "Workflow running"],
-    },
-    {
-      activityKey: "goals" as const,
-      label: "Goal active",
-      icon: "Target",
-      absent: ["Plan mode active", "Workflow running"],
-    },
+    { activityKey: "planMode" as const, indicator: "plan-mode" },
+    { activityKey: "goals" as const, indicator: "goal" },
   ])(
-    "shows an animated $label glyph",
-    ({ activityKey, label, icon, absent }) => {
+    "shows the $indicator indicator for $activityKey activity",
+    ({ activityKey, indicator }) => {
       renderThreadRow({
         thread: createThread({ activity: activity({ [activityKey]: 1 }) }),
       });
 
-      const glyph = screen.getByLabelText(label);
-      expect(glyph.getAttribute("data-icon")).toBe(icon);
-      expect(Array.from(glyph.classList)).toContain("animate-shine-icon");
-      expect(Array.from(glyph.classList)).toContain(
-        SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-      );
-      for (const missing of absent) {
-        expect(screen.queryByLabelText(missing)).toBeNull();
-      }
+      expect(renderedIndicators()).toEqual([indicator]);
     },
   );
 
@@ -1575,9 +1278,7 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Workflow running")).not.toBeNull();
-    expect(screen.queryByLabelText("Background agent running")).toBeNull();
-    expect(screen.queryByLabelText("Background command running")).toBeNull();
+    expect(renderedIndicators()).toEqual(["workflow"]);
   });
 
   it("shows background agent work before background command work", () => {
@@ -1587,27 +1288,18 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Background agent running")).not.toBeNull();
-    expect(screen.queryByLabelText("Background command running")).toBeNull();
+    expect(renderedIndicators()).toEqual(["background-agent"]);
   });
 
   it.each([
-    { flag: "workflow" as const, label: "Workflow running", icon: "Workflow" },
-    {
-      flag: "backgroundAgent" as const,
-      label: "Background agent running",
-      icon: "UserRoundPlus",
-    },
-    {
-      flag: "backgroundCommand" as const,
-      label: "Background command running",
-      icon: "Terminal",
-    },
-    { flag: "planMode" as const, label: "Plan mode active", icon: "ListTodo" },
-    { flag: "goal" as const, label: "Goal active", icon: "Target" },
+    { flag: "workflow" as const, indicator: "workflow" },
+    { flag: "backgroundAgent" as const, indicator: "background-agent" },
+    { flag: "backgroundCommand" as const, indicator: "background-command" },
+    { flag: "planMode" as const, indicator: "plan-mode" },
+    { flag: "goal" as const, indicator: "goal" },
   ])(
-    "shows the $label glyph for collapsed parent rows with hidden child activity",
-    ({ flag, icon, label }) => {
+    "shows the $indicator indicator for collapsed parent rows with hidden child activity",
+    ({ flag, indicator }) => {
       renderThreadRow({
         thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
         options: {
@@ -1625,8 +1317,7 @@ describe("ThreadRow", () => {
         },
       });
 
-      expect(screen.getByLabelText(label).getAttribute("data-icon")).toBe(icon);
-      expect(screen.queryByLabelText("Thread working")).toBeNull();
+      expect(renderedIndicators()).toEqual([indicator]);
     },
   );
 
@@ -1651,10 +1342,7 @@ describe("ThreadRow", () => {
       },
     });
 
-    expect(
-      screen.getByLabelText("Thread working with unsubmitted draft"),
-    ).not.toBeNull();
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(renderedIndicators()).toEqual(["working-draft"]);
   });
 
   it("ignores hidden child activity once the parent is expanded", () => {
@@ -1675,11 +1363,11 @@ describe("ThreadRow", () => {
       },
     });
 
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(renderedIndicators()).toEqual([]);
   });
 
-  it("renders an already-unread successful thread as a settled dot on initial load", () => {
-    const { container } = renderThreadRow({
+  it("shows unread success for an already-unread successful thread on initial load", () => {
+    renderThreadRow({
       thread: createThread({
         status: "idle",
         lastReadAt: 1_000,
@@ -1687,20 +1375,19 @@ describe("ThreadRow", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
-    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+    expect(renderedIndicators()).toEqual(["unread-success"]);
   });
 
-  it("switches directly from working to the settled done dot after finishing", () => {
+  it("switches directly from working to unread success after finishing", () => {
     const thread = createThread({
       status: "active",
       runtimeStatus: "active",
       lastReadAt: 1_000,
       latestAttentionAt: 1_000,
     });
-    const { container, rerenderThreadRow } = renderThreadRow({ thread });
+    const { rerenderThreadRow } = renderThreadRow({ thread });
 
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
+    expect(renderedIndicators()).toEqual(["runtime"]);
 
     rerenderThreadRow({
       ...thread,
@@ -1710,12 +1397,13 @@ describe("ThreadRow", () => {
       isUnread: true,
     });
 
-    expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
-    expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+    expect(renderedIndicators()).toEqual(["unread-success"]);
   });
 
   it("edits the row title inline after a double click and commits on Enter", async () => {
-    const slot = renderThreadRow();
+    const slot = renderThreadRow({
+      sdk: { threads: { update: vi.fn().mockResolvedValue({}) } },
+    });
 
     fireEvent.doubleClick(screen.getByText("Thread"));
     const input = await screen.findByRole("textbox", { name: "Thread name" });
@@ -1725,8 +1413,11 @@ describe("ThreadRow", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(slot.inspection.sidebarActionCalls).toEqual([
-        { method: "rename", threadId: "thr_test", title: "Renamed thread" },
+      expect(slot.inspection.sdkCalls).toEqual([
+        {
+          method: "threads.update",
+          args: [{ threadId: "thr_test", title: "Renamed thread" }],
+        },
       ]);
     });
     await waitFor(() => {
@@ -1777,83 +1468,76 @@ describe("ThreadRow", () => {
     expect(onPointerDown).not.toHaveBeenCalled();
   });
 
-  it.each(["timer", "native context menu"])(
-    "keeps the row still when %s opens its menu and still allows deliberate dragging",
-    async (trigger) => {
-      const onDragStart = vi.fn();
-      const thread = createThread();
-      function DraggableThread() {
-        const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-          id: thread.id,
-        });
-        return (
-          <ThreadRowHarness
-            thread={thread}
-            options={{
-              ...DEFAULT_OPTIONS,
-              dragBindings: {
-                attributes,
-                listeners,
-                setActivatorNodeRef: setNodeRef,
-                isDragging,
-                disabled: false,
-              },
-            }}
-          />
-        );
-      }
-      function Harness() {
-        const { dndContextProps } = useSidebarReorderDnd({
-          onDragStart,
-          onDragEnd: vi.fn(),
-        });
-        return (
-          <CompactViewportOverrideProvider isCompactViewport>
-            <DndContext {...dndContextProps}>
-              <DraggableThread />
-            </DndContext>
-          </CompactViewportOverrideProvider>
-        );
-      }
-      const slot = renderSlot(
-        { component: Harness },
-        {},
-        {
-          sidebarThreads: { threads: [thread], projects: [] },
-        },
-      );
-      const link = screen.getByRole("link", { name: "Open Thread" });
-      expect(link).toHaveProperty("draggable", false);
-      fireEvent.pointerDown(link, {
-        pointerId: 1,
-        pointerType: "touch",
-        isPrimary: true,
-        clientX: 10,
-        clientY: 10,
+  it("keeps the row still when a long press opens its menu and still allows deliberate dragging", async () => {
+    const onDragStart = vi.fn();
+    const thread = createThread();
+    function DraggableThread() {
+      const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+        id: thread.id,
       });
-      fireEvent.touchStart(link, { touches: [{ clientX: 10, clientY: 10 }] });
-      if (trigger === "native context menu") fireEvent.contextMenu(link);
-      await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
-      expect(
-        slot.container.querySelector("[data-sidebar-section-drag-overlay]"),
-      ).toBeNull();
-      await act(async () => new Promise((resolve) => setTimeout(resolve, 250)));
-      expect(
-        document.querySelector(
-          '[data-persistent-drawer-content][data-state="open"]',
-        ),
-      ).not.toBeNull();
-      expect(onDragStart).not.toHaveBeenCalled();
-      fireEvent.touchMove(link, { touches: [{ clientX: 26, clientY: 10 }] });
-      await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
-      expect(
-        document.querySelector(
-          '[data-persistent-drawer-content][data-state="open"]',
-        ),
-      ).toBeNull();
-      fireEvent.touchEnd(link, { touches: [] });
-    },
-  );
+      return (
+        <ThreadRowHarness
+          thread={thread}
+          options={{
+            ...DEFAULT_OPTIONS,
+            dragBindings: {
+              attributes,
+              listeners,
+              setActivatorNodeRef: setNodeRef,
+              isDragging,
+              disabled: false,
+            },
+          }}
+        />
+      );
+    }
+    function Harness() {
+      const { dndContextProps } = useSidebarReorderDnd({
+        onDragStart,
+        onDragEnd: vi.fn(),
+        touchSensor: SidebarTouchSensor,
+      });
+      return (
+        <CompactViewportOverrideProvider isCompactViewport>
+          <DndContext {...dndContextProps}>
+            <DraggableThread />
+          </DndContext>
+        </CompactViewportOverrideProvider>
+      );
+    }
+    const slot = renderSlot(
+      { component: Harness },
+      {},
+      {
+        sidebarThreads: { threads: [thread], projects: [] },
+      },
+    );
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    expect(link).toHaveProperty("draggable", false);
+    fireEvent.pointerDown(link, {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.touchStart(link, { touches: [{ clientX: 10, clientY: 10 }] });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 550)));
+    expect(
+      slot.container.querySelector("[data-sidebar-section-drag-overlay]"),
+    ).toBeNull();
+    fireEvent.contextMenu(link);
+    expect(await screen.findByRole("menu")).not.toBeNull();
+    expect(onDragStart).not.toHaveBeenCalled();
+    fireEvent.touchMove(link, { touches: [{ clientX: 26, clientY: 10 }] });
+    await waitFor(() => expect(onDragStart).toHaveBeenCalledTimes(1));
+    expect(
+      screen
+        .getByTestId("bb-thread-actions-context-menu")
+        .getAttribute("data-dragging"),
+    ).toBe("true");
+    fireEvent.touchEnd(link, { touches: [] });
+  });
 
   it("starts touch reordering from the thread row", () => {
     const onTouchStart = vi.fn();
@@ -1895,8 +1579,8 @@ describe("ThreadRow", () => {
     expect(fireEvent.click(link)).toBe(false);
     expect(fireEvent.click(link, { metaKey: true })).toBe(false);
     expect(consumeClickSuppression).toHaveBeenCalledTimes(2);
-    expect(slot.inspection.sidebarActionCalls).toEqual([
-      { method: "open", threadId: "thr_test", options: { split: true } },
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "toThread", threadId: "thr_test", options: { split: true } },
     ]);
   });
 

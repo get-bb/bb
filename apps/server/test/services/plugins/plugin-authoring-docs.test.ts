@@ -32,10 +32,9 @@ import {
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
-  type ExperimentalSidebarNavigationProps,
-  type ExperimentalSidebarHeaderProps,
   type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
+  type PluginThreadActionItemInput,
   type ExperimentalPluginBrowserToolbarActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
@@ -224,6 +223,7 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "experimental_thread.events": ["thread", "sequence"],
   "experimental_terminal.input": ["terminal"],
   "experimental_host.deleted": ["host"],
+  "experimental_environment.removed": ["removal"],
   "thread.created": ["thread"],
   "thread.active": ["thread"],
   "thread.idle": ["thread", "lastAssistantText"],
@@ -270,10 +270,9 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
-  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
-  experimental_sidebarHeader: ExperimentalSidebarHeaderProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
+  experimental_threadAction: PluginThreadActionItemInput<unknown>;
   experimental_browserToolbarAction: ExperimentalPluginBrowserToolbarActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
@@ -348,11 +347,6 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
-  experimental_sidebarNavigation: [
-    "isCompactViewport",
-    "experimental_Original",
-  ],
-  experimental_sidebarHeader: ["width", "controlSize", "isCompactViewport"],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
@@ -365,6 +359,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "projectId",
     "isCompactViewport",
   ],
+  experimental_threadAction: ["thread", "data", "sdk", "navigate"],
   experimental_browserToolbarAction: [
     "threadId",
     "tabId",

@@ -114,7 +114,11 @@ function timelineRowChangesFrom(
       children: timelineRowsChangedFrom(row.children, sequence),
     };
   }
-  if (row.kind === "work" && row.workKind === "delegation") {
+  if (
+    row.kind === "work" &&
+    row.workKind === "delegation" &&
+    row.childRows !== null
+  ) {
     return {
       ...row,
       childRows: timelineRowsChangedFrom(row.childRows, sequence),
@@ -224,7 +228,7 @@ export function paginateTimelineRows(
         olderCursor: hasOlderRows
           ? timelineWindowCursor(segment.sequenceStart)
           : null,
-        ...omittedRows(contents.olderRowsSourceSeqEnd, segment.sequenceStart),
+        ...omittedRows(contents.partialRowsSourceSeqEnd, segment.sequenceStart),
         contentCursor:
           contents.start > 0
             ? {

@@ -169,6 +169,10 @@ function getMentionTitle(item: PromptMentionSuggestion): string {
     return `${item.providerLabel}: ${item.title}`;
   }
 
+  if (item.kind === "attachment") {
+    return `Attachment: ${item.name}`;
+  }
+
   return `${getPathSectionLabel(item)}: ${item.path}`;
 }
 
@@ -189,6 +193,9 @@ function getMentionKey(item: PromptMentionSuggestion): string {
   }
   if (item.kind === "project") {
     return JSON.stringify([item.kind, item.projectId]);
+  }
+  if (item.kind === "attachment") {
+    return JSON.stringify([item.kind, item.path]);
   }
   return JSON.stringify([item.kind, item.sectionId]);
 }
@@ -433,6 +440,8 @@ function MentionResults({
               } else if (item.kind === "project") {
                 primary = item.name;
               } else if (item.kind === "section") {
+                primary = item.name;
+              } else if (item.kind === "attachment") {
                 primary = item.name;
               } else if (item.kind === "plugin") {
                 primary = item.title;

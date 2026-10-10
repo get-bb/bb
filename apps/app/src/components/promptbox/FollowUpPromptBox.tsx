@@ -156,6 +156,7 @@ export interface FollowUpPromptBoxProps {
   contextWindowUsage: ContextWindowUsage | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
+  sessionOptionsControl?: ReactNode;
   executionReadOnly?: boolean;
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
@@ -233,6 +234,7 @@ function FollowUpPromptBoxWithComposer({
   contextWindowUsage,
   execution,
   permission,
+  sessionOptionsControl = null,
   executionReadOnly,
   permissionReadOnly,
   typeahead,
@@ -290,13 +292,15 @@ function FollowUpPromptBoxWithComposer({
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
-  const interactionExpandedRef = useRef(false);
+  const focusesEditorOnMount = !isPointerCoarse;
+  const interactionExpandedRef = useRef(focusesEditorOnMount);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const deferredControlFocusLossRef = useRef<(() => void) | null>(null);
   const pressedComposerControlRef = useRef(false);
   const pressedComposerControlCleanupRef = useRef<(() => void) | null>(null);
-  const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
+  const [isInteractionExpanded, setIsInteractionExpanded] =
+    useState(focusesEditorOnMount);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
   >(null);
@@ -635,7 +639,7 @@ function FollowUpPromptBoxWithComposer({
         disabled={permissionPickerDisabled}
         showChevronWhenDisabled={permissionPickerDisabledByPlanMode}
         displayOverride={permissionDisplayOverride}
-        className="h-6 max-md:h-11 max-md:px-2"
+        className="h-6 max-md:pointer-coarse:h-11 max-md:pointer-coarse:px-2"
       />
     ),
     [
@@ -798,12 +802,13 @@ function FollowUpPromptBoxWithComposer({
       {!isPromptBoxCompact ? (
         <div
           data-follow-up-composer-footer=""
-          className="mt-1 flex min-h-6 max-h-6 select-none max-md:mt-0 max-md:min-h-11 max-md:max-h-11 items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
+          className="mt-1 flex min-h-6 max-h-6 select-none max-md:mt-0 max-md:pointer-coarse:min-h-11 max-md:pointer-coarse:max-h-11 items-center justify-between gap-2 overflow-hidden pl-[15px] pr-3.5 opacity-100 transition-[max-height,min-height,margin-top,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
         >
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             {isCompactViewport ? compactEnvironmentSummary : environmentSummary}
           </div>
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
+            {sessionOptionsControl}
             {permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />

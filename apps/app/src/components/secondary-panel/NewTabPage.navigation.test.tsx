@@ -51,7 +51,13 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function mountPage({ canNavigateTabs = true, selected = true, disabled = false } = {}) {
+function mountPage({
+  canNavigateTabs = true,
+  selected = true,
+  disabled = false,
+  onStartTerminal = () => {},
+  onStartSideChat = () => {},
+} = {}) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   const onSelect = vi.fn();
   render(
@@ -76,14 +82,14 @@ function mountPage({ canNavigateTabs = true, selected = true, disabled = false }
                   projectId="proj_1"
                   onAutoFocusHandled={() => {}}
                   onSelect={onSelect}
-                  onStartTerminal={() => {}}
+                  onStartTerminal={onStartTerminal}
                   startTerminalDisabled={disabled}
                   pluginActions={[{
                     id: "side-chat",
                     pluginId: "side-chat",
                     icon: null,
                     title: "Start side chat",
-                    onSelect: () => {},
+                    onSelect: onStartSideChat,
                   }]}
                 />
               ) : <input aria-label="Editor" />}
@@ -132,6 +138,38 @@ it("skips disabled actions and follows the rendered search state", () => {
   expect(document.activeElement).toBe(search);
   expect(screen.queryByRole("option")).toBeNull();
   expect(screen.queryByRole("button", { name: "Start side chat" })).toBeNull();
+});
+
+it("searches actions and opens the selected match with Enter", () => {
+  const onStartTerminal = vi.fn();
+  const onStartSideChat = vi.fn();
+  mountPage({ onStartTerminal, onStartSideChat });
+  const search = screen.getByRole("combobox");
+  fireEvent.change(search, { target: { value: "terminal" } });
+  expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Start terminal"]);
+  expect(search.getAttribute("aria-activedescendant")).toBe("file-search-result-start-terminal");
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onStartTerminal).toHaveBeenCalledOnce();
+
+  fireEvent.change(search, { target: { value: "start" } });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(onStartSideChat).toHaveBeenCalledOnce();
+  expect(onStartTerminal).toHaveBeenCalledOnce();
+});
+
+it("shows disabled matching actions without selecting them", () => {
+  const onStartTerminal = vi.fn();
+  mountPage({ disabled: true, onStartTerminal });
+  const search = screen.getByRole("combobox");
+  fireEvent.change(search, { target: { value: "start" } });
+  const terminal = screen.getByRole("option", { name: "Start terminal" });
+  expect(terminal.hasAttribute("disabled")).toBe(true);
+  expect(search.getAttribute("aria-activedescendant")).toBe("side-chat");
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(search.getAttribute("aria-activedescendant")).toBe("side-chat");
+  fireEvent.click(terminal);
+  expect(onStartTerminal).not.toHaveBeenCalled();
 });
 
 it.each([

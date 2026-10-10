@@ -46,22 +46,18 @@ export interface ServerTargetStore {
   setTarget(kind: "builtin" | "connect" | "custom"): Promise<boolean>;
 }
 
-const persistedConnectServerSchema = z
-  .object({
-    handle: z.string().min(1),
-    name: z.string().min(1),
-    url: z.string().min(1),
-  })
-  .strict();
+const persistedConnectServerSchema = z.object({
+  handle: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().min(1),
+});
 
-const persistedServerTargetSchema = z
-  .object({
-    connectServer: persistedConnectServerSchema.nullable().optional(),
-    customServerUrl: z.string().min(1).nullable(),
-    customServerUrls: z.array(z.string().min(1)).default([]),
-    target: z.enum(["builtin", "connect", "custom"]),
-  })
-  .strict();
+const persistedServerTargetSchema = z.object({
+  connectServer: persistedConnectServerSchema.nullable().optional(),
+  customServerUrl: z.string().min(1).nullable(),
+  customServerUrls: z.array(z.string().min(1)).default([]),
+  target: z.enum(["builtin", "connect", "custom"]),
+});
 
 type PersistedServerTarget = z.infer<typeof persistedServerTargetSchema>;
 
@@ -107,20 +103,22 @@ export function createServerTargetStore(
   let customServerUrl: string | null = null;
   let customServerUrls: string[] = [];
   let target: "builtin" | "connect" | "custom" = "builtin";
+  let pendingPersist: Promise<void> = Promise.resolve();
 
-  async function persist(): Promise<void> {
-    await fsImpl.mkdir(dirname(args.storagePath), { recursive: true });
+  function persist(): Promise<void> {
     const payload: PersistedServerTarget = {
       connectServer,
       customServerUrl,
       customServerUrls,
       target,
     };
-    await fsImpl.writeFile(
-      args.storagePath,
-      `${JSON.stringify(payload, null, 2)}\n`,
-      "utf8",
-    );
+    const data = `${JSON.stringify(payload, null, 2)}\n`;
+    const write = pendingPersist.then(async () => {
+      await fsImpl.mkdir(dirname(args.storagePath), { recursive: true });
+      await fsImpl.writeFile(args.storagePath, data, "utf8");
+    });
+    pendingPersist = write.catch(() => undefined);
+    return write;
   }
 
   return {

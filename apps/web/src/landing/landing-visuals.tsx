@@ -15,6 +15,7 @@ import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
   CursorIcon,
@@ -26,7 +27,7 @@ import {
   PiIcon,
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS, WINDOWS_DOWNLOAD_URL } from "./site";
+import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
@@ -40,9 +41,10 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           <DesktopDownloadButton
             placement={placement}
             platform={platform}
-            className="btn btn-primary btn-install"
+            className="btn btn-primary btn-install install-download"
           />
-          <span className="install-note">
+          <SendToComputerButton placement={placement} />
+          <span className="install-note install-note-desktop">
             {download.note}
             {" · "}
             <DownloadLink
@@ -52,6 +54,9 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             >
               Also for {DESKTOP_DOWNLOADS[otherPlatform].label}
             </DownloadLink>
+          </span>
+          <span className="install-note install-note-touch">
+            bb runs on macOS, Windows, and Linux
           </span>
         </span>
         <span className="install-choice">
@@ -67,9 +72,13 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            <a className="install-note-link" href={WINDOWS_DOWNLOAD_URL}>
-              Windows
-            </a>
+            <DownloadLink
+              placement={placement}
+              platform="windows"
+              className="install-note-link"
+            >
+              {DESKTOP_DOWNLOADS.windows.label}
+            </DownloadLink>
             , Intel Macs &amp; remote machines
           </span>
         </span>

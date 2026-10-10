@@ -21,11 +21,7 @@ import {
   threadListQueryKey,
   threadQueryKey,
 } from "../queries/query-keys";
-import {
-  useMoveThreadToSection,
-  useUnpinAndMoveThread,
-  useUpdateThread,
-} from "./thread-state-mutations";
+import { useUpdateThread } from "./thread-state-mutations";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { threads: { unpin: vi.fn(), update: vi.fn() } },
@@ -96,38 +92,6 @@ afterEach(() => {
 
 describe("thread state mutations", () => {
   it.each([
-    ["leaves the current section unchanged", null, "sec_work", 0, 0],
-    ["moves an unpinned thread to Threads", null, null, 0, 1],
-    ["unpins into the stored section", 10, "sec_work", 1, 0],
-    ["unpins and moves to another section", 10, "sec_personal", 1, 1],
-  ] as const)("%s", async (_name, pinnedAt, sectionId, unpins, updates) => {
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-    const thread = makeThreadListEntry({ pinnedAt, sectionId: "sec_work" });
-    vi.mocked(sdk.threads.unpin).mockResolvedValue(
-      makeThreadResponse({ pinnedAt: null, sectionId: "sec_work" }),
-    );
-    vi.mocked(sdk.threads.update).mockResolvedValue(
-      makeThreadResponse({ pinnedAt: null, sectionId }),
-    );
-    const { result } = renderHook(() => useMoveThreadToSection(), { wrapper });
-
-    act(() => result.current({ thread, sectionId }));
-
-    await waitFor(() => expect(queryClient.isMutating()).toBe(0));
-    expect(sdk.threads.unpin).toHaveBeenCalledTimes(unpins);
-    expect(sdk.threads.update).toHaveBeenCalledTimes(updates);
-    if (unpins) {
-      expect(sdk.threads.unpin).toHaveBeenCalledWith({ threadId: thread.id });
-    }
-    if (updates) {
-      expect(sdk.threads.update).toHaveBeenCalledWith({
-        threadId: thread.id,
-        sectionId,
-      });
-    }
-  });
-
-  it.each([
     ["title", "Old title", "New title"],
     ["sectionId", "sec_work", "sec_personal"],
   ] as const)(
@@ -195,110 +159,4 @@ describe("thread state mutations", () => {
       });
     },
   );
-
-  it("serializes unpin before section move while optimistically applying both fields", async () => {
-    const { queryClient, wrapper } = createQueryClientTestHarness();
-    const threadId = "thread-1";
-    const destinationSectionId = "sec_personal";
-    const thread = makeThreadWithRuntime({
-      id: threadId,
-      sectionId: null,
-      pinnedAt: 10,
-    });
-    const listEntry = makeThreadListEntry({
-      id: threadId,
-      sectionId: null,
-      pinnedAt: 10,
-      pinSortKey: "a0",
-    });
-    const threadListKey = threadListQueryKey({
-      archived: false,
-      projectId: "project-1",
-    });
-    let resolveUnpin: (thread: ThreadResponse) => void = () => {};
-    let resolveUpdate: (thread: ThreadResponse) => void = () => {};
-
-    queryClient.setQueryData(threadQueryKey(threadId), thread);
-    queryClient.setQueryData(threadListKey, [listEntry]);
-    queryClient.setQueryData(
-      sidebarNavigationQueryKey(),
-      makeSidebarNavigation([listEntry]),
-    );
-    vi.mocked(sdk.threads.unpin).mockImplementation(
-      () =>
-        new Promise<ThreadResponse>((resolve) => {
-          resolveUnpin = resolve;
-        }),
-    );
-    vi.mocked(sdk.threads.update).mockImplementation(
-      () =>
-        new Promise<ThreadResponse>((resolve) => {
-          resolveUpdate = resolve;
-        }),
-    );
-
-    const { result } = renderHook(() => useUnpinAndMoveThread(), { wrapper });
-
-    act(() => {
-      result.current.mutate({ id: threadId, sectionId: destinationSectionId });
-    });
-
-    await waitFor(() => {
-      expect(
-        queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
-      ).toMatchObject({
-        sectionId: destinationSectionId,
-        pinnedAt: null,
-        pinSortKey: null,
-      });
-    });
-    expect(
-      queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId)),
-    ).toMatchObject({
-      sectionId: destinationSectionId,
-      pinnedAt: null,
-    });
-    expect(sdk.threads.unpin).toHaveBeenCalledWith({ threadId });
-    expect(sdk.threads.update).not.toHaveBeenCalled();
-
-    act(() => {
-      resolveUnpin(
-        makeThreadResponse({
-          id: threadId,
-          sectionId: null,
-          pinnedAt: null,
-          updatedAt: 2,
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      expect(sdk.threads.update).toHaveBeenCalledWith({
-        threadId,
-        sectionId: destinationSectionId,
-      });
-    });
-
-    act(() => {
-      resolveUpdate(
-        makeThreadResponse({
-          id: threadId,
-          sectionId: destinationSectionId,
-          pinnedAt: null,
-          updatedAt: 3,
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-    });
-    expect(
-      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0],
-    ).toMatchObject({
-      sectionId: destinationSectionId,
-      pinnedAt: null,
-      pinSortKey: null,
-    });
-  });
 });

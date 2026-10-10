@@ -23,7 +23,6 @@ describe("bb settings commands", () => {
         generalSettings: {
           ...defaultAppSettings,
           onboardingCompletedAt: "2026-10-01T00:00:00.000Z",
-          setupChecklistVisible: true,
           streamerMode: true,
         },
       })),
@@ -36,7 +35,6 @@ describe("bb settings commands", () => {
       json: {
         ...defaultAppSettings,
         onboardingCompletedAt: null,
-        setupChecklistVisible: true,
         streamerMode: true,
       },
     });

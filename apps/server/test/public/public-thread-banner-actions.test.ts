@@ -6,7 +6,10 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -530,15 +533,8 @@ describe("public thread banner actions", () => {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
         handle: ({ command }) => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
+          if (command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
           }
           expect(command).toMatchObject({
             type: "thread.goal.clear",
@@ -582,15 +578,8 @@ describe("public thread banner actions", () => {
         hostId: fixture.hostId,
         sessionId: fixture.sessionId,
         handle: ({ command }) => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
+          if (command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
           }
           return { ok: true, result: { cleared: false } };
         },

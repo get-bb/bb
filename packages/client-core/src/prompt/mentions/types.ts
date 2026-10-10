@@ -57,6 +57,12 @@ export type PromptMentionSuggestion =
       name: string;
     }
   | {
+      kind: "attachment";
+      path: string;
+      name: string;
+      replacement: string;
+    }
+  | {
       kind: "plugin";
       pluginId: string;
       providerId: string;

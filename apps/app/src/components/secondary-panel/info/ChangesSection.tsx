@@ -1,6 +1,7 @@
 import type { WorkspaceFileStatus, WorkspaceStatus } from "@bb/domain";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { directoryFromPath } from "@bb/thread-view";
 import {
   DiffSizeBar,
   DiffStatsTally,
@@ -11,16 +12,14 @@ import {
   type WorkspaceChangedFileSelection,
   type WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
-import {
-  getFileNameFromPath,
-  getParentFolderPathFromPath,
-} from "../rightPanelFileVisuals";
+import { getFileNameFromPath } from "../rightPanelFileVisuals";
 import { FILE_STATUS_GLYPHS } from "./file-status-glyphs";
 import { InfoList, InfoListRow, InfoSection } from "./info-list";
 import { useInfoSectionCollapse } from "./useInfoSectionCollapse";
 
-function toFolderHint(folderPath: string | null): string | null {
-  return folderPath === null ? null : `${folderPath}/`;
+function toFolderHint(path: string): string | null {
+  const folderPath = directoryFromPath(path);
+  return folderPath === "" ? null : `${folderPath}/`;
 }
 
 interface ChangedFilesHandlers {
@@ -131,7 +130,7 @@ function ChangedFileRow({
       }
       leadingLabel={glyph.label}
       name={fileName}
-      context={toFolderHint(getParentFolderPathFromPath({ path: file.path }))}
+      context={toFolderHint(file.path)}
       title={`${glyph.label} · ${file.path}`}
       target={
         onChangedFileClick

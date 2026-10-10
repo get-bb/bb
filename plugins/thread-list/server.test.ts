@@ -104,19 +104,31 @@ describe("thread-list preferences rpc", () => {
     await expect(bb.storage.kv.get("preference:hiddenGroups")).resolves.toBeUndefined();
   });
 
-  it("defaults row actions to archive, dedupes them, and rejects unknown or too many actions", async () => {
+  it("defaults row actions to archive, migrates bare ids, dedupes them, and rejects malformed or too many keys", async () => {
     const { bb, harness } = setup();
     await plugin(bb);
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["archive"]);
+    expect(listed.preferences.rowActions).toEqual(["bb--core/archive"]);
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
-        value: ["pin", "archive", "pin"],
+        value: ["pin", "core/archive", "bb--core/pin"],
       }),
-    ).resolves.toEqual({ key: "rowActions", value: ["pin", "archive"] });
+    ).resolves.toEqual({
+      key: "rowActions",
+      value: ["bb--core/pin", "bb--core/archive"],
+    });
+    await expect(
+      harness.behavior.callRpc("setPreference", {
+        key: "rowActions",
+        value: ["move", "push-notifications/level"],
+      }),
+    ).resolves.toEqual({
+      key: "rowActions",
+      value: ["thread-list/move", "push-notifications/level"],
+    });
     await expect(
       harness.behavior.callRpc("setPreference", {
         key: "rowActions",
@@ -129,22 +141,25 @@ describe("thread-list preferences rpc", () => {
         value: ["archive", "pin", "read", "rename"],
       }),
     ).rejects.toThrow(/at most 3 row actions/);
-    await expect(
-      harness.behavior.callRpc("setPreference", {
-        key: "rowActions",
-        value: ["archive", "pin", "read", "pin"],
-      }),
-    ).resolves.toEqual({ key: "rowActions", value: ["archive", "pin", "read"] });
   });
 
-  it("drops unknown stored row actions instead of resetting the rest", async () => {
+  it("migrates stored bare ids and core/<id> keys and drops unknown ones instead of resetting the rest", async () => {
     const { bb, harness } = setup();
-    await bb.storage.kv.set("preference:rowActions", ["pin", "futureAction", "archive"]);
+    await bb.storage.kv.set("preference:rowActions", [
+      "pin",
+      "futureAction",
+      "move",
+      "core/rename",
+    ]);
     await plugin(bb);
     const listed = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: { rowActions: string[] };
     };
-    expect(listed.preferences.rowActions).toEqual(["pin", "archive"]);
+    expect(listed.preferences.rowActions).toEqual([
+      "bb--core/pin",
+      "thread-list/move",
+      "bb--core/rename",
+    ]);
   });
 
   it("falls back to the default when a stored value no longer parses", async () => {
@@ -163,18 +178,18 @@ describe("migration from bb's sidebar preferences", () => {
     const { bb } = setup({
       uiPreferences: {
         "sidebar.organizationMode": { revision: 3, value: "machine" },
-        "sidebar.collapsedProjects": { revision: 1, value: ["proj_a"] },
+        "sidebar.sectionOrder": { revision: 1, value: ["proj_a"] },
         "sidebar.chronologicalSort": { revision: 0, value: "updated" },
         "sidebar.hiddenGroups": { revision: 2, value: ["not-a-group"] },
       },
     });
-    await bb.storage.kv.set("preference:collapsedProjects", ["proj_mine"]);
+    await bb.storage.kv.set("preference:sectionOrder", ["proj_mine"]);
     const first = await migrateFromUiPreferences(bb);
     expect(first.migrated).toEqual(["organizationMode"]);
     await expect(bb.storage.kv.get("preference:organizationMode")).resolves.toBe(
       "machine",
     );
-    await expect(bb.storage.kv.get("preference:collapsedProjects")).resolves.toEqual([
+    await expect(bb.storage.kv.get("preference:sectionOrder")).resolves.toEqual([
       "proj_mine",
     ]);
     await expect(bb.storage.kv.get("preference:chronologicalSort")).resolves.toBeUndefined();

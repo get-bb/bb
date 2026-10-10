@@ -35,6 +35,7 @@ describe("general settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.generalSettings).toEqual({
         ...defaultAppSettings,
+        machineGitCredentialsEnabled: false,
         showUnhandledProviderEvents: false,
       });
       expect(body.primaryHostId).toBeNull();

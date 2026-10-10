@@ -87,6 +87,7 @@ type DiffFileEnrichmentState =
 type DiffContextExpansionStatus =
   | "unavailable"
   | "idle"
+  | "prefetching"
   | "loading"
   | "ready"
   | "error";
@@ -220,6 +221,7 @@ interface UseGitDiffCardBodyArgs {
   changeKind: GitDiffFileChangeKind;
   onRequestFileContents: RequestDiffFileContents | undefined;
   patchText?: string;
+  renderBeforeVisible: boolean;
 }
 
 interface GitDiffCardBodyState {
@@ -243,6 +245,7 @@ export function useGitDiffCardBody({
   changeKind,
   onRequestFileContents,
   patchText,
+  renderBeforeVisible,
 }: UseGitDiffCardBodyArgs): GitDiffCardBodyState {
   const isDeletedFile = changeKind === "deleted";
   const isImageCard = isImagePreviewCard(fileDiff, onRequestFileContents);
@@ -268,15 +271,19 @@ export function useGitDiffCardBody({
     status: "idle",
   });
   const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
-  const [hasBodyEnteredViewport, setHasBodyEnteredViewport] = useState(false);
+  const [hasBodyEnteredViewport, setHasBodyEnteredViewport] =
+    useState(renderBeforeVisible);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
   const [contextRequestVersion, setContextRequestVersion] = useState(0);
+  const [isContextRequestedByUser, setIsContextRequestedByUser] =
+    useState(false);
   const isPointerCoarse = usePointerCoarse();
   useEffect(() => {
     enrichmentStatusRef.current = "idle";
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
     setContextRequestVersion(0);
+    setIsContextRequestedByUser(false);
   }, [fileContentPlan.identity, isImageCard, isSvgCard]);
   useEffect(() => {
     if (isBodyVisible) {
@@ -395,12 +402,15 @@ export function useGitDiffCardBody({
       enrichmentStatusRef.current = "idle";
       setEnrichment({ status: "idle" });
     }
+    setIsContextRequestedByUser(true);
     setContextRequestVersion((version) => version + 1);
   }, []);
   const contextExpansionStatus = getDiffContextExpansionStatus({
     canExpandContext,
     contextRequested: contextRequestVersion > 0,
     enrichmentStatus: enrichment.status,
+    isPrefetchedAutomatically: !isPointerCoarse,
+    isRequestedByUser: isContextRequestedByUser,
   });
   const contextExpansion = useMemo<DiffContextExpansionState>(
     () => ({
@@ -446,17 +456,23 @@ function getDiffContextExpansionStatus({
   canExpandContext,
   contextRequested,
   enrichmentStatus,
+  isPrefetchedAutomatically,
+  isRequestedByUser,
 }: {
   canExpandContext: boolean;
   contextRequested: boolean;
   enrichmentStatus: DiffFileEnrichmentState["status"];
+  isPrefetchedAutomatically: boolean;
+  isRequestedByUser: boolean;
 }): DiffContextExpansionStatus {
   if (!canExpandContext) return "unavailable";
+  const loadingStatus = isRequestedByUser ? "loading" : "prefetching";
   switch (enrichmentStatus) {
     case "idle":
-      return contextRequested ? "loading" : "idle";
+      if (contextRequested) return loadingStatus;
+      return isPrefetchedAutomatically ? "prefetching" : "idle";
     case "loading":
-      return "loading";
+      return loadingStatus;
     case "ready":
       return "ready";
     case "error":
@@ -780,7 +796,6 @@ export function GitDiffCardBody({
             patchText={patchText}
             fullFileContents={fullFileContents}
             {...presentation}
-            fallback={<DiffLoadingSkeleton />}
             onSelectionAddToChat={onSelectionAddToChat}
           />
           <GitDiffCardContextExpansionFooter
@@ -803,7 +818,11 @@ function GitDiffCardContextExpansionFooter({
   reservesCollapseGutter,
 }: GitDiffCardContextExpansionFooterProps) {
   const { status, request } = contextExpansion;
-  if (status === "unavailable" || status === "ready") {
+  if (
+    status === "unavailable" ||
+    status === "ready" ||
+    status === "prefetching"
+  ) {
     return null;
   }
   return (

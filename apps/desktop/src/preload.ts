@@ -1,3 +1,7 @@
+import {
+  bbDesktopServerChoicesSchema,
+  type BbDesktopServerChoice,
+} from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
 import {
@@ -18,6 +22,7 @@ import {
   bbDesktopBrowserControlStateSchema,
   bbDesktopBrowserRevealRequestSchema,
   type BbDesktopBrowserControlState,
+  type BbDesktopClipboardContent,
   type BbDesktopBrowserRevealRequest,
   bbDesktopInfoSchema,
   bbDesktopWindowStateSchema,
@@ -85,8 +90,12 @@ import {
   BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import {
+  BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
+  BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+  BB_DESKTOP_SELECT_SERVER_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
@@ -96,6 +105,7 @@ import {
   BB_DESKTOP_OPEN_DATA_DIRECTORY_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
+  BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
   getDesktopVersion,
@@ -122,6 +132,9 @@ function createInitialDesktopWindowState(): BbDesktopWindowState {
   };
 }
 
+const serverChoiceListeners = new Set<
+  (choices: BbDesktopServerChoice[]) => void
+>();
 const listeners = new Set<BbDesktopInfoChangeHandler>();
 const appCommandListeners = new Set<BbDesktopAppCommandHandler>();
 const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
@@ -383,6 +396,17 @@ const bbBrowserApi: BbDesktopBrowserApi = {
 
 const bbDesktopApi: BbDesktopApi = {
   browser: bbBrowserApi,
+  async getServerChoices() {
+    return bbDesktopServerChoicesSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL),
+    );
+  },
+  onServerChoicesChange(listener) {
+    return addListener(serverChoiceListeners, listener);
+  },
+  selectServer(id) {
+    ipcRenderer.send(BB_DESKTOP_SELECT_SERVER_CHANNEL, id);
+  },
   get lastCheckedAt() {
     return currentInfo.lastCheckedAt;
   },
@@ -455,6 +479,9 @@ const bbDesktopApi: BbDesktopApi = {
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
   },
+  reloadWindow(): void {
+    ipcRenderer.send(BB_DESKTOP_RELOAD_WINDOW_CHANNEL);
+  },
   setSplitNavigationEnabled(
     enabled: boolean,
     directionalCommands?: readonly AppCommandId[],
@@ -468,7 +495,16 @@ const bbDesktopApi: BbDesktopApi = {
   setTheme(theme: BbDesktopTheme): void {
     ipcRenderer.send(BB_DESKTOP_SET_THEME_CHANNEL, theme);
   },
+  async writeClipboard(content: BbDesktopClipboardContent): Promise<void> {
+    await ipcRenderer.invoke(BB_DESKTOP_WRITE_CLIPBOARD_CHANNEL, content);
+  },
 };
+
+forwardParsed(
+  BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+  bbDesktopServerChoicesSchema,
+  serverChoiceListeners,
+);
 
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {
   applyDesktopInfoPayload(payload);

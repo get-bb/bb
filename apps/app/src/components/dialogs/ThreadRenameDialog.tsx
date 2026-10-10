@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
-import { RenameDialog, RenameDialogContent } from "./RenameDialog";
+import { RenameDialog } from "@bb/shared-ui/rename-dialog";
+import { RenameDialogContent } from "./RenameDialogContent";
 
 export const THREAD_RENAME_DIALOG_SHELL_CLASS = "max-w-[24rem] sm:gap-3 sm:p-5";
 

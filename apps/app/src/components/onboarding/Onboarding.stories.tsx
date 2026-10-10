@@ -14,16 +14,10 @@ import {
   type OnboardingConnectState,
   type OnboardingRepo,
 } from "./OnboardingViews";
-import {
-  NoAgentNotice,
-  SetupChecklist,
-  type SetupChecklistItem,
-} from "./SetupChecklistViews";
 import type { AgentSetupState, OnboardingStepId } from "./onboarding-model";
 import claudeLogoUrl from "../../../../../plugins/provider-claude-code/icons/claude-code.svg";
 import codexLogoUrl from "../../../../../plugins/provider-codex/icons/codex.svg";
 import piLogoUrl from "../../../../../plugins/provider-pi/icons/pi.svg";
-import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 
 export default {
   title: "onboarding/First run",
@@ -302,6 +296,7 @@ function AgentFrame({
   signInVariant = "guided",
   onSignIn = noop,
   onInstall = noop,
+  onViewInstallLog = noop,
   onCancelSignIn = noop,
   onRecheck = noop,
   ...chrome
@@ -312,6 +307,7 @@ function AgentFrame({
   signInVariant?: SignInVariant;
   onSignIn?: (id: string) => void;
   onInstall?: (id: string) => void;
+  onViewInstallLog?: (id: string) => void;
   onCancelSignIn?: (id: string) => void;
   onRecheck?: () => void;
 }) {
@@ -338,6 +334,7 @@ function AgentFrame({
         agents={loading ? null : buildAgents(states, signInVariant)}
         onSignIn={onSignIn}
         onInstall={onInstall}
+        onViewInstallLog={onViewInstallLog}
         onCancelSignIn={onCancelSignIn}
         onRecheck={onRecheck}
       />
@@ -489,77 +486,12 @@ function DevicesFrame({
   );
 }
 
-function checklistItems(done: {
-  agent: boolean;
-  projects: boolean;
-  plugins: boolean;
-  devices: boolean;
-}): SetupChecklistItem[] {
-  return [
-    {
-      id: "agent",
-      title: "Connect a coding agent",
-      detail: done.agent
-        ? "Ready on this computer"
-        : "Needed before a thread can start",
-      done: done.agent,
-      actionLabel: "Set up",
-    },
-    {
-      id: "projects",
-      title: "Add your projects",
-      detail: done.projects
-        ? "3 added"
-        : "Import the repos you've used recently",
-      done: done.projects,
-      actionLabel: "Review",
-    },
-    {
-      id: "plugins",
-      title: "Pick some plugins",
-      detail: done.plugins
-        ? "2 turned on"
-        : "Browser automation, workflows, and more",
-      done: done.plugins,
-      actionLabel: "Browse",
-    },
-    {
-      id: "devices",
-      title: "Use bb from anywhere",
-      detail: done.devices ? CONNECT_URL : "Phone, browser, other machines",
-      done: done.devices,
-      actionLabel: "Set up",
-    },
-  ];
-}
-
-function HomeFrame({
-  items,
-  agentMissing,
-  onOpen = noop,
-  onDismiss = noop,
-}: {
-  items: SetupChecklistItem[] | null;
-  agentMissing: boolean;
-  onOpen?: (step: OnboardingStepId) => void;
-  onDismiss?: () => void;
-}) {
+function HomeFrame() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6">
-      <img
-        src={bbLogoUrl}
-        alt="bb"
-        draggable={false}
-        className="h-16 w-20 select-none object-contain dark:invert"
-      />
-      {agentMissing ? <NoAgentNotice onSetUp={() => onOpen("agent")} /> : null}
-      {items === null ? (
-        <p className="text-sm text-muted-foreground">
-          The usual bb home screen goes here.
-        </p>
-      ) : (
-        <SetupChecklist items={items} onOpen={onOpen} onDismiss={onDismiss} />
-      )}
+    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col px-6 pt-14">
+      <p className="rounded-lg border border-border px-3 py-6 text-sm text-muted-foreground">
+        The usual bb home composer goes here.
+      </p>
     </div>
   );
 }
@@ -594,12 +526,10 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   const [selectedRepoIds, setSelectedRepoIds] = useState<ReadonlySet<string>>(
     () => new Set(DEFAULT_REPO_IDS),
   );
-  const [imported, setImported] = useState(false);
   const [enabledPluginIds, setEnabledPluginIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
-  const [checklistDismissed, setChecklistDismissed] = useState(false);
   const timers = useRef<number[]>([]);
 
   const later = (delayMs: number, run: () => void) => {
@@ -647,20 +577,9 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
   };
 
   if (view === "home") {
-    const items = checklistItems({
-      agent: anyReady(states),
-      projects: imported,
-      plugins: enabledPluginIds.size > 0,
-      devices: false,
-    });
     return (
       <StoryWindow>
-        <HomeFrame
-          items={checklistDismissed ? null : items}
-          agentMissing={!anyReady(states)}
-          onOpen={setView}
-          onDismiss={() => setChecklistDismissed(true)}
-        />
+        <HomeFrame />
       </StoryWindow>
     );
   }
@@ -716,10 +635,7 @@ function InteractiveFlowRun({ scenario }: { scenario: Scenario }) {
             )
           }
           onSelectNone={() => setSelectedRepoIds(new Set())}
-          onPrimary={() => {
-            setImported(selectedRepoIds.size > 0);
-            setView("plugins");
-          }}
+          onPrimary={() => setView("plugins")}
           onSecondary={() => setView("plugins")}
           onBack={() => setView("agent")}
         />
@@ -880,7 +796,7 @@ export function Step1AgentStates() {
       </Captioned>
       <Captioned
         label="Installing, failed, update needed, unknown"
-        hint="Install and Update reuse the provider CLI install action. Unknown health never blocks or nags."
+        hint="Install and Update reuse the provider CLI install action. A failed install offers its log. Unknown health never blocks or nags."
       >
         <StoryWindow>
           <AgentFrame
@@ -888,7 +804,7 @@ export function Step1AgentStates() {
               "claude-code": { status: "installing" },
               codex: {
                 status: "installFailed",
-                message: "Install failed. Check the log, then retry.",
+                message: "Install failed",
                 canInstall: true,
               },
               pi: {
@@ -1044,19 +960,11 @@ export function HomeAfterSkipping() {
   return (
     <Gallery>
       <Captioned
-        label="Empty home after Skip setup"
-        hint="Shown under the welcome actions while no project exists; with projects, the home composer shows a one-line version. Dismissing it also stops the missing-agent notice."
+        label="Home after Skip setup"
+        hint="The home composer is ready."
       >
         <StoryWindow>
-          <HomeFrame
-            agentMissing
-            items={checklistItems({
-              agent: false,
-              projects: true,
-              plugins: false,
-              devices: false,
-            })}
-          />
+          <HomeFrame />
         </StoryWindow>
       </Captioned>
     </Gallery>

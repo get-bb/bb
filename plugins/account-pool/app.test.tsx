@@ -118,6 +118,7 @@ function config(overrides: Partial<AccountPoolConfig> = {}): AccountPoolConfig {
 function render(
   accounts = [account()],
   extraRpc: Record<string, () => object | null | Promise<object | null>> = {},
+  copyToClipboard?: () => Promise<boolean>,
 ) {
   return renderSlot(
     app.settingsSections[0]!,
@@ -129,6 +130,7 @@ function render(
         ...extraRpc,
       },
       openUrl: () => true,
+      experimental_copyToClipboard: copyToClipboard,
     },
   );
 }
@@ -576,13 +578,12 @@ describe("Account Pool settings", () => {
   );
 
   it("does not claim success when copying the device code fails", async () => {
-    const copy = deferred<void>();
-    const writeText = vi.fn(() => copy.promise);
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    const slot = render([], { "codexLogin.start": codexLoginStart });
+    const copy = deferred<boolean>();
+    const slot = render(
+      [],
+      { "codexLogin.start": codexLoginStart },
+      () => copy.promise,
+    );
     fireEvent.click(
       await slot.findByRole("button", { name: "Sign in to Codex" }),
     );
@@ -590,21 +591,22 @@ describe("Account Pool settings", () => {
       name: "Copy Codex sign-in code",
     });
     fireEvent.click(button);
-    expect(writeText).toHaveBeenCalledWith("ABCD-1234");
-    await act(async () => copy.reject(new Error("denied")));
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: "ABCD-1234" },
+    ]);
+    await act(async () => copy.resolve(false));
     expect(window.getSelection()?.toString()).toBe("ABCD-1234");
     expect(slot.queryByText("Sign-in code copied")).toBeNull();
     expect(button.querySelector('[data-icon="Check"]')).toBeNull();
   });
 
   it("does not claim success when copying the authorization URL fails", async () => {
-    const copy = deferred<void>();
-    const writeText = vi.fn(() => copy.promise);
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    const slot = render([], { "codexLogin.start": codexLoginStart });
+    const copy = deferred<boolean>();
+    const slot = render(
+      [],
+      { "codexLogin.start": codexLoginStart },
+      () => copy.promise,
+    );
     fireEvent.click(
       await slot.findByRole("button", { name: "Sign in to Codex" }),
     );
@@ -612,10 +614,10 @@ describe("Account Pool settings", () => {
       name: "Copy Codex authorization URL",
     });
     fireEvent.click(button);
-    expect(writeText).toHaveBeenCalledWith(
-      "https://auth.openai.com/codex/device",
-    );
-    await act(async () => copy.reject(new Error("denied")));
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: "https://auth.openai.com/codex/device" },
+    ]);
+    await act(async () => copy.resolve(false));
     const input = slot.getByRole("textbox", {
       name: "Codex authorization URL",
     }) as HTMLInputElement;
@@ -626,25 +628,26 @@ describe("Account Pool settings", () => {
   });
 
   it("keeps polling and the close action working after copying the code", async () => {
-    const copy = deferred<void>();
-    const writeText = vi.fn(() => copy.promise);
-    vi.stubGlobal("navigator", {
-      ...navigator,
-      clipboard: { writeText },
-    });
-    const slot = render([], {
-      "codexLogin.start": codexLoginStart,
-      "codexLogin.poll": () => ({ status: "pending" }),
-      "codexLogin.cancel": () => ({ cancelled: true }),
-    });
+    const copy = deferred<boolean>();
+    const slot = render(
+      [],
+      {
+        "codexLogin.start": codexLoginStart,
+        "codexLogin.poll": () => ({ status: "pending" }),
+        "codexLogin.cancel": () => ({ cancelled: true }),
+      },
+      () => copy.promise,
+    );
     fireEvent.click(
       await slot.findByRole("button", { name: "Sign in to Codex" }),
     );
     fireEvent.click(
       await slot.findByRole("button", { name: "Copy Codex sign-in code" }),
     );
-    expect(writeText).toHaveBeenCalledWith("ABCD-1234");
-    await act(async () => copy.resolve());
+    expect(slot.inspection.experimental_clipboardWrites).toEqual([
+      { text: "ABCD-1234" },
+    ]);
+    await act(async () => copy.resolve(true));
     expect(
       (await slot.findByRole("dialog", { name: "Sign in to Codex" }))
         .textContent,

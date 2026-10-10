@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-sidebar-reorder-dnd",
+  "type": "registry:ui",
+  "title": "use-sidebar-reorder-dnd",
+  "description": "BB ui \"use-sidebar-reorder-dnd\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "dependencies": [
+    "@dnd-kit/core"
+  ],
+  "registryDependencies": [
+    "@bb/use-reorder-dnd"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/use-sidebar-reorder-dnd.ts",
+      "content": "import { useCallback, useEffect } from \"react\";\nimport type {\n  DragEndEvent,\n  DragStartEvent,\n  Sensor,\n  TouchSensorOptions,\n} from \"@dnd-kit/core\";\nimport {\n  useReorderDnd,\n  type UseReorderDndArgs,\n  type UseReorderDndResult,\n} from \"./use-reorder-dnd\";\n\nfunction setSidebarDraggingCursor(active: boolean): void {\n  if (active) {\n    document.body.dataset.sidebarDragging = \"true\";\n    return;\n  }\n  delete document.body.dataset.sidebarDragging;\n}\n\ntype UseSidebarReorderDndArgs = UseReorderDndArgs & {\n  touchSensor: Sensor<TouchSensorOptions>;\n};\n\nexport function useSidebarReorderDnd({\n  onDragEnd,\n  onDragStart,\n  onDragMove,\n  onDragOver,\n  onDragCancel,\n  collisionDetection,\n  axis,\n  measuring,\n  touchSensor,\n}: UseSidebarReorderDndArgs): UseReorderDndResult {\n  const handleDragStart = useCallback(\n    (event: DragStartEvent) => {\n      setSidebarDraggingCursor(true);\n      onDragStart?.(event);\n    },\n    [onDragStart],\n  );\n  const handleDragCancel = useCallback(() => {\n    setSidebarDraggingCursor(false);\n    onDragCancel?.();\n  }, [onDragCancel]);\n  const handleDragEnd = useCallback(\n    (event: DragEndEvent) => {\n      setSidebarDraggingCursor(false);\n      onDragEnd(event);\n    },\n    [onDragEnd],\n  );\n\n  useEffect(() => {\n    return () => {\n      setSidebarDraggingCursor(false);\n    };\n  }, []);\n\n  return useReorderDnd({\n    onDragEnd: handleDragEnd,\n    onDragStart: handleDragStart,\n    onDragMove,\n    onDragOver,\n    onDragCancel: handleDragCancel,\n    collisionDetection,\n    touchSensor,\n    axis,\n    measuring,\n  });\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/use-sidebar-reorder-dnd.ts"
+    }
+  ]
+}

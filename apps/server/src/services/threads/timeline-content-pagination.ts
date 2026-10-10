@@ -1,7 +1,7 @@
 import type { TimelineRow } from "@bb/server-contract";
 
 export interface TimelineContentPage {
-  olderRowsSourceSeqEnd: number | null;
+  partialRowsSourceSeqEnd: number | null;
   rows: TimelineRow[];
   start: number;
   end: number;
@@ -13,7 +13,7 @@ function children(row: TimelineRow): readonly TimelineRow[] | null {
   if (
     row.kind === "work" &&
     row.workKind === "delegation" &&
-    row.childRows.length
+    row.childRows?.length
   )
     return row.childRows;
   return null;
@@ -79,9 +79,20 @@ export function paginateTimelineContents(
       if (selected.length === 0 && index <= start) recordOlderRow(row);
       return selected.length === 0 ? [] : [withChildren(row, selected)];
     });
-  const selectedRows = select(rows);
+  let partialRowsSourceSeqEnd: number | null = null;
+  const selectedRows = rows.flatMap((row) => {
+    olderRowsSourceSeqEnd = null;
+    const selected = select([row]);
+    if (selected.length > 0 && olderRowsSourceSeqEnd !== null) {
+      partialRowsSourceSeqEnd = Math.max(
+        partialRowsSourceSeqEnd ?? 0,
+        olderRowsSourceSeqEnd,
+      );
+    }
+    return selected;
+  });
   return {
-    olderRowsSourceSeqEnd,
+    partialRowsSourceSeqEnd,
     rows: selectedRows,
     start,
     end,

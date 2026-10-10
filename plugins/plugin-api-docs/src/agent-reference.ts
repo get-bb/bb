@@ -1,3 +1,4 @@
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
 import { escapeHtmlText } from "./html-escape";
 import { SURFACES_BY_ID, type PluginSurface } from "./surfaces";
 
@@ -68,68 +69,12 @@ export function pluginSurfaceAgentClipboardContent(
   return createPluginSurfaceAgentReference(surface).clipboard;
 }
 
-function copyWithEditingCommand(
-  content: PluginSurfaceAgentClipboardContent,
-): boolean {
-  if (
-    typeof document === "undefined" ||
-    document.body === null ||
-    typeof document.execCommand !== "function"
-  ) {
-    return false;
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = content.text;
-  textarea.readOnly = true;
-  textarea.setAttribute("aria-hidden", "true");
-  Object.assign(textarea.style, {
-    height: "1px",
-    opacity: "0",
-    pointerEvents: "none",
-    position: "fixed",
-    width: "1px",
-  });
-  document.body.append(textarea);
-  let richClipboardHandled = false;
-  const onCopy = (event: ClipboardEvent) => {
-    if (event.clipboardData === null) return;
-    event.clipboardData.setData("text/plain", content.text);
-    event.clipboardData.setData("text/html", content.html);
-    event.preventDefault();
-    richClipboardHandled = true;
-  };
-  document.addEventListener("copy", onCopy, { once: true });
-  try {
-    textarea.select();
-    return document.execCommand("copy") && richClipboardHandled;
-  } catch {
-    return false;
-  } finally {
-    document.removeEventListener("copy", onCopy);
-    textarea.remove();
-  }
-}
-
-export async function copyPluginSurfaceAgentReference(
+export function copyPluginSurfaceAgentReference(
   surface: PluginSurface,
 ): Promise<boolean> {
-  const content = pluginSurfaceAgentClipboardContent(surface);
-  if (
-    typeof navigator !== "undefined" &&
-    typeof navigator.clipboard?.write === "function" &&
-    typeof ClipboardItem !== "undefined"
-  ) {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/plain": new Blob([content.text], { type: "text/plain" }),
-          "text/html": new Blob([content.html], { type: "text/html" }),
-        }),
-      ]);
-      return true;
-    } catch {}
-  }
-  return copyWithEditingCommand(content);
+  return experimental_copyToClipboard(
+    pluginSurfaceAgentClipboardContent(surface),
+  );
 }
 
 export function pluginSurfaceAgentContext(surfaceId: string): string | null {

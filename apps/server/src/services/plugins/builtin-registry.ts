@@ -35,6 +35,11 @@ const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
   {
+    name: "storage-retention",
+    pluginId: "bb--storage-retention",
+    defaultEnabled: false,
+  },
+  {
     name: "bb-guide",
     pluginId: "bb-guide",
     defaultEnabled: true,
@@ -135,6 +140,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "provider-acp-next",
+    pluginId: "bb--provider-acp-next",
+    defaultEnabled: false,
+  },
+  {
     name: "keep-awake",
     pluginId: "keep-awake",
     defaultEnabled: true,
@@ -167,11 +177,6 @@ export const BUILTIN_PLUGINS = [
   {
     name: "thread-list",
     pluginId: "thread-list",
-    defaultEnabled: true,
-  },
-  {
-    name: "navigation",
-    pluginId: "navigation",
     defaultEnabled: true,
   },
   {
@@ -254,6 +259,21 @@ export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,
   ...OFFICIAL_PLUGINS,
 ];
+
+export interface BundledPluginReplacement {
+  pluginId: string;
+  replaces: string;
+  carriedSettings: readonly string[];
+}
+
+export const BUNDLED_PLUGIN_REPLACEMENTS: readonly BundledPluginReplacement[] =
+  [
+    {
+      pluginId: "bb--provider-acp-next",
+      replaces: "provider-acp",
+      carriedSettings: ["customAgents"],
+    },
+  ];
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 

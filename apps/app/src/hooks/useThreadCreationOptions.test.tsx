@@ -22,6 +22,10 @@ import {
   writeCachedProviderList,
 } from "@/lib/provider-list-cache";
 import { makeProviderInfo } from "@bb/test-helpers/domain-fixtures";
+import {
+  modelCatalogCacheKey,
+  readCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
 
 const PROJECT_ID = "proj_prompt_defaults";
 const GLOBAL_PROVIDER_ID = "global-provider";
@@ -210,6 +214,30 @@ function providerExecutionOptionsResponse(
         isDefault: false,
       },
     ],
+  };
+}
+
+function daybreakExecutionOptionsResponse(
+  providerId: string | undefined,
+): SystemExecutionOptionsResponse {
+  const response = providerExecutionOptionsResponse(providerId);
+  if (providerId === PROJECT_PROVIDER_ID) {
+    return response;
+  }
+  return {
+    ...response,
+    models: response.models.map((model) => ({
+      ...model,
+      sessionOptions: [
+        {
+          type: "boolean",
+          id: "daybreak",
+          label: "Daybreak",
+          value: false,
+          fixed: model.isDefault,
+        },
+      ],
+    })),
   };
 }
 
@@ -599,6 +627,96 @@ describe("useThreadCreationOptions", () => {
       expect(reloaded.result.current.selectedModel).toBe("global-remembered");
       expect(reloaded.result.current.reasoningLevel).toBe("medium");
     });
+  });
+
+  it("remembers agent options per provider and moves off a model they rule out", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      daybreakExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, unmount } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(
+        result.current.declaredSessionOptions.map((option) => option.id),
+      ).toEqual(["daybreak"]);
+    });
+    expect(result.current.sessionOptionSelections).toEqual({});
+    expect(result.current.executionInputSources.model).toBeUndefined();
+
+    act(() => {
+      result.current.setSessionOption("daybreak", true);
+    });
+    await waitFor(() => {
+      expect(result.current.sessionOptionSelections).toEqual({
+        daybreak: true,
+      });
+      expect(result.current.selectedModel).toBe("global-remembered");
+    });
+    expect(result.current.executionInputSources.model).toBe("explicit");
+    expect(
+      result.current.modelOptions.map((option) => option.disabled === true),
+    ).toEqual([true, false]);
+
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.declaredSessionOptions).toEqual([]);
+      expect(result.current.sessionOptionSelections).toEqual({});
+    });
+
+    unmount();
+    const reloaded = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    act(() => {
+      reloaded.result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(reloaded.result.current.sessionOptionSelections).toEqual({
+        daybreak: true,
+      });
+      expect(reloaded.result.current.selectedModel).toBe("global-remembered");
+    });
+  });
+
+  it("uses the thread's own option values in a component-local composer instead of remembered ones", async () => {
+    window.localStorage.setItem(
+      `bb.promptbox.session-options-${GLOBAL_PROVIDER_ID}-1`,
+      JSON.stringify({ daybreak: true }),
+    );
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      daybreakExecutionOptionsResponse(args?.providerId),
+    );
+    const threadSelections = { daybreak: false };
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          sessionOptionSelections: threadSelections,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(result.current.sessionOptionSelections).toEqual({
+        daybreak: false,
+      });
+    });
+    expect(
+      result.current.modelOptions.map((option) => option.disabled === true),
+    ).toEqual([false, false]);
   });
 
   it("refreshes untouched Fast defaults but preserves an unsent choice until thread reset", async () => {
@@ -1390,6 +1508,47 @@ describe("useThreadCreationOptions", () => {
     expect(sdk.system.providerStates).not.toHaveBeenCalledWith(
       expect.objectContaining({ hostId: "second-host" }),
     );
+  });
+
+  it("loads the fallback provider's catalog when the stored provider is no longer offered", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "removed-provider");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      args?.providerId === "removed-provider"
+        ? {
+            ...executionOptionsResponse(),
+            models: [],
+            selectedOnlyModels: [],
+          }
+        : providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ providerId: GLOBAL_PROVIDER_ID }),
+      );
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.modelOptions.map((option) => option.value)).toEqual(
+        ["global-default", "global-remembered"],
+      );
+    });
+    expect(window.localStorage.getItem("bb.promptbox.provider")).toContain(
+      "removed-provider",
+    );
+    expect(
+      readCachedModelCatalog(
+        modelCatalogCacheKey({
+          environmentId: null,
+          hostId: null,
+          providerId: "removed-provider",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("routes reusable root-composer worktrees through their environment", async () => {

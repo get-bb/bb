@@ -732,6 +732,18 @@ export function updateCachedThreadListStatusState(
   });
 }
 
+export function updateCachedThreadStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  { status, runtime, latestAttentionAt, updatedAt }: ThreadStatusChangeMetadata,
+): void {
+  updateCachedThread(queryClient, threadId, (thread) =>
+    updatedAt < thread.updatedAt
+      ? thread
+      : { ...thread, status, runtime, latestAttentionAt, updatedAt },
+  );
+}
+
 export function getFetchingThreadListQueryKeys(
   queryClient: QueryClient,
 ): QueryKey[] {
