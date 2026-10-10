@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import { pluginPageHref } from "./plugin-directory";
-import { PluginGuideOutline } from "./plugin-guide-outline";
+import { PluginSurfaceIndex } from "./plugin-surface-index";
 
 const pluginsDir = new URL("../../../../plugins/", import.meta.url);
 const guideSourceDir = new URL("plugin-api-docs/src/", pluginsDir);
@@ -103,8 +103,8 @@ describe("Plugin Guide on the web", () => {
     expect([...new Set(unlinked)]).toEqual([]);
   });
 
-  it("server-renders every slide and surface as plain text", () => {
-    const html = renderToStaticMarkup(createElement(PluginGuideOutline));
+  it("lists every slide and surface in the visible surface index", () => {
+    const html = renderToStaticMarkup(createElement(PluginSurfaceIndex));
     const escape = (text: string) =>
       text
         .replace(/&/gu, "&amp;")
@@ -114,10 +114,19 @@ describe("Plugin Guide on the web", () => {
         .replace(/'/gu, "&#x27;");
     const surfaces = SURFACE_GROUPS.flatMap((group) => group.surfaces);
     const missing = [
-      ...SURFACE_GROUPS.map((group) => `<h2>${escape(group.title)}</h2>`),
-      ...surfaces.map((surface) => `>${escape(surface.title)}</h`),
+      ...SURFACE_GROUPS.map(
+        (group) =>
+          `href="/plugin-guide?slide=${group.id}">${escape(group.title)}</a>`,
+      ),
+      ...surfaces.map(
+        (surface) =>
+          `<span class="surface-index-name">${escape(surface.title)}</span>`,
+      ),
     ].filter((fragment) => !html.includes(fragment));
     expect(missing).toEqual([]);
-    expect(html).not.toMatch(/`|\]\(|\{experimental\}/u);
+    expect(html).not.toMatch(
+      /`|\]\(|\{experimental\}|With this, a plugin can/u,
+    );
+    expect(html).not.toContain("sr-only");
   });
 });
