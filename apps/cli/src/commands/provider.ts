@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import type { AvailableModel } from "@bb/domain";
+import { collectDeclaredSessionOptions, type AvailableModel } from "@bb/domain";
 import type {
   SystemExecutionOptionsModelLoadError,
   SystemProviderInfo,
@@ -235,4 +235,27 @@ function printModelTable(models: AvailableModel[], providerId?: string): void {
     },
     rows,
   );
+  for (const line of formatDeclaredSessionOptions(models)) {
+    console.log(line);
+  }
+}
+
+export function formatDeclaredSessionOptions(
+  models: readonly AvailableModel[],
+): string[] {
+  const options = collectDeclaredSessionOptions(models);
+  if (options.length === 0) {
+    return [];
+  }
+  return [
+    "",
+    "Options (set with bb thread spawn --option <id>=<value>):",
+    ...options.map((option) =>
+      option.type === "boolean"
+        ? `  ${option.id} (${option.label}): true | false, default ${String(option.value)}`
+        : `  ${option.id} (${option.label}): ${option.values
+            .map((value) => value.id)
+            .join(" | ")}, default ${option.value}`,
+    ),
+  ];
 }

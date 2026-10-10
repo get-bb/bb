@@ -1,7 +1,7 @@
 import { BrowserConcept } from "../concepts";
 import { BulletList, PromptBlock } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   annotateStep,
   BROWSER_FAQ,
@@ -9,6 +9,7 @@ import {
   PLUGINS_STEP,
   SIGN_INS_STEP,
 } from "../shared/browser";
+import { meta } from "./agent-browser-for-work.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -22,7 +23,7 @@ Guide: https://getbb.app/guides/agent-browser-for-work
 
 Do every step below, with a Check after each step. Stop if a check fails and tell me what failed.
 
-1. Set up browser access. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation if it's missing, or enable it with bb plugin enable browser-automation if it's off. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Then read bb guide browser and bb browser-automation --help.
+1. Set up browser access. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation --yes if it's missing, or enable it with bb plugin enable browser-automation if it's off. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Then read bb guide browser and bb browser-automation --help.
    Check: both plugins are running.
 
 2. Open a browser. Find the computer running the bb desktop app with bb machine list, then run bb browser instances --host <desktop-host-id> --json. If a desktop instance is connected, open a Browser tab there so I can watch and my sign-ins work:
@@ -40,13 +41,6 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
 
 If it's a task I'll want again, offer to save these steps as a bb skill in .bb/skills/<short-name>/SKILL.md with my answers filled in, or as a bb automation if it should run on a schedule.`,
 );
-
-export const meta: GuideMeta = {
-  slug: "agent-browser-for-work",
-  title: "Get research and reports from any site",
-  nav: { group: "Automate", label: "Automate browser tasks", order: 4 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,
@@ -99,7 +93,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/agent-browser-for-work/window-ask.png",
+        src: "/guides/agent-browser-for-work/window-ask.webp",
         alt: "A bb thread with a table of the cheapest paid plans of Linear, Trello, and Asana, each price linked to its pricing page, next to Asana's pricing page in a Browser tab",
         width: 2048,
         height: 1280,
@@ -115,7 +109,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/agent-browser-for-work/window-take-over.png",
+            src: "/guides/agent-browser-for-work/window-take-over.webp",
             alt: "The agent reading Trello's pricing page in a bb Browser tab, under a bar that says Browser Automation is controlling this tab, with Stop and Take over",
             width: 2048,
             height: 1280,
@@ -135,7 +129,7 @@ export const guide: Guide = {
       target: "the text, number, or button",
       note: "your question or request",
       shot: {
-        src: "/guides/agent-browser-for-work/window-annotate.png",
+        src: "/guides/agent-browser-for-work/window-annotate.webp",
         alt: "Asana's pricing page in a bb Browser tab with the Starter price selected, and the note: Add each plan's monthly price as a second column.",
         width: 2048,
         height: 1280,

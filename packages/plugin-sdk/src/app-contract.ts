@@ -11,6 +11,7 @@ import type {
   ProviderInfo,
   ReasoningLevel,
   ServiceTier,
+  SessionOptionSelections,
   EnvironmentWorkspaceDisplayKind,
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
@@ -57,7 +58,7 @@ export interface PluginHomepageSectionProps {
    * True once bb's setup guide has been finished or skipped and at least one
    * thread exists. False during first-run setup, before the first thread,
    * and while that state loads. Undefined on hosts older than plugin SDK
-   * 0.6.39. Experimental: see
+   * 0.6.41. Experimental: see
    * docs/api_to_audit.md.
    */
   experimental_setupComplete?: boolean;
@@ -3200,6 +3201,12 @@ export interface NewThreadRequest {
   permissionMode: PermissionMode;
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;
+  /**
+   * Agent options the user chose in the model picker or the mode menu, keyed
+   * by option id. Present only when the user changed at least one option the
+   * selected provider declares. Forward it to `threads.spawn` unchanged.
+   */
+  sessionOptions?: SessionOptionSelections;
   /**
    * Per-field provenance (caller-explicit vs. default) for the execution
    * options above, forwarded to `spawn` so the server records what the user

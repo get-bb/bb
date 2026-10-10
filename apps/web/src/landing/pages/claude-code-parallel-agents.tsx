@@ -1,4 +1,4 @@
-import type { LandingMeta, LandingPage } from "../landing-template";
+import type { LandingPage } from "../landing-template";
 import {
   FAQ_AGENTS,
   FAQ_CODEX_TOGETHER,
@@ -24,11 +24,7 @@ import {
   PARALLEL_SECTION,
   START_WITH_PLANS_FAQ,
 } from "../landing-shared";
-
-export const meta: LandingMeta = {
-  slug: "claude-code-parallel-agents",
-  label: "Parallel coding agents",
-};
+import { meta } from "./claude-code-parallel-agents.meta";
 
 export const page: LandingPage = {
   ...meta,

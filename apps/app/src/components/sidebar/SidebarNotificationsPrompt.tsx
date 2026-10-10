@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@bb/shared-ui/icon";
+import { SidebarNudge } from "@bb/shared-ui/sidebar-nudge";
 import { PUSH_NOTIFICATIONS_PLUGIN_ID } from "@/components/onboarding/onboarding-model";
 import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import { listSidebarNavigationThreads } from "@/hooks/cache-owners/query-cache";
@@ -14,11 +15,6 @@ import { withLocalStorage } from "@/lib/browser-storage";
 type PromptState = "shown" | "answered";
 
 const PROMPT_STATE_STORAGE_KEY = "bb.sidebar.notificationPrompt";
-
-const CARD_SURFACE_CLASS =
-  "relative rounded-lg bg-card shadow-xs dark:bg-sidebar-accent/50 dark:shadow-none";
-const CARD_CONTROL_CLASS =
-  "flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring motion-reduce:transition-none";
 
 function readPromptState(): PromptState | null {
   const stored = withLocalStorage(
@@ -93,39 +89,17 @@ export function SidebarNotificationsCard({
 }: {
   prompt: SidebarNotificationsPromptState;
 }) {
-  const labelId = useId();
   if (!prompt.visible) return null;
   return (
-    <section
-      aria-labelledby={labelId}
-      data-testid="sidebar-notifications-prompt"
-      className={`${CARD_SURFACE_CLASS} px-3 pb-2.5 pt-2.5`}
+    <SidebarNudge
+      testId="sidebar-notifications-prompt"
+      icon={<Icon aria-hidden name="BellDot" className="size-4" />}
+      action={{ label: "Notify me", onAction: prompt.turnOn }}
+      onDismiss={prompt.notNow}
+      dismissLabel="Not now"
     >
-      <p
-        id={labelId}
-        className="pr-6 text-sm font-medium leading-snug text-foreground"
-      >
-        Get notified when an agent needs you
-      </p>
-      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-        See when a thread finishes or asks you a question.
-      </p>
-      <button
-        type="button"
-        onClick={prompt.turnOn}
-        className="mt-1.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
-      >
-        Turn on notifications
-        <Icon aria-hidden name="ChevronRight" className="size-3" />
-      </button>
-      <button
-        type="button"
-        aria-label="Not now"
-        onClick={prompt.notNow}
-        className={`absolute right-1.5 top-1.5 ${CARD_CONTROL_CLASS}`}
-      >
-        <Icon aria-hidden name="X" className="size-3.5" />
-      </button>
-    </section>
+      Get a notification when this agent finishes or asks you a question, even
+      in another tab.
+    </SidebarNudge>
   );
 }

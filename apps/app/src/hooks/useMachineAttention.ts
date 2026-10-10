@@ -14,7 +14,7 @@ const acknowledgedIssuesAtom = atomWithStorage<string[]>(
   { getOnInit: true },
 );
 
-function machineIssue(
+export function machineAttentionIssue(
   host: Host,
 ): { key: string; label: string; offline: boolean } | null {
   if (host.type === "ephemeral") return null;
@@ -46,7 +46,7 @@ function machineIssue(
 export function useMachineAttention(hosts: Host[], isLoading: boolean) {
   const [acknowledged, setAcknowledged] = useAtom(acknowledgedIssuesAtom);
   const issues = hosts.flatMap((host) => {
-    const issue = machineIssue(host);
+    const issue = machineAttentionIssue(host);
     return issue === null ? [] : [issue];
   });
 

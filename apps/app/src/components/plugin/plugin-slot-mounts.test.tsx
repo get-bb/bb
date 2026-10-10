@@ -1643,9 +1643,7 @@ describe("useComposer().experimental_setSelection", () => {
     });
 
     await expect(
-      captured!.experimental_setSelection({
-        reasoningLevel: "extreme" as never,
-      }),
+      captured!.experimental_setSelection({ reasoningLevel: "" }),
     ).rejects.toThrow(/reasoning level/);
     await expect(
       captured!.experimental_setSelection({ permissionMode: "yolo" as never }),

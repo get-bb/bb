@@ -104,9 +104,7 @@ describe("SidebarNotificationsCard", () => {
       { name: "notification_prompt_shown", properties: { surface: "sidebar" } },
     ]);
     expect(requestPermission).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Turn on notifications" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Notify me" }));
     await waitFor(() =>
       expect(events("notification_prompt_accepted")).toEqual([
         {

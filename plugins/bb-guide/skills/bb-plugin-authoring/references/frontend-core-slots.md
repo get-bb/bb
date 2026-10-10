@@ -63,7 +63,7 @@ Slot props contracts (versioned, additive-only):
 - `homepageSection` → `{ projectId: string | null,
   experimental_setupComplete?: boolean }` (project in view on the compose
   surface; whether bb's setup guide is finished or skipped and a first thread
-  exists, undefined on hosts before SDK 0.6.39). Registration: `{ id, title?, component }`; omit
+  exists, undefined on hosts before SDK 0.6.41). Registration: `{ id, title?, component }`; omit
   `title` for a section that renders its own heading or may render nothing.
 - `settingsSection` → `{}` (deliberately no props in V1). Rendered on the
   plugin detail page below the host-rendered declarative settings

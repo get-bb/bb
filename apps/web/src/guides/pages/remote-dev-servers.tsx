@@ -7,12 +7,13 @@ import {
   Ui,
 } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   COST_FAQ,
   LINK_ACCESS_FAQ,
   MACHINE_DISCONNECTED_TROUBLESHOOTING,
 } from "../shared/faq";
+import { meta } from "./remote-dev-servers.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -51,13 +52,6 @@ set -euo pipefail
 pnpm install
 free_port() { node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})'; }
 printf 'WEB_PORT=%s\\nAPI_PORT=%s\\n' "$(free_port)" "$(free_port)" > .env.local`;
-
-export const meta: GuideMeta = {
-  slug: "remote-dev-servers",
-  title: "Run a dev server for every branch",
-  nav: { group: "Remote & mobile", label: "Run dev servers", order: 5 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,
@@ -99,7 +93,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-add-machine.png",
+        src: "/guides/remote-dev-servers/window-add-machine.webp",
         alt: "The Add a machine dialog in bb's Machines settings, with a macOS or Linux install command, a Copy button, and Waiting for the machine to connect",
         width: 2048,
         height: 1280,
@@ -137,7 +131,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-checkouts.png",
+        src: "/guides/remote-dev-servers/window-checkouts.webp",
         alt: "A project's settings in bb, with a Checkouts section listing where the project lives on each machine",
         width: 2048,
         height: 1280,
@@ -163,7 +157,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-new-thread.png",
+        src: "/guides/remote-dev-servers/window-new-thread.webp",
         alt: "A new bb thread in acme-web with Worktree chosen and the Branch from list open, showing main and feature branches",
         width: 2048,
         height: 1280,
@@ -192,7 +186,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-terminal.png",
+        src: "/guides/remote-dev-servers/window-terminal.webp",
         alt: "A bb thread with its side panel open on a Dev server terminal, showing a server running on 127.0.0.1 port 3001",
         width: 2048,
         height: 1280,
@@ -227,7 +221,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/remote-dev-servers/window-connect-signed-in.png",
+        src: "/guides/work-from-anywhere/window-connect-signed-in.webp",
         alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
         width: 2048,
         height: 1280,

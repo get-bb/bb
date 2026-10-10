@@ -1,13 +1,14 @@
 import { AnywhereConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   COST_FAQ,
   LINK_ACCESS_FAQ,
   MACHINE_DISCONNECTED_TROUBLESHOOTING,
   SLEEP_TROUBLESHOOTING,
 } from "../shared/faq";
+import { meta } from "./work-from-anywhere.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -34,13 +35,6 @@ Do these steps in order and run each check. If a check fails, stop and tell me w
 
 Reply with my getbb.app address (I can also open it in any browser), whether my phone is connected, and whether Keep Awake is on. Remind me that closing a laptop's lid still puts it to sleep.`,
 );
-
-export const meta: GuideMeta = {
-  slug: "work-from-anywhere",
-  title: "Keep working from anywhere",
-  nav: { group: "Remote & mobile", label: "Work from anywhere", order: 6 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,
@@ -73,7 +67,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-connect-signed-in.png",
+        src: "/guides/work-from-anywhere/window-connect-signed-in.webp",
         alt: "bb connect in bb's settings, connected at bb-demo.getbb.app, with port 3001 listed under Shared ports",
         width: 2048,
         height: 1280,
@@ -105,7 +99,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-keep-awake.png",
+        src: "/guides/work-from-anywhere/window-keep-awake.webp",
         alt: "Keep Awake in bb's settings, with Prevent idle sleep on for all hosts",
         width: 2048,
         height: 1280,
@@ -134,7 +128,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/work-from-anywhere/window-phone.png",
+        src: "/guides/work-from-anywhere/window-phone.webp",
         alt: "The bb app on a phone, showing an agent's reply in a thread and an Ask a follow-up box",
         width: 780,
         height: 1688,
@@ -155,7 +149,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-notify.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-notify.webp",
         alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
         width: 2048,
         height: 1280,

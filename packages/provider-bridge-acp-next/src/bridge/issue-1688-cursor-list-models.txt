@@ -1,0 +1,208 @@
+Available models
+
+auto - Auto (default)
+gpt-5.3-codex-low - Codex 5.3 Low
+gpt-5.3-codex-low-fast - Codex 5.3 Low Fast
+gpt-5.3-codex - Codex 5.3
+gpt-5.3-codex-fast - Codex 5.3 Fast
+gpt-5.3-codex-high - Codex 5.3 High
+gpt-5.3-codex-high-fast - Codex 5.3 High Fast
+gpt-5.3-codex-xhigh - Codex 5.3 Extra High
+gpt-5.3-codex-xhigh-fast - Codex 5.3 Extra High Fast
+gpt-5.2 - GPT-5.2
+cursor-grok-4.6-high-fast - Cursor Grok 4.6 Fast
+composer-2.5 - Composer 2.5
+claude-opus-5-thinking-high - Claude Opus 5 1M Thinking
+claude-opus-5-thinking-high-fast - Claude Opus 5 1M Thinking Fast
+gpt-5.6-sol-high - GPT-5.6 Sol 1M High
+gpt-5.6-sol-high-fast - GPT-5.6 Sol High Fast
+gpt-5.6-sol-xhigh - GPT-5.6 Sol 1M Extra High
+gpt-5.6-sol-xhigh-fast - GPT-5.6 Sol Extra High Fast
+claude-fable-5-thinking-high - Claude Fable 5 1M Thinking (NO ZDR)
+claude-fable-5-thinking-xhigh - Claude Fable 5 1M Extra High Thinking (NO ZDR)
+cursor-grok-4.5-high - Cursor Grok 4.5
+cursor-grok-4.5-high-fast - Cursor Grok 4.5 Fast
+gemini-3.7-flash-high - Gemini 3.7 Flash
+claude-sonnet-5-thinking-high - Claude Sonnet 5 1M Thinking
+claude-sonnet-5-thinking-xhigh - Claude Sonnet 5 1M Extra High Thinking
+gpt-5.6-luna-high - GPT-5.6 Luna 1M High
+cursor-grok-4.6-low - Cursor Grok 4.6 Low
+cursor-grok-4.6-low-fast - Cursor Grok 4.6 Low Fast
+cursor-grok-4.6-medium - Cursor Grok 4.6 Medium
+cursor-grok-4.6-medium-fast - Cursor Grok 4.6 Medium Fast
+cursor-grok-4.6-high - Cursor Grok 4.6
+cursor-grok-4.6-xhigh - Cursor Grok 4.6 Extra High
+cursor-grok-4.6-xhigh-fast - Cursor Grok 4.6 Extra High Fast
+composer-2.5-fast - Composer 2.5 Fast
+claude-opus-5-low - Claude Opus 5 1M Low
+claude-opus-5-low-fast - Claude Opus 5 1M Low Fast
+claude-opus-5-medium - Claude Opus 5 1M Medium
+claude-opus-5-medium-fast - Claude Opus 5 1M Medium Fast
+claude-opus-5-high - Claude Opus 5 1M
+claude-opus-5-high-fast - Claude Opus 5 1M Fast
+claude-opus-5-thinking-low - Claude Opus 5 1M Low Thinking
+claude-opus-5-thinking-low-fast - Claude Opus 5 1M Low Thinking Fast
+claude-opus-5-thinking-medium - Claude Opus 5 1M Medium Thinking
+claude-opus-5-thinking-medium-fast - Claude Opus 5 1M Medium Thinking Fast
+claude-opus-5-thinking-xhigh - Claude Opus 5 1M Extra High Thinking
+claude-opus-5-thinking-xhigh-fast - Claude Opus 5 1M Extra High Thinking Fast
+claude-opus-5-thinking-max - Claude Opus 5 1M Max Thinking
+claude-opus-5-thinking-max-fast - Claude Opus 5 1M Max Thinking Fast
+claude-opus-4-8-low - Claude Opus 4.8 1M Low
+claude-opus-4-8-low-fast - Claude Opus 4.8 1M Low Fast
+claude-opus-4-8-medium - Claude Opus 4.8 1M Medium
+claude-opus-4-8-medium-fast - Claude Opus 4.8 1M Medium Fast
+claude-opus-4-8-high - Claude Opus 4.8 1M
+claude-opus-4-8-high-fast - Claude Opus 4.8 1M Fast
+claude-opus-4-8-xhigh - Claude Opus 4.8 1M Extra High
+claude-opus-4-8-xhigh-fast - Claude Opus 4.8 1M Extra High Fast
+claude-opus-4-8-max - Claude Opus 4.8 1M Max
+claude-opus-4-8-max-fast - Claude Opus 4.8 1M Max Fast
+claude-opus-4-8-thinking-low - Claude Opus 4.8 1M Low Thinking
+claude-opus-4-8-thinking-low-fast - Claude Opus 4.8 1M Low Thinking Fast
+claude-opus-4-8-thinking-medium - Claude Opus 4.8 1M Medium Thinking
+claude-opus-4-8-thinking-medium-fast - Claude Opus 4.8 1M Medium Thinking Fast
+claude-opus-4-8-thinking-high - Claude Opus 4.8 1M Thinking
+claude-opus-4-8-thinking-high-fast - Claude Opus 4.8 1M Thinking Fast
+claude-opus-4-8-thinking-xhigh - Claude Opus 4.8 1M Extra High Thinking
+claude-opus-4-8-thinking-xhigh-fast - Claude Opus 4.8 1M Extra High Thinking Fast
+claude-opus-4-8-thinking-max - Claude Opus 4.8 1M Max Thinking
+claude-opus-4-8-thinking-max-fast - Claude Opus 4.8 1M Max Thinking Fast
+gpt-5.6-sol-none - GPT-5.6 Sol 1M None
+gpt-5.6-sol-none-fast - GPT-5.6 Sol None Fast
+gpt-5.6-sol-low - GPT-5.6 Sol 1M Low
+gpt-5.6-sol-low-fast - GPT-5.6 Sol Low Fast
+gpt-5.6-sol-medium - GPT-5.6 Sol 1M
+gpt-5.6-sol-medium-fast - GPT-5.6 Sol Fast
+gpt-5.6-sol-max - GPT-5.6 Sol 1M Max
+gpt-5.6-sol-max-fast - GPT-5.6 Sol Max Fast
+gpt-5.5-none - GPT-5.5 1M None
+gpt-5.5-none-fast - GPT-5.5 None Fast
+gpt-5.5-low - GPT-5.5 1M Low
+gpt-5.5-low-fast - GPT-5.5 Low Fast
+gpt-5.5-medium - GPT-5.5 1M
+gpt-5.5-medium-fast - GPT-5.5 Fast
+gpt-5.5-high - GPT-5.5 1M High
+gpt-5.5-high-fast - GPT-5.5 High Fast
+gpt-5.5-extra-high - GPT-5.5 1M Extra High
+gpt-5.5-extra-high-fast - GPT-5.5 Extra High Fast
+claude-fable-5-low - Claude Fable 5 1M Low (NO ZDR)
+claude-fable-5-medium - Claude Fable 5 1M Medium (NO ZDR)
+claude-fable-5-high - Claude Fable 5 1M (NO ZDR)
+claude-fable-5-xhigh - Claude Fable 5 1M Extra High (NO ZDR)
+claude-fable-5-max - Claude Fable 5 1M Max (NO ZDR)
+claude-fable-5-thinking-low - Claude Fable 5 1M Low Thinking (NO ZDR)
+claude-fable-5-thinking-medium - Claude Fable 5 1M Medium Thinking (NO ZDR)
+claude-fable-5-thinking-max - Claude Fable 5 1M Max Thinking (NO ZDR)
+cursor-grok-4.5-low - Cursor Grok 4.5 Low
+cursor-grok-4.5-low-fast - Cursor Grok 4.5 Low Fast
+cursor-grok-4.5-medium - Cursor Grok 4.5 Medium
+cursor-grok-4.5-medium-fast - Cursor Grok 4.5 Medium Fast
+gemini-3.7-flash-low - Gemini 3.7 Flash Low
+gemini-3.7-flash-medium - Gemini 3.7 Flash Medium
+gpt-5.6-terra-none - GPT-5.6 Terra 1M None
+gpt-5.6-terra-none-fast - GPT-5.6 Terra None Fast
+gpt-5.6-terra-low - GPT-5.6 Terra 1M Low
+gpt-5.6-terra-low-fast - GPT-5.6 Terra Low Fast
+gpt-5.6-terra-medium - GPT-5.6 Terra 1M
+gpt-5.6-terra-medium-fast - GPT-5.6 Terra Fast
+gpt-5.6-terra-high - GPT-5.6 Terra 1M High
+gpt-5.6-terra-high-fast - GPT-5.6 Terra High Fast
+gpt-5.6-terra-xhigh - GPT-5.6 Terra 1M Extra High
+gpt-5.6-terra-xhigh-fast - GPT-5.6 Terra Extra High Fast
+gpt-5.6-terra-max - GPT-5.6 Terra 1M Max
+gpt-5.6-terra-max-fast - GPT-5.6 Terra Max Fast
+claude-sonnet-5-low - Claude Sonnet 5 1M Low
+claude-sonnet-5-medium - Claude Sonnet 5 1M Medium
+claude-sonnet-5-high - Claude Sonnet 5 1M
+claude-sonnet-5-xhigh - Claude Sonnet 5 1M Extra High
+claude-sonnet-5-max - Claude Sonnet 5 1M Max
+claude-sonnet-5-thinking-low - Claude Sonnet 5 1M Low Thinking
+claude-sonnet-5-thinking-medium - Claude Sonnet 5 1M Medium Thinking
+claude-sonnet-5-thinking-max - Claude Sonnet 5 1M Max Thinking
+claude-4.6-sonnet-medium - Claude Sonnet 4.6 1M
+claude-4.6-sonnet-medium-thinking - Claude Sonnet 4.6 1M Thinking
+claude-opus-4-7-low - Claude Opus 4.7 1M Low
+claude-opus-4-7-low-fast - Claude Opus 4.7 1M Low Fast
+claude-opus-4-7-medium - Claude Opus 4.7 1M Medium
+claude-opus-4-7-medium-fast - Claude Opus 4.7 1M Medium Fast
+claude-opus-4-7-high - Claude Opus 4.7 1M High
+claude-opus-4-7-high-fast - Claude Opus 4.7 1M High Fast
+claude-opus-4-7-xhigh - Claude Opus 4.7 1M
+claude-opus-4-7-xhigh-fast - Claude Opus 4.7 1M Fast
+claude-opus-4-7-max - Claude Opus 4.7 1M Max
+claude-opus-4-7-max-fast - Claude Opus 4.7 1M Max Fast
+claude-opus-4-7-thinking-low - Claude Opus 4.7 1M Low Thinking
+claude-opus-4-7-thinking-low-fast - Claude Opus 4.7 1M Low Thinking Fast
+claude-opus-4-7-thinking-medium - Claude Opus 4.7 1M Medium Thinking
+claude-opus-4-7-thinking-medium-fast - Claude Opus 4.7 1M Medium Thinking Fast
+claude-opus-4-7-thinking-high - Claude Opus 4.7 1M High Thinking
+claude-opus-4-7-thinking-high-fast - Claude Opus 4.7 1M High Thinking Fast
+claude-opus-4-7-thinking-xhigh - Claude Opus 4.7 1M Thinking
+claude-opus-4-7-thinking-xhigh-fast - Claude Opus 4.7 1M Thinking Fast
+claude-opus-4-7-thinking-max - Claude Opus 4.7 1M Max Thinking
+claude-opus-4-7-thinking-max-fast - Claude Opus 4.7 1M Max Thinking Fast
+gpt-5.4-low - GPT-5.4 1M Low
+gpt-5.4-medium - GPT-5.4 1M
+gpt-5.4-medium-fast - GPT-5.4 Fast
+gpt-5.4-high - GPT-5.4 1M High
+gpt-5.4-high-fast - GPT-5.4 High Fast
+gpt-5.4-xhigh - GPT-5.4 1M Extra High
+gpt-5.4-xhigh-fast - GPT-5.4 Extra High Fast
+claude-4.6-opus-high - Claude Opus 4.6 1M
+claude-4.6-opus-max - Claude Opus 4.6 1M Max
+claude-4.6-opus-high-thinking - Claude Opus 4.6 1M Thinking
+claude-4.6-opus-max-thinking - Claude Opus 4.6 1M Max Thinking
+claude-4.5-opus-high - Claude Opus 4.5
+claude-4.5-opus-high-thinking - Claude Opus 4.5 Thinking
+gpt-5.2-low - GPT-5.2 Low
+gpt-5.2-low-fast - GPT-5.2 Low Fast
+gpt-5.2-fast - GPT-5.2 Fast
+gpt-5.2-high - GPT-5.2 High
+gpt-5.2-high-fast - GPT-5.2 High Fast
+gpt-5.2-xhigh - GPT-5.2 Extra High
+gpt-5.2-xhigh-fast - GPT-5.2 Extra High Fast
+gpt-5.6-luna-none - GPT-5.6 Luna 1M None
+gpt-5.6-luna-none-fast - GPT-5.6 Luna None Fast
+gpt-5.6-luna-low - GPT-5.6 Luna 1M Low
+gpt-5.6-luna-low-fast - GPT-5.6 Luna Low Fast
+gpt-5.6-luna-medium - GPT-5.6 Luna 1M
+gpt-5.6-luna-medium-fast - GPT-5.6 Luna Fast
+gpt-5.6-luna-high-fast - GPT-5.6 Luna High Fast
+gpt-5.6-luna-xhigh - GPT-5.6 Luna 1M Extra High
+gpt-5.6-luna-xhigh-fast - GPT-5.6 Luna Extra High Fast
+gpt-5.6-luna-max - GPT-5.6 Luna 1M Max
+gpt-5.6-luna-max-fast - GPT-5.6 Luna Max Fast
+gemini-3.6-flash-minimal - Gemini 3.6 Flash Minimal
+gemini-3.6-flash-low - Gemini 3.6 Flash Low
+gemini-3.6-flash-medium - Gemini 3.6 Flash Medium
+gemini-3.6-flash-high - Gemini 3.6 Flash
+gemini-3.1-pro - Gemini 3.1 Pro
+gpt-5.4-mini-none - GPT-5.4 Mini None
+gpt-5.4-mini-low - GPT-5.4 Mini Low
+gpt-5.4-mini-medium - GPT-5.4 Mini
+gpt-5.4-mini-high - GPT-5.4 Mini High
+gpt-5.4-mini-xhigh - GPT-5.4 Mini Extra High
+gpt-5.4-nano-none - GPT-5.4 Nano None
+gpt-5.4-nano-low - GPT-5.4 Nano Low
+gpt-5.4-nano-medium - GPT-5.4 Nano
+gpt-5.4-nano-high - GPT-5.4 Nano High
+gpt-5.4-nano-xhigh - GPT-5.4 Nano Extra High
+claude-4.5-sonnet - Claude Sonnet 4.5
+claude-4.5-sonnet-thinking - Claude Sonnet 4.5 Thinking
+gpt-5.1-low - GPT-5.1 Low
+gpt-5.1 - GPT-5.1
+gpt-5.1-high - GPT-5.1 High
+gemini-3-flash - Gemini 3 Flash
+gemini-3.5-flash - Gemini 3.5 Flash
+claude-4-sonnet - Claude Sonnet 4
+claude-4-sonnet-thinking - Claude Sonnet 4 Thinking
+gpt-5-mini - GPT-5 Mini
+kimi-k3-low - Kimi K3 Low
+kimi-k3-high - Kimi K3 High
+kimi-k3-max - Kimi K3
+kimi-k2.7-code - Kimi K2.7 Code
+glm-5.2-high - GLM 5.2
+glm-5.2-max - GLM 5.2 Max
+
+Tip: use --model <id> (or /model <id> in interactive mode) to switch. Parameterized models also accept quoted overrides, e.g. --model 'claude-opus-4-8[context=1m,effort=high,fast=false]'.
