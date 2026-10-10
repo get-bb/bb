@@ -63,7 +63,6 @@ import { getAuthenticatedDaemon } from "./auth.js";
 import { validateExtensionPayloads } from "./extension-payloads.js";
 import { validatePresentationIcons } from "./presentation-icons.js";
 import { observeTurnTraceEventBatch } from "../services/system/turn-trace.js";
-import { recordTurnFinished } from "../services/system/turn-telemetry.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -443,12 +442,6 @@ async function applyEventEffects(
           ...event,
           threadId: entry.threadId,
         });
-        if (turnCompleted.isRootTurnCompletion && turnCompleted.nextStatus) {
-          recordTurnFinished(deps, {
-            threadId: entry.threadId,
-            outcome: event.status === "interrupted" ? "stopped" : event.status,
-          });
-        }
         if (
           turnCompleted.thread &&
           turnCompleted.isRootTurnCompletion &&
@@ -514,11 +507,6 @@ async function applyEventEffects(
           threadId: entry.threadId,
         });
         if (outcome.applied) {
-          recordTurnFinished(deps, {
-            threadId: entry.threadId,
-            outcome: "failed",
-            errorCategory: "process_exited",
-          });
           addParentTurnNotificationFollowUp({
             failedParentNotificationThreadIds,
             followUps,

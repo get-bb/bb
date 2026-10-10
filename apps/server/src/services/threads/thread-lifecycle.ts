@@ -1,6 +1,5 @@
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
-import { recordTurnFinished } from "../system/turn-telemetry.js";
 import {
   providerEnvironmentHasPendingWork,
   refreshProviderRetirement,
@@ -873,14 +872,6 @@ function settleThreadCommandFailure(
   });
   if (outcome.applied) {
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
-    postCommitActions.push({
-      run: (deps) =>
-        recordTurnFinished(deps, {
-          threadId: thread.id,
-          outcome: "failed",
-          errorCategory: "start_failed",
-        }),
-    });
   }
   if (isParentNotifiableChildThread(thread)) {
     const parentThreadId = thread.parentThreadId;

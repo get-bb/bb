@@ -47,6 +47,7 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { setTurnTelemetryDeps } from "./services/system/turn-telemetry.js";
 import { setPluginHookProvider } from "./services/plugins/plugin-hook-registry.js";
 import {
   setEnvironmentProviderRecheckHandler,
@@ -797,6 +798,7 @@ export function createApp(
     });
   });
   setPluginThreadEventEmitter(pluginService.events);
+  setTurnTelemetryDeps(deps);
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);

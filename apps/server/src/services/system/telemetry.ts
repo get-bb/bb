@@ -24,6 +24,7 @@ export type TurnErrorCategory =
   | "limit_reached"
   | "process_exited"
   | "start_failed"
+  | "host_lost"
   | "other";
 
 export type TelemetryEvent =

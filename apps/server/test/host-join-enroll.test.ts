@@ -5,6 +5,7 @@ import {
   hostDaemonEnrollResponseSchema,
   type HostDaemonEnrollKeyResponse,
 } from "@bb/host-daemon-contract";
+import { createHostJoinCodeResponseSchema } from "@bb/server-contract";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createServerErrorHandler } from "../src/errors.js";
@@ -13,6 +14,7 @@ import { registerInternalHostRoutes } from "../src/internal/hosts.js";
 import type { TelemetryService } from "../src/services/system/telemetry.js";
 import type { AppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
+import { seedPrimaryHost } from "./helpers/seed.js";
 import {
   createTestAppHarness,
   testLogger,
@@ -194,12 +196,11 @@ describe("host enroll routes", () => {
     });
   });
 
-  it("reports each newly enrolled machine once, without its name or id", async () => {
+  it("reports each machine added by join code once, and never the server's own machine", async () => {
     await withTestHarness(async (harness) => {
       const capture = vi.fn<TelemetryService["capture"]>();
       harness.deps.telemetry = { ...harness.deps.telemetry, capture };
-      const enroll = async (hostId: string) => {
-        const key = await requestHostEnrollKey(harness.deps, hostId);
+      const enroll = async (key: { enrollKey: string; hostId: string }) => {
         const response = await harness.app.request("/internal/hosts/enroll", {
           method: "POST",
           headers: {
@@ -210,10 +211,23 @@ describe("host enroll routes", () => {
         });
         expect(response.status).toBe(201);
       };
+      const joinCode = async () => {
+        const response = await harness.app.request("/api/v1/hosts/join-codes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        expect(response.status).toBe(201);
+        const issued = createHostJoinCodeResponseSchema.parse(
+          await readJson(response),
+        );
+        return { enrollKey: issued.joinCode, hostId: issued.hostId };
+      };
 
-      await enroll("host_first_machine");
-      await enroll("host_second_machine");
-      await enroll("host_first_machine");
+      await enroll(await requestHostEnrollKey(harness.deps, "host_server"));
+      seedPrimaryHost(harness.deps, "host_server");
+      await enroll(await joinCode());
+      await enroll(await joinCode());
 
       expect(
         capture.mock.calls
