@@ -2098,10 +2098,16 @@ view (the pane count after it opens, 2-8; restoring a saved layout does not
 count), and `device_paired` from the bundled Push Notifications plugin when a
 new phone registers for notifications (`mobile_ios` or `mobile_android`) and
 from the server when a new machine enrolls with a join code (`machine`; the
-server's own machine and re-enrollments do not count), each with `first_of_kind`. That route accepts
+server's own machine and re-enrollments do not count), each with `first_of_kind`, and `browser_session_started` from the bundled
+Browser Automation plugin when a session opens (`surface`: `headless` or
+`desktop`; `initiated_by`: `agent` for the CLI agents use, `user` for the app).
+That route accepts
 only those events and their fixed, non-identifying properties.
 
-The server also sends `turn_finished` whenever a thread's turn ends, from the same lifecycle transition that marks it finished, failed, or stopped (including provisioning failures, host disconnects, and manual stops): `outcome`
+The server sends `plugin_enabled` when a disabled plugin is turned on, with the
+same `plugin_id`, `provenance`, and `marketplace` rules as `plugin_installed`
+(the id only for built-in and curated marketplace plugins). It also sends
+`turn_finished` whenever a thread's turn ends, from the same lifecycle transition that marks it finished, failed, or stopped (including provisioning failures, host disconnects, and manual stops): `outcome`
 (`completed`, `failed`, or `stopped`), `provider` (a built-in provider id, or
 `other` for any custom or third-party provider), `error_category` (`none`,
 `auth`, `billing`, `rate_limit`, `provider_unavailable`, `limit_reached`,

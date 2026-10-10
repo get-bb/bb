@@ -79,13 +79,16 @@ function PrivacyRoute() {
             script), when you open a split view (how many panes it has), when an
             agent turn finishes (whether it completed, failed, or was stopped, a
             coarse failure type such as sign-in or rate limit, which built-in
-            agent ran it, and whether it was your first), and when you connect a
+            agent ran it, and whether it was your first), when you connect a
             phone for notifications or add another machine (only the kind of
-            device and whether it is your first of that kind). Each event
-            carries a random install ID, the app version, and your operating
-            system and architecture. Events never include your prompts, code,
-            file names, project names, or account details. Turn this off in
-            Settings &rarr; General &rarr; Share anonymous usage data, or set{" "}
+            device and whether it is your first of that kind), when a browser
+            automation session starts (headless or desktop, and whether an agent
+            or the app started it), and when you turn on a plugin (its id only
+            for built-in and marketplace plugins). Each event carries a random
+            install ID, the app version, and your operating system and
+            architecture. Events never include your prompts, code, file names,
+            project names, or account details. Turn this off in Settings &rarr;
+            General &rarr; Share anonymous usage data, or set{" "}
             <code>BB_TELEMETRY=false</code>.
           </p>
 

@@ -863,6 +863,31 @@ describe("plugin service", () => {
     await tracked.stop();
   });
 
+  it("reports plugin_enabled only when a disabled plugin is turned on", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-enable-tracked",
+      serverSource: "export default function plugin() {}",
+    });
+    const installed = await tracked.installPath(rootDir);
+    captured.length = 0;
+    await tracked.setEnabled(installed.id, true);
+    await tracked.setEnabled(installed.id, false);
+    await tracked.setEnabled(installed.id, true);
+    expect(captured).toEqual([
+      {
+        name: "plugin_enabled",
+        properties: {
+          plugin_id: null,
+          provenance: "direct",
+          marketplace: null,
+        },
+      },
+    ]);
+    await tracked.stop();
+  });
+
   it("does not report plugin_installed during boot-time reconcile", async () => {
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
