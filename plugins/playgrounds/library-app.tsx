@@ -552,10 +552,12 @@ function ActionsDoc({ actions }: { actions: Detail["version"]["actions"] }) {
 
 function OpenInThread({
   appId,
+  appName,
   selectedLabel,
   disabled,
 }: {
   appId: string;
+  appName: string;
   selectedLabel: string;
   disabled: boolean;
 }) {
@@ -570,7 +572,7 @@ function OpenInThread({
         writeIntent({
           threadId: result.threadId,
           runId: result.runId,
-          title: `App v${result.versionLabel}`,
+          title: `${appName} v${result.versionLabel}`,
         });
         navigate.toThread(result.threadId);
       },
@@ -852,7 +854,18 @@ function DraftEditor({
           Dismiss
         </button>
       )}
-      <ReleasePanel appId={appId} draft={draft} dirty={dirty} />
+      <ReleasePanel
+        appId={appId}
+        draft={draft}
+        dirty={dirty}
+        onPrepared={() => {
+          void rpc.call("draftGet", { appId }).then(
+            (d) => load(d as DraftView | null),
+            () => {},
+          );
+          onChanged();
+        }}
+      />
     </div>
   );
 }
@@ -888,10 +901,12 @@ function ReleasePanel({
   appId,
   draft,
   dirty,
+  onPrepared,
 }: {
   appId: string;
   draft: DraftView;
   dirty: boolean;
+  onPrepared: () => void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
   const navigate = useBbNavigate();
@@ -1117,6 +1132,7 @@ function ReleasePanel({
               })) as ReleaseView;
               setCurrent(view);
               reload();
+              onPrepared();
             });
           }}
         >
@@ -1349,6 +1365,7 @@ function AppDetail({ appId }: { appId: string }) {
       <ErrorText error={error} />
       <OpenInThread
         appId={appId}
+        appName={detail.name}
         selectedLabel={detail.selectedVersion.label}
         disabled={detail.trashedAt !== null}
       />
@@ -1719,7 +1736,7 @@ function AppsPage({ subPath }: PluginNavPanelProps) {
         ? "trash"
         : "mine";
   return (
-    <div className="pga">
+    <div className="pga pga-page">
       <Tabs current={section === "app" ? "mine" : current} />
       {section === "app" && rest ? (
         <AppDetail key={rest} appId={rest} />

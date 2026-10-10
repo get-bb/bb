@@ -377,6 +377,16 @@
   font-size: 13px;
   line-height: 1.5;
 }
+.pga-page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+.pga-panel > button,
+.pga-release > button,
+.pga-section > button {
+  justify-self: start;
+}
 .pga h2 {
   margin: 0;
   font-size: 19px;
@@ -460,6 +470,12 @@
 .pga-primary:hover:not(:disabled) {
   background: var(--primary);
   opacity: 0.88;
+}
+.pga-primary:disabled {
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  opacity: 1;
 }
 .pga-danger {
   border-color: var(--destructive);

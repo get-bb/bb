@@ -503,7 +503,15 @@ export function createLibrary({
         ? capDiff(
             diffText(
               sourceText({ ...basePkg, version: "draft" }),
-              sourceText(pkg),
+              sourceText({
+                ...pkg,
+                ...(basePkg.author && !pkg.author
+                  ? { author: basePkg.author }
+                  : {}),
+                ...(basePkg.license && !pkg.license
+                  ? { license: basePkg.license }
+                  : {}),
+              }),
             ),
           )
         : "",
