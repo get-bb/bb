@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { GuidePage, guideHead, loadGuide } from "../guides/guide-page";
+import { GuidePage } from "../guides/guide-page";
 import { getGuide } from "../guides/guides";
 
 export const Route = createFileRoute("/guides/$slug")({
-  loader: ({ params }) => loadGuide(params.slug),
-  head: ({ loaderData }) =>
-    guideHead(loaderData ? getGuide(loaderData.slug) : undefined),
+  staticData: { ownsCanonical: true },
+  loader: async ({ params }) =>
+    (await import("../guides/guide-page")).guideRouteData(params.slug),
+  head: ({ loaderData }) => loaderData?.head ?? { meta: [{ title: "bb" }] },
   component: GuidesRoute,
 });
 

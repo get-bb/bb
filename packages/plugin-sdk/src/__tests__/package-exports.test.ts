@@ -30,6 +30,7 @@ describe("packed plugin SDK exports", () => {
       "./provider-bridge",
       "./provider-bridge/testing",
       "./provider-bridge/acp",
+      "./provider-bridge/acp-next",
       "./environment-provider",
       "./machine-provider",
       "./app",

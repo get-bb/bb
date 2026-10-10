@@ -196,9 +196,19 @@ declares `skills.configure`),
 Execution options ride every command and carry no provider-named field:
 
 ```ts
-{ model, serviceTier?, reasoningLevel, promptMode?, instructions,
-  providerOptions: JsonValue } & PermissionPolicy
+{ model, serviceTier?, reasoningLevel, promptMode?, sessionOptions?,
+  instructions, providerOptions: JsonValue } & PermissionPolicy
 ```
+
+`reasoningLevel` is an open id: one of the standard ladder entries (`none`,
+`low`, `medium`, `high`, `xhigh`, `ultracode`, `max`, `ultra`) or any id the
+bridge listed for the model in `model/list`
+(`supportedReasoningEfforts[].reasoningEffort`, with an optional `label` for
+the picker). A bridge that receives an id it does not know omits it rather
+than failing the turn. `sessionOptions` is `{ [optionId]: string | boolean }`,
+the user's pending choices among the options the bridge published as
+`bb/session-options`; it is present only while a choice differs from the
+published value.
 
 **Bridge → runtime**: `thread/delta` (one streaming dialect, one usage
 dialect), `provider/recovery`, `session/replaced`, plus the request channels
@@ -242,6 +252,14 @@ glyph.
 **Thread state** — core: `usage`, `contextWindow`, `rateLimits`,
 `modelFallback`, `contextCleared`. Extension: `"<pluginId>/<name>"`, latest
 snapshot wins per kind, same schema and emitter rules as extension items.
+Two state kinds are bb's own and open to every provider: `bb/provider-commands`
+(the provider's live slash commands for the thread) and `bb/session-options`
+(its per-session settings other than the model and reasoning level). A user
+picks a value in the model picker (the `mode` option sits in the composer
+footer) or with
+`bb thread options --set`; the server holds the choice, sends it as
+`sessionOptions` with the next turn, and drops it once the bridge publishes
+that value.
 
 **Delegation** — one kind replaces three encodings and `thread/openWork`:
 

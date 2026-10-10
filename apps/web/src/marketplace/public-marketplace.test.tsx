@@ -79,8 +79,11 @@ describe("public marketplace route rendering", () => {
       />,
     );
     expect(html).toContain('aria-label="Category: Code &amp; Reviews"');
-    expect(html).toContain("Filtered plugins");
-    expect(html).toContain("2 plugins");
+    expect(html).toContain("<h2>Code &amp; Reviews");
+    expect(html).toContain(
+      "<span>2</span></h2><p>Work with code and reviews.</p>",
+    );
+    expect(html).not.toContain("Filtered plugins");
     expect(html).toContain(
       '<span class="marketplace-card-category">Code &amp; Reviews</span>',
     );

@@ -208,7 +208,10 @@ reasoningSummary | plan, text }` synthesizes the channel's `item/started`
   (`addTokenUsage` in the bridge kit), resetting where it sends
   `session.reset`. The context meter is always the separate `contextWindow`
   delta, which may name a vouched `providerTurnId` (codex sends one beside
-  each `usage`).
+  each `usage`). It may also carry the session's cumulative `cost`
+  (`{ amount, currency }`); only the latest measurement is kept, so a bridge
+  that reports cost repeats the current total on every `contextWindow` delta
+  (the ACP bridge does, from `usage_update.cost`).
   The breakdown preserves legacy provider semantics: `inputTokens` excludes
   cache reads/writes for Claude and Pi and is inclusive for Codex;
   `cachedInputTokens` is read + write for Claude/Pi and the reported cached
@@ -306,6 +309,48 @@ range is what gates a bridge: every bridge in this repo reports
   plugin's declared schemas at ingest, and refuses a kind whose plugin is not
   the one that registered the thread's provider — a bridge emits only its own
   plugin's kinds.
+- **bb thread state kinds** `"bb/<name>"`: two `extension.state` kinds belong
+  to bb, not to a plugin, so any bridge may emit them and the server validates
+  them against bb's own schemas (`packages/domain/src/thread-provider-state.ts`).
+  `bb/provider-commands` carries `{ commands: [{ name, description,
+  inputHint? }] }`, the slash commands the provider offers in this thread right
+  now; the composer's `/` menu and `bb thread commands` read it.
+  `bb/session-options` carries `{ options: [...] }`, the provider's per-session
+  settings other than the model and reasoning level (each a `select` with
+  `value` and `values`, or a `boolean`), with an optional `category` hint such
+  as `mode`; the model picker and `bb thread options` read it, and the `mode`
+  option shows in the composer footer instead of the picker.
+  Latest snapshot wins; a bridge re-emits the whole list when it changes and
+  stays silent when it has not. A third kind, `bb/session-option-selections`,
+  is written only by the server and refused from a bridge: it holds the
+  choices a user made that the provider has not applied yet.
+- **Options before a session exists**: each model in a `model/list` result may
+  carry `sessionOptions`, the same option shape as `bb/session-options`, with
+  `value` as the provider's default. A `select` lists only the values that
+  model supports; a `boolean` with `fixed: true` says the model runs only with
+  that value. bb shows the union across models in the new-thread composer's
+  model picker, disables a model the current choices rule out, moves the
+  selection to a model that fits when the selected one does not, and sends the
+  choices as `sessionOptions` on the thread's first commands. The server
+  applies the same rule to every create: when the caller leaves the model to
+  bb it starts on a model that fits the choices (the default one when it
+  fits), and when the caller names a model the choices rule out it refuses the
+  create and names a model that fits.
+- **`sessionOptions` execution option**: `{ [optionId]: string | boolean }` on
+  `thread/start` and `turn/start`. Before the bridge has published any
+  `bb/session-options` state for the thread it carries every choice made at
+  creation; afterwards it is present only while a user's choice differs from
+  the value the bridge last published. The bridge applies each entry before the prompt,
+  skips an option or value it does not offer, and publishes the new
+  `bb/session-options` snapshot; that publication is what clears the choice on
+  the server, so an option the provider later changes on its own is not forced
+  back.
+- **Open reasoning ids**: `reasoningLevel` and
+  `supportedReasoningEfforts[].reasoningEffort` are non-empty strings, not a
+  closed enum. The standard ladder (`none`, `low`, `medium`, `high`, `xhigh`,
+  `ultracode`, `max`, `ultra`) keeps its order and labels; any other id is the
+  provider's own, shown under the entry's optional `label`, and a bridge sends
+  it back to the provider unchanged.
 - **`provider/recovery`** is a bridge → runtime _notification_ beside
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
@@ -462,6 +507,11 @@ it:
 3. A turn the user did not initiate (provider-internal activity such as
    auto-compaction) either becomes an explicit bridge-emitted `turn.open`
    with its own deltas or rides `provider/raw` / `unhandled` diagnostics.
+   The ACP bridge opens one when an agent streams output, starts a tool
+   call, or asks for permission with no prompt in flight, keeps it open
+   while a tool call or permission request is unsettled, and settles it
+   after five quiet seconds; a `turn/steer` during it runs as a prompt
+   inside the same turn.
    Turn-scoping is vouched: only turn keys the bridge itself opened may
    scope a delta (`vouchedTurn`, keyed `providerTurnId`s) — a provider's
    own internal turn labels must never be forwarded as scoping.
@@ -541,7 +591,11 @@ carries the whole item, so refusing it would lose real content.
    not survive. Invisible replacement is the #1268 incident.
 3. Execution options ride every command. The bridge reconciles them
    internally; the runtime never diffs. Instructions are frozen for the life
-   of a session and apply at the next construction.
+   of a session and apply at the next construction. A bridge whose provider
+   restores its own conversation does not send them again: the ACP bridge
+   skips them after a successful `session/resume` or `session/load`, because
+   the agent already holds them, and sends them when it had to fall back to
+   a fresh agent session.
 4. Fork: absent `sourceProviderCheckpointId` means fork at the tip. A
    `fork: "tip"` bridge rejects checkpoint forks with
    `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline

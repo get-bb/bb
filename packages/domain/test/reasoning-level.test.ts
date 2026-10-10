@@ -73,4 +73,23 @@ describe("reconcileReasoningLevel", () => {
   it("throws when supported is empty", () => {
     expect(() => reconcileReasoningLevel("medium", [])).toThrow();
   });
+
+  it("keeps a provider-specific level the new model also offers", () => {
+    expect(
+      reconcileReasoningLevel("minimal", ["minimal", "medium", "high"]),
+    ).toBe("minimal");
+  });
+
+  it("moves a provider-specific level the new model lacks to the standard level nearest medium", () => {
+    expect(
+      reconcileReasoningLevel("think-hard", ["minimal", "low", "high"]),
+    ).toBe("high");
+  });
+
+  it("falls back to the model's default, else the first offered level, when the new model offers only provider-specific levels", () => {
+    expect(reconcileReasoningLevel("high", ["off", "on"])).toBe("off");
+    expect(reconcileReasoningLevel("high", ["off", "on"], "on")).toBe("on");
+    expect(reconcileReasoningLevel("high", ["off", "on"], "gone")).toBe("off");
+    expect(reconcileReasoningLevel("high", ["low", "on"], "on")).toBe("low");
+  });
 });

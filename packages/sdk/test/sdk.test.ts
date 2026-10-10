@@ -1488,6 +1488,39 @@ describe("@bb/sdk", () => {
     });
   });
 
+  it("sends chosen session options when updating a thread", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          id: "thr_section",
+          projectId: "proj_123",
+          status: "idle",
+          title: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.update({
+      threadId: "thr_section",
+      sessionOptions: { mode: "plan", web: true, stale: null },
+    });
+
+    expect(queue.requests[0]).toEqual({
+      bodyText: JSON.stringify({
+        sessionOptions: { mode: "plan", web: true, stale: null },
+      }),
+      method: "PATCH",
+      url: "http://bb.test/api/v1/threads/thr_section",
+    });
+  });
+
   it("sends the queued message version when updating its content", async () => {
     const queue = createFetchQueue([{ body: { id: "qmsg_123" } }]);
     const sdk = createBbSdk({

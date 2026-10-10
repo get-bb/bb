@@ -79,6 +79,13 @@ import {
   nextCycleValue,
   previousCycleValue,
 } from "./modelPickerCycle";
+import type {
+  SessionOptionChoice,
+  SessionOptionMenuSection,
+} from "./SessionOptionsMenu";
+
+const NO_AGENT_SECTIONS: readonly SessionOptionMenuSection[] = [];
+function ignoreAgentOptionChange(): void {}
 
 interface ResolvedProviderPreview {
   providerId: string;
@@ -186,6 +193,8 @@ interface ModelReasoningPickerProps {
   serviceTierValue: ServiceTier | undefined;
   serviceTierOptions: readonly ProviderOptionDescriptor[];
   onServiceTierChange: (value: ServiceTier) => void;
+  agentSections?: readonly SessionOptionMenuSection[];
+  onAgentOptionChange?: (optionId: string, value: SessionOptionChoice) => void;
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
@@ -218,6 +227,8 @@ export function ModelReasoningPicker({
   serviceTierValue,
   serviceTierOptions,
   onServiceTierChange,
+  agentSections = NO_AGENT_SECTIONS,
+  onAgentOptionChange = ignoreAgentOptionChange,
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
   className,
@@ -733,7 +744,9 @@ export function ModelReasoningPicker({
     MODEL_CYCLE_COMMANDS,
     (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
-      const options = handoffMode ? activeModelOptions : modelOptions;
+      const options = (handoffMode ? activeModelOptions : modelOptions).filter(
+        (option) => option.disabled !== true,
+      );
       const value =
         handoffMode && isPreviewing
           ? (previewSelection?.selectedModel ?? "")
@@ -877,6 +890,7 @@ export function ModelReasoningPicker({
         if (!row) return;
         event.preventDefault();
         if (row.kind === "model") {
+          if (row.option.disabled === true) return;
           handleModelSelect(row.option.value);
         } else {
           toggleShowMoreModels();
@@ -1138,6 +1152,8 @@ export function ModelReasoningPicker({
           serviceTierOptions={activeServiceTierOptions}
           serviceTierValue={serviceTierValue}
           onServiceTierChange={onServiceTierChange}
+          agentSections={isPreviewing ? NO_AGENT_SECTIONS : agentSections}
+          onAgentOptionChange={onAgentOptionChange}
           onStartHandoff={
             handoff !== undefined && !handoffMode && providerOptions.length > 0
               ? startHandoffMode

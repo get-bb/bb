@@ -946,7 +946,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Run server code when threads change state or environments are removed. With this, a plugin can:",
         bullets: [
-          "React when threads start, finish, fail, are archived or unarchived, or are deleted",
+          "React when threads start, finish, fail, change parent, are archived or unarchived, or are deleted",
           "Follow queued messages, including ones cancelled before dispatch",
           "Get the provider's error and rate-limit windows when a turn fails",
           "Observe successful environment removal with its previous machine and path",
@@ -1180,6 +1180,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "AcpLaunchSpec",
           "experimental_acpLaunchSpecSchema",
           "experimental_probeAcpAgent",
+          "experimental_registerAcpDialect",
           "AcpDialect",
           "experimental_nativeRootsHostContract",
           "experimental_filterResolvedNativeRoots",
@@ -1257,6 +1258,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_updateJobs",
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
+          "PluginBbSdk.threads.experimental_listDescendants",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

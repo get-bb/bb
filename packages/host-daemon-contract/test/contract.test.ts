@@ -920,6 +920,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.options.promptMode":
     "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
+  "hostDaemonCommandSchema.options.sessionOptions":
+    "thread runtime options carry session option choices only while a user's choice differs from the value the provider last reported; absent means nothing to apply.",
 };
 
 describe("cache usage wire compatibility", () => {
@@ -1226,7 +1228,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(233);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(234);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

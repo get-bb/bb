@@ -46,6 +46,7 @@ export interface CodexThreadPermissionSettings {
 export type BbThreadStartParams = ThreadStartParams & {
   experimentalRawEvents?: boolean;
   dynamicTools?: DynamicToolSpec[];
+  daybreakEnabled?: boolean;
 };
 
 export type BbThreadForkParams = {

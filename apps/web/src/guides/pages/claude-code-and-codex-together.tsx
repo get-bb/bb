@@ -1,7 +1,7 @@
 import { AgentSplit } from "../../compare/compare-visuals";
 import { CopyPromptButton, Substeps, Ui } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   NESTED_SHOT,
   SPLIT_SHOT,
@@ -9,6 +9,7 @@ import {
   TEAM_FAQ,
   TEAM_TROUBLESHOOTING,
 } from "../shared/agent-teams";
+import { meta } from "./claude-code-and-codex-together.meta";
 
 const AGENT_PROMPT = withIntake(
   [{ label: "Task", hint: "what to build or fix" }],
@@ -42,13 +43,6 @@ If you aren't Claude Code, tell me to paste this into a Claude Code thread inste
 Reply with what you built, what the review found, what you fixed, and what's left for me. ${skillOffer("build-and-review", "the reviewer")}`,
 );
 
-export const meta: GuideMeta = {
-  slug: "claude-code-and-codex-together",
-  title: "Use Claude Code and Codex together",
-  nav: null,
-  canonical: "/claude-code-and-codex",
-};
-
 export const guide: Guide = {
   ...meta,
   description:
@@ -75,7 +69,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/claude-code-and-codex-together/window-start-interview.png",
+        src: "/guides/claude-code-and-codex-together/window-start-interview.webp",
         alt: "A new bb thread with Opus 5.5, acme-web, and Worktree picked. The guide's prompt is pasted, starting with the questions the agent asks: your task.",
         width: 2048,
         height: 1280,

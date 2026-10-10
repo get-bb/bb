@@ -11,8 +11,34 @@ export const reasoningLevelValues = [
   "max",
   "ultra",
 ] as const;
-export const reasoningLevelSchema = z.enum(reasoningLevelValues);
+export type StandardReasoningLevel = (typeof reasoningLevelValues)[number];
+export const reasoningLevelSchema = z.string().min(1);
 export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
+
+export function isStandardReasoningLevel(
+  level: ReasoningLevel,
+): level is StandardReasoningLevel {
+  return (reasoningLevelValues as readonly string[]).includes(level);
+}
+
+export function standardReasoningLevelRank(
+  level: ReasoningLevel,
+): number | null {
+  const rank = (reasoningLevelValues as readonly string[]).indexOf(level);
+  return rank === -1 ? null : rank;
+}
+
+export function compareReasoningLevels(
+  a: ReasoningLevel,
+  b: ReasoningLevel,
+): number {
+  const aRank = standardReasoningLevelRank(a);
+  const bRank = standardReasoningLevelRank(b);
+  if (aRank === null || bRank === null) {
+    return aRank === bRank ? 0 : aRank === null ? 1 : -1;
+  }
+  return aRank - bRank;
+}
 
 export const DEFAULT_SERVICE_TIER = "default";
 export const serviceTierSchema = z.string().min(1);
@@ -538,11 +564,23 @@ export type RuntimePermissionPolicy = z.infer<
 export const promptModeSchema = z.literal("plan");
 export type PromptMode = z.infer<typeof promptModeSchema>;
 
+export const sessionOptionValueSchema = z.union([z.string(), z.boolean()]);
+export type SessionOptionValue = z.infer<typeof sessionOptionValueSchema>;
+
+export const sessionOptionSelectionsSchema = z.record(
+  z.string().min(1),
+  sessionOptionValueSchema,
+);
+export type SessionOptionSelections = z.infer<
+  typeof sessionOptionSelectionsSchema
+>;
+
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),
   serviceTier: serviceTierSchema,
   reasoningLevel: reasoningLevelSchema,
   promptMode: promptModeSchema.optional(),
+  sessionOptions: sessionOptionSelectionsSchema.optional(),
   providerOptions: jsonObjectSchema,
 });
 

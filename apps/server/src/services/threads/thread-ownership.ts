@@ -10,6 +10,7 @@ import type { PromptInput, SystemMessageSubject, Thread } from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
+import { emitPluginThreadParentChanged } from "../plugins/plugin-thread-events.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -133,6 +134,10 @@ export async function handleThreadOwnershipChange(
     previousParentThreadId: args.previousThread.parentThreadId,
     nextParentThreadId: args.updatedThread.parentThreadId,
   });
+  emitPluginThreadParentChanged(
+    args.updatedThread,
+    args.previousThread.parentThreadId,
+  );
 
   let pendingChanges = pendingOwnershipChanges.get(deps.db);
   if (!pendingChanges) {
@@ -210,10 +215,11 @@ async function sendThreadOwnershipNotices(
 function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
   deps: ThreadOwnershipTransactionDeps,
   args: ReleaseUnarchivedChildrenFromArchivedThreadArgs,
-): void {
+): Thread[] {
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThreadId,
   });
+  const released: Thread[] = [];
 
   for (const childThread of childThreads) {
     const updatedThread = updateThread(deps.db, deps.hub, childThread.id, {
@@ -229,7 +235,9 @@ function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
       previousParentThreadId: childThread.parentThreadId,
       nextParentThreadId: updatedThread.parentThreadId,
     });
+    released.push(updatedThread);
   }
+  return released;
 }
 
 export function archiveThreadAndReleaseChildren(
@@ -248,7 +256,7 @@ export function archiveThreadAndReleaseChildren(
         return null;
       }
 
-      releaseUnarchivedChildrenFromArchivedThreadInTransaction(
+      const released = releaseUnarchivedChildrenFromArchivedThreadInTransaction(
         {
           db: tx,
           hub: notificationBuffer,
@@ -259,11 +267,15 @@ export function archiveThreadAndReleaseChildren(
         },
       );
 
-      return archivedThread;
+      return { archivedThread, released };
     },
     { behavior: "immediate" },
   );
 
   notificationBuffer.flushInto(deps.hub);
-  return result;
+  if (result === null) return null;
+  for (const thread of result.released) {
+    emitPluginThreadParentChanged(thread, result.archivedThread.id);
+  }
+  return result.archivedThread;
 }

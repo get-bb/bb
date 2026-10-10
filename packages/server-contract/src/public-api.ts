@@ -263,6 +263,8 @@ import type {
   PluginThreadMetadataListResponse,
   ThreadAncestorsListRequest,
   ThreadAncestorsListResponse,
+  ThreadDescendantsListRequest,
+  ThreadDescendantsListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -325,6 +327,7 @@ import {
   updateThreadPluginMetadataRequestSchema,
   pluginThreadMetadataListRequestSchema,
   threadAncestorsListRequestSchema,
+  threadDescendantsListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -1392,6 +1395,21 @@ export const publicApiRoutes = {
         threadAncestorsListRequestSchema,
       ),
       response: jsonResponse<ThreadAncestorsListResponse>(),
+    }),
+    /**
+     * Each of `threadIds` (1–200) that exists and is not deleted, with the
+     * ids of every thread below it, children first. Archived and hidden
+     * descendants are omitted unless `includeArchived` / `includeHidden` is
+     * true, but threads below them are still returned; deleted threads and
+     * unknown ids are always omitted.
+     */
+    descendants: defineRoute({
+      path: "/threads/descendants",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadDescendantsListRequest>(
+        threadDescendantsListRequestSchema,
+      ),
+      response: jsonResponse<ThreadDescendantsListResponse>(),
     }),
     pluginMetadata: {
       /**

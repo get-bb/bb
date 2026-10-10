@@ -1,4 +1,3 @@
-import supersetIcon from "../../assets/competitors/superset.png";
 import { WINDOWS_DOWNLOAD_URL } from "../../landing/site";
 import {
   BB_ROWS,
@@ -34,16 +33,10 @@ import {
   LIMITS_COPY,
   limitsSection,
 } from "../compare-sections";
-import { FleetVisual, type BrandLogo } from "../compare-visuals";
+import { FleetVisual } from "../compare-visuals";
 
-import type { CompareMeta, Comparison } from "../compare-types";
-
-const SUPERSET_LOGO: BrandLogo = { kind: "image", src: supersetIcon };
-
-export const meta: CompareMeta = {
-  slug: "superset-alternative",
-  competitor: { name: "Superset", logo: SUPERSET_LOGO },
-};
+import type { Comparison } from "../compare-types";
+import { SUPERSET_LOGO, meta } from "./superset.meta";
 
 export const comparison: Comparison = {
   ...meta,

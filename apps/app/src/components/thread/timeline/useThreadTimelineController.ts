@@ -47,6 +47,8 @@ export interface UseThreadTimelineControllerResult {
   contextBoundarySeq: ThreadTimelineResponse["contextBoundarySeq"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
   goal: ThreadTimelineResponse["goal"];
+  providerCommands: ThreadTimelineResponse["providerCommands"];
+  sessionOptions: ThreadTimelineResponse["sessionOptions"];
   modelFallback: ThreadTimelineResponse["modelFallback"];
   hasOlderTimelineRows: boolean;
   isCatchingUpTimeline: boolean;
@@ -284,6 +286,8 @@ export function useThreadTimelineController({
     contextBoundarySeq: latestTimeline?.contextBoundarySeq ?? null,
     contextWindowUsage: latestTimeline?.contextWindowUsage,
     goal: latestTimeline?.goal ?? null,
+    providerCommands: latestTimeline?.providerCommands ?? null,
+    sessionOptions: latestTimeline?.sessionOptions ?? null,
     modelFallback: latestTimeline?.modelFallback ?? null,
     hasOlderTimelineRows,
     isCatchingUpTimeline,
