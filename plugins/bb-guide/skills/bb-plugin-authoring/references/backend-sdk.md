@@ -103,6 +103,20 @@ any request, including a seed or `set` that is over 256 KiB on its own; raw
 HTTP clients get HTTP 400 for it. A patch whose merged namespace would exceed
 the limit fails with HTTP 413 and leaves the namespace unchanged.
 
+### Thread trees
+
+`bb.sdk.threads.experimental_listAncestors({ threadIds })` returns each thread's
+ancestor ids from its parent up to the root, and
+`bb.sdk.threads.experimental_listDescendants({ threadIds })` every live thread
+below it, children first (1–200 ids per call). Pair them with
+`experimental_listPluginMetadata` to read a setting that a parent applies to its
+subtree. `bb.events.on("experimental_thread.parentChanged", handler)` fires after
+a thread moves to a new parent or loses its parent (a `threads.update` of
+`parentThreadId`, or core releasing an archived thread's children) with `thread`
+and `previousParentThreadId`. Threads below it move with it and get no event of
+their own. Push notifications uses all three: a parent's level limits every
+thread below it.
+
 Every `bb.agents.configure` callback receives its plugin's current namespace as
 a deep-frozen snapshot at top-level `context.pluginMetadata`, or `{}` when it
 is absent. The snapshot is typed deep-readonly (`ReadonlyJsonValue` values),

@@ -15,6 +15,7 @@ import {
   listLifecycleThreadTree,
   listPluginThreadMetadata,
   listThreadAncestors,
+  listThreadDescendants,
   searchThreadsWithPendingInteractionState,
   updateThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
@@ -33,6 +34,7 @@ import {
   type ThreadCountResponse,
   type PluginThreadMetadataListResponse,
   type ThreadAncestorsListResponse,
+  type ThreadDescendantsListResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -263,6 +265,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     return context.json({
       threads: listThreadAncestors(deps.db, payload.threadIds),
     } satisfies ThreadAncestorsListResponse);
+  });
+
+  post(routes.descendants, (context, payload) => {
+    return context.json({
+      threads: listThreadDescendants(deps.db, payload.threadIds),
+    } satisfies ThreadDescendantsListResponse);
   });
 
   post(routes.pluginMetadata.list, (context, payload) => {

@@ -45,6 +45,7 @@ import type {
   ThreadResponse,
   PluginThreadMetadataListResponse,
   ThreadAncestorsListResponse,
+  ThreadDescendantsListResponse,
   ThreadPluginMetadataResponse,
   ThreadSearchResponse,
   ThreadStorageFileListResponse,
@@ -176,6 +177,7 @@ export type ThreadMutationResult = ThreadResponse;
 export type ThreadPluginMetadataResult = ThreadPluginMetadataResponse;
 export type PluginThreadMetadataListResult = PluginThreadMetadataListResponse;
 export type ThreadAncestorsListResult = ThreadAncestorsListResponse;
+export type ThreadDescendantsListResult = ThreadDescendantsListResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -270,6 +272,10 @@ export interface PluginThreadMetadataListArgs {
   signal?: AbortSignal;
 }
 export interface ThreadAncestorsListArgs {
+  threadIds: readonly string[];
+  signal?: AbortSignal;
+}
+export interface ThreadDescendantsListArgs {
   threadIds: readonly string[];
   signal?: AbortSignal;
 }
@@ -626,6 +632,16 @@ export interface ThreadsArea {
   experimental_listAncestors(
     args: ThreadAncestorsListArgs,
   ): Promise<ThreadAncestorsListResult>;
+  /**
+   * Each of `threadIds` (1–200 per request) that exists and is not deleted,
+   * with `descendantIds` for every thread below it, children first (empty
+   * for a leaf); archived threads included, deleted threads and unknown ids
+   * omitted.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_listDescendants(
+    args: ThreadDescendantsListArgs,
+  ): Promise<ThreadDescendantsListResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
@@ -1261,6 +1277,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async experimental_listAncestors(input) {
       return transport.readJson(
         transport.api.v1.threads.ancestors.$post(
+          { json: { threadIds: [...input.threadIds] } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_listDescendants(input) {
+      return transport.readJson(
+        transport.api.v1.threads.descendants.$post(
           { json: { threadIds: [...input.threadIds] } },
           ...signalRequestArgs(input.signal),
         ),

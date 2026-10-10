@@ -1245,10 +1245,35 @@ under a new parent or released when its parent is archived.
 **Audit before stabilizing.**
 
 1. **Shape.** Decide whether callers also need each ancestor's thread
-   (title, status) rather than only ids, and whether descendants belong in
-   the same API.
+   (title, status) rather than only ids, and whether it should merge with
+   `experimental_listDescendants` into one tree read.
 2. **Batch size.** 200 ids per request; callers chunk, like
    `experimental_listPluginMetadata`.
+
+## `bb.sdk.threads.experimental_listDescendants`
+
+**What it does.** `POST /threads/descendants` with `{ threadIds }` (1–200 ids)
+returns `{ threads: { threadId, descendantIds }[] }`: each requested thread
+that exists and is not deleted, once, with the ids of every thread below it
+in breadth-first order, children first (empty for a leaf). Archived threads
+are included; deleted threads, and anything only reachable through one, are
+omitted, as are unknown ids. One recursive query follows `parent_thread_id`
+through `threads_parent_idx`, so the cost is one indexed lookup per thread in
+the subtree. Available unchanged on the core SDK and the plugin-bound SDKs.
+First caller: push-notifications, which publishes the levels of a thread and
+everything below it when the thread's level or parent changes, because a
+parent's level limits its whole subtree.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers need the tree's edges (each
+   descendant's parent) or thread fields rather than a flat id list, and
+   whether it should merge with `experimental_listAncestors`.
+2. **Size.** A subtree has no cap; a thread with thousands of archived
+   workers returns them all. Decide whether to page or to filter archived
+   threads.
+3. **Deleted threads.** Unlike `experimental_listAncestors`, deleted threads
+   are omitted. Confirm that callers never need them.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
@@ -3125,8 +3150,12 @@ id-keyed cache of levels, fetches the `threadIds` it has not loaded in
 `threadNotifications.list` batches of up to 200 (built on
 `threads.experimental_listAncestors` and
 `threads.experimental_listPluginMetadata`, so a parent's limit is read from
-the current tree), applies its `threadNotifications` realtime channel, and
-refetches after a reconnect; `item` resolves the level
+the current tree), and refetches the ones on screen after a reconnect. When a
+thread's level or parent changes (its `threadNotifications.set` RPC, or
+`experimental_thread.parentChanged`), the plugin server resolves that thread
+and its descendants (`threads.experimental_listDescendants`) and publishes
+their levels on the `threadNotifications` realtime channel; clients apply the
+rows they hold without a request. `item` resolves the level
 with the plugin's shared resolver, shows it as `detail` with a per-level icon
 (declared `push-notifications/ringing` and `push-notifications/off`, built-in
 `BellDot`), and `choices` sets it. The
@@ -3690,6 +3719,24 @@ Follow-ups before the suspend callback cancel preparation after work stopping se
 After callback invocation, core completes pause and resumes for queued work. Reconnection
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
+
+## Thread parent-change notifications
+
+`PluginEvents.on("experimental_thread.parentChanged", handler)` delivers
+`{thread, previousParentThreadId}` after a thread's `parentThreadId` changes:
+a `threads.update` that moves or releases it (from the shared ownership seam,
+which also writes the ownership timeline entry and parent system messages), or
+core releasing an archived thread's unarchived children (one event per
+released child, after the archive transaction commits). An update that keeps
+the same parent delivers nothing. `thread` is the public DTO with the new
+parent. Threads below the moved one move with it and get no event; callers
+read them with `bb.sdk.threads.experimental_listDescendants`. Delivery is
+fire-and-forget like every other event, so a plugin that was not loaded never
+sees the move. Push-notifications uses it to publish the moved subtree's
+levels to open menus; before it, the only signal was the ownership timeline
+entry behind `experimental_thread.events`, which forced the plugin to remember
+each thread's last parent. Stabilization requires deciding whether a general
+`thread.updated` event should replace it, and a second consumer.
 
 ## Host deletion notifications
 

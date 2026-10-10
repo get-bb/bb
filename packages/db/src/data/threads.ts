@@ -2017,6 +2017,47 @@ export function listThreadAncestors(
   return result;
 }
 
+export function listThreadDescendants(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): Array<{ threadId: string; descendantIds: string[] }> {
+  if (threadIds.length === 0) return [];
+  const rows = db.all<{ id: string; parentId: string | null }>(sql`
+    WITH RECURSIVE tree(id, parent_id) AS (
+      SELECT id, parent_thread_id FROM threads
+      WHERE ${inArray(threads.id, [...threadIds])} AND deleted_at IS NULL
+      UNION
+      SELECT t.id, t.parent_thread_id FROM threads t JOIN tree ON t.parent_thread_id = tree.id
+      WHERE t.deleted_at IS NULL
+    )
+    SELECT id, parent_id AS parentId FROM tree
+  `);
+  const childIdsByParent = new Map<string, string[]>();
+  for (const row of rows) {
+    if (row.parentId === null) continue;
+    const siblings = childIdsByParent.get(row.parentId);
+    if (siblings === undefined) childIdsByParent.set(row.parentId, [row.id]);
+    else if (!siblings.includes(row.id)) siblings.push(row.id);
+  }
+  const knownIds = new Set(rows.map((row) => row.id));
+  const result: Array<{ threadId: string; descendantIds: string[] }> = [];
+  for (const threadId of new Set(threadIds)) {
+    if (!knownIds.has(threadId)) continue;
+    const visited = new Set([threadId]);
+    const descendantIds: string[] = [];
+    for (let index = -1; index < descendantIds.length; index += 1) {
+      const parentId = index < 0 ? threadId : descendantIds[index]!;
+      for (const childId of childIdsByParent.get(parentId) ?? []) {
+        if (visited.has(childId)) continue;
+        visited.add(childId);
+        descendantIds.push(childId);
+      }
+    }
+    result.push({ threadId, descendantIds });
+  }
+  return result;
+}
+
 function lifecycleThreadTreeIds(seed: SQL): SQL {
   return sql`(WITH RECURSIVE owned(id) AS (
     ${seed} UNION SELECT t.id FROM threads t JOIN owned ON t.lifecycle_owner_thread_id = owned.id
