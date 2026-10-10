@@ -96,6 +96,7 @@ describe("marketplace routes", () => {
     }
     if (!isRedirect(thrown)) throw new Error("The route did not redirect");
     expect(thrown.options).toMatchObject({ ...location, statusCode: 301 });
+    expect(thrown.headers.get("cache-control")).toBe("no-store");
   });
 
   it("returns notFound for paths deeper than a plugin or author", () => {

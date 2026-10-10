@@ -67,15 +67,22 @@ export function marketplaceAuthorRouteEntries(
       to: "/marketplace/author/$github",
       params: { github: canonicalGithub },
       statusCode: 301,
+      headers: UNCACHED_REDIRECT_HEADERS,
     });
   }
   return entries;
 }
+
+const UNCACHED_REDIRECT_HEADERS = { "cache-control": "no-store" };
 
 function pathSegmentCount(pathname: string): number {
   return pathname.split("/").filter((segment) => segment !== "").length;
 }
 
 function redirectToMarketplace() {
-  return redirect({ to: "/marketplace", statusCode: 301 });
+  return redirect({
+    to: "/marketplace",
+    statusCode: 301,
+    headers: UNCACHED_REDIRECT_HEADERS,
+  });
 }
