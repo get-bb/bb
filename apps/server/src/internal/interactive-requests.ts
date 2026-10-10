@@ -116,6 +116,9 @@ function requestChildThreadNeedsAttentionNotification(
     return;
   }
   const parentThreadId = childThread.parentThreadId;
+  const parentThread = getThread(deps.db, parentThreadId);
+  const parentIsChildThread =
+    parentThread !== null && isParentNotifiableChildThread(parentThread);
 
   deferAfterResponse({
     config: deps.config,
@@ -129,6 +132,7 @@ function requestChildThreadNeedsAttentionNotification(
       queueChildThreadNeedsAttentionNotificationBestEffort(deps, {
         blockerSummary: args.blockerSummary,
         childThread,
+        parentIsChildThread,
         parentThreadId,
       }),
   });

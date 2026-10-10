@@ -533,6 +533,78 @@ describe("internal interactive request lifecycle", () => {
     });
   });
 
+  it("asks a nested parent to raise an unresolved child blocker with the user", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-nested-child-needs-attention",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const parentEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/nested-needs-attention-parent",
+        projectId: project.id,
+      });
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/nested-needs-attention-child",
+        projectId: project.id,
+      });
+      const topThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
+        projectId: project.id,
+      });
+      const middleThread = seedThread(harness.deps, {
+        environmentId: parentEnvironment.id,
+        parentThreadId: topThread.id,
+        projectId: project.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: parentEnvironment.id,
+        inputText: "Coordinate nested work",
+        providerThreadId: "provider-nested-needs-attention-middle",
+        threadId: middleThread.id,
+      });
+      const leafThread = seedThread(harness.deps, {
+        environmentId: childEnvironment.id,
+        parentThreadId: middleThread.id,
+        projectId: project.id,
+      });
+
+      const response = await registerInteractiveRequest({
+        body: buildCommandApprovalInteractiveRequest({
+          sessionId: session.id,
+          suffix: "nested-child-needs-attention",
+          threadId: leafThread.id,
+        }),
+        harness,
+      });
+
+      expect(response.status).toBe(200);
+      const middleTurnCommand = await waitForQueuedCommand(
+        harness,
+        ({ command, row }) =>
+          row.state === "pending" &&
+          command.type === "turn.submit" &&
+          command.threadId === middleThread.id,
+      );
+      if (middleTurnCommand.command.type !== "turn.submit") {
+        throw new Error(
+          `Expected middle turn command, got ${middleTurnCommand.command.type}`,
+        );
+      }
+      const [textInput] = middleTurnCommand.command.input;
+      if (!textInput || textInput.type !== "text") {
+        throw new Error("Expected one text input");
+      }
+      expect(textInput.text).toContain(
+        "Otherwise, ask the user for the missing decision.",
+      );
+      expect(textInput.text).not.toContain("child threads banner");
+    });
+  });
+
   it("notifies a parent when a hidden delegated child needs attention", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

@@ -59,6 +59,7 @@ interface BuildChildThreadTurnStatusBatchInputArgs {
 interface BuildChildThreadNeedsAttentionInputArgs {
   blockerSummary: string | null;
   childThread: ChildThreadNotificationSource;
+  parentIsChildThread: boolean;
 }
 
 interface QueueChildThreadTurnNotificationArgs {
@@ -72,6 +73,7 @@ interface QueueChildThreadTurnNotificationArgs {
 interface QueueChildThreadNeedsAttentionNotificationArgs {
   blockerSummary: string | null;
   childThread: ChildThreadNotificationSource;
+  parentIsChildThread: boolean;
   parentThreadId: string;
 }
 
@@ -359,6 +361,7 @@ export function buildChildThreadNeedsAttentionInput(
       blockerSummary: formatChildThreadNeedsAttentionSummary(
         args.blockerSummary,
       ),
+      ...(args.parentIsChildThread ? { parentIsChildThread: "true" } : {}),
       threadMention: CHILD_THREAD_MENTION_SLOT,
     },
   );
@@ -506,6 +509,7 @@ export async function queueChildThreadNeedsAttentionNotificationBestEffort(
       input: buildChildThreadNeedsAttentionInput({
         blockerSummary: args.blockerSummary,
         childThread: args.childThread,
+        parentIsChildThread: args.parentIsChildThread,
       }),
       parentThreadId: args.parentThreadId,
       systemMessageKind: systemMessageKindForTemplate(

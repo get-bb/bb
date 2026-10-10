@@ -347,6 +347,7 @@ describe("child thread notifications", () => {
         id: "thr_child",
         title: "Backend cleanup",
       }),
+      parentIsChildThread: false,
     });
 
     expect(input).toHaveLength(1);
@@ -380,6 +381,7 @@ describe("child thread notifications", () => {
         id: "thr_child",
         title: "Backend cleanup",
       }),
+      parentIsChildThread: false,
     });
 
     const [textInput] = input;
