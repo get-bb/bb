@@ -221,7 +221,13 @@ export function AppSidebar({
           />
         </ThreadActionSurfaceVisibility>
       </SidebarContent>
-      <SidebarFooter className="relative pb-0">
+      <SidebarFooter
+        className={cn(
+          "relative p-0",
+          (isFooterCustomizing || pluginSidebarFooter.activeItem !== null) &&
+            "px-2 pt-2",
+        )}
+      >
         <OverflowFade placement="above" tone="sidebar" size="sm" />
         {isFooterCustomizing ? (
           <div className="max-h-[50svh] overflow-y-auto">
