@@ -1,4 +1,3 @@
-import { BB_OFFICIAL_COLLECTION_ID } from "@bb/domain/plugin-shelf-ranking";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
 import { usePluginCollectionParams } from "./usePluginCollectionParams";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -362,7 +361,7 @@ function BrowseShelf({
       description={shelf.description}
       hideDescriptionWhenNarrow
       leading={
-        shelf.key === `collection:${BB_OFFICIAL_COLLECTION_ID}` ? (
+        shelf.key === "collection:bb-official" ? (
           <span
             className="size-4 shrink-0 bg-current text-foreground"
             style={{ mask: `url(${bbLogoUrl}) center / contain no-repeat` }}

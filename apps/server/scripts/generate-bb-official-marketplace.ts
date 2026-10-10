@@ -12,7 +12,6 @@ import {
   pluginCatalogCategoryIdSchema,
   pluginPackageJsonSchema,
 } from "@bb/domain";
-import { BB_OFFICIAL_COLLECTION_ID } from "@bb/domain/plugin-shelf-ranking";
 import { z } from "zod";
 import {
   BUNDLED_MARKETPLACE_FILENAME,
@@ -280,7 +279,7 @@ export async function generateBbOfficialMarketplace(args: {
     categories: PLUGIN_CATALOG_CATEGORIES,
     collections: [
       {
-        id: BB_OFFICIAL_COLLECTION_ID,
+        id: "bb-official",
         displayName: "BB Official",
         pluginIds: entries.map((entry) => entry.id),
       },
