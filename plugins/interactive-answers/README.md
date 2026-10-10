@@ -30,6 +30,8 @@ devices and every open copy updates live. Inputs are context the agent can
 read, never approvals. Published answers are immutable; a revised answer gets
 a new ID. Answers, their state, and their event logs are stored in the plugin
 database, scoped to their thread, and removed when that thread is deleted.
+In a forked thread or side chat, an answer copied from the original thread
+loads from the original and shares its state.
 
 ## Agents can drive answers
 
@@ -42,8 +44,9 @@ bb interactive-answers do <id> set --args '{"people": 6}'
 
 Native documents expose `set` and `reset`. HTML answers expose their own
 actions with `window.answer.expose()`. `window.answer.send()` attaches data to
-the user's next message as a pill. Commands run in the copy used most
-recently, and the card shows "Agent · <action>" each time the agent acts.
+the user's next message as a pill. Commands run in the most recently used copy that offers the action, and the
+card shows "Agent · <action>" each time the agent acts. Output that comes from
+an answer's scripts is wrapped in `<answer-data>` so agents treat it as data.
 
 ## HTML answers
 

@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   definePluginApp,
+  experimental_usePluginId,
   useBbNavigate,
   useComposer,
   useRpc,
@@ -324,10 +325,12 @@ function Chart({
   );
 }
 
-const PLUGIN_ID = "bb--interactive-answers";
 const GESTURE_INTERVAL_MS = 1000;
 const MESSAGE_BURST = 40;
 const MESSAGES_PER_SECOND = 10;
+const ACTIVE_INTERVAL_MS = 2000;
+const FRAME_STATE_DELAY_MS = 100;
+const HEIGHT_DELAY_MS = 16;
 
 const UI_FONT_FAMILY = "Inter Variable";
 const LATIN_CODE_POINT = 0x41;
@@ -437,6 +440,15 @@ function HtmlAnswerView({
     );
   const latestState = useRef<{ state: unknown } | null>(null);
   const remoteVersion = useRef(initial.version);
+  const pluginId = experimental_usePluginId();
+  const budgets = useRef({
+    event: { tokens: MESSAGE_BURST, at: Date.now() },
+    actions: { tokens: MESSAGE_BURST, at: Date.now() },
+  });
+  const pendingHeight = useRef<number | null>(null);
+  const frameState = useRef<{ state?: unknown; base?: unknown } | null>(null);
+  const frameStateTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const lastActive = useRef(0);
   const live = useLiveAnswer({
     id,
     threadId,
@@ -507,16 +519,12 @@ function HtmlAnswerView({
   gestures.current = { send, open };
   const src = useMemo(
     () =>
-      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, version: initial.version, theme: readTheme() }))}`,
-    [id, threadId, initial.state, initial.version],
+      `/api/v1/plugins/${pluginId}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, version: initial.version, theme: readTheme() }))}`,
+    [pluginId, id, threadId, initial.state, initial.version],
   );
   useEffect(() => {
-    const budgets = {
-      event: { tokens: MESSAGE_BURST, at: Date.now() },
-      actions: { tokens: MESSAGE_BURST, at: Date.now() },
-    };
-    const spend = (kind: keyof typeof budgets) => {
-      const budget = budgets[kind];
+    const spend = (kind: keyof typeof budgets.current) => {
+      const budget = budgets.current[kind];
       const now = Date.now();
       budget.tokens = Math.min(
         MESSAGE_BURST,
@@ -557,21 +565,29 @@ function HtmlAnswerView({
         message.type === "height" &&
         typeof message.height === "number" &&
         Number.isFinite(message.height)
-      )
-        setHeight(Math.min(4000, Math.max(40, Math.ceil(message.height))));
+      ) {
+        const next = Math.min(4000, Math.max(40, Math.ceil(message.height)));
+        if (pendingHeight.current === null)
+          setTimeout(() => {
+            if (pendingHeight.current !== null)
+              setHeight(pendingHeight.current);
+            pendingHeight.current = null;
+          }, HEIGHT_DELAY_MS);
+        pendingHeight.current = next;
+      }
       if (message.type === "state") {
-        if (
-          typeof message.base === "number" &&
-          message.base < remoteVersion.current
-        ) {
-          post({
-            type: "state",
-            state: latestState.current?.state ?? null,
-            version: remoteVersion.current,
-          });
-        } else {
-          latestState.current = { state: message.state };
-          save(message.state);
+        frameState.current = message;
+        if (frameStateTimer.current === undefined)
+          frameStateTimer.current = setTimeout(
+            applyFrameState,
+            FRAME_STATE_DELAY_MS,
+          );
+      }
+      if (message.type === "active") {
+        const now = Date.now();
+        if (now - lastActive.current >= ACTIVE_INTERVAL_MS) {
+          lastActive.current = now;
+          active();
         }
       }
       if (
@@ -580,7 +596,6 @@ function HtmlAnswerView({
         spend("event")
       )
         emit(message.name, message.data);
-      if (message.type === "active") active();
       if (
         message.type === "send" &&
         typeof message.label === "string" &&
@@ -605,6 +620,26 @@ function HtmlAnswerView({
         });
       if (message.type === "open" && typeof message.url === "string")
         gestures.current.open(message.url);
+    };
+    const applyFrameState = () => {
+      frameStateTimer.current = undefined;
+      const message = frameState.current;
+      frameState.current = null;
+      if (message) {
+        if (
+          typeof message.base === "number" &&
+          message.base < remoteVersion.current
+        ) {
+          post({
+            type: "state",
+            state: latestState.current?.state ?? null,
+            version: remoteVersion.current,
+          });
+        } else {
+          latestState.current = { state: message.state };
+          save(message.state);
+        }
+      }
     };
     window.addEventListener("message", onMessage);
     let lastTheme = JSON.stringify(readTheme());
@@ -632,6 +667,10 @@ function HtmlAnswerView({
     scheme?.addEventListener("change", sendTheme);
     return () => {
       window.removeEventListener("message", onMessage);
+      if (frameStateTimer.current !== undefined) {
+        clearTimeout(frameStateTimer.current);
+        applyFrameState();
+      }
       observer.disconnect();
       scheme?.removeEventListener("change", sendTheme);
     };

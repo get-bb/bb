@@ -192,7 +192,9 @@ export function createLive(
     (
       db
         .prepare(
-          "SELECT seq, kind, data, created_at FROM answer_events WHERE answer_id = ? AND thread_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+          since === 0
+            ? "SELECT seq, kind, data, created_at FROM answer_events WHERE answer_id = ? AND thread_id = ? AND seq > ? ORDER BY seq DESC LIMIT ?"
+            : "SELECT seq, kind, data, created_at FROM answer_events WHERE answer_id = ? AND thread_id = ? AND seq > ? ORDER BY seq LIMIT ?",
         )
         .all(id, threadId, since, limit) as {
         seq: number;
@@ -200,12 +202,14 @@ export function createLive(
         data: string;
         created_at: number;
       }[]
-    ).map((r) => ({
-      seq: r.seq,
-      kind: r.kind,
-      at: r.created_at,
-      data: JSON.parse(r.data) as unknown,
-    }));
+    )
+      .sort((a, b) => a.seq - b.seq)
+      .map((r) => ({
+        seq: r.seq,
+        kind: r.kind,
+        at: r.created_at,
+        data: JSON.parse(r.data) as unknown,
+      }));
   const openClients = (threadId: string, id: string) => {
     const now = Date.now();
     return [...(clients.get(id)?.entries() ?? [])]
@@ -328,14 +332,15 @@ export function createLive(
       assertAnswer(threadId, id);
       actionName.parse(action);
       small.parse(args);
-      const [target] = openClients(threadId, id);
-      if (!target)
+      const open = openClients(threadId, id);
+      if (!open.length)
         throw new Error(
           "This answer is not open anywhere. Open its thread in bb, then try again.",
         );
-      if (!target.actions.includes(action))
+      const target = open.find((c) => c.actions.includes(action));
+      if (!target)
         throw new Error(
-          `Unknown action "${action}". Available: ${target.actions.join(", ") || "none"}.`,
+          `Unknown action "${action}". Available: ${[...new Set(open.flatMap((c) => c.actions))].join(", ") || "none"}.`,
         );
       const cmdId = randomUUID();
       log(threadId, id, "command", { action, args, to: target.clientId });

@@ -196,6 +196,7 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   backend.shared.version = 3;
   const view = renderSlot(app.messageDirectives[0]!, props, {
     rpc: backend.rpc,
+    pluginId: "bb--interactive-answers",
   });
   const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
   expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
@@ -221,7 +222,7 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   send({ type: "height", height: 512 });
   send({ type: "state", state: { step: 4 } });
   send({ type: "event", name: "step", data: 4 });
-  expect(frame.style.height).toBe("512px");
+  await waitFor(() => expect(frame.style.height).toBe("512px"));
   await waitFor(() => expect(backend.shared.state).toEqual({ step: 4 }));
   expect(backend.calls.find((c) => c.method === "event")?.input).toMatchObject({
     name: "step",
@@ -243,6 +244,21 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
         .actions,
     ).toEqual(["next"]),
   );
+  const count = (method: string, active?: boolean) =>
+    backend.calls.filter(
+      (c) =>
+        c.method === method &&
+        (active === undefined || c.input.active === active),
+    ).length;
+  const eventsBefore = count("event");
+  for (let i = 0; i < 100; i++) send({ type: "event", name: "spam", data: i });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(count("event") - eventsBefore).toBeLessThan(5);
+  const activeBefore = count("presence", true);
+  for (let i = 0; i < 100; i++) send({ type: "active" });
+  await waitFor(() => expect(count("presence", true)).toBe(activeBefore + 1));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(count("presence", true)).toBe(activeBefore + 1);
   const posted: unknown[] = [];
   frame.contentWindow!.postMessage = ((message: unknown) => {
     posted.push(message);
@@ -346,6 +362,7 @@ it("keeps a newer remote state when a frame saves the state it booted with", asy
   backend.shared.version = 3;
   const view = renderSlot(app.messageDirectives[0]!, props, {
     rpc: backend.rpc,
+    pluginId: "bb--interactive-answers",
   });
   const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
   expect(
@@ -383,8 +400,14 @@ it("keeps a newer remote state when a frame saves the state it booted with", asy
   );
   posted.length = 0;
   send({ type: "state", state: { step: 2 }, base: 3 });
-  expect(posted).toContainEqual(
-    expect.objectContaining({ type: "state", state: { step: 6 }, version: 4 }),
+  await waitFor(() =>
+    expect(posted).toContainEqual(
+      expect.objectContaining({
+        type: "state",
+        state: { step: 6 },
+        version: 4,
+      }),
+    ),
   );
   await new Promise((resolve) => setTimeout(resolve, 500));
   expect(backend.shared.state).toEqual({ step: 6 });
