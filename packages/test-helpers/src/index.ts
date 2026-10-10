@@ -25,3 +25,4 @@ export {
 } from "./provider-corpus.js";
 export type { CorpusThread } from "./provider-corpus.js";
 export { makeTempDir, makeTempDirSync } from "./temp-dir.js";
+export { createMemoryStorage } from "./memory-storage.js";
