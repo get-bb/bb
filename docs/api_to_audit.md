@@ -59,7 +59,7 @@ composer contributions, and whether commands need an availability callback.
 
 ## `settingsSection.experimental_page`
 
-`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. `experimental_page: "updates"` (SDK 0.6.38) mounts it on Settings → Updates below bb's update rows for every enabled plugin, in plugin id order, with the same boundaries; the What's new plugin (`bb--whats-new`) uses it for the release-notes block that the sidebar card links to at `/settings/updates#whats-new`. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile, plus ordering and visual weight on Updates when several plugins add a section, and whether Updates sections need a host-rendered heading or an anchor convention instead of plugin-owned element ids.
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. `experimental_page: "updates"` (SDK 0.6.39) mounts it on Settings → Updates below bb's update rows for every enabled plugin, in plugin id order, with the same boundaries; the What's new plugin (`bb--whats-new`) uses it for the release-notes block that the sidebar card links to at `/settings/updates#whats-new`. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile, plus ordering and visual weight on Updates when several plugins add a section, and whether Updates sections need a host-rendered heading or an anchor convention instead of plugin-owned element ids.
 
 ## `app.commands.register`
 
@@ -2525,7 +2525,7 @@ sibling overlays remain mounted.
 
 ## `app.slots.experimental_sidebarFooterSection` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** SDK 0.6.38. Renders a plugin component in the app sidebar
+**What it does.** SDK 0.6.39. Renders a plugin component in the app sidebar
 directly above the footer row, inside `PluginSlotMount`, with
 `{ isCompactViewport, onNavigate }`. Registration is `{ id, component }`.
 Registrations are additive and render in plugin id order. The host hides the

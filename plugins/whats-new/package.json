@@ -6,7 +6,7 @@
   "description": "A sidebar card after each bb update, and the release notes in Settings → Updates.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.38"
+    "bbPluginSdk": ">=0.6.39"
   },
   "bb": {
     "name": "What's new",
