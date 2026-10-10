@@ -890,7 +890,42 @@ describe("plugin service", () => {
     await tracked.stop();
   });
 
-  it("does not report plugin_installed during boot-time reconcile", async () => {
+  it("still turns a plugin on when its enable telemetry throws", async () => {
+    const service = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: {
+        ...createNoopTelemetryService(),
+        capture: (event) => {
+          if (event.name === "plugin_enabled") {
+            throw new Error("telemetry unavailable");
+          }
+        },
+      },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      bundledPlugins: [],
+      loadTimeoutMs: 2000,
+    });
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-enable-guarded",
+      serverSource: "export default function plugin() {}",
+    });
+    const installed = await service.installPath(rootDir);
+    await service.setEnabled(installed.id, false);
+    await expect(service.setEnabled(installed.id, true)).resolves.toMatchObject({
+      status: "running",
+    });
+    await service.stop();
+  });
+
+
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
     const rootDir = await writePlugin(workDir, {

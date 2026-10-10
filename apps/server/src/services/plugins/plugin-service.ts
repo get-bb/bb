@@ -1735,9 +1735,16 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const before = getInstalledPlugin(deps.db, id);
         if (!setInstalledPluginEnabled(deps.db, id, enabled)) return undefined;
         if (enabled && before && !before.enabled) {
-          deps.telemetry.capture(
-            pluginEnabledTelemetryEvent(id, provenanceForRow(before)),
-          );
+          try {
+            deps.telemetry.capture(
+              pluginEnabledTelemetryEvent(id, provenanceForRow(before)),
+            );
+          } catch (error) {
+            deps.logger.debug(
+              { err: error, pluginId: id },
+              "Plugin enable telemetry failed",
+            );
+          }
         }
         if (enabled) {
           const row = getInstalledPlugin(deps.db, id);
