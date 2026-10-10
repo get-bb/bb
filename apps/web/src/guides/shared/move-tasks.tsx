@@ -18,7 +18,7 @@ export type MoveTasksTool = {
   pause: string;
   checkOriginals: ReactNode;
   changeNote: string;
-  troubleshooting: GuideFaq[];
+  troubleshooting: [GuideFaq, ...GuideFaq[]];
   faq: GuideFaq[];
 };
 
