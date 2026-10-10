@@ -666,7 +666,7 @@ it("bounds packages, exports stored bytes verbatim, and rejects unsupported pack
 
   const pkg = JSON.parse(documented()) as Record<string, unknown>;
   for (const bad of [
-    { ...pkg, requires: { renderer: 2 } },
+    { ...pkg, requires: { renderer: 3 } },
     { ...pkg, format: "bb.playground-app/9" },
     { ...pkg, requires: { renderer: 1, network: true } },
     {
@@ -763,4 +763,111 @@ it("dispatches once when two calls race with the same request ID, and purging an
     note: "The app was deleted.",
   });
   await expect(callRpc("draftGet", { appId })).rejects.toThrow("No app");
+});
+
+const assetPackage = (extra: Record<string, unknown> = {}) => {
+  const code = 'export const greet = () => "hi";';
+  const data = Buffer.from(code).toString("base64");
+  return JSON.stringify({
+    format: PACKAGE_FORMAT,
+    version: "1",
+    title: "With assets",
+    summary: "",
+    content: {
+      kind: "html",
+      playground: {
+        title: "With assets",
+        html: '<script type="module">import { greet } from "greeter"; document.body.append(greet());</script>',
+      },
+    },
+    actions: { mode: "manual" },
+    requires: { renderer: 2 },
+    assets: {
+      imports: { greeter: "greeter.js" },
+      files: {
+        "greeter.js": {
+          type: "text/javascript",
+          sha256: createHash("sha256").update(code).digest("hex"),
+          bytes: Buffer.byteLength(code),
+          source: { package: "greeter@1.0.0", license: "MIT" },
+          data,
+        },
+      },
+    },
+    ...extra,
+  });
+};
+
+it("delivers pinned package assets only to the runs that own them, keeps them across forks and saves, and frees them with the thread", async () => {
+  const { host, forks } = tracked(setup({ thr_fork: "live" }));
+  const { callRpc, emitThreadEvent, fetchHttp } = host.harness.behavior;
+  await expect(
+    callRpc("appsImport", {
+      text: assetPackage({ requires: { renderer: 1 } }),
+    }),
+  ).rejects.toThrow("renderer 2");
+  const tampered = JSON.parse(assetPackage()) as {
+    assets: { files: Record<string, { data: string }> };
+  };
+  tampered.assets.files["greeter.js"]!.data = Buffer.from(
+    'export const greet = () => "pwned";',
+  ).toString("base64");
+  await expect(
+    callRpc("appsImport", { text: JSON.stringify(tampered) }),
+  ).rejects.toThrow();
+
+  const { appId } = (await callRpc("appsImport", { text: assetPackage() })) as {
+    appId: string;
+  };
+  const { runId } = (await callRpc("appsOpen", {
+    appId,
+    threadId: "thr_a",
+    fresh: false,
+  })) as { runId: string };
+  const frame = await fetchHttp("GET", `/frame?thread=thr_a&id=${runId}`);
+  const csp = frame.headers.get("content-security-policy") ?? "";
+  expect(csp).toContain("script-src 'unsafe-inline' blob:");
+  expect(csp).toContain("connect-src 'none'");
+  expect(csp).toContain("sandbox allow-scripts");
+  const body = await frame.text();
+  expect(body).toContain('id="pg-assets"');
+  expect(body).toContain(
+    Buffer.from('export const greet = () => "hi";').toString("base64"),
+  );
+
+  const legacy = await publish(host, "thr_a");
+  const plain = await fetchHttp("GET", `/frame?thread=thr_a&id=${legacy}`);
+  expect(plain.headers.get("content-security-policy")).not.toContain("blob:");
+  expect(await plain.text()).not.toContain("pg-assets");
+
+  forks.thr_fork = "thr_a";
+  await emitThreadEvent("thread.created", {
+    thread: makeThreadResponse({ id: "thr_fork", sourceThreadId: "thr_a" }),
+  });
+  expect(
+    await (await fetchHttp("GET", `/frame?thread=thr_fork&id=${runId}`)).text(),
+  ).toContain('id="pg-assets"');
+  const saved = (await callRpc("appsSave", {
+    answerId: runId,
+    threadId: "thr_fork",
+    name: "Saved with assets",
+  })) as { appId: string };
+  expect(
+    (await callRpc("appsExport", { appId: saved.appId })) as { text: string },
+  ).toMatchObject({ text: expect.stringContaining('"greeter.js"') });
+
+  await callRpc("appsTrash", { appId });
+  await callRpc("appsPurge", { appId, confirm: true });
+  expect(
+    await (await fetchHttp("GET", `/frame?thread=thr_a&id=${runId}`)).text(),
+  ).toContain('id="pg-assets"');
+  await emitThreadEvent("thread.deleted", {
+    thread: makeThreadResponse({ id: "thr_a" }),
+  });
+  await emitThreadEvent("thread.deleted", {
+    thread: makeThreadResponse({ id: "thr_fork" }),
+  });
+  expect(
+    (await fetchHttp("GET", `/frame?thread=thr_fork&id=${runId}`)).status,
+  ).toBe(404);
 });

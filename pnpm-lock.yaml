@@ -1602,9 +1602,6 @@ importers:
       bb-plugin-automations:
         specifier: workspace:*
         version: link:../../plugins/automations
-      bb-plugin-bb--playgrounds:
-        specifier: workspace:*
-        version: link:../../plugins/playgrounds
       bb-plugin-bb--prompt-library:
         specifier: workspace:*
         version: link:../../plugins/prompt-library

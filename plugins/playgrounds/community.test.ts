@@ -314,7 +314,7 @@ it("refuses tampered, oversized, unsupported, changed, and redirected packages b
   catalog.publish(
     "example/future",
     "1.0.0",
-    makePackage("1.0.0", stepper.html, { requires: { renderer: 2 } }),
+    makePackage("1.0.0", stepper.html, { requires: { renderer: 3 } }),
   );
   catalog.publish("example/oversized", "1.0.0", good);
   catalog.apps.find((a) => a.id === "example/oversized")!.versions[0]!.bytes =

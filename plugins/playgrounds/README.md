@@ -5,8 +5,10 @@ playground right in their message, built from native controls or a custom HTML
 interface, and changing an input updates it immediately without another model
 call.
 
-Playgrounds ships with bb but is not installed by default. Install it
-from Plugins or with `bb plugin install playgrounds`.
+Playgrounds is an optional Community plugin, not bundled with bb. Install it
+from the Community marketplace once it is listed there, or install a build of
+this directory with `bb plugin install <path>`. Its id is `playgrounds`, and it
+needs nothing beyond the published Plugin SDK.
 
 ## Use
 
@@ -68,6 +70,22 @@ Community browses a curated, Git-backed catalog set with the
 **Community catalog URL** setting (an https `index.json`). It is empty until a
 catalog is configured. Packages are checked against the catalog's SHA-256 and
 size before they are saved, and browsing never runs app code.
+
+## Package assets
+
+An app package can carry pinned JavaScript modules for libraries its HTML
+imports, such as a three.js build, instead of loading them from a CDN.
+`assets.imports` maps bare specifiers to `assets.files`. Each file records its
+type, size, SHA-256, source package, and license, and its bytes are embedded in
+the package, so they share its digest. Assets are limited to 8 files and
+2.5 MiB in total, inside the 4 MiB package limit. Packages with assets require
+renderer 2. Older Playgrounds builds refuse them instead of running them
+broken.
+
+A run keeps its own copy of its assets. The frame receives them inline, turns
+them into `blob:` module URLs, and installs an import map. Only frames of runs
+with assets allow `blob:` scripts; network access stays blocked for every
+frame.
 
 ## HTML playgrounds
 

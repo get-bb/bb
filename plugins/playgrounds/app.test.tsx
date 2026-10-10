@@ -196,11 +196,12 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   backend.shared.version = 3;
   const view = renderSlot(app.messageDirectives[0]!, props, {
     rpc: backend.rpc,
+    pluginId: "playgrounds",
   });
   const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
   expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
   expect(frame.getAttribute("src")).toContain(
-    `/api/v1/plugins/bb--playgrounds/http/frame?thread=thr_test&id=${answer.id}#`,
+    `/api/v1/plugins/playgrounds/http/frame?thread=thr_test&id=${answer.id}#`,
   );
   expect(
     JSON.parse(decodeURIComponent(frame.getAttribute("src")!.split("#")[1]))

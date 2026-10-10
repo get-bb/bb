@@ -22,10 +22,12 @@ import { bill, savings, stepper } from "./examples.js";
 import {
   buildWidgetDocument,
   fallbackTheme,
+  FRAME_ASSET_HEADERS,
   FRAME_HEADERS,
   FRAME_PATH,
 } from "./widget.js";
 import { createLive, liveRpc } from "./live.js";
+import { ASSET_MIGRATIONS, createAssetStore } from "./assets.js";
 import {
   compactDraft,
   createLibrary,
@@ -91,12 +93,14 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
     ...LIBRARY_MIGRATIONS,
     ...CATALOG_MIGRATIONS,
     ...VERSION_META_MIGRATIONS,
+    ...ASSET_MIGRATIONS,
   ]);
   const owned = db.prepare(
     "SELECT 1 FROM answers WHERE id = ? AND thread_id = ?",
   );
   const exists = (threadId: string, id: string) =>
     owned.get(idSchema.parse(id), threadSchema.parse(threadId)) !== undefined;
+  const assets = createAssetStore(db);
   const copyAnswers = db.transaction(
     (fromThreadId: string, toThreadId: string, id: string | null) => {
       db.prepare(
@@ -106,6 +110,7 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
         "INSERT OR IGNORE INTO answer_state (id, thread_id, state, version, updated_at) SELECT id, ?, state, version, updated_at FROM answer_state WHERE thread_id = ? AND (? IS NULL OR id = ?)",
       ).run(toThreadId, fromThreadId, id, id);
       library.copyRuns(fromThreadId, toThreadId, id);
+      assets.copy(fromThreadId, toThreadId, id);
     },
   );
   const lookupThread = (threadId: string): Promise<ThreadLink | null> =>
@@ -163,6 +168,7 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
     resolveFrom(threadSchema.parse(threadId), idSchema.parse(id), 0);
   const catalog = createCatalog({ db, library: () => library, ...deps });
   const library = createLibrary({
+    assets,
     bb,
     db,
     store: { resolve, get },
@@ -173,11 +179,13 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
     db.prepare("DELETE FROM answers WHERE thread_id = ?").run(threadId);
     live.removeThread(threadId);
     library.removeThread(threadId);
+    assets.remove(threadId, null);
   };
   return {
     live,
     library,
     catalog,
+    assets,
     get,
     resolve,
     copyFork(thread: ThreadLink & { id: string }) {
@@ -334,20 +342,23 @@ function setup(bb: BbPluginApi, deps: CatalogDeps): void {
   bb.http.route("GET", FRAME_PATH, async (c) => {
     try {
       const id = String(c.req.query("id") ?? "");
-      const answer = store.get(
-        await store.resolve(String(c.req.query("thread") ?? ""), id),
+      const owner = await store.resolve(
+        String(c.req.query("thread") ?? ""),
         id,
       );
+      const answer = store.get(owner, id);
       if (answer.kind !== "html")
         return new Response("Not an HTML playground", { status: 404 });
+      const packaged = store.assets.load(id, owner);
       return new Response(
         buildWidgetDocument({
           id: answer.id,
           html: answer.widget.html,
           state: null,
           theme: fallbackTheme,
+          assets: packaged,
         }),
-        { headers: FRAME_HEADERS },
+        { headers: packaged ? FRAME_ASSET_HEADERS : FRAME_HEADERS },
       );
     } catch {
       return new Response("This playground is unavailable.", { status: 404 });

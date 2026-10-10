@@ -160,6 +160,15 @@ without one shows "Agent actions not documented". A documented manifest is:
 }
 ```
 
+Apps that need a library (for example three.js) ship it as pinned package
+assets rather than a CDN import: add `assets: {imports: {"three/webgpu":
+"three.js"}, files: {"three.js": {type: "text/javascript", sha256, bytes,
+source: {package, license, url?}, data: <base64>}}}` and `requires: {renderer:
+2}`, then remove any `<script type="importmap">` from the HTML. Bundle each
+library into one self-contained ES module (no relative imports), keep its
+license notice in the file, and stay within 8 files and 2.5 MiB. Edit the
+package with `apps draft set --package-file <path> --host <host-id>`.
+
 Argument schemas use a small JSON-schema subset (`type`, `enum`, numeric and
 length bounds, `items`, `properties`, `required`, `additionalProperties`),
 nested at most six levels; `$ref` and other keywords are rejected. Use

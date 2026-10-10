@@ -3,12 +3,14 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   answerFromPackage,
   checkActionArgs,
+  ASSETS_RENDERER_VERSION,
   manifestSchema,
   packageFromAnswer,
   parsePackage,
   serializePackage,
   type AppPackage,
   type Manifest,
+  type PackageAssets,
   versionLabel,
 } from "./app-package.js";
 import { htmlAnswerSchema, parseDocument, type Answer } from "./model.js";
@@ -23,6 +25,7 @@ import {
   type CatalogListing,
 } from "./catalog-format.js";
 import type { createLive, Surface } from "./live.js";
+import type { AssetStore } from "./assets.js";
 
 type Db = ReturnType<BbPluginApi["storage"]["database"]>;
 type Live = ReturnType<typeof createLive>;
@@ -248,6 +251,18 @@ function sourceText(pkg: AppPackage) {
     ...(pkg.content.kind === "html" && pkg.content.playground.width
       ? [`width: ${pkg.content.playground.width}`]
       : []),
+    ...(pkg.assets
+      ? [
+          "assets:",
+          ...Object.entries(pkg.assets.imports).map(
+            ([specifier, name]) => `  import ${specifier} -> ${name}`,
+          ),
+          ...Object.entries(pkg.assets.files).map(
+            ([name, file]) =>
+              `  ${name}: ${file.bytes} bytes, sha256 ${file.sha256}, ${file.source.package} (${file.source.license})`,
+          ),
+        ]
+      : []),
     "actions:",
     ...JSON.stringify(pkg.actions, null, 2).split("\n"),
     "source:",
@@ -289,6 +304,7 @@ export function createLibrary({
   store,
   live,
   catalog,
+  assets,
   now = Date.now,
 }: {
   bb: BbPluginApi;
@@ -296,6 +312,7 @@ export function createLibrary({
   store: LibraryStore;
   live: Live;
   catalog: CatalogView;
+  assets: AssetStore;
   now?: () => number;
 }) {
   const appRow = (id: string) =>
@@ -582,6 +599,7 @@ export function createLibrary({
     current: AppPackage,
     edit: DraftEdit,
     fromAnswer: Answer | null,
+    fromAssets: PackageAssets | null,
   ): AppPackage => {
     if (edit.packageText !== undefined) {
       const { pkg } = parsePackage(edit.packageText);
@@ -600,6 +618,17 @@ export function createLibrary({
                 current.content.kind === "html"
                   ? current.actions
                   : { mode: "undocumented" },
+              ...(fromAssets
+                ? {
+                    assets: fromAssets,
+                    requires: {
+                      renderer: Math.max(
+                        next.requires.renderer,
+                        ASSETS_RENDERER_VERSION,
+                      ),
+                    },
+                  }
+                : {}),
             }
           : {
               ...next,
@@ -892,6 +921,7 @@ export function createLibrary({
     db.prepare(
       "DELETE FROM answer_events WHERE answer_id = ? AND thread_id = ?",
     ).run(runId, threadId);
+    assets.remove(threadId, runId);
   });
   const tombstone = (
     requestId: string,
@@ -941,6 +971,7 @@ export function createLibrary({
       kind,
       now(),
     );
+    if (pkg.assets) assets.save(runId, threadId, pkg.assets);
     return runId;
   };
   const manifestFor = (runId: string, threadId: string) => {
@@ -1020,11 +1051,11 @@ export function createLibrary({
           description,
         },
         () => {
-          const pkg = packageFromAnswer(answer, {
-            title: name,
-            summary: description,
-            version: "1",
-          });
+          const pkg = packageFromAnswer(
+            answer,
+            { title: name, summary: description, version: "1" },
+            assets.load(input.answerId, owner),
+          );
           return insertApp(pkg, serializePackage(pkg), {
             name,
             description,
@@ -1091,11 +1122,11 @@ export function createLibrary({
         const answer = store.get(owner, input.answerId);
         source = {
           pkg: {
-            ...packageFromAnswer(answer, {
-              title: current.title,
-              summary: current.summary,
-              version: "1",
-            }),
+            ...packageFromAnswer(
+              answer,
+              { title: current.title, summary: current.summary, version: "1" },
+              assets.load(input.answerId, owner) ?? current.assets,
+            ),
             ...(current.author ? { author: current.author } : {}),
             ...(current.license ? { license: current.license } : {}),
             ...(current.origin ? { origin: current.origin } : {}),
@@ -1567,15 +1598,20 @@ export function createLibrary({
       expectedRevision: number;
       edit: DraftEdit;
     }) {
-      const fromAnswer = input.edit.fromAnswer
-        ? store.get(
-            await store.resolve(
-              input.edit.fromAnswer.threadId,
-              input.edit.fromAnswer.answerId,
-            ),
+      const fromOwner = input.edit.fromAnswer
+        ? await store.resolve(
+            input.edit.fromAnswer.threadId,
             input.edit.fromAnswer.answerId,
           )
         : null;
+      const fromAnswer =
+        input.edit.fromAnswer && fromOwner
+          ? store.get(fromOwner, input.edit.fromAnswer.answerId)
+          : null;
+      const fromAssets =
+        input.edit.fromAnswer && fromOwner
+          ? assets.load(input.edit.fromAnswer.answerId, fromOwner)
+          : null;
       return db.transaction(() => {
         const app = requireApp(input.appId);
         const draft = draftRow(app.id);
@@ -1590,7 +1626,7 @@ export function createLibrary({
             `The draft changed since you loaded it (now revision ${draft.revision}). Reload it and reapply your edit.`,
           );
         const current = parsePackage(draft.package).pkg;
-        const next = applyEdit(current, input.edit, fromAnswer);
+        const next = applyEdit(current, input.edit, fromAnswer, fromAssets);
         const text = serializePackage({ ...next, version: "draft" });
         parsePackage(text);
         db.prepare(

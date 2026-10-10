@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 import { z } from "zod";
 import {
   documentSchema,
@@ -8,7 +10,11 @@ import {
 } from "./model.js";
 
 export const PACKAGE_FORMAT = "bb.playground-app/1";
-export const RENDERER_VERSION = 1;
+export const RENDERER_VERSION = 2;
+export const ASSETS_RENDERER_VERSION = 2;
+export const MAX_ASSET_BYTES = 2.5 * 1024 * 1024;
+const MAX_ASSET_FILES = 8;
+const MAX_ASSET_IMPORTS = 32;
 export const MAX_PACKAGE_BYTES = 4 * 1024 * 1024;
 const MAX_SCHEMA_DEPTH = 6;
 
@@ -133,6 +139,54 @@ const origin = z
     license: z.string().max(64).optional(),
   })
   .strict();
+const assetName = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[a-z0-9][a-z0-9._-]*\.m?js$/);
+const assetFile = z
+  .object({
+    type: z.literal("text/javascript"),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    bytes: z.number().int().min(1).max(MAX_ASSET_BYTES),
+    source: z
+      .object({
+        package: z.string().min(1).max(100),
+        license: z.string().min(1).max(64),
+        url: z.string().url().startsWith("https://").max(300).optional(),
+      })
+      .strict(),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/),
+  })
+  .strict();
+export const assetsSchema = z
+  .object({
+    imports: z
+      .record(
+        z
+          .string()
+          .min(1)
+          .max(120)
+          .regex(/^[A-Za-z@][\w@./-]*$/),
+        assetName,
+      )
+      .refine(
+        (value) =>
+          Object.keys(value).length >= 1 &&
+          Object.keys(value).length <= MAX_ASSET_IMPORTS,
+        `Declare 1 to ${MAX_ASSET_IMPORTS} imports.`,
+      ),
+    files: z
+      .record(assetName, assetFile)
+      .refine(
+        (value) =>
+          Object.keys(value).length >= 1 &&
+          Object.keys(value).length <= MAX_ASSET_FILES,
+        `Include 1 to ${MAX_ASSET_FILES} files.`,
+      ),
+  })
+  .strict();
+export type PackageAssets = z.infer<typeof assetsSchema>;
 const content = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("html"), playground: htmlAnswerSchema }).strict(),
   z.object({ kind: z.literal("document"), document: z.unknown() }).strict(),
@@ -155,6 +209,7 @@ export const packageSchema = z
     author: author.optional(),
     license: z.string().trim().min(1).max(64).optional(),
     origin: origin.optional(),
+    assets: assetsSchema.optional(),
   })
   .strict();
 export type AppPackage = Omit<z.infer<typeof packageSchema>, "content"> & {
@@ -214,6 +269,34 @@ export function documentActions(doc: AnswerDocument): Manifest {
   };
 }
 
+function checkAssets(assets: PackageAssets, renderer: number) {
+  if (renderer < ASSETS_RENDERER_VERSION)
+    throw new Error(
+      `Packages with assets must require renderer ${ASSETS_RENDERER_VERSION} or newer.`,
+    );
+  let total = 0;
+  for (const [specifier, name] of Object.entries(assets.imports))
+    if (!Object.hasOwn(assets.files, name))
+      throw new Error(`Import ${specifier} names a missing asset ${name}.`);
+  for (const [name, file] of Object.entries(assets.files)) {
+    const bytes = Buffer.from(file.data, "base64");
+    if (bytes.toString("base64") !== file.data)
+      throw new Error(`Asset ${name} is not canonical base64.`);
+    if (bytes.byteLength !== file.bytes)
+      throw new Error(
+        `Asset ${name} is ${bytes.byteLength} bytes, not ${file.bytes}.`,
+      );
+    if (createHash("sha256").update(bytes).digest("hex") !== file.sha256)
+      throw new Error(`Asset ${name} does not match its SHA-256.`);
+    if (!isUtf8(bytes)) throw new Error(`Asset ${name} is not UTF-8 text.`);
+    total += bytes.byteLength;
+  }
+  if (total > MAX_ASSET_BYTES)
+    throw new Error(
+      `Assets are limited to ${MAX_ASSET_BYTES} bytes in total; these are ${total}.`,
+    );
+}
+
 export function parsePackage(text: string): {
   pkg: AppPackage;
   bytes: number;
@@ -238,6 +321,7 @@ export function parsePackage(text: string): {
         .join("; ")}`,
     );
   const value = parsed.data;
+  if (value.assets) checkAssets(value.assets, value.requires.renderer);
   if (value.actions.mode === "documented") {
     const names = new Set<string>();
     for (const action of value.actions.actions) {
@@ -282,6 +366,7 @@ export function serializePackage(pkg: AppPackage): string {
 export function packageFromAnswer(
   answer: Answer,
   meta: { title: string; summary: string; version: string },
+  assets?: PackageAssets | null,
 ): AppPackage {
   if (answer.kind === "document")
     return {
@@ -291,7 +376,7 @@ export function packageFromAnswer(
       summary: meta.summary,
       content: { kind: "document", document: answer.document },
       actions: documentActions(answer.document),
-      requires: { renderer: RENDERER_VERSION },
+      requires: { renderer: 1 },
     };
   return {
     format: PACKAGE_FORMAT,
@@ -300,7 +385,8 @@ export function packageFromAnswer(
     summary: meta.summary,
     content: { kind: "html", playground: answer.widget },
     actions: { mode: "undocumented" },
-    requires: { renderer: RENDERER_VERSION },
+    requires: { renderer: assets ? ASSETS_RENDERER_VERSION : 1 },
+    ...(assets ? { assets } : {}),
   };
 }
 

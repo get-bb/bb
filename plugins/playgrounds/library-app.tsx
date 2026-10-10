@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  experimental_usePluginId,
   experimental_useSidebarThreads,
   useBbNavigate,
   useRpc,
@@ -20,7 +21,6 @@ import {
 import type { rpcContract } from "./server.js";
 import type { Answer } from "./model.js";
 import type { LiveSnapshot } from "./use-live.js";
-import { PLUGIN_ID } from "./widget.js";
 
 type AnswerViewType = ComponentType<{
   answer: Answer;
@@ -31,7 +31,7 @@ type AnswerViewType = ComponentType<{
 
 const PANEL_PATH = "apps";
 const PANEL_ACTION = "app";
-const INTENT_KEY = `${PLUGIN_ID}:open-intent`;
+const INTENT_KEY = "playgrounds:open-intent";
 const INTENT_EVENT = "playgrounds-open-intent";
 const INTENT_TTL_MS = 2 * 60 * 1000;
 const LICENSES = [
@@ -1570,6 +1570,7 @@ type CommunityState = {
 
 function Community() {
   const rpc = useRpc<typeof rpcContract>();
+  const pluginId = experimental_usePluginId();
   const navigate = useBbNavigate();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<CommunityState | null>(null);
@@ -1672,7 +1673,7 @@ function Community() {
                     className="pga-preview"
                     alt=""
                     loading="lazy"
-                    src={`/api/v1/plugins/${PLUGIN_ID}/http/community/preview?id=${encodeURIComponent(app.id)}`}
+                    src={`/api/v1/plugins/${pluginId}/http/community/preview?id=${encodeURIComponent(app.id)}`}
                   />
                 )}
                 <div className="pga-card-main">

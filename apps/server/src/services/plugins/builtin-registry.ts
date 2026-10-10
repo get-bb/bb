@@ -226,11 +226,6 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "playgrounds",
-    pluginId: "bb--playgrounds",
-    defaultEnabled: true,
-  },
-  {
     name: "docs",
     pluginId: "simple-notes",
     defaultEnabled: true,

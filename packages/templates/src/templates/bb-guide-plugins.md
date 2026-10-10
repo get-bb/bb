@@ -26,13 +26,6 @@ or press **Ctrl+R** in a composer to search, preview, star, and insert prompts.
 history; `bb prompts list [--json]`, `bb prompts star <text...> [--json]`, and
 `bb prompts unstar <id> [--json]` manage starred text and mentions. History restores text, mentions, and attachments into an empty composer. Inserting never sends a message.
 
-The bundled Playgrounds plugin is not installed by default. Install it
-with `bb plugin install playgrounds` or from Plugins. Agents publish
-playgrounds, answers you can play with such as calculators, guides, and
-previews, with `bb playgrounds publish --document-stdin | --playground-stdin`;
-`guide` and `example <savings|bill|stepper>` print the schema and starters, and
-`state`, `watch`, `actions`, and `do` read and drive a published playground.
-
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.

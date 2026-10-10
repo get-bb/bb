@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   definePluginApp,
+  experimental_usePluginId,
   useBbNavigate,
   useComposer,
   useRpc,
@@ -33,7 +34,6 @@ import { useLiveAnswer, type LiveSnapshot } from "./use-live.js";
 import {
   fallbackTheme,
   FRAME_PATH,
-  PLUGIN_ID,
   THEME_TOKENS,
   WIDGET_MESSAGE_SOURCE,
   type WidgetTheme,
@@ -522,10 +522,11 @@ function HtmlAnswerView({
   };
   const gestures = useRef({ send, open });
   gestures.current = { send, open };
+  const pluginId = experimental_usePluginId();
   const src = useMemo(
     () =>
-      `/api/v1/plugins/${PLUGIN_ID}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, version: initial.version, theme: readTheme() }))}`,
-    [id, threadId, initial.state, initial.version],
+      `/api/v1/plugins/${pluginId}/http${FRAME_PATH}?thread=${encodeURIComponent(threadId)}&id=${encodeURIComponent(id)}#${encodeURIComponent(JSON.stringify({ state: initial.state, version: initial.version, theme: readTheme() }))}`,
+    [pluginId, id, threadId, initial.state, initial.version],
   );
   useEffect(() => {
     const budgets = {

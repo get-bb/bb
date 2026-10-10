@@ -1,4 +1,4 @@
-export const PLUGIN_ID = "bb--playgrounds";
+import type { PackageAssets } from "./app-package.js";
 export const WIDGET_MESSAGE_SOURCE = "playground";
 export const THEME_TOKENS = [
   "background",
@@ -196,18 +196,51 @@ export const FRAME_HEADERS = {
   "referrer-policy": "no-referrer",
   "cache-control": "private, max-age=3600",
 };
+export const FRAME_ASSET_HEADERS = {
+  ...FRAME_HEADERS,
+  "content-security-policy": FRAME_CSP.replace(
+    "script-src 'unsafe-inline'",
+    "script-src 'unsafe-inline' blob:",
+  ),
+};
+const ASSET_LOADER = String.raw`(() => {
+  const source = document.getElementById("pg-assets");
+  const assets = JSON.parse(source.textContent);
+  source.remove();
+  const urls = {};
+  for (const [name, data] of Object.entries(assets.files)) {
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    urls[name] = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" }));
+  }
+  const map = document.createElement("script");
+  map.type = "importmap";
+  map.textContent = JSON.stringify({ imports: Object.fromEntries(Object.entries(assets.imports).map(([specifier, name]) => [specifier, urls[name]])) });
+  document.currentScript.after(map);
+})();`;
 
 export function buildWidgetDocument({
   id,
   html,
   state,
   theme,
+  assets = null,
 }: {
   id: string;
   html: string;
   state: unknown;
   theme: WidgetTheme;
+  assets?: PackageAssets | null;
 }): string {
   const script = bridge(id, state, theme).replaceAll("</", "<\\/");
-  return `<!doctype html><html data-scheme="${theme.scheme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${KIT}</style><script>${script}</script></head><body>${html}</body></html>`;
+  const loader = assets
+    ? `<script type="application/json" id="pg-assets">${JSON.stringify({
+        imports: assets.imports,
+        files: Object.fromEntries(
+          Object.entries(assets.files).map(([name, file]) => [name, file.data]),
+        ),
+      }).replaceAll("<", "\\u003c")}</script><script>${ASSET_LOADER}</script>`
+    : "";
+  return `<!doctype html><html data-scheme="${theme.scheme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${KIT}</style><script>${script}</script>${loader}</head><body>${html}</body></html>`;
 }
