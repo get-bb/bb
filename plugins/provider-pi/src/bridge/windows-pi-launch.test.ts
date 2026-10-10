@@ -214,19 +214,16 @@ describe("Windows Pi npm launch", () => {
       expect(
         resolvePiProcessLaunch({ Path: first.root }, childEnv, first.pkg),
       ).toEqual({ command: node, args: [second.cli] });
-      expect(
-        resolvePiProcessLaunch(
-          {
-            BB_PI_BRIDGE_COMMAND: first.shim,
-            BB_PI_BRIDGE_ARGS: '["--flag","value with spaces"]',
-          },
-          childEnv,
-          first.pkg,
-        ),
-      ).toEqual({
-        command: node,
-        args: [first.cli, "--flag", "value with spaces"],
-      });
+      const explicit = resolvePiProcessLaunch(
+        {
+          BB_PI_BRIDGE_COMMAND: first.shim,
+          BB_PI_BRIDGE_ARGS: '["--flag","value with spaces"]',
+        },
+        childEnv,
+        first.pkg,
+      );
+      expect(await realpath(explicit.command)).toBe(await realpath(node));
+      expect(explicit.args).toEqual([first.cli, "--flag", "value with spaces"]);
       expect(resolvePiProcessLaunch({}, {}, first.pkg)).toEqual({
         command: "pi",
         args: [],
