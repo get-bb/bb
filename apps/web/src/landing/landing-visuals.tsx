@@ -8,7 +8,7 @@ import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
 import SidebarLeftIcon from "@hugeicons/core-free-icons/SidebarLeftIcon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
@@ -29,11 +29,14 @@ import {
 import type { CtaPlacement, DesktopPlatform } from "./site";
 import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
 
+const DESKTOP_PLATFORMS: DesktopPlatform[] = ["macos", "windows", "linux"];
+
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
   const download = DESKTOP_DOWNLOADS[platform];
-  const otherPlatform: DesktopPlatform =
-    platform === "macos" ? "linux" : "macos";
+  const otherPlatforms = DESKTOP_PLATFORMS.filter(
+    (other) => other !== platform,
+  );
   return (
     <div className="install-options">
       <div className="install-actions">
@@ -46,14 +49,18 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
           <SendToComputerButton placement={placement} />
           <span className="install-note install-note-desktop">
             {download.note}
-            {" · "}
-            <DownloadLink
-              placement={placement}
-              platform={otherPlatform}
-              className="install-note-link"
-            >
-              {DESKTOP_DOWNLOADS[otherPlatform].label}
-            </DownloadLink>
+            {otherPlatforms.map((other) => (
+              <Fragment key={other}>
+                {" · "}
+                <DownloadLink
+                  placement={placement}
+                  platform={other}
+                  className="install-note-link"
+                >
+                  {DESKTOP_DOWNLOADS[other].label}
+                </DownloadLink>
+              </Fragment>
+            ))}
           </span>
           <span className="install-note install-note-touch">
             bb runs on macOS, Windows, and Linux
@@ -72,14 +79,7 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
             }
           />
           <span className="install-note">
-            <DownloadLink
-              placement={placement}
-              platform="windows"
-              className="install-note-link"
-            >
-              {DESKTOP_DOWNLOADS.windows.label}
-            </DownloadLink>
-            , Intel Macs &amp; remote machines
+            Intel Macs &amp; remote machines
           </span>
         </span>
       </div>
