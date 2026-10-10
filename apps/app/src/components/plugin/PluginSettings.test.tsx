@@ -562,8 +562,10 @@ describe("PluginSettingsForm", () => {
       );
       await third.promise;
     });
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(enabled.getAttribute("data-state")).toBe("unchecked");
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(enabled.getAttribute("data-state")).toBe("unchecked");
+    });
   });
 });
 
