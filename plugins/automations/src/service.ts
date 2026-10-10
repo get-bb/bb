@@ -25,6 +25,7 @@ import {
   resolvePermissionMode,
 } from "./provider-permissions.js";
 import { publishAutomationChange } from "./realtime.js";
+import { recordAutomationCreated } from "./telemetry.js";
 import { isPrintableWorkingDirectoryPath } from "./limits.js";
 import {
   AUTOMATION_RUNS_LIMIT_MAX,
@@ -651,6 +652,11 @@ export function createAutomationService(args: {
         throw error;
       }
       publishAutomationChange(bb, payload.projectId, "automations-changed");
+      void recordAutomationCreated(bb, {
+        trigger: payload.trigger.triggerType,
+        mode: payload.execution.mode,
+        origin: payload.origin,
+      });
       return withResolvedWorkingDirectory({
         bb,
         pluginDataDir,

@@ -321,6 +321,26 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
       properties: tipTelemetryPropertiesSchema,
     })
     .strict(),
+  z
+    .object({
+      name: z.literal("automation_created"),
+      properties: z
+        .object({
+          trigger: z.enum(["schedule", "once"]),
+          mode: z.enum(["agent", "script"]),
+          origin: z.enum(["human", "app", "agent"]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("split_view_opened"),
+      properties: z
+        .object({ panes: z.number().int().min(2).max(8) })
+        .strict(),
+    })
+    .strict(),
 ]);
 export type RecordTelemetryEventRequest = z.infer<
   typeof recordTelemetryEventRequestSchema
