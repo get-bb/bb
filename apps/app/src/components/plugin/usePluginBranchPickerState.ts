@@ -1,3 +1,4 @@
+import type { ProjectSource } from "@bb/domain";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useCallback, useMemo } from "react";
 import { useProjectSourceBranches } from "@/hooks/queries/project-queries";
@@ -8,6 +9,17 @@ import type {
   UseCheckoutStateArgs,
 } from "@get-bb/plugin-sdk";
 
+export function resolvePluginBranchHostId(
+  hostId: string | null,
+  sources: readonly ProjectSource[] | undefined,
+): string | null {
+  const source =
+    sources?.find(
+      (source) => source.type === "local_path" && source.isDefault,
+    ) ?? sources?.find((source) => source.type === "local_path");
+  return hostId ?? source?.hostId ?? null;
+}
+
 export function usePluginBranches({
   hostId,
   projectId,
@@ -16,14 +28,11 @@ export function usePluginBranches({
   const navigation = useSidebarNavigation({
     enabled: hostId === null && projectId !== null,
   });
-  const sources = navigation.data?.projects.find(
-    (project) => project.id === projectId,
-  )?.sources;
-  const source =
-    sources?.find(
-      (source) => source.type === "local_path" && source.isDefault,
-    ) ?? sources?.find((source) => source.type === "local_path");
-  const branchHostId = hostId ?? source?.hostId ?? null;
+  const branchHostId = resolvePluginBranchHostId(
+    hostId,
+    navigation.data?.projects.find((project) => project.id === projectId)
+      ?.sources,
+  );
   const enabled = branchHostId !== null && projectId !== null;
   const branchesQuery = useProjectSourceBranches(
     projectId ?? undefined,

@@ -1,43 +1,51 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useIsRouteNavigationPending } from "./app-route-anchor";
 
 export const ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS = 120;
 export const ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS = 320;
 
-export function useDelayedBusyIndicator(busy: boolean): boolean {
+export function createDelayedBusyIndicator(
+  setVisible: (visible: boolean) => void,
+): { update: (busy: boolean) => (() => void) | undefined } {
+  let shownAt: number | null = null;
+  return {
+    update: (busy) => {
+      if (busy) {
+        if (shownAt !== null) return;
+        const revealTimeout = setTimeout(() => {
+          shownAt = Date.now();
+          setVisible(true);
+        }, ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS);
+        return () => clearTimeout(revealTimeout);
+      }
+
+      if (shownAt === null) {
+        setVisible(false);
+        return;
+      }
+
+      const remainingMs =
+        ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS - (Date.now() - shownAt);
+      if (remainingMs <= 0) {
+        shownAt = null;
+        setVisible(false);
+        return;
+      }
+
+      const hideTimeout = setTimeout(() => {
+        shownAt = null;
+        setVisible(false);
+      }, remainingMs);
+      return () => clearTimeout(hideTimeout);
+    },
+  };
+}
+
+function useDelayedBusyIndicator(busy: boolean): boolean {
   const [visible, setVisible] = useState(false);
-  const shownAtRef = useRef<number | null>(null);
+  const [indicator] = useState(() => createDelayedBusyIndicator(setVisible));
 
-  useEffect(() => {
-    if (busy) {
-      if (shownAtRef.current !== null) return;
-      const revealTimeout = window.setTimeout(() => {
-        shownAtRef.current = Date.now();
-        setVisible(true);
-      }, ROUTE_NAVIGATION_INDICATOR_REVEAL_DELAY_MS);
-      return () => window.clearTimeout(revealTimeout);
-    }
-
-    const shownAt = shownAtRef.current;
-    if (shownAt === null) {
-      setVisible(false);
-      return;
-    }
-
-    const remainingMs =
-      ROUTE_NAVIGATION_INDICATOR_MIN_VISIBLE_MS - (Date.now() - shownAt);
-    if (remainingMs <= 0) {
-      shownAtRef.current = null;
-      setVisible(false);
-      return;
-    }
-
-    const hideTimeout = window.setTimeout(() => {
-      shownAtRef.current = null;
-      setVisible(false);
-    }, remainingMs);
-    return () => window.clearTimeout(hideTimeout);
-  }, [busy]);
+  useEffect(() => indicator.update(busy), [busy, indicator]);
 
   return visible;
 }

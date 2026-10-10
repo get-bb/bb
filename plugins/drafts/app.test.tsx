@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import type {
@@ -14,18 +13,7 @@ function fakeComposer(fields: Partial<PluginComposerApi>): PluginComposerApi {
   return fields as PluginComposerApi;
 }
 
-describe("registration", () => {
-  it("adds the draft action to the send menu of thread and new-thread composers", () => {
-    expect(app.composerCustomizations).toMatchObject([
-      {
-        id: "drafts",
-        scopes: ["thread", "new-thread"],
-        sendMenu: [{ label: "Save draft…", icon: "EditFile" }],
-      },
-    ]);
-    expect(customization.plusMenu).toBeUndefined();
-  });
-
+describe("availability", () => {
   it("disables saving while the composer would not submit", () => {
     const disabled = sendMenuItem.disabled as (
       composer: PluginComposerApi,

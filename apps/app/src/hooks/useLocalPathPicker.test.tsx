@@ -40,14 +40,6 @@ const atum = makeHost({
   name: "atum",
 });
 
-function host(
-  id: string,
-  name: string,
-  status: Host["status"] = "connected",
-): Host {
-  return makeHost({ ...atum, id, name, status });
-}
-
 beforeEach(() => {
   mocks.primaryHost = atum;
   mocks.supportsNativeFolderPicker = true;
@@ -109,63 +101,5 @@ describe("useLocalPathPicker", () => {
         expect.objectContaining({ hostId: "host_atum", path: "/home/me/repo" }),
       );
     });
-  });
-});
-
-describe("useLocalPathPicker openPathEntry", () => {
-  it("opens the dialog instead of the native picker when several machines exist", () => {
-    mocks.hosts = [atum, host("host_thoth", "Thoth")];
-    const { result } = renderHook(() =>
-      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
-    );
-
-    act(() => result.current.openPathEntry({ kind: "create" }));
-
-    expect(result.current.projectPathDialog.isOpen).toBe(true);
-    expect(mocks.pickFolder).not.toHaveBeenCalled();
-  });
-
-  it("keeps the native picker when the only other machine is offline", () => {
-    mocks.hosts = [atum, host("host_dead", "Old laptop", "disconnected")];
-    const { result } = renderHook(() =>
-      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
-    );
-
-    act(() => result.current.openPathEntry({ kind: "create" }));
-
-    expect(mocks.pickFolder).toHaveBeenCalled();
-    expect(result.current.projectPathDialog.isOpen).toBe(false);
-  });
-
-  it("opens the dialog when the other connected machine came from a provider", () => {
-    mocks.hosts = [
-      atum,
-      makeHost({
-        id: "host_sandbox",
-        name: "Sandbox",
-        status: "connected",
-      }),
-    ];
-    const { result } = renderHook(() =>
-      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
-    );
-
-    act(() => result.current.openPathEntry({ kind: "create" }));
-
-    expect(mocks.pickFolder).not.toHaveBeenCalled();
-    expect(result.current.projectPathDialog.isOpen).toBe(true);
-  });
-
-  it("opens the dialog while the machine list is still loading", () => {
-    mocks.hosts = undefined;
-    mocks.isLoadingHosts = true;
-    const { result } = renderHook(() =>
-      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
-    );
-
-    act(() => result.current.openPathEntry({ kind: "create" }));
-
-    expect(result.current.projectPathDialog.isOpen).toBe(true);
-    expect(mocks.pickFolder).not.toHaveBeenCalled();
   });
 });

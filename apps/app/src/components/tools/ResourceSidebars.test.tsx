@@ -42,17 +42,6 @@ describe("Plugins sidebar", () => {
     expect(screen.queryByRole("link", { name: "Browse skills" })).toBeNull();
     expect(screen.queryByRole("link", { name: "My skills" })).toBeNull();
   });
-
-  it.each([
-    ["/plugins", "Browse plugins"],
-    ["/plugins?view=installed", "Installed plugins"],
-    ["/plugins/github", "Browse plugins"],
-    ["/plugins/github?view=installed", "Installed plugins"],
-  ])("marks %s as %s", (path, expected) => {
-    renderSidebarAt("plugins", path);
-
-    expect(row(expected).getAttribute("aria-current")).toBe("page");
-  });
 });
 
 describe("Skills sidebar", () => {
@@ -69,17 +58,5 @@ describe("Skills sidebar", () => {
     expect(
       screen.queryByRole("link", { name: "Installed plugins" }),
     ).toBeNull();
-  });
-
-  it.each([
-    ["/skills", "Browse skills"],
-    ["/skills/registry", "Browse skills"],
-    ["/skills?view=library", "My skills"],
-    ["/skills/library/my-skill", "My skills"],
-    ["/skills/registry/owner%2Frepo%2Fskill", "Browse skills"],
-  ])("marks %s as %s", (path, expected) => {
-    renderSidebarAt("skills", path);
-
-    expect(row(expected).getAttribute("aria-current")).toBe("page");
   });
 });

@@ -1,29 +1,14 @@
-// @vitest-environment jsdom
-
-import type { Active, ClientRect, Modifier } from "@dnd-kit/core";
+import type { Active, ClientRect } from "@dnd-kit/core";
 import { describe, expect, it } from "vitest";
-import { createSnapSidebarThreadDragChipToCursor } from "./sidebarThreadDragChip.js";
+import { createSidebarThreadDragChipSnap } from "./sidebarThreadDragChip.js";
 
-type ModifierArgs = Parameters<Modifier>[0];
+type Snap = ReturnType<typeof createSidebarThreadDragChipSnap>;
 
 const ACTIVE: Active = {
   id: "thr_1",
   data: { current: undefined },
   rect: { current: { initial: null, translated: null } },
 };
-
-const MODIFIER_CONTEXT = {
-  active: ACTIVE,
-  containerNodeRect: null,
-  over: null,
-  overlayNodeRect: null,
-  scrollableAncestorRects: [],
-  scrollableAncestors: [],
-  windowRect: null,
-} satisfies Omit<
-  ModifierArgs,
-  "activatorEvent" | "activeNodeRect" | "draggingNodeRect" | "transform"
->;
 
 function rect(left: number, top: number, width: number, height: number) {
   return {
@@ -41,7 +26,7 @@ const CHIP_WIDTH = 100;
 const CHIP_HEIGHT = 24;
 
 function chipCenterFor(
-  modifier: Modifier,
+  snap: Snap,
   {
     transform,
     draggingNodeRect,
@@ -54,14 +39,11 @@ function chipCenterFor(
     pointerDown: { x: number; y: number };
   },
 ) {
-  const result = modifier({
-    ...MODIFIER_CONTEXT,
-    activatorEvent: new MouseEvent("mousedown", {
-      clientX: pointerDown.x,
-      clientY: pointerDown.y,
-    }),
+  const result = snap({
+    active: ACTIVE,
     activeNodeRect,
     draggingNodeRect,
+    pointer: pointerDown,
     transform: { ...transform, scaleX: 1, scaleY: 1 },
   });
   return {
@@ -72,12 +54,12 @@ function chipCenterFor(
 
 describe("sidebar thread drag chip", () => {
   it("centers the chip on the pointer", () => {
-    const modifier = createSnapSidebarThreadDragChipToCursor();
+    const snap = createSidebarThreadDragChipSnap();
     const pointerDown = { x: 130, y: 22 };
     const transform = { x: 15, y: 30 };
 
     expect(
-      chipCenterFor(modifier, {
+      chipCenterFor(snap, {
         transform,
         draggingNodeRect: rect(
           ROW_RECT.left,
@@ -94,7 +76,7 @@ describe("sidebar thread drag chip", () => {
   });
 
   it("ignores the in-flight transform baked into the measured overlay rect", () => {
-    const modifier = createSnapSidebarThreadDragChipToCursor();
+    const snap = createSidebarThreadDragChipSnap();
     const pointerDown = { x: 130, y: 22 };
     const transform = { x: 25, y: 300 };
     const measuredWhileDragging = rect(
@@ -105,7 +87,7 @@ describe("sidebar thread drag chip", () => {
     );
 
     expect(
-      chipCenterFor(modifier, {
+      chipCenterFor(snap, {
         transform,
         draggingNodeRect: measuredWhileDragging,
         pointerDown,
@@ -117,7 +99,7 @@ describe("sidebar thread drag chip", () => {
   });
 
   it("keeps the origin fixed when the dragged row is remeasured mid-drag", () => {
-    const modifier = createSnapSidebarThreadDragChipToCursor();
+    const snap = createSidebarThreadDragChipSnap();
     const pointerDown = { x: 130, y: 22 };
     const draggingNodeRect = rect(
       ROW_RECT.left,
@@ -125,7 +107,7 @@ describe("sidebar thread drag chip", () => {
       CHIP_WIDTH,
       CHIP_HEIGHT,
     );
-    chipCenterFor(modifier, {
+    chipCenterFor(snap, {
       transform: { x: 0, y: 0 },
       draggingNodeRect,
       pointerDown,
@@ -133,7 +115,7 @@ describe("sidebar thread drag chip", () => {
 
     const transform = { x: 4, y: 120 };
     expect(
-      chipCenterFor(modifier, {
+      chipCenterFor(snap, {
         transform,
         draggingNodeRect,
         activeNodeRect: rect(ROW_RECT.left, ROW_RECT.top + 64, 244, 28),
@@ -146,14 +128,14 @@ describe("sidebar thread drag chip", () => {
   });
 
   it("re-anchors on the next drag after the previous one ends", () => {
-    const modifier = createSnapSidebarThreadDragChipToCursor();
+    const snap = createSidebarThreadDragChipSnap();
     const draggingNodeRect = rect(
       ROW_RECT.left,
       ROW_RECT.top,
       CHIP_WIDTH,
       CHIP_HEIGHT,
     );
-    chipCenterFor(modifier, {
+    chipCenterFor(snap, {
       transform: { x: 0, y: 0 },
       draggingNodeRect,
       pointerDown: { x: 130, y: 22 },
@@ -161,12 +143,11 @@ describe("sidebar thread drag chip", () => {
 
     const idleTransform = { x: 9, y: 9, scaleX: 1, scaleY: 1 };
     expect(
-      modifier({
-        ...MODIFIER_CONTEXT,
+      snap({
         active: null,
-        activatorEvent: null,
         activeNodeRect: null,
         draggingNodeRect: null,
+        pointer: null,
         transform: idleTransform,
       }),
     ).toBe(idleTransform);
@@ -174,12 +155,8 @@ describe("sidebar thread drag chip", () => {
     const secondRow = rect(8, 200, 244, 28);
     const pointerDown = { x: 140, y: 214 };
     const transform = { x: 12, y: 40 };
-    const result = modifier({
-      ...MODIFIER_CONTEXT,
-      activatorEvent: new MouseEvent("mousedown", {
-        clientX: pointerDown.x,
-        clientY: pointerDown.y,
-      }),
+    const result = snap({
+      active: ACTIVE,
       activeNodeRect: secondRow,
       draggingNodeRect: rect(
         secondRow.left,
@@ -187,6 +164,7 @@ describe("sidebar thread drag chip", () => {
         CHIP_WIDTH,
         CHIP_HEIGHT,
       ),
+      pointer: pointerDown,
       transform: { ...transform, scaleX: 1, scaleY: 1 },
     });
 
@@ -200,11 +178,10 @@ describe("sidebar thread drag chip", () => {
   });
 
   it("preserves keyboard positioning without pointer coordinates", () => {
-    const modifier = createSnapSidebarThreadDragChipToCursor();
+    const snap = createSidebarThreadDragChipSnap();
     const transform = { x: 15, y: 30, scaleX: 1, scaleY: 1 };
-    const result = modifier({
-      ...MODIFIER_CONTEXT,
-      activatorEvent: new KeyboardEvent("keydown", { key: " " }),
+    const result = snap({
+      active: ACTIVE,
       activeNodeRect: ROW_RECT,
       draggingNodeRect: rect(
         ROW_RECT.left,
@@ -212,6 +189,7 @@ describe("sidebar thread drag chip", () => {
         CHIP_WIDTH,
         CHIP_HEIGHT,
       ),
+      pointer: null,
       transform,
     });
 

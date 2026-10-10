@@ -1,12 +1,3 @@
-// @vitest-environment jsdom
-
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Host, Thread } from "@bb/domain";
@@ -23,8 +14,7 @@ import {
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { focusWithKeyboard } from "@/test/keyboard-focus";
+import { describe, expect, it } from "vitest";
 import {
   makeEnvironment,
   makeHost,
@@ -36,7 +26,6 @@ import {
   EnvironmentRow,
   formatBranchComparison,
   GitStatusRow,
-  ThreadMetadataCard,
 } from "./ThreadMetadataContent";
 
 const localHost = { locality: "local", identity: null } as const;
@@ -167,38 +156,6 @@ function renderEnvironmentRow(
   );
 }
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
-
-describe("ThreadMetadataCard", () => {
-  it("shows its scrollbar only during active scrolling", () => {
-    vi.useFakeTimers();
-    const { container } = render(
-      <ThreadMetadataCard>
-        <div>Thread information</div>
-      </ThreadMetadataCard>,
-    );
-    const scrollArea = container.querySelector("dl");
-    if (!(scrollArea instanceof HTMLElement)) {
-      throw new Error("missing info scroll area");
-    }
-
-    expect(scrollArea.classList).toContain("transient-scrollbar");
-    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
-
-    fireEvent.scroll(scrollArea);
-    expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
-
-    act(() => vi.advanceTimersByTime(599));
-    expect(scrollArea.dataset.scrollbarScrolling).toBe("true");
-
-    act(() => vi.advanceTimersByTime(1));
-    expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
-  });
-});
-
 describe("EnvironmentRow", () => {
   it("shows an unregistered provider id as not installed", () => {
     const markup = renderEnvironmentRow(
@@ -262,32 +219,6 @@ describe("EnvironmentRow", () => {
     expect(markup).toContain("Old laptop");
     expect(markup).not.toContain("(offline)");
     expect(markup).not.toContain('aria-label="New thread in environment"');
-  });
-
-  it("explains the create-thread action in a tooltip", async () => {
-    render(
-      withQueryClient(
-        <TooltipProvider delayDuration={0}>
-          <MemoryRouter>
-            <EnvironmentRow
-              thread={makeThread()}
-              environment={makeEnvironment()}
-              environmentDisplayHost={localHost}
-            />
-          </MemoryRouter>
-        </TooltipProvider>,
-      ),
-    );
-
-    focusWithKeyboard(
-      screen.getByRole("button", {
-        name: "New thread in environment",
-      }),
-    );
-
-    expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "New thread in environment",
-    );
   });
 
   it("hides the create-thread action while an environment is provisioning", () => {

@@ -588,7 +588,7 @@ function serializedThreadMentionId(token: string): string | null {
   return token.startsWith(prefix) ? token.slice(prefix.length) : null;
 }
 
-function threadTitleTextSegments(
+export function threadTitleTextSegments(
   title: string,
   resources: ThreadTitleMentionResources,
 ): ThreadTitleTextSegment[] {

@@ -12,7 +12,12 @@ export interface CodeThemePair {
   light: string;
 }
 
-const appliedThemeByPool = new WeakMap<WorkerPoolManager, CodeThemePair>();
+type ThemeablePierreWorkerPool = Pick<WorkerPoolManager, "setRenderOptions">;
+
+const appliedThemeByPool = new WeakMap<
+  ThemeablePierreWorkerPool,
+  CodeThemePair
+>();
 
 function areCodeThemePairsEqual(
   left: CodeThemePair,
@@ -31,17 +36,25 @@ export function useSyncPierreWorkerPoolTheme(
   useEffect(() => {
     registerResolvedCodeThemeFiles(registerCustomTheme);
     if (pool == null) return;
-    const applied = appliedThemeByPool.get(pool) ?? constructedTheme;
-    if (!appliedThemeByPool.has(pool)) {
-      appliedThemeByPool.set(pool, constructedTheme);
-    }
-    if (areCodeThemePairsEqual(applied, theme)) return;
-    appliedThemeByPool.set(pool, theme);
-    void pool.setRenderOptions({ theme }).catch((error: unknown) => {
-      console.error(
-        "Failed to apply the code theme to the Pierre worker pool",
-        error,
-      );
-    });
+    syncPierreWorkerPoolTheme(pool, constructedTheme, theme);
   }, [constructedTheme, pool, resolved, theme]);
+}
+
+export function syncPierreWorkerPoolTheme(
+  pool: ThemeablePierreWorkerPool,
+  constructedTheme: CodeThemePair,
+  theme: CodeThemePair,
+): void {
+  const applied = appliedThemeByPool.get(pool) ?? constructedTheme;
+  if (!appliedThemeByPool.has(pool)) {
+    appliedThemeByPool.set(pool, constructedTheme);
+  }
+  if (areCodeThemePairsEqual(applied, theme)) return;
+  appliedThemeByPool.set(pool, theme);
+  void pool.setRenderOptions({ theme }).catch((error: unknown) => {
+    console.error(
+      "Failed to apply the code theme to the Pierre worker pool",
+      error,
+    );
+  });
 }

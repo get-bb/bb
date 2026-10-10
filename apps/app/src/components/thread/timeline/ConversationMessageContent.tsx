@@ -52,10 +52,7 @@ import {
   USER_MESSAGE_CHAR_CAP,
 } from "@bb/client-core";
 import { turnRequestLabel } from "@bb/client-core";
-import {
-  repairStreamingMarkdownTail,
-  splitStreamingMarkdown,
-} from "./streaming-markdown-split.js";
+import { resolveStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import {
   MessageActionBar,
@@ -512,14 +509,10 @@ function AssistantConversationMessage({
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
-  const streamingSplit = useMemo(
-    () => (streaming ? splitStreamingMarkdown(text) : null),
+  const { split: streamingSplit, liveMarkdown } = useMemo(
+    () => resolveStreamingMarkdown(text, streaming),
     [streaming, text],
   );
-  const liveMarkdown = useMemo(() => {
-    const tail = streamingSplit?.tail ?? text;
-    return streaming ? repairStreamingMarkdownTail(tail) : tail;
-  }, [streaming, streamingSplit, text]);
   const linkRouting = useMemo(
     () =>
       buildMarkdownMessageLinkRouting({

@@ -16,6 +16,11 @@ import {
   writeQuerySnapshot,
 } from "./query-snapshot.js";
 import { useTasksRefresh } from "./refresh.js";
+import {
+  createTaskSignalScheduler,
+  type InvalidationChannel,
+  type TaskSignal,
+} from "./signal-scheduler.js";
 
 export function useTasksRpc() {
   return useRpc<TasksRpcContract>();
@@ -111,95 +116,6 @@ export async function patchTasks(
   return next;
 }
 
-const INVALIDATION_CHANNELS = [
-  "tasks:changed",
-  "projects:changed",
-  "comments:changed",
-  "threads:changed",
-] as const;
-
-type InvalidationChannel = (typeof INVALIDATION_CHANNELS)[number];
-
-export interface TaskSignal {
-  channel: InvalidationChannel;
-  taskId: string | null;
-}
-
-const SIGNAL_BATCH_MS = 50;
-
-function signalTaskId(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const taskId: unknown = Reflect.get(payload, "taskId");
-  return typeof taskId === "string" ? taskId : null;
-}
-
-export function signalTaskIds(
-  signals: readonly TaskSignal[],
-  channel: InvalidationChannel,
-): string[] {
-  const ids = new Set<string>();
-  for (const signal of signals) {
-    if (signal.channel === channel && signal.taskId !== null) {
-      ids.add(signal.taskId);
-    }
-  }
-  return [...ids];
-}
-
-function useSignalBatches(
-  channels: readonly InvalidationChannel[],
-  relevantTaskIds: readonly string[] | undefined,
-  onBatch: (signals: TaskSignal[]) => void,
-): void {
-  const ref = useRef({ channels, relevantTaskIds, onBatch });
-  ref.current = { channels, relevantTaskIds, onBatch };
-  const pending = useRef(new Map<string, TaskSignal>());
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flush = useCallback(() => {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-    if (document.visibilityState === "hidden") return;
-    const batch = [...pending.current.values()];
-    pending.current = new Map();
-    if (batch.length > 0) ref.current.onBatch(batch);
-  }, []);
-  useEffect(() => {
-    document.addEventListener("visibilitychange", flush);
-    return () => {
-      document.removeEventListener("visibilitychange", flush);
-      if (timer.current !== null) clearTimeout(timer.current);
-      timer.current = null;
-      pending.current = new Map();
-    };
-  }, [flush]);
-  const push = useCallback(
-    (channel: InvalidationChannel, payload: unknown) => {
-      if (!ref.current.channels.includes(channel)) return;
-      const taskId = signalTaskId(payload);
-      const relevant = ref.current.relevantTaskIds;
-      if (
-        relevant !== undefined &&
-        taskId !== null &&
-        !relevant.includes(taskId)
-      ) {
-        return;
-      }
-      pending.current.set(`${channel}\n${taskId ?? ""}`, { channel, taskId });
-      if (timer.current !== null) return;
-      timer.current = setTimeout(flush, SIGNAL_BATCH_MS);
-    },
-    [flush],
-  );
-  useRealtime("tasks:changed", (payload) => push("tasks:changed", payload));
-  useRealtime("projects:changed", (payload) =>
-    push("projects:changed", payload),
-  );
-  useRealtime("comments:changed", (payload) =>
-    push("comments:changed", payload),
-  );
-  useRealtime("threads:changed", (payload) => push("threads:changed", payload));
-}
-
 interface TasksQuery<T> {
   data: T | undefined;
   error: string | null;
@@ -251,12 +167,37 @@ export function useTasksQuery<T>(
   }));
   const seqRef = useRef(0);
   const dataRef = useRef(state.data);
-  const inFlightRef = useRef(0);
-  const latestFetchRef = useRef<Promise<void>>(Promise.resolve());
-  const refetchQueuedRef = useRef(false);
   const mountedRef = useRef(true);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const patchChainRef = useRef<Promise<void>>(Promise.resolve());
+  const signalStateRef = useRef<{
+    channels: readonly InvalidationChannel[];
+    relevantTaskIds: readonly string[] | undefined;
+    refresh: () => Promise<void>;
+    preparePatch: (signals: TaskSignal[]) => (() => Promise<void>) | null;
+  }>({
+    channels,
+    relevantTaskIds: options.relevantTaskIds,
+    refresh: () => Promise.resolve(),
+    preparePatch: () => null,
+  });
+  const [scheduler] = useState(() =>
+    createTaskSignalScheduler({
+      channels: () => signalStateRef.current.channels,
+      relevantTaskIds: () => signalStateRef.current.relevantTaskIds,
+      isHidden: () => document.visibilityState === "hidden",
+      setTimer: (callback, delayMs) => {
+        const timer = setTimeout(callback, delayMs);
+        return () => clearTimeout(timer);
+      },
+      refetch: () => {
+        void signalStateRef.current.refresh();
+      },
+      refetchAfterFetch: () => {
+        if (mountedRef.current) void refreshRef.current();
+      },
+      preparePatch: (signals) => signalStateRef.current.preparePatch(signals),
+    }),
+  );
   const previousGenerationRef = useRef(generation);
   const depsKey = JSON.stringify(deps);
   const dataDepsKeyRef = useRef(depsKey);
@@ -271,10 +212,8 @@ export function useTasksQuery<T>(
       dataRef.current = partial;
       setState({ data: partial, error: null, isLoading: true });
     };
-    inFlightRef.current += 1;
-    const fetching = fetcherRef
-      .current(rpc, publish)
-      .then(
+    return scheduler.trackFetch(() =>
+      fetcherRef.current(rpc, publish).then(
         (data) => {
           if (snapshot !== undefined) {
             writeQuerySnapshot(snapshot.name, data, snapshotRevision);
@@ -294,16 +233,9 @@ export function useTasksQuery<T>(
             isLoading: false,
           }));
         },
-      )
-      .finally(() => {
-        inFlightRef.current -= 1;
-        if (inFlightRef.current > 0 || !refetchQueuedRef.current) return;
-        refetchQueuedRef.current = false;
-        if (mountedRef.current) void refreshRef.current();
-      });
-    latestFetchRef.current = fetching;
-    return fetching;
-  }, [rpc, depsKey]);
+      ),
+    );
+  }, [rpc, depsKey, scheduler]);
   useEffect(() => {
     refreshRef.current = refresh;
   }, [refresh]);
@@ -329,45 +261,54 @@ export function useTasksQuery<T>(
       finish();
     };
   }, [refresh, generation, beginGenerationWork, endGenerationWork]);
-  const onSignals = useCallback(
-    (signals: TaskSignal[]) => {
-      const apply = applySignalsRef.current;
-      if (
-        apply === undefined ||
-        signals.some((signal) => signal.taskId === null)
-      ) {
-        if (inFlightRef.current > 0) {
-          refetchQueuedRef.current = true;
-        } else {
-          void refresh();
-        }
+  const preparePatch = (signals: TaskSignal[]) => {
+    const apply = applySignalsRef.current;
+    if (apply === undefined) return null;
+    const seq = seqRef.current;
+    return async () => {
+      const current = dataRef.current;
+      if (seq !== seqRef.current || current === undefined) return;
+      let next: T | null;
+      try {
+        next = await apply(rpc, current, signals);
+      } catch {
+        next = null;
+      }
+      if (seq !== seqRef.current) return;
+      if (next === null) {
+        void refresh();
         return;
       }
-      const seq = seqRef.current;
-      const fetchInFlight = latestFetchRef.current;
-      patchChainRef.current = patchChainRef.current.then(async () => {
-        await fetchInFlight.catch(() => undefined);
-        const current = dataRef.current;
-        if (seq !== seqRef.current || current === undefined) return;
-        let next: T | null;
-        try {
-          next = await apply(rpc, current, signals);
-        } catch {
-          next = null;
-        }
-        if (seq !== seqRef.current) return;
-        if (next === null) {
-          void refresh();
-          return;
-        }
-        if (next === current) return;
-        dataRef.current = next;
-        setState((previous) => ({ ...previous, data: next }));
-      });
-    },
-    [refresh, rpc],
+      if (next === current) return;
+      dataRef.current = next;
+      setState((previous) => ({ ...previous, data: next }));
+    };
+  };
+  signalStateRef.current = {
+    channels,
+    relevantTaskIds: options.relevantTaskIds,
+    refresh,
+    preparePatch,
+  };
+  useEffect(() => {
+    document.addEventListener("visibilitychange", scheduler.flush);
+    return () => {
+      document.removeEventListener("visibilitychange", scheduler.flush);
+      scheduler.dispose();
+    };
+  }, [scheduler]);
+  useRealtime("tasks:changed", (payload) =>
+    scheduler.push("tasks:changed", payload),
   );
-  useSignalBatches(channels, options.relevantTaskIds, onSignals);
+  useRealtime("projects:changed", (payload) =>
+    scheduler.push("projects:changed", payload),
+  );
+  useRealtime("comments:changed", (payload) =>
+    scheduler.push("comments:changed", payload),
+  );
+  useRealtime("threads:changed", (payload) =>
+    scheduler.push("threads:changed", payload),
+  );
   return { ...state, refresh };
 }
 

@@ -104,6 +104,7 @@ export function activeWorkLabel(
 interface LabelOverflow {
   visible: Label[];
   hidden: Label[];
+  hiddenTitle: string;
 }
 
 export function partitionLabels(
@@ -111,11 +112,13 @@ export function partitionLabels(
   maxVisible: number,
 ): LabelOverflow {
   if (labels.length <= maxVisible) {
-    return { visible: [...labels], hidden: [] };
+    return { visible: [...labels], hidden: [], hiddenTitle: "" };
   }
+  const hidden = labels.slice(maxVisible);
   return {
     visible: labels.slice(0, maxVisible),
-    hidden: labels.slice(maxVisible),
+    hidden,
+    hiddenTitle: hidden.map((label) => label.name).join(", "),
   };
 }
 

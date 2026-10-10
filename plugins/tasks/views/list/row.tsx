@@ -53,17 +53,14 @@ function LabelChipRow({
   labels: readonly Label[];
   maxVisible: number;
 }) {
-  const { visible, hidden } = partitionLabels(labels, maxVisible);
+  const { visible, hidden, hiddenTitle } = partitionLabels(labels, maxVisible);
   return (
     <>
       {visible.map((label) => (
         <LabelChip key={label.id} label={label} />
       ))}
       {hidden.length > 0 ? (
-        <span
-          title={hidden.map((label) => label.name).join(", ")}
-          className={`${RAIL_CHIP_CLASS} tabular-nums`}
-        >
+        <span title={hiddenTitle} className={`${RAIL_CHIP_CLASS} tabular-nums`}>
           +{hidden.length}
         </span>
       ) : null}

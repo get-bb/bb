@@ -24,14 +24,29 @@ function outlineInset(isFilled: boolean): number {
   return isFilled ? 0 : OUTLINE_WIDTH / 2;
 }
 
+export function splitPaneMiniMapSlotGeometry(slot: PluginSidebarSplitPane) {
+  const inset = outlineInset(slot.isMe);
+  return {
+    x: offset(slot.rect.x) + inset,
+    y: offset(slot.rect.y) + inset,
+    width: Math.max(extent(slot.rect.width) - 2 * inset, 0),
+    height: Math.max(extent(slot.rect.height) - 2 * inset, 0),
+    strokeWidth: slot.isMe ? 0 : OUTLINE_WIDTH,
+  };
+}
+
+export function splitPaneMiniMapRepresentsFocusedPane(
+  slots: readonly PluginSidebarSplitPane[],
+): boolean {
+  return slots.some((slot) => slot.isMe && slot.isFocused);
+}
+
 export function SplitPaneMiniMap({
   slots,
   label,
   isWorking = false,
 }: SplitPaneMiniMapProps) {
-  const representsFocusedPane = slots.some(
-    (slot) => slot.isMe && slot.isFocused,
-  );
+  const representsFocusedPane = splitPaneMiniMapRepresentsFocusedPane(slots);
 
   return (
     <svg
@@ -48,15 +63,15 @@ export function SplitPaneMiniMap({
       aria-label={label}
     >
       {slots.map((slot) => {
-        const inset = outlineInset(slot.isMe);
+        const geometry = splitPaneMiniMapSlotGeometry(slot);
         return (
           <rect
             key={slot.paneId}
-            x={offset(slot.rect.x) + inset}
-            y={offset(slot.rect.y) + inset}
-            width={Math.max(extent(slot.rect.width) - 2 * inset, 0)}
-            height={Math.max(extent(slot.rect.height) - 2 * inset, 0)}
-            strokeWidth={slot.isMe ? 0 : OUTLINE_WIDTH}
+            x={geometry.x}
+            y={geometry.y}
+            width={geometry.width}
+            height={geometry.height}
+            strokeWidth={geometry.strokeWidth}
             className={cn(
               slot.isMe
                 ? slot.isFocused

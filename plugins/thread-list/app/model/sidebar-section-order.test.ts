@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyVisibleSidebarSectionOrder,
   buildSidebarEntitySectionId,
   insertSidebarSectionAfter,
   normalizeSidebarSectionOrder,
@@ -142,5 +143,45 @@ describe("insertSidebarSectionAfter", () => {
         sectionId: created,
       }),
     ).toBeNull();
+  });
+});
+
+describe("applyVisibleSidebarSectionOrder", () => {
+  it("retains hidden, pinned, and disconnected slots when visible groups move", () => {
+    expect(
+      applyVisibleSidebarSectionOrder({
+        storedOrder: [
+          "pinned",
+          "project:a",
+          "project:b",
+          "project:offline",
+          "project:c",
+          "threads",
+        ],
+        nextVisibleOrder: ["project:c", "project:a", "threads"],
+        entitySectionIds: ["project:a", "project:b", "project:c"],
+        entityKind: "project",
+        legacyEntityAnchor: "projects",
+      }),
+    ).toEqual([
+      "pinned",
+      "project:c",
+      "project:b",
+      "project:offline",
+      "project:a",
+      "threads",
+    ]);
+  });
+
+  it("moves only the reordered sections and leaves pinned and Threads in place", () => {
+    expect(
+      applyVisibleSidebarSectionOrder({
+        storedOrder: ["pinned", "section:a", "section:b", "threads"],
+        nextVisibleOrder: ["section:b", "section:a"],
+        entitySectionIds: ["section:a", "section:b"],
+        entityKind: "section",
+        legacyEntityAnchor: "sections",
+      }),
+    ).toEqual(["pinned", "section:b", "section:a", "threads"]);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPluginMentionSuggestions } from "./pluginMentionSuggestions";
-import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-queries";
+import type { PluginMentionSearchGroup } from "./queries/plugin-contribution-requests";
 
 const GROUPS: PluginMentionSearchGroup[] = [
   {

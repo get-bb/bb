@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
@@ -65,9 +65,32 @@ export function useProjectDisplayName(
   return data.projects.find((project) => project.id === projectId)?.name;
 }
 
-interface SidebarNavigationThreadSelection<T> {
+export interface SidebarNavigationThreadSelection<T> {
   data: T | undefined;
   isBootstrapPending: boolean;
+}
+
+export function sidebarNavigationThreadSelectionQueryOptions<T>(
+  selectFromNavigation: (navigation: SidebarBootstrapResponse) => T,
+) {
+  return queryOptions<SidebarBootstrapResponse, Error, T>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    enabled: false,
+    select: selectFromNavigation,
+  });
+}
+
+export function toSidebarNavigationThreadSelection<T>(result: {
+  data: T | undefined;
+  isFetching: boolean;
+}): SidebarNavigationThreadSelection<T> {
+  const data = result.data;
+  return {
+    data,
+    isBootstrapPending: data === undefined && result.isFetching,
+  };
 }
 
 export function useSidebarNavigationThreadSelection<T>(
@@ -78,16 +101,9 @@ export function useSidebarNavigationThreadSelection<T>(
       select(listSidebarNavigationThreads(navigation)),
     [select],
   );
-  const result = useQuery<SidebarBootstrapResponse, Error, T>({
-    queryKey: sidebarNavigationQueryKey(),
-    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
-    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
-    enabled: false,
-    select: selectFromNavigation,
-  });
-  const data = result.data;
-  return {
-    data,
-    isBootstrapPending: data === undefined && result.isFetching,
-  };
+  return toSidebarNavigationThreadSelection(
+    useQuery(
+      sidebarNavigationThreadSelectionQueryOptions(selectFromNavigation),
+    ),
+  );
 }

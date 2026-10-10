@@ -58,20 +58,25 @@ export function readWindowFindTopOffset(): number {
   if (typeof window === "undefined") {
     return DEFAULT_WINDOW_FIND_TOP_OFFSET;
   }
-  const root = document.documentElement;
-  const rootStyle = window.getComputedStyle(root);
-  const declared = rootStyle
-    .getPropertyValue("--bb-app-chrome-row-height")
-    .trim();
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  return resolveWindowFindTopOffset(
+    rootStyle.getPropertyValue("--bb-app-chrome-row-height"),
+    rootStyle.fontSize,
+  );
+}
+
+export function resolveWindowFindTopOffset(
+  chromeRowHeight: string,
+  rootFontSize: string,
+): number {
+  const declared = chromeRowHeight.trim();
   const value = Number.parseFloat(declared);
   if (!Number.isFinite(value) || value <= 0) {
     return DEFAULT_WINDOW_FIND_TOP_OFFSET;
   }
   if (declared.endsWith("rem")) {
-    const rootFontSize = Number.parseFloat(rootStyle.fontSize);
-    return Math.round(
-      value * (Number.isFinite(rootFontSize) ? rootFontSize : 16),
-    );
+    const fontSize = Number.parseFloat(rootFontSize);
+    return Math.round(value * (Number.isFinite(fontSize) ? fontSize : 16));
   }
   if (declared.endsWith("px")) {
     return Math.round(value);

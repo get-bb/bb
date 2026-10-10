@@ -11,6 +11,65 @@ interface UseQueuedMessageEditHoldArgs {
   onRejected: () => void;
 }
 
+interface QueuedMessageEditHoldTarget {
+  queuedMessageId: string;
+  threadId: string;
+}
+
+export function startQueuedMessageEditHold({
+  target,
+  requestChain,
+  onRejected,
+}: {
+  target: QueuedMessageEditHoldTarget;
+  requestChain: { current: Promise<void> };
+  onRejected: () => void;
+}): () => void {
+  let active = true;
+  let renewTimer: ReturnType<typeof setTimeout> | null = null;
+  const enqueue = (request: () => Promise<void>): Promise<void> => {
+    const next = requestChain.current.then(request);
+    requestChain.current = next.catch(() => undefined);
+    return next;
+  };
+  const hold = () => {
+    renewTimer = null;
+    enqueue(async () => {
+      if (!active) return;
+      const { leaseMs } =
+        await sdk.threads.queuedMessages.experimental_holdForEdit(target);
+      if (active) {
+        renewTimer = setTimeout(hold, leaseMs / EDIT_HOLD_RENEWALS_PER_LEASE);
+      }
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (
+        error instanceof BbHttpError &&
+        (error.status === 404 || error.status === 409)
+      ) {
+        showMutationErrorToast({
+          error,
+          fallbackMessage: "Failed to edit queued message",
+          lifecycleOperation: "update_queued_message",
+        });
+        onRejected();
+        return;
+      }
+      renewTimer = setTimeout(hold, EDIT_HOLD_RETRY_MS);
+    });
+  };
+  hold();
+  return () => {
+    active = false;
+    if (renewTimer !== null) {
+      clearTimeout(renewTimer);
+    }
+    enqueue(async () => {
+      await sdk.threads.queuedMessages.experimental_releaseEditHold(target);
+    }).catch(() => undefined);
+  };
+}
+
 export function useQueuedMessageEditHold({
   queuedMessageId,
   threadId,
@@ -22,49 +81,10 @@ export function useQueuedMessageEditHold({
     if (queuedMessageId === null || threadId === null) {
       return;
     }
-    const target = { queuedMessageId, threadId };
-    let active = true;
-    let renewTimer: ReturnType<typeof setTimeout> | null = null;
-    const enqueue = (request: () => Promise<void>): Promise<void> => {
-      const next = requestChainRef.current.then(request);
-      requestChainRef.current = next.catch(() => undefined);
-      return next;
-    };
-    const hold = () => {
-      renewTimer = null;
-      enqueue(async () => {
-        if (!active) return;
-        const { leaseMs } =
-          await sdk.threads.queuedMessages.experimental_holdForEdit(target);
-        if (active) {
-          renewTimer = setTimeout(hold, leaseMs / EDIT_HOLD_RENEWALS_PER_LEASE);
-        }
-      }).catch((error: unknown) => {
-        if (!active) return;
-        if (
-          error instanceof BbHttpError &&
-          (error.status === 404 || error.status === 409)
-        ) {
-          showMutationErrorToast({
-            error,
-            fallbackMessage: "Failed to edit queued message",
-            lifecycleOperation: "update_queued_message",
-          });
-          onRejected();
-          return;
-        }
-        renewTimer = setTimeout(hold, EDIT_HOLD_RETRY_MS);
-      });
-    };
-    hold();
-    return () => {
-      active = false;
-      if (renewTimer !== null) {
-        clearTimeout(renewTimer);
-      }
-      enqueue(async () => {
-        await sdk.threads.queuedMessages.experimental_releaseEditHold(target);
-      }).catch(() => undefined);
-    };
+    return startQueuedMessageEditHold({
+      target: { queuedMessageId, threadId },
+      requestChain: requestChainRef,
+      onRejected,
+    });
   }, [onRejected, queuedMessageId, threadId]);
 }

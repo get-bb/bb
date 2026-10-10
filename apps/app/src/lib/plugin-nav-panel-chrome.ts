@@ -55,38 +55,59 @@ export function writeLastKnownPluginNavPanelChrome(
   chromeCache.write(CHROME_CACHE_KEY, [...chrome]);
 }
 
+export function readRememberedPluginNavPanelChrome(
+  settled: boolean,
+): PluginNavPanelChrome[] {
+  return settled ? [] : readLastKnownPluginNavPanelChrome();
+}
+
+export function mergePluginNavPanelChrome(
+  remembered: readonly PluginNavPanelChrome[],
+  navPanels: readonly PluginNavPanelSlot[],
+): PluginNavPanelChromeEntry[] {
+  const live = navPanels.map((panel) => ({
+    chrome: pluginNavPanelChromeOf(panel),
+    panel,
+  }));
+  if (remembered.length === 0) return live;
+  const liveByKey = new Map(
+    live.map((entry) => [chromeKey(entry.chrome), entry]),
+  );
+  const entries: PluginNavPanelChromeEntry[] = remembered.map(
+    (chrome) => liveByKey.get(chromeKey(chrome)) ?? { chrome, panel: null },
+  );
+  const rememberedKeys = new Set(remembered.map(chromeKey));
+  for (const entry of live) {
+    if (!rememberedKeys.has(chromeKey(entry.chrome))) entries.push(entry);
+  }
+  return entries;
+}
+
+export function rememberPluginNavPanelChrome(
+  bootComplete: boolean,
+  navPanels: readonly PluginNavPanelSlot[],
+): void {
+  if (!bootComplete) return;
+  writeLastKnownPluginNavPanelChrome(navPanels.map(pluginNavPanelChromeOf));
+}
+
 export function usePluginNavPanelChrome(): PluginNavPanelChromeEntry[] {
   const settled = usePluginFrontendsSettled();
   const { navPanels } = usePluginSlots();
   const remembered = useMemo(
-    () => (settled ? [] : readLastKnownPluginNavPanelChrome()),
+    () => readRememberedPluginNavPanelChrome(settled),
     [settled],
   );
-  return useMemo(() => {
-    const live = navPanels.map((panel) => ({
-      chrome: pluginNavPanelChromeOf(panel),
-      panel,
-    }));
-    if (remembered.length === 0) return live;
-    const liveByKey = new Map(
-      live.map((entry) => [chromeKey(entry.chrome), entry]),
-    );
-    const entries: PluginNavPanelChromeEntry[] = remembered.map(
-      (chrome) => liveByKey.get(chromeKey(chrome)) ?? { chrome, panel: null },
-    );
-    const rememberedKeys = new Set(remembered.map(chromeKey));
-    for (const entry of live) {
-      if (!rememberedKeys.has(chromeKey(entry.chrome))) entries.push(entry);
-    }
-    return entries;
-  }, [navPanels, remembered]);
+  return useMemo(
+    () => mergePluginNavPanelChrome(remembered, navPanels),
+    [navPanels, remembered],
+  );
 }
 
 export function useRememberPluginNavPanelChrome(): void {
   const bootComplete = usePluginFrontendBootComplete();
   const { navPanels } = usePluginSlots();
   useEffect(() => {
-    if (!bootComplete) return;
-    writeLastKnownPluginNavPanelChrome(navPanels.map(pluginNavPanelChromeOf));
+    rememberPluginNavPanelChrome(bootComplete, navPanels);
   }, [navPanels, bootComplete]);
 }

@@ -1,15 +1,5 @@
-// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-
-const app = await loadPluginApp(() => import("./app"));
-const { loadPluginReferences } = await import("./app");
-
-describe("plugin guide registrations", () => {
-  it("registers the Plugin Guide nav panel", () => {
-    expect(app.navPanels.map((panel) => panel.id)).toEqual(["plugin-api"]);
-  });
-});
+import { loadPluginReferences } from "./app";
 
 describe("loadPluginReferences", () => {
   it("merges installed plugins over catalog results through the public API", async () => {

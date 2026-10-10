@@ -12,6 +12,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
+import { EnvironmentProviderIcon } from "./EnvironmentProviderIcon";
 
 const ProviderIcon = pluginSdkAppImplementation.experimental_ProviderIcon;
 
@@ -117,6 +118,42 @@ it("renders the caller's fallback glyph when the provider declares none", () => 
   act(() => resetPluginSlotStoreForTest());
   expect(view.container.querySelector('[data-icon="Folder"]')).not.toBeNull();
   expect(view.container.querySelector("[data-override]")).toBeNull();
+});
+
+it("resolves environment provider overrides through EnvironmentProviderIcon", () => {
+  register((app) =>
+    app.slots.experimental_providerIcon({
+      providerKind: "environment",
+      providerId: "git-worktree",
+      icon: () => <svg data-override="git-worktree" />,
+    }),
+  );
+  const view = render(
+    <EnvironmentProviderIcon
+      provider={{
+        machineProviderId: null,
+        id: "git-worktree",
+        pluginId: "environment-git-worktree",
+        acceptsEmptyInputs: true,
+        machineAvailability: {},
+        availability: null,
+        displayName: "Worktree",
+        description: "Prepare a workspace for this thread.",
+        icon: "Folder",
+        logoUrl: null,
+        requires: {
+          projectCheckout: true,
+          gitCheckout: true,
+          gitRemote: false,
+          projectless: false,
+        },
+        inputs: null,
+      }}
+    />,
+  );
+  expect(
+    view.container.querySelector('[data-override="git-worktree"]'),
+  ).not.toBeNull();
 });
 
 it("remounts the same provider component on reload and restores fallback on unload", () => {

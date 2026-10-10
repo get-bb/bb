@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { QueryClient } from "@tanstack/react-query";
 import { createStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,7 +77,9 @@ function createHarness() {
   const store = createStore();
   const modeAtom = createSyncedPreferenceAtom("sidebar.organizationMode");
   const orderAtom = createSyncedPreferenceAtom("sidebar.sectionOrder");
-  const hiddenFooterAtom = createSyncedPreferenceAtom("sidebar.hiddenFooterItems");
+  const hiddenFooterAtom = createSyncedPreferenceAtom(
+    "sidebar.hiddenFooterItems",
+  );
   return { hiddenFooterAtom, modeAtom, orderAtom, queryClient, store };
 }
 

@@ -1111,6 +1111,16 @@ const EXPERIMENT_DEFINITIONS: Record<
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
 };
+export function visibleExperimentKeys(
+  performanceDiagnosticsAvailable: boolean,
+): ExperimentKey[] {
+  return experimentKeys.filter(
+    (experimentKey) =>
+      experimentKey !== "performanceDiagnostics" ||
+      performanceDiagnosticsAvailable,
+  );
+}
+
 export function ExperimentsSettingsSection({
   performanceDiagnosticsAvailable,
   disabled,
@@ -1124,30 +1134,27 @@ export function ExperimentsSettingsSection({
         description="Early features that are off by default. Opt in to try them."
       >
         <div className="space-y-5">
-          {experimentKeys.map((experimentKey) => {
-            if (
-              experimentKey === "performanceDiagnostics" &&
-              !performanceDiagnosticsAvailable
-            )
-              return null;
-            const definition = EXPERIMENT_DEFINITIONS[experimentKey];
-            return (
-              <SettingsWithControl
-                key={experimentKey}
-                label={definition.label}
-                description={definition.description}
-              >
-                <Switch
-                  checked={experiments[experimentKey]}
-                  disabled={disabled}
-                  onCheckedChange={(enabled) =>
-                    onExperimentChange(experimentKey, enabled)
-                  }
-                  aria-label={definition.label}
-                />
-              </SettingsWithControl>
-            );
-          })}
+          {visibleExperimentKeys(performanceDiagnosticsAvailable).map(
+            (experimentKey) => {
+              const definition = EXPERIMENT_DEFINITIONS[experimentKey];
+              return (
+                <SettingsWithControl
+                  key={experimentKey}
+                  label={definition.label}
+                  description={definition.description}
+                >
+                  <Switch
+                    checked={experiments[experimentKey]}
+                    disabled={disabled}
+                    onCheckedChange={(enabled) =>
+                      onExperimentChange(experimentKey, enabled)
+                    }
+                    aria-label={definition.label}
+                  />
+                </SettingsWithControl>
+              );
+            },
+          )}
         </div>
       </SettingsSection>
     </>

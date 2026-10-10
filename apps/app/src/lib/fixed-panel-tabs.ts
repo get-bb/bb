@@ -37,7 +37,7 @@ import { type ThreadSecondaryPanel } from "./thread-secondary-panel";
 import {
   areThreadTabListsEquivalent,
   hasPendingThreadTabsWrite,
-  reconcileFixedPanelTabsState,
+  resolveFixedPanelTabsHydration,
   scheduleLocalThreadTabsMigration,
   scheduleThreadTabsPersistence,
 } from "./thread-tabs-sync";
@@ -266,23 +266,20 @@ export function useFixedPanelTabsState(
     if (resolvedThreadId === null || tabsQuery.data === undefined) {
       return;
     }
-    if (hasPendingThreadTabsWrite(queryClient, resolvedThreadId)) {
-      return;
-    }
-    if (tabsQuery.data.revision === 0 && state.secondary.tabs.length > 0) {
+    const hydration = resolveFixedPanelTabsHydration({
+      current: store.get(stateAtom),
+      hasPendingWrite: hasPendingThreadTabsWrite(queryClient, resolvedThreadId),
+      localTabs: state.secondary.tabs,
+      server: tabsQuery.data,
+    });
+    if (hydration?.kind === "migrate-local-tabs") {
       scheduleLocalThreadTabsMigration({
         queryClient,
         tabs: state.secondary.tabs,
         threadId: resolvedThreadId,
       });
-      return;
-    }
-    const current = store.get(stateAtom);
-    const next = ensureOpenFixedPanelHasActiveTab(
-      reconcileFixedPanelTabsState(current, tabsQuery.data.tabs),
-    );
-    if (next !== current) {
-      setState(next);
+    } else if (hydration?.kind === "replace") {
+      setState(hydration.state);
     }
   }, [
     queryClient,
@@ -297,6 +294,15 @@ export function useFixedPanelTabsState(
   return state;
 }
 
+export function applyFixedPanelTabsUpdate(
+  current: FixedPanelTabsState,
+  update: FixedPanelTabsStateUpdater,
+  now: number,
+): FixedPanelTabsState | null {
+  const next = ensureOpenFixedPanelHasActiveTab(update(current));
+  return next === current ? null : touchFixedPanelTabsState(next, now);
+}
+
 export function useUpdateFixedPanelTabsState(
   panelStateId: FixedPanelTabsPanelStateId,
   syncThreadId: FixedPanelTabsSyncThreadId,
@@ -308,13 +314,9 @@ export function useUpdateFixedPanelTabsState(
   return useCallback(
     (update: FixedPanelTabsStateUpdater) => {
       if (!hasThreadId(panelStateId)) return;
-      const now = Date.now();
       const current = store.get(stateAtom);
-      const next = ensureOpenFixedPanelHasActiveTab(update(current));
-      if (next === current) {
-        return;
-      }
-      const touched = touchFixedPanelTabsState(next, now);
+      const touched = applyFixedPanelTabsUpdate(current, update, Date.now());
+      if (touched === null) return;
       setState(touched);
       if (
         hasThreadId(syncThreadId) &&

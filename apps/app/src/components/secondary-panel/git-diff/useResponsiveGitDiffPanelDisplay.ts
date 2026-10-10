@@ -33,6 +33,29 @@ export function resolveGitDiffDisplayMode({
   return isWideEnoughForSplit === true ? "split" : "unified";
 }
 
+export function resolveIsWideEnoughForSplit({
+  isSecondaryPanelOpen,
+  nextWidth,
+}: {
+  isSecondaryPanelOpen: boolean;
+  nextWidth: number | undefined;
+}): boolean | null {
+  if (!isSecondaryPanelOpen || nextWidth === undefined) {
+    return null;
+  }
+  return nextWidth >= GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX;
+}
+
+export type GitDiffDisplayModeChangeTarget =
+  | "compact-session"
+  | "stored-preference";
+
+export function resolveGitDiffDisplayModeChangeTarget(
+  isCompactViewport: boolean,
+): GitDiffDisplayModeChangeTarget {
+  return isCompactViewport ? "compact-session" : "stored-preference";
+}
+
 interface UseResponsiveGitDiffPanelDisplayArgs {
   isSecondaryPanelOpen: boolean;
 }
@@ -52,11 +75,13 @@ export function useResponsiveGitDiffPanelDisplay({
   const handleSecondaryPanelWidthChange =
     useCallback<SecondaryPanelWidthChangeHandler>(
       (nextWidth) => {
-        if (!isSecondaryPanelOpen || nextWidth === undefined) {
+        const nextWideEnough = resolveIsWideEnoughForSplit({
+          isSecondaryPanelOpen,
+          nextWidth,
+        });
+        if (nextWideEnough === null) {
           return;
         }
-
-        const nextWideEnough = nextWidth >= GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX;
         setIsWideEnoughForSplit((current) =>
           current === nextWideEnough ? current : nextWideEnough,
         );
@@ -67,7 +92,10 @@ export function useResponsiveGitDiffPanelDisplay({
   const handleGitDiffDisplayModeChange =
     useCallback<GitDiffDisplayModeChangeHandler>(
       (nextMode) => {
-        if (isCompactViewport) {
+        if (
+          resolveGitDiffDisplayModeChangeTarget(isCompactViewport) ===
+          "compact-session"
+        ) {
           setCompactDisplayMode(nextMode);
           return;
         }

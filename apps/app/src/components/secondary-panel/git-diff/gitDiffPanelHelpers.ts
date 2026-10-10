@@ -208,3 +208,34 @@ export function filterDiffFilesByPath<
     (file) => !excluded.some((isMatch) => fileMatches(file, isMatch)),
   );
 }
+
+export interface GitDiffPanelScope {
+  environmentId?: string;
+  threadId: string;
+}
+
+export interface SelectedMergeBaseBranchState {
+  branch?: string;
+  environmentId?: string;
+}
+
+export type PendingGitDiffIntent = GitDiffPanelScope &
+  ({ kind: "commit"; sha: string } | { kind: "file"; path: string });
+
+export function selectScopedMergeBaseBranch(
+  state: SelectedMergeBaseBranchState,
+  environmentId: string | undefined,
+): string | undefined {
+  return state.environmentId === environmentId ? state.branch : undefined;
+}
+
+export function selectScopedPendingGitDiffIntent(
+  intent: PendingGitDiffIntent | null,
+  scope: GitDiffPanelScope,
+): PendingGitDiffIntent | null {
+  return intent !== null &&
+    intent.environmentId === scope.environmentId &&
+    intent.threadId === scope.threadId
+    ? intent
+    : null;
+}
