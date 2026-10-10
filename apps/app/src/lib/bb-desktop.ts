@@ -22,7 +22,7 @@ export const CHROME_ROW_HEIGHT_CLASS = "h-(--bb-app-chrome-row-height)";
 export const CHROME_ROW_CLASS = `flex ${CHROME_ROW_HEIGHT_CLASS} items-center`;
 
 export const MACOS_CHROME_CONTROL_AXIS_CLASS =
-  "[--bb-macos-chrome-control-y:2px] [transform:translateY(var(--bb-macos-chrome-control-y))]";
+  "[transform:translateY(var(--bb-macos-chrome-control-y,2px))]";
 export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS} ${MACOS_CHROME_CONTROL_AXIS_CLASS}`;
 
 type BbDesktopInfoResult = BbDesktopApi | null;

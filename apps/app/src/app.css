@@ -28,6 +28,7 @@
    */
   :root {
     --bb-app-chrome-row-height: 3rem;
+    --bb-window-title-bar-height: 2.5rem;
     --bb-chrome-control-gap: 0.25rem;
     --bb-panel-chrome-padding: 1rem;
     --bb-shell-height: 100dvh;

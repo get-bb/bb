@@ -41,7 +41,7 @@ const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
   "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 
 const SIDEBAR_FRAME_CLASS =
-  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-app-chrome-row-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-app-chrome-row-height)] [--bb-window-frame-lip:0.5rem]";
+  "bg-sidebar bg-[linear-gradient(var(--surface-recessed),var(--surface-recessed))] pt-(--bb-window-title-bar-height) pr-(--bb-window-frame-lip) pb-(--bb-window-frame-lip) [--bb-window-frame-top:var(--bb-window-title-bar-height)] [--bb-window-frame-lip:0.5rem]";
 const SIDEBAR_FRAMED_PANEL_CLASS =
   "group-data-[framed]/sidebar-wrapper:top-(--bb-window-frame-top) group-data-[framed]/sidebar-wrapper:h-[calc(var(--bb-shell-height)_-_var(--bb-window-frame-top)_-_var(--bb-window-frame-lip))] group-data-[framed]/sidebar-wrapper:border-r-0! group-data-[framed]/sidebar-wrapper:bg-transparent";
 const SIDEBAR_FRAMED_CARD_EDGE_CLASS = "border-y border-l border-border-seam";

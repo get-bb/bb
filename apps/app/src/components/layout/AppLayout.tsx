@@ -251,7 +251,7 @@ function SidebarTriggerOverlay({
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
           "fixed inset-x-0 top-0 pr-[calc(var(--bb-window-frame-lip)_+_var(--bb-panel-chrome-padding)_+_1px)]",
-          CHROME_ROW_CLASS,
+          "flex h-(--bb-window-title-bar-height) items-center [--bb-macos-chrome-control-y:calc(26px_-_var(--bb-window-title-bar-height)/2)]",
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
             : BROWSER_SIDEBAR_TRIGGER_INSET_CLASS,
