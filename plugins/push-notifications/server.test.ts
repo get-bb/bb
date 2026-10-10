@@ -104,6 +104,20 @@ async function setup(options: SetupOptions = {}) {
   const interactions = new Map<string, PendingInteraction[]>();
   const metadata = new Map<string, Record<string, unknown>>();
   let nextId = 1;
+  const listAncestors = vi.fn(
+    async ({ threadIds }: { threadIds: readonly string[] }) => ({
+      threads: [...new Set(threadIds)].flatMap((threadId) => {
+        if (!threads.has(threadId)) return [];
+        const ancestorIds: string[] = [];
+        let parentId = threads.get(threadId)?.parentThreadId ?? null;
+        while (parentId !== null && threads.has(parentId)) {
+          ancestorIds.push(parentId);
+          parentId = threads.get(parentId)?.parentThreadId ?? null;
+        }
+        return [{ threadId, ancestorIds }];
+      }),
+    }),
+  );
   const fake = createFakePluginHost({
     pluginId: "push-notifications",
     ...(options.appUrl === undefined ? {} : { appUrl: options.appUrl }),
@@ -115,18 +129,7 @@ async function setup(options: SetupOptions = {}) {
           if (!thread) throw new Error("Thread not found");
           return thread;
         },
-        experimental_listAncestors: async ({ threadIds }) => ({
-          threads: [...new Set(threadIds)].flatMap((threadId) => {
-            if (!threads.has(threadId)) return [];
-            const ancestorIds: string[] = [];
-            let parentId = threads.get(threadId)?.parentThreadId ?? null;
-            while (parentId !== null && threads.has(parentId)) {
-              ancestorIds.push(parentId);
-              parentId = threads.get(parentId)?.parentThreadId ?? null;
-            }
-            return [{ threadId, ancestorIds }];
-          }),
-        }),
+        experimental_listAncestors: listAncestors,
         experimental_listDescendants: async ({
           threadIds,
           includeArchived = false,
@@ -264,6 +267,7 @@ async function setup(options: SetupOptions = {}) {
     expo,
     getLevel,
     interactions,
+    listAncestors,
     listLevels,
     setLevel,
     setThread,
@@ -1055,6 +1059,60 @@ describe("thread notification levels", () => {
       await host.cleanup();
     }
   });
+
+  it.each([false, true])(
+    "keeps overlapping subtree refreshes current (earlier read fails: %s)",
+    async (failRead) => {
+      const host = await setup();
+      let release!: () => void;
+      let capture!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const captured = new Promise<void>((resolve) => {
+        capture = resolve;
+      });
+      try {
+        host.setThread({ id: "muted" });
+        host.setThread({ id: "worker", parentThreadId: "muted" });
+        host.setThread({ id: "child", parentThreadId: "worker" });
+        await host.setLevel("muted", "muted");
+        const readAncestors = host.listAncestors.getMockImplementation()!;
+        host.listAncestors.mockImplementationOnce(async (args) => {
+          const result = await readAncestors(args);
+          capture();
+          await gate;
+          if (failRead) throw new Error("Ancestry read failed");
+          return result;
+        });
+        const older = host.harness.behavior.emitThreadEvent(
+          "experimental_thread.parentChanged",
+          {
+            thread: host.threads.get("worker")!,
+            previousParentThreadId: null,
+          },
+        );
+        await captured;
+        host.moveThread("child", null);
+        const newer = host.harness.behavior.emitThreadEvent(
+          "experimental_thread.parentChanged",
+          {
+            thread: host.threads.get("child")!,
+            previousParentThreadId: "worker",
+          },
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        release();
+        await Promise.all([older, newer]);
+        expect(host.levelUpdates().at(-1)).toEqual({
+          threads: { child: { own: "inherit", ancestorCap: null } },
+        });
+      } finally {
+        release();
+        await host.cleanup();
+      }
+    },
+  );
 
   it("publishes only live, visible descendants and republishes a thread when it is unarchived", async () => {
     const host = await setup();

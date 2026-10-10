@@ -171,6 +171,7 @@ export function createNotificationPreferences(args: {
   publish(threads: Record<string, ThreadNotificationInputs>): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
+  let publicationQueue: Promise<void> = Promise.resolve();
 
   async function readOwnLevels(
     threadIds: readonly string[],
@@ -226,28 +227,37 @@ export function createNotificationPreferences(args: {
     return resolved;
   }
 
-  async function requireInputs(threadId: string): Promise<ResolvedThreadInputs> {
+  async function requireInputs(
+    threadId: string,
+  ): Promise<ResolvedThreadInputs> {
     const resolved = (await resolveInputs([threadId])).get(threadId);
     if (resolved === undefined) throw new Error("Thread not found");
     return resolved;
   }
 
-  async function publishSubtree(
+  function publishSubtree(
     threadId: string,
   ): Promise<Map<string, ResolvedThreadInputs>> {
-    const { threads } = await bb.sdk.threads.experimental_listDescendants({
-      threadIds: [threadId],
+    const result = publicationQueue.then(async () => {
+      const { threads } = await bb.sdk.threads.experimental_listDescendants({
+        threadIds: [threadId],
+      });
+      const resolved = await resolveInputs([
+        threadId,
+        ...(threads[0]?.descendantIds ?? []),
+      ]);
+      for (const batch of chunk([...resolved])) {
+        publish(
+          Object.fromEntries(batch.map(([id, { inputs }]) => [id, inputs])),
+        );
+      }
+      return resolved;
     });
-    const resolved = await resolveInputs([
-      threadId,
-      ...(threads[0]?.descendantIds ?? []),
-    ]);
-    for (const batch of chunk([...resolved])) {
-      publish(
-        Object.fromEntries(batch.map(([id, { inputs }]) => [id, inputs])),
-      );
-    }
-    return resolved;
+    publicationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   return {
