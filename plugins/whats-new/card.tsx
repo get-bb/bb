@@ -60,7 +60,9 @@ export interface WhatsNewConfirmationNudgeProps {
 function useAutoClose(active: boolean, onClose: () => void) {
   const [paused, setPaused] = useState(false);
   const close = useRef(onClose);
-  close.current = onClose;
+  useEffect(() => {
+    close.current = onClose;
+  });
   useEffect(() => {
     if (!active || paused) return;
     const timer = window.setTimeout(
