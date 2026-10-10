@@ -391,6 +391,7 @@ export async function createFixture(args: FixtureArgs = {}) {
   const commands: string[][] = [];
   const launches: PendingServerLaunchRequest[] = [];
   const reservedPorts = new Map<number, Server>();
+  const pendingChildren = new Map<number, ChildProcess>();
   const reserveServerPort = async (): Promise<number> => {
     const server = createServer();
     httpServers.push(server);
@@ -497,6 +498,7 @@ export async function createFixture(args: FixtureArgs = {}) {
         child.unref();
         if (child.pid === undefined)
           throw new Error("Pending fixture server did not report a pid");
+        pendingChildren.set(child.pid, child);
         return child.pid;
       }
       const pid = await defaultDetachedProcessSpawner({
@@ -543,6 +545,13 @@ export async function createFixture(args: FixtureArgs = {}) {
     commands,
     launches,
     reserveServerPort,
+    isPendingServerRunning(pid: number): boolean {
+      const child = pendingChildren.get(pid);
+      if (child === undefined) {
+        throw new Error(`No retained pending server child for pid ${pid}`);
+      }
+      return child.kill(0);
+    },
     logger,
   };
 }
