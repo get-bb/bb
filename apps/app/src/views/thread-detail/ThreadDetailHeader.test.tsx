@@ -454,7 +454,11 @@ describe("ThreadDetailHeader", () => {
 
     fireEvent.doubleClick(screen.getByText("Focused thread"));
     const input = await screen.findByRole("textbox", { name: "Thread name" });
-    fireEvent.pointerDown(input, { button: 0 });
+    const titleRow = input.closest("p");
+    if (titleRow === null) {
+      throw new Error("Expected the editor inside the header title row");
+    }
+    fireEvent.pointerDown(titleRow, { button: 0 });
 
     expect(beginPaneDrag).not.toHaveBeenCalled();
   });

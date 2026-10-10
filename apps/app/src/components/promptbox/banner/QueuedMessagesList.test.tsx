@@ -591,7 +591,11 @@ describe("QueuedMessagesList", () => {
     };
     const draftMessage = {
       ...makeQueuedMessage("q_draft", "Release notes outline"),
-      waitingOn: { kind: "plugin" as const, pluginId: "drafts", reason: "Draft" },
+      waitingOn: {
+        kind: "plugin" as const,
+        pluginId: "drafts",
+        reason: "Draft",
+      },
       createdAt: 3,
     };
     const { container, rerender } = render(
@@ -601,9 +605,7 @@ describe("QueuedMessagesList", () => {
       />,
     );
     const headerWait = () =>
-      container.querySelector<HTMLElement>(
-        "header [data-queued-message-wait]",
-      );
+      container.querySelector<HTMLElement>("header [data-queued-message-wait]");
 
     expect(headerWait()?.textContent).toBe("Provider unavailable");
     expect(headerWait()?.hasAttribute("data-queued-message-failed")).toBe(true);
@@ -1656,22 +1658,42 @@ describe("QueuedMessagesList", () => {
     );
   });
 
-  it("preserves grouping when reordering a row across the divider", () => {
+  it("keeps the lead group for reorders inside it and dissolves it when a row crosses the divider", () => {
     const queuedMessages = [
-      makeQueuedMessage("q_one", "First queued message"),
+      {
+        ...makeQueuedMessage("q_one", "First queued message"),
+        groupWithNext: true,
+      },
       makeQueuedMessage("q_two", "Second queued message"),
       makeQueuedMessage("q_three", "Third queued message"),
     ];
+    const combinedIds = [
+      "q_one",
+      "q_two",
+      "__queued_message_group_divider__",
+      "q_three",
+    ];
+
+    expect(
+      resolveQueuedMessageDrag({
+        activeId: "q_two",
+        overId: "q_one",
+        combinedIds,
+        orderedMessages: queuedMessages,
+      }),
+    ).toMatchObject({
+      kind: "row",
+      orderedMessages: [
+        { id: "q_two", groupWithNext: true },
+        { id: "q_one", groupWithNext: false },
+        { id: "q_three", groupWithNext: false },
+      ],
+    });
 
     const result = resolveQueuedMessageDrag({
       activeId: "q_three",
       overId: "q_one",
-      combinedIds: [
-        "q_one",
-        "__queued_message_group_divider__",
-        "q_two",
-        "q_three",
-      ],
+      combinedIds,
       orderedMessages: queuedMessages,
     });
 

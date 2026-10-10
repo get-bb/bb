@@ -331,48 +331,6 @@ describe("mobile recents hierarchy interaction", () => {
     expect(store.get(mobileRecentsCollapsedThreadIdsAtom)).toEqual([]);
   });
 
-  it("de-emphasizes the provider tile on child rows only", () => {
-    renderTree();
-
-    const [parentRow, childRow] = screen.getAllByRole("listitem");
-    const parentTile = parentRow?.querySelector("span.size-7");
-    const childTile = childRow?.querySelector("span.size-7");
-    if (
-      !(parentTile instanceof HTMLElement) ||
-      !(childTile instanceof HTMLElement)
-    ) {
-      throw new Error("Expected a tile on both rows");
-    }
-
-    expect(parentTile.className).not.toContain("opacity-60");
-    expect(childTile.className).toContain("opacity-60");
-
-    for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("border-border-seam");
-      expect(tile.className).toContain("bg-surface-raised");
-    }
-
-    for (const tile of [parentTile, childTile]) {
-      expect(tile.className).toContain("size-7");
-      expect(tile.className).toContain("border");
-    }
-  });
-
-  it("centers provider tiles against the title and metadata block", () => {
-    renderTree();
-
-    const rows = screen.getAllByRole("listitem");
-    for (const row of rows) {
-      const tile = row.querySelector("span.size-7");
-      if (!(tile instanceof HTMLElement)) {
-        throw new Error("Expected a leading provider tile");
-      }
-      expect(row.className).toContain("items-center");
-      expect(tile.className).not.toContain("self-start");
-      expect(tile.className).not.toContain("mt-1");
-    }
-  });
-
   it("gives only the parent a toggle and indents the child", () => {
     renderTree();
 

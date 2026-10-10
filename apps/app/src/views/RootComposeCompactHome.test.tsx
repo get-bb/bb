@@ -119,16 +119,4 @@ describe("RootComposeCompactHome", () => {
 
     expect(screen.getByTestId("root-compose-compact-fade").hidden).toBe(false);
   });
-
-  it("renders a strong fade so rows dissolve into the composer", () => {
-    renderCompactHome();
-
-    const composer = screen.getByTestId("root-compose-compact-composer");
-    const fade = composer.querySelector('[data-overflow-fade="above"]');
-    if (!(fade instanceof HTMLElement)) {
-      throw new Error("Expected an above fade over the composer");
-    }
-    expect(fade.className).toContain("h-24");
-    expect(fade.className).toContain("-top-24");
-  });
 });

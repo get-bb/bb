@@ -126,7 +126,7 @@ describe("MarketplacesSettingsSection", () => {
     render(<MarketplacesSettingsSection />, { wrapper });
 
     await screen.findByText("Acme Plugins");
-    expect(screen.queryByRole("button", { name: "Remove BB Official" })).toBe(
+    expect(screen.queryByRole("button", { name: "Remove BB Community" })).toBe(
       null,
     );
     expect(

@@ -115,6 +115,8 @@ describe("ExpandablePanel body height", () => {
       </ExpandablePanel>,
     );
     expect(region.style.transitionDuration).toBe("");
+    fireResize();
+    expect(region.style.transitionDuration).toBe("");
 
     vi.spyOn(performance, "now").mockReturnValue(performance.now() + 10_000);
     fireResize();

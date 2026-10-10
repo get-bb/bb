@@ -64,7 +64,14 @@ function renderCustomSections(pinned = false) {
             pinnedAt: pinned ? 1 : null,
           }),
         ],
-        projects: [makePluginProject()],
+        projects: [
+          makePluginProject(),
+          makePluginProject({
+            id: "proj_personal",
+            name: "Personal",
+            isPersonal: true,
+          }),
+        ],
         sections: [makeSection("sec_a", "Alpha"), makeSection("sec_b", "Beta")],
       },
       sdk: {

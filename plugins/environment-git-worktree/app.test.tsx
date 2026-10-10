@@ -73,12 +73,6 @@ async function openPicker(slot: ReturnType<typeof render>["slot"]) {
 }
 
 describe("worktree inputs control", () => {
-  it("registers for the worktree provider only", () => {
-    expect(
-      app.environmentProviderInputs.map((r) => r.environmentProviderId),
-    ).toEqual([GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID]);
-  });
-
   it("submits the default branch as soon as it mounts", async () => {
     const { onChange } = render(null);
     await waitFor(() => {

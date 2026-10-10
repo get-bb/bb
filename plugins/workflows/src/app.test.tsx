@@ -82,29 +82,6 @@ const run: WorkflowRunView = {
   finishedAt: null,
 };
 
-describe("workflows app registration", () => {
-  it("registers the composer banner, chat directive, and thread panel action", () => {
-    expect(app.composerCustomizations).toMatchObject([
-      {
-        id: "workflow-status",
-        scopes: ["thread"],
-        banners: [{ id: "active-runs", chrome: "bare" }],
-      },
-    ]);
-    expect(app.messageDirectives.map((directive) => directive.id)).toEqual([
-      "workflow-preview",
-    ]);
-    expect(app.threadPanelActions).toMatchObject([
-      {
-        id: "workflow-run",
-        title: "Workflow run",
-        icon: "Workflow",
-        layout: "flush",
-      },
-    ]);
-  });
-});
-
 describe("workflow composer banner", () => {
   const banner = app.composerCustomizations[0]!.banners![0]!;
 

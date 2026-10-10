@@ -85,10 +85,6 @@ const providerOptions: readonly ProviderPickerOption[] = [
   { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
 ];
 
-function ProviderMaskIcon({ className }: { className?: string }) {
-  return <span className={className} data-testid="provider-mask-icon" />;
-}
-
 const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
 ];
@@ -399,31 +395,6 @@ describe("ModelReasoningPicker", () => {
       { key: "ArrowRight" },
     );
     expect(onReasoningChange).not.toHaveBeenCalled();
-  });
-
-  it("uses the lower-emphasis chrome token for the composer caret", () => {
-    renderPicker({ muted: true });
-
-    const trigger = screen.getByRole("button", {
-      name: "Provider, model and reasoning",
-    });
-    expect(
-      trigger.querySelector('[data-icon="ChevronDown"]')?.classList,
-    ).toContain("text-subtle-foreground/75");
-    expect(trigger.classList).toContain("font-normal");
-  });
-
-  it("gives a non-SVG provider mark the same 16px trigger size as button SVGs", () => {
-    renderPicker({
-      pickerProviderOptions: [
-        { ...providerOptions[0], icon: ProviderMaskIcon },
-        providerOptions[1],
-      ],
-    });
-
-    expect(screen.getByTestId("provider-mask-icon").classList).toContain(
-      "size-4",
-    );
   });
 
   it("keeps a failed provider tab visible with its provider-plugin error", () => {

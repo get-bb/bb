@@ -102,6 +102,9 @@ describe("PluginSlotMount", () => {
         <PortalContent />
       </PluginSlotMount>,
     );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
     expect(pluginSheets()).toHaveLength(1);
 
     view.unmount();

@@ -104,6 +104,9 @@ describe("thread overflow submenus", () => {
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Planning" })).toBeNull();
     expect(
+      screen.queryByRole("button", { name: "Planning thread" }),
+    ).toBeNull();
+    expect(
       screen.queryByRole("menuitem", { name: "Customize list" }),
     ).toBeNull();
     expect(
@@ -117,6 +120,7 @@ describe("thread overflow submenus", () => {
     expect(
       screen.getByRole("button", { name: "Planning thread" }),
     ).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Review thread" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Back" }));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
     fireEvent.click(screen.getByRole("button", { name: "Review thread" }));

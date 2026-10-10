@@ -446,30 +446,43 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("hands null turn and project ids to the directive without substituting a value", () => {
+    const received: PluginMessageDirectiveProps["message"][] = [];
+    function MessageCaptureVis(props: PluginMessageDirectiveProps) {
+      received.push(props.message);
+      return null;
+    }
     const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
+      slot({
+        id: "inline-vis",
+        pluginId: "demo",
+        component: MessageCaptureVis,
+      }),
     ]);
     render(
-      <MarkdownPreview
-        content={'::inline-vis{file="demo.html"}'}
-        messageDirectives={{
-          registry,
-          message: {
-            id: "msg_2",
-            threadId: "thr_2",
-            turnId: null,
-            projectId: null,
-          },
-          openWorkspaceFile: null,
-        }}
-      />,
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <MessageDirectiveRegistryProvider registry={registry}>
+            <ConversationMessageContent
+              role="assistant"
+              attachments={null}
+              id="msg_2"
+              threadId="thr_2"
+              turnId={null}
+              showActions={false}
+              text={'::inline-vis{file="demo.html"}'}
+              timestamp={0}
+            />
+          </MessageDirectiveRegistryProvider>
+        </RouteNavigationProvider>
+      </MemoryRouter>,
     );
-    expect(
-      screen.getByTestId("inline-vis").getAttribute("data-project-id"),
-    ).toBe("");
-    expect(screen.getByTestId("inline-vis").getAttribute("data-turn-id")).toBe(
-      "",
-    );
+
+    expect(received.at(-1)).toEqual({
+      id: "msg_2",
+      threadId: "thr_2",
+      turnId: null,
+      projectId: null,
+    });
   });
 
   it.each([false, true])(

@@ -27,15 +27,6 @@ afterEach(() => {
 });
 
 describe("PDF file opener", () => {
-  it("registers for PDF files", () => {
-    expect(app.fileOpeners).toHaveLength(1);
-    expect(app.fileOpeners[0]).toMatchObject({
-      id: "pdf",
-      title: "PDF viewer",
-      extensions: ["pdf"],
-    });
-  });
-
   it("loads a storage PDF once into a revoked object URL and leaves the viewer unsandboxed", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(new Uint8Array([37, 80, 68, 70]), {

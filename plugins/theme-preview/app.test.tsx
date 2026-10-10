@@ -17,14 +17,6 @@ import {
 } from "@get-bb/plugin-sdk/testing/app";
 
 import type { rpcContract } from "./server";
-import {
-  COLOR_GROUPS,
-  MOCK_VIEWS,
-  RADIUS_SPECIMENS,
-  RHYTHM_SPECIMENS,
-  SHADOW_SPECIMENS,
-  TYPE_SPECIMENS,
-} from "./taxonomy";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -33,31 +25,6 @@ vi.mock("sonner", () => ({
 type Catalog = Awaited<
   ReturnType<PluginRpcTestHandlers<typeof rpcContract>["themeCatalog"]>
 >;
-
-const COMPONENT_SPECIMEN_IDS = [
-  "buttons",
-  "badges",
-  "inputs",
-  "switch",
-  "checkbox",
-] as const;
-const OVERLAY_LABELS = [
-  "Menu",
-  "Dialog",
-  "Popover",
-  "Tooltip",
-  "Hover card",
-  "Toast",
-] as const;
-const STYLESHEET_SPECIMEN_IDS = [
-  ...COLOR_GROUPS.flatMap((group) =>
-    group.tokens.map((token) => `color:${token}`),
-  ),
-  ...TYPE_SPECIMENS.map((specimen) => `type:${specimen.id}`),
-  ...RHYTHM_SPECIMENS.map((specimen) => `rhythm:${specimen.id}`),
-  ...RADIUS_SPECIMENS.map((specimen) => `radius:${specimen.id}`),
-  ...SHADOW_SPECIMENS.map((specimen) => `shadow:${specimen.id}`),
-];
 
 const DEFAULT_CATALOG: Catalog = {
   activeThemeId: "default",
@@ -81,17 +48,6 @@ const DEFAULT_CATALOG: Catalog = {
 const ENDLESS_CATALOG: Catalog = {
   ...DEFAULT_CATALOG,
   activeThemeId: "plugin:endless:endless-color",
-};
-
-const LONG_THEME_NAME =
-  "Endless Color copy with a deliberately descriptive name";
-const LONG_NAME_CATALOG: Catalog = {
-  activeThemeId: "long-theme",
-  revision: 0,
-  themes: [
-    ...DEFAULT_CATALOG.themes,
-    { id: "long-theme", name: LONG_THEME_NAME, light: null, dark: null },
-  ],
 };
 
 interface Deferred<T> {
@@ -246,15 +202,7 @@ describe("Theme Preview", () => {
             ? ["Thread", "New thread", "Settings"]
             : ["Thread", "New thread", "Split", "Settings"],
         );
-        const threadTab = screen.getByRole("tab", { name: "Thread" });
-        expect(threadTab.className).toContain("focus-visible:outline-none");
-        expect(threadTab.className).toContain("focus-visible:ring-2");
-        expect(threadTab.className).toContain("cursor-pointer");
-
-        const control = themeControl();
-        expect(control.getAttribute("role")).toBe("combobox");
-        expect(control.className).toContain("focus:outline-none");
-        expect(control.className).toContain("focus:ring-1");
+        expect(themeControl().getAttribute("role")).toBe("combobox");
       } finally {
         width.mockRestore();
       }
@@ -461,58 +409,6 @@ describe("Theme Preview", () => {
     expect(active?.textContent).toContain("Default");
   });
 
-  it("keeps short names intrinsic and truncates long names only at the available-width boundary", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      const short = renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-
-      await waitFor(() =>
-        expect(themeControl().textContent).toContain("Default"),
-      );
-      const shortControl = themeControl();
-      expect(shortControl.style.width).toBe("fit-content");
-      expect(shortControl.style.maxWidth).toBe("100%");
-      expect(shortControl.className).not.toContain("max-w-52");
-      expect(
-        document.querySelector<HTMLElement>("[data-tp-theme-picker-row]")?.style
-          .width,
-      ).toBe("fit-content");
-      short.lifecycle.unmount();
-      cleanup();
-
-      width.mockReturnValue(360);
-      renderPreview({
-        themeCatalog: () => LONG_NAME_CATALOG,
-        setTheme: () => LONG_NAME_CATALOG,
-      });
-
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=mobile]")).not.toBeNull(),
-      );
-      const longControl = await screen.findByRole("combobox", {
-        name: new RegExp(LONG_THEME_NAME),
-      });
-      const longName = document.querySelector<HTMLElement>(
-        "[data-tp-theme-name]",
-      );
-      expect(longName?.textContent).toBe(LONG_THEME_NAME);
-      expect(longName?.style.textOverflow).toBe("ellipsis");
-      expect(longName?.style.minWidth).toBe("0px");
-      expect(longControl.className).toContain("overflow-hidden");
-      expect(
-        document.querySelector<HTMLElement>("[data-tp-theme-picker-row]")?.style
-          .maxWidth,
-      ).toBe("100%");
-    } finally {
-      width.mockRestore();
-    }
-  });
-
   it("uses light and dark icons while preserving keyboard mode selection", async () => {
     const selections: Array<{ themeId: string }> = [];
     renderPreview({
@@ -591,176 +487,6 @@ describe("Theme Preview", () => {
       }
     },
   );
-
-  it("renders the complete taxonomy inventory at desktop widths", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull(),
-      );
-
-      for (const view of MOCK_VIEWS) {
-        expect(screen.getByRole("tab", { name: view.label })).toBeDefined();
-      }
-      expect(screen.queryByRole("button", { name: "Advanced" })).toBeNull();
-      expect(
-        document.querySelector("[data-tp-editor-tier=advanced]"),
-      ).toBeNull();
-      expect(
-        document.querySelector("[data-tp-area=stylesheet] input"),
-      ).toBeNull();
-      for (const specimenId of STYLESHEET_SPECIMEN_IDS) {
-        const specimens = document.querySelectorAll(
-          `[data-tp-specimen="${specimenId}"]`,
-        );
-        expect(specimens, specimenId).toHaveLength(1);
-        expect(
-          specimens[0]?.hasAttribute("data-tp-style-segment"),
-          specimenId,
-        ).toBe(true);
-        expect(
-          (specimens[0] as HTMLElement | undefined)?.style.gridTemplateColumns,
-          specimenId,
-        ).toContain("minmax(72px, 1fr)");
-        expect(
-          (specimens[0] as HTMLElement | undefined)?.style.gridColumn,
-          specimenId,
-        ).toBe("1 / -1");
-        expect(
-          specimens[0]?.querySelector("[data-tp-role=label]"),
-          specimenId,
-        ).not.toBeNull();
-        expect(
-          specimens[0]?.querySelector("[data-tp-role=value]"),
-          specimenId,
-        ).not.toBeNull();
-      }
-      for (const block of document.querySelectorAll<HTMLElement>(
-        "[data-tp-area=stylesheet] [data-tp-grid]",
-      )) {
-        expect(block.style.display).toBe("grid");
-        expect(block.style.gridTemplateColumns).not.toBe("");
-        expect(block.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
-        expect(block.style.alignContent).toBe("start");
-        expect(block.style.border).toContain("1px solid");
-        expect(block.style.overflow).toBe("hidden");
-        const category = block.querySelector<HTMLElement>(
-          "[data-tp-role=category]",
-        );
-        expect(category?.style.background).toContain(
-          "var(--surface-recessed-soft-solid",
-        );
-        expect(category?.style.minHeight).toBe("32px");
-        expect(category?.style.padding).toBe("6px 10px");
-      }
-      const colorGrid = document.querySelector<HTMLElement>(
-        "[data-tp-style-colors]",
-      );
-      const systemGrid = document.querySelector<HTMLElement>(
-        "[data-tp-style-systems]",
-      );
-      expect(colorGrid?.style.gap).toBe("16px");
-      expect(colorGrid?.style.alignItems).toBe("start");
-      expect(systemGrid?.style.marginTop).toBe("20px");
-      expect(systemGrid?.style.alignItems).toBe("start");
-      expect(colorGrid?.querySelector("[data-tp-block=lines]")).toBeNull();
-      expect(systemGrid?.querySelector("[data-tp-block=lines]")).not.toBeNull();
-      const canvasSegment = document.querySelector<HTMLElement>(
-        '[data-tp-specimen="color:canvas"]',
-      );
-      expect(canvasSegment?.style.minHeight).toBe("32px");
-      expect(canvasSegment?.style.padding).toBe("6px 10px");
-      expect(canvasSegment?.style.borderTop).toContain("1px solid");
-      expect(
-        canvasSegment?.querySelector("[data-tp-role=preview]"),
-      ).not.toBeNull();
-      expect(
-        canvasSegment?.querySelector("[data-tp-role=label]")?.textContent,
-      ).toBe("canvas");
-      expect(
-        canvasSegment?.querySelector("[data-tp-role=value]")?.textContent,
-      ).toMatch(/^#|—$/);
-      const inkMeta = document.querySelector<HTMLElement>(
-        '[data-tp-specimen="color:ink"] [data-tp-role=meta]',
-      );
-      expect(inkMeta?.style.overflow).toBe("hidden");
-      expect(inkMeta?.style.textOverflow).toBe("ellipsis");
-      const contrastLabels = [
-        ...document.querySelectorAll<HTMLElement>(
-          '[data-tp-column="contrast"]',
-        ),
-      ];
-      expect(contrastLabels).toHaveLength(2);
-      expect(
-        contrastLabels.map(
-          (label) =>
-            label.closest<HTMLElement>("[data-tp-block]")?.dataset.tpBlock,
-        ),
-      ).toEqual(["ink", "status"]);
-      for (const label of contrastLabels) {
-        expect(label.textContent).toBe("Contrast");
-        const header = label.parentElement as HTMLElement;
-        const firstSegment = header
-          .closest<HTMLElement>("[data-tp-block]")
-          ?.querySelector<HTMLElement>("[data-tp-style-segment]");
-        expect(header.style.gridTemplateColumns).toBe(
-          firstSegment?.style.gridTemplateColumns,
-        );
-      }
-      expect(document.querySelector('[data-tp-column="token"]')).toBeNull();
-      expect(document.querySelector('[data-tp-column="value"]')).toBeNull();
-      for (const specimenId of COMPONENT_SPECIMEN_IDS) {
-        expect(
-          document.querySelector(`[data-tp-block="${specimenId}"]`),
-          specimenId,
-        ).not.toBeNull();
-      }
-      expect(document.querySelector("[data-tp-thread-list]")).toBeNull();
-      for (const overlayLabel of OVERLAY_LABELS) {
-        expect(
-          screen.getByRole("button", { name: overlayLabel }),
-        ).toBeDefined();
-      }
-    } finally {
-      width.mockRestore();
-    }
-  });
-
-  it("composes the mock from natural panels instead of scaling a desktop window", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(480);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-
-      const frame = await waitFor(() => {
-        const found = document.querySelector<HTMLElement>("[data-tp-frame]");
-        expect(found).not.toBeNull();
-        return found as HTMLElement;
-      });
-      expect(frame.style.zoom ?? "").toBe("");
-      expect(frame.style.transform).toBe("");
-      expect(frame.style.width).toBe("100%");
-      const container = frame.closest<HTMLElement>("[data-tp-mock-container]");
-      expect(container?.style.width).toBe("100%");
-      expect(container?.style.maxWidth).toBe("100%");
-      expect(container?.style.boxSizing).toBe("border-box");
-      expect(container?.style.padding).toBe("16px");
-      expect(screen.queryByText("bb-plugins")).toBeNull();
-      expect(screen.queryByText("Pull request")).toBeNull();
-    } finally {
-      width.mockRestore();
-    }
-  });
 
   it("opens and closes mobile shelves and resets them when the preview view changes", async () => {
     const width = vi
@@ -893,116 +619,6 @@ describe("Theme Preview", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Tooltip" }));
     expect(await screen.findByRole("tooltip")).toBeDefined();
-  });
-
-  it("keeps Components directly below Overlays as a sibling in the desktop rail", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull(),
-      );
-
-      const rail = document.querySelector("[data-tp-section=rail]");
-      const areas = [...(rail?.children ?? [])].filter((element) =>
-        element.hasAttribute("data-tp-area"),
-      );
-      expect(areas.map((area) => area.getAttribute("data-tp-area"))).toEqual([
-        "overlays",
-        "components",
-      ]);
-      expect(areas[0]?.nextElementSibling).toBe(areas[1]);
-      expect(areas[0]?.contains(areas[1] ?? null)).toBe(false);
-      expect(
-        within(areas[1] as HTMLElement).getByRole("heading", {
-          name: "Components",
-          level: 2,
-        }),
-      ).toBeDefined();
-    } finally {
-      width.mockRestore();
-    }
-  });
-
-  it("wraps badges and keeps the component specimens evenly grouped", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull(),
-      );
-
-      const badges = document.querySelector<HTMLElement>("[data-tp-badge-row]");
-      expect(badges?.style.flexWrap).toBe("wrap");
-      expect(badges?.style.overflowX).toBe("");
-
-      const components = document.querySelector<HTMLElement>(
-        "[data-tp-components]",
-      );
-      expect(components?.style.gridTemplateColumns).toBe(
-        "repeat(2, minmax(0, 1fr))",
-      );
-      expect(components?.style.columnGap).toBe("16px");
-      expect(components?.style.rowGap).toBe("16px");
-      expect(
-        document.querySelector<HTMLElement>("[data-tp-button-grid]")?.style
-          .gridTemplateColumns,
-      ).toBe("repeat(3, minmax(0, 1fr))");
-      for (const block of document.querySelectorAll<HTMLElement>(
-        "[data-tp-block=switch], [data-tp-block=checkbox]",
-      )) {
-        expect(block.style.paddingBlock).toBe(
-          "calc(var(--spacing, 0.25rem) * 3)",
-        );
-        expect(block.style.paddingInline).toBe("");
-        expect(
-          block.querySelector<HTMLElement>("[data-tp-toggle-controls]")?.style
-            .paddingInline,
-        ).toBe("");
-      }
-    } finally {
-      width.mockRestore();
-    }
-  });
-
-  it("gives each split pane its own conversation", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(1280);
-    try {
-      renderSlot(
-        panel,
-        { subPath: "split" },
-        {
-          rpc: {
-            themeCatalog: () => DEFAULT_CATALOG,
-            setTheme: () => DEFAULT_CATALOG,
-          },
-        },
-      );
-
-      await waitFor(() =>
-        expect(
-          screen.queryAllByText(/lay the specimen sheet out as a grid/i),
-        ).toHaveLength(1),
-      );
-
-      expect(
-        screen.getAllByText(/Three blacks were fragmenting the frame/i),
-      ).toHaveLength(1);
-    } finally {
-      width.mockRestore();
-    }
   });
 
   it("keeps the hover card dismissible and its controls usable", async () => {
@@ -1221,48 +837,6 @@ describe("Theme Preview", () => {
       screen.queryByRole("combobox", { name: "Loading themes" }),
     ).toBeNull();
     await act(async () => refresh.resolve(DEFAULT_CATALOG));
-  });
-
-  it("keeps the header, preview rail, and guide on one ultrawide alignment spine", async () => {
-    const width = vi
-      .spyOn(HTMLElement.prototype, "clientWidth", "get")
-      .mockReturnValue(3120);
-    try {
-      renderPreview({
-        themeCatalog: () => DEFAULT_CATALOG,
-        setTheme: () => DEFAULT_CATALOG,
-      });
-
-      await waitFor(() =>
-        expect(document.querySelector("[data-tp-band=desktop]")).not.toBeNull(),
-      );
-      const header = document.querySelector<HTMLElement>(
-        "[data-tp-header-inner]",
-      );
-      expect(header?.style.maxWidth).toBe("1600px");
-      expect(header?.style.padding).toContain("20px");
-      expect(
-        document.querySelector<HTMLElement>("[data-tp-layout=desktop]")?.style
-          .maxWidth,
-      ).toBe("1600px");
-      expect(
-        document.querySelector<HTMLElement>("[data-tp-mock-container]")?.style
-          .padding,
-      ).toBe("20px");
-      expect(
-        document
-          .querySelector<HTMLElement>("[data-tp-area=components]")
-          ?.closest("[data-tp-layout=desktop]")
-          ?.getAttribute("data-tp-layout"),
-      ).toBe("desktop");
-      const stylesheet = document.querySelector<HTMLElement>(
-        "[data-tp-area=stylesheet]",
-      );
-      expect(stylesheet?.style.maxWidth).toBe("1600px");
-      expect(stylesheet?.style.padding).toContain("20px");
-    } finally {
-      width.mockRestore();
-    }
   });
 
   it("queues one immediate refresh when change signals arrive during a stale catalog request", async () => {

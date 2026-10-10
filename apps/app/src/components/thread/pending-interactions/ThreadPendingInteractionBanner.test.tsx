@@ -542,6 +542,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(pre?.textContent).toContain("echo '=== watcher untouched ==='");
     expect(pre?.textContent).not.toContain("git diff --stat -- watcher.py");
     expect(preview.textContent).not.toContain("Action:");
+    expect(preview.textContent).not.toContain("Command:");
     expect(preview.textContent).toContain("/home/user/immortal-agents");
     fireEvent.click(screen.getByRole("button", { name: "Show 2 more lines" }));
     expect(preview.querySelector("pre")?.textContent).toContain(

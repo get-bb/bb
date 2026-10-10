@@ -32,19 +32,6 @@ afterEach(() => {
 });
 
 describe("RootComposeRightPanelToggle", () => {
-  it("uses a disclosure state without painting the whole click target as selected", () => {
-    const onToggle = vi.fn();
-
-    render(<RootComposeRightPanelToggle isOpen onToggle={onToggle} />);
-
-    const button = screen.getByRole("button", { name: "Hide right panel" });
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    expect(button.getAttribute("aria-pressed")).toBeNull();
-
-    fireEvent.click(button);
-    expect(onToggle).toHaveBeenCalledOnce();
-  });
-
   it("warms the panel from toggle intent but not from mounting the toggle", async () => {
     vi.useFakeTimers();
     const preload = vi

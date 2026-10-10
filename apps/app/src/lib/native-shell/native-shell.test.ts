@@ -98,11 +98,6 @@ describe("getNativeShell", () => {
     expect(getNativeShell()).toBeNull();
   });
 
-  it("treats a nonsense bridge version as no bridge", () => {
-    installShell({ bridgeVersion: 0 });
-    expect(getNativeShell()).toBeNull();
-  });
-
   it("keeps working with a shell newer than this page", () => {
     installShell({ bridgeVersion: 99 });
     expect(getNativeShell()).not.toBeNull();

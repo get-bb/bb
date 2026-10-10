@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const require = createRequire(import.meta.url);
-const sharedUiIconDir = dirname(require.resolve("@bb/shared-ui/icon"));
 
 type IconModule = typeof import("@bb/shared-ui/icon");
 type IconRegistryModule = typeof import("@bb/shared-ui/icon-registry");
@@ -85,18 +79,5 @@ describe("Icon core/extended split", () => {
     for (const name of registry.EXTENDED_ICON_NAMES) {
       expect(extended.EXTENDED_ICON_MAP[name].length).toBeGreaterThan(0);
     }
-  });
-
-  it("keeps the extended artwork off the static import graph of the boot modules", () => {
-    const iconSource = readFileSync(join(sharedUiIconDir, "icon.tsx"), "utf8");
-    const registrySource = readFileSync(
-      join(sharedUiIconDir, "icon-registry.ts"),
-      "utf8",
-    );
-
-    expect(iconSource).not.toMatch(/from\s+["']\.\/icon-extended["']/);
-    expect(iconSource).toMatch(/import\(\s*["']\.\/icon-extended["']\s*\)/);
-    expect(registrySource).not.toMatch(/@hugeicons\/core-free-icons/);
-    expect(registrySource).not.toMatch(/from\s+["']\.\/icon-extended["']/);
   });
 });

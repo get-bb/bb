@@ -66,10 +66,11 @@ describe("memory settings", () => {
   });
 
   it("confirms and deletes a memory", async () => {
-    vi.stubGlobal(
-      "confirm",
-      vi.fn(() => true),
-    );
+    const confirm = vi
+      .fn<(message: string) => boolean>()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    vi.stubGlobal("confirm", confirm);
     const slot = renderSlot(
       app.settingsSections[0]!,
       {},
@@ -83,7 +84,13 @@ describe("memory settings", () => {
 
     expect(await slot.findByText("validation")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Delete" }));
+    expect(confirm).toHaveBeenCalledWith("Delete memory “validation”?");
+    expect(
+      slot.rpcCalls.filter((call) => call.method === "deleteMemory"),
+    ).toEqual([]);
+    expect(slot.getByText("validation")).toBeTruthy();
 
+    fireEvent.click(slot.getByRole("button", { name: "Delete" }));
     await waitFor(() =>
       expect(slot.rpcCalls).toContainEqual({
         method: "deleteMemory",

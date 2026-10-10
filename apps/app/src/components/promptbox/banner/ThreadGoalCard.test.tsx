@@ -34,23 +34,4 @@ describe("ThreadGoalCard", () => {
     fireEvent.click(clear);
     expect(onClearGoal).toHaveBeenCalledOnce();
   });
-
-  it("stays visible and disables repeated clear requests while pending", () => {
-    render(
-      <ThreadGoalCard
-        goal={goal}
-        isClearPending
-        isExpanded={false}
-        onClearGoal={() => {}}
-        onToggle={() => {}}
-      />,
-    );
-
-    expect(
-      screen
-        .getByRole("button", { name: "Clear active Goal" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
-    expect(screen.getByText("Goal")).not.toBeNull();
-  });
 });

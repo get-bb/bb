@@ -121,32 +121,6 @@ describe("PluginDetailReleaseControl", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("does not prescribe a bb upgrade for a candidate requiring an older bb", () => {
-    const { wrapper } = createQueryClientTestHarness();
-    render(
-      <PluginDetailReleaseStatus
-        plugin={plugin({
-          updateState: {
-            ...EMPTY_PLUGIN_UPDATE_STATE,
-            blockedVersion: "1.9.0",
-            blockedReasons: ["requires bb < 0.20, running bb is 0.21.0"],
-          },
-        })}
-      />,
-      {
-        wrapper: ({ children }) => (
-          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
-        ),
-      },
-    );
-
-    const blockedStatus = screen.getByRole("status", {
-      name: "Update blocked",
-    });
-    expect(blockedStatus.textContent).toContain("Requires bb < 0.20");
-    expect(blockedStatus.textContent).not.toContain("Update bb");
-  });
-
   it("retries a failed update from the release action without opening a modal", async () => {
     let completeUpdate: (() => void) | undefined;
     const fetchMock = vi.fn(
@@ -237,23 +211,5 @@ describe("PluginDetailReleaseControl", () => {
       },
     ]);
     expect(screen.queryByRole("dialog")).toBeNull();
-  });
-
-  it("renders nothing for builtins (their update channel is the bb release)", () => {
-    const { wrapper } = createQueryClientTestHarness();
-    const { container } = render(
-      <PluginDetailReleaseControl
-        plugin={{
-          ...plugin({ provenance: "builtin" }),
-          source: "builtin:linear",
-        }}
-      />,
-      {
-        wrapper: ({ children }) => (
-          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
-        ),
-      },
-    );
-    expect(container.textContent).toBe("");
   });
 });

@@ -185,13 +185,14 @@ it("places mobile plugin sections only on Mobile and removes them when unregiste
       },
     }),
   );
-  renderSection();
+  const mobile = renderSection();
   const plugin = render(
     <MemoryRouter>
       <PluginSettingsSections pluginId="connection" />
     </MemoryRouter>,
   );
   expect(await screen.findByText("Pair this phone")).toBeTruthy();
+  expect(mobile.container.textContent).not.toContain("Manage connection");
   expect(plugin.container.textContent).toContain("Manage connection");
   expect(plugin.container.textContent).not.toContain("Pair this phone");
   act(() =>
