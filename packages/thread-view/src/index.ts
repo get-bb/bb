@@ -42,6 +42,7 @@ export {
   parseSentThreadMessage,
   type ThreadTellCommand,
 } from "./tool-call-parsing.js";
+export { formatShellCommandForDisplay } from "./shell-command-display.js";
 export {
   getFileChangeAction,
   isPatchMetadataLine,

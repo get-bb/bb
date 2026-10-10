@@ -165,6 +165,28 @@ const commandApproval: PendingInteraction = {
   },
 };
 
+const chainedCommand =
+  "cd apps/app && pnpm install && pnpm exec turbo run typecheck && pnpm exec turbo run test --filter=@bb/app && git status --short";
+
+const chainedCommandApproval: PendingInteraction = {
+  ...planReview,
+  id: "pint_chained_cmd",
+  providerId: "claude-code",
+  payload: {
+    kind: "approval",
+    reason: null,
+    availableDecisions: ["allow_once", "deny"],
+    subject: {
+      kind: "command",
+      itemId: "call_chained_cmd",
+      command: chainedCommand,
+      cwd: null,
+      actions: [],
+      sessionGrant: null,
+    },
+  },
+};
+
 function bannerElement(interaction: PendingInteraction) {
   return (
     <ThreadPendingInteractionBanners
@@ -550,6 +572,18 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(screen.getByRole("button", { name: "Show less" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
     expect(banner.hasAttribute("data-expanded")).toBe(false);
+  });
+
+  it("puts each command of a long one-liner on its own line within the four-line preview", () => {
+    renderBanner(chainedCommandApproval);
+    const preview = screen.getByTestId("command-preview");
+    expect(preview.querySelector("pre")?.textContent).toBe(
+      "$ cd apps/app &&\n  pnpm install &&\n  pnpm exec turbo run typecheck &&\n  pnpm exec turbo run test --filter=@bb/app &&",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more line" }));
+    expect(preview.querySelector("pre")?.textContent).toBe(
+      "$ cd apps/app &&\n  pnpm install &&\n  pnpm exec turbo run typecheck &&\n  pnpm exec turbo run test --filter=@bb/app &&\n  git status --short",
+    );
   });
 
   it("toggles through the title without submitting an approval", () => {
