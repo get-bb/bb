@@ -805,7 +805,7 @@ function ThreadSecondaryPanelContent({
             className={cn(
               CHROME_ROW_CLASS,
               "min-w-0 justify-between gap-2",
-              renderAsDrawer ? "px-2" : "px-4",
+              renderAsDrawer ? "px-2" : "px-(--bb-panel-chrome-padding)",
               usesDesktopChrome && usesWindowChrome && MACOS_WINDOW_DRAG_CLASS,
               usesDesktopChrome &&
                 usesWindowChrome &&
@@ -876,9 +876,7 @@ function ThreadSecondaryPanelContent({
                 isDiffFilesLoading || gitDiffTarget === undefined
               }
               stats={gitDiffStats}
-              isStatsLoading={
-                isDiffFilesLoading || gitDiffTarget === undefined
-              }
+              isStatsLoading={isDiffFilesLoading || gitDiffTarget === undefined}
               totalFilesCount={diffFiles.length}
               isTruncated={isGitDiffTruncated}
               fileFilter={gitDiffFileFilter}

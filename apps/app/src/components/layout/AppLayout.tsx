@@ -250,7 +250,7 @@ function SidebarTriggerOverlay({
         data-testid="app-window-title-bar"
         style={{ zIndex: APP_OVERLAY_LAYER.sidebarTrigger }}
         className={cn(
-          "fixed inset-x-0 top-0 gap-1 pr-3",
+          "fixed inset-x-0 top-0 pr-[calc(var(--bb-window-frame-lip)_+_var(--bb-panel-chrome-padding)_+_1px)]",
           CHROME_ROW_CLASS,
           reserveMacosTrafficLights
             ? MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS
@@ -258,21 +258,20 @@ function SidebarTriggerOverlay({
           MACOS_WINDOW_DRAG_CLASS,
         )}
       >
-        <SidebarHistoryNavigationControls
-          className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-        />
-        <div className="relative flex items-center">
-          <SidebarTrigger
-            className={MACOS_CHROME_CONTROL_NO_DRAG_CLASS}
-            {...triggerProps}
-          />
-          <AppCommandShortcutHint
-            shortcut={shortcut}
-            className={cn(
-              "absolute left-full ml-1",
-              MACOS_CHROME_CONTROL_AXIS_CLASS,
-            )}
-          />
+        <div
+          className={cn(
+            "flex items-center gap-(--bb-chrome-control-gap)",
+            MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+          )}
+        >
+          <SidebarHistoryNavigationControls />
+          <div className="relative flex items-center">
+            <SidebarTrigger {...triggerProps} />
+            <AppCommandShortcutHint
+              shortcut={shortcut}
+              className="absolute left-full ml-1"
+            />
+          </div>
         </div>
         <WindowRightPanelToggle
           className={cn("ml-auto", MACOS_CHROME_CONTROL_NO_DRAG_CLASS)}
