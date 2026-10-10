@@ -586,7 +586,7 @@ const SHOW_ME_RELEASE: ReleaseNotes = {
 
 function walkthrough(title: string, text?: string) {
   const context = text === undefined ? "" : ` (What's new: ${text})`;
-  return `Walk me through ${title} in this bb, one step at a time, and check each step with me.${context} If the interactive_answer tool is available, show the steps as an interactive answer; otherwise reply with plain numbered steps.`;
+  return `Walk me through ${title} in this bb, one step at a time, and check each step with me.${context} If the playground tool is available, show the steps as a playground; otherwise reply with plain numbered steps.`;
 }
 
 async function expandedShowMeNotes() {
