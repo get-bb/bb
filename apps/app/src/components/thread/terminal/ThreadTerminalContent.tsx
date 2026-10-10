@@ -1,4 +1,5 @@
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
+import { useRegisterActiveTerminalSession } from "@/lib/terminal-close-guard";
 import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
@@ -17,6 +18,12 @@ export function ThreadTerminalContent({
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
+  useRegisterActiveTerminalSession(
+    controller.shouldMountTerminalView && !controller.hasTerminalQueryError
+      ? controller.activeSession
+      : null,
+  );
+
   if (!controller.shouldMountTerminalView) {
     return null;
   }
