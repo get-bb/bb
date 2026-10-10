@@ -798,7 +798,23 @@ export function createApp(
     });
   });
   setPluginThreadEventEmitter(pluginService.events);
-  setTurnTelemetryDeps(deps);
+  setTurnTelemetryDeps({
+    ...deps,
+    builtInProviderIds: () => {
+      const builtInPluginIds = new Set(
+        pluginService
+          .list()
+          .filter((plugin) => plugin.provenance === "builtin")
+          .map((plugin) => plugin.id),
+      );
+      return new Set(
+        pluginService
+          .providerCatalog()
+          .filter((provider) => builtInPluginIds.has(provider.pluginId))
+          .map((provider) => provider.id),
+      );
+    },
+  });
   // Bridge the dispatch pipeline to this service's hooks. Until this runs
   // there are no hooks, which is exactly the zero-overhead path.
   setPluginHookProvider(pluginService.hooks);

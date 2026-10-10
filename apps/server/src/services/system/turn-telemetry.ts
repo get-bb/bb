@@ -13,18 +13,9 @@ import type { AppDeps } from "../../types.js";
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import type { TurnErrorCategory, TurnFinishedOutcome } from "./telemetry.js";
 
-type TurnTelemetryDeps = Pick<AppDeps, "db" | "logger" | "telemetry">;
-
-const REPORTED_PROVIDER_IDS: ReadonlySet<string> = new Set([
-  "claude-code",
-  "codex",
-  "pi",
-  "acp-cursor",
-  "acp-opencode",
-  "acp-omp",
-  "acp-grok",
-  "acp-hermes-agent",
-]);
+export type TurnTelemetryDeps = Pick<AppDeps, "db" | "logger" | "telemetry"> & {
+  builtInProviderIds(): ReadonlySet<string>;
+};
 
 const SYSTEM_ERROR_CATEGORIES: Readonly<Record<string, TurnErrorCategory>> = {
   provider_process_exited: "process_exited",
@@ -68,8 +59,11 @@ export function turnErrorCategory(
   }
 }
 
-export function reportedProviderId(providerId: string): string {
-  return REPORTED_PROVIDER_IDS.has(providerId) ? providerId : "other";
+export function reportedProviderId(
+  providerId: string,
+  builtInProviderIds: ReadonlySet<string>,
+): string {
+  return builtInProviderIds.has(providerId) ? providerId : "other";
 }
 
 export function isTurnEndingLifecycleEvent(
@@ -137,7 +131,10 @@ export function recordTurnFinished(
       name: "turn_finished",
       properties: {
         outcome: args.outcome,
-        provider: reportedProviderId(thread.providerId),
+        provider: reportedProviderId(
+          thread.providerId,
+          deps.builtInProviderIds(),
+        ),
         error_category:
           args.outcome === "failed"
             ? failureCategory(deps.db, args.threadId)

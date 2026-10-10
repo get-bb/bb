@@ -49,7 +49,13 @@ async function setup(
   const harness = await createTestAppHarness();
   const capture = vi.fn<TelemetryService["capture"]>();
   harness.deps.telemetry = { ...harness.deps.telemetry, capture };
-  setTurnTelemetryDeps(harness.deps);
+  setTurnTelemetryDeps({
+    ...harness.deps,
+    get telemetry() {
+      return harness.deps.telemetry;
+    },
+    builtInProviderIds: () => new Set(["codex"]),
+  });
   const { host, session } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
   const environment = seedEnvironment(harness.deps, {
@@ -243,8 +249,11 @@ describe("turn_finished telemetry", () => {
     expect(turnErrorCategory("max-turns")).toBe("limit_reached");
     expect(turnErrorCategory("policy")).toBe("other");
     expect(turnErrorCategory(null)).toBe("other");
-    expect(reportedProviderId("claude-code")).toBe("claude-code");
-    expect(reportedProviderId("acp-hermes-agent")).toBe("acp-hermes-agent");
-    expect(reportedProviderId("acp-my-private-agent")).toBe("other");
+    const builtIn = new Set(["claude-code", "acp-hermes-agent"]);
+    expect(reportedProviderId("claude-code", builtIn)).toBe("claude-code");
+    expect(reportedProviderId("acp-hermes-agent", builtIn)).toBe(
+      "acp-hermes-agent",
+    );
+    expect(reportedProviderId("acp-my-private-agent", builtIn)).toBe("other");
   });
 });
