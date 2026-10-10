@@ -554,111 +554,140 @@ function ChildQuestionSummary({
   );
 }
 
-function ChildQuestionNav({
+function ChildThreadsHeaderIcon({ needsInput }: { needsInput: boolean }) {
+  return needsInput ? (
+    <span className="relative mr-1 inline-flex shrink-0">
+      <Icon
+        name="ChildThread"
+        className="size-3.5 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <span className="absolute -bottom-1.5 -right-1.5 inline-flex rounded-full bg-background">
+        <Icon
+          name="CircleQuestion"
+          className="size-3 text-foreground/80"
+          aria-label="Needs input"
+        />
+      </span>
+    </span>
+  ) : (
+    <Icon
+      name="ChildThread"
+      className={activityIconClass("active", "size-3.5 shrink-0")}
+      aria-hidden="true"
+    />
+  );
+}
+
+function ChildQuestionBackHeader({
   backButtonRef,
-  canGoBack,
-  index,
-  total,
-  onStep,
+  needsInput,
   onBack,
 }: {
   backButtonRef: RefObject<HTMLButtonElement | null>;
-  canGoBack: boolean;
-  index: number;
-  total: number;
-  onStep: (offset: 1 | -1) => void;
+  needsInput: boolean;
   onBack: () => void;
 }) {
-  const position = `${index + 1} of ${total}`;
   return (
-    <div
+    <button
+      ref={backButtonRef}
+      type="button"
       id={SECTION_IDS.childThreads.toggle}
+      aria-label="Back to active child threads"
+      onClick={onBack}
       className={activityRowClass(
         "active",
-        "flex min-h-8 min-w-0 items-center",
+        cn(
+          PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+          PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+        ),
       )}
     >
-      {canGoBack ? (
-        <button
-          ref={backButtonRef}
-          type="button"
-          onClick={onBack}
-          className={cn(
-            PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-            "w-auto flex-1 hover:bg-transparent",
-          )}
-        >
-          <Icon
-            name="ChevronLeft"
-            className={activityIconClass("active", "size-3.5 shrink-0")}
-            aria-hidden="true"
-          />
-          <span
-            className={activityTextClass(
-              "active",
-              "min-w-0 flex-1 truncate text-left font-normal",
-            )}
-          >
-            Active child threads
-          </span>
-        </button>
-      ) : (
-        <span className="flex-1" />
-      )}
-      {total > 1 ? (
-        <div className="flex shrink-0 items-center pr-1.5 text-xs">
-          <button
-            type="button"
-            aria-label="Previous question"
-            onClick={() => onStep(-1)}
-            className={CHILD_QUESTION_STEP_BUTTON_CLASS}
-          >
-            <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
-          </button>
-          <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
-            {position}
-          </span>
-          <button
-            type="button"
-            aria-label="Next question"
-            onClick={() => onStep(1)}
-            className={CHILD_QUESTION_STEP_BUTTON_CLASS}
-          >
-            <Icon name="ChevronRight" className="size-3.5" aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-      <span aria-live="polite" className="sr-only">
-        {total > 1 ? `Question ${position}` : ""}
+      <Icon
+        name="ChevronLeft"
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <ChildThreadsHeaderIcon needsInput={needsInput} />
+      <span
+        className={activityTextClass(
+          "active",
+          "min-w-0 flex-1 truncate text-left font-normal",
+        )}
+      >
+        Active child threads
       </span>
-    </div>
+    </button>
   );
 }
 
 function ChildQuestionBody({
   titleLinkRef,
   current,
+  index,
+  total,
+  onStep,
 }: {
   titleLinkRef: RefObject<HTMLAnchorElement | null>;
   current: ChildThreadQuestion;
+  index: number;
+  total: number;
+  onStep: (offset: 1 | -1) => void;
 }) {
+  const position = `${index + 1} of ${total}`;
   return (
     <div className="px-3 pb-2 pt-2">
-      <p className="px-2.5 text-sm text-foreground">
-        <NavLink
-          ref={titleLinkRef}
-          to={current.href}
-          className="underline underline-offset-2"
-        >
-          {current.childTitle}
-        </NavLink>
-        :{" "}
-        <span className="text-muted-foreground">
-          {formatPendingInteractionSummary({
-            interaction: current.interaction,
-          })}
-        </span>
-      </p>
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 px-2.5 pt-0.5 text-sm text-foreground">
+          <NavLink
+            ref={titleLinkRef}
+            to={current.href}
+            className="underline underline-offset-2"
+          >
+            {current.childTitle}
+          </NavLink>
+          :{" "}
+          <span className="text-muted-foreground">
+            {formatPendingInteractionSummary({
+              interaction: current.interaction,
+            })}
+          </span>
+        </p>
+        {total > 1 ? (
+          <div className="-mr-1.5 flex shrink-0 items-center text-xs">
+            <button
+              type="button"
+              aria-label="Previous question"
+              onClick={() => onStep(-1)}
+              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+            >
+              <Icon
+                name="ChevronLeft"
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </button>
+            <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
+              {position}
+            </span>
+            <button
+              type="button"
+              aria-label="Next question"
+              onClick={() => onStep(1)}
+              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+            >
+              <Icon
+                name="ChevronRight"
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {total > 1 ? `Question ${position}` : ""}
+      </span>
       <div className="mt-1.5">
         <PendingInteractionPresentationContext.Provider value="inline">
           <ThreadPendingInteractionBanners
@@ -993,10 +1022,8 @@ function ActiveChildThreadsCard({
     returnFocusChildId.current = currentQuestion?.childThreadId ?? null;
     setOpenQuestion(null);
   };
-  const canGoBack = items.length > 1;
-  const showQuestionNav =
-    currentQuestion !== undefined &&
-    (canGoBack || pendingInteractions.length > 1);
+  const showBackHeader = currentQuestion !== undefined && items.length > 1;
+  const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
       rootRef={cardRef}
@@ -1004,13 +1031,10 @@ function ActiveChildThreadsCard({
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
-      {showQuestionNav ? (
-        <ChildQuestionNav
+      {showBackHeader ? (
+        <ChildQuestionBackHeader
           backButtonRef={backButtonRef}
-          canGoBack={canGoBack}
-          index={questionIndex}
-          total={pendingInteractions.length}
-          onStep={stepQuestion}
+          needsInput={needsInput}
           onBack={backToChildThreads}
         />
       ) : (
@@ -1043,28 +1067,7 @@ function ActiveChildThreadsCard({
             ),
           )}
         >
-          {items.some((item) => item.hasPendingInteraction) ? (
-            <span className="relative mr-1 inline-flex shrink-0">
-              <Icon
-                name="ChildThread"
-                className="size-3.5 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <span className="absolute -bottom-1.5 -right-1.5 inline-flex rounded-full bg-background">
-                <Icon
-                  name="CircleQuestion"
-                  className="size-3 text-foreground/80"
-                  aria-label="Needs input"
-                />
-              </span>
-            </span>
-          ) : (
-            <Icon
-              name="ChildThread"
-              className={activityIconClass("active", "size-3.5 shrink-0")}
-              aria-hidden="true"
-            />
-          )}
+          <ChildThreadsHeaderIcon needsInput={needsInput} />
           {collapsedQuestion && collapsedQuestionChildTitle ? (
             <span className="flex min-w-0 flex-1 text-left">
               <ChildQuestionSummary
@@ -1102,6 +1105,9 @@ function ActiveChildThreadsCard({
           <ChildQuestionBody
             titleLinkRef={titleLinkRef}
             current={currentQuestion}
+            index={questionIndex}
+            total={pendingInteractions.length}
+            onStep={stepQuestion}
           />
         ) : (
           <ChildThreadsBody
