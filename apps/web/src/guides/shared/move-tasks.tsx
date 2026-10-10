@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { SwitchConcept } from "../concepts";
 import { CopyPromptButton, Substeps } from "../guide-blocks";
-import { withIntake } from "../prompt-intake";
 import type { Guide, GuideFaq, GuideMeta } from "../guide-types";
 import { AGENTS_FAQ, COST_FAQ, SLEEP_TROUBLESHOOTING } from "./faq";
 
@@ -10,48 +9,42 @@ export type MoveTasksTool = {
   id: string;
   slug: string;
   name: string;
+  app: string;
   modelsCommand: string;
   providerFlag: string;
   tasks: string;
   description: string;
   find: string;
-  findSteps: ReactNode;
-  pauseSteps: ReactNode;
+  pause: string;
+  checkOriginals: ReactNode;
   troubleshooting: GuideFaq[];
   faq: GuideFaq[];
 };
 
-const MODEL_STEP = `Check each task's model against \`<models>\`. If it isn't listed, ask me which model to use, and suggest the one marked isDefault: it's the model bb already runs for that agent.`;
-
 function movePrompt(tool: MoveTasksTool): string {
-  return withIntake(
-    [
-      { label: "Tasks", hint: `all of my ${tool.tasks}, or the names to move` },
-      {
-        label: "Timezone",
-        hint: "the IANA zone the schedules use, e.g. America/Los_Angeles",
-      },
-    ],
-    `Move my ${tool.name} ${tool.tasks} into bb automations, one automation each, and test each one.
+  return `Move my ${tool.name} ${tool.tasks} into bb automations, one automation each, then switch each one over: test it, turn it on in bb, and pause the original so nothing runs twice. Work everything out from my files. Only ask me when something is missing or a step fails twice.
 Guide: https://getbb.app/guides/${tool.slug}
 
-Only read the old ${tool.tasks}. Don't edit, pause, or delete them. Create every bb automation paused, and turn one on only when I say so. If a step fails, stop and tell me the command, the error, and what you'd try next.
+Move every active one. Use this computer's timezone for every schedule: the part of \`readlink /etc/localtime\` after zoneinfo/.
 
 ${tool.find}
-2. Match each one to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose folder or repository matches. If none does, ask me whether to add it.
+2. Match each one to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose source path matches its folder. If none does, add the folder with \`bb project create --name <folder name> --root <folder>\`.
    Check: every one has a project ID.
-3. Turn each schedule into a five-field cron in my Timezone. If a schedule has no exact cron, like every other week, pick the closest one and tell me.
-   ${MODEL_STEP.replace("<models>", tool.modelsCommand)}
+3. Turn each schedule into a five-field cron in my timezone. If there's no exact cron, like every other week, use the closest one and note it.
+   Check each model against \`${tool.modelsCommand}\`. If it isn't listed, use the one marked isDefault and note it.
 4. Create each automation paused. Read \`bb automation create --help\` first.
-   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <Timezone> ${tool.providerFlag} --model <the model, or the one I picked> --permission-mode auto <where> --prompt "<the prompt, word for word>"
+   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <timezone> ${tool.providerFlag} --model <model> --permission-mode auto <where> --prompt "<the prompt, word for word>"
    For <where>: if it ran in a worktree, use --new-environment worktree. If it ran in its folder, use --environment <that folder>, the project source path from \`bb project list\`.
-   If a prompt relies on something only ${tool.name} had, like a connector or an event trigger, tell me what it needs instead of guessing.
+   If a prompt relies on something only ${tool.name} had, like a connector or an event trigger, note what it needs.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
 5. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
-   Check: the run finished and did what its prompt asks. If it failed because the model isn't supported on my account, switch it to the isDefault model with \`bb automation update <id> --project <project-id> --model <model>\`, tell me, and test it again. If it failed for another reason, leave it paused, note why, and go on to the next one.
+   Check: the run finished and did what its prompt asks. If it failed because the model isn't supported on my account, switch it to the isDefault model with \`bb automation update <id> --project <project-id> --model <model>\` and test it again. If it still fails, leave it paused in bb, leave the original running, note why, and go on to the next one.
+6. Switch over each one whose test passed.
+   Turn it on: \`bb automation resume <id> --project <project-id>\`.
+${tool.pause}
+   Check: a minute later, read the original again. If it's active again, note that I need to pause it in ${tool.app}.
 
-Reply with a table: name, its old schedule, its bb schedule, project, and test result. Then tell me to switch each one on in Automations and to pause the original in ${tool.name}, so nothing runs twice.`,
-  );
+Reply with a table: name, its old schedule, its bb schedule, project, test result, and whether it's switched over. Then list anything I still need to do.`;
 }
 
 export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
@@ -66,17 +59,15 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
       {
         id: "step-1",
         title: "Paste the prompt",
-        lead: `Your agent finds your ${tool.tasks} and asks for anything it can't read.`,
+        lead: `Your agent finds your ${tool.tasks}, moves each one, tests it, and switches it over.`,
         body: (
           <Substeps>
             <li>
-              Choose <strong>New thread</strong> and pick the project they work
-              on.
+              Choose <strong>New thread</strong> and pick any project.
             </li>
             <li>
               Paste the prompt from <CopyPromptButton /> and send it.
             </li>
-            {tool.findSteps}
           </Substeps>
         ),
         shot: {
@@ -89,43 +80,22 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
       },
       {
         id: "step-2",
-        title: "Check the new automations",
-        lead: "Each one becomes a paused automation with the same prompt, schedule, and model.",
+        title: "Check the switch-over",
+        lead: `Each one that passed its test is on in bb and paused in ${tool.name}.`,
         body: (
           <Substeps>
             <li>
               Choose <strong>Automations</strong> in the sidebar.
             </li>
             <li>
-              Check each one's project and schedule. To change a prompt, open it
-              and choose <strong>Edit prompt</strong>.
+              Open one to read its test run under <strong>Runs</strong>.
             </li>
+            {tool.checkOriginals}
           </Substeps>
         ),
         shot: {
-          src: "/guides/run-an-agent-on-a-schedule/window-list.webp",
-          alt: "The Automations page in bb, listing five automations with their project, schedule, next run, and an on/off switch",
-          width: 2048,
-          height: 1280,
-        },
-        options: [],
-      },
-      {
-        id: "step-3",
-        title: "Switch over",
-        lead: `Turn each one on in bb, then pause the original in ${tool.name} so it doesn't run twice.`,
-        body: (
-          <Substeps>
-            <li>
-              Open an automation, read its test run under <strong>Runs</strong>,
-              and switch it on.
-            </li>
-            {tool.pauseSteps}
-          </Substeps>
-        ),
-        shot: {
-          src: `/guides/${tool.slug}/window-detail-run.webp`,
-          alt: `A paused Daily dependency check automation in bb running ${tool.name}, with its schedule, prompt, model, and a finished test run under Runs`,
+          src: `/guides/${tool.slug}/window-detail-on.webp`,
+          alt: `A Daily dependency check automation in bb running ${tool.name}, switched on, with its schedule, prompt, model, and a finished test run under Runs`,
           width: 2048,
           height: 1280,
         },
@@ -137,20 +107,24 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
       {
         question: "A test run failed",
         answer: (
-          <ol>
-            <li>
-              Open the automation, then the run under <strong>Runs</strong>, and
-              read where it stopped.
-            </li>
-            <li>
-              If the model isn't available to your account, pick another model
-              and choose <strong>Run now</strong> again.
-            </li>
-            <li>
-              If the prompt relied on a connector, add that service to the agent
-              on your computer and run it again.
-            </li>
-          </ol>
+          <>
+            <p>
+              The automation stays paused in bb and the original keeps running.
+            </p>
+            <ol>
+              <li>
+                Open the automation, then the run under <strong>Runs</strong>,
+                and read where it stopped.
+              </li>
+              <li>
+                If the prompt relied on a connector, add that service to the
+                agent on your computer and choose <strong>Run now</strong>.
+              </li>
+              <li>
+                Once it passes, ask your agent to switch it over.
+              </li>
+            </ol>
+          </>
         ),
       },
       SLEEP_TROUBLESHOOTING,
@@ -160,9 +134,21 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
         question: "What comes over?",
         answer: (
           <p>
-            The prompt, word for word, the schedule, the project, and the model.
-            If your account can't use that model in bb, your agent asks which
-            one to use. Past runs stay in {tool.name}.
+            The prompt, word for word, the schedule, the project, the model, and
+            where it runs. If your account can't use that model in bb, your
+            agent uses bb's default for that agent and tells you. Past runs stay
+            in {tool.name}.
+          </p>
+        ),
+      },
+      {
+        question: `What does my agent change in ${tool.name}?`,
+        answer: (
+          <p>
+            Only one thing: it pauses each original after its bb automation
+            passes a test, so nothing runs twice. It backs up the file first
+            and leaves the prompt and schedule alone, so you can switch an
+            original back on in {tool.app}.
           </p>
         ),
       },
@@ -179,67 +165,55 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
 
 const SCHEDULE_GUIDE = "/guides/run-an-agent-on-a-schedule";
 
+const CLAUDE_TASKS_FILE =
+  "~/Library/Application Support/Claude/claude-code-sessions/*/*/scheduled-tasks.json";
+const CODEX_DB = "~/.codex/sqlite/codex-dev.db";
+const CODEX_DB_SHELL = "$HOME/.codex/sqlite/codex-dev.db";
+
 export const MOVE_TASKS_TOOLS = {
   claude: {
     id: "claude",
     slug: "move-claude-code-routines",
     name: "Claude Code",
+    app: "the Claude Code desktop app",
     modelsCommand: "bb provider models claude-code --json",
     providerFlag: "--provider claude-code",
     tasks: "routines",
     description:
-      "Bring your Claude Code routines into bb automations, local and cloud. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
+      "Turn your Claude Code routines into bb automations. bb recreates each one and tests them before you switch over.",
     find: `1. Find my routines.
-   - Local routines are Desktop scheduled tasks. Each is ~/.claude/scheduled-tasks/<name>/SKILL.md, with the prompt as the body. Its schedule, folder, model, and whether it runs in a worktree aren't in the file, so ask me for them before you plan; don't guess. I can read them on Routines in the Claude Code desktop app.
-   - Cloud routines live on my claude.ai account, not this computer. Ask me to run /schedule list in Claude Code, or open claude.ai/code/routines, and paste each routine's prompt, schedule, repositories, and model. Each cloud run gets a fresh clone, so use a worktree for these.
+   - Local routines: read ${CLAUDE_TASKS_FILE}. Each entry in scheduledTasks has its schedule (cronExpression), enabled, model, folder (cwd, or the first of userSelectedFolders), useWorktree, and filePath: the SKILL.md under ~/.claude/scheduled-tasks/ whose body is the prompt. Skip entries with enabled false, and one-time ones with fireAt instead of cronExpression.
+   - Cloud routines live on my claude.ai account. List them with Claude Code's /schedule list, using my claude.ai login: \`claude -p "/schedule list"\`. Get each one's prompt, schedule, repository, and model. Each cloud run gets a fresh clone, so use a worktree for these. If you can't reach them, skip them and say so.
    - Skip /loop tasks. They end with their session.
    Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
-    findSteps: (
-      <>
-        <li>
-          For local routines, it asks for each one's schedule, folder, and
-          whether it runs in a worktree. Find them on{" "}
-          <strong>Routines</strong> in the Claude Code desktop app.
-        </li>
-        <li>
-          For cloud routines, run <code>/schedule list</code> in Claude Code, or
-          open claude.ai/code/routines, and paste each routine's prompt and
-          schedule.
-        </li>
-      </>
-    ),
-    pauseSteps: (
-      <>
-        <li>
-          For a local routine, open it on <strong>Routines</strong> in the
-          Claude Code desktop app and set it to <strong>Paused</strong>.
-        </li>
-        <li>
-          For a cloud routine, turn off the switch at the top of its page at
-          claude.ai/code/routines.
-        </li>
-      </>
+    pause: `   Pause the original. For a local routine, copy its scheduled-tasks.json to scheduled-tasks.before-bb.json once, then set only that entry's "enabled" to false with a JSON-aware edit, and read the file back. For a cloud routine, turn it off with /schedule update in \`claude -p\`.`,
+    checkOriginals: (
+      <li>
+        In the Claude Code desktop app, open <strong>Routines</strong>. Each
+        original that moved shows <strong>Paused</strong>.
+      </li>
     ),
     troubleshooting: [
       {
-        question: "A local routine came over without its schedule",
+        question: "My agent couldn't reach my cloud routines",
         answer: (
           <p>
-            Claude Code keeps only a local routine's prompt in its{" "}
-            <code>SKILL.md</code> file. Open <strong>Routines</strong> in the
-            Claude Code desktop app, read its schedule and folder, and tell your
-            agent.
+            Cloud routines live on your claude.ai account, and your agent reads
+            them with Claude Code's <code>/schedule</code> command. Sign in to
+            Claude Code with your claude.ai account, then ask your agent to try
+            again. Or run <code>/schedule list</code> yourself and paste each
+            one into the thread.
           </p>
         ),
       },
       {
-        question: "My agent can't see my cloud routines",
+        question: "An original is still running",
         answer: (
           <p>
-            Cloud routines live on your claude.ai account, so your agent can't
-            read them from your computer. Run <code>/schedule list</code> in
-            Claude Code, or open claude.ai/code/routines, and paste each one
-            into the thread.
+            The Claude Code desktop app can put a routine back if it was open
+            while your agent paused it. Open it on <strong>Routines</strong>{" "}
+            and set it to <strong>Paused</strong>. For a cloud routine, turn off
+            the switch on its page at claude.ai/code/routines.
           </p>
         ),
       },
@@ -302,26 +276,22 @@ export const MOVE_TASKS_TOOLS = {
     id: "codex-app",
     slug: "move-codex-scheduled-tasks",
     name: "Codex",
+    app: "the ChatGPT desktop app",
     modelsCommand: "bb provider models codex --json",
     providerFlag: "--provider codex",
     tasks: "scheduled tasks",
     description:
-      "Bring your Codex scheduled tasks into bb automations. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
-    find: `1. Find my scheduled tasks. If ~/.codex/automations/ has task folders, read each automation.toml: its prompt, schedule (an RRULE), project folders (cwds), model, status, and whether it runs in a worktree; ask me if that isn't in the file. Skip paused ones unless I named them. Otherwise, ask me to ask Codex in a chat in the ChatGPT desktop app to list my scheduled tasks with each one's prompt, schedule, project, model, and whether it runs in the local project or a worktree, and paste the list here.
-   A scheduled task inside a chat returns to that chat's context each run. For each of those, ask whether to have bb re-prompt one thread instead: use --target-thread <thread-id> in step 4 in place of <where>.
-   Check: list each task's name, schedule in plain words, project, local project or worktree, and model.`,
-    findSteps: (
+      "Turn your Codex scheduled tasks into bb automations. bb recreates each one and tests them before you switch over.",
+    find: `1. Find my scheduled tasks. The ChatGPT desktop app keeps them in ${CODEX_DB}. Read it without changing it:
+   sqlite3 -readonly -json "${CODEX_DB_SHELL}" "SELECT id, name, prompt, rrule, cwds, model, execution_environment, target_thread_id FROM automations WHERE status = 'ACTIVE'"
+   rrule is the schedule, cwds the project folders, and execution_environment is worktree or local. If that table doesn't exist, read each ~/.codex/automations/<id>/automation.toml instead; it has the same fields.
+   A task with a target_thread_id runs inside a Codex chat. bb can't continue that chat, so move it as a regular automation and note it.
+   Check: list each task's name, schedule in plain words, project folder, local or worktree, and model.`,
+    pause: `   Pause the original: back up the database once with \`sqlite3 "${CODEX_DB_SHELL}" ".backup ${CODEX_DB_SHELL.replace(".db", ".before-bb.db")}"\`, then run \`sqlite3 "${CODEX_DB_SHELL}" "UPDATE automations SET status = 'PAUSED' WHERE id = '<task id>'"\`, and read its status back.`,
+    checkOriginals: (
       <li>
-        If it asks for your scheduled tasks, ask Codex in a chat in the ChatGPT
-        desktop app to list them with each one's prompt, schedule, project,
-        model, and whether it runs in a worktree, and paste the list into the bb
-        thread.
-      </li>
-    ),
-    pauseSteps: (
-      <li>
-        In the ChatGPT desktop app, open <strong>Scheduled</strong> and pause
-        the original, or ask Codex in a chat to pause it.
+        In the ChatGPT desktop app, open <strong>Scheduled</strong>. Each
+        original that moved is paused.
       </li>
     ),
     troubleshooting: [
@@ -329,9 +299,19 @@ export const MOVE_TASKS_TOOLS = {
         question: "My agent didn't find my scheduled tasks",
         answer: (
           <p>
-            Ask Codex in a chat in the ChatGPT desktop app to list your
-            scheduled tasks with each one's prompt, schedule, project, and
-            model, then paste the list into the bb thread.
+            It reads them on the computer where you use the ChatGPT desktop app.
+            Run the prompt in a bb thread on that computer. Or ask Codex in a
+            chat to list your scheduled tasks with each one's prompt, schedule,
+            project, and model, and paste the list into the bb thread.
+          </p>
+        ),
+      },
+      {
+        question: "An original is still running",
+        answer: (
+          <p>
+            In the ChatGPT desktop app, open <strong>Scheduled</strong> and
+            pause it, or ask Codex in a chat to pause it.
           </p>
         ),
       },
@@ -361,9 +341,9 @@ export const MOVE_TASKS_TOOLS = {
         question: "What about scheduled tasks inside a chat?",
         answer: (
           <p>
-            A bb automation can re-prompt the same thread each run, so it keeps
-            that thread's context. Your agent asks which tasks should work that
-            way.
+            bb can't continue a ChatGPT chat, so your agent moves each one as a
+            regular automation. To keep context between runs, ask your agent to
+            point it at one bb thread instead.
           </p>
         ),
       },
