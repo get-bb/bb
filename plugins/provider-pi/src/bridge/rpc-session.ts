@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { runSettlementError } from "./run-settlement.js";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
@@ -60,6 +61,7 @@ interface TrackedInputConsumption {
 }
 
 export interface PiPromptRunOutcome {
+  boundaryDelivered?: boolean;
   error?: unknown;
 }
 
@@ -70,6 +72,41 @@ export interface PiInputDispatch {
 
 interface PendingRunSettlement {
   resolve: (outcome: PiPromptRunOutcome) => void;
+}
+
+interface SettlementReport {
+  runId: number;
+  leafId: string | null;
+  event: Record<string, unknown>;
+}
+
+interface StartReport {
+  runId: number;
+  previousSettlement: SettlementReport | null;
+}
+
+function parseSettlementReport(value: unknown): SettlementReport | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("runId" in value) ||
+    typeof value.runId !== "number" ||
+    !Number.isSafeInteger(value.runId) ||
+    value.runId < 1 ||
+    !("leafId" in value) ||
+    (value.leafId !== null && typeof value.leafId !== "string") ||
+    !("event" in value) ||
+    !value.event ||
+    typeof value.event !== "object" ||
+    Array.isArray(value.event) ||
+    "error" in value
+  )
+    return null;
+  return {
+    runId: value.runId,
+    leafId: value.leafId,
+    event: { ...value.event },
+  };
 }
 
 interface ChannelReply {
@@ -124,6 +161,14 @@ export interface PiRpcSessionState {
 export class PiRpcSession {
   private child: PiRpcChild | undefined;
   private isProcessing = false;
+  private supportsSettlement = false;
+  private agentRunsStarted = 0;
+  private agentRunsSettled = 0;
+  private readonly runs = new Map<
+    number,
+    { end?: PiRpcEvent; leafId?: string | null; recoveryError?: string }
+  >();
+  private deliveredRunActive = false;
   private isCompacting = false;
   private manualCompactionCompletionCount = 0;
   private lastCompactionEndDelivery: Promise<void> = Promise.resolve();
@@ -141,6 +186,13 @@ export class PiRpcSession {
   private lastKnownLeafId: string | null = null;
   private readonly agentEndLeafReports: (string | null)[] = [];
   private agentEndLeafWaiter: ((leafId: string | null) => void) | null = null;
+  private readonly agentSettledLeafReports: (SettlementReport | null)[] = [];
+  private agentSettledLeafWaiter:
+    | ((report: SettlementReport | null) => void)
+    | null = null;
+  private readonly agentStartReports: (StartReport | null)[] = [];
+  private agentStartWaiter: ((report: StartReport | null) => void) | null =
+    null;
   private ready: {
     promise: Promise<void>;
     resolve: () => void;
@@ -328,7 +380,7 @@ export class PiRpcSession {
 
   prompt(text: string, images?: ImageContent[]): PiInputDispatch {
     const child = this.child;
-    if (!child || child.exited) {
+    if (this.closed || !child || child.exited) {
       const consumed = Promise.reject(new Error("No active Pi session"));
       void consumed.catch(() => undefined);
       return { consumed, settled: Promise.resolve(null) };
@@ -543,24 +595,82 @@ export class PiRpcSession {
       return;
     }
     const event = raw as PiRpcEvent;
+    if (event.type === "agent_settled" && this.supportsSettlement) {
+      this.deliverInOrder(async () => {
+        this.deliverSettlement(await this.takeAgentSettledLeaf());
+      });
+      return;
+    }
     this.trackProcessingState(event);
     this.observeInputConsumption(event);
     this.observeTerminalSteerSettlement(event);
-    if (event.type === "agent_end") {
+    if (event.type === "agent_start" && this.supportsSettlement) {
+      const runId = this.agentRunsStarted;
       this.deliverInOrder(async () => {
-        const leafId = await this.takeAgentEndLeaf();
-        if (leafId !== null) {
-          this.lastKnownLeafId = leafId;
+        const report = await this.takeAgentStart();
+        if (!report || report.runId !== runId) {
+          this.failSettlementProtocol();
+          return;
         }
-        this.onEvent({
-          ...event,
-          ...(this.lastKnownLeafId === null
-            ? {}
-            : { providerCheckpointId: this.lastKnownLeafId }),
-        });
-        this.settleRun(event);
+        if (report.previousSettlement)
+          this.deliverSettlement(report.previousSettlement);
+        if (this.closed) return;
+        if (!this.deliveredRunActive) this.onEvent(event);
+        this.deliveredRunActive = true;
       });
       return;
+    }
+    if (event.type === "agent_end") {
+      const runId = this.agentRunsStarted;
+      const observedRun = this.runs.get(runId);
+      if (observedRun) observedRun.end = event;
+      this.deliverInOrder(async () => {
+        const leafId = await this.takeAgentEndLeaf();
+        if (leafId !== null) this.lastKnownLeafId = leafId;
+        const run = this.runs.get(runId) ?? {};
+        run.end = event;
+        run.leafId = leafId;
+        this.runs.set(runId, run);
+        this.onEvent({
+          ...event,
+          ...(this.supportsSettlement ? { deferSettlement: true } : {}),
+          ...(leafId === null ? {} : { providerCheckpointId: leafId }),
+        });
+        if (!this.supportsSettlement) {
+          this.settleRun(event);
+          if (event.willRetry !== true) this.retireRunsThrough(runId);
+        }
+      });
+      return;
+    }
+    const run = this.runs.get(this.agentRunsStarted);
+    const messages = run?.end?.messages;
+    const assistant = Array.isArray(messages)
+      ? [...messages]
+          .reverse()
+          .find(
+            (message: unknown): message is Record<string, unknown> =>
+              typeof message === "object" &&
+              message !== null &&
+              "role" in message &&
+              message.role === "assistant",
+          )
+      : undefined;
+    if (
+      run &&
+      event.type === "compaction_end" &&
+      event.reason === "overflow" &&
+      event.willRetry === false &&
+      (assistant?.stopReason === "length" ||
+        assistant?.stopReason === "error" ||
+        assistant?.stopReason === "aborted")
+    ) {
+      if (event.aborted === true) {
+        run.recoveryError = "Automatic context compaction was interrupted";
+      } else if (typeof event.errorMessage === "string") {
+        run.recoveryError =
+          event.errorMessage.trim() || "Automatic context compaction failed";
+      }
     }
     if (event.type === "turn_end" || event.type === "compaction_end") {
       const delivery = this.deliverInOrder(async () => {
@@ -584,6 +694,60 @@ export class PiRpcSession {
     return this.deliveryChain;
   }
 
+  private failSettlementProtocol(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.isProcessing = false;
+    const error = new Error(
+      "Pi extension settlement identity is missing or invalid",
+    );
+    this.onDone(error);
+    for (const pending of this.pendingRunSettlements.splice(0)) {
+      pending.resolve({ boundaryDelivered: true, error });
+    }
+    this.rejectPendingInputConsumptions(error.message);
+    this.child?.kill();
+  }
+
+  private deliverSettlement(report: SettlementReport | null): void {
+    if (this.closed) return;
+    if (!report) {
+      this.failSettlementProtocol();
+      return;
+    }
+    const { runId, leafId, event } = report;
+    if (runId <= this.agentRunsSettled) return;
+    const run = this.runs.get(runId);
+    if (!run?.end) {
+      this.failSettlementProtocol();
+      return;
+    }
+    const messages = run.end.messages ?? [];
+    const error = run.recoveryError ?? runSettlementError(event, messages);
+    const checkpoint = leafId ?? run.leafId;
+    const finalEvent: PiRpcEvent = {
+      type: "agent_end",
+      messages,
+      settlementOnly: true,
+      ...(error ? { settlementError: error } : {}),
+      ...(checkpoint ? { providerCheckpointId: checkpoint } : {}),
+    };
+    if (this.agentRunsStarted === runId) this.isProcessing = false;
+    this.agentRunsSettled = runId;
+    this.deliveredRunActive = false;
+    this.retireRunsThrough(runId);
+    this.onEvent(finalEvent);
+    this.onEvent({ ...event, type: "agent_settled" });
+    this.settleRun(finalEvent);
+    if (this.agentRunsStarted === runId) this.scheduleTerminalSteerSettlement();
+  }
+
+  private retireRunsThrough(runId: number): void {
+    for (const id of this.runs.keys()) {
+      if (id <= runId) this.runs.delete(id);
+    }
+  }
+
   private settleRun(event: PiRpcEvent): void {
     if (event.willRetry === true) {
       return;
@@ -592,19 +756,14 @@ export class PiRpcSession {
     if (!pending) {
       return;
     }
-    const messages = Array.isArray(event.messages) ? event.messages : [];
-    const last = messages[messages.length - 1] as
-      | { role?: string; stopReason?: string; errorMessage?: string }
-      | undefined;
-    if (
-      last?.role === "assistant" &&
-      last.stopReason === "error" &&
-      typeof last.errorMessage === "string"
-    ) {
-      pending.resolve({ error: new Error(last.errorMessage) });
-      return;
-    }
-    pending.resolve({});
+    const error =
+      typeof event.settlementError === "string"
+        ? event.settlementError
+        : runSettlementError(event, event.messages);
+    pending.resolve({
+      boundaryDelivered: true,
+      ...(error ? { error: new Error(error) } : {}),
+    });
   }
 
   private dropRunSettlement(): void {
@@ -647,6 +806,41 @@ export class PiRpcSession {
     });
   }
 
+  private takeAgentStart(): Promise<StartReport | null> {
+    const queued = this.agentStartReports.shift();
+    if (queued !== undefined) return Promise.resolve(queued);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.agentStartWaiter === settle) this.agentStartWaiter = null;
+        resolve(null);
+      }, AGENT_END_LEAF_TIMEOUT_MS);
+      timer.unref?.();
+      const settle = (report: StartReport | null) => {
+        clearTimeout(timer);
+        resolve(report);
+      };
+      this.agentStartWaiter = settle;
+    });
+  }
+
+  private takeAgentSettledLeaf(): Promise<SettlementReport | null> {
+    const queued = this.agentSettledLeafReports.shift();
+    if (queued !== undefined) return Promise.resolve(queued);
+    return new Promise<SettlementReport | null>((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.agentSettledLeafWaiter === settle)
+          this.agentSettledLeafWaiter = null;
+        resolve(null);
+      }, AGENT_END_LEAF_TIMEOUT_MS);
+      timer.unref?.();
+      const settle = (report: SettlementReport | null) => {
+        clearTimeout(timer);
+        resolve(report);
+      };
+      this.agentSettledLeafWaiter = settle;
+    });
+  }
+
   private async refreshContextUsage(): Promise<void> {
     const child = this.child;
     if (!child || child.exited) {
@@ -669,7 +863,41 @@ export class PiRpcSession {
   private handleChannelMessage(message: Record<string, unknown>): void {
     const child = this.child;
     if (message.kind === "ready") {
+      this.supportsSettlement = message.agentSettled === true;
       this.ready.resolve();
+      return;
+    }
+    if (message.kind === "agent-start") {
+      if (!this.supportsSettlement) return;
+      const previousSettlement = parseSettlementReport(
+        message.previousSettlement,
+      );
+      const report =
+        typeof message.runId === "number" &&
+        Number.isSafeInteger(message.runId) &&
+        message.runId > 0 &&
+        (message.previousSettlement === null ||
+          (previousSettlement && previousSettlement.runId < message.runId))
+          ? { runId: message.runId, previousSettlement }
+          : null;
+      const waiter = this.agentStartWaiter;
+      if (waiter) {
+        this.agentStartWaiter = null;
+        waiter(report);
+      } else {
+        this.agentStartReports.push(report);
+      }
+      return;
+    }
+    if (message.kind === "agent-settled-leaf") {
+      const report = parseSettlementReport(message);
+      const waiter = this.agentSettledLeafWaiter;
+      if (waiter) {
+        this.agentSettledLeafWaiter = null;
+        waiter(report);
+      } else {
+        this.agentSettledLeafReports.push(report);
+      }
       return;
     }
     if (message.kind === "agent-end-leaf") {
@@ -759,6 +987,8 @@ export class PiRpcSession {
   }
 
   private handleExit(info: PiRpcChildExitInfo): void {
+    const wasClosed = this.closed;
+    this.closed = true;
     this.ready.reject(new PiRpcChildExitedError(info));
     for (const [, reply] of this.channelReplies) {
       reply.reject(new PiRpcChildExitedError(info));
@@ -769,13 +999,23 @@ export class PiRpcSession {
       this.agentEndLeafWaiter = null;
       leafWaiter(null);
     }
+    const startWaiter = this.agentStartWaiter;
+    if (startWaiter) {
+      this.agentStartWaiter = null;
+      startWaiter(null);
+    }
+    const settledLeafWaiter = this.agentSettledLeafWaiter;
+    if (settledLeafWaiter) {
+      this.agentSettledLeafWaiter = null;
+      settledLeafWaiter(null);
+    }
     this.rejectPendingInputConsumptions("Pi exited before input was consumed");
     for (const pending of this.pendingRunSettlements.splice(0)) {
       pending.resolve({ error: new PiRpcChildExitedError(info) });
     }
     this.isProcessing = false;
     this.isCompacting = false;
-    if (!this.closed) {
+    if (!wasClosed) {
       this.onDone(new PiRpcChildExitedError(info));
     }
   }
@@ -787,7 +1027,15 @@ export class PiRpcSession {
     ) {
       this.isProcessing = true;
     }
-    if (event.type === "agent_end" && event.willRetry !== true) {
+    if (event.type === "agent_start") {
+      this.agentRunsStarted += 1;
+      this.runs.set(this.agentRunsStarted, {});
+    }
+    if (
+      !this.supportsSettlement &&
+      event.type === "agent_end" &&
+      event.willRetry !== true
+    ) {
       this.isProcessing = false;
     }
     if (event.type === "compaction_end" && event.reason === "manual") {
@@ -851,6 +1099,7 @@ export class PiRpcSession {
   }
 
   private observeTerminalSteerSettlement(event: PiRpcEvent): void {
+    if (this.supportsSettlement) return;
     if (event.type === "agent_end") {
       if (event.willRetry !== true) {
         this.scheduleTerminalSteerSettlement();

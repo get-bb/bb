@@ -2,7 +2,13 @@ export const BB_PI_EXTENSION_SOURCE = String.raw`
 import { readFileSync, renameSync, writeSync } from "node:fs";
 import { Socket } from "node:net";
 import { StringDecoder } from "node:string_decoder";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import * as PiRuntime from "@earendil-works/pi-coding-agent";
+const { SessionManager } = PiRuntime;
+
+function supportsAgentSettlement(version) {
+  const match = typeof version === "string" && /^(\d+)\.(\d+)\.(\d+)(?:\+[^\s]+)?$/.exec(version);
+  return !!match && (Number(match[1]) >= 1 || Number(match[2]) >= 84);
+}
 import { Type } from "typebox";
 
 const CHILD_TO_BRIDGE_FD = 3;
@@ -171,6 +177,8 @@ export default function bbExtension(pi) {
   const pendingToolCalls = new Map();
   let nextId = 0;
   let sessionContext = null;
+  let runId = 0;
+  let lastSettlement = null;
 
   const onBridgeLine = (line) => {
     const trimmed = line.trim();
@@ -362,15 +370,27 @@ export default function bbExtension(pi) {
       }
       if (missing) pi.setActiveTools([...active]);
     }
-    writeLine(CHILD_TO_BRIDGE_FD, { kind: "ready" });
+    writeLine(CHILD_TO_BRIDGE_FD, { kind: "ready", agentSettled: supportsAgentSettlement(PiRuntime.VERSION) });
   });
 
-  // The run's checkpoint, read in-process the moment the run ends: pi emits
-  // this to extensions before it writes its own agent_end to stdout, and
-  // before any continuation or compaction can move the leaf.
+  pi.on("agent_start", (_event, ctx) => {
+    sessionContext = ctx ?? sessionContext;
+    runId += 1;
+    writeLine(CHILD_TO_BRIDGE_FD, { kind: "agent-start", runId, previousSettlement: lastSettlement });
+  });
   pi.on("agent_end", async (_event, ctx) => {
     sessionContext = ctx ?? sessionContext;
     writeLine(CHILD_TO_BRIDGE_FD, { kind: "agent-end-leaf", leafId: currentLeafId() });
+  });
+  pi.on("agent_settled", async (_event, ctx) => {
+    sessionContext = ctx ?? sessionContext;
+    lastSettlement = {
+      runId,
+      leafId: currentLeafId(),
+      event: { ..._event },
+      ...(ctx?.isIdle?.() === false ? { error: "Pi settlement handler ran after another extension started a new run" } : {}),
+    };
+    writeLine(CHILD_TO_BRIDGE_FD, { kind: "agent-settled-leaf", ...lastSettlement });
   });
 }
 
