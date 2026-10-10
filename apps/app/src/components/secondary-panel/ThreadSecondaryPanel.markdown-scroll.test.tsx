@@ -45,7 +45,11 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
 
 const noop = () => {};
 
-function Harness({ contentFillsRegion = false }: { contentFillsRegion?: boolean }) {
+function Harness({
+  contentFillsRegion = false,
+}: {
+  contentFillsRegion?: boolean;
+}) {
   const documents = ["reading.md", "short.md"].map((path) =>
     createWorkspaceFilePreviewFixedPanelTab({
       environmentId: "env_scroll",
