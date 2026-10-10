@@ -208,10 +208,10 @@ export const stepper = {
 .steps p { margin: 0; color: var(--muted-foreground); }
 footer { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
 </style>
-<h2 class="ia-title">Repot a houseplant</h2>
-<p class="ia-subtitle">Three steps, about 15 minutes.</p>
-<section class="steps ia-panel" aria-live="polite"><span class="ia-eyebrow" id="count"></span><h3 id="name"></h3><p id="text"></p></section>
-<footer><div class="ia-dots" id="dots"></div><div><button class="ia-btn" id="back">Back</button> <button class="ia-btn ia-btn-primary" id="next">Next →</button></div></footer>
+<h2 class="pg-title">Repot a houseplant</h2>
+<p class="pg-subtitle">Three steps, about 15 minutes.</p>
+<section class="steps pg-panel" aria-live="polite"><span class="pg-eyebrow" id="count"></span><h3 id="name"></h3><p id="text"></p></section>
+<footer><div class="pg-dots" id="dots"></div><div><button class="pg-btn" id="back">Back</button> <button class="pg-btn pg-btn-primary" id="next">Next →</button></div></footer>
 <script>
 const steps = [["Water the day before", "Moist roots slide out of the old pot without tearing."], ["Loosen the root ball", "Tease circling roots apart with your fingers."], ["Set it at the same depth", "Fill around the roots with fresh mix and water until it drains."]];
 let step = Math.min(steps.length - 1, Math.max(0, answer.state?.step ?? 0));

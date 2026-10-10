@@ -226,8 +226,8 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
   },
   {
-    name: "interactive-answers",
-    pluginId: "bb--interactive-answers",
+    name: "playgrounds",
+    pluginId: "bb--playgrounds",
     defaultEnabled: true,
   },
   {

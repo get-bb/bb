@@ -1289,10 +1289,10 @@
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
-    "bb-plugin-bb--interactive-answers#typecheck": {
+    "bb-plugin-bb--playgrounds#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
-    "bb-plugin-bb--interactive-answers#test": {
+    "bb-plugin-bb--playgrounds#test": {
       "dependsOn": [
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",

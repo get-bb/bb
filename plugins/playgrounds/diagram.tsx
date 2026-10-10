@@ -22,7 +22,7 @@ export function Diagram({
           fallback)
         : fallback;
   return (
-    <section className="ia-diagram" aria-labelledby={titleId}>
+    <section className="pg-diagram" aria-labelledby={titleId}>
       <h4 id={titleId}>{block.title}</h4>
       <svg
         viewBox={`0 0 ${block.width} ${block.height}`}
@@ -64,7 +64,7 @@ export function Diagram({
           return (
             <g
               key={i}
-              className={choose ? "ia-diagram-choice" : undefined}
+              className={choose ? "pg-diagram-choice" : undefined}
               transform={transform}
               opacity={Math.max(0, Math.min(1, n(s.opacity, 1)))}
               role={choose ? "button" : undefined}

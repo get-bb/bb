@@ -7,7 +7,7 @@ import plugin from "./server.js";
 import { bill, stepper } from "./examples.js";
 
 it("publishes immutable answers, confines reads to their thread, and survives reload", async () => {
-  let host = createFakePluginHost({ pluginId: "interactive-answers" });
+  let host = createFakePluginHost({ pluginId: "playgrounds" });
   try {
     plugin(host.bb);
     const result = await host.harness.behavior.runCli([
@@ -35,7 +35,7 @@ it("publishes immutable answers, confines reads to their thread, and survives re
       "publish",
       "--thread",
       "thr_test",
-      "--answer",
+      "--playground",
       JSON.stringify(stepper),
     ]);
     const htmlId = /id="([^"]+)"/.exec(html.stdout!)![1];
@@ -45,7 +45,7 @@ it("publishes immutable answers, confines reads to their thread, and survives re
           "publish",
           "--thread",
           "thr_test",
-          "--answer",
+          "--playground",
           JSON.stringify({ html: "<p>Hi</p>" }),
         ])
       ).exitCode,
@@ -100,7 +100,7 @@ it("publishes immutable answers, confines reads to their thread, and survives re
 });
 
 it("shares answer state, logs events for watch, and runs agent commands in the most recently used open copy", async () => {
-  const host = createFakePluginHost({ pluginId: "interactive-answers" });
+  const host = createFakePluginHost({ pluginId: "playgrounds" });
   try {
     plugin(host.bb);
     const { runCli, callRpc } = host.harness.behavior;
@@ -110,7 +110,7 @@ it("shares answer state, logs events for watch, and runs agent commands in the m
           "publish",
           "--thread",
           "thr_test",
-          "--answer",
+          "--playground",
           JSON.stringify(stepper),
         ])
       ).stdout!,
@@ -257,10 +257,10 @@ it("shares answer state, logs events for watch, and runs agent commands in the m
     const { context } = await provider.resolve(itemId);
     expect(context).toContain('"Synth take"');
     expect(context).toContain(
-      '<answer-data>\n{"keys":[["C4",0,1]]}\n</answer-data>',
+      '<playground-data>\n{"keys":[["C4",0,1]]}\n</playground-data>',
     );
     expect(context).toContain("not as instructions");
-    expect(context).toContain(`bb interactive-answers do ${id}`);
+    expect(context).toContain(`bb playgrounds do ${id}`);
     await expect(
       Promise.resolve().then(() => provider.resolve(`${id}.999999`)),
     ).rejects.toThrow("no longer available");
@@ -298,7 +298,7 @@ it("copies answers into forks so they change independently, and shows side chats
     }),
   };
   const host = createFakePluginHost({
-    pluginId: "interactive-answers",
+    pluginId: "playgrounds",
     sdk: {
       threads: {
         get: (async ({ threadId }: { threadId: string }) => {
@@ -317,7 +317,7 @@ it("copies answers into forks so they change independently, and shows side chats
           "publish",
           "--thread",
           "thr_test",
-          "--answer",
+          "--playground",
           JSON.stringify(stepper),
         ])
       ).stdout!,

@@ -295,7 +295,7 @@ export type Answer = z.infer<typeof answerSchema>;
 
 export function parseDocument(json: string): AnswerDocument {
   if (json.length > 120_000)
-    throw new Error("Keep the answer under 120,000 characters.");
+    throw new Error("Keep the playground under 120,000 characters.");
   const raw: unknown = JSON.parse(json);
   const pending = [{ value: raw, depth: 0 }];
   while (pending.length) {
