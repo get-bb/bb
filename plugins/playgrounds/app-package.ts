@@ -187,6 +187,168 @@ export const assetsSchema = z
   })
   .strict();
 export type PackageAssets = z.infer<typeof assetsSchema>;
+export const MAX_SCREENSHOTS = 4;
+export const MAX_SCREENSHOT_BYTES = 600 * 1024;
+export const MAX_SCREENSHOTS_TOTAL = 1.5 * 1024 * 1024;
+const MAX_SCREENSHOT_EDGE = 3840;
+export const SCREENSHOT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+export const screenshotSchema = z
+  .object({
+    name: z.string().regex(/^screenshot-[1-9]\.(png|jpg|webp)$/),
+    type: z.enum(SCREENSHOT_TYPES),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    bytes: z.number().int().min(1).max(MAX_SCREENSHOT_BYTES),
+    width: z.number().int().min(1).max(MAX_SCREENSHOT_EDGE),
+    height: z.number().int().min(1).max(MAX_SCREENSHOT_EDGE),
+    alt: z.string().trim().min(1).max(200),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/),
+  })
+  .strict();
+export type PackageScreenshot = z.infer<typeof screenshotSchema>;
+
+export function readImage(bytes: Buffer): {
+  type: (typeof SCREENSHOT_TYPES)[number];
+  width: number;
+  height: number;
+} | null {
+  if (
+    bytes.length > 24 &&
+    bytes
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) &&
+    bytes.subarray(12, 16).toString("ascii") === "IHDR"
+  )
+    return {
+      type: "image/png",
+      width: bytes.readUInt32BE(16),
+      height: bytes.readUInt32BE(20),
+    };
+  if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) return null;
+      const marker = bytes[offset + 1]!;
+      const length = bytes.readUInt16BE(offset + 2);
+      if (
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc
+      )
+        return {
+          type: "image/jpeg",
+          height: bytes.readUInt16BE(offset + 5),
+          width: bytes.readUInt16BE(offset + 7),
+        };
+      offset += 2 + length;
+    }
+    return null;
+  }
+  if (
+    bytes.length > 30 &&
+    bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+    bytes.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    const chunk = bytes.subarray(12, 16).toString("ascii");
+    if (chunk === "VP8X")
+      return {
+        type: "image/webp",
+        width: 1 + bytes.readUIntLE(24, 3),
+        height: 1 + bytes.readUIntLE(27, 3),
+      };
+    if (chunk === "VP8L" && bytes[20] === 0x2f) {
+      const bits = bytes.readUInt32LE(21);
+      return {
+        type: "image/webp",
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >> 14) & 0x3fff) + 1,
+      };
+    }
+    if (chunk === "VP8 ")
+      return {
+        type: "image/webp",
+        width: bytes.readUInt16LE(26) & 0x3fff,
+        height: bytes.readUInt16LE(28) & 0x3fff,
+      };
+  }
+  return null;
+}
+
+export function checkScreenshots(screenshots: PackageScreenshot[]) {
+  if (screenshots.length > MAX_SCREENSHOTS)
+    throw new Error(`Include at most ${MAX_SCREENSHOTS} screenshots.`);
+  const names = new Set<string>();
+  let total = 0;
+  for (const shot of screenshots) {
+    if (names.has(shot.name))
+      throw new Error(`Duplicate screenshot ${shot.name}.`);
+    names.add(shot.name);
+    const bytes = Buffer.from(shot.data, "base64");
+    if (bytes.toString("base64") !== shot.data)
+      throw new Error(`Screenshot ${shot.name} is not canonical base64.`);
+    if (bytes.byteLength !== shot.bytes)
+      throw new Error(
+        `Screenshot ${shot.name} is ${bytes.byteLength} bytes, not ${shot.bytes}.`,
+      );
+    if (createHash("sha256").update(bytes).digest("hex") !== shot.sha256)
+      throw new Error(`Screenshot ${shot.name} does not match its SHA-256.`);
+    const image = readImage(bytes);
+    if (
+      !image ||
+      image.type !== shot.type ||
+      image.width !== shot.width ||
+      image.height !== shot.height
+    )
+      throw new Error(
+        `Screenshot ${shot.name} is not the ${shot.type} image it declares.`,
+      );
+    total += bytes.byteLength;
+  }
+  if (total > MAX_SCREENSHOTS_TOTAL)
+    throw new Error(
+      `Screenshots are limited to ${MAX_SCREENSHOTS_TOTAL} bytes in total.`,
+    );
+}
+
+export function makeScreenshot(
+  data: Buffer,
+  alt: string,
+  taken: string[],
+): PackageScreenshot {
+  const image = readImage(data);
+  if (!image) throw new Error("Screenshots must be PNG, JPEG, or WebP images.");
+  if (data.byteLength > MAX_SCREENSHOT_BYTES)
+    throw new Error(
+      `Each screenshot is limited to ${MAX_SCREENSHOT_BYTES} bytes.`,
+    );
+  if (image.width > MAX_SCREENSHOT_EDGE || image.height > MAX_SCREENSHOT_EDGE)
+    throw new Error(
+      `Screenshots are limited to ${MAX_SCREENSHOT_EDGE} pixels per side.`,
+    );
+  const extension =
+    image.type === "image/png"
+      ? "png"
+      : image.type === "image/jpeg"
+        ? "jpg"
+        : "webp";
+  let n = 1;
+  while (taken.some((name) => name.startsWith(`screenshot-${n}.`))) n++;
+  return {
+    name: `screenshot-${n}.${extension}`,
+    type: image.type,
+    sha256: createHash("sha256").update(data).digest("hex"),
+    bytes: data.byteLength,
+    width: image.width,
+    height: image.height,
+    alt: alt.trim(),
+    data: data.toString("base64"),
+  };
+}
 const content = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("html"), playground: htmlAnswerSchema }).strict(),
   z.object({ kind: z.literal("document"), document: z.unknown() }).strict(),
@@ -210,6 +372,7 @@ export const packageSchema = z
     license: z.string().trim().min(1).max(64).optional(),
     origin: origin.optional(),
     assets: assetsSchema.optional(),
+    screenshots: z.array(screenshotSchema).max(MAX_SCREENSHOTS).optional(),
   })
   .strict();
 export type AppPackage = Omit<z.infer<typeof packageSchema>, "content"> & {
@@ -322,6 +485,7 @@ export function parsePackage(text: string): {
     );
   const value = parsed.data;
   if (value.assets) checkAssets(value.assets, value.requires.renderer);
+  if (value.screenshots) checkScreenshots(value.screenshots);
   if (value.actions.mode === "documented") {
     const names = new Set<string>();
     for (const action of value.actions.actions) {

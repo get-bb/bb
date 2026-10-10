@@ -22,6 +22,17 @@ const draftEdit = z
       .object({ answerId: idSchema, threadId: threadSchema })
       .strict()
       .optional(),
+    addScreenshot: z
+      .object({
+        data: z
+          .string()
+          .max(900_000)
+          .regex(/^[A-Za-z0-9+/]*={0,2}$/),
+        alt: z.string().trim().min(1).max(200),
+      })
+      .strict()
+      .optional(),
+    removeScreenshot: z.string().max(40).optional(),
   })
   .strict();
 
@@ -228,6 +239,16 @@ export const libraryRpc = {
       .strict(),
     output: out<R<Library["releaseRecover"]>>(),
   },
+  releaseWrite: {
+    input: z
+      .object({
+        releaseId: idSchema,
+        hostId: z.string().min(1).max(100),
+        dir: z.string().min(1).max(1000),
+      })
+      .strict(),
+    output: out<R<Library["releaseWrite"]>>(),
+  },
   releaseFailed: {
     input: z
       .object({ releaseId: idSchema, note: z.string().max(500) })
@@ -301,6 +322,7 @@ export function libraryHandlers(library: Library, catalog: Catalog) {
     releaseRefresh: library.releaseRefresh,
     releaseSubmitted: library.releaseRecordSubmission,
     releaseFailed: library.releaseMarkFailed,
+    releaseWrite: library.releaseWrite,
     releaseRecover: library.releaseRecover,
     communityList: catalog.list,
     communityRefresh: () => catalog.refresh(),

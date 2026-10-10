@@ -194,6 +194,21 @@ bb playgrounds apps release package <release>    # exact bytes to submit
 bb playgrounds apps release submitted <release> --pr <url>
 ```
 
+Community submissions need at least one screenshot (up to 4; PNG, JPEG, or WebP;
+600 KB each). Capture the app on its own, not the thread around it, so no
+conversation or account details show, then attach it:
+
+```sh
+bb playgrounds apps draft screenshot add <app> --revision N --file shot.png \
+  --host <host-id> --alt "What the screenshot shows"
+bb playgrounds apps draft screenshot remove <app> --revision N --name screenshot-1.png
+```
+
+Screenshots carry over to later releases until you replace them. To submit,
+`bb playgrounds apps release write <release> --dir <catalog checkout>
+--host <host-id>` writes the package, screenshots, and `catalog-entry.json` at
+their catalog paths.
+
 For large HTML, publish the new version with the `playground` tool and copy it
 with `--from-playground`. Pass the revision you read; a stale revision fails
 instead of overwriting someone's edit. Prepare a release only when the person

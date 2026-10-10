@@ -61,6 +61,24 @@ export const catalogListingSchema = z
       .refine((p) => /\.(png|jpe?g|webp)$/.test(p))
       .optional(),
     delisted: z.boolean().optional(),
+    screenshots: z
+      .array(
+        z
+          .object({
+            path: relativePath.refine((p) => /\.(png|jpe?g|webp)$/.test(p)),
+            digest: z.string().regex(/^[0-9a-f]{64}$/),
+            bytes: z
+              .number()
+              .int()
+              .min(1)
+              .max(600 * 1024),
+            alt: z.string().trim().min(1).max(200),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     versions: z.array(catalogVersion).min(1).max(100),
   })
   .strict();
@@ -109,6 +127,14 @@ export function nextMinor(version: string | null): string {
   const match = /^(\d+)\.(\d+)(?:\.(\d+))?/.exec(version);
   if (!match) return "1.0.0";
   return `${match[1]}.${Number(match[2]) + 1}.0`;
+}
+
+export function screenshotPath(
+  catalogId: string,
+  version: string,
+  name: string,
+) {
+  return `apps/${catalogId}/${version}/${name}`;
 }
 
 export function packagePath(catalogId: string, version: string) {

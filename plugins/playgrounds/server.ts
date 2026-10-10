@@ -35,7 +35,12 @@ import {
   uuidv7,
   VERSION_META_MIGRATIONS,
 } from "./library.js";
-import { CATALOG_MIGRATIONS, catalogBase, createCatalog } from "./catalog.js";
+import {
+  CATALOG_MIGRATIONS,
+  catalogBase,
+  createCatalog,
+  MEDIA_CACHE_MIGRATIONS,
+} from "./catalog.js";
 import { libraryHandlers, libraryRpc } from "./library-rpc.js";
 import { libraryCommands } from "./library-cli.js";
 
@@ -94,6 +99,7 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
     ...CATALOG_MIGRATIONS,
     ...VERSION_META_MIGRATIONS,
     ...ASSET_MIGRATIONS,
+    ...MEDIA_CACHE_MIGRATIONS,
   ]);
   const owned = db.prepare(
     "SELECT 1 FROM answers WHERE id = ? AND thread_id = ?",
@@ -217,6 +223,12 @@ const thread = {
 const json = (value: unknown) => ({
   exitCode: 0,
   stdout: `${JSON.stringify(value, null, 2)}\n`,
+});
+const imageHeaders = (type: string) => ({
+  "content-type": type,
+  "cache-control": "private, max-age=3600",
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'none'; sandbox",
 });
 export default function plugin(bb: BbPluginApi): void {
   createPlugin()(bb);
@@ -419,18 +431,33 @@ function setup(bb: BbPluginApi, deps: CatalogDeps): void {
   });
   bb.http.route("GET", "/community/preview", async (c) => {
     try {
-      const image = await catalog.preview(String(c.req.query("id") ?? ""));
+      const n = c.req.query("n");
+      const image = await catalog.preview(
+        String(c.req.query("id") ?? ""),
+        n === undefined ? null : Math.max(0, Math.floor(Number(n)) || 0),
+      );
       if (!image) return new Response("No preview", { status: 404 });
       return new Response(new Uint8Array(image.data), {
-        headers: {
-          "content-type": image.type,
-          "cache-control": "private, max-age=3600",
-          "x-content-type-options": "nosniff",
-          "content-security-policy": "default-src 'none'; sandbox",
-        },
+        headers: imageHeaders(image.type),
       });
     } catch {
       return new Response("No preview", { status: 404 });
+    }
+  });
+  bb.http.route("GET", "/app-screenshot", (c) => {
+    try {
+      const versionId = c.req.query("version");
+      const image = library.screenshot({
+        appId: idSchema.parse(c.req.query("app")),
+        ...(versionId ? { versionId: idSchema.parse(versionId) } : {}),
+        draft: c.req.query("draft") === "1",
+        name: String(c.req.query("name") ?? ""),
+      });
+      return new Response(new Uint8Array(image.data), {
+        headers: imageHeaders(image.type),
+      });
+    } catch {
+      return new Response("No screenshot", { status: 404 });
     }
   });
   bb.agents.registerTool({

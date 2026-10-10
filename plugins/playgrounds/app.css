@@ -540,8 +540,8 @@
   min-width: 0;
 }
 .pga-preview {
-  width: 96px;
-  height: 64px;
+  width: 160px;
+  height: 100px;
   object-fit: cover;
   border-radius: 8px;
   background: var(--muted);
@@ -653,4 +653,27 @@
   gap: 8px;
   color: var(--muted-foreground);
   font-size: 12px;
+}
+.pga-shots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+}
+.pga-shots li {
+  display: grid;
+  gap: 4px;
+  flex: none;
+}
+.pga-shots img {
+  display: block;
+  height: 140px;
+  width: auto;
+  max-width: 260px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--muted);
 }

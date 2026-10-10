@@ -71,6 +71,21 @@ Community browses a curated, Git-backed catalog set with the
 catalog is configured. Packages are checked against the catalog's SHA-256 and
 size before they are saved, and browsing never runs app code.
 
+## Screenshots
+
+Apps can carry up to four screenshots: PNG, JPEG, or WebP, at most 600 KB each
+and 1.5 MiB in total, with a description for each. They are part of the
+package, so the package digest pins them and they travel with drafts,
+releases, exports, and installs. Community submissions need at least one;
+existing apps and catalog entries without screenshots keep working.
+
+A release writes each screenshot as a catalog file listed in the entry's
+`screenshots` with its SHA-256. The Community gallery shows the first one as
+the card thumbnail and the rest in an app's details. They are fetched only
+from the catalog's pinned commit and checked against their digests. Authors
+add or replace screenshots in Develop, or with `bb playgrounds apps draft
+screenshot add|remove`.
+
 ## Package assets
 
 An app package can carry pinned JavaScript modules for libraries its HTML

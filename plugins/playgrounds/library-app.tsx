@@ -496,6 +496,7 @@ type Detail = AppSummary & {
     summary: string;
     digest: string;
     bytes: number;
+    screenshots: ScreenshotMeta[];
     actions:
       | {
           mode: "documented";
@@ -520,6 +521,44 @@ type Detail = AppSummary & {
   };
   versions: { id: string; label: string; digest: string; createdAt: number }[];
 };
+
+type ScreenshotMeta = {
+  name: string;
+  sha256: string;
+  width: number;
+  height: number;
+  alt: string;
+};
+
+function Screenshots({
+  shots,
+  onRemove,
+}: {
+  shots: { src: string; alt: string; name?: string }[];
+  onRemove?: (name: string) => void;
+}) {
+  if (!shots.length) return null;
+  return (
+    <ul className="pga-shots">
+      {shots.map((shot) => (
+        <li key={shot.src}>
+          <a href={shot.src} target="_blank" rel="noreferrer">
+            <img src={shot.src} alt={shot.alt} loading="lazy" />
+          </a>
+          {onRemove && shot.name && (
+            <button
+              type="button"
+              className="pga-link"
+              onClick={() => onRemove(shot.name!)}
+            >
+              Remove
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function ActionsDoc({ actions }: { actions: Detail["version"]["actions"] }) {
   if (actions.mode === "manual")
@@ -625,6 +664,7 @@ type DraftView = {
     author?: { name: string; url?: string };
     license?: string;
   };
+  screenshots: ScreenshotMeta[];
   diff: string;
   catalogId: string | null;
   publishedVersion: string | null;
@@ -638,7 +678,10 @@ function DraftEditor({
   onChanged: () => void;
 }) {
   const rpc = useRpc<typeof rpcContract>();
+  const pluginId = experimental_usePluginId();
   const navigate = useBbNavigate();
+  const [shotAlt, setShotAlt] = useState("");
+  const shotInput = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<DraftView | null | undefined>(undefined);
   const [form, setForm] = useState<{
     title: string;
@@ -749,6 +792,80 @@ function DraftEditor({
           onChange={(e) => setForm({ ...form, summary: e.target.value })}
         />
       </label>
+      <div className="pga-field">
+        Screenshots ({draft.screenshots.length} of 4; Community submissions need
+        at least one)
+        <Screenshots
+          shots={draft.screenshots.map((shot) => ({
+            src: `/api/v1/plugins/${pluginId}/http/app-screenshot?app=${appId}&draft=1&name=${shot.name}&v=${shot.sha256}`,
+            alt: shot.alt,
+            name: shot.name,
+          }))}
+          onRemove={
+            dirty
+              ? undefined
+              : (name) =>
+                  void run(() =>
+                    rpc.call("draftWrite", {
+                      appId,
+                      expectedRevision: draft.revision,
+                      edit: { removeScreenshot: name },
+                    }),
+                  ).then((next) => next && load(next as DraftView))
+          }
+        />
+        {draft.screenshots.length < 4 && (
+          <div className="pga-row">
+            <input
+              aria-label="Screenshot description"
+              placeholder="What the screenshot shows"
+              value={shotAlt}
+              maxLength={200}
+              onChange={(e) => setShotAlt(e.target.value)}
+            />
+            <button
+              type="button"
+              className="pga-btn"
+              disabled={busy || dirty || !shotAlt.trim()}
+              title={dirty ? "Save the draft first" : undefined}
+              onClick={() => shotInput.current?.click()}
+            >
+              Add screenshot
+            </button>
+            <input
+              ref={shotInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file) return;
+                void run(async () => {
+                  const bytes = new Uint8Array(await file.arrayBuffer());
+                  let binary = "";
+                  for (let i = 0; i < bytes.length; i += 0x8000)
+                    binary += String.fromCharCode(
+                      ...bytes.subarray(i, i + 0x8000),
+                    );
+                  const next = await rpc.call("draftWrite", {
+                    appId,
+                    expectedRevision: draft.revision,
+                    edit: {
+                      addScreenshot: {
+                        data: btoa(binary),
+                        alt: shotAlt.trim(),
+                      },
+                    },
+                  });
+                  setShotAlt("");
+                  load(next as DraftView);
+                });
+              }}
+            />
+          </div>
+        )}
+      </div>
       <label className="pga-field">
         {html ? "HTML" : "Document JSON"}
         <textarea
@@ -1226,15 +1343,23 @@ function ReleasePanel({
           </div>
         </form>
       ) : (
-        <button
-          type="button"
-          className="pga-btn"
-          disabled={dirty}
-          title={dirty ? "Save the draft first" : undefined}
-          onClick={() => setPreparing(true)}
-        >
-          {firstSubmission ? "Prepare submission" : "Prepare update"}
-        </button>
+        <>
+          <button
+            type="button"
+            className="pga-btn"
+            disabled={dirty || draft.screenshots.length === 0}
+            title={dirty ? "Save the draft first" : undefined}
+            onClick={() => setPreparing(true)}
+          >
+            {firstSubmission ? "Prepare submission" : "Prepare update"}
+          </button>
+          {draft.screenshots.length === 0 && (
+            <p className="pga-meta">
+              Add at least one screenshot of the app before preparing a
+              submission.
+            </p>
+          )}
+        </>
       )}
       {firstSubmission && !preparing && (
         <details>
@@ -1298,6 +1423,7 @@ function ReleasePanel({
 
 function AppDetail({ appId }: { appId: string }) {
   const rpc = useRpc<typeof rpcContract>();
+  const pluginId = experimental_usePluginId();
   const navigate = useBbNavigate();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1432,6 +1558,17 @@ function AppDetail({ appId }: { appId: string }) {
         selectedLabel={detail.selectedVersion.label}
         disabled={detail.trashedAt !== null}
       />
+      {detail.version.screenshots.length > 0 && (
+        <div className="pga-panel">
+          <h4>Screenshots</h4>
+          <Screenshots
+            shots={detail.version.screenshots.map((shot) => ({
+              src: `/api/v1/plugins/${pluginId}/http/app-screenshot?app=${appId}&version=${detail.version.id}&name=${shot.name}&v=${shot.sha256}`,
+              alt: shot.alt,
+            }))}
+          />
+        </div>
+      )}
       <div className="pga-panel">
         <h4>Agent actions</h4>
         <ActionsDoc actions={detail.version.actions} />
@@ -1541,6 +1678,7 @@ type CommunityApp = {
   license: string;
   agentActions: "documented" | "manual";
   hasPreview: boolean;
+  screenshots: { alt: string }[];
   delisted: boolean;
   latest: { version: string; notes: string | null } | null;
   versions: {
@@ -1671,9 +1809,9 @@ function Community() {
                 {app.hasPreview && (
                   <img
                     className="pga-preview"
-                    alt=""
+                    alt={app.screenshots[0]?.alt ?? ""}
                     loading="lazy"
-                    src={`/api/v1/plugins/${pluginId}/http/community/preview?id=${encodeURIComponent(app.id)}`}
+                    src={`/api/v1/plugins/${pluginId}/http/community/preview?id=${encodeURIComponent(app.id)}${app.screenshots.length ? "&n=0" : ""}`}
                   />
                 )}
                 <div className="pga-card-main">
@@ -1695,6 +1833,12 @@ function Community() {
                   )}
                   {details && (
                     <div className="pga-panel">
+                      <Screenshots
+                        shots={app.screenshots.map((shot, n) => ({
+                          src: `/api/v1/plugins/${pluginId}/http/community/preview?id=${encodeURIComponent(app.id)}&n=${n}`,
+                          alt: shot.alt,
+                        }))}
+                      />
                       <ActionsDoc actions={details.actions} />
                       <p className="pga-meta">
                         v{details.version} · sha256{" "}

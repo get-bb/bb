@@ -11,8 +11,18 @@ import { CATALOG_FORMAT, type CatalogIndex } from "./catalog-format.js";
 import type { Fetcher } from "./catalog.js";
 
 const BASE = "https://catalog.example.org/playgrounds/";
+const PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+const writes: {
+  hostId: string;
+  path: string;
+  content: string;
+  contentEncoding?: string;
+}[] = [];
 const sha = (text: string) =>
   createHash("sha256").update(text, "utf8").digest("hex");
+const sha256Bytes = (bytes: Buffer) =>
+  createHash("sha256").update(bytes).digest("hex");
 
 function makePackage(
   version: string,
@@ -51,8 +61,8 @@ const commitOf = (n: number) =>
   createHash("sha1").update(`r${n}`).digest("hex");
 
 class FakeCatalog {
-  files = new Map<string, string>();
-  commits = new Map<string, Map<string, string>>();
+  files = new Map<string, string | Uint8Array>();
+  commits = new Map<string, Map<string, string | Uint8Array>>();
   packages = `${REPO}{revision}/`;
   offline = false;
   requests: string[] = [];
@@ -141,6 +151,17 @@ async function server(catalog: FakeCatalog | null, address = "93.184.216.34") {
     pluginId: "playgrounds",
     ...(catalog ? { settings: { catalogUrl: `${BASE}index.json` } } : {}),
     sdk: {
+      files: {
+        write: (async (args: {
+          hostId: string;
+          path: string;
+          content: string;
+          contentEncoding?: string;
+        }) => {
+          writes.push(args);
+          return {};
+        }) as never,
+      },
       threads: {
         get: (async ({ threadId }: { threadId: string }) =>
           makeThreadResponse({ id: threadId })) as never,
@@ -448,6 +469,33 @@ it("lets an author develop, preview, and release updates to the same listing whi
       reviewed: false,
     }),
   ).rejects.toThrow("Review");
+  await expect(
+    callRpc("releasePrepare", {
+      appId,
+      changelog: "First",
+      catalogId: "example/pocket-synth",
+      author: { name: "Example author" },
+      license: "MIT",
+      reviewed: true,
+    }),
+  ).rejects.toThrow("at least one screenshot");
+  draft = (await callRpc("draftWrite", {
+    appId,
+    expectedRevision: draft.revision,
+    edit: { addScreenshot: { data: PNG, alt: "The first repotting step" } },
+  })) as { revision: number };
+  await expect(
+    callRpc("draftWrite", {
+      appId,
+      expectedRevision: draft.revision,
+      edit: {
+        addScreenshot: {
+          data: Buffer.from("not an image").toString("base64"),
+          alt: "Bad",
+        },
+      },
+    }),
+  ).rejects.toThrow("PNG, JPEG, or WebP");
   const v1 = (await callRpc("releasePrepare", {
     appId,
     expectedDraftRevision: draft.revision,
@@ -463,7 +511,15 @@ it("lets an author develop, preview, and release updates to the same listing whi
     ready: boolean;
     kind: string;
     files: { path: string; sha256: string }[];
-    catalogEntry: { versions: { version: string }[] };
+    catalogEntry: {
+      versions: { version: string }[];
+      screenshots: {
+        path: string;
+        digest: string;
+        bytes: number;
+        alt: string;
+      }[];
+    };
     agentRequest: string;
   };
   expect(shown).toMatchObject({
@@ -471,10 +527,42 @@ it("lets an author develop, preview, and release updates to the same listing whi
     status: "prepared",
     ready: true,
     kind: "initial",
-    files: [{ path: "apps/example/pocket-synth/1.0.0.json" }],
+    files: [
+      { path: "apps/example/pocket-synth/1.0.0.json" },
+      {
+        path: "apps/example/pocket-synth/1.0.0/screenshot-1.png",
+        sha256: sha256Bytes(Buffer.from(PNG, "base64")),
+      },
+    ],
+    catalogEntry: {
+      screenshots: [
+        {
+          path: "apps/example/pocket-synth/1.0.0/screenshot-1.png",
+          alt: "The first repotting step",
+        },
+      ],
+    },
   });
   expect(shown.agentRequest).toContain(
-    `bb playgrounds apps release package ${v1.releaseId}`,
+    `bb playgrounds apps release write ${v1.releaseId}`,
+  );
+  const written = (await callRpc("releaseWrite", {
+    releaseId: v1.releaseId,
+    hostId: "host_x",
+    dir: "/work/catalog",
+  })) as { written: string[] };
+  expect(written.written).toEqual([
+    "apps/example/pocket-synth/1.0.0.json",
+    "apps/example/pocket-synth/1.0.0/screenshot-1.png",
+    "catalog-entry.json",
+  ]);
+  expect(writes.find((w) => w.path.endsWith("screenshot-1.png"))).toMatchObject(
+    {
+      hostId: "host_x",
+      path: "/work/catalog/apps/example/pocket-synth/1.0.0/screenshot-1.png",
+      content: PNG,
+      contentEncoding: "base64",
+    },
   );
   await callRpc("releaseSubmitted", {
     releaseId: v1.releaseId,
@@ -490,6 +578,12 @@ it("lets an author develop, preview, and release updates to the same listing whi
     v1Package.text,
     "First release",
   );
+  catalog.files.set(
+    shown.catalogEntry.screenshots[0]!.path,
+    Buffer.from(PNG, "base64"),
+  );
+  catalog.apps.find((a) => a.id === "example/pocket-synth")!.screenshots =
+    shown.catalogEntry.screenshots;
   await callRpc("communityRefresh", {});
   expect(await callRpc("releaseList", { appId })).toMatchObject([
     { status: "published", prUrl: "https://github.com/example/catalog/pull/1" },
@@ -552,9 +646,58 @@ it("lets an author develop, preview, and release updates to the same listing whi
   ).toMatchObject([{ status: "published", version: "1.0.0" }]);
 
   await other.harness.behavior.callRpc("communityRefresh", {});
+  expect(
+    await other.harness.behavior.callRpc("communityList", {}),
+  ).toMatchObject({
+    apps: [
+      { hasPreview: true, screenshots: [{ alt: "The first repotting step" }] },
+    ],
+  });
+  const thumbnail = await other.harness.behavior.fetchHttp(
+    "GET",
+    "/community/preview?id=example/pocket-synth&n=0",
+  );
+  expect(thumbnail.status).toBe(200);
+  expect(thumbnail.headers.get("content-type")).toBe("image/png");
+  expect(Buffer.from(await thumbnail.arrayBuffer()).toString("base64")).toBe(
+    PNG,
+  );
+  expect(
+    (
+      await other.harness.behavior.fetchHttp(
+        "GET",
+        "/community/preview?id=example/pocket-synth&n=3",
+      )
+    ).status,
+  ).toBe(404);
+  const listed = catalog.apps.find((a) => a.id === "example/pocket-synth")!;
+  const goodDigest = listed.screenshots![0]!.digest;
+  listed.screenshots![0]!.digest = "0".repeat(64);
+  catalog.revision += 1;
+  await other.harness.behavior.callRpc("communityRefresh", {});
+  expect(
+    (
+      await other.harness.behavior.fetchHttp(
+        "GET",
+        "/community/preview?id=example/pocket-synth&n=0",
+      )
+    ).status,
+  ).toBe(404);
+  listed.screenshots![0]!.digest = goodDigest;
+  catalog.revision += 1;
+  await other.harness.behavior.callRpc("communityRefresh", {});
   const installed = (await other.harness.behavior.callRpc("communityAdd", {
     catalogId: "example/pocket-synth",
   })) as { appId: string };
+  expect(
+    await other.harness.behavior.callRpc("appsDescribe", {
+      appId: installed.appId,
+    }),
+  ).toMatchObject({
+    version: {
+      screenshots: [{ name: "screenshot-1.png", width: 1, height: 1 }],
+    },
+  });
   const otherRun = (await other.harness.behavior.callRpc("appsOpen", {
     appId: installed.appId,
     threadId: "thr_z",

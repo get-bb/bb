@@ -138,7 +138,105 @@ export function libraryCommands(
       throw new Error("The file must be UTF-8 text.");
     return read.content;
   };
+  const readBase64 = async (
+    file: string,
+    host: string | undefined,
+    ctx: PluginCliContext,
+  ) => {
+    if (!host)
+      throw new Error("Pass --host with the machine that holds the file.");
+    const relative = !posix.isAbsolute(file) && !win32.isAbsolute(file);
+    if (relative && !ctx.cwd)
+      throw new Error(
+        "Pass an absolute path; this command has no working directory.",
+      );
+    const read = await readFile({
+      hostId: host,
+      path: relative ? posix.resolve(ctx.cwd!, file) : file,
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+    });
+    return read.contentEncoding === "base64"
+      ? read.content
+      : Buffer.from(read.content, "utf8").toString("base64");
+  };
   return {
+    "apps draft screenshot add": cliCommand({
+      summary:
+        "Add a PNG, JPEG, or WebP screenshot to the app's draft (up to 4)",
+      positionals: [app],
+      options: {
+        revision: revisionOption("Draft revision you last read"),
+        file: {
+          type: "string",
+          required: true,
+          description: "Image file on --host",
+        },
+        host: hostOption,
+        alt: {
+          type: "string",
+          required: true,
+          description: "What the screenshot shows, for people who can't see it",
+        },
+      },
+      run: async ({ positionals, options }, ctx) =>
+        json(
+          compactDraft(
+            await library.draftWrite({
+              appId: idSchema.parse(positionals.app),
+              expectedRevision: options.revision,
+              edit: {
+                addScreenshot: {
+                  data: await readBase64(options.file, options.host, ctx),
+                  alt: options.alt,
+                },
+              },
+            }),
+          ),
+        ),
+    }),
+    "apps draft screenshot remove": cliCommand({
+      summary: "Remove a screenshot from the app's draft",
+      positionals: [app],
+      options: {
+        revision: revisionOption("Draft revision you last read"),
+        name: {
+          type: "string",
+          required: true,
+          description: "Screenshot name, such as screenshot-1.png",
+        },
+      },
+      run: async ({ positionals, options }) =>
+        json(
+          compactDraft(
+            await library.draftWrite({
+              appId: idSchema.parse(positionals.app),
+              expectedRevision: options.revision,
+              edit: { removeScreenshot: options.name },
+            }),
+          ),
+        ),
+    }),
+    "apps release write": cliCommand({
+      summary:
+        "Write a release's package, screenshots, and catalog entry into a catalog checkout",
+      positionals: [release],
+      options: {
+        dir: {
+          type: "string",
+          required: true,
+          description: "Absolute path of the catalog checkout on --host",
+        },
+        host: { ...hostOption, required: true },
+      },
+      run: async ({ positionals, options }) =>
+        json(
+          await library.releaseWrite({
+            releaseId: idSchema.parse(positionals.release),
+            hostId: options.host,
+            dir: options.dir,
+          }),
+        ),
+    }),
     "apps request-id": cliCommand({
       summary: "Print a new UUIDv7 request ID for retry-safe app commands",
       run: () => text([uuidv7()]),

@@ -747,7 +747,19 @@ it("dispatches once when two calls race with the same request ID, and purging an
   const results = await Promise.all([first, second]);
   expect(results.map((r) => r.replayed).sort()).toEqual([false, true]);
 
-  await callRpc("draftOpen", { appId });
+  const opened = (await callRpc("draftOpen", { appId })) as {
+    revision: number;
+  };
+  await callRpc("draftWrite", {
+    appId,
+    expectedRevision: opened.revision,
+    edit: {
+      addScreenshot: {
+        data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        alt: "Step one",
+      },
+    },
+  });
   const { releaseId } = (await callRpc("releasePrepare", {
     appId,
     changelog: "First",

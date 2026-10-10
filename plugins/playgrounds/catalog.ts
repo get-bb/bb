@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { MAX_PACKAGE_BYTES, parsePackage } from "./app-package.js";
+import { MAX_PACKAGE_BYTES, parsePackage, readImage } from "./app-package.js";
 import {
   catalogIndexSchema,
   compareVersions,
@@ -12,6 +12,11 @@ import {
 import { LibraryError, type CatalogView, type Library } from "./library.js";
 
 type Db = ReturnType<BbPluginApi["storage"]["database"]>;
+
+export const MEDIA_CACHE_MIGRATIONS = [
+  "DROP TABLE community_previews",
+  "CREATE TABLE community_media (catalog_id TEXT NOT NULL, path TEXT NOT NULL, type TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (catalog_id, path))",
+];
 
 export const CATALOG_MIGRATIONS = [
   "CREATE TABLE community_cache (id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT NOT NULL, revision TEXT, etag TEXT, index_json TEXT, refreshed_at INTEGER, checked_at INTEGER, error TEXT)",
@@ -253,7 +258,7 @@ export function createCatalog({
           now(),
           now(),
         );
-        db.prepare("DELETE FROM community_previews").run();
+        db.prepare("DELETE FROM community_media").run();
         library().syncPublished(fresh);
       })();
     } catch (error) {
@@ -409,7 +414,10 @@ export function createCatalog({
             author: listing.author,
             license: listing.license,
             agentActions: listing.agentActions,
-            hasPreview: !!listing.preview,
+            hasPreview: !!listing.preview || !!listing.screenshots?.length,
+            screenshots: (listing.screenshots ?? []).map((shot) => ({
+              alt: shot.alt,
+            })),
             delisted: !!listing.delisted || !latest,
             latest: latest
               ? {
@@ -491,38 +499,36 @@ export function createCatalog({
         ...(requestId ? { requestId } : {}),
       });
     },
-    async preview(catalogId: string) {
+    async preview(catalogId: string, index: number | null) {
+      const listing = listingOrThrow(catalogId);
+      const shot = index === null ? undefined : listing.screenshots?.[index];
+      if (index !== null && !shot) return null;
+      const path = shot?.path ?? listing.preview;
+      if (!path) return null;
       const cached = db
         .prepare(
-          "SELECT type, data FROM community_previews WHERE catalog_id = ?",
+          "SELECT type, data FROM community_media WHERE catalog_id = ? AND path = ?",
         )
-        .get(catalogId) as { type: string; data: Buffer } | undefined;
+        .get(catalogId, path) as { type: string; data: Buffer } | undefined;
       if (cached) return cached;
-      const listing = listingOrThrow(catalogId);
-      if (!listing.preview) return null;
-      const location = resolvePath(listing.preview);
+      const location = resolvePath(path);
       const { body } = await fetchLimited(
         location.target,
-        MAX_PREVIEW_BYTES,
+        shot ? shot.bytes : MAX_PREVIEW_BYTES,
         location.scope,
       );
-      const type =
-        body[0] === 0x89 &&
-        body[1] === 0x50 &&
-        body[2] === 0x4e &&
-        body[3] === 0x47
-          ? "image/png"
-          : body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff
-            ? "image/jpeg"
-            : body.subarray(0, 4).toString("ascii") === "RIFF" &&
-                body.subarray(8, 12).toString("ascii") === "WEBP"
-              ? "image/webp"
-              : null;
-      if (!type) return null;
+      if (
+        shot &&
+        (body.byteLength !== shot.bytes ||
+          createHash("sha256").update(body).digest("hex") !== shot.digest)
+      )
+        return null;
+      const image = readImage(body);
+      if (!image) return null;
       db.prepare(
-        "INSERT OR REPLACE INTO community_previews (catalog_id, path, type, data) VALUES (?, ?, ?, ?)",
-      ).run(catalogId, listing.preview, type, body);
-      return { type, data: body };
+        "INSERT OR REPLACE INTO community_media (catalog_id, path, type, data) VALUES (?, ?, ?, ?)",
+      ).run(catalogId, path, image.type, body);
+      return { type: image.type, data: body };
     },
   };
 }

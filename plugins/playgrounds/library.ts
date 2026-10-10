@@ -1,10 +1,13 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { posix, win32 } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   answerFromPackage,
   checkActionArgs,
   ASSETS_RENDERER_VERSION,
+  makeScreenshot,
   manifestSchema,
+  MAX_SCREENSHOTS,
   packageFromAnswer,
   parsePackage,
   serializePackage,
@@ -19,6 +22,7 @@ import {
   LICENSES,
   catalogIdSchema,
   compareVersions,
+  screenshotPath,
   nextMinor,
   packagePath,
   type CatalogIndex,
@@ -234,6 +238,24 @@ export type DraftEdit = {
   documentJson?: string;
   actionsJson?: string;
   fromAnswer?: { answerId: string; threadId: string };
+  addScreenshot?: { data: string; alt: string };
+  removeScreenshot?: string;
+};
+
+const screenshotMeta = (pkg: AppPackage) =>
+  (pkg.screenshots ?? []).map((shot) => ({
+    name: shot.name,
+    type: shot.type,
+    sha256: shot.sha256,
+    width: shot.width,
+    height: shot.height,
+    bytes: shot.bytes,
+    alt: shot.alt,
+  }));
+const withoutScreenshotData = (pkg: AppPackage): AppPackage => {
+  const view: AppPackage = { ...pkg };
+  delete view.screenshots;
+  return view;
 };
 
 const MAX_DIFF_CHARS = 200_000;
@@ -260,6 +282,15 @@ function sourceText(pkg: AppPackage) {
           ...Object.entries(pkg.assets.files).map(
             ([name, file]) =>
               `  ${name}: ${file.bytes} bytes, sha256 ${file.sha256}, ${file.source.package} (${file.source.license})`,
+          ),
+        ]
+      : []),
+    ...(pkg.screenshots?.length
+      ? [
+          "screenshots:",
+          ...pkg.screenshots.map(
+            (shot) =>
+              `  ${shot.name}: ${shot.width}x${shot.height} ${shot.type}, ${shot.bytes} bytes, sha256 ${shot.sha256}, alt "${shot.alt}"`,
           ),
         ]
       : []),
@@ -557,6 +588,7 @@ export function createLibrary({
       license: pkg.license ?? null,
       origin: pkg.origin ?? null,
       requires: pkg.requires,
+      screenshots: screenshotMeta(pkg),
     };
   };
 
@@ -574,7 +606,8 @@ export function createLibrary({
       updatedAt: draft.updated_at,
       baseVersionId: draft.base_version_id,
       baseVersionLabel: base?.label ?? null,
-      package: pkg,
+      package: withoutScreenshotData(pkg),
+      screenshots: screenshotMeta(pkg),
       diff: basePkg
         ? capDiff(
             diffText(
@@ -603,7 +636,12 @@ export function createLibrary({
   ): AppPackage => {
     if (edit.packageText !== undefined) {
       const { pkg } = parsePackage(edit.packageText);
-      const next: AppPackage = { ...pkg };
+      const next: AppPackage = {
+        ...pkg,
+        ...(!pkg.screenshots && current.screenshots
+          ? { screenshots: current.screenshots }
+          : {}),
+      };
       delete next.origin;
       return current.origin ? { ...next, origin: current.origin } : next;
     }
@@ -703,6 +741,42 @@ export function createLibrary({
     }
     if (edit.summary !== undefined)
       next = { ...next, summary: edit.summary.trim() };
+    if (edit.removeScreenshot !== undefined) {
+      const kept = (next.screenshots ?? []).filter(
+        (s) => s.name !== edit.removeScreenshot,
+      );
+      if (kept.length === (next.screenshots ?? []).length)
+        throw new LibraryError(
+          "not_found",
+          `No screenshot ${edit.removeScreenshot}.`,
+        );
+      next = { ...next, screenshots: kept };
+    }
+    if (edit.addScreenshot !== undefined) {
+      const current = next.screenshots ?? [];
+      if (current.length >= MAX_SCREENSHOTS)
+        throw new LibraryError(
+          "invalid",
+          `Remove a screenshot first; the limit is ${MAX_SCREENSHOTS}.`,
+        );
+      const bytes = Buffer.from(edit.addScreenshot.data, "base64");
+      next = {
+        ...next,
+        screenshots: [
+          ...current,
+          makeScreenshot(
+            bytes,
+            edit.addScreenshot.alt,
+            current.map((s) => s.name),
+          ),
+        ],
+      };
+    }
+    if (next.screenshots && next.screenshots.length === 0) {
+      const rest: AppPackage = { ...next };
+      delete rest.screenshots;
+      next = rest;
+    }
     return next;
   };
   const proposeVersion = (
@@ -826,6 +900,20 @@ export function createLibrary({
           license: pkg.license as CatalogListing["license"],
           agentActions: pkg.actions.mode === "manual" ? "manual" : "documented",
           ...(listing?.preview ? { preview: listing.preview } : {}),
+          ...(pkg.screenshots?.length
+            ? {
+                screenshots: pkg.screenshots.map((shot) => ({
+                  path: screenshotPath(
+                    release.catalog_id,
+                    release.version_label,
+                    shot.name,
+                  ),
+                  digest: shot.sha256,
+                  bytes: shot.bytes,
+                  alt: shot.alt,
+                })),
+              }
+            : {}),
           versions: [
             ...(listing?.versions.filter(
               (v) => v.version !== release.version_label,
@@ -849,7 +937,18 @@ export function createLibrary({
       ready: blockers.length === 0,
       blockers,
       files: pkg
-        ? [{ path, sha256: release.digest, bytes: version!.bytes }]
+        ? [
+            { path, sha256: release.digest, bytes: version!.bytes },
+            ...(pkg.screenshots ?? []).map((shot) => ({
+              path: screenshotPath(
+                release.catalog_id,
+                release.version_label,
+                shot.name,
+              ),
+              sha256: shot.sha256,
+              bytes: shot.bytes,
+            })),
+          ]
         : [],
       catalogEntry: entry,
       contributing,
@@ -870,7 +969,7 @@ export function createLibrary({
             `I authorize opening or updating one pull request for exactly this release using your existing GitHub access. The catalog's maintainers decide whether it is accepted for this listing.`,
             `1. Run \`bb playgrounds apps release show ${release.id} --json\`. Stop and tell me if \`ready\` is false.`,
             `2. ${release.pr_url ? `This release already has pull request ${release.pr_url}. Update that pull request; do not open another.` : "Search the catalog repository for an open pull request mentioning this release ID before opening a new one."} Never force-push.`,
-            `3. Write \`bb playgrounds apps release package ${release.id}\` byte-for-byte to ${path} and check its SHA-256 is ${release.digest}. Upsert \`catalogEntry\` into index.json's apps list. Mention the release ID in the pull request body.`,
+            `3. In your checkout of the catalog repository, run \`bb playgrounds apps release write ${release.id} --dir <checkout> --host <this machine's host ID>\`. It writes the package and screenshots byte-for-byte at their catalog paths and \`catalog-entry.json\`; check each file's SHA-256 against \`files\`. Upsert \`catalogEntry\` into index.json's apps list, delete catalog-entry.json, and mention the release ID in the pull request body.`,
             `4. Run \`bb playgrounds apps release submitted ${release.id} --pr <pull request URL>\` and send me the link.`,
           ].join("\n")
         : null,
@@ -1130,6 +1229,9 @@ export function createLibrary({
             ...(current.author ? { author: current.author } : {}),
             ...(current.license ? { license: current.license } : {}),
             ...(current.origin ? { origin: current.origin } : {}),
+            ...(current.screenshots
+              ? { screenshots: current.screenshots }
+              : {}),
             ...(answer.kind === "html" &&
             current.actions.mode !== "undocumented"
               ? { actions: current.actions }
@@ -1853,6 +1955,11 @@ export function createLibrary({
               "invalid",
               `Choose a redistribution license: ${LICENSES.join(", ")}.`,
             );
+          if (!source.screenshots?.length)
+            throw new LibraryError(
+              "invalid",
+              "Community submissions need at least one screenshot of the app. Add one to the draft first.",
+            );
           if (source.actions.mode === "undocumented")
             throw new LibraryError(
               "invalid",
@@ -2002,6 +2109,82 @@ export function createLibrary({
         );
         return { appId: app.id, catalogId, publishedVersion: version };
       })();
+    },
+    async releaseWrite(input: {
+      releaseId: string;
+      hostId: string;
+      dir: string;
+    }) {
+      const release = requireRelease(input.releaseId);
+      const version = versionRow(release.version_id);
+      if (!version)
+        throw new LibraryError(
+          "not_found",
+          "This release's version was deleted with its app.",
+        );
+      if (!posix.isAbsolute(input.dir) && !win32.isAbsolute(input.dir))
+        throw new LibraryError(
+          "invalid",
+          "Pass the catalog checkout as an absolute directory.",
+        );
+      const view = releaseView(release);
+      const pkg = packageOf(version);
+      const files: {
+        path: string;
+        content: string;
+        contentEncoding: "utf8" | "base64";
+      }[] = [
+        {
+          path: packagePath(release.catalog_id, release.version_label),
+          content: version.package,
+          contentEncoding: "utf8",
+        },
+        ...(pkg.screenshots ?? []).map((shot) => ({
+          path: screenshotPath(
+            release.catalog_id,
+            release.version_label,
+            shot.name,
+          ),
+          content: shot.data,
+          contentEncoding: "base64" as const,
+        })),
+        {
+          path: "catalog-entry.json",
+          content: `${JSON.stringify(view.catalogEntry, null, 2)}\n`,
+          contentEncoding: "utf8",
+        },
+      ];
+      for (const file of files)
+        await bb.sdk.files.write({
+          hostId: input.hostId,
+          path: posix.join(input.dir.replaceAll("\\", "/"), file.path),
+          content: file.content,
+          contentEncoding: file.contentEncoding,
+          createParents: true,
+        });
+      return {
+        releaseId: release.id,
+        written: files.map((f) => f.path),
+        files: view.files,
+      };
+    },
+    screenshot(input: {
+      appId: string;
+      versionId?: string;
+      draft?: boolean;
+      name: string;
+    }) {
+      const app = requireApp(input.appId);
+      const draft = input.draft ? draftRow(app.id) : undefined;
+      if (input.draft && !draft)
+        throw new LibraryError("not_found", "This app has no draft.");
+      const pkg = draft
+        ? parsePackage(draft.package).pkg
+        : packageOf(requireVersion(app, input.versionId));
+      const shot = pkg.screenshots?.find((s) => s.name === input.name);
+      if (!shot)
+        throw new LibraryError("not_found", `No screenshot ${input.name}.`);
+      return { type: shot.type, data: Buffer.from(shot.data, "base64") };
     },
     releaseShow({ releaseId }: { releaseId: string }) {
       return releaseView(requireRelease(releaseId));
