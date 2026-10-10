@@ -10,7 +10,7 @@ import {
   withoutBridgeRuntimeEnv,
 } from "@get-bb/plugin-sdk/provider-bridge";
 
-import { resolveDefaultWindowsPiLaunch } from "./windows-pi-launch.js";
+import { resolveWindowsPiProcessLaunch } from "./windows-pi-launch.js";
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
 export const PI_BRIDGE_ARGS_ENV = "BB_PI_BRIDGE_ARGS";
@@ -66,17 +66,13 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-export function resolvePiLaunch(
-  env: NodeJS.ProcessEnv,
-  childEnv: NodeJS.ProcessEnv = env,
-  cwd = process.cwd(),
-): {
+export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   command: string;
   args: string[];
 } {
   const command = env[PI_BRIDGE_COMMAND_ENV];
   if (!command) {
-    return resolveDefaultWindowsPiLaunch(childEnv, cwd) ?? { command: "pi", args: [] };
+    return { command: "pi", args: [] };
   }
   const rawArgs = env[PI_BRIDGE_ARGS_ENV];
   if (!rawArgs) {
@@ -90,6 +86,15 @@ export function resolvePiLaunch(
     throw new Error(`${PI_BRIDGE_ARGS_ENV} must be a JSON array of strings`);
   }
   return { command, args: parsed };
+}
+
+export function resolvePiProcessLaunch(
+  configEnv: NodeJS.ProcessEnv,
+  childEnv: NodeJS.ProcessEnv = configEnv,
+  cwd = process.cwd(),
+): { command: string; args: string[] } {
+  const launch = resolvePiLaunch(configEnv);
+  return resolveWindowsPiProcessLaunch(launch, childEnv, cwd);
 }
 
 export function buildPiChildEnv(
@@ -122,7 +127,7 @@ export class PiRpcChild {
     this.settledExit = new Promise((resolve) => {
       resolveSettledExit = resolve;
     });
-    const launch = resolvePiLaunch(process.env, args.env, args.cwd);
+    const launch = resolvePiProcessLaunch(process.env, args.env, args.cwd);
     this.child = experimental_spawnPortableProcess({
       command: launch.command,
       args: [...launch.args, ...args.args],

@@ -1,10 +1,12 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
+import { npmNodeShim } from "./npm-shim.test-support.js";
 import {
   getPiInstallGate,
+  getPiProviderInstallationStatus,
   probePiVersion,
   resetPiInstallGateForTests,
 } from "./provider-maintenance.js";
@@ -83,14 +85,26 @@ describe("Pi version probe", () => {
     async () => {
       const root = await mkdtemp(path.join(os.tmpdir(), "bb pi version-"));
       temporaryDirectories.push(root);
-      const cli = path.join(root, "cli.cjs");
+      const pkg = path.join(
+        root,
+        "node_modules",
+        "@earendil-works",
+        "pi-coding-agent",
+      );
+      await mkdir(pkg, { recursive: true });
+      await writeFile(
+        path.join(pkg, "package.json"),
+        JSON.stringify({ bin: { pi: "cli.cjs" } }),
+      );
+      await copyFile(process.execPath, path.join(root, "node.exe"));
+      const cli = path.join(pkg, "cli.cjs");
       await writeFile(
         cli,
         'if (process.argv[2] !== "--version") process.exit(2); process.stdout.write("0.85.1\\n");',
       );
       await writeFile(
         path.join(root, "pi.cmd"),
-        `@"${process.execPath}" "${cli}" %*\r\n`,
+        npmNodeShim("node_modules\\@earendil-works\\pi-coding-agent\\cli.cjs"),
       );
       await writeFile(path.join(root, "pi"), "#!/bin/sh\nexit 1\n");
       vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
@@ -103,6 +117,10 @@ describe("Pi version probe", () => {
       expect(await getPiInstallGate()).toEqual({
         ok: true,
         installedVersion: "0.85.1",
+      });
+      expect(await getPiProviderInstallationStatus(false)).toMatchObject({
+        executablePath: path.join(root, "pi.cmd"),
+        currentVersion: "0.85.1",
       });
     },
   );

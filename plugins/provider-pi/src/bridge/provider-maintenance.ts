@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { open, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   type ProviderHealthResult,
   type ProviderInstallationCommand,
@@ -8,7 +10,6 @@ import {
   type ProviderInstallationStatus,
   experimental_commandOutput as commandOutput,
   experimental_compareVersions as compareVersions,
-  experimental_execPortableFile as execPortableFile,
   experimental_formatCommand as formatCommand,
   experimental_installationVerification as installationVerification,
   experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
@@ -18,8 +19,9 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { resolvePiLaunch } from "./rpc-child.js";
+import { resolvePiLaunch, resolvePiProcessLaunch } from "./rpc-child.js";
 
+const execFileAsync = promisify(execFile);
 export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
 export const PI_NPM_PACKAGE = "@earendil-works/pi-coding-agent";
 const VERSION_PROBE_TIMEOUT_MS = 15_000;
@@ -128,17 +130,14 @@ async function piGlobalInstallCommand(
 }
 
 export async function probePiVersion(): Promise<PiVersionProbe> {
-  const launch = resolvePiLaunch(process.env);
+  const launch = resolvePiProcessLaunch(process.env);
   const display = formatCommand(launch.command, [...launch.args, "--version"]);
   let stdout: string;
   try {
-    ({ stdout } = await execPortableFile(
+    ({ stdout } = await execFileAsync(
       launch.command,
       [...launch.args, "--version"],
       {
-        cwd: process.cwd(),
-        env: process.env,
-        maxBuffer: 1024 * 1024,
         timeout: VERSION_PROBE_TIMEOUT_MS,
       },
     ));

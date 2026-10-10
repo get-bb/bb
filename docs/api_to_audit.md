@@ -1231,22 +1231,6 @@ instead of a raw `ChildProcess` plus a fire-and-forget kill. Confirm argument
 quoting for `.cmd` targets with untrusted arguments, and whether `detached`
 belongs in the public shape.
 
-## Portable buffered provider execution (`experimental_execPortableFile`) (`@get-bb/plugin-sdk/provider-bridge`)
-
-**What it does.** Re-exports the core `execPortableFile(command, args, options)`
-used by the provider maintenance toolkit. Options require `cwd`, `env` and
-`maxBuffer`, with optional `timeout`, `signal`, `input` and `onStderr`. Resolves
-Windows npm `.cmd` shims, returns `{ stdout, stderr }` on success, and throws
-errors carrying `code`, `signal`, `killed`, `stdout` and `stderr` on failure.
-Timeouts, cancellation and output overflow stop descendants as well as the
-wrapper. Pi's version probe uses this path so it retains diagnostic errors and
-its 15 s timeout without bypassing the core portable process implementation.
-
-**Audit before stabilizing.** Confirm the buffered options and error shape are
-suitable for external bridges, decide whether callers need structured process
-termination evidence, and validate quoting and timeout cleanup across Windows
-package-manager shims before committing to this surface.
-
 ## `experimental_BridgeRecoveryError`
 
 **Kept experimental (2026-08-22).** it is part of the provider-bridge authoring surface and stabilizes together with `experimental_defineProviderBridge` / `experimental_apiVersion` in the later bridge-kit audit.
