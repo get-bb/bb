@@ -1,5 +1,9 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  parseBackgroundTaskEvent,
+  type BackgroundTaskEvent,
+} from "../background-task-events.js";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import {
@@ -26,6 +30,9 @@ export interface PiRpcSessionOptions {
   recordThreadId: string;
   noSession?: boolean;
   onExtensionUiRequest?: (request: Record<string, unknown>) => void;
+  onBackgroundTaskEvent?: (event: BackgroundTaskEvent) => void;
+  onBackgroundTaskSessionEnd?: () => void;
+  onBackgroundTaskObserverEnd?: () => void;
 }
 
 export interface DynamicToolDefinition {
@@ -184,6 +191,8 @@ export class PiRpcSession {
       attempt: () => this.spawnAndVerify(),
       discardFailedAttempt: () => {
         const failed = this.child;
+        this.backgroundObserverActive = false;
+        this.options.onBackgroundTaskSessionEnd?.();
         this.child = undefined;
         failed?.kill();
       },
@@ -666,10 +675,34 @@ export class PiRpcSession {
     }
   }
 
+  private backgroundTasksBound = false;
+  private backgroundObserverActive = false;
+
+  requestBackgroundTaskSnapshot(): void {
+    this.backgroundTasksBound = true;
+    if (this.backgroundObserverActive)
+      this.child?.sendChannel({ kind: "background-task-request", v: 1 });
+  }
+
   private handleChannelMessage(message: Record<string, unknown>): void {
     const child = this.child;
+    if (message.kind === "background-task-observer-end") {
+      if (this.backgroundObserverActive) {
+        this.backgroundObserverActive = false;
+        this.options.onBackgroundTaskObserverEnd?.();
+      }
+      return;
+    }
+    if (message.kind === "background-task") {
+      if (!this.backgroundObserverActive) return;
+      const event = parseBackgroundTaskEvent(message.event);
+      if (event) this.options.onBackgroundTaskEvent?.(event);
+      return;
+    }
     if (message.kind === "ready") {
+      this.backgroundObserverActive = true;
       this.ready.resolve();
+      if (this.backgroundTasksBound) this.requestBackgroundTaskSnapshot();
       return;
     }
     if (message.kind === "agent-end-leaf") {
@@ -759,6 +792,8 @@ export class PiRpcSession {
   }
 
   private handleExit(info: PiRpcChildExitInfo): void {
+    this.backgroundObserverActive = false;
+    this.options.onBackgroundTaskSessionEnd?.();
     this.ready.reject(new PiRpcChildExitedError(info));
     for (const [, reply] of this.channelReplies) {
       reply.reject(new PiRpcChildExitedError(info));

@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 
-import {
-  existsSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import { BackgroundTaskProjection } from "../background-task-events.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -194,6 +190,7 @@ interface CurrentThreadSessionArgs {
 }
 
 interface ThreadSession {
+  backgroundTasks: BackgroundTaskProjection;
   session: PiRpcSession;
   sessionSerial: number;
   closing: boolean;
@@ -251,10 +248,13 @@ const piDeltaTranslator = createPiDeltaTranslator({
   resolveModelContextWindow: contextWindows.resolve,
 });
 
-function createForwardToolCall(getThreadId: () => string): ToolCallForwarder {
+function createForwardToolCall(
+  getThreadId: () => string,
+  resolveThreadSession: () => ThreadSession | undefined,
+): ToolCallForwarder {
   return (toolName, args) => {
     const threadId = getThreadId();
-    const threadSession = sessions.get(threadId);
+    const threadSession = resolveThreadSession();
     if (!threadSession || threadSession.closing) {
       return Promise.resolve({
         content: "Thread session not found",
@@ -283,6 +283,7 @@ async function closeThreadSession(args: {
   if (!threadSession) {
     return;
   }
+  sendThreadDeltas(args.threadId, threadSession.backgroundTasks.close());
   threadSession.closing = true;
   resolvePendingToolCalls(threadSession, args.message);
   extensionUi.cancelPendingForScope(threadSession);
@@ -425,6 +426,12 @@ function createOnPiEvent(
       threadId: args.threadId,
       message: event,
     });
+    if (event.type === "agent_start") {
+      sendThreadDeltas(
+        args.threadId,
+        threadSession.backgroundTasks.agentStart(),
+      );
+    }
     if (event.type === "turn_end" || event.type === "compaction_end") {
       emitContextWindowUsage(args.threadId);
     }
@@ -433,9 +440,11 @@ function createOnPiEvent(
 
 function createOnExtensionUiRequest(
   args: CurrentThreadSessionArgs,
+  resolveThreadSession: () => ThreadSession | undefined = () =>
+    getCurrentThreadSession(args),
 ): (request: Record<string, unknown>) => void {
   return (request) => {
-    const threadSession = getCurrentThreadSession(args);
+    const threadSession = resolveThreadSession();
     if (!threadSession || threadSession.closing) return;
     extensionUi.handle({
       scope: threadSession,
@@ -712,6 +721,7 @@ async function buildSessionOptions(args: {
   providerThreadId: string;
   threadId: string;
   sessionSerial: number;
+  resolveThreadSession?: () => ThreadSession | undefined;
 }): Promise<PiRpcSessionOptions> {
   return {
     cwd: args.params.cwd,
@@ -738,10 +748,13 @@ async function buildSessionOptions(args: {
     scratchDir: requireScratchDir(),
     extensionPath: requireExtensionPath(),
     recordThreadId: args.threadId,
-    onExtensionUiRequest: createOnExtensionUiRequest({
-      sessionSerial: args.sessionSerial,
-      threadId: args.threadId,
-    }),
+    onExtensionUiRequest: createOnExtensionUiRequest(
+      {
+        sessionSerial: args.sessionSerial,
+        threadId: args.threadId,
+      },
+      args.resolveThreadSession,
+    ),
   };
 }
 
@@ -751,19 +764,36 @@ async function constructPiThreadSession(
   params: PiSessionParams,
 ): Promise<ThreadSession> {
   const sessionSerial = nextSessionSerial();
+  let threadSession: ThreadSession | undefined;
+  const resolveThreadSession = () => threadSession;
   const sessionOptions = await buildSessionOptions({
     params,
     providerThreadId,
     threadId,
     sessionSerial,
+    resolveThreadSession,
   });
+  const backgroundTasks = new BackgroundTaskProjection(String(sessionSerial));
+  sessionOptions.onBackgroundTaskObserverEnd = () => {
+    sendThreadDeltas(threadId, backgroundTasks.observerEnd());
+  };
+  sessionOptions.onBackgroundTaskSessionEnd = () => {
+    sendThreadDeltas(threadId, backgroundTasks.close());
+    if (threadSession) extensionUi.cancelPendingForScope(threadSession);
+  };
+  sessionOptions.onBackgroundTaskEvent = (event) => {
+    if (threadSession && !threadSession.closing) {
+      sendThreadDeltas(threadId, backgroundTasks.accept(event));
+    }
+  };
   const session = new PiRpcSession(
     sessionOptions,
-    createForwardToolCall(() => threadId),
+    createForwardToolCall(() => threadId, resolveThreadSession),
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
   );
-  const threadSession: ThreadSession = {
+  threadSession = {
+    backgroundTasks,
     session,
     sessionSerial,
     closing: false,
@@ -772,9 +802,9 @@ async function constructPiThreadSession(
     construction: params,
     constructionModel: sessionOptions.model,
   };
-  sessions.set(threadId, threadSession);
   try {
     await session.start();
+    sessions.set(threadId, threadSession);
     const liveModel = session.getLiveModel();
     if (
       liveModel &&
@@ -794,6 +824,9 @@ async function constructPiThreadSession(
     if (sessions.get(threadId) === threadSession) {
       sessions.delete(threadId);
     }
+    threadSession.closing = true;
+    extensionUi.cancelPendingForScope(threadSession);
+    backgroundTasks.close();
     session.kill();
     throw error;
   }
@@ -829,6 +862,7 @@ async function rebuildThreadSession(
     }
     throw error;
   }
+  sendThreadDeltas(threadId, previous.backgroundTasks.close());
   retireReplacedPiChild(previous);
   return replacement;
 }
@@ -845,6 +879,7 @@ function sendThreadSessionResult(
 ): void {
   sendThreadIdentity(threadId, providerThreadId);
   sendSessionResetBoundary(threadId);
+  sessions.get(threadId)?.session.requestBackgroundTaskSnapshot();
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -855,18 +890,14 @@ async function handleThreadConstruction(
   params: PiSessionParams,
 ): Promise<void> {
   const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      message: "Pi thread session replaced while tool call was pending",
-      threadId,
-    });
-  }
   const sourceFile = resolvePiSessionFilePath({
     env: process.env,
     threadId: providerThreadId,
   });
   const relocate = piSessionNeedsRelocation(sourceFile, params.cwd);
-  const nextProviderThreadId = relocate ? `pi_${randomUUID()}` : providerThreadId;
+  const nextProviderThreadId = relocate
+    ? `pi_${randomUUID()}`
+    : providerThreadId;
   const targetFile = resolvePiSessionFilePath({
     env: process.env,
     threadId: nextProviderThreadId,
@@ -886,7 +917,14 @@ async function handleThreadConstruction(
     await constructPiThreadSession(threadId, nextProviderThreadId, params);
   } catch (error) {
     if (relocate) rmSync(targetFile, { force: true });
+    if (existing && !existing.closing && !sessions.has(threadId)) {
+      sessions.set(threadId, existing);
+    }
     throw error;
+  }
+  if (existing) {
+    sendThreadDeltas(threadId, existing.backgroundTasks.close());
+    retireReplacedPiChild(existing);
   }
   sendThreadSessionResult(id, threadId, nextProviderThreadId);
 }
@@ -1042,6 +1080,7 @@ async function reconcileTurnOptions(
   });
   sendThreadIdentity(threadId, replacement.providerThreadId);
   sendSessionResetBoundary(threadId);
+  replacement.session.requestBackgroundTaskSnapshot();
   send({
     jsonrpc: "2.0",
     method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,

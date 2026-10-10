@@ -171,6 +171,38 @@ export default function bbExtension(pi) {
   const pendingToolCalls = new Map();
   let nextId = 0;
   let sessionContext = null;
+  let unsubscribeBackgroundTasks;
+  let bridgeInputState;
+
+  function forwardBackgroundTask(event) {
+    try {
+      if (!event || typeof event !== "object") return;
+      const boundedText = (value, max) => typeof value === "string" && value.length <= max;
+      if (event.v !== 1 || !boundedText(event.source, 128) || !boundedText(event.sourceId, 128) ||
+          !Number.isSafeInteger(event.sequence) || event.sequence <= 0 ||
+          !["upsert", "snapshot", "clear"].includes(event.kind)) return;
+      const selectTask = (task) => {
+        if (!task || typeof task !== "object" || !boundedText(task.id, 128) ||
+            !boundedText(task.label, 256) || !boundedText(task.taskType, 32) ||
+            !boundedText(task.status, 32) ||
+            (task.summary !== undefined && !boundedText(task.summary, 2048)) ||
+            (task.error !== undefined && !boundedText(task.error, 2048))) return null;
+        return {
+          id: task.id, label: task.label, taskType: task.taskType,
+          status: task.status, summary: task.summary, error: task.error,
+        };
+      };
+      if (event.kind === "snapshot" && (!Array.isArray(event.tasks) || event.tasks.length > 256)) return;
+      const envelope = {
+        v: event.v, source: event.source, sourceId: event.sourceId,
+        sequence: event.sequence, kind: event.kind,
+        ...(event.kind === "upsert" ? { task: selectTask(event.task) } : {}),
+        ...(event.kind === "snapshot" ? { tasks: event.tasks.map(selectTask) } : {}),
+      };
+      if (JSON.stringify(envelope).length > 2 * 1024 * 1024) return;
+      writeLine(CHILD_TO_BRIDGE_FD, { kind: "background-task", event: envelope });
+    } catch {}
+  }
 
   const onBridgeLine = (line) => {
     const trimmed = line.trim();
@@ -179,6 +211,10 @@ export default function bbExtension(pi) {
     try {
       message = JSON.parse(trimmed);
     } catch {
+      return;
+    }
+    if (message.kind === "background-task-request" && message.v === 1) {
+      pi.events?.emit?.("bb:background-task:request", { v: 1 });
       return;
     }
     if (message.kind === "tool-result") {
@@ -196,40 +232,51 @@ export default function bbExtension(pi) {
       void handleBridgeRequest(message);
     }
   };
-  if (typeof Bun !== "undefined") {
-    // pi ships as a Bun-compiled binary, and Bun's net.Socket cannot attach
-    // to a borrowed stdio fd (the handle stays null and nothing is ever
-    // read), so the bridge channel is read through Bun's file stream instead.
-    void (async () => {
-      const decoder = new StringDecoder("utf8");
-      let pending = "";
-      try {
-        for await (const chunk of Bun.file(BRIDGE_TO_CHILD_FD).stream()) {
-          const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
-          let start = 0;
-          for (;;) {
-            const index = text.indexOf("\n", start);
-            if (index === -1) {
-              pending += text.slice(start);
-              break;
+  function startBridgeInput() {
+    const key = Symbol.for("bb.pi.bridgeInput");
+    bridgeInputState = globalThis[key];
+    if (bridgeInputState) {
+      bridgeInputState.dispatch = onBridgeLine;
+      return;
+    }
+    bridgeInputState = { dispatch: onBridgeLine };
+    globalThis[key] = bridgeInputState;
+    const dispatch = (line) => bridgeInputState.dispatch?.(line);
+    if (typeof Bun !== "undefined") {
+      // pi ships as a Bun-compiled binary, and Bun's net.Socket cannot attach
+      // to a borrowed stdio fd (the handle stays null and nothing is ever
+      // read), so the bridge channel is read through Bun's file stream instead.
+      void (async () => {
+        const decoder = new StringDecoder("utf8");
+        let pending = "";
+        try {
+          for await (const chunk of Bun.file(BRIDGE_TO_CHILD_FD).stream()) {
+            const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+            let start = 0;
+            for (;;) {
+              const index = text.indexOf("\n", start);
+              if (index === -1) {
+                pending += text.slice(start);
+                break;
+              }
+              const line = pending + text.slice(start, index);
+              pending = "";
+              start = index + 1;
+              dispatch(line.endsWith("\r") ? line.slice(0, -1) : line);
             }
-            const line = pending + text.slice(start, index);
-            pending = "";
-            start = index + 1;
-            onBridgeLine(line.endsWith("\r") ? line.slice(0, -1) : line);
           }
+        } catch {
+          // The bridge is gone; nothing to report to.
         }
-      } catch {
-        // The bridge is gone; nothing to report to.
-      }
-    })();
-  } else {
-    // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
-    // up by an outstanding read; EOF (the bridge ended its writer) closes it.
-    const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
-    bridgeIn.on("error", () => undefined);
-    bridgeIn.unref();
-    readLines(bridgeIn, onBridgeLine);
+      })();
+    } else {
+      // Non-blocking: libuv polls the pipe, so pi's process.exit is never held
+      // up by an outstanding read; EOF (the bridge ended its writer) closes it.
+      const bridgeIn = new Socket({ fd: BRIDGE_TO_CHILD_FD, readable: true, writable: false });
+      bridgeIn.on("error", () => undefined);
+      bridgeIn.unref();
+      readLines(bridgeIn, dispatch);
+    }
   }
 
   async function handleBridgeRequest(message) {
@@ -345,6 +392,9 @@ export default function bbExtension(pi) {
 
   pi.on("session_start", async (_event, ctx) => {
     sessionContext = ctx;
+    startBridgeInput();
+    if (typeof unsubscribeBackgroundTasks === "function") unsubscribeBackgroundTasks();
+    unsubscribeBackgroundTasks = pi.events?.on?.("bb:background-task", forwardBackgroundTask);
     writeLine(CHILD_TO_BRIDGE_FD, {
       kind: "model-scope",
       ...currentModelScope(),
@@ -363,6 +413,14 @@ export default function bbExtension(pi) {
       if (missing) pi.setActiveTools([...active]);
     }
     writeLine(CHILD_TO_BRIDGE_FD, { kind: "ready" });
+  });
+
+  pi.on("session_shutdown", () => {
+    if (typeof unsubscribeBackgroundTasks === "function") unsubscribeBackgroundTasks();
+    unsubscribeBackgroundTasks = undefined;
+    writeLine(CHILD_TO_BRIDGE_FD, { kind: "background-task-observer-end" });
+    if (bridgeInputState?.dispatch === onBridgeLine) bridgeInputState.dispatch = undefined;
+    sessionContext = null;
   });
 
   // The run's checkpoint, read in-process the moment the run ends: pi emits

@@ -65,6 +65,104 @@ install in a temporary prefix, say. The plugin declares them as environment
 passthrough, so a value set on the host daemon's environment reaches the
 bridge process; bb strips every other inherited `BB_*` variable.
 
+## Experimental background task events (v1)
+
+Third-party Pi extensions can publish native BB background task cards and active
+counters through the provider-owned `pi.events` contract. This works for Pi
+threads started through BB's UI, SDK, or CLI; no new tool or core SDK API is
+required. It is experimental and is not a Pi upstream API guarantee.
+
+Emit on `bb:background-task` with:
+
+- `v: 1`, `source`: stable extension namespace, `sourceId`: unique publisher
+  lifetime ID (use a fresh UUID after reload), `sequence`: strictly increasing
+  positive safe integer within that lifetime.
+- `kind: "upsert"` and `task`, `kind: "snapshot"` and `tasks`, or `kind: "clear"`.
+- Each task has `id` (unique run ID, never reused within a lifetime), `label`,
+  `taskType` (`local_subagent`, `local_agent`, or `local_bash`), and `status`
+  (`pending`, `running`, `paused`, `completed`, `failed`, `killed`, or `stopped`).
+  Optional `summary` and `error` are short, user-visible text, not raw output.
+
+Identifiers are 1–128 characters and exclude control characters and `|` (the
+internal separator). Labels are 1–256 characters; summary/error are at most
+2048 characters each. Snapshots contain at most 256 unique task IDs. Malformed
+and unsupported-version events, including duplicate snapshot IDs, are rejected
+atomically. Extra fields are stripped: no prompts, output, arbitrary payloads,
+thread IDs, or arbitrary task types are accepted. Do not put secrets into labels,
+summaries, or errors. The injected extension forwards only this envelope over
+FD3, never stdout RPC or model messages; serialized envelopes over 2 MiB are dropped.
+
+```ts
+import { randomUUID } from "node:crypto";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+export default function (pi: ExtensionAPI) {
+  const sourceId = randomUUID();
+  let sequence = 0;
+  const tasks = new Map();
+  const publish = (fields: object) =>
+    pi.events.emit("bb:background-task", {
+      v: 1,
+      source: "example.worker",
+      sourceId,
+      sequence: ++sequence,
+      ...fields,
+    });
+  const unsubscribe = pi.events.on("bb:background-task:request", () => {
+    publish({ kind: "snapshot", tasks: [...tasks.values()] });
+  });
+  pi.on("session_shutdown", unsubscribe);
+  pi.registerCommand("example-background-card", {
+    handler: async () => {
+      const task = {
+        id: randomUUID(),
+        label: "Example completed work",
+        taskType: "local_subagent",
+        status: "completed",
+      };
+      tasks.set(task.id, task);
+      publish({ kind: "upsert", task });
+    },
+  });
+}
+```
+
+Maintain your own bounded current task registry and update it before publishing.
+The bridge emits `bb:background-task:request` with `{ v: 1 }` after a real thread
+session binds/resets or is successfully replaced. Respond with a fresh sequence
+and a complete snapshot for your namespace, including any unfinished tasks.
+Helpers for model discovery and forking do not request snapshots or publish cards.
+Events received before the first real agent turn are held until `agent_start`;
+telemetry never fabricates a turn or triggers a model call. Cards are displayed in
+the transcript (`skipTranscript: false`) and eligible for native active counts;
+this presentation flag does not inject telemetry into MODEL context or prompts.
+
+Cards open once with source/lifetime/session/observer-epoch-namespaced identities. Pending,
+running, and paused remain active; completed/failed close with that outcome;
+killed/stopped close as interrupted. Progress and completion continue after the
+parent turn settles. Terminal run IDs cannot reopen, and stale sequence numbers
+and retired publisher lifetimes are ignored. A new lifetime reconciles the old
+publisher's active tasks. Snapshot omissions and clear close active observed cards
+as stopped. Session stop, exit/crash, or successful replacement also reconcile
+cards; a failed replacement preserves the old observer.
+
+State is bounded per session: 64 source namespaces, 32 retired lifetime IDs per
+source, and 2048 admitted run IDs total across lifetimes. At capacity, new work or
+new lifetimes are rejected atomically rather than silently evicting active work;
+updates to admitted tasks remain accepted. A fresh session or observer epoch resets
+these budgets.
+
+This is observation only: reconciliation does not kill third-party processes.
+The provider does not own or cancel tasks, collect output, create threads, or
+schedule model continuations. Existing stop behavior still terminates the Pi
+process. Extensions remain responsible for work lifecycle and cleanup. The
+injected listener unsubscribes on session shutdown/reload, closes active observations
+as stopped, and rejects late events until ready. On ready it requests fresh snapshots:
+returning sources open cards in a new observer epoch, while absent sources stay
+stopped. Recovery can use the current/last real turn without a synthetic turn or
+model prompt, even when a publisher retains its lifetime and run IDs. Process exit
+and close reconcile idempotently. The listener tolerates runtimes without `pi.events`.
+
 ## Tests
 
 The bridge tests drive `src/bridge/fake-pi-rpc.mjs`, a scripted
