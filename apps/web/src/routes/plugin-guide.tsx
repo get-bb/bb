@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import blogCss from "../blog/blog.css?url";
 import { useInitAnalytics } from "../landing/analytics";
@@ -47,17 +47,22 @@ function PluginGuideRoute() {
     },
     [navigate],
   );
+  const guideRef = useRef<HTMLDivElement>(null);
   const [opened, setOpened] = useState({ count: 0, slideId: slide });
   const onOpenSlide = useCallback(
     (slideId: string) => {
       setOpened((current) => ({ count: current.count + 1, slideId }));
       onSlideChange(slideId);
-      document
-        .getElementById("plugin-guide")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
     [onSlideChange],
   );
+  useEffect(() => {
+    if (opened.count === 0) return;
+    const frame = requestAnimationFrame(() =>
+      guideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [opened.count]);
 
   return (
     <>
@@ -69,7 +74,7 @@ function PluginGuideRoute() {
         </header>
       </div>
       <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-2 sm:px-7 sm:pt-6">
-        <div id="plugin-guide" className="scroll-mt-6">
+        <div id="plugin-guide" ref={guideRef} className="scroll-mt-6">
           <LazyPluginGuide
             key={opened.count}
             initialSlideId={opened.slideId}
