@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { defaultAppSettings, type AppSettings } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OnboardingGate } from "./OnboardingGate";
+import { useOpenSetupGuide } from "./setup-guide-request";
 
 const mocks = vi.hoisted(() => ({
   mutate: vi.fn(),
@@ -113,6 +114,30 @@ describe("OnboardingGate", () => {
     );
 
     expect(await screen.findByText("Setup guide at agent")).toBeTruthy();
+  });
+
+  it("opens a requested step over the app after setup and closes back to it", async () => {
+    configWith({ onboardingCompletedAt: COMPLETED_AT });
+    function OpenGuideButton() {
+      const openSetupGuide = useOpenSetupGuide();
+      return (
+        <button type="button" onClick={() => openSetupGuide("agent")}>
+          Sign in
+        </button>
+      );
+    }
+    render(
+      <OnboardingGate>
+        <OpenGuideButton />
+      </OnboardingGate>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    fireEvent.click(await screen.findByText("Setup guide at agent"));
+
+    expect(screen.queryByText(/Setup guide/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(mocks.mutate).not.toHaveBeenCalled();
   });
 
   it("holds a first-time browser blank until settings load, but boots a returning browser straight into the app", () => {

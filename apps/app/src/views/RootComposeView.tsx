@@ -11,7 +11,11 @@ import { useRootComposePlacement } from "@/lib/root-compose-selection";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviderStates,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
+import { useOpenSetupGuide } from "@/components/onboarding/setup-guide-request";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -32,6 +36,10 @@ import {
   ProviderCliBanner,
   providerCliBlockedReason,
 } from "@/components/promptbox/banner/ProviderCliBanner";
+import {
+  ProviderSignInBanner,
+  resolveProviderSignInWarning,
+} from "@/components/promptbox/banner/ProviderSignInBanner";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -693,6 +701,30 @@ function RootComposeSurface({
       issue: selectedProviderCliIssue,
     });
   }, [selectedProviderCliIssue, rootProjectHostId, startInstall]);
+
+  const providerStates = useSystemProviderStates({
+    enabled: rootProjectHostId !== null,
+    ...(rootProjectHostId === null ? {} : { hostId: rootProjectHostId }),
+  }).data?.providers;
+  const providerSignInWarning = useMemo(
+    () =>
+      blockingProviderCliStatus === null
+        ? resolveProviderSignInWarning(
+            providerStates?.find(
+              (state) => state.providerId === selectedProviderId,
+            ),
+          )
+        : null,
+    [blockingProviderCliStatus, providerStates, selectedProviderId],
+  );
+  const openSetupGuide = useOpenSetupGuide();
+  const handleProviderSignIn = useMemo(
+    () =>
+      rootProjectHostId !== null && rootProjectHostId === primaryHostId
+        ? () => openSetupGuide("agent")
+        : null,
+    [openSetupGuide, primaryHostId, rootProjectHostId],
+  );
 
   useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
@@ -1424,7 +1456,12 @@ function RootComposeSurface({
   );
   const promptBanner = useMemo(() => {
     if (blockingProviderCliStatus === null) {
-      return null;
+      return providerSignInWarning === null ? null : (
+        <ProviderSignInBanner
+          warning={providerSignInWarning}
+          onSignIn={handleProviderSignIn}
+        />
+      );
     }
     return (
       <ProviderCliBanner
@@ -1448,6 +1485,8 @@ function RootComposeSurface({
     );
   }, [
     blockingProviderCliStatus,
+    handleProviderSignIn,
+    providerSignInWarning,
     rootProjectHostId,
     handleRunProviderCliAction,
     queuedJobKeys,

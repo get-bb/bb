@@ -9,6 +9,7 @@ import {
   connectAccessUrl,
   defaultSelectedRepoPaths,
   hasReadyAgent,
+  mostRecentImportedProjectId,
   parseSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
@@ -330,6 +331,22 @@ describe("defaultSelectedRepoPaths", () => {
       ),
     ).toEqual(new Set(["/older"]));
     expect(defaultSelectedRepoPaths([], now)).toEqual(new Set());
+  });
+});
+
+describe("mostRecentImportedProjectId", () => {
+  it("picks the imported project whose repo was active most recently", () => {
+    expect(
+      mostRecentImportedProjectId([
+        { projectId: "proj_old", lastActivityAt: "2026-09-20T00:00:00.000Z" },
+        { projectId: "proj_new", lastActivityAt: "2026-10-07T00:00:00.000Z" },
+        { projectId: "proj_mid", lastActivityAt: "2026-10-01T00:00:00.000Z" },
+      ]),
+    ).toBe("proj_new");
+  });
+
+  it("returns null when nothing was imported", () => {
+    expect(mostRecentImportedProjectId([])).toBeNull();
   });
 });
 

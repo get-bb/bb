@@ -62,6 +62,7 @@ import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { sdk } from "@/lib/sdk";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   AgentSignInGuide,
@@ -82,6 +83,7 @@ import {
   connectAccessUrl,
   defaultSelectedRepoPaths,
   hasReadyAgent,
+  mostRecentImportedProjectId,
   parseSignInOutput,
   resolveAgentSetupState,
   resolveSignInCommand,
@@ -498,6 +500,7 @@ function ProjectsStepContainer({
 }) {
   const reposQuery = useHostDiscoveredRepos(hostId);
   const createProject = useCreateProject();
+  const setRootComposeProjectId = useSetRootComposeProjectId();
   const quickCreateProject = useQuickCreateProjectController();
   const navigationQuery = useSidebarNavigation();
   const [selection, setSelection] = useState<ReadonlySet<string> | null>(null);
@@ -587,12 +590,19 @@ function ProjectsStepContainer({
     );
     setImporting(true);
     try {
+      const imported: { projectId: string; lastActivityAt: string }[] = [];
       for (const repo of chosen) {
-        await createProject.mutateAsync({
+        const project = await createProject.mutateAsync({
           name: repo.name,
           source: { type: "local_path", hostId, path: repo.path },
         });
+        imported.push({
+          projectId: project.id,
+          lastActivityAt: repo.lastActivityAt,
+        });
       }
+      const composeProjectId = mostRecentImportedProjectId(imported);
+      if (composeProjectId !== null) setRootComposeProjectId(composeProjectId);
     } catch {
       return;
     } finally {
