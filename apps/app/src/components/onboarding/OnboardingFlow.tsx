@@ -452,6 +452,7 @@ function AgentStepContainer({
         });
 
   const agentReady = hasReadyAgent(states);
+  const agentBlocked = agents === null ? statesQuery.isError : !agentReady;
   return (
     <OnboardingLayout
       {...chrome}
@@ -459,11 +460,11 @@ function AgentStepContainer({
       title="Connect a coding agent"
       description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
       footerNote={
-        agentReady ? null : "Threads can't start until one agent is ready."
+        agentBlocked ? "Threads can't start until one agent is ready." : null
       }
       primaryLabel="Continue"
       primaryDisabled={!agentReady}
-      secondaryLabel={agentReady ? undefined : "Skip for now"}
+      secondaryLabel={agentBlocked ? "Skip for now" : undefined}
       onPrimary={onContinue}
       onSecondary={onContinue}
     >
