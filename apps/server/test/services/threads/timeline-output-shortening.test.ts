@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "../../../src/services/threads/timeline-output-truncation.js";
+  shortenTimelineResponseOutputs,
+} from "../../../src/services/threads/timeline-output-shortening.js";
+
+function truncateOnly(input: ThreadTimelineResponse): ThreadTimelineResponse {
+  return shortenTimelineResponseOutputs(input, {
+    maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+    preview: false,
+  });
+}
 
 const base = {
   id: "row",
@@ -57,10 +64,10 @@ function commandRow(output: string): TimelineRow {
   };
 }
 
-describe("truncateTimelineResponseOutputs", () => {
+describe("shortenTimelineResponseOutputs", () => {
   it("truncates a command output above the cap and keeps a marker", () => {
     const big = "x".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 5_000);
-    const out = truncateTimelineResponseOutputs(response([commandRow(big)]));
+    const out = truncateOnly(response([commandRow(big)]));
     const row = out.rows[0] as Extract<
       TimelineRow,
       { kind: "work"; workKind: "command" }
@@ -74,7 +81,7 @@ describe("truncateTimelineResponseOutputs", () => {
 
   it("leaves small outputs and their row identity untouched", () => {
     const input = response([commandRow("ok")]);
-    const out = truncateTimelineResponseOutputs(input);
+    const out = truncateOnly(input);
     expect(out).toBe(input);
     expect(out.rows[0]).toBe(input.rows[0]);
   });
@@ -90,12 +97,26 @@ describe("truncateTimelineResponseOutputs", () => {
       completedAt: 1,
       children: [commandRow(big)],
     };
-    const out = truncateTimelineResponseOutputs(response([turn]));
+    const out = truncateOnly(response([turn]));
     const turnOut = out.rows[0] as Extract<TimelineRow, { kind: "turn" }>;
     const child = turnOut.children![0] as Extract<
       TimelineRow,
       { kind: "work"; workKind: "command" }
     >;
     expect(child.output).toContain("more characters truncated");
+  });
+
+  it("previews an output after truncating it", () => {
+    const big = "z".repeat(DEFAULT_MAX_INLINE_OUTPUT_CHARS + 2_000);
+    const out = shortenTimelineResponseOutputs(response([commandRow(big)]), {
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      preview: true,
+    });
+    const row = out.rows[0] as Extract<
+      TimelineRow,
+      { kind: "work"; workKind: "command" }
+    >;
+    expect(row.output).toContain("characters omitted from preview");
+    expect(row.output.endsWith("more characters truncated]")).toBe(true);
   });
 });

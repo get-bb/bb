@@ -1,8 +1,4 @@
-import {
-  mapTimelineRowTree,
-  type TimelineRow,
-  type TimelineRowStatus,
-} from "@bb/server-contract";
+import type { TimelineRow, TimelineRowStatus } from "@bb/server-contract";
 import { sliceUtf16Head } from "@bb/text-utils";
 
 export const TIMELINE_DEFERRED_CONTENT_MIN_CHARS = 1_000;
@@ -95,7 +91,7 @@ function deferRowContent(row: TimelineRow): TimelineRow {
   return row;
 }
 
-function deferRow(row: TimelineRow): TimelineRow {
+export function deferSettledTimelineRow(row: TimelineRow): TimelineRow {
   if (
     row.kind === "work" &&
     row.workKind === "delegation" &&
@@ -106,10 +102,4 @@ function deferRow(row: TimelineRow): TimelineRow {
     return { ...row, childRows: null };
   }
   return deferRowContent(row);
-}
-
-export function deferSettledTimelineContent(
-  rows: TimelineRow[],
-): TimelineRow[] {
-  return mapTimelineRowTree(rows, deferRow);
 }

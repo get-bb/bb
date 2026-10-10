@@ -4,10 +4,13 @@ import {
 } from "./conversation-outline-cache.js";
 import { paginateTimelineContents } from "./timeline-content-pagination.js";
 import {
-  deferSettledTimelineContent,
+  deferSettledTimelineRow,
   timelineRowItemId,
 } from "./timeline-deferred-content.js";
-import { previewTimelineRowOutputs } from "./timeline-output-preview.js";
+import {
+  DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+  previewTimelineRowOutput,
+} from "./timeline-output-shortening.js";
 import {
   getTimelineGroupingContext,
   orderTimelineRowsUsingContext,
@@ -125,7 +128,6 @@ import {
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
 } from "./timeline-pagination.js";
-import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "./timeline-output-truncation.js";
 
 interface TimelineTurnSummarySelection {
   sourceSeqEnd: number;
@@ -297,7 +299,7 @@ export function toThreadEventWithMeta(
   return withRowMeta(row, parseStoredEvent(row));
 }
 
-function retainedOutputPreviewsByCallId(
+export function retainedOutputPreviewsByCallId(
   events: readonly ThreadEventWithMeta[],
   availablePreview: Extract<
     TimelineOutputPreview["experimental_fullOutputAvailability"],
@@ -331,33 +333,18 @@ function retainedOutputPreviewsByCallId(
   return previews;
 }
 
-export function applyRetainedOutputPreviews(
-  rows: readonly TimelineRow[],
-  events: readonly ThreadEventWithMeta[],
-  availablePreview: Extract<
-    TimelineOutputPreview["experimental_fullOutputAvailability"],
-    "available" | "detail-limit"
-  >,
-): TimelineRow[] {
-  const previews = retainedOutputPreviewsByCallId(
-    events,
-    availablePreview,
-    Date.now(),
-  );
-  if (previews.size === 0) {
-    return [...rows];
+export function withRetainedOutputPreview(
+  row: TimelineRow,
+  previews: ReadonlyMap<string, TimelineOutputPreview>,
+): TimelineRow {
+  if (
+    row.kind !== "work" ||
+    (row.workKind !== "command" && row.workKind !== "tool")
+  ) {
+    return row;
   }
-
-  return mapTimelineRowTree([...rows], (row) => {
-    if (
-      row.kind !== "work" ||
-      (row.workKind !== "command" && row.workKind !== "tool")
-    ) {
-      return row;
-    }
-    const outputPreview = previews.get(row.callId);
-    return outputPreview === undefined ? row : { ...row, outputPreview };
-  });
+  const outputPreview = previews.get(row.callId);
+  return outputPreview === undefined ? row : { ...row, outputPreview };
 }
 
 type StoredEventDecoder = (row: StoredEventRow) => ThreadEvent;
@@ -1432,29 +1419,34 @@ function buildThreadTimelineInternal(
         },
       }),
   );
-  const projectedTimelineRows = applyRetainedOutputPreviews(
-    orderTimelineRowsUsingContext(
-      timeline.rows.filter(
-        (row) =>
-          !(
-            row.kind === "system" &&
-            row.systemKind === "operation" &&
-            row.operationKind === "thread-interrupted" &&
-            eventSelection.contextOnlyInterruptionSequences.has(
-              row.sourceSeqStart,
-            )
-          ),
-      ),
-      eventSelection.orderingBoundarySequence,
+  const projectedTimelineRows = orderTimelineRowsUsingContext(
+    timeline.rows.filter(
+      (row) =>
+        !(
+          row.kind === "system" &&
+          row.systemKind === "operation" &&
+          row.operationKind === "thread-interrupted" &&
+          eventSelection.contextOnlyInterruptionSequences.has(
+            row.sourceSeqStart,
+          )
+        ),
     ),
-    decodedRawEvents,
-    "available",
+    eventSelection.orderingBoundarySequence,
   );
   profile.projectedRowCount = projectedTimelineRows.length;
-  const pageableTimelineRows =
-    (options.deferContent ?? false)
-      ? deferSettledTimelineContent(projectedTimelineRows)
-      : projectedTimelineRows;
+  const retainedOutputPreviews = retainedOutputPreviewsByCallId(
+    decodedRawEvents,
+    "available",
+    Date.now(),
+  );
+  const deferContent = options.deferContent ?? false;
+  const pageableTimelineRows = mapTimelineRowTree(
+    projectedTimelineRows,
+    (row) => {
+      const previewed = withRetainedOutputPreview(row, retainedOutputPreviews);
+      return deferContent ? deferSettledTimelineRow(previewed) : previewed;
+    },
+  );
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
@@ -1976,12 +1968,18 @@ function collectTimelineItemRows(
 
 function scopeTimelineTurnDetailsRows(
   rows: TimelineRow[],
+  retainedOutputPreviews: ReadonlyMap<string, TimelineOutputPreview>,
   options: BuildTimelineTurnSummaryDetailsOptions,
 ): TimelineRow[] | null {
+  const withPreview = (row: TimelineRow) =>
+    withRetainedOutputPreview(row, retainedOutputPreviews);
   const shorten = (nested: TimelineRow[]) =>
-    previewTimelineRowOutputs(
-      options.deferContent ? deferSettledTimelineContent(nested) : nested,
-    );
+    mapTimelineRowTree(nested, (row) => {
+      const previewed = withPreview(row);
+      return previewTimelineRowOutput(
+        options.deferContent ? deferSettledTimelineRow(previewed) : previewed,
+      );
+    });
   if (options.itemId === null) {
     return shorten(rows);
   }
@@ -1998,7 +1996,7 @@ function scopeTimelineTurnDetailsRows(
   ) {
     return [{ ...delegation, childRows: shorten(delegation.childRows) }];
   }
-  return matched.length === 0 ? null : matched;
+  return matched.length === 0 ? null : mapTimelineRowTree(matched, withPreview);
 }
 
 function resolveTimelineTurnDetailsRange(
@@ -2226,10 +2224,11 @@ function buildTimelineTurnSummaryDetailsPage(
 
   if (children.kind !== "missing-match") {
     const scopedRows = scopeTimelineTurnDetailsRows(
-      applyRetainedOutputPreviews(
-        children.rows,
+      children.rows,
+      retainedOutputPreviewsByCallId(
         projectionEvents,
         "detail-limit",
+        Date.now(),
       ),
       options,
     );

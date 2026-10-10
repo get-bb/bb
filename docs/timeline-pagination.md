@@ -205,6 +205,14 @@ in them are still deferred. Rows without a turn are never deferred. The app
 sends `deferContent=true` on every timeline and detail request; cursors are
 bound to the setting, so keep it unchanged throughout a walk.
 
+The server shapes projected rows in two walks of the row tree. Before
+pagination, one walk attaches retained-output availability and, with
+`deferContent=true`, defers settled content, so page byte budgets count the
+deferred rows. After pagination, one walk caps inline output at 32,000
+characters and, for responses without nested rows, replaces outputs over 4,000
+characters with a head-and-tail preview. Turn summary details apply all three
+in one walk before their content pagination.
+
 Content pagination does not freeze completed turns, persist projections,
 perform a backfill, add database tables or triggers, or run work on event
 ingestion. Appended events are interpreted when a new snapshot is requested.

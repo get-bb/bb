@@ -30,9 +30,8 @@ import { clearTimelineOrderingContextCache } from "./timeline-context-order.js";
 import { createTimelineLatestRowsCache } from "./timeline-latest-rows-cache.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "./timeline-output-truncation.js";
-import { previewTimelineResponseOutputs } from "./timeline-output-preview.js";
+  shortenTimelineResponseOutputs,
+} from "./timeline-output-shortening.js";
 import type { ThreadTimelinePageRequest } from "./timeline-pagination.js";
 
 type ThreadTimelineWindowDeps = Pick<
@@ -152,13 +151,10 @@ export function createThreadTimelineWindows(
           },
         );
         slowTimelineBuildLogger.log({ profile, threadId: thread.id });
-        const truncated = truncateTimelineResponseOutputs(
-          built,
-          DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-        );
-        return request.includeNestedRows
-          ? truncated
-          : previewTimelineResponseOutputs(truncated);
+        return shortenTimelineResponseOutputs(built, {
+          maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+          preview: !request.includeNestedRows,
+        });
       },
     );
     return { paramsKey: buildThreadTimelineParamsKey(keyArgs), response };

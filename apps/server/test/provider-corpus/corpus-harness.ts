@@ -27,13 +27,12 @@ import {
 import type { ThreadTimelinePageRequest } from "../../src/services/threads/timeline-pagination.js";
 import { resolveProviderPlanCommand } from "../../src/services/providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { previewTimelineResponseOutputs } from "../../src/services/threads/timeline-output-preview.js";
 import { clearStoredEventDecodeCache } from "../../src/services/threads/stored-event-decode-cache.js";
 import { clearTimelineSelectionMemo } from "../../src/services/threads/timeline-selection-memo.js";
 import {
   DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  truncateTimelineResponseOutputs,
-} from "../../src/services/threads/timeline-output-truncation.js";
+  shortenTimelineResponseOutputs,
+} from "../../src/services/threads/timeline-output-shortening.js";
 
 export const SNAPSHOT_MODE_ENV = "BB_PROVIDER_CORPUS_SNAPSHOT";
 
@@ -189,15 +188,12 @@ export function buildRouteTimelinePage(
       summaryOnly: false,
     },
   );
-  const truncated = truncateTimelineResponseOutputs(
-    response,
-    DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-  );
   return {
     profile,
-    response: includeNestedRows
-      ? truncated
-      : previewTimelineResponseOutputs(truncated),
+    response: shortenTimelineResponseOutputs(response, {
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      preview: !includeNestedRows,
+    }),
   };
 }
 

@@ -28,7 +28,7 @@ import {
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
   TIMELINE_TURN_DETAILS_PAGE_LEAF_LIMIT,
 } from "../../../src/services/threads/timeline.js";
-import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-preview.js";
+import { TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS } from "../../../src/services/threads/timeline-output-shortening.js";
 
 const LARGE_BUDGET = 1_000_000;
 const BYTE_WINDOW_ITEM_COUNT = 250;

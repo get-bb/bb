@@ -16,7 +16,7 @@ import {
   TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS,
   TIMELINE_INLINE_OUTPUT_PREVIEW_TAIL_CHARS,
   TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS,
-} from "../../src/services/threads/timeline-output-preview.js";
+} from "../../src/services/threads/timeline-output-shortening.js";
 import { runPeriodicSweeps } from "../../src/services/system/periodic-sweeps.js";
 import { readJson } from "../helpers/json.js";
 import { seedEvent, seedThreadFixture } from "../helpers/seed.js";
