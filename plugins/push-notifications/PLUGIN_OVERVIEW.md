@@ -37,7 +37,3 @@ Channel switches apply to this server and save immediately. Browser permission i
 Every command takes `--help`. A failure with `--json` prints `{ "ok": false, "error": { "code", "message" } }` on stdout and the readable text on stderr.
 
 Agents can use the SDK's plugin settings API for the same switches and `sdk.plugins.callRpc` with method `notifications.test` (`{ channel }`), `threadNotifications.list` (`{ threadIds }`, up to 200), or `threadNotifications.set` (`{ threadId, level }`). Permission requests still require a click in the target client.
-
-## Usage data
-
-When a new phone registers for notifications, the plugin sends one anonymous `device_paired` event with the device kind (`mobile_ios` or `mobile_android`) and whether it is the first phone of that kind. It carries no device label, push token, or account details, and the server drops it when Share anonymous usage data is off.
