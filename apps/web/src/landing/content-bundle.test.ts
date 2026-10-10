@@ -7,7 +7,7 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATIC_IMPORT =
   /^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+"(\.{1,2}\/[^"?]+)"/gmu;
 const EAGER_GLOB =
-  /import\.meta\.glob(?:<[^>]*>)?\(\s*"([^"]+)"\s*,\s*\{[^}]*\beager:\s*true/gu;
+  /import\.meta\.glob(?:<[^(]*>)?\(\s*"([^"]+)"\s*,\s*\{[^}]*\beager:\s*true/gu;
 const PAGE_CONTENT = [
   /\/(?:guides|compare|landing)\/pages\/[^/]+\.tsx$/u,
   /\/guides\/guides\.ts$/u,
