@@ -66,13 +66,13 @@ function AgentHost({
 }) {
   return (
     <div
-      className="ia-host"
+      className="pg-host"
       data-agent={agent ? "" : undefined}
       style={maxWidth ? { maxWidth } : undefined}
     >
       {children}
       {agent && (
-        <span key={agent.key} className="ia-agent" role="status">
+        <span key={agent.key} className="pg-agent" role="status">
           <i aria-hidden="true" />
           Agent · {agent.label}
         </span>
@@ -105,7 +105,7 @@ function Input({
     if (valid) onChange(number);
   };
   return (
-    <div className="ia-control">
+    <div className="pg-control">
       <label htmlFor={id}>
         {c.label}
         {c.type === "range" && (
@@ -137,7 +137,7 @@ function Input({
           onChange={(e) => onChange(Number(e.target.value))}
         />
       ) : (
-        <div className="ia-number">
+        <div className="pg-number">
           <input
             id={id}
             type="number"
@@ -187,7 +187,7 @@ function Chart({
     ...new Set([0, Math.floor((b.labels.length - 1) / 2), b.labels.length - 1]),
   ];
   return (
-    <section className="ia-chart" aria-labelledby={titleId}>
+    <section className="pg-chart" aria-labelledby={titleId}>
       <h4 id={titleId}>{b.title}</h4>
       <svg
         viewBox="0 0 500 216"
@@ -201,7 +201,7 @@ function Chart({
               x2="458"
               y1={y(n * magnitude)}
               y2={y(n * magnitude)}
-              className="ia-gridline"
+              className="pg-gridline"
             />
             <text x="70" y={y(n * magnitude) + 4} textAnchor="end">
               {formatValue(n * magnitude, b.format)}
@@ -209,7 +209,7 @@ function Chart({
           </g>
         ))}
         {data.map((series, si) => (
-          <g key={si} className={`ia-series ia-series-${si}`}>
+          <g key={si} className={`pg-series pg-series-${si}`}>
             {b.style === "line" &&
               series.values.map((v, i, arr) =>
                 v !== null && i > 0 && arr[i - 1] !== null ? (
@@ -269,14 +269,14 @@ function Chart({
           </text>
         ))}
       </svg>
-      <div className="ia-legend">
+      <div className="pg-legend">
         {data.map((s, i) => (
           <span key={i}>
             <svg
               width="24"
               height="12"
               aria-hidden="true"
-              className={`ia-series ia-series-${i}`}
+              className={`pg-series pg-series-${i}`}
             >
               <line
                 x1="1"
@@ -296,7 +296,7 @@ function Chart({
       )}
       <details>
         <summary>View chart data</summary>
-        <div className="ia-table-scroll">
+        <div className="pg-table-scroll">
           <table>
             <thead>
               <tr>
@@ -464,7 +464,7 @@ function HtmlAnswerView({
         const cmdId = crypto.randomUUID();
         const timer = setTimeout(() => {
           results.current.delete(cmdId);
-          reject(new Error("The answer did not respond."));
+          reject(new Error("The playground did not respond."));
         }, 9000);
         results.current.set(cmdId, (outcome) => {
           clearTimeout(timer);
@@ -677,7 +677,7 @@ function HtmlAnswerView({
   }, [id, save, emit, active]);
   return (
     <AgentHost agent={live.agent} maxWidth={widget.width}>
-      <div className="ia-widget">
+      <div className="pg-widget">
         <iframe
           ref={frame}
           title={widget.title}
@@ -793,20 +793,20 @@ function DocumentAnswerView({
   return (
     <AgentHost agent={live.agent}>
       <article
-        className="ia-answer"
+        className="pg-answer"
         aria-label={doc.title}
         onPointerDownCapture={live.active}
         onKeyDownCapture={live.active}
       >
         <header>
           <div>
-            <span className="ia-eyebrow">Explore</span>
+            <span className="pg-eyebrow">Explore</span>
             <h3>{doc.title}</h3>
           </div>
           {doc.controls.length > 0 && (
             <button
               type="button"
-              className="ia-reset"
+              className="pg-reset"
               title="Reset inputs"
               aria-label="Reset inputs"
               onClick={() => {
@@ -828,9 +828,9 @@ function DocumentAnswerView({
             </button>
           )}
         </header>
-        {doc.description && <p className="ia-description">{doc.description}</p>}
+        {doc.description && <p className="pg-description">{doc.description}</p>}
         {doc.controls.length > 0 && (
-          <div className="ia-controls" key={resetCount}>
+          <div className="pg-controls" key={resetCount}>
             {doc.controls.map((c) => (
               <Input
                 key={c.id}
@@ -841,7 +841,7 @@ function DocumentAnswerView({
             ))}
           </div>
         )}
-        <div className="ia-blocks">
+        <div className="pg-blocks">
           {doc.blocks.map((b, i) => {
             if (b.when && shown[b.when.control] !== b.when.equals) return null;
             switch (b.type) {
@@ -865,7 +865,7 @@ function DocumentAnswerView({
                 );
               case "metrics":
                 return (
-                  <dl className="ia-metrics" key={i} aria-live="polite">
+                  <dl className="pg-metrics" key={i} aria-live="polite">
                     {b.items.map((m, j) => (
                       <div key={j}>
                         <dt>{m.label}</dt>
@@ -888,7 +888,7 @@ function DocumentAnswerView({
               case "table":
                 return (
                   <section key={i}>
-                    <div className="ia-table-scroll">
+                    <div className="pg-table-scroll">
                       <table>
                         <caption>{b.title}</caption>
                         <thead>
@@ -943,7 +943,7 @@ function AnswerDirective({ attributes, message }: PluginMessageDirectiveProps) {
     setAnswer(null);
     setError(null);
     if (!idSchema.safeParse(id).success) {
-      setError("This interactive answer has an invalid ID.");
+      setError("This playground has an invalid ID.");
       return;
     }
     void Promise.all([
@@ -956,7 +956,9 @@ function AnswerDirective({ attributes, message }: PluginMessageDirectiveProps) {
       .catch((err: unknown) => {
         if (active)
           setError(
-            err instanceof Error ? err.message : "Could not load this answer.",
+            err instanceof Error
+              ? err.message
+              : "Could not load this playground.",
           );
       });
     return () => {
@@ -965,7 +967,7 @@ function AnswerDirective({ attributes, message }: PluginMessageDirectiveProps) {
   }, [rpc, id, threadId, attempt]);
   if (error)
     return (
-      <div className="ia-answer ia-error" role="alert">
+      <div className="pg-answer pg-error" role="alert">
         <p>{error}</p>
         <button type="button" onClick={() => setAttempt((n) => n + 1)}>
           Retry
@@ -979,14 +981,14 @@ function AnswerDirective({ attributes, message }: PluginMessageDirectiveProps) {
       initial={answer.initial}
     />
   ) : (
-    <div className="ia-answer" role="status">
-      Loading interactive answer…
+    <div className="pg-answer" role="status">
+      Loading playground…
     </div>
   );
 }
 export default definePluginApp((app) => {
   app.slots.messageDirective({
-    id: "interactive-answer",
+    id: "playground",
     component: AnswerDirective,
   });
 });

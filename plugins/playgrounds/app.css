@@ -1,4 +1,4 @@
-.ia-answer {
+.pg-answer {
   color: var(--foreground);
   background: var(--card, var(--background));
   border: 1px solid var(--border);
@@ -10,64 +10,64 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.ia-answer * {
+.pg-answer * {
   box-sizing: border-box;
 }
-.ia-answer header {
+.pg-answer header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 12px;
 }
-.ia-answer h3 {
+.pg-answer h3 {
   font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.025em;
   margin: 3px 0 0;
   line-height: 1.3;
 }
-.ia-answer h4,
-.ia-answer caption {
+.pg-answer h4,
+.pg-answer caption {
   font-size: 13px;
   font-weight: 600;
   margin: 0 0 10px;
   text-align: left;
   color: var(--foreground);
 }
-.ia-answer p {
+.pg-answer p {
   margin: 0;
   white-space: pre-wrap;
 }
-.ia-eyebrow {
+.pg-eyebrow {
   font-size: 10px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
-.ia-answer .ia-description {
+.pg-answer .pg-description {
   margin: 9px 0 0;
   color: var(--muted-foreground);
 }
-.ia-answer button,
-.ia-answer select,
-.ia-answer input {
+.pg-answer button,
+.pg-answer select,
+.pg-answer input {
   font: inherit;
   color: inherit;
   accent-color: var(--primary);
 }
-.ia-answer button,
-.ia-answer select,
-.ia-number {
+.pg-answer button,
+.pg-answer select,
+.pg-number {
   background: var(--background);
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.ia-answer button {
+.pg-answer button {
   cursor: pointer;
   padding: 5px 9px;
   min-height: 30px;
 }
-.ia-answer .ia-reset {
+.pg-answer .pg-reset {
   width: 30px;
   height: 30px;
   padding: 6px;
@@ -75,15 +75,15 @@
   place-items: center;
   color: var(--muted-foreground);
 }
-.ia-answer button:hover {
+.pg-answer button:hover {
   color: var(--foreground);
   background: var(--muted);
 }
-.ia-answer :is(button, input, select, summary):focus-visible {
+.pg-answer :is(button, input, select, summary):focus-visible {
   outline: 2px solid var(--ring, var(--primary));
   outline-offset: 3px;
 }
-.ia-controls {
+.pg-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 18px 22px;
@@ -92,10 +92,10 @@
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
-.ia-control {
+.pg-control {
   min-width: 0;
 }
-.ia-control label {
+.pg-control label {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
@@ -103,23 +103,23 @@
   margin-bottom: 7px;
   font-weight: 500;
 }
-.ia-control output {
+.pg-control output {
   color: var(--muted-foreground);
   font-size: 12px;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.ia-control select {
+.pg-control select {
   width: 100%;
   min-height: 34px;
   padding: 5px 8px;
 }
-.ia-number {
+.pg-number {
   display: flex;
   align-items: center;
   min-height: 34px;
 }
-.ia-number input {
+.pg-number input {
   border: 0;
   background: transparent;
   width: 100%;
@@ -128,36 +128,36 @@
   padding: 5px 8px;
   border-radius: 6px;
 }
-.ia-number span {
+.pg-number span {
   padding-right: 9px;
   color: var(--muted-foreground);
 }
-.ia-control input[type="range"] {
+.pg-control input[type="range"] {
   width: 100%;
   min-height: 30px;
   margin: 0;
 }
-.ia-control small {
+.pg-control small {
   display: block;
   margin-top: 7px;
   color: var(--destructive, var(--foreground));
 }
-.ia-blocks {
+.pg-blocks {
   display: grid;
   gap: 22px;
   margin-top: 18px;
 }
-.ia-metrics {
+.pg-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
   gap: 18px;
   margin: 0;
 }
-.ia-metrics dt {
+.pg-metrics dt {
   color: var(--muted-foreground);
   font-size: 12px;
 }
-.ia-metrics dd {
+.pg-metrics dd {
   font-size: clamp(22px, 3vw, 30px);
   font-weight: 600;
   letter-spacing: -0.035em;
@@ -165,155 +165,155 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
-.ia-chart > svg {
+.pg-chart > svg {
   display: block;
   width: 100%;
   overflow: visible;
 }
-.ia-chart text {
+.pg-chart text {
   fill: var(--muted-foreground);
   font-size: 10px;
 }
-.ia-gridline {
+.pg-gridline {
   stroke: var(--border);
   stroke-width: 1;
 }
-.ia-series {
+.pg-series {
   stroke: currentColor;
   fill: currentColor;
 }
-.ia-series-0 {
+.pg-series-0 {
   color: var(--primary);
 }
-.ia-series-1 {
+.pg-series-1 {
   color: var(--foreground);
 }
-.ia-series-2 {
+.pg-series-2 {
   color: #ac6437;
 }
-.ia-series-3 {
+.pg-series-3 {
   color: #7778bd;
 }
-.ia-legend {
+.pg-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 18px;
   font-size: 11px;
   margin: 0 0 12px 4px;
 }
-.ia-legend span {
+.pg-legend span {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.ia-answer details {
+.pg-answer details {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
-.ia-answer summary {
+.pg-answer summary {
   cursor: pointer;
   min-height: 28px;
   padding: 4px 0;
   font-size: 12px;
   font-weight: 500;
 }
-.ia-answer details p {
+.pg-answer details p {
   margin-top: 10px;
   color: var(--muted-foreground);
 }
-.ia-table-scroll {
+.pg-table-scroll {
   overflow-x: auto;
 }
-.ia-answer table {
+.pg-answer table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
-.ia-answer :is(td, th) {
+.pg-answer :is(td, th) {
   padding: 9px 8px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
-.ia-answer th {
+.pg-answer th {
   font-weight: 500;
   color: var(--muted-foreground);
 }
-.ia-error p {
+.pg-error p {
   margin-bottom: 8px;
 }
-.ia-diagram > svg {
+.pg-diagram > svg {
   display: block;
   width: 100%;
   border-radius: 8px;
   background: var(--muted);
   overflow: hidden;
 }
-.ia-diagram svg g {
+.pg-diagram svg g {
   transition:
     transform 450ms ease,
     opacity 300ms ease;
 }
-.ia-diagram :is(path, rect, ellipse) {
+.pg-diagram :is(path, rect, ellipse) {
   transition: fill 450ms ease;
 }
-.ia-diagram-choice {
+.pg-diagram-choice {
   cursor: pointer;
   outline: none;
 }
-.ia-diagram svg > g:not(.ia-diagram-choice) {
+.pg-diagram svg > g:not(.pg-diagram-choice) {
   pointer-events: none;
 }
-.ia-diagram-choice:focus-visible {
+.pg-diagram-choice:focus-visible {
   filter: drop-shadow(0 0 4px var(--ring, var(--primary)));
 }
 @media (prefers-reduced-motion: reduce) {
-  .ia-diagram svg g,
-  .ia-diagram :is(path, rect, ellipse) {
+  .pg-diagram svg g,
+  .pg-diagram :is(path, rect, ellipse) {
     transition: none;
   }
 }
-.ia-diagram svg g {
-  animation: ia-diagram-enter 350ms ease;
+.pg-diagram svg g {
+  animation: pg-diagram-enter 350ms ease;
 }
-@keyframes ia-diagram-enter {
+@keyframes pg-diagram-enter {
   from {
     opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ia-diagram svg g {
+  .pg-diagram svg g {
     animation: none;
   }
 }
-.ia-widget {
+.pg-widget {
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--card, var(--background));
   overflow: hidden;
 }
-.ia-widget iframe {
+.pg-widget iframe {
   display: block;
   width: 100%;
   border: 0;
   background: transparent;
 }
-.ia-host {
+.pg-host {
   position: relative;
   margin: 20px 0 12px;
 }
-.ia-host > .ia-widget,
-.ia-host > .ia-answer {
+.pg-host > .pg-widget,
+.pg-host > .pg-answer {
   transition:
     border-color 0.25s,
     box-shadow 0.25s;
 }
-.ia-host[data-agent] > .ia-widget,
-.ia-host[data-agent] > .ia-answer {
+.pg-host[data-agent] > .pg-widget,
+.pg-host[data-agent] > .pg-answer {
   border-color: var(--foreground);
   box-shadow: 0 0 0 1px var(--foreground);
 }
-.ia-agent {
+.pg-agent {
   position: absolute;
   left: 16px;
   top: 0;
@@ -334,22 +334,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  animation: ia-agent 3.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: pg-agent 3.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-.ia-agent i {
+.pg-agent i {
   flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
-  animation: ia-agent-dot 1s ease-in-out infinite alternate;
+  animation: pg-agent-dot 1s ease-in-out infinite alternate;
 }
-@keyframes ia-agent-dot {
+@keyframes pg-agent-dot {
   from {
     opacity: 0.35;
   }
 }
-@keyframes ia-agent {
+@keyframes pg-agent {
   0% {
     opacity: 0;
     transform: translateY(3px);
@@ -364,8 +364,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ia-agent,
-  .ia-agent i {
+  .pg-agent,
+  .pg-agent i {
     animation: none;
   }
 }

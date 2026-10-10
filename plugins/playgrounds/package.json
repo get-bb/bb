@@ -1,18 +1,18 @@
 {
-  "name": "bb-plugin-bb--interactive-answers",
+  "name": "bb-plugin-bb--playgrounds",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Explore charts, calculations, and explanations directly in agent answers.",
+  "description": "Answers you can play with: calculators, guides, previews.",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.37"
   },
   "bb": {
-    "name": "Interactive Answers",
-    "description": "Explore charts, calculations, and explanations directly in agent answers.",
+    "name": "Playgrounds",
+    "description": "Answers you can play with: calculators, guides, previews.",
     "branding": {
-      "icon": "./icons/interactive-answers.svg"
+      "icon": "./icons/playgrounds.svg"
     },
     "server": "./server.ts",
     "app": "./app.tsx",

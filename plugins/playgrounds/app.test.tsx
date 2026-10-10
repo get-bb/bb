@@ -196,12 +196,12 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
   backend.shared.version = 3;
   const view = renderSlot(app.messageDirectives[0]!, props, {
     rpc: backend.rpc,
-    pluginId: "bb--interactive-answers",
+    pluginId: "bb--playgrounds",
   });
   const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
   expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
   expect(frame.getAttribute("src")).toContain(
-    `/api/v1/plugins/bb--interactive-answers/http/frame?thread=thr_test&id=${answer.id}#`,
+    `/api/v1/plugins/bb--playgrounds/http/frame?thread=thr_test&id=${answer.id}#`,
   );
   expect(
     JSON.parse(decodeURIComponent(frame.getAttribute("src")!.split("#")[1]))
@@ -214,7 +214,7 @@ it("renders HTML answers in an opaque-origin sandbox, sizes them, and relays sta
     fireEvent(
       window,
       new MessageEvent("message", {
-        data: { source: "interactive-answer", id: answer.id, ...data },
+        data: { source: "playground", id: answer.id, ...data },
         source,
       }),
     );
@@ -362,7 +362,7 @@ it("keeps a newer remote state when a frame saves the state it booted with", asy
   backend.shared.version = 3;
   const view = renderSlot(app.messageDirectives[0]!, props, {
     rpc: backend.rpc,
-    pluginId: "bb--interactive-answers",
+    pluginId: "bb--playgrounds",
   });
   const frame = (await view.findByTitle(stepper.title)) as HTMLIFrameElement;
   expect(
@@ -377,7 +377,7 @@ it("keeps a newer remote state when a frame saves the state it booted with", asy
     fireEvent(
       window,
       new MessageEvent("message", {
-        data: { source: "interactive-answer", id: answer.id, ...data },
+        data: { source: "playground", id: answer.id, ...data },
         source: frame.contentWindow,
       }),
     );

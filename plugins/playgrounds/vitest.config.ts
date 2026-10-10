@@ -4,7 +4,7 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
     silent: "passed-only",
-    name: "bb-plugin-bb--interactive-answers",
+    name: "bb-plugin-bb--playgrounds",
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**"],
   },

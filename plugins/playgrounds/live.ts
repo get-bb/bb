@@ -167,7 +167,7 @@ export function createLive(
     const json = JSON.stringify(state ?? null);
     if (json.length > MAX_STATE_LENGTH)
       throw new Error(
-        `Answer state is limited to ${MAX_STATE_LENGTH} characters.`,
+        `Playground state is limited to ${MAX_STATE_LENGTH} characters.`,
       );
     const version = getState(threadId, id).version + 1;
     db.prepare(
@@ -262,7 +262,7 @@ export function createLive(
         | undefined;
       if (!row)
         throw new Error(
-          "This attachment is no longer available. Send it from the answer again.",
+          "This attachment is no longer available. Send it from the playground again.",
         );
       return {
         id,
@@ -292,7 +292,7 @@ export function createLive(
         return;
       }
       if (!prev && map.size >= MAX_CLIENTS)
-        throw new Error("This answer is open in too many places.");
+        throw new Error("This playground is open in too many places.");
       map.set(clientId, {
         threadId,
         lastSeen: now,
@@ -337,7 +337,7 @@ export function createLive(
       const open = openClients(threadId, id);
       if (!open.length)
         throw new Error(
-          "This answer is not open anywhere. Open its thread in bb, then try again.",
+          "This playground is not open anywhere. Open its thread in bb, then try again.",
         );
       const target = open.find((c) => c.actions.includes(action));
       if (!target)
@@ -353,7 +353,10 @@ export function createLive(
       }>((resolve) => {
         const timer = setTimeout(() => {
           pending.delete(cmdId);
-          resolve({ ok: false, error: "The answer did not respond in time." });
+          resolve({
+            ok: false,
+            error: "The playground did not respond in time.",
+          });
         }, COMMAND_TIMEOUT_MS);
         pending.set(cmdId, {
           clientId: target.clientId,
