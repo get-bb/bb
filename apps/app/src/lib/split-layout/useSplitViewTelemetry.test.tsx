@@ -22,28 +22,45 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const thread = (threadId: string) => ({ kind: "thread" as const, projectId: "project-1", threadId });
+const thread = (threadId: string) => ({
+  kind: "thread" as const,
+  projectId: "project-1",
+  threadId,
+});
 
 function singlePane(): SplitLayout {
-  return { root: { type: "pane", paneId: "pane-1", content: thread("thread-1") }, focusedPaneId: "pane-1" };
+  return {
+    root: { type: "pane", paneId: "pane-1", content: thread("thread-1") },
+    focusedPaneId: "pane-1",
+  };
 }
 
 function mount(initial: SplitLayout | null) {
   const store = createStore();
   store.set(splitLayoutAtom, initial);
-  const wrapper = ({ children }: { children: ReactNode }) => <Provider store={store}>{children}</Provider>;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <Provider store={store}>{children}</Provider>
+  );
   renderHook(() => useSplitViewTelemetry(), { wrapper });
-  const update = (next: (layout: SplitLayout) => SplitLayout) => act(() => {
-    store.set(splitLayoutAtom, next(store.get(splitLayoutAtom) ?? singlePane()));
-  });
+  const update = (next: (layout: SplitLayout) => SplitLayout) =>
+    act(() => {
+      store.set(
+        splitLayoutAtom,
+        next(store.get(splitLayoutAtom) ?? singlePane()),
+      );
+    });
   return { update };
 }
 
 describe("useSplitViewTelemetry", () => {
   it("reports each added pane with the pane count, and nothing for closing panes", () => {
     const { update } = mount(singlePane());
-    update((layout) => splitPane(layout, "pane-1", "right", thread("thread-2")));
-    update((layout) => splitPane(layout, layout.focusedPaneId, "bottom", thread("thread-3")));
+    update((layout) =>
+      splitPane(layout, "pane-1", "right", thread("thread-2")),
+    );
+    update((layout) =>
+      splitPane(layout, layout.focusedPaneId, "bottom", thread("thread-3")),
+    );
     update((layout) => removePane(layout, layout.focusedPaneId));
     expect(mocks.recordTelemetryEvent.mock.calls).toEqual([
       [{ name: "split_view_opened", properties: { panes: 2 } }],
@@ -52,7 +69,12 @@ describe("useSplitViewTelemetry", () => {
   });
 
   it("does not report a split layout restored when the app opens", () => {
-    const restored = splitPane(singlePane(), "pane-1", "right", thread("thread-2"));
+    const restored = splitPane(
+      singlePane(),
+      "pane-1",
+      "right",
+      thread("thread-2"),
+    );
     mount(restored);
     expect(mocks.recordTelemetryEvent).not.toHaveBeenCalled();
   });

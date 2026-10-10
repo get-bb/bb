@@ -336,9 +336,7 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
   z
     .object({
       name: z.literal("split_view_opened"),
-      properties: z
-        .object({ panes: z.number().int().min(2).max(8) })
-        .strict(),
+      properties: z.object({ panes: z.number().int().min(2).max(8) }).strict(),
     })
     .strict(),
 ]);

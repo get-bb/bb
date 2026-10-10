@@ -112,7 +112,10 @@ describe("client telemetry events", () => {
       };
       const split = { name: "split_view_opened", properties: { panes: 2 } };
 
-      const accepted = [await post(harness, automation), await post(harness, split)];
+      const accepted = [
+        await post(harness, automation),
+        await post(harness, split),
+      ];
       const rejected = [
         await post(harness, {
           name: "automation_created",
@@ -122,12 +125,20 @@ describe("client telemetry events", () => {
           name: "automation_created",
           properties: { ...automation.properties, trigger: "interval" },
         }),
-        await post(harness, { name: "split_view_opened", properties: { panes: 1 } }),
-        await post(harness, { name: "split_view_opened", properties: { panes: 9 } }),
+        await post(harness, {
+          name: "split_view_opened",
+          properties: { panes: 1 },
+        }),
+        await post(harness, {
+          name: "split_view_opened",
+          properties: { panes: 9 },
+        }),
       ];
 
       expect(accepted.map((response) => response.status)).toEqual([200, 200]);
-      expect(rejected.map((response) => response.status)).toEqual([400, 400, 400, 400]);
+      expect(rejected.map((response) => response.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
       expect(capture.mock.calls).toEqual([[automation], [split]]);
     });
   });

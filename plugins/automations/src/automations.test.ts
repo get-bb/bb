@@ -176,6 +176,7 @@ function createAutomationServiceBb() {
         config: async (): Promise<{ primaryHostId: string | null }> => ({
           primaryHostId: "host_server",
         }),
+        experimental_recordTelemetryEvent: async () => ({ ok: true as const }),
       },
       projects: {
         get: async ({ projectId }: { projectId: string }) => {
@@ -843,6 +844,9 @@ describe("automation data access", () => {
             config: async () => {
               throw new Error("not expected");
             },
+            experimental_recordTelemetryEvent: async () => ({
+              ok: true as const,
+            }),
           },
           threads: {
             get: async () => {
@@ -1265,7 +1269,12 @@ describe("automation service", () => {
     const db = createTestDb();
     const bb = {
       sdk: {
-        system: { config: async () => ({ primaryHostId: null }) },
+        system: {
+          config: async () => ({ primaryHostId: null }),
+          experimental_recordTelemetryEvent: async () => ({
+            ok: true as const,
+          }),
+        },
         projects: {
           get: async () => {
             throw new Error("Project not found");
@@ -2272,6 +2281,9 @@ describe("script project context", () => {
           sdk: {
             ...bb.sdk,
             system: {
+              experimental_recordTelemetryEvent: async () => ({
+                ok: true as const,
+              }),
               config: async () => ({
                 primaryHostId:
                   args.serverHostId === undefined
