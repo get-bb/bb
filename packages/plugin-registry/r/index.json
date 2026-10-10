@@ -302,6 +302,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "sidebar-nudge",
+      "type": "registry:ui"
+    },
+    {
       "name": "sidebar-row-classes",
       "type": "registry:ui"
     },

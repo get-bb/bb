@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sidebar-nudge",
+  "type": "registry:ui",
+  "title": "sidebar-nudge",
+  "description": "BB ui \"sidebar-nudge\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/sidebar-nudge.tsx",
+      "content": "import { useId, type ReactNode } from \"react\";\nimport { cn } from \"../../lib/utils\";\nimport { Icon } from \"./icon\";\n\nexport interface SidebarNudgeAction {\n  label: string;\n  onAction: () => void;\n}\n\nexport interface SidebarNudgeProps {\n  icon: ReactNode;\n  children: ReactNode;\n  action?: SidebarNudgeAction;\n  onDismiss?: () => void;\n  dismissLabel?: string;\n  className?: string;\n  testId?: string;\n}\n\nexport const SIDEBAR_NUDGE_CONTROL_CLASS =\n  \"flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring motion-reduce:transition-none\";\n\nexport function SidebarNudge({\n  icon,\n  children,\n  action,\n  onDismiss,\n  dismissLabel = \"Dismiss\",\n  className,\n  testId,\n}: SidebarNudgeProps) {\n  const bodyId = useId();\n  return (\n    <section\n      aria-labelledby={bodyId}\n      data-testid={testId}\n      data-sidebar-nudge=\"\"\n      className={cn(\n        \"mx-1 flex flex-col gap-2.5 rounded-xl border border-border bg-card p-3.5\",\n        className,\n      )}\n    >\n      <div className=\"flex items-start justify-between gap-2\">\n        <span className=\"flex size-8 shrink-0 items-center justify-center rounded-lg bg-state-hover text-muted-foreground\">\n          {icon}\n        </span>\n        {onDismiss ? (\n          <button\n            type=\"button\"\n            aria-label={dismissLabel}\n            onClick={onDismiss}\n            className={cn(\"-mr-1.5 -mt-1.5\", SIDEBAR_NUDGE_CONTROL_CLASS)}\n          >\n            <Icon aria-hidden name=\"X\" className=\"size-3.5\" />\n          </button>\n        ) : null}\n      </div>\n      <p id={bodyId} className=\"text-sm leading-snug text-foreground\">\n        {children}\n      </p>\n      {action ? (\n        <button\n          type=\"button\"\n          onClick={action.onAction}\n          className=\"-mx-1 inline-flex min-h-6 cursor-pointer items-center gap-0.5 self-start rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring motion-reduce:transition-none\"\n        >\n          {action.label}\n          <Icon aria-hidden name=\"ChevronRight\" className=\"size-3\" />\n        </button>\n      ) : null}\n    </section>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/sidebar-nudge.tsx"
+    }
+  ]
+}
