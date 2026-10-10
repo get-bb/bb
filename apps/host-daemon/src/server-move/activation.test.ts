@@ -9,7 +9,6 @@ import {
 import { describe, expect, it } from "vitest";
 import { createDeferredPromise } from "@bb/test-helpers";
 import { readIncomingMoveState, writeIncomingMoveState } from "./move-state.js";
-import { isProcessGroupAlive } from "./pending-server.js";
 import {
   activateCommand,
   createFixture,
@@ -120,7 +119,7 @@ describe("server_move.activate pre-validation", () => {
       expect(await exists(join(fixture.dataDir, "server-import.json"))).toBe(
         true,
       );
-      expect(isProcessGroupAlive(prepared.pid)).toBe(true);
+      expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
       expect(fixture.shutdownRequests).toEqual([]);
     },
   );
@@ -200,7 +199,7 @@ describe("server_move.activate sequencing", () => {
         code: "server_move_already_activated",
       });
       await waitingForSessionClose.promise;
-      expect(isProcessGroupAlive(prepared.pid)).toBe(true);
+      expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
       expect(fixture.commands).toEqual([]);
       expect(await exists(join(fixture.dataDir, "server-import.json"))).toBe(
         true,
@@ -211,7 +210,7 @@ describe("server_move.activate sequencing", () => {
     }
     await service.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(false);
     expect(fixture.commands).toEqual([
       ["systemctl", "--user", "daemon-reload"],
       [
@@ -259,7 +258,7 @@ describe("server_move.activate sequencing", () => {
     await service.resumeActivation();
 
     expect(fixture.shutdownRequests).toEqual([["server-move-activated", 0]]);
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(false);
     expect(fixture.detachedRequests).toEqual([
       {
         command: process.execPath,
@@ -334,7 +333,7 @@ describe("server_move.activate sequencing", () => {
         }
         if (pendingPid !== 0) {
           observations.push({
-            pendingAlive: isProcessGroupAlive(pendingPid),
+            pendingAlive: fixture.isPendingServerRunning(pendingPid),
             importExists: await exists(
               join(fixture.dataDir, "server-import.json"),
             ),
@@ -423,7 +422,7 @@ describe("activation resume", () => {
 
     await restarted.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(false);
     expect(fixture.detachedRequests.map((request) => request.args[1])).toEqual([
       "start",
     ]);
@@ -479,7 +478,7 @@ describe("server move redirects during a move", () => {
     });
     await fixture.service.resumeActivation();
 
-    expect(isProcessGroupAlive(prepared.pid)).toBe(false);
+    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(false);
     expect(await readLastServerMoveFile(fixture.dataDir)).toEqual({
       version: 1,
       moveId: MOVE_ID,
@@ -527,7 +526,7 @@ describe("server move redirects during a move", () => {
     expect(
       (await readIncomingMoveState(fixture.dataDir, MOVE_ID))?.activation,
     ).toBeNull();
-    expect(isProcessGroupAlive(prepared.pid)).toBe(true);
+    expect(fixture.isPendingServerRunning(prepared.pid)).toBe(true);
     expect(fixture.shutdownRequests).toEqual([]);
     expect(fixture.detachedRequests).toEqual([]);
     expect(fixture.commands).toEqual([]);
