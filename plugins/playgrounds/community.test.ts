@@ -333,7 +333,9 @@ it("refuses tampered, oversized, unsupported, changed, and redirected packages b
     apps: expect.arrayContaining([
       expect.objectContaining({
         id: "example/good",
-        versions: [{ version: "1.0.0", changed: true }],
+        versions: [
+          expect.objectContaining({ version: "1.0.0", changed: true }),
+        ],
       }),
     ]),
   });
