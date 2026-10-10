@@ -3138,6 +3138,22 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+@media (max-width: 800px) {
+  /* The full download CTA is repeated immediately below in the hero. Hide the
+     nav copy on narrow screens so the utility links fit on one line. */
+  .nav-links .btn {
+    display: none;
+  }
+
+  .nav-links {
+    gap: 16px;
+  }
+
+  .nav-links a:not(.btn) {
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 720px) {
   /* Eight logos wrap into a dense two-row strip on narrow phones; keep the
      first three and collapse the rest into "+N more". Desktop still shows all. */
@@ -3237,20 +3253,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .statement .cta-row {
     justify-content: flex-start;
-  }
-
-  /* The full download CTA is repeated immediately below in the hero. Hide the
-     nav copy on mobile so the three utility links retain comfortable spacing. */
-  .nav-links .btn {
-    display: none;
-  }
-
-  .nav-links {
-    gap: 16px;
-  }
-
-  .nav-links a:not(.btn) {
-    white-space: nowrap;
   }
 }
 
