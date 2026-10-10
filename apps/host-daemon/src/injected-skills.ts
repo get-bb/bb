@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import matter from "gray-matter";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
@@ -643,15 +644,41 @@ async function writeStageRootOnce(args: WriteStageRootArgs): Promise<string> {
   return write;
 }
 
+function skillMarkdownDisablesModelInvocation(content: string): boolean {
+  const trimmed = content.trimStart();
+  if (!trimmed.startsWith("---\n") && !trimmed.startsWith("---\r\n")) {
+    return false;
+  }
+  try {
+    return matter(content).data["disable-model-invocation"] === true;
+  } catch {
+    return false;
+  }
+}
+
+function collectedTreeDisablesModelInvocation(
+  tree: CollectedSkillTree,
+): boolean {
+  const skillFile = tree.files.find(
+    (file) => file.relativePath === SKILL_FILE_NAME,
+  );
+  if (skillFile === undefined) {
+    return false;
+  }
+  return skillMarkdownDisablesModelInvocation(skillFile.bytes.toString("utf8"));
+}
+
 function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
   return [
     {
       id: `global-skills:${args.catalogHash}`,
       path: path.join(args.stageRootPath, "skills"),
-      skills: args.trees.map((tree) => ({
-        name: tree.source.name,
-        description: tree.source.description,
-      })),
+      skills: args.trees
+        .filter((tree) => !collectedTreeDisablesModelInvocation(tree))
+        .map((tree) => ({
+          name: tree.source.name,
+          description: tree.source.description,
+        })),
     },
   ];
 }

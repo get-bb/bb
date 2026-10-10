@@ -1,6 +1,7 @@
 import path from "node:path";
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildAgentModelCatalog,
   parseAgentModelLines,
@@ -13,6 +14,34 @@ import {
   type AcpSessionExecutionOptions,
   type AcpSessionParams,
 } from "./session-params.js";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeTempSkillsRoot(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "bb-acp-skills-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+function writeSkillFile(
+  root: string,
+  name: string,
+  frontmatterLines: readonly string[],
+): void {
+  const skillDir = path.join(root, name);
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    path.join(skillDir, "SKILL.md"),
+    ["---", ...frontmatterLines, "---", "", `# ${name}`, ""].join("\n"),
+    "utf8",
+  );
+}
 
 const BASE_OPTIONS = {
   permissionMode: "full",
@@ -464,5 +493,46 @@ describe("buildAcpSessionParams skill instructions", () => {
 
   it("omits the instructions key entirely when there is nothing to say", () => {
     expect(paramsWithOptions({})).not.toHaveProperty("instructions");
+  });
+
+  it("omits disable-model-invocation skills from the Available bb skills list", () => {
+    const skillsRoot = makeTempSkillsRoot();
+    writeSkillFile(skillsRoot, "release-notes", [
+      "name: release-notes",
+      "description: Use release-notes when drafting notes.",
+    ]);
+    writeSkillFile(skillsRoot, "anti-slop", [
+      "name: anti-slop",
+      "description: Manual-only design law for UI work.",
+      "disable-model-invocation: true",
+    ]);
+
+    expect(
+      paramsWithOptions({
+        skillRoots: [
+          {
+            id: "global-skills:manual-only:acp",
+            skillDirectoryRootPath: skillsRoot,
+            skills: [
+              {
+                name: "release-notes",
+                description: "Use release-notes when drafting notes.",
+              },
+              {
+                name: "anti-slop",
+                description: "Manual-only design law for UI work.",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({
+      instructions: [
+        SKILLS_PREAMBLE,
+        "",
+        "Available bb skills:",
+        `- release-notes: Use release-notes when drafting notes. (SKILL.md: ${path.join(skillsRoot, "release-notes", "SKILL.md")})`,
+      ].join("\n"),
+    });
   });
 });

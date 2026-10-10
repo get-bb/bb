@@ -723,6 +723,61 @@ describe("injected skill staging", () => {
     ).resolves.toContain("name: shared-review");
   });
 
+  it("stages disable-model-invocation skills but omits them from ACP skillRoots", async () => {
+    const dataDir = await makeTempDir();
+    const sourceRootPath = path.join(dataDir, "source-skills");
+    const autoSkillPath = await writeSkill({
+      rootPath: sourceRootPath,
+      name: "release-notes",
+    });
+    const manualSkillPath = path.join(sourceRootPath, "anti-slop");
+    await mkdir(path.join(manualSkillPath, "references"), { recursive: true });
+    await writeFile(
+      path.join(manualSkillPath, "SKILL.md"),
+      [
+        "---",
+        "name: anti-slop",
+        "description: Manual-only design law. Invoke with /anti-slop.",
+        "disable-model-invocation: true",
+        "---",
+        "",
+        "# Anti-slop",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(manualSkillPath, "references", "notes.md"),
+      "supporting notes\n",
+      "utf8",
+    );
+
+    const staged = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [
+        createDataDirSource({
+          dataDir,
+          skillName: "release-notes",
+          skillRootPath: autoSkillPath,
+        }),
+        createDataDirSource({
+          dataDir,
+          skillName: "anti-slop",
+          skillRootPath: manualSkillPath,
+        }),
+      ],
+    });
+
+    const root = requireSkillRoot(staged.skillRoots);
+    expect(root.skills.map((skill) => skill.name)).toEqual(["release-notes"]);
+    await expect(
+      readFile(path.join(root.path, "anti-slop", "SKILL.md"), "utf8"),
+    ).resolves.toContain("disable-model-invocation: true");
+    await expect(
+      readFile(path.join(root.path, "release-notes", "SKILL.md"), "utf8"),
+    ).resolves.toContain("name: release-notes");
+  });
+
   it("changes the catalog hash when skill content changes", async () => {
     const dataDir = await makeTempDir();
     const sourceRootPath = path.join(dataDir, "source-skills");

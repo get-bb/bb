@@ -4,6 +4,7 @@ import type {
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -89,6 +90,31 @@ function sanitizeAcpSkillDescription(description: string): string {
   return sanitized.length > 0 ? sanitized : "(description unavailable)";
 }
 
+function skillMarkdownDisablesModelInvocation(content: string): boolean {
+  const trimmed = content.trimStart();
+  if (!trimmed.startsWith("---\n") && !trimmed.startsWith("---\r\n")) {
+    return false;
+  }
+  const end = trimmed.search(/\r?\n---(?:\r?\n|$)/u);
+  if (end === -1) {
+    return false;
+  }
+  const frontmatter = trimmed.slice(0, end);
+  return /(?:^|\n)disable-model-invocation:\s*true\s*(?:\n|$)/u.test(
+    frontmatter,
+  );
+}
+
+function skillFileDisablesModelInvocation(skillFilePath: string): boolean {
+  try {
+    return skillMarkdownDisablesModelInvocation(
+      readFileSync(skillFilePath, "utf8"),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildAcpSkillsInstructions(
   skillRoots: readonly AcpSkillRoot[] | undefined,
 ): string | undefined {
@@ -97,13 +123,18 @@ function buildAcpSkillsInstructions(
   }
 
   const skillLines = skillRoots.flatMap((skillRoot) => {
-    return skillRoot.skills.map((skill) => {
+    return skillRoot.skills.flatMap((skill) => {
       const skillFilePath = path.join(
         skillRoot.skillDirectoryRootPath,
         skill.name,
         "SKILL.md",
       );
-      return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`;
+      if (skillFileDisablesModelInvocation(skillFilePath)) {
+        return [];
+      }
+      return [
+        `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`,
+      ];
     });
   });
   if (skillLines.length === 0) {
