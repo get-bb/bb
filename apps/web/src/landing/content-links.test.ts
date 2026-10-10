@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { COMPARISONS } from "../compare/comparisons";
-import { GUIDES } from "../guides/guides";
 import {
   canonicalPath,
   contentPaths,
@@ -10,6 +9,14 @@ import {
 } from "./content-links";
 import { LANDING_PAGES } from "./landing-pages";
 import { landingPagePath } from "./landing-template";
+import type { Guide } from "../guides/guide-types";
+
+const GUIDES = Object.values(
+  import.meta.glob<Guide>("../guides/pages/*.tsx", {
+    eager: true,
+    import: "guide",
+  }),
+);
 
 describe("contentPaths", () => {
   it("links every comparison, guide, and landing page exactly once", () => {

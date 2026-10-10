@@ -1,13 +1,35 @@
-import type { Guide } from "./guide-types";
+import type { Guide, GuideMeta } from "./guide-types";
 
-interface GuideModule {
-  guide?: Guide;
+const METAS = import.meta.glob<GuideMeta>("./pages/*.meta.ts", {
+  eager: true,
+  import: "meta",
+});
+const PAGES = import.meta.glob<Guide>("./pages/*.tsx", { import: "guide" });
+
+const loading = new Map<string, Promise<Guide | null>>();
+const loaded = new Map<string, Guide>();
+
+function pageLoader(slug: string): (() => Promise<Guide>) | undefined {
+  const entry = Object.entries(METAS).find(([, meta]) => meta.slug === slug);
+  return entry ? PAGES[entry[0].replace(/\.meta\.ts$/u, ".tsx")] : undefined;
 }
 
-export const GUIDES: Guide[] = Object.values(
-  import.meta.glob<GuideModule>("./pages/*.tsx", { eager: true }),
-).flatMap((module) => (module.guide ? [module.guide] : []));
+export function loadGuide(slug: string): Promise<Guide | null> {
+  const existing = loading.get(slug);
+  if (existing) {
+    return existing;
+  }
+  const load = pageLoader(slug);
+  const promise = load
+    ? load().then((guide) => {
+        loaded.set(slug, guide);
+        return guide;
+      })
+    : Promise.resolve(null);
+  loading.set(slug, promise);
+  return promise;
+}
 
-export function getGuide(slug: string): Guide | undefined {
-  return GUIDES.find((guide) => guide.slug === slug);
+export function loadedGuide(slug: string): Guide | undefined {
+  return loaded.get(slug);
 }
