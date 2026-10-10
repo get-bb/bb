@@ -20,12 +20,13 @@ export function loadGuide(slug: string): Promise<Guide | null> {
     return existing;
   }
   const load = pageLoader(slug);
-  const promise = load
-    ? load().then((guide) => {
-        loaded.set(slug, guide);
-        return guide;
-      })
-    : Promise.resolve(null);
+  if (!load) {
+    return Promise.resolve(null);
+  }
+  const promise = load().then((guide) => {
+    loaded.set(slug, guide);
+    return guide;
+  });
   loading.set(slug, promise);
   return promise;
 }
