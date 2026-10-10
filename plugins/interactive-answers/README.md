@@ -30,8 +30,10 @@ devices and every open copy updates live. Inputs are context the agent can
 read, never approvals. Published answers are immutable; a revised answer gets
 a new ID. Answers, their state, and their event logs are stored in the plugin
 database, scoped to their thread, and removed when that thread is deleted.
-In a forked thread or side chat, an answer copied from the original thread
-loads from the original and shares its state.
+Forking a thread copies its answers, inputs included, into the fork. The copy
+is independent: changing it doesn't change the original, and deleting the
+original doesn't affect it. A side chat is part of its thread's conversation,
+so it shows the same live answer as the thread.
 
 ## Agents can drive answers
 

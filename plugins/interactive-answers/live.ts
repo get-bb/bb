@@ -126,6 +126,7 @@ export function createLive(
     }
   >();
 
+  const keyOf = (threadId: string, id: string) => `${threadId}:${id}`;
   const log = (threadId: string, id: string, kind: string, data: unknown) => {
     const { lastInsertRowid } = db
       .prepare(
@@ -134,9 +135,9 @@ export function createLive(
       .run(id, threadId, kind, JSON.stringify(data ?? null), Date.now());
     const seq = Number(lastInsertRowid);
     db.prepare(
-      "DELETE FROM answer_events WHERE answer_id = ? AND kind <> 'shared' AND seq <= (SELECT seq FROM answer_events WHERE answer_id = ? AND kind <> 'shared' ORDER BY seq DESC LIMIT 1 OFFSET ?)",
-    ).run(id, id, EVENTS_KEPT);
-    emitter.emit(id);
+      "DELETE FROM answer_events WHERE answer_id = ? AND thread_id = ? AND kind <> 'shared' AND seq <= (SELECT seq FROM answer_events WHERE answer_id = ? AND thread_id = ? AND kind <> 'shared' ORDER BY seq DESC LIMIT 1 OFFSET ?)",
+    ).run(id, threadId, id, threadId, EVENTS_KEPT);
+    emitter.emit(keyOf(threadId, id));
     return seq;
   };
   const getState = (threadId: string, id: string) => {
@@ -170,7 +171,7 @@ export function createLive(
       );
     const version = getState(threadId, id).version + 1;
     db.prepare(
-      "INSERT INTO answer_state (id, thread_id, state, version, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, version = excluded.version, updated_at = excluded.updated_at",
+      "INSERT INTO answer_state (id, thread_id, state, version, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id, thread_id) DO UPDATE SET state = excluded.state, version = excluded.version, updated_at = excluded.updated_at",
     ).run(id, threadId, json, version, Date.now());
     log(
       threadId,
@@ -212,7 +213,7 @@ export function createLive(
       }));
   const openClients = (threadId: string, id: string) => {
     const now = Date.now();
-    return [...(clients.get(id)?.entries() ?? [])]
+    return [...(clients.get(keyOf(threadId, id))?.entries() ?? [])]
       .filter(
         ([, c]) =>
           c.threadId === threadId && now - c.lastSeen < PRESENCE_TTL_MS,
@@ -278,15 +279,16 @@ export function createLive(
       closed = false,
     ) {
       assertAnswer(threadId, id);
-      const map = clients.get(id) ?? new Map<string, Client>();
-      clients.set(id, map);
+      const answerKey = keyOf(threadId, id);
+      const map = clients.get(answerKey) ?? new Map<string, Client>();
+      clients.set(answerKey, map);
       const now = Date.now(),
         prev = map.get(clientId);
       for (const [key, c] of map)
         if (now - c.lastSeen >= PRESENCE_TTL_MS) map.delete(key);
       if (closed) {
         map.delete(clientId);
-        if (!map.size) clients.delete(id);
+        if (!map.size) clients.delete(answerKey);
         return;
       }
       if (!prev && map.size >= MAX_CLIENTS)
@@ -315,11 +317,11 @@ export function createLive(
       await new Promise<void>((resolve) => {
         const done = () => {
           clearTimeout(t);
-          emitter.off(id, done);
+          emitter.off(keyOf(threadId, id), done);
           resolve();
         };
         const t = setTimeout(done, waitMs);
-        emitter.on(id, done);
+        emitter.on(keyOf(threadId, id), done);
       });
       return events(threadId, id, since);
     },
@@ -373,11 +375,8 @@ export function createLive(
       return outcome;
     },
     removeThread(threadId: string) {
-      for (const [id, map] of clients) {
-        for (const [key, c] of map)
-          if (c.threadId === threadId) map.delete(key);
-        if (!map.size) clients.delete(id);
-      }
+      for (const [key, map] of clients)
+        if (key.startsWith(`${threadId}:`)) clients.delete(key);
       db.prepare("DELETE FROM answer_state WHERE thread_id = ?").run(threadId);
       db.prepare("DELETE FROM answer_events WHERE thread_id = ?").run(threadId);
     },
