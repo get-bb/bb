@@ -2642,6 +2642,11 @@ async function handleModelList(
     );
     return;
   }
+  if (params.listCommand) {
+    throw new Error(
+      "ACP model list command failed to provide a model catalog.",
+    );
+  }
   const sessionDiscoveredModels =
     params.listCommand === undefined && params.agent
       ? await loadSessionDiscoveredModels(
