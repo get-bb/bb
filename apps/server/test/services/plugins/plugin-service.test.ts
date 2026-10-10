@@ -919,13 +919,15 @@ describe("plugin service", () => {
     });
     const installed = await service.installPath(rootDir);
     await service.setEnabled(installed.id, false);
-    await expect(service.setEnabled(installed.id, true)).resolves.toMatchObject({
-      status: "running",
-    });
+    await expect(service.setEnabled(installed.id, true)).resolves.toMatchObject(
+      {
+        status: "running",
+      },
+    );
     await service.stop();
   });
 
-
+  it("does not report plugin_installed during boot-time reconcile", async () => {
     const captured: TelemetryEvent[] = [];
     const tracked = createTelemetryTrackedService(captured);
     const rootDir = await writePlugin(workDir, {
