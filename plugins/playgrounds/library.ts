@@ -1955,15 +1955,15 @@ export function createLibrary({
               "invalid",
               `Choose a redistribution license: ${LICENSES.join(", ")}.`,
             );
-          if (!source.screenshots?.length)
-            throw new LibraryError(
-              "invalid",
-              "Community submissions need at least one screenshot of the app. Add one to the draft first.",
-            );
           if (source.actions.mode === "undocumented")
             throw new LibraryError(
               "invalid",
               "Community apps document their agent actions or declare themselves manual-only. Edit the draft's actions first.",
+            );
+          if (!source.screenshots?.length)
+            throw new LibraryError(
+              "invalid",
+              "Community submissions need at least one screenshot of the app. Add one to the draft first.",
             );
           const version = versionLabel.parse(
             input.version ?? proposeVersion(app.id, catalogId, listing),

@@ -137,7 +137,9 @@ class FakeCatalog {
     const file = this.commits.get(commit)?.get(path);
     return file === undefined
       ? new Response("missing", { status: 404 })
-      : new Response(file);
+      : new Response(
+          typeof file === "string" ? file : new Blob([new Uint8Array(file)]),
+        );
   };
 }
 
