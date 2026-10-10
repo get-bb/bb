@@ -28,12 +28,13 @@ Only read the old tasks. Don't edit, pause, or delete them. Create every bb auto
 3. Match each task to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose folder or repository matches. If none does, ask me whether to add it.
    Check: every task has a project ID.
 4. Turn each schedule into a five-field cron in my Timezone. If a schedule has no exact cron, like every other week, pick the closest one and tell me.
+   Check each task's model against \`bb provider models <claude-code or codex> --json\`. If it isn't listed, my account can't use it here: ask me which listed model to use, suggesting the closest one.
 5. Create each automation paused. Read \`bb automation create --help\` first.
-   bb automation create --project <project-id> --name "<task name>" --disabled --cron "<cron>" --timezone <Timezone> --provider <claude-code for Claude Code tasks, codex for Codex tasks> --model <the task's model, or one from bb provider models> --permission-mode auto --new-environment worktree --prompt "<the task's prompt, word for word>"
+   bb automation create --project <project-id> --name "<task name>" --disabled --cron "<cron>" --timezone <Timezone> --provider <claude-code for Claude Code tasks, codex for Codex tasks> --model <the task's model, or the one I picked> --permission-mode auto --new-environment worktree --prompt "<the task's prompt, word for word>"
    If a prompt relies on something only the old app had, like a claude.ai connector or a GitHub trigger, tell me what it needs instead of guessing.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
-6. Test each one with \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
-   Check: the run finished and did what its prompt asks. If not, leave it paused and tell me why.
+6. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
+   Check: the run finished and did what its prompt asks. If not, leave it paused, note why, and go on to the next one.
 
 Reply with a table of each task: where it came from, its bb schedule, project, and test result. Then tell me to switch each one on in Automations and to pause the original in Codex or Claude Code, so nothing runs twice.`,
 );
@@ -165,6 +166,10 @@ export const guide: Guide = {
             read where it stopped.
           </li>
           <li>
+            If the model isn't available to your account, open the automation,
+            pick another model, and choose <strong>Run now</strong> again.
+          </li>
+          <li>
             If the prompt relied on a claude.ai connector, add that service to
             the agent on your computer, then choose <strong>Run now</strong>{" "}
             again.
@@ -183,8 +188,9 @@ export const guide: Guide = {
       answer: (
         <p>
           Each task's prompt, word for word, its schedule, the project it works
-          on, and the agent and model it ran on. Run history stays in Codex or
-          Claude Code.
+          on, and the agent and model it ran on. If your account can't use that
+          model in bb, your agent asks which one to use. Run history stays in
+          Codex or Claude Code.
         </p>
       ),
     },
