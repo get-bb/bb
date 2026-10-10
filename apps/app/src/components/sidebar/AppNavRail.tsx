@@ -332,8 +332,8 @@ export function AppNavRail({
       <nav
         aria-label="Primary navigation"
         className={cn(
-          "flex min-h-0 flex-1 flex-col items-center gap-2.5",
-          isFramed ? "pt-2" : "pb-2.5",
+          "flex min-h-0 flex-1 flex-col items-center gap-2.5 pb-2",
+          isFramed && "pt-2",
         )}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2.5 overflow-y-auto py-0.5 [scrollbar-width:none]">
@@ -398,6 +398,7 @@ export function AppNavRail({
               : "Settings"
           }
           active={isSettingsActive}
+          className="h-8 max-md:pointer-coarse:h-9"
           aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
           onClick={() => {
             if (!isSettingsActive) void navigate(settingsRoutePath);
