@@ -3,11 +3,12 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync, copyFileSync } fro
 import { join } from "node:path";
 
 mkdirSync(".cache-benchmark", { recursive: true });
+mkdirSync(".turbo/runs", { recursive: true });
 const arms = process.env.BENCH_ORDER === "old-first" ? ["old", "new"] : ["new", "old"];
 const results = [];
 for (const arm of arms) {
   for (const shard of [1, 2]) {
-    const prior = new Set(readdirSync(".turbo/runs", { throwIfNoEntry: false }) ?? []);
+    const prior = new Set(readdirSync(".turbo/runs"));
     const args = ["exec", "turbo", "run", "test", "--filter=@bb/server", `--cache-dir=.turbo/benchmark-${arm}`, "--cache=local:rw", "--output-logs=errors-only", "--summarize", "--concurrency=4"];
     if (arm === "old") args.push("--", `--shard=${shard}/3`);
     const started = performance.now();
