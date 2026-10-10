@@ -1,5 +1,8 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import { AppNavRail } from "@/components/sidebar/AppNavRail";
+import {
+  AppNavRail,
+  NavRailSettingsButton,
+} from "@/components/sidebar/AppNavRail";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ResourceSidebar } from "@/components/tools/ResourceSidebar";
@@ -36,13 +39,14 @@ export function AppLayoutSidebar({
       isResizing={isResizing}
       isBodyHidden={renderedMode !== "app"}
       renderRail={(customize) => (
-        <AppNavRail
-          isAppMode={mode === "app"}
+        <AppNavRail isAppMode={mode === "app"} customize={customize} />
+      )}
+      railFooter={
+        <NavRailSettingsButton
           isSettingsActive={mode === "settings"}
           settingsRoutePath={settingsRoutePath}
-          customize={customize}
         />
-      )}
+      }
       alternateBody={
         renderedMode === "settings" ? (
           <SettingsSidebar

@@ -36,6 +36,7 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
       isBodyHidden,
       renderRail,
       alternateBody,
+      railFooter,
     }: {
       isBodyHidden: boolean;
       renderRail: (customize: {
@@ -43,6 +44,7 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
         onOpenChange: (isOpen: boolean) => void;
       }) => ReactNode;
       alternateBody: ReactNode;
+      railFooter: ReactNode;
     }) => {
       useEffect(() => {
         mountCounts.appSidebar += 1;
@@ -54,6 +56,7 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
             App sidebar
           </div>
           {alternateBody}
+          {railFooter}
         </Sidebar>
       );
     },
@@ -61,18 +64,18 @@ vi.mock("@/components/sidebar/AppSidebar", async () => {
 });
 
 vi.mock("@/components/sidebar/AppNavRail", () => ({
-  AppNavRail: ({
-    isAppMode,
+  NavRailSettingsButton: ({
     isSettingsActive,
   }: {
-    isAppMode: boolean;
     isSettingsActive: boolean;
   }) => (
-    <div
-      data-testid="app-nav-rail"
-      data-app-mode={isAppMode}
+    <button
+      data-testid="settings-footer"
       data-settings-active={isSettingsActive}
     />
+  ),
+  AppNavRail: ({ isAppMode }: { isAppMode: boolean }) => (
+    <div data-testid="app-nav-rail" data-app-mode={isAppMode} />
   ),
 }));
 
@@ -193,7 +196,9 @@ describe("AppLayoutSidebar", () => {
 
     expect(getMobilePanel()).toBe(panel);
     expect(rail.dataset.appMode).toBe("false");
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(false);
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(getShelfRevealTranslate()).toBe("0px");
@@ -203,7 +208,9 @@ describe("AppLayoutSidebar", () => {
     expect(getMobilePanel()).toBe(panel);
     expect(panel.dataset.state).toBe("closed");
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body").textContent).toBe(
       "Settings sidebar",
@@ -266,7 +273,9 @@ describe("AppLayoutSidebar", () => {
     expect(getMobilePanel()).toBe(panel);
     expect(panel.dataset.state).toBe("open");
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
   });
@@ -282,7 +291,9 @@ describe("AppLayoutSidebar", () => {
 
     const rail = getRail();
     expect(rail.dataset.appMode).toBe("true");
-    expect(rail.dataset.settingsActive).toBe("false");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "false",
+    );
     expect(getAppSidebarBody().hidden).toBe(false);
 
     fireEvent.click(
@@ -290,7 +301,9 @@ describe("AppLayoutSidebar", () => {
     );
     expect(getRail()).toBe(rail);
     expect(rail.dataset.appMode).toBe("false");
-    expect(rail.dataset.settingsActive).toBe("true");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "true",
+    );
     expect(getAppSidebarBody().hidden).toBe(true);
     expect(screen.getByTestId("settings-sidebar-body")).toBeTruthy();
 
@@ -298,7 +311,9 @@ describe("AppLayoutSidebar", () => {
       screen.getByRole("button", { name: "Navigate to plugins" }),
     );
     expect(getRail()).toBe(rail);
-    expect(rail.dataset.settingsActive).toBe("false");
+    expect(screen.getByTestId("settings-footer").dataset.settingsActive).toBe(
+      "false",
+    );
     expect(screen.queryByTestId("settings-sidebar-body")).toBeNull();
     expect(screen.getByTestId("plugins-sidebar-body")).toBeTruthy();
 

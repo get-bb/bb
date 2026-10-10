@@ -141,6 +141,7 @@ function renderAppSidebar() {
                         isResizing={false}
                         isBodyHidden={false}
                         renderRail={() => null}
+                        railFooter={null}
                         alternateBody={null}
                       />
                     </SidebarProvider>
