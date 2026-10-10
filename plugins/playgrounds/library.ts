@@ -1013,6 +1013,9 @@ export function createLibrary({
       runId,
       threadId,
     );
+    db.prepare(
+      "DELETE FROM answer_documents WHERE id = ? AND NOT EXISTS (SELECT 1 FROM answers WHERE answers.id = answer_documents.id)",
+    ).run(runId);
     db.prepare("DELETE FROM answer_state WHERE id = ? AND thread_id = ?").run(
       runId,
       threadId,
@@ -1057,8 +1060,12 @@ export function createLibrary({
       manifest: pkg.actions,
     };
     db.prepare(
-      "INSERT INTO answers (id, thread_id, document, kind) VALUES (?, ?, ?, ?)",
-    ).run(runId, threadId, answer.content, answer.kind);
+      "INSERT INTO answer_documents (id, document, kind) VALUES (?, ?, ?)",
+    ).run(runId, answer.content, answer.kind);
+    db.prepare("INSERT INTO answers (id, thread_id) VALUES (?, ?)").run(
+      runId,
+      threadId,
+    );
     db.prepare(
       "INSERT INTO library_runs (answer_id, thread_id, app_id, version_id, origin, kind, inherited, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
     ).run(
