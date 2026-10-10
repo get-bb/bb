@@ -81,6 +81,7 @@ export interface EnrollHostArgs {
 export interface EnrollHostResult {
   hostKey: string;
   metadata: MachineCredentialMetadata;
+  enrollSource: MachineCredentialMetadata["enrollSource"] | null;
 }
 
 interface VerifyMachineKeyResult {
@@ -352,6 +353,7 @@ export async function createMachineAuthService(
         return {
           hostKey: hostKey.key,
           metadata: hostMetadata,
+          enrollSource: verified.metadata.enrollSource ?? null,
         };
       });
     },

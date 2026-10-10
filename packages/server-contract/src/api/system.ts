@@ -335,6 +335,17 @@ export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
     .strict(),
   z
     .object({
+      name: z.literal("device_paired"),
+      properties: z
+        .object({
+          device: z.enum(["mobile_ios", "mobile_android", "machine"]),
+          first_of_kind: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       name: z.literal("split_view_opened"),
       properties: z.object({ panes: z.number().int().min(2).max(8) }).strict(),
     })

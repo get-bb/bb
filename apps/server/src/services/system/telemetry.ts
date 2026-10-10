@@ -13,6 +13,20 @@ const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
+export type TurnFinishedOutcome = "completed" | "failed" | "stopped";
+
+export type TurnErrorCategory =
+  | "none"
+  | "auth"
+  | "billing"
+  | "rate_limit"
+  | "provider_unavailable"
+  | "limit_reached"
+  | "process_exited"
+  | "start_failed"
+  | "host_lost"
+  | "other";
+
 export type TelemetryEvent =
   | { name: "app_started" }
   | { name: "telemetry_disabled" }
@@ -29,6 +43,15 @@ export type TelemetryEvent =
         is_child_thread: boolean;
         message_source: "queued_message" | "thread_create" | "thread_send";
         provider: string;
+      };
+    }
+  | {
+      name: "turn_finished";
+      properties: {
+        outcome: TurnFinishedOutcome;
+        provider: string;
+        error_category: TurnErrorCategory;
+        first_turn: boolean;
       };
     }
   | {

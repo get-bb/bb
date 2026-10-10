@@ -1,4 +1,4 @@
-import { upsertHost } from "@bb/db";
+import { getHost, upsertHost } from "@bb/db";
 import { isLoopbackAddress } from "@bb/config/loopback";
 import {
   hostDaemonEnrollKeyRequestSchema,
@@ -16,6 +16,7 @@ import {
   type GateAuthHeaderReader,
 } from "../request-context.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
+import { recordMachinePaired } from "../services/system/device-telemetry.js";
 import { requireBearerToken } from "./auth.js";
 
 function assertLoopbackRequest(remoteAddress: string | undefined): void {
@@ -92,11 +93,15 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
       if (!enrollment) {
         throw new ApiError(401, "unauthorized", "Unauthorized");
       }
+      const isNewHost = getHost(deps.db, enrollment.metadata.hostId) === null;
       upsertHost(deps.db, deps.hub, {
         ...(connectMachineId !== undefined ? { connectMachineId } : {}),
         id: enrollment.metadata.hostId,
         name: payload.hostName,
       });
+      if (isNewHost && enrollment.enrollSource === "public-multi-machine") {
+        recordMachinePaired(deps, enrollment.metadata.hostId);
+      }
 
       return context.json(
         {

@@ -109,6 +109,9 @@ async function setup(options: SetupOptions = {}) {
     ...(options.appUrl === undefined ? {} : { appUrl: options.appUrl }),
     settings: { expoPushUrl: EXPO_URL },
     sdk: {
+      system: {
+        experimental_recordTelemetryEvent: async () => ({ ok: true }),
+      },
       threads: {
         get: async ({ threadId }) => {
           const thread = threads.get(threadId);
@@ -279,6 +282,23 @@ describe("push subscription RPC and CLI", () => {
         ],
       });
       expect(JSON.stringify(listed)).not.toContain("ExponentPushToken");
+      await host.addSubscription("ExponentPushToken[tablet]", "Tablet");
+      expect(
+        host.harness.sdk.callsTo("system.experimental_recordTelemetryEvent"),
+      ).toEqual([
+        [
+          {
+            name: "device_paired",
+            properties: { device: "mobile_ios", first_of_kind: true },
+          },
+        ],
+        [
+          {
+            name: "device_paired",
+            properties: { device: "mobile_ios", first_of_kind: false },
+          },
+        ],
+      ]);
 
       await expect(
         host.harness.behavior.callRpc("pushSubscriptions.add", {

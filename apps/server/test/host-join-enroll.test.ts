@@ -5,13 +5,16 @@ import {
   hostDaemonEnrollResponseSchema,
   type HostDaemonEnrollKeyResponse,
 } from "@bb/host-daemon-contract";
+import { createHostJoinCodeResponseSchema } from "@bb/server-contract";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createServerErrorHandler } from "../src/errors.js";
 import { TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY } from "../src/request-context.js";
 import { registerInternalHostRoutes } from "../src/internal/hosts.js";
+import type { TelemetryService } from "../src/services/system/telemetry.js";
 import type { AppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
+import { seedPrimaryHost } from "./helpers/seed.js";
 import {
   createTestAppHarness,
   testLogger,
@@ -190,6 +193,56 @@ describe("host enroll routes", () => {
       );
 
       expect(replayResponse.status).toBe(401);
+    });
+  });
+
+  it("reports each machine added by join code once, and never the server's own machine", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const enroll = async (key: { enrollKey: string; hostId: string }) => {
+        const response = await harness.app.request("/internal/hosts/enroll", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${key.enrollKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ hostId: key.hostId, hostName: "laptop" }),
+        });
+        expect(response.status).toBe(201);
+      };
+      const joinCode = async () => {
+        const response = await harness.app.request("/api/v1/hosts/join-codes", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        expect(response.status).toBe(201);
+        const issued = createHostJoinCodeResponseSchema.parse(
+          await readJson(response),
+        );
+        return { enrollKey: issued.joinCode, hostId: issued.hostId };
+      };
+
+      await enroll(await requestHostEnrollKey(harness.deps, "host_server"));
+      seedPrimaryHost(harness.deps, "host_server");
+      await enroll(await joinCode());
+      await enroll(await joinCode());
+
+      expect(
+        capture.mock.calls
+          .map(([event]) => event)
+          .filter((event) => event.name === "device_paired"),
+      ).toEqual([
+        {
+          name: "device_paired",
+          properties: { device: "machine", first_of_kind: true },
+        },
+        {
+          name: "device_paired",
+          properties: { device: "machine", first_of_kind: false },
+        },
+      ]);
     });
   });
 

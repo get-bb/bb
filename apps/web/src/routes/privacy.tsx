@@ -76,12 +76,17 @@ function PrivacyRoute() {
             completed or skipped and whether you turned on notifications, which
             built-in tips were shown or used, when you create an automation
             (whether it repeats or runs once, and whether it runs an agent or a
-            script), and when you open a split view (how many panes it has).
-            Each event carries a random install ID, the app version, and your
-            operating system and architecture. Events never include your
-            prompts, code, file names, project names, or account details. Turn
-            this off in Settings &rarr; General &rarr; Share anonymous usage
-            data, or set <code>BB_TELEMETRY=false</code>.
+            script), when you open a split view (how many panes it has), when an
+            agent turn finishes (whether it completed, failed, or was stopped, a
+            coarse failure type such as sign-in or rate limit, which built-in
+            agent ran it, and whether it was your first), and when you connect a
+            phone for notifications or add another machine (only the kind of
+            device and whether it is your first of that kind). Each event
+            carries a random install ID, the app version, and your operating
+            system and architecture. Events never include your prompts, code,
+            file names, project names, or account details. Turn this off in
+            Settings &rarr; General &rarr; Share anonymous usage data, or set{" "}
+            <code>BB_TELEMETRY=false</code>.
           </p>
 
           <p>The iOS and Android apps store the following on your device:</p>

@@ -1,6 +1,7 @@
 import {
   applyThreadLifecycleEvent,
   applyThreadLifecycleEventInTransaction,
+  getThread,
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
   type DbConnection,
@@ -13,6 +14,11 @@ import {
   emitPluginTurnFailed,
 } from "../plugins/plugin-thread-events.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import {
+  announceTurnFinished,
+  isTurnEndingLifecycleEvent,
+  turnFinishedOutcome,
+} from "../system/turn-telemetry.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
 /**
@@ -31,6 +37,25 @@ function announceTurnFailed(
 ): void {
   if (!outcome.applied || args.event.type !== "run.failed") return;
   emitPluginTurnFailed(args.threadId);
+}
+
+function statusBeforeTurnEnd(
+  db: DbConnection | DbTransaction,
+  args: ApplyThreadLifecycleEventArgs,
+) {
+  return isTurnEndingLifecycleEvent(args.event)
+    ? (getThread(db, args.threadId)?.status ?? null)
+    : null;
+}
+
+function announceTurnEnd(
+  args: ApplyThreadLifecycleEventArgs,
+  outcome: ApplyThreadLifecycleEventOutcome,
+  previousStatus: ReturnType<typeof statusBeforeTurnEnd>,
+): void {
+  if (!outcome.applied || previousStatus === null) return;
+  const finished = turnFinishedOutcome(args.event, previousStatus);
+  if (finished !== null) announceTurnFinished(args.threadId, finished);
 }
 
 interface ApplyLoggedThreadLifecycleEventDeps {
@@ -68,6 +93,7 @@ export function applyLoggedThreadLifecycleEvent(
   deps: ApplyLoggedThreadLifecycleEventDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
+  const previousStatus = statusBeforeTurnEnd(deps.db, args);
   const outcome = applyThreadLifecycleEvent(deps.db, args);
   if (outcome.applied) {
     deps.hub.notifyThread(
@@ -79,6 +105,7 @@ export function applyLoggedThreadLifecycleEvent(
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
   announceTurnFailed(args, outcome);
+  announceTurnEnd(args, outcome, previousStatus);
   return outcome;
 }
 
@@ -86,9 +113,11 @@ export function applyLoggedThreadLifecycleEventInTransaction(
   deps: ApplyLoggedThreadLifecycleEventTransactionDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
+  const previousStatus = statusBeforeTurnEnd(deps.db, args);
   const outcome = applyThreadLifecycleEventInTransaction(deps.db, args);
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
   announceTurnFailed(args, outcome);
+  announceTurnEnd(args, outcome, previousStatus);
   return outcome;
 }
