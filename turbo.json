@@ -589,6 +589,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/.github/actions/setup-workspace/**",
         "$TURBO_ROOT$/.github/actions/setup-workspace-tools/**",
+        "$TURBO_ROOT$/.github/actions/install-appimage-fuse/**",
         "$TURBO_ROOT$/.github/actions/cache-workspace/**",
         "$TURBO_ROOT$/.github/workflows/ci.yml",
         "$TURBO_ROOT$/.github/workflows/ci-cache-maintenance.yml",

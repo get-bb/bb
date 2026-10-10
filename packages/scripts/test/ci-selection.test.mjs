@@ -37,7 +37,7 @@ function fixture() {
   put("pnpm-workspace.yaml", "packages:\n  - apps/*\n  - packages/*\n");
   put(
     "pnpm-lock.yaml",
-    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n",
+    "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  apps/app:\n    dependencies:\n      '@bb/config':\n        specifier: workspace:*\n        version: link:../../packages/config\n  packages/config: {}\n  packages/text-utils: {}\n  apps/mobile: {}\n",
   );
   put(
     "turbo.json",
@@ -55,6 +55,7 @@ function fixture() {
     ["apps/app", "@bb/app", { "@bb/config": "workspace:*" }],
     ["packages/config", "@bb/config", {}],
     ["packages/text-utils", "@bb/text-utils", {}],
+    ["apps/mobile", "@bb/mobile", {}],
   ]) {
     put(
       `${path}/package.json`,
@@ -136,11 +137,45 @@ it("selects app checks without provisioning unrelated Windows or package smoke j
     "app-8",
   ]);
   expect(plan["windows-tests"].include).toEqual([]);
+  expect(plan.tests.include.every((entry) => entry.mobile === false)).toBe(
+    true,
+  );
   expect(plan.packaging).toBe(false);
   expect(plan.foundation).toBe(false);
   expect(plan.forks).toBe(false);
   expect(plan.staticFilters).toContain("--filter=@bb/app");
   expect(plan.staticFilters).not.toContain("@bb/text-utils");
+});
+
+it("omits mobile installs only when the selected tests do not include mobile", () => {
+  const selected = fixture().plan("packages/text-utils/src/index.ts");
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(selected[matrix].include).toEqual([
+      expect.objectContaining({ shard: "packages-other", mobile: false }),
+    ]);
+  }
+  const mobile = fixture().plan("apps/mobile/src/index.ts");
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(mobile[matrix].include).toEqual([
+      expect.objectContaining({ shard: "packages-other", mobile: true }),
+    ]);
+  }
+  const full = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [join(root, "scripts/plan-ci.mjs"), "--full"],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    ),
+  );
+  for (const matrix of ["tests", "windows-tests"]) {
+    expect(
+      full[matrix].include.find((entry) => entry.shard === "packages-other")
+        .mobile,
+    ).toBe(true);
+  }
 });
 
 it("keeps dependent app tests and Windows foundation checks for shared configuration changes", () => {

@@ -499,3 +499,54 @@ checkout then hit the same timeout. SDK checkouts now use `filter: blob:none`
 to retain commit history without historical file contents. A fresh fetch of all
 branches and tags completed with a 23 MB pack, and the unchanged SDK check passed
 against that full-history checkout.
+
+## October 9 reliability and setup follow-up
+
+The October 9 sample covers 299 CI runs created from 00:00 through 22:41
+Pacific. Successful first-attempt PR runs had a median of 143.5 seconds and
+p90 of 414 seconds; main pushes had a median of 318.5 seconds and p90 of
+427 seconds. Windows finished last in 114 of 205 timed runs. These are
+pre-change measurements, not projected savings.
+
+Test matrices now carry whether their selected packages include `@bb/mobile`.
+The catch-all shard retains mobile dependencies on full runs and affected
+mobile PRs, but omits them on other PRs. Linux's other broad test installs also
+omit mobile when it is not tested. Existing app/server install closures and
+shared generator prerequisites remain intact. This does not restore Windows
+pnpm archives or repeat the unsuccessful aggressive filtering experiment above.
+Compare dependency-install timings on equivalent Windows jobs before claiming
+a speedup; runner provisioning remains outside the workflow's control.
+
+The FUSE installer no longer rewrites the runner's global apt configuration or
+forces every download through one mirror. It skips an already-installed runtime,
+uses isolated indexes, requires a successful index refresh, and tries Ubuntu's
+archive followed by the kernel.org mirror on amd64/i386. Other architectures
+use Ubuntu Ports. Both index and package-download failures trigger the next
+mirror; exhaustion remains a blocking failure. The installer is also used by
+desktop and release packaging.
+
+Standalone fork checks resolve a fresh package lock with lifecycle scripts
+disabled, then use `npm ci` to install that exact graph. Resolution and installation
+failures have distinct stage names; neither is silently passed or treated as a
+source-test failure. CI saves the packed SDK, each fork's manifest and available
+lockfile, and its result stage in `plugin-fork-evidence-<shard>-<attempt>` for
+seven days. SDK references are relative to the evidence root. A resolution
+failure may have no lockfile. Local `--keep` retains the full fork directory,
+where `npm ci --legacy-peer-deps` can reproduce its installation without fresh
+resolution. Fresh resolution remains part of every selected fork check, so this
+improves diagnosis and reproduction rather than hiding upstream availability
+failures.
+
+CI Health now separates first-attempt job outcomes from final rerun outcomes,
+reports successful step timing distributions, and groups failure/recovery counts
+by job and step. Cancelled and unavailable attempts are not passes. Failure groups
+are locations, not inferred root causes; same-commit recovery includes registry
+and runner failures, not just flaky tests. JSON retains all step timings; Markdown
+shows steps with a p90 of at least five seconds. Scheduling delays still include
+both Actions scheduling and runner provisioning.
+
+Storage archive-test teardown waits for retained trash-removal work before
+removing the parent fixture directory. Provider replay stalls now include event
+counts, unanswered request IDs, child exit state, time since output, and the last
+2,000 stderr characters. Timeout budgets and replay concurrency are unchanged;
+the missing-event failure needs that evidence before changing them.

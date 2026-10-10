@@ -303,8 +303,14 @@ it.each(["exit", "signal", "timeout", "spawn-error"] as const)(
     const healthy = fixture.run("ready");
     try {
       const results = await Promise.all(failed);
-      for (const result of results)
+      for (const result of results) {
         expect(result.stalls.length).toBeGreaterThan(0);
+        if (mode === "timeout") {
+          expect(result.stalls[0]).toContain('"events":0');
+          expect(result.stalls[0]).toContain('"exitCode":null');
+          expect(result.stalls[0]).toContain('"stderrTail":');
+        }
+      }
       expect((await healthy).stalls).toEqual([]);
       expect(fixture.children()).toHaveLength(5);
       expect(

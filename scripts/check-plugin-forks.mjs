@@ -132,8 +132,11 @@ async function step(log, label, command, commandArgs, options = {}) {
     return result.stdout;
   } catch (error) {
     log.push(`  ${label} … failed`);
-    throw new Error(
-      `${label} failed: ${command} ${commandArgs.join(" ")}\n${error.stdout ?? ""}${error.stderr ?? ""}`,
+    throw Object.assign(
+      new Error(
+        `${label} failed: ${command} ${commandArgs.join(" ")}\n${error.stdout ?? ""}${error.stderr ?? ""}`,
+      ),
+      { stage: label },
     );
   }
 }
@@ -251,7 +254,7 @@ async function checkPlugin(pluginDir, workDir, sdkTarball, log) {
     await readFile(join(source, "package.json"), "utf8"),
   );
   const forked = forkPluginPackageJson(manifest, {
-    sdkSpecifier: `file:${sdkTarball}`,
+    sdkSpecifier: `file:../${basename(sdkTarball)}`,
     workspaceBinsByPackage: await workspaceBinsFor(pluginDir, manifest),
     registryDependencies: registry.packages,
   });
@@ -273,9 +276,23 @@ async function checkPlugin(pluginDir, workDir, sdkTarball, log) {
 
   await step(
     log,
-    "npm install",
+    "dependency resolution",
     "npm",
-    ["install", "--no-audit", "--no-fund", "--legacy-peer-deps"],
+    [
+      "install",
+      "--package-lock-only",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "--legacy-peer-deps",
+    ],
+    { cwd: target },
+  );
+  await step(
+    log,
+    "locked dependency install",
+    "npm",
+    ["ci", "--no-audit", "--no-fund", "--legacy-peer-deps"],
     { cwd: target },
   );
   await step(log, "typecheck", "npm", ["run", "typecheck"], { cwd: target });
@@ -300,6 +317,10 @@ async function checkPlugin(pluginDir, workDir, sdkTarball, log) {
 }
 
 const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-fork-"));
+const evidenceDir =
+  process.env.GITHUB_ACTIONS === "true" && process.env.RUNNER_TEMP
+    ? join(process.env.RUNNER_TEMP, "plugin-fork-evidence")
+    : null;
 if (!relative(repoRoot, workDir).startsWith("..")) {
   console.error(`${workDir} is inside the repository; set TMPDIR elsewhere`);
   process.exit(1);
@@ -334,8 +355,13 @@ try {
     ),
   );
   const sdkTarball = join(workDir, packed[0].filename);
+  if (evidenceDir !== null) {
+    await mkdir(evidenceDir, { recursive: true });
+    await cp(sdkTarball, join(evidenceDir, basename(sdkTarball)));
+  }
   const queue = [...pluginDirs];
   const failures = [];
+  const results = [];
   await Promise.all(
     Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
       for (
@@ -344,16 +370,40 @@ try {
         pluginDir = queue.shift()
       ) {
         const log = [];
+        let stage = "success";
         console.log(`Checking ${pluginDir} …`);
         try {
           await checkPlugin(pluginDir, workDir, sdkTarball, log);
         } catch (error) {
           failures.push({ pluginDir, error });
+          stage =
+            typeof error?.stage === "string"
+              ? error.stage
+              : "fork preparation or artifact validation";
         }
+        results.push({ pluginDir, stage });
         console.log(`\n${pluginDir}\n${log.join("\n")}`);
       }
     }),
   );
+  if (evidenceDir !== null) {
+    for (const result of results) {
+      const target = join(evidenceDir, basename(result.pluginDir));
+      await mkdir(target, { recursive: true });
+      for (const name of ["package.json", "package-lock.json"]) {
+        await cp(
+          join(workDir, basename(result.pluginDir), name),
+          join(target, name),
+        ).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+      }
+      await writeFile(
+        join(target, "result.json"),
+        `${JSON.stringify(result, null, 2)}\n`,
+      );
+    }
+  }
   if (failures.length > 0) {
     failed = true;
     for (const { pluginDir, error } of failures) {

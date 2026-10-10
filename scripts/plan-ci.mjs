@@ -11,8 +11,18 @@ const { values } = parseArgs({
 });
 const shards = JSON.parse(readFileSync("scripts/ci-test-shards.json", "utf8"));
 const full = {
-  tests: { include: shards.tests },
-  "windows-tests": { include: shards["windows-tests"] },
+  tests: {
+    include: shards.tests.map((entry) => ({
+      ...entry,
+      mobile: matchesFilter("@bb/mobile", entry.filter),
+    })),
+  },
+  "windows-tests": {
+    include: shards["windows-tests"].map((entry) => ({
+      ...entry,
+      mobile: matchesFilter("@bb/mobile", entry.filter),
+    })),
+  },
   foundation: true,
   packaging: true,
   providers: true,
@@ -141,6 +151,7 @@ function select() {
         : [
             {
               ...entry,
+              mobile: selected.includes("@bb/mobile"),
               filter: selected
                 .sort()
                 .map((name) => `--filter=${name}`)
