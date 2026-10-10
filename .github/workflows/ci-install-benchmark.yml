@@ -1,0 +1,40 @@
+name: CI install benchmark
+on:
+  push:
+    branches: [bb/ci-install-benchmark-5324]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [full, no-mobile]
+        replicate: [1, 2, 3]
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: '22.x'
+          pnpm-version: '9.15.0'
+      - name: Measure fresh dependency installation
+        shell: bash
+        env:
+          BENCH_MODE: ${{ matrix.mode }}
+          BENCH_REPLICATE: ${{ matrix.replicate }}
+        run: |
+          mkdir -p install-benchmark
+          started=$(date +%s%3N)
+          args=(--ignore-scripts)
+          if [[ "$BENCH_MODE" == no-mobile ]]; then args+=(--filter '!@bb/mobile'); fi
+          set -o pipefail
+          bash .github/actions/setup-workspace/install-dependencies.sh "${args[@]}" 2>&1 | tee install-benchmark/install.log
+          ended=$(date +%s%3N)
+          printf '{"mode":"%s","replicate":%s,"milliseconds":%s}\n' "$BENCH_MODE" "$BENCH_REPLICATE" "$((ended-started))" | tee install-benchmark/result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: install-${{ matrix.mode }}-${{ matrix.replicate }}
+          path: install-benchmark/
