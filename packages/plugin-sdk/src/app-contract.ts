@@ -54,6 +54,14 @@ import type {
 export interface PluginHomepageSectionProps {
   /** Project in view on the compose surface; null when none is selected. */
   projectId: string | null;
+  /**
+   * True once bb's setup guide has been finished or skipped and at least one
+   * thread exists. False during first-run setup, before the first thread,
+   * and while that state loads. Undefined on hosts older than plugin SDK
+   * 0.6.39. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_setupComplete?: boolean;
 }
 
 /**
@@ -160,11 +168,10 @@ export interface ExperimentalQuestionFormHost {
  * the host adds room for its microphone controls when voice input is
  * available.
  */
-export interface ExperimentalVoiceInputTextareaProps
-  extends Omit<
-    ComponentPropsWithRef<"textarea">,
-    "value" | "defaultValue" | "onChange" | "children"
-  > {
+export interface ExperimentalVoiceInputTextareaProps extends Omit<
+  ComponentPropsWithRef<"textarea">,
+  "value" | "defaultValue" | "onChange" | "children"
+> {
   value: string;
   /**
    * Receives typed edits and finished transcripts, which the host appends to
@@ -501,7 +508,11 @@ export interface PluginMessageDirectiveProps {
 export interface PluginHomepageSectionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  title: string;
+  /**
+   * Optional host-rendered section heading. Omit it when the component
+   * renders its own heading or may render nothing, so no empty heading shows.
+   */
+  title?: string;
   component: ComponentType<PluginHomepageSectionProps>;
 }
 
@@ -1190,7 +1201,9 @@ export interface ExperimentalClipboardContent {
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
+  | "getPluginMetadata"
+  | "updatePluginMetadata"
+  | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
@@ -2800,6 +2813,15 @@ export interface PluginComposerApi {
    */
   setInputLock(locked: boolean): void;
   /**
+   * Show `text` as this composer's placeholder in place of the host's own, or
+   * pass null to restore it. Like any placeholder it shows only while the
+   * draft is empty, and it never changes the draft. Previews are scoped to
+   * the calling surface and clear automatically when it unmounts or its
+   * composer scope changes; when several are set, the most recent one shows.
+   * Has no effect on handles from `useComposers()`.
+   */
+  experimental_setPlaceholderPreview(text: string | null): void;
+  /**
    * @internal Legacy quoting method; retained at runtime for older plugins.
    * Append text to the draft as a `> ` blockquote block and focus the
    * composer. Blank text is a no-op. This is the "reference this selection
@@ -3469,6 +3491,25 @@ export interface BbNavigate {
   experimental_openFileExternally(
     options: ExperimentalFileOpenOptions,
   ): boolean;
+  /**
+   * Navigate this window to an in-app bb route such as `/settings/mobile`,
+   * `/settings/plugins/<pluginId>`, or `/settings/updates#whats-new`. The
+   * path must start with a single `/` and stay on the app's origin; the
+   * query and hash are kept. Returns false, without navigating, for anything
+   * else (absolute URLs, protocol-relative `//host` paths, backslashes, or
+   * `/api/` routes). Experimental: see docs/api_to_audit.md.
+   */
+  experimental_openAppRoute(path: string): boolean;
+  /**
+   * Run one of bb's navigation app commands by id, exactly as its keyboard
+   * shortcut or palette row would. Only `palette.open` (quick palette),
+   * `thread.search` (thread search), and `settings.open` are accepted; every
+   * other id, including commands that change state and plugin command ids,
+   * returns false without running. Also returns false when nothing on the
+   * current screen handled the command. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_runAppCommand(commandId: string): boolean;
   /**
    * Show a terminal session in this surface's BB terminal panel: select its
    * tab, adding one when needed, and reveal the panel. Create the session

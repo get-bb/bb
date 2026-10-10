@@ -58,10 +58,12 @@ import {
   resetPluginThreadRowStatusesForTest,
 } from "@/lib/plugin-thread-row-status";
 import {
+  removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import { getComposerPlaceholderPreview } from "@/lib/composer-placeholder-previews";
 import {
   PluginComposerHostProvider,
   type PluginComposerHost,
@@ -2688,6 +2690,80 @@ describe("PromptBoxInternal plugin composer actions", () => {
           ?.hasAttribute("aria-busy"),
       ).toBe(false);
     });
+  });
+
+  it("shows a plugin placeholder preview in place of the placeholder and clears it on unmount", async () => {
+    function PreviewAction() {
+      const composer = useComposer();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              composer.experimental_setPlaceholderPreview("Try this prompt")
+            }
+          >
+            Preview prompt
+          </button>
+          <button
+            type="button"
+            onClick={() => composer.experimental_setPlaceholderPreview(null)}
+          >
+            Clear preview
+          </button>
+        </>
+      );
+    }
+    setPluginSlotRegistrations(
+      "previewer",
+      pluginRegistrationSet([
+        {
+          id: "tools",
+          actions: [{ id: "preview", component: PreviewAction }],
+        },
+      ]),
+    );
+    const draft = emptyPromptDraftState();
+    const host: PluginComposerHost = {
+      scope: { kind: "new-thread", projectId: null },
+      textEffectKey: "promptbox-placeholder-preview-test",
+      getCurrent: () => draft,
+      subscribeDraft: () => () => {},
+      setDraft: vi.fn(),
+      focus: vi.fn(),
+    };
+    render(
+      <MemoryRouter>
+        <PluginComposerHostProvider value={host}>
+          <PromptBoxInternal
+            {...createPromptBoxProps({ placeholder: "Ask anything" })}
+          />
+        </PluginComposerHostProvider>
+      </MemoryRouter>,
+    );
+    const editor = getPromptEditorElement();
+    expect(editor.getAttribute("data-placeholder")).toBe("Ask anything");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview prompt" }));
+    await waitFor(() => {
+      expect(editor.getAttribute("data-placeholder")).toBe("Try this prompt");
+    });
+    expect(editor.getAttribute("aria-label")).toBe("Ask anything");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear preview" }));
+    await waitFor(() => {
+      expect(editor.getAttribute("data-placeholder")).toBe("Ask anything");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview prompt" }));
+    await waitFor(() => {
+      expect(editor.getAttribute("data-placeholder")).toBe("Try this prompt");
+    });
+    act(() => removePluginSlotRegistrations("previewer"));
+    await waitFor(() => {
+      expect(editor.getAttribute("data-placeholder")).toBe("Ask anything");
+    });
+    expect(getComposerPlaceholderPreview(host.textEffectKey)).toBeNull();
   });
 
   it("remounts scoped actions and releases owned state when scope identity changes", () => {

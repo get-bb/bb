@@ -4012,6 +4012,65 @@ Stabilize once message links have shipped and the seq has stayed stable across
 edit-and-rerun, forks and context clears, and decide whether `sourceSeqEnd`
 should remain alongside it.
 
+## In-app routes and app commands (`BbNavigate.experimental_openAppRoute`, `BbNavigate.experimental_runAppCommand`)
+
+`useBbNavigate().experimental_openAppRoute(path)` navigates the current window
+to an in-app route such as `/settings/mobile`, `/settings/plugins/<pluginId>`,
+or `/settings/updates#whats-new`, keeping the query and hash. It returns false
+without navigating unless the path starts with a single `/`, resolves to the
+app's own origin, and contains no backslash or control character; `/api` and
+`/api/*` are refused. `useBbNavigate().experimental_runAppCommand(commandId)`
+dispatches one allowlisted navigation command (`palette.open`,
+`thread.search`, or `settings.open`) through the same handler chain as its
+keyboard shortcut, with no event target. It returns false for every other id,
+including state-changing app commands such as `thread.archive`,
+`question.select.*`, or `plugins.enterSafeMode`, for plugin command ids, and
+for commands that no mounted handler accepted. The SDK
+frontend harness records both as `navigateCalls` and takes `openAppRoute` /
+`runAppCommand` acceptance options. First consumer: the bundled Tips plugin.
+
+Before stabilization, decide whether routes should be typed destinations
+(settings section, plugin configuration page) instead of raw paths so bb can
+rename routes without breaking plugins, whether the navigation allowlist should
+grow into a public versioned vocabulary, whether commands should accept a target
+or surface, and how both behave on mobile and in split panes.
+
+## Composer placeholder preview (`PluginComposerApi.experimental_setPlaceholderPreview`)
+
+`useComposer().experimental_setPlaceholderPreview(text)` shows `text` as that
+composer's placeholder in place of the host's own; `null` restores it. It shows
+only while the draft is empty and never edits the draft. The editor's
+accessible label keeps the host placeholder. Each `useComposer()` call site owns
+one preview, released when it unmounts or its composer scope changes; with
+several owners, the most recently set preview shows. Handles from
+`useComposers()` warn and do nothing. The SDK frontend harness records
+`composer.placeholderPreview` and `composer.placeholderPreviewCalls`. First
+consumer: the bundled Tips plugin, which previews a tip's prompt while the
+pointer or focus is on it.
+
+Before stabilization, decide whether the preview should support rich content
+(mention pills, a highlighted task slot) instead of plain text, how it is
+announced to screen readers, whether owners in different plugins should compete
+by recency or by an explicit priority, and how it behaves in compact layouts
+that show their own placeholder.
+
+## Setup state for home-screen sections (`PluginHomepageSectionProps.experimental_setupComplete`)
+
+Every `homepageSection` component receives `experimental_setupComplete`. It is
+true once bb's setup guide has been finished or skipped and at least one thread
+exists. It is false during first-run setup, before the first thread, and while
+that data loads, so a section never appears during setup and then jumps. Core
+computes it once in `useSetupComplete`
+(`apps/app/src/components/onboarding/useSetupComplete.ts`), and
+`RootComposeView` passes it through `RootComposeSecondaryContent` to
+`PluginHomepageSections`. It is optional because hosts older than SDK 0.6.39
+leave it undefined. First consumer: the bundled Tips plugin, which renders
+nothing and makes no calls until it is true.
+
+Before stabilization, decide whether setup state belongs in a general
+onboarding hook available to every slot rather than one slot's props, and how
+it should read on hosts without the setup guide (mobile, remote web).
+
 ## `PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`
 
 Archives an environment's active thread trees through the host flow, including optimistic cache updates, pane cleanup, shared toast styling, and one ten-second Undo action. Undo restores only returned archived IDs, sequentially with lifecycle owners first. Archive failures show a host error toast and reject; Undo failures show a host error toast.

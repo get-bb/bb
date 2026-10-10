@@ -422,8 +422,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginCommandRegistration",
           "PluginCommandContext",
           "PluginCommandShortcut",
+          "BbNavigate.experimental_runAppCommand",
         ],
-        firstParty: ["File Editor"],
+        firstParty: ["File Editor", "Tips"],
       },
     ],
   },
@@ -577,6 +578,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ExperimentalComposerPopupRegistration",
           "PluginComposerApi.experimental_openPopup",
           "PluginComposerApi.experimental_closePopup",
+          "PluginComposerApi.experimental_setPlaceholderPreview",
           "PluginAppComposer.experimental_registerCommand",
           "ExperimentalComposerCommandRegistration",
           "PluginComposerApi.setSelection",
@@ -600,11 +602,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Show shortcuts, pinned work, or recent activity before any thread exists",
           "Span the full width below the composer on desktop",
+          "Wait until setup is done and a first thread exists before showing anything",
         ],
         apiSymbols: [
           "PluginHomepageSectionRegistration",
           "PluginHomepageSectionProps",
+          "PluginHomepageSectionProps.experimental_setupComplete",
         ],
+        firstParty: ["Tips"],
       },
       {
         id: "new-thread-panel",
@@ -1399,6 +1404,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "BbNavigate.openUrl",
           "BbNavigate.experimental_openFilePreview",
           "BbNavigate.experimental_openFileExternally",
+          "BbNavigate.experimental_openAppRoute",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

@@ -159,22 +159,40 @@ export function MobileRecentsVisibilityStyle() {
   );
 }
 
-export function StoryComposer({
-  initialValue = "",
-}: {
+interface StoryComposerProps {
+  id?: string;
+  mentionMenuPlacement?: "top" | "bottom";
   initialValue?: string;
-}) {
-  const [value, setValue] = useState(initialValue);
+  value?: string;
+  onValueChange?: (value: string) => void;
+  placeholder?: string;
+  focusRequest?: string;
+}
+
+export function StoryComposer({
+  id = "story-compact-home-composer",
+  mentionMenuPlacement = "top",
+  initialValue = "",
+  value: controlledValue,
+  onValueChange,
+  placeholder,
+  focusRequest,
+}: StoryComposerProps = {}) {
+  const [uncontrolledValue, setValue] = useState(initialValue);
   const [mentionRanges, setMentionRanges] = useState<PromptTextMention[]>([]);
+  const value = controlledValue ?? uncontrolledValue;
   return (
     <ModelPickerStoryQueryProvider>
       <NewThreadPromptBoxUI
-        mentionMenuPlacement="top"
-        id="story-compact-home-composer"
+        mentionMenuPlacement={mentionMenuPlacement}
+        id={id}
         value={value}
         mentionRanges={mentionRanges}
+        placeholder={placeholder}
+        focusRequest={focusRequest}
         onChange={(nextValue, nextMentionRanges) => {
           setValue(nextValue);
+          onValueChange?.(nextValue);
           setMentionRanges(nextMentionRanges);
         }}
         onSubmit={noop}
