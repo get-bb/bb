@@ -186,10 +186,9 @@ export function createPushNotificationsPlugin(
           childLevel: ownNotificationLevelSchema.parse(childLevel),
         };
       },
-      publish: (threadId, notifications) =>
+      publish: (threads) =>
         bb.realtime.publish(THREAD_NOTIFICATIONS_CHANNEL, {
-          threadId,
-          notifications,
+          threads,
         } satisfies ThreadNotificationsUpdate),
     });
     const subscriptions = createPushSubscriptionStore(bb, {
@@ -470,6 +469,12 @@ export function createPushNotificationsPlugin(
     bb.events.on("thread.failed", (payload) => {
       sender.onThreadFailed(payload);
     });
+    bb.events.on("experimental_thread.parentChanged", ({ thread }) =>
+      preferences.publishSubtree(thread.id),
+    );
+    bb.events.on("thread.unarchived", ({ thread }) =>
+      preferences.publishSubtree(thread.id),
+    );
     bb.background.service("push-sender", {
       async start(signal) {
         await sender.start();

@@ -198,7 +198,9 @@ estimates in `providerDetails` when available. Provider inventory failures are
 reported; this is not billing/invoice data. Suspension requires idle live threads
 and no open terminals; empty machines can use an opted-in provider idle policy.
 
-`bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`.
+`bb thread context` reads recorded context usage without sending a model request. A breakdown is optional; absent usage is returned as `null`. When the provider reports the session's cumulative cost, `usage.cost` is `{ amount, currency }`.
+
+`bb thread commands [id] [--self] [--json]` lists the slash commands the thread's agent has advertised for its current session (ACP agents report these live; the list is empty until the agent sends one). `bb thread options [id] [--self] [--json]` lists the session options the agent reports, such as a mode, with each option's current value and allowed values. `--set <option=value>` (repeatable) chooses a value that is applied on the thread's next turn; `--clear <option>` drops a choice that has not been applied yet. Use `true` or `false` for an on/off option. To choose before the first message, pass `--option <option=value>` to `bb thread spawn`; `bb provider models <provider>` lists the options a provider's models declare.
 
 `bb machine reconcile <id-or-name> [--json]` asks core to enforce its recorded
 suspended state through the provider and waits for completion. It leaves active

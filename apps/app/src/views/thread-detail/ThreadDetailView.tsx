@@ -793,6 +793,8 @@ function ThreadDetailViewInternal(
     contextBoundarySeq,
     contextWindowUsage,
     goal,
+    providerCommands,
+    sessionOptions,
     hasOlderTimelineRows,
     isCatchingUpTimeline,
     isLoadingOlderTimelineRows,
@@ -2436,6 +2438,8 @@ function ThreadDetailViewInternal(
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      providerCommands={providerCommands}
+      sessionOptions={sessionOptions}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}

@@ -252,8 +252,8 @@ hide the navigation rail's destinations (see Navigation rail below).
   every screen size. Home is at the top and returns to the last thread; the
   visible destinations (Plugins, Skills, and plugin panels) follow; More holds
   hidden destinations and Customize rail; Settings is at the bottom.
-- New thread sits in the sidebar header. The list beside the rail swaps
-  between the thread list, Plugins, Skills, and Settings.
+- New thread sits in the sidebar header and cannot be hidden. The list beside
+  the rail swaps between the thread list, Plugins, Skills, and Settings.
 - Collapsing the sidebar hides the list beside the rail and leaves the rail in
   place.
 - `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show

@@ -229,18 +229,44 @@ describe("bb thread update command output", () => {
     });
   });
 
-  it("bb thread update rejects an invalid reasoning level before calling the API", async () => {
+  it("bb thread update sends a provider-specific reasoning level for the server to check against the model", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-update-5",
+      projectId: "proj-1",
+      providerId: "hermes",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const patch = vi.fn(async () => thread);
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.$patch": patch,
+    });
+
+    await runCommand(
+      ["thread", "update", "thread-update-5", "--reasoning-level", "minimal"],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "thread-update-5" },
+      json: { reasoningLevel: "minimal" },
+    });
+  });
+
+  it("bb thread update rejects an empty reasoning level before calling the API", async () => {
     const patch = vi.fn();
     stubServerApi({ "v1.threads.:id.$patch": patch });
 
     await expect(
       runCommand(
-        ["thread", "update", "thread-update-5", "--reasoning-level", "turbo"],
+        ["thread", "update", "thread-update-5", "--reasoning-level", ""],
         register,
       ),
     ).rejects.toThrow("process.exit:1");
     expect(vi.mocked(console.error)).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid reasoning level 'turbo'"),
+      expect.stringContaining("Invalid reasoning level ''"),
     );
     expect(patch).not.toHaveBeenCalled();
   });

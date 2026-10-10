@@ -29,6 +29,10 @@ import {
   usePluginSidebarFooterDisclosure,
 } from "@/components/plugin/PluginSidebarFooterItems";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import {
+  SidebarNotificationsCard,
+  useSidebarNotificationsPrompt,
+} from "./SidebarNotificationsPrompt";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
@@ -95,6 +99,7 @@ export function AppSidebar({
   );
   const isAppCommandModifierHeld = useIsAppCommandModifierHeld();
   const pluginSidebarFooter = usePluginSidebarFooterDisclosure();
+  const notificationsPrompt = useSidebarNotificationsPrompt();
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -235,7 +240,10 @@ export function AppSidebar({
         )}
         {isFooterCustomizing ||
         pluginSidebarFooter.activeItem !== null ? null : (
-          <PluginSidebarFooterSections onNavigate={closeOnMobile} />
+          <>
+            <SidebarNotificationsCard prompt={notificationsPrompt} />
+            <PluginSidebarFooterSections onNavigate={closeOnMobile} />
+          </>
         )}
         <SidebarMenu
           className={cn(

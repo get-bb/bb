@@ -121,6 +121,8 @@ function makeTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    providerCommands: null,
+    sessionOptions: null,
     modelFallback: null,
     maxSeq,
     timelinePage: {

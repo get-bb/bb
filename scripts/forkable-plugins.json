@@ -23,6 +23,7 @@
     "plugins/plugin-api-tester",
     "plugins/prompt-library",
     "plugins/provider-acp",
+    "plugins/provider-acp-next",
     "plugins/provider-claude-code",
     "plugins/provider-codex",
     "plugins/provider-pi",

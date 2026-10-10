@@ -25,7 +25,7 @@ Spawning:
     --lifecycle-owner-thread <id>  Archive/delete with this owner
     --provider <id>                Provider override
     --model <model>                Model override
-    --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
+    --reasoning-level <level>      Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a fresh personal workspace or managed worktree
     --base-branch <branch>         Exact Git ref for a new managed worktree
@@ -47,6 +47,9 @@ Spawning:
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier id the provider lists for the model, such as
                                    default or fast (see `bb provider models`)
+    --option <option=value>        Choose a value for an option the provider's model lists, applied
+                                   before the first message; true or false for an on/off option
+                                   (repeatable; see `bb provider models`)
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
@@ -199,6 +202,10 @@ Sections:
 Inspecting:
 
   bb thread context [id]                   Show recorded context usage and available breakdown (--self, --json)
+  bb thread commands [id]                  List the slash commands the thread's agent has advertised (--self, --json)
+  bb thread options [id]                   List the session options the agent reports, with current values (--self, --json)
+    --set <option=value>                   Choose a value, applied on the thread's next turn (repeatable)
+    --clear <option>                       Drop a choice that has not been applied yet (repeatable)
   bb thread show [id]                      Show thread details and pull request status
     --self                                 Target current thread
     --work-status                          Include git working-tree status

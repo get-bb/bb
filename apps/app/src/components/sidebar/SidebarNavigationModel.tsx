@@ -170,7 +170,7 @@ export function SidebarNavigationModelProvider({
             : row.action.kind === "search-threads"
               ? searchThreadsDisabled
               : false,
-        isVisible: visibleSet.has(key),
+        isVisible: row.action.kind === "new-thread" || visibleSet.has(key),
         shortcut:
           row.action.kind === "new-thread" && newThreadShortcut
             ? {

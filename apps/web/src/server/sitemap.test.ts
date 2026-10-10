@@ -28,6 +28,8 @@ describe("sitemapXml", () => {
       "/privacy",
       "/compare/a-b",
       "/marketplace",
+      "/marketplace?category=thread-content",
+      "/marketplace?category=code-and-reviews",
       "/blog/an-agentic-ide",
       "/marketplace/prompt-library",
       "/marketplace/review-companion",
@@ -43,6 +45,7 @@ describe("sitemapXml", () => {
         /<loc>https:\/\/getbb\.app\/marketplace\/author\/get-bb<\/loc>/gu,
       ),
     ).toHaveLength(1);
+    expect(xml).not.toContain("category=future-tools");
     expect(xml).not.toContain("/dashboard");
     expect(xml).not.toContain("/marketplace/v2/");
   });

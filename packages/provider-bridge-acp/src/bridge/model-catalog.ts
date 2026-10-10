@@ -1,4 +1,4 @@
-import { reasoningLevelValues } from "@bb/domain";
+import { compareReasoningLevels } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
@@ -177,10 +177,8 @@ export function buildAcpNativeReasoningSupport(
       description: option.name ?? option.value,
     });
   }
-  supportedReasoningEfforts.sort(
-    (a, b) =>
-      reasoningLevelValues.indexOf(a.reasoningEffort) -
-      reasoningLevelValues.indexOf(b.reasoningEffort),
+  supportedReasoningEfforts.sort((a, b) =>
+    compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
   );
   if (supportedReasoningEfforts.length === 0) {
     return {
@@ -408,8 +406,7 @@ export function buildAgentModelCatalog(
     const defaultVariant = defaultEntry.member;
 
     const levelsInLadderOrder = [...byLevel.keys()].sort(
-      (a, b) =>
-        reasoningLevelValues.indexOf(a) - reasoningLevelValues.indexOf(b),
+      compareReasoningLevels,
     );
     const nameByLevel = new Map<ReasoningLevel, string>();
     for (const { member, level } of leveled) {

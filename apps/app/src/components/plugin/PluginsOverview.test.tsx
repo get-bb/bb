@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   MemoryRouter,
@@ -202,6 +203,50 @@ afterEach(() => {
 });
 
 describe("PluginsOverview", () => {
+  it("explains a failed plugin even when search hides its card and opens its recovery details", async () => {
+    installFetch([
+      {
+        ...AUTOMATIONS_PLUGIN,
+        status: "incompatible",
+        statusDetail:
+          "Incompatible plugin at /Users/example/plugins/automations.",
+      },
+    ]);
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/plugins?view=installed"]}>
+        <PluginsOverview />
+        <LocationPath />
+      </MemoryRouter>,
+      { wrapper },
+    );
+    const banner = await screen.findByRole("region", {
+      name: "1 plugin isn’t running",
+    });
+    expect(
+      within(banner).getByText("This version is incompatible with bb."),
+    ).toBeTruthy();
+
+    expect(banner.textContent).not.toContain(
+      "/Users/example/plugins/automations",
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search installed plugins" }),
+      { target: { value: "nomatch" } },
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("plugin-row-automations")).toBeNull(),
+    );
+    fireEvent.click(
+      within(banner).getByRole("button", {
+        name: "View details for Automations",
+      }),
+    );
+    expect(screen.getByTestId("location-path").textContent).toContain(
+      "automations",
+    );
+  });
+
   it("checks updates on entering Installed, without rechecking on filters or focus", async () => {
     installFetch();
     const requestCount = (path: string) =>

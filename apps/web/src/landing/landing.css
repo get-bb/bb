@@ -570,6 +570,31 @@ body {
   color: var(--ink);
 }
 
+.install-choice .install-send,
+.install-choice .install-note-touch {
+  display: none;
+}
+
+.install-send {
+  position: relative;
+  font-family: var(--font-sans);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .install-choice .install-download,
+  .install-choice .install-note-desktop {
+    display: none;
+  }
+
+  .install-choice .install-send {
+    display: inline-flex;
+  }
+
+  .install-choice .install-note-touch {
+    display: inline;
+  }
+}
+
 /* ── Hero ───────────────────────────────────────────────────────── */
 
 .hero {
@@ -3050,7 +3075,14 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .footer-brand .footer-legal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 10px;
+}
+
+.footer-brand .footer-legal a {
+  white-space: nowrap;
 }
 
 .footer-title {

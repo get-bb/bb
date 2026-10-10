@@ -15,6 +15,7 @@ import {
   listLifecycleThreadTree,
   listPluginThreadMetadata,
   listThreadAncestors,
+  listThreadDescendants,
   searchThreadsWithPendingInteractionState,
   updateThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
@@ -33,6 +34,7 @@ import {
   type ThreadCountResponse,
   type PluginThreadMetadataListResponse,
   type ThreadAncestorsListResponse,
+  type ThreadDescendantsListResponse,
   type ThreadRunningResponse,
   type ThreadSearchResponse,
   type ThreadWithIncludesResponse,
@@ -65,6 +67,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { applyThreadSessionOptionPatch } from "../../services/threads/thread-session-options.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -264,6 +267,15 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     } satisfies ThreadAncestorsListResponse);
   });
 
+  post(routes.descendants, (context, payload) => {
+    return context.json({
+      threads: listThreadDescendants(deps.db, payload.threadIds, {
+        includeArchived: payload.includeArchived ?? false,
+        includeHidden: payload.includeHidden ?? false,
+      }),
+    } satisfies ThreadDescendantsListResponse);
+  });
+
   post(routes.pluginMetadata.list, (context, payload) => {
     const { threads, corruptThreadIds } = listPluginThreadMetadata(
       deps.db,
@@ -431,6 +443,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             ? { reasoningLevel: payload.reasoningLevel }
             : {}),
         },
+      });
+    }
+
+    if (payload.sessionOptions !== undefined) {
+      applyThreadSessionOptionPatch(deps, {
+        thread,
+        patch: payload.sessionOptions,
       });
     }
 

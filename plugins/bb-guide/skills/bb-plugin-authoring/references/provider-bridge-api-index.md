@@ -420,3 +420,25 @@ Context breakdowns are optional snapshots on `contextWindow` deltas:
 - `AcpToolCallUpdateEvent`
 - `AcpToolIdentity`
 - `AcpToolKind`
+
+## `@get-bb/plugin-sdk/provider-bridge/acp-next`
+
+- `experimental_acpAgentProbeSchema`
+- `experimental_acpLaunchSpecSchema`
+- `experimental_acpProviderBridge`
+- `experimental_probeAcpAgent`
+- `experimental_registerAcpDialect`
+- `AcpAgentModelCatalog`
+- `AcpAgentProbe`
+- `AcpAgentProbeRequest`
+- `AcpAgentProfile`
+- `AcpClassifiedToolCall`
+- `AcpClientRequestOutcome`
+- `AcpDelegationReport`
+- `AcpDialect`
+- `AcpLaunchSpec`
+- `AcpToolCallContent`
+- `AcpToolCallStatus`
+- `AcpToolCallUpdateEvent`
+- `AcpToolIdentity`
+- `AcpToolKind`

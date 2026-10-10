@@ -531,6 +531,8 @@ export class DemoWorld {
       activeBackgroundCommands: [],
       pendingTodos: null,
       goal: null,
+      providerCommands: null,
+      sessionOptions: null,
       modelFallback: null,
       contextWindowUsage: {
         estimated: false,

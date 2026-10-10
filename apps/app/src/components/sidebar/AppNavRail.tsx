@@ -417,7 +417,7 @@ export function NavRailNewThreadButton() {
   const item = items.find(
     (candidate) => candidate.action.kind === "new-thread",
   );
-  if (item === undefined || !item.isVisible) return null;
+  if (item === undefined) return null;
   const shortcut = isShortcutModifierHeld ? item.shortcut : null;
 
   return (

@@ -220,6 +220,8 @@ works with the What's new plugin (`bb--whats-new`) turned off.
 - `bb thread stop`
 - `bb thread compact`
 - `bb thread context`
+- `bb thread commands`
+- `bb thread options`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`

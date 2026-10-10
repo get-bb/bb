@@ -6,7 +6,7 @@ import type { Guide, GuideMeta, GuideShot } from "../guide-types";
 import { AGENTS_FAQ, COST_FAQ } from "./faq";
 
 const CLAUDE_HANDOFF_SHOT: GuideShot = {
-  src: "/guides/switch-to-bb/window-handoff.png",
+  src: "/guides/switch-to-bb/window-handoff.webp",
   alt: "A bb thread where the agent found the latest Claude Code conversation for the folder and wrote a handoff: finish the 5 MB upload limit, with the goal, what's done, decisions, and the tests left, then asks for an OK to continue",
   width: 2048,
   height: 1280,
@@ -61,7 +61,7 @@ export const SWITCH_TOOLS = {
     setupStep: GENERIC_SETUP_STEP,
 
     handoffShot: askingHandoffShot(
-      "window-handoff-codex.png",
+      "window-handoff-codex.webp",
       "the latest prior conversation",
     ),
   },
@@ -98,7 +98,7 @@ export const SWITCH_TOOLS = {
     ),
 
     handoffShot: askingHandoffShot(
-      "window-handoff-cursor.png",
+      "window-handoff-cursor.webp",
       "the latest Cursor conversation",
     ),
   },
@@ -136,7 +136,7 @@ export const SWITCH_TOOLS = {
     ),
 
     handoffShot: askingHandoffShot(
-      "window-handoff-t3-code.png",
+      "window-handoff-t3-code.webp",
       "the latest OpenCode conversation",
     ),
   },
@@ -200,7 +200,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
           </Substeps>
         ),
         shot: {
-          src: "/guides/switch-to-bb/window-projects.png",
+          src: "/guides/switch-to-bb/window-projects.webp",
           alt: "bb's Settings → Projects page listing the acme-web project, with an Add a project button",
           width: 2048,
           height: 1280,
@@ -218,7 +218,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
           </p>
         ),
         shot: {
-          src: "/guides/switch-to-bb/window-existing-worktree.png",
+          src: "/guides/switch-to-bb/window-existing-worktree.webp",
           alt: "A new bb thread on acme-web with Worktree picked and the branch menu open on Existing worktree, listing a lisbon workspace on the fix/upload-size-limit branch",
           width: 2048,
           height: 1280,

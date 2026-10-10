@@ -8,6 +8,7 @@ import { threadScope, turnScope } from "@bb/domain";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
 import { beginProjectDeletion } from "../../../src/services/projects/project-deletion.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
+import { archiveThreadAndReleaseChildren } from "../../../src/services/threads/thread-ownership.js";
 import type { ThreadCreateServiceRequest } from "../../../src/services/threads/thread-create-request.js";
 import {
   seedEvent,
@@ -523,6 +524,66 @@ describe("plugin thread lifecycle events", () => {
     } finally {
       delete globals.__cascadeEvents;
       delete globals.__cascadeProjectIds;
+      await cleanup();
+    }
+  });
+
+  it("delivers a parent change for a moved thread and each child released by an archive", async () => {
+    const recorded: Array<{
+      threadId: string;
+      parentThreadId: string | null;
+      previousParentThreadId: string | null;
+    }> = [];
+    globals.__parentChangedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }: any) => {
+          (globalThis as any).__parentChangedEvents.push({
+            threadId: thread.id,
+            parentThreadId: thread.parentThreadId,
+            previousParentThreadId,
+          });
+        });
+      }
+    `);
+    try {
+      const { project, thread: parent } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      const child = seedThread(harness.deps, { projectId: project.id });
+      const sibling = seedThread(harness.deps, {
+        projectId: project.id,
+        parentThreadId: parent.id,
+      });
+      const move = (body: unknown) =>
+        harness.app.request(`/api/v1/threads/${child.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      expect((await move({ parentThreadId: parent.id })).status).toBe(200);
+      expect((await move({ parentThreadId: parent.id })).status).toBe(200);
+      expect((await move({ title: "Renamed" })).status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      archiveThreadAndReleaseChildren(harness.deps, { threadId: parent.id });
+      await vi.waitFor(() => expect(recorded).toHaveLength(3));
+      expect(recorded[0]).toEqual({
+        threadId: child.id,
+        parentThreadId: parent.id,
+        previousParentThreadId: null,
+      });
+      expect(recorded.slice(1)).toEqual(
+        expect.arrayContaining(
+          [child.id, sibling.id].map((threadId) => ({
+            threadId,
+            parentThreadId: null,
+            previousParentThreadId: parent.id,
+          })),
+        ),
+      );
+    } finally {
+      delete globals.__parentChangedEvents;
       await cleanup();
     }
   });

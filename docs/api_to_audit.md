@@ -59,7 +59,7 @@ composer contributions, and whether commands need an availability callback.
 
 ## `settingsSection.experimental_page`
 
-`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. `experimental_page: "updates"` (SDK 0.6.39) mounts it on Settings → Updates below bb's update rows for every enabled plugin, in plugin id order, with the same boundaries; the What's new plugin (`bb--whats-new`) uses it for the release-notes block that the sidebar card links to at `/settings/updates#whats-new`. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile, plus ordering and visual weight on Updates when several plugins add a section, and whether Updates sections need a host-rendered heading or an anchor convention instead of plugin-owned element ids.
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. `experimental_page: "updates"` (SDK 0.6.42) mounts it on Settings → Updates below bb's update rows for every enabled plugin, in plugin id order, with the same boundaries; the What's new plugin (`bb--whats-new`) uses it for the release-notes block that the sidebar card links to at `/settings/updates#whats-new`. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile, plus ordering and visual weight on Updates when several plugins add a section, and whether Updates sections need a host-rendered heading or an anchor convention instead of plugin-owned element ids.
 
 ## `app.commands.register`
 
@@ -962,6 +962,46 @@ is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
 
+## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
+
+**Experimental preview (2026-10-09).** The rebuilt ACP bridge, published
+beside the original kit so the two can be compared before one replaces the
+other. The built-in "ACP providers (new adapter)" plugin
+(`plugins/provider-acp-next`, off by default) is its consumer: its `bb.host`
+artifact re-exports `experimental_acpProviderBridge` from this subpath the way
+the original plugin re-exports it from `provider-bridge/acp`. Turning that
+plugin on turns the original ACP plugin off, and the reverse.
+
+**What it does.** The same members as the original kit
+(`experimental_acpProviderBridge`, `experimental_probeAcpAgent`,
+`experimental_acpAgentProbeSchema`, `experimental_acpLaunchSpecSchema` and
+their types), backed by `packages/provider-bridge-acp-next`: transport on the
+official `@agentclientprotocol/sdk`, a session model that opens turns for
+agent-started work, live slash commands and session options published as bb
+thread state, elicitation forms as question cards, and sign-in guidance from
+the agent's advertised auth methods.
+
+**`experimental_registerAcpDialect`.** New in this kit by owner decision, so a
+third-party plugin can describe an agent bb does not ship. A plugin calls it
+at module load in its `bb.host` artifact with an `AcpDialect` (`id` plus the
+optional hooks `toolIdentity`, `classifyToolCall`, `commandResult`,
+`normalizeCommandEvent`, `clientRequestMethods` with `handleClientRequest`,
+and `maintenance`) and names the id as `acpDialect` in its registration. It
+throws for an empty id and for a built-in id (`acp`, `cursor`, `grok`, `omp`,
+`opencode`); a second registration of the same id replaces the first; an id
+nothing registered resolves to the generic dialect. Core uses the same path:
+the bridge resolves every dialect, shipped or registered, through the one
+registry (`packages/provider-bridge-acp-next/src/dialect.ts`,
+`resolveAcpDialect`), and the built-in plugin names its dialects by id the way
+a third-party plugin does.
+
+**Audit before stabilizing.** Decide when this kit replaces the original: the
+subpath should then be removed and its members move to `provider-bridge/acp`,
+so no plugin is left importing a name that says "next". The open questions
+on the original kit apply here unchanged (what `probeAcpAgent` owes a caller,
+hook versioning for `AcpDialect`, naming a dialect by value, a bridge factory
+instead of a module-level registry).
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -1205,10 +1245,41 @@ under a new parent or released when its parent is archived.
 **Audit before stabilizing.**
 
 1. **Shape.** Decide whether callers also need each ancestor's thread
-   (title, status) rather than only ids, and whether descendants belong in
-   the same API.
+   (title, status) rather than only ids, and whether it should merge with
+   `experimental_listDescendants` into one tree read.
 2. **Batch size.** 200 ids per request; callers chunk, like
    `experimental_listPluginMetadata`.
+
+## `bb.sdk.threads.experimental_listDescendants`
+
+**What it does.** `POST /threads/descendants` with `{ threadIds,
+includeArchived?, includeHidden? }` (1–200 ids) returns `{ threads: {
+threadId, descendantIds }[] }`: each requested thread that exists and is not
+deleted, once, with the ids of every thread below it in breadth-first order,
+children first (empty for a leaf). Archived and hidden descendants are
+omitted unless their flag is true, matching `threads.count`; the walk still
+passes through them, so a visible thread under an archived one is returned.
+Deleted threads, anything only reachable through one, and unknown ids are
+always omitted. One recursive query follows `parent_thread_id` through
+`threads_parent_idx`, so the cost is one indexed lookup per thread in the
+subtree, archived ones included. Available unchanged on the core SDK and the
+plugin-bound SDKs. First caller: push-notifications, which publishes the
+levels of a thread and its unarchived, visible descendants when the thread's
+level or parent changes, because a parent's level limits its whole subtree,
+and republishes a thread's subtree on `thread.unarchived`.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers need the tree's edges (each
+   descendant's parent) or thread fields rather than a flat id list, and
+   whether it should merge with `experimental_listAncestors`.
+2. **Size.** A subtree of live threads has no cap, and the query walks
+   archived threads even when it omits them. Decide whether to page.
+3. **Omitted threads.** Unlike `experimental_listAncestors`, deleted threads
+   are always omitted and archived and hidden ones by default. Confirm that
+   callers never need deleted ones. No event announces a hidden thread
+   becoming visible, so a caller that skips hidden threads cannot refresh
+   one when it appears; decide whether visibility changes need an event.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
@@ -2411,7 +2482,8 @@ counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
 with @-mentions and expand, `+` attachments, provider/model/reasoning picker,
 voice, submit, and the row beneath with project, environment, "Branch from:",
 and permission mode — and calls `onSubmit` with a `NewThreadRequest`
-carrying every resolved selection.
+carrying every resolved selection, including `sessionOptions` when the user
+changed an agent option the provider declares.
 
 The composer deliberately does **not** create the thread. The plugin does,
 through `bb.sdk.threads.spawn`, which auto-fills `origin: "plugin"` and
@@ -2525,7 +2597,7 @@ sibling overlays remain mounted.
 
 ## `app.slots.experimental_sidebarFooterSection` (`@get-bb/plugin-sdk/app`)
 
-**What it does.** SDK 0.6.39. Renders a plugin component in the app sidebar
+**What it does.** SDK 0.6.42. Renders a plugin component in the app sidebar
 directly above the footer row, inside `PluginSlotMount`, with
 `{ isCompactViewport, onNavigate }`. Registration is `{ id, component }`.
 Registrations are additive and render in plugin id order. The host hides the
@@ -3120,8 +3192,13 @@ id-keyed cache of levels, fetches the `threadIds` it has not loaded in
 `threadNotifications.list` batches of up to 200 (built on
 `threads.experimental_listAncestors` and
 `threads.experimental_listPluginMetadata`, so a parent's limit is read from
-the current tree), applies its `threadNotifications` realtime channel, and
-refetches after a reconnect; `item` resolves the level
+the current tree), and refetches the ones on screen after a reconnect. When a
+thread's level or parent changes (its `threadNotifications.set` RPC, or
+`experimental_thread.parentChanged`), the plugin server resolves that thread
+and its unarchived, visible descendants
+(`threads.experimental_listDescendants`) and publishes their levels on the
+`threadNotifications` realtime channel, and does the same for a thread on
+`thread.unarchived`; clients apply the rows they hold without a request. `item` resolves the level
 with the plugin's shared resolver, shows it as `detail` with a per-level icon
 (declared `push-notifications/ringing` and `push-notifications/off`, built-in
 `BellDot`), and `choices` sets it. The
@@ -3686,6 +3763,24 @@ After callback invocation, core completes pause and resumes for queued work. Rec
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
 
+## Thread parent-change notifications
+
+`PluginEvents.on("experimental_thread.parentChanged", handler)` delivers
+`{thread, previousParentThreadId}` after a thread's `parentThreadId` changes:
+a `threads.update` that moves or releases it (from the shared ownership seam,
+which also writes the ownership timeline entry and parent system messages), or
+core releasing an archived thread's unarchived children (one event per
+released child, after the archive transaction commits). An update that keeps
+the same parent delivers nothing. `thread` is the public DTO with the new
+parent. Threads below the moved one move with it and get no event; callers
+read them with `bb.sdk.threads.experimental_listDescendants`. Delivery is
+fire-and-forget like every other event, so a plugin that was not loaded never
+sees the move. Push-notifications uses it to publish the moved subtree's
+levels to open menus; before it, the only signal was the ownership timeline
+entry behind `experimental_thread.events`, which forced the plugin to remember
+each thread's last parent. Stabilization requires deciding whether a general
+`thread.updated` event should replace it, and a second consumer.
+
 ## Host deletion notifications
 
 `PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
@@ -4018,6 +4113,10 @@ Stabilize after verifying group archive and Undo with descendants, already archi
 Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
 
 Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.
+
+## `PluginBbSdk.system.experimental_recordTelemetryEvent`
+
+`system.experimental_recordTelemetryEvent(event)` posts one anonymous product event to `POST /api/v1/system/telemetry/events`, which forwards it to the server's usage telemetry under the install's anonymous id and drops it when usage data sharing is off. The request schema is a strict allow-list of setup-guide and notification-card events with fixed enum or boolean properties; anything else is rejected with 400. Core callers, all through `recordTelemetryEvent` in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide (`OnboardingFlow`) and the sidebar notification card (`SidebarNotificationsPrompt` and `apps/app/src/hooks/useNotificationPermission.ts`). Stabilize after deciding whether third-party plugins may emit product events at all (and, if so, how events are namespaced per plugin and rate limited), then rename project-wide and remove this entry.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`
 

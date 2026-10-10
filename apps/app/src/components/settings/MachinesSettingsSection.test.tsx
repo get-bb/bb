@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
@@ -201,6 +202,63 @@ afterEach(() => {
 });
 
 describe("MachinesSettingsSection", () => {
+  it("explains offline machines and removes the warning after reconnection", async () => {
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, offlineHost]);
+    stubSidebarBootstrapFetch();
+    const { queryClient } = renderSectionWithClient();
+    const banner = await screen.findByRole("region", {
+      name: "dev-vm is offline",
+    });
+    expect(within(banner).getByText("dev-vm is offline")).toBeTruthy();
+    expect(within(banner).queryByRole("button")).toBeNull();
+    vi.mocked(sdk.hosts.list).mockResolvedValue([
+      primaryHost,
+      { ...offlineHost, status: "connected" },
+    ]);
+    await queryClient.invalidateQueries();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "dev-vm is offline" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("shows the cleanup error in the warning and keeps recovery in the machine menu", async () => {
+    const failedHost = {
+      ...offlineHost,
+      lifecycle: {
+        ...offlineHost.lifecycle,
+        phase: "removing" as const,
+        message: "Provider credentials expired.",
+        teardown: { status: "failed" as const, attempt: 3 },
+      },
+    };
+    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, failedHost]);
+    vi.mocked(sdk.hosts.experimental_retryCleanup).mockResolvedValue({
+      ok: true,
+    });
+    stubSidebarBootstrapFetch();
+    renderSection();
+    const banner = await screen.findByRole("region", {
+      name: "Machines need attention",
+    });
+    expect(
+      within(banner).getByText("Provider credentials expired."),
+    ).toBeTruthy();
+    expect(within(banner).queryByRole("button")).toBeNull();
+    await openHostMenu(failedHost.name);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Retry cleanup" }),
+    );
+    await waitFor(() =>
+      expect(sdk.hosts.experimental_retryCleanup).toHaveBeenCalledWith({
+        hostId: "host_remote",
+      }),
+    );
+  });
+
   it("reveals sandboxes in the machine list behind Show all machines", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([primaryHost, sandboxHost]);

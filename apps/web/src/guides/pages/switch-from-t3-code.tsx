@@ -1,11 +1,5 @@
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import { SWITCH_TOOLS, switchGuide } from "../shared/switch";
-
-export const meta: GuideMeta = {
-  slug: "switch-from-t3-code",
-  title: "Switch from T3 Code to bb",
-  nav: null,
-  canonical: null,
-};
+import { meta } from "./switch-from-t3-code.meta";
 
 export const guide: Guide = switchGuide(meta, SWITCH_TOOLS["t3-code"]);

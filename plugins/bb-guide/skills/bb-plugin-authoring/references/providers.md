@@ -290,6 +290,13 @@ catalog, tool, and dialect contracts. It supports the `generic`, `cursor`, and
 `grok` dialects. Read `provider-bridge-api-index.md` for the complete export
 list.
 
+`@get-bb/plugin-sdk/provider-bridge/acp-next` is a preview of the rebuilt ACP
+bridge with the same exports plus `experimental_registerAcpDialect({ id,
+...hooks })`. Call it at module load in the host artifact and name that id as
+`acpDialect` to read an agent's own side channels; a built-in id (`acp`,
+`cursor`, `grok`, `omp`, `opencode`) cannot be replaced. The subpath will be
+folded into `provider-bridge/acp` when the rebuilt bridge becomes the default.
+
 **Conformance.** Ship a test that drives the published kit,
 `@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge
 in-process: export the bridge surface, wire `experimental_runBridgeConformance`

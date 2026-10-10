@@ -6,7 +6,7 @@
   "description": "Notifications for threads that need attention on mobile, web, and desktop",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.36"
+    "bbPluginSdk": ">=0.6.39"
   },
   "bb": {
     "name": "Push notifications",

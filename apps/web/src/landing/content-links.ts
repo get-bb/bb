@@ -12,27 +12,21 @@ export interface ContentGroup {
   links: ContentLink[];
 }
 
-interface MetaModule<T> {
-  meta?: T;
-}
+const GUIDE_MODULES = import.meta.glob<GuideMeta>("../guides/pages/*.meta.ts", {
+  eager: true,
+  import: "meta",
+});
+const COMPARE_MODULES = import.meta.glob<CompareMeta>(
+  "../compare/pages/*.meta.ts",
+  { eager: true, import: "meta" },
+);
+const LANDING_MODULES = import.meta.glob<LandingMeta>("./pages/*.meta.ts", {
+  eager: true,
+  import: "meta",
+});
 
-const GUIDE_MODULES = import.meta.glob<MetaModule<GuideMeta>>(
-  "../guides/pages/*.tsx",
-  { eager: true },
-);
-const COMPARE_MODULES = import.meta.glob<MetaModule<CompareMeta>>(
-  "../compare/pages/*.tsx",
-  { eager: true },
-);
-const LANDING_MODULES = import.meta.glob<MetaModule<LandingMeta>>(
-  "./pages/*.tsx",
-  { eager: true },
-);
-
-function metas<T>(modules: Record<string, MetaModule<T>>): T[] {
-  return Object.values(modules).flatMap((module) =>
-    module.meta ? [module.meta] : [],
-  );
+function metas<T>(modules: Record<string, T>): T[] {
+  return Object.values(modules);
 }
 
 function once<T>(build: () => T): () => T {

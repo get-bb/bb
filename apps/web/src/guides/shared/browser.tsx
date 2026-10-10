@@ -67,7 +67,7 @@ export const PLUGINS_STEP: GuideStep = {
     </Substeps>
   ),
   shot: {
-    src: "/guides/agent-browser/window-plugins-sidebar.png",
+    src: "/guides/agent-browser/window-plugins-sidebar.webp",
     alt: "bb's Plugins page with Browse plugins selected in the sidebar, a search for browser, and Browser Automation open with an Install button",
     width: 2048,
     height: 1280,
@@ -95,7 +95,7 @@ export const SIGN_INS_STEP: GuideStep = {
     </Substeps>
   ),
   shot: {
-    src: "/guides/agent-browser/window-sign-ins.png",
+    src: "/guides/agent-browser/window-sign-ins.webp",
     alt: "bb's Browser settings listing Google Chrome (running, quit to import), Chromium with an Import button, and Safari needing Full Disk Access",
     width: 2048,
     height: 1280,

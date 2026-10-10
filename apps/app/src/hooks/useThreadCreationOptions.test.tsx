@@ -217,6 +217,30 @@ function providerExecutionOptionsResponse(
   };
 }
 
+function daybreakExecutionOptionsResponse(
+  providerId: string | undefined,
+): SystemExecutionOptionsResponse {
+  const response = providerExecutionOptionsResponse(providerId);
+  if (providerId === PROJECT_PROVIDER_ID) {
+    return response;
+  }
+  return {
+    ...response,
+    models: response.models.map((model) => ({
+      ...model,
+      sessionOptions: [
+        {
+          type: "boolean",
+          id: "daybreak",
+          label: "Daybreak",
+          value: false,
+          fixed: model.isDefault,
+        },
+      ],
+    })),
+  };
+}
+
 function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
     providers: [
@@ -603,6 +627,96 @@ describe("useThreadCreationOptions", () => {
       expect(reloaded.result.current.selectedModel).toBe("global-remembered");
       expect(reloaded.result.current.reasoningLevel).toBe("medium");
     });
+  });
+
+  it("remembers agent options per provider and moves off a model they rule out", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      daybreakExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, unmount } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(
+        result.current.declaredSessionOptions.map((option) => option.id),
+      ).toEqual(["daybreak"]);
+    });
+    expect(result.current.sessionOptionSelections).toEqual({});
+    expect(result.current.executionInputSources.model).toBeUndefined();
+
+    act(() => {
+      result.current.setSessionOption("daybreak", true);
+    });
+    await waitFor(() => {
+      expect(result.current.sessionOptionSelections).toEqual({
+        daybreak: true,
+      });
+      expect(result.current.selectedModel).toBe("global-remembered");
+    });
+    expect(result.current.executionInputSources.model).toBe("explicit");
+    expect(
+      result.current.modelOptions.map((option) => option.disabled === true),
+    ).toEqual([true, false]);
+
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.declaredSessionOptions).toEqual([]);
+      expect(result.current.sessionOptionSelections).toEqual({});
+    });
+
+    unmount();
+    const reloaded = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    act(() => {
+      reloaded.result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(reloaded.result.current.sessionOptionSelections).toEqual({
+        daybreak: true,
+      });
+      expect(reloaded.result.current.selectedModel).toBe("global-remembered");
+    });
+  });
+
+  it("uses the thread's own option values in a component-local composer instead of remembered ones", async () => {
+    window.localStorage.setItem(
+      `bb.promptbox.session-options-${GLOBAL_PROVIDER_ID}-1`,
+      JSON.stringify({ daybreak: true }),
+    );
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      daybreakExecutionOptionsResponse(args?.providerId),
+    );
+    const threadSelections = { daybreak: false };
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          sessionOptionSelections: threadSelections,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(result.current.sessionOptionSelections).toEqual({
+        daybreak: false,
+      });
+    });
+    expect(
+      result.current.modelOptions.map((option) => option.disabled === true),
+    ).toEqual([false, false]);
   });
 
   it("refreshes untouched Fast defaults but preserves an unsent choice until thread reset", async () => {

@@ -3,21 +3,21 @@ import type { GuideFaq, GuideShot } from "../guide-types";
 import { AGENTS_FAQ, COST_FAQ, SLEEP_TROUBLESHOOTING } from "./faq";
 
 export const NESTED_SHOT: GuideShot = {
-  src: "/guides/claude-code-and-codex-together/window-nested.png",
+  src: "/guides/claude-code-and-codex-together/window-nested.webp",
   alt: "bb with the Claude Code thread Rate limit uploads open. Its tests pass, it commits, the Codex review finishes, and it reports what Codex found. In the sidebar, the Codex thread Review upload rate limiting is nested under it.",
   width: 2048,
   height: 1280,
 };
 
 export const SPLIT_SHOT: GuideShot = {
-  src: "/guides/claude-code-and-codex-together/window-split-oneround.png",
+  src: "/guides/claude-code-and-codex-together/window-split-oneround.webp",
   alt: "bb in split view: on the left, the Claude Code thread sums up what it built, what Codex's single review found, and what it fixed; on the right, the Codex reviewer's child thread lists one serious and two minor issues.",
   width: 2048,
   height: 1280,
 };
 
 export const TALK_SHOT: GuideShot = {
-  src: "/guides/claude-code-and-codex-together/window-talk.png",
+  src: "/guides/claude-code-and-codex-together/window-talk.webp",
   alt: "The Claude Code thread after it asked Codex whether a memory leak needed fixing before merge. It relays Codex's answer: a real leak, but fine as a follow-up, with how to fix it later.",
   width: 2048,
   height: 1280,

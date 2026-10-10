@@ -41,6 +41,7 @@ import {
   marketplaceAuthorPath,
   marketplaceCategoryOptions,
   marketplaceDetailPath,
+  marketplaceIndexPath,
   marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
@@ -360,7 +361,7 @@ function Shelf({
     ? `#${shelf.id}`
     : notable
       ? "/marketplace?sort=recently-added"
-      : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
+      : marketplaceIndexPath(shelf.id);
   return (
     <section
       id={builtIn ? shelf.id : undefined}
@@ -707,6 +708,16 @@ function MarketplaceBrowser({
     state.sort === undefined
       ? filtered
       : sortMarketplaceEntries(filtered, state.sort, stats);
+  const activeOption = options.find((option) => option.id === activeCategory);
+  const categoryHeading =
+    activeOption === undefined || query.trim().length > 0
+      ? undefined
+      : {
+          label: activeOption.label,
+          description: manifest.categories.find(
+            (category) => category.id === activeOption.id,
+          )?.description,
+        };
   const isFlat =
     query.trim().length > 0 ||
     activeCategory !== undefined ||
@@ -729,17 +740,36 @@ function MarketplaceBrowser({
           />
         ) : isFlat ? (
           <section className="marketplace-flat-results">
-            <div className="marketplace-section-head">
-              <div>
-                <h2>
-                  {query.trim().length > 0
-                    ? "Search results"
-                    : state.sort === undefined
-                      ? "Filtered plugins"
-                      : SORT_LABELS[state.sort]}
-                </h2>
-                <span>{displayed.length} plugins</span>
-              </div>
+            <div
+              className={
+                categoryHeading === undefined
+                  ? "marketplace-section-head"
+                  : "marketplace-section-head is-category"
+              }
+            >
+              {categoryHeading === undefined ? (
+                <div>
+                  <h2>
+                    {query.trim().length > 0
+                      ? "Search results"
+                      : state.sort === undefined
+                        ? "Filtered plugins"
+                        : SORT_LABELS[state.sort]}
+                  </h2>
+                  <span>{displayed.length} plugins</span>
+                </div>
+              ) : (
+                <div>
+                  <h2>
+                    {categoryHeading.label}
+                    {"\u00a0"}
+                    <span>{displayed.length}</span>
+                  </h2>
+                  {categoryHeading.description === undefined ? null : (
+                    <p>{categoryHeading.description}</p>
+                  )}
+                </div>
+              )}
             </div>
             <PluginGrid
               manifest={manifest}
@@ -869,9 +899,7 @@ function MoreInCategory({
             <p>{category.description}</p>
           )}
         </div>
-        <MarketplaceLink
-          href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-        >
+        <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
           View all
         </MarketplaceLink>
       </div>
@@ -925,9 +953,7 @@ export function PublicMarketplaceDetailPage({
         <nav className="marketplace-breadcrumbs" aria-label="Breadcrumb">
           <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
           <span aria-hidden>/</span>
-          <MarketplaceLink
-            href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
-          >
+          <MarketplaceLink href={marketplaceIndexPath(categoryId)}>
             {category}
           </MarketplaceLink>
           <span aria-hidden>/</span>
@@ -960,7 +986,7 @@ export function PublicMarketplaceDetailPage({
               )}
               <MarketplaceLink
                 className="marketplace-detail-category"
-                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+                href={marketplaceIndexPath(categoryId)}
               >
                 {category}
               </MarketplaceLink>

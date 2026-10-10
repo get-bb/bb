@@ -1,8 +1,9 @@
 import { ScheduleConcept } from "../concepts";
 import { Substeps, Ui } from "../guide-blocks";
 import { withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import { AGENTS_FAQ } from "../shared/faq";
+import { meta } from "./run-an-agent-on-a-schedule.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -33,13 +34,6 @@ Default Job: morning issue triage on weekdays at 9am, with reports in one thread
 Reply with the automation ID, schedule, next run, and what the test produced.`,
 );
 
-export const meta: GuideMeta = {
-  slug: "run-an-agent-on-a-schedule",
-  title: "Run an agent on a schedule",
-  nav: { group: "Automate", label: "Schedule agents", order: 2 },
-  canonical: null,
-};
-
 export const guide: Guide = {
   ...meta,
   description:
@@ -66,7 +60,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-list.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-list.webp",
         alt: "The Automations page in bb, listing five automations with their project, schedule, next run, and an on/off switch",
         width: 2048,
         height: 1280,
@@ -88,7 +82,7 @@ export const guide: Guide = {
         </p>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-compose.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-compose.webp",
         alt: "The bb message box with: Create a new bb automation to read new and updated GitHub issues every weekday at 9am Pacific. Group bugs and requests, flag regressions, and post a dated summary to one thread. Create it paused so I can test it.",
         width: 2048,
         height: 1280,
@@ -106,7 +100,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/run-an-agent-on-a-schedule/window-script.png",
+            src: "/guides/run-an-agent-on-a-schedule/window-script.webp",
             alt: "A CI failure check automation in bb that runs a script every 15 minutes. One run found a failed CI run and started a Codex thread; two runs found nothing and were skipped.",
             width: 2048,
             height: 1280,
@@ -122,7 +116,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/run-an-agent-on-a-schedule/window-once.png",
+            src: "/guides/run-an-agent-on-a-schedule/window-once.webp",
             alt: "A one-time automation in bb, Draft release notes, scheduled for tomorrow at 9:00 AM, with its prompt and a Run now button",
             width: 2048,
             height: 1280,
@@ -138,7 +132,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/run-an-agent-on-a-schedule/window-send-later.png",
+            src: "/guides/run-an-agent-on-a-schedule/window-send-later.webp",
             alt: "A bb thread with a message typed and the menu next to the send button open, showing Save draft and Send later",
             width: 2048,
             height: 1280,
@@ -165,7 +159,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-detail-paused.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-detail-paused.webp",
         alt: "The Morning issue triage automation in bb, paused, with its schedule, prompt, model, and a Run now button under Runs",
         width: 2048,
         height: 1280,
@@ -197,7 +191,7 @@ export const guide: Guide = {
         </Substeps>
       ),
       shot: {
-        src: "/guides/run-an-agent-on-a-schedule/window-notify.png",
+        src: "/guides/run-an-agent-on-a-schedule/window-notify.webp",
         alt: "bb's Push notifications settings, with mobile, web, and desktop notifications on and an Allow notifications button",
         width: 2048,
         height: 1280,

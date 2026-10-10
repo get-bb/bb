@@ -118,9 +118,7 @@ describe("public marketplace data", () => {
       "/marketplace/plugin-id",
       "/marketplace/author/get-bb",
     ]) {
-      expect(marketplaceHtmlCacheControl(pathname, 200)).toBe(
-        "public, max-age=300, must-revalidate",
-      );
+      expect(marketplaceHtmlCacheControl(pathname, 200)).toBe("no-cache");
       expect(marketplaceHtmlCacheControl(pathname, 503)).toBe("no-store");
     }
     expect(

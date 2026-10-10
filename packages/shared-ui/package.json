@@ -199,6 +199,11 @@
       "types": "./src/components/ui/skeleton.tsx",
       "default": "./src/components/ui/skeleton.tsx"
     },
+    "./suggestion-card": {
+      "source": "./src/components/ui/suggestion-card.tsx",
+      "types": "./src/components/ui/suggestion-card.tsx",
+      "default": "./src/components/ui/suggestion-card.tsx"
+    },
     "./switch": {
       "source": "./src/components/ui/switch.tsx",
       "types": "./src/components/ui/switch.tsx",
@@ -294,6 +299,11 @@
       "types": "./src/components/ui/context-selection.ts",
       "default": "./src/components/ui/context-selection.ts"
     },
+    "./inline-confirmation": {
+      "source": "./src/components/ui/inline-confirmation.tsx",
+      "types": "./src/components/ui/inline-confirmation.tsx",
+      "default": "./src/components/ui/inline-confirmation.tsx"
+    },
     "./inline-rename": {
       "source": "./src/components/ui/inline-rename.tsx",
       "types": "./src/components/ui/inline-rename.tsx",
@@ -313,6 +323,11 @@
       "source": "./src/components/ui/sidebar-customize-panel.tsx",
       "types": "./src/components/ui/sidebar-customize-panel.tsx",
       "default": "./src/components/ui/sidebar-customize-panel.tsx"
+    },
+    "./sidebar-nudge": {
+      "source": "./src/components/ui/sidebar-nudge.tsx",
+      "types": "./src/components/ui/sidebar-nudge.tsx",
+      "default": "./src/components/ui/sidebar-nudge.tsx"
     },
     "./sidebar-row-classes": {
       "source": "./src/components/ui/sidebar-row-classes.ts",
