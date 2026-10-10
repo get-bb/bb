@@ -186,6 +186,7 @@ export const FRAME_CSP = [
   "media-src data: blob:",
   "font-src data: blob:",
   "connect-src 'none'",
+  "worker-src 'none'",
   "form-action 'none'",
   "base-uri 'none'",
 ].join("; ");

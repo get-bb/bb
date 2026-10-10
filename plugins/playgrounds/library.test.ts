@@ -827,6 +827,7 @@ it("delivers pinned package assets only to the runs that own them, keeps them ac
   const frame = await fetchHttp("GET", `/frame?thread=thr_a&id=${runId}`);
   const csp = frame.headers.get("content-security-policy") ?? "";
   expect(csp).toContain("script-src 'unsafe-inline' blob:");
+  expect(csp).toContain("worker-src 'none'");
   expect(csp).toContain("connect-src 'none'");
   expect(csp).toContain("sandbox allow-scripts");
   const body = await frame.text();
