@@ -73,13 +73,15 @@ function PrivacyRoute() {
             Unless you turn it off, the bb server sends us anonymous usage
             events through PostHog: app starts, thread and message counts,
             plugin installs, setup progress, such as which first-run steps you
-            completed or skipped and whether you turned on notifications, and
-            which built-in tips were shown or used. Each event carries a random
-            install ID, the app version, and your operating system and
-            architecture. Events never include your prompts, code, file names,
-            project names, or account details. Turn this off in Settings &rarr;
-            General &rarr; Share anonymous usage data, or set{" "}
-            <code>BB_TELEMETRY=false</code>.
+            completed or skipped and whether you turned on notifications, which
+            built-in tips were shown or used, when you create an automation
+            (whether it repeats or runs once, and whether it runs an agent or a
+            script), and when you open a split view (how many panes it has).
+            Each event carries a random install ID, the app version, and your
+            operating system and architecture. Events never include your
+            prompts, code, file names, project names, or account details. Turn
+            this off in Settings &rarr; General &rarr; Share anonymous usage
+            data, or set <code>BB_TELEMETRY=false</code>.
           </p>
 
           <p>The iOS and Android apps store the following on your device:</p>

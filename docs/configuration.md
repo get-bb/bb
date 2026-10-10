@@ -2107,8 +2107,13 @@ through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordT
 `tip_shown` (once per tip per visit to the New thread page) and `tip_used` (on
 click) from the bundled Tips plugin, each with the built-in tip id, its position
 in the feed (1-3), and its action type (`prompt`, `open-page`, `run-command`,
-`open-plugin`, or `learn-more`). That route accepts only those events and their
-fixed, non-identifying properties.
+`open-plugin`, or `learn-more`), plus `automation_created` from the bundled
+Automations plugin when any surface creates an automation (its trigger,
+`schedule` or `once`; its mode, `agent` or `script`; and its origin, `human`,
+`app`, or `agent`) and `split_view_opened` when a pane is added to the split
+view (the pane count after it opens, 2-8; restoring a saved layout does not
+count). That route accepts only those events and their fixed, non-identifying
+properties.
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
