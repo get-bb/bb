@@ -3,77 +3,77 @@
     {
       "shard": "server-1",
       "filter": "--filter=@bb/server",
-      "args": "--shard=1/2"
+      "vitestShard": "1/2"
     },
     {
       "shard": "server-2",
       "filter": "--filter=@bb/server",
-      "args": "--shard=2/2"
+      "vitestShard": "2/2"
     },
     {
       "shard": "app-1",
       "filter": "--filter=@bb/app",
-      "args": "--shard=1/8"
+      "vitestShard": "1/8"
     },
     {
       "shard": "app-2",
       "filter": "--filter=@bb/app",
-      "args": "--shard=2/8"
+      "vitestShard": "2/8"
     },
     {
       "shard": "app-3",
       "filter": "--filter=@bb/app",
-      "args": "--shard=3/8"
+      "vitestShard": "3/8"
     },
     {
       "shard": "app-4",
       "filter": "--filter=@bb/app",
-      "args": "--shard=4/8"
+      "vitestShard": "4/8"
     },
     {
       "shard": "app-5",
       "filter": "--filter=@bb/app",
-      "args": "--shard=5/8"
+      "vitestShard": "5/8"
     },
     {
       "shard": "app-6",
       "filter": "--filter=@bb/app",
-      "args": "--shard=6/8"
+      "vitestShard": "6/8"
     },
     {
       "shard": "app-7",
       "filter": "--filter=@bb/app",
-      "args": "--shard=7/8"
+      "vitestShard": "7/8"
     },
     {
       "shard": "app-8",
       "filter": "--filter=@bb/app",
-      "args": "--shard=8/8"
+      "vitestShard": "8/8"
     },
     {
       "shard": "integration",
       "filter": "--filter=@bb/integration-tests",
-      "args": ""
+      "vitestShard": ""
     },
     {
       "shard": "plugins",
       "filter": "--filter='bb-plugin-*'",
-      "args": ""
+      "vitestShard": ""
     },
     {
       "shard": "packages-host",
       "filter": "--filter=@bb/host-daemon --filter=@bb/cli --filter=@bb/agent-runtime --filter=@bb/provider-parity --filter=@bb/db",
-      "args": ""
+      "vitestShard": ""
     },
     {
       "shard": "packages-build",
       "filter": "--filter=@bb/templates --filter=bb-app --filter=@bb/demo-server --filter=@bb/desktop --filter=@bb/plugin-build",
-      "args": ""
+      "vitestShard": ""
     },
     {
       "shard": "packages-other",
       "filter": "--filter='!@bb/server' --filter='!@bb/app' --filter='!@bb/integration-tests' --filter='!bb-plugin-*' --filter='!@bb/host-daemon' --filter='!@bb/cli' --filter='!@bb/agent-runtime' --filter='!@bb/provider-parity' --filter='!@bb/db' --filter='!@bb/templates' --filter='!bb-app' --filter='!@bb/demo-server' --filter='!@bb/desktop' --filter='!@bb/plugin-build'",
-      "args": ""
+      "vitestShard": ""
     }
   ],
   "windows-tests": [

@@ -293,9 +293,11 @@ Both Windows packaging smoke jobs install the workspace excluding `@bb/mobile`.
 The React Native toolchain is not part of the desktop or launcher dependency
 chain; all Turbo build dependencies and both runtime smoke checks remain enabled.
 
-Windows app and server test shards use the internal `BB_CI_TEST_SHARD`
+Linux and Windows app and server test shards use the internal `BB_CI_TEST_SHARD`
 environment variable (for example, `1/3`). Vitest validates and applies it;
 Turbo hashes it only for the app and server test tasks. Shard selection must
 not be passed after Turbo's `--`: those arguments also reach prerequisite
-builds and give identical SDK type builds different cache keys. Linux keeps
-its existing CLI shard selection.
+builds and give identical SDK type builds different cache keys. Linux applies
+its two-worker limit through `VITEST_MAX_WORKERS`, which Turbo hashes only for
+test tasks. The two packages on Vitest 3 read this variable in their configs;
+Vitest 4 supports it directly. Windows retains its existing worker defaults.
