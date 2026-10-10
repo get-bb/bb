@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root";
+import { Route as UninstallRouteImport } from "./routes/uninstall";
 import { Route as SitemapDotxmlRouteImport } from "./routes/sitemap[.]xml";
 import { Route as RobotsDottxtRouteImport } from "./routes/robots[.]txt";
 import { Route as PrivacyRouteImport } from "./routes/privacy";
@@ -45,6 +46,11 @@ import { Route as ApiAccountMeRouteImport } from "./routes/api.account.me";
 import { Route as ApiAccountLinkStartRouteImport } from "./routes/api.account.link.start";
 import { Route as ApiAccountLinkPollRouteImport } from "./routes/api.account.link.poll";
 
+const UninstallRoute = UninstallRouteImport.update({
+  id: "/uninstall",
+  path: "/uninstall",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: "/sitemap.xml",
   path: "/sitemap.xml",
@@ -237,6 +243,7 @@ export interface FileRoutesByFullPath {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -274,6 +281,7 @@ export interface FileRoutesByTo {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -312,6 +320,7 @@ export interface FileRoutesById {
   "/privacy": typeof PrivacyRoute;
   "/robots.txt": typeof RobotsDottxtRoute;
   "/sitemap.xml": typeof SitemapDotxmlRoute;
+  "/uninstall": typeof UninstallRoute;
   "/.well-known/apple-app-site-association": typeof DotwellKnownAppleAppSiteAssociationRoute;
   "/.well-known/assetlinks.json": typeof DotwellKnownAssetlinksDotjsonRoute;
   "/api/subscribe": typeof ApiSubscribeRoute;
@@ -351,6 +360,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -388,6 +398,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -425,6 +436,7 @@ export interface FileRouteTypes {
     | "/privacy"
     | "/robots.txt"
     | "/sitemap.xml"
+    | "/uninstall"
     | "/.well-known/apple-app-site-association"
     | "/.well-known/assetlinks.json"
     | "/api/subscribe"
@@ -463,6 +475,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute;
   RobotsDottxtRoute: typeof RobotsDottxtRoute;
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute;
+  UninstallRoute: typeof UninstallRoute;
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute;
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute;
   ApiSubscribeRoute: typeof ApiSubscribeRoute;
@@ -489,6 +502,13 @@ export interface RootRouteChildren {
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/uninstall": {
+      id: "/uninstall";
+      path: "/uninstall";
+      fullPath: "/uninstall";
+      preLoaderRoute: typeof UninstallRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/sitemap.xml": {
       id: "/sitemap.xml";
       path: "/sitemap.xml";
@@ -763,6 +783,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  UninstallRoute: UninstallRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
     DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,

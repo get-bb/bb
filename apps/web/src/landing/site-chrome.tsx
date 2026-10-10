@@ -283,6 +283,10 @@ export function SiteFooter({ current }: { current?: string }) {
           <a href="https://github.com/get-bb/bb/blob/main/LICENSE">
             Software License
           </a>
+          <a href="/uninstall">Uninstall</a>
+        </p>
+        <p className="footer-publisher">
+          © {new Date().getFullYear()} Terragon Labs, Inc.
         </p>
       </div>
       <FooterColumn title="Product">

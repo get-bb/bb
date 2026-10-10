@@ -1,6 +1,7 @@
 import {
   app,
   Menu,
+  shell,
   type BaseWindow,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -16,6 +17,8 @@ const NEW_THREAD_MENU_LABEL = "New Thread";
 const NEW_WINDOW_MENU_LABEL = "New Window";
 const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 const OPEN_SETTINGS_MENU_LABEL = "Settings…";
+const VIEW_LICENSE_MENU_LABEL = "View License";
+const LICENSE_URL = "https://github.com/get-bb/bb/blob/main/LICENSE";
 const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 const RELOAD_ACCELERATOR = "CommandOrControl+R";
@@ -304,6 +307,17 @@ export function buildApplicationMenuTemplate(
         ...(args.isMac
           ? [{ type: "separator" as const }, { role: "front" as const }]
           : []),
+      ],
+    },
+    {
+      role: "help",
+      submenu: [
+        {
+          label: VIEW_LICENSE_MENU_LABEL,
+          click: () => {
+            void shell.openExternal(LICENSE_URL);
+          },
+        },
       ],
     },
   ];
