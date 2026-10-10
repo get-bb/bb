@@ -69,9 +69,7 @@ const cliJson = async (host: Host, argv: string[], threadId?: string) => {
     threadId ? { threadId } : {},
   );
   if (out.exitCode !== 0) throw new Error(out.stderr || out.stdout);
-  return JSON.parse(out.stdout!) as Record<string, unknown> & {
-    [key: string]: never;
-  };
+  return JSON.parse(out.stdout!) as Record<string, unknown>;
 };
 const documented = (html = stepper.html) =>
   JSON.stringify({

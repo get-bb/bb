@@ -912,14 +912,12 @@ function ReleasePanel({
     void rpc.call("releaseList", { appId }).then(
       async (list) => {
         const views = await Promise.all(
-          (list as { id: string }[])
-            .slice(0, 5)
-            .map(
-              (r) =>
-                rpc.call("releaseShow", {
-                  releaseId: r.id,
-                }) as Promise<ReleaseView>,
-            ),
+          (list as { id: string }[]).slice(0, 5).map(
+            (r) =>
+              rpc.call("releaseShow", {
+                releaseId: r.id,
+              }) as Promise<ReleaseView>,
+          ),
         );
         setReleases(views);
         setCurrent(
