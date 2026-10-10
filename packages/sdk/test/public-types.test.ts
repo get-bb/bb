@@ -394,7 +394,8 @@ type ExpectedSystemKey =
   | "updateKeyboardSettings"
   | "providerStates"
   | "usageLimits"
-  | "version";
+  | "version"
+  | "experimental_releaseNotes";
 
 type ExpectedSystemUiPreferencesKey = "list" | "reset" | "set";
 

@@ -22,6 +22,7 @@ import {
 import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
+import { PluginSidebarFooterSections } from "@/components/plugin/PluginSidebarFooterSections";
 import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
@@ -239,7 +240,10 @@ export function AppSidebar({
         )}
         {isFooterCustomizing ||
         pluginSidebarFooter.activeItem !== null ? null : (
-          <SidebarNotificationsCard prompt={notificationsPrompt} />
+          <>
+            <SidebarNotificationsCard prompt={notificationsPrompt} />
+            <PluginSidebarFooterSections onNavigate={closeOnMobile} />
+          </>
         )}
         <SidebarMenu
           className={cn(

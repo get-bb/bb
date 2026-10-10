@@ -234,11 +234,17 @@ hide the navigation rail's destinations (see Navigation rail below).
 - Downloads are available in Settings → Mobile without opting in.
 - Pair your phone under Settings → Mobile → **Add mobile device**.
 
-## Changelog preview
+## What's new
 
-- The `changelogPreview` experiment defaults to false.
-- Enable it with `bb settings experiment changelogPreview true` to show the
-  latest release notes on Settings → Updates.
+- The sidebar What's new card and the What's new section in Settings → Updates
+  come from the built-in What's new plugin (`bb--whats-new`); its `whats-new`
+  skill covers the card and how to turn it off
+  (`bb plugin config bb--whats-new set enabled false` or
+  `bb plugin disable bb--whats-new`).
+- To read release notes from a terminal, use `bb whats-new` (installed
+  release), `bb whats-new --version <v>`, or `bb whats-new --since <v>` (newest
+  first); add `--json` for structured notes. It never marks a release seen and
+  works with the plugin off.
 
 ## Navigation rail
 

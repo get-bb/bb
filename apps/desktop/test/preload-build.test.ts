@@ -131,7 +131,6 @@ async function startDesktopSmokeServer(
           pluginThemes: [],
           dataDir: args.dataDir,
           experiments: {
-            changelogPreview: false,
             serverMove: false,
             performanceDiagnostics: false,
           },

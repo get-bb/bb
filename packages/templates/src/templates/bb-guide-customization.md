@@ -227,8 +227,24 @@ default (Claude Code is `flat`, the other first-party providers `collapse`).
 that provider, and `default` removes the override. Settings → Providers has
 the same per-provider switch.
 
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
+What's new is a built-in plugin (`bb--whats-new`), on by default. After an
+update, until this client sees the installed release, it shows a card above
+the sidebar footer; opening the card goes to its What's new section in
+Settings → Updates, below the update rows: a one-line summary of the installed
+release with its full notes behind Show all changes, releases skipped since
+this client last saw What's new, and the notes for an available update.
+Opening the card, dismissing it with ×, or visiting the section hides it until
+the next release. A client with no seen record (a new install or a new
+browser) records its installed release as seen and shows no card until the
+next update. The card is hidden while the sidebar is collapsed. Turn off
+What's new from the confirmation shown after dismissing the card (with Undo),
+with the Show What's new switch in Settings → Plugins → What's new, with
+`bb plugin config bb--whats-new set enabled false`, or by disabling the
+plugin (`bb plugin disable bb--whats-new`; `bb plugin enable bb--whats-new`
+turns it back on). `bb whats-new` prints the same release notes in the
+terminal (`--version <v>`, `--since <v>`, `--json`), works with the plugin
+off, and never marks a release seen.
+
 Message editing is available for eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns. Opening the editor is
@@ -530,12 +546,12 @@ command and does not change the server-side transcription model. When the prefer
 microphone is disconnected, recording tries the system default and then other available inputs. The saved preference is used again when it
 reconnects. Select System default to follow system microphone changes.
 
+
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
-
 
 Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
 **Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.

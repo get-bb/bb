@@ -59,7 +59,7 @@ composer contributions, and whether commands need an availability callback.
 
 ## `settingsSection.experimental_page`
 
-`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile.
+`experimental_page: "mobile"` mounts a plugin settings section exclusively on Settings → Mobile when that plugin owns the selected access provider, retaining plugin context, lifecycle, and error boundaries. `experimental_page: "updates"` (SDK 0.6.42) mounts it on Settings → Updates below bb's update rows for every enabled plugin, in plugin id order, with the same boundaries; the What's new plugin (`bb--whats-new`) uses it for the release-notes block that the sidebar card links to at `/settings/updates#whats-new`. Omission keeps the section on its plugin configuration page. Stabilization requires verifying placement isolation, plugin disable/uninstall, loading and failure states, and pairing lifecycle on Mobile, plus ordering and visual weight on Updates when several plugins add a section, and whether Updates sections need a host-rendered heading or an anchor convention instead of plugin-owned element ids.
 
 ## `app.commands.register`
 
@@ -2595,6 +2595,42 @@ sibling overlays remain mounted.
    standard slot-owned CSS retention are the right failure semantics for UI
    that may have no in-layout representation.
 
+## `app.slots.experimental_sidebarFooterSection` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** SDK 0.6.42. Renders a plugin component in the app sidebar
+directly above the footer row, inside `PluginSlotMount`, with
+`{ isCompactViewport, onNavigate }`. Registration is `{ id, component }`.
+Registrations are additive and render in plugin id order. The host hides the
+region while the sidebar is collapsed, while footer customization is open, and
+while a footer disclosure (`app.experimental_sidebarFooter`) is open; on
+compact layouts it renders inside the sidebar drawer, and `onNavigate()`
+closes that drawer. The region takes height from the thread list and never
+moves the footer row. Plain clicks on app-relative anchors inside it route in
+place through the slot mount's shared anchor delegate. A crash hides only that
+registration.
+
+**Core callers on the same path.** bb's own What's new card moved out of core
+into the built-in What's new plugin (`plugins/whats-new`, `bb--whats-new`),
+which renders it through this slot; core no longer has a separate sidebar card
+path. `AppSidebar` mounts `PluginSidebarFooterSections` where the core card
+used to render.
+
+**Audit before stabilizing.**
+
+1. **Name and boundary.** Confirm "footer section" is the right concept next to
+   `experimental_sidebarFooter` disclosures, and whether a section should be a
+   kind of footer item instead of its own slot.
+2. **Capacity.** Registrations are additive with no cap. Decide whether the
+   host limits height or count, or arbitrates between plugins, before several
+   plugins compete for the space above the footer.
+3. **Visibility rules.** Confirm hiding while collapsed, customizing, or with
+   an open disclosure is right, and whether plugins need to know which of those
+   states hid them.
+4. **Chrome.** The plugin owns the card's fill, padding, dismiss control, and
+   focus ring. Decide whether bb should supply host chrome for consistency.
+5. **Compact layouts.** Verify drawer rendering, `onNavigate`, and focus after
+   navigation in iOS Simulator Safari.
+
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero consumers; item 5 (merging with `threadPanelAction`) is explicitly deferred until an external plugin adopts it.
@@ -4087,3 +4123,9 @@ Stabilization requires exercising reconnect/reload, concurrent deduplication, ro
 `hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).
 
 Stabilize after deciding whether depth, recency window, and limit should be caller options, and after exercising slow or network-mounted home directories and Windows hosts.
+
+## `PluginBbSdk.system.experimental_releaseNotes`
+
+`system.experimental_releaseNotes({ version?, since? })` calls `GET /api/v1/system/release-notes` and returns `{ installedVersion, releases }`. Each release has `version`, `date` and `headline` from `RELEASE_META` (null when unpublished), `lede`, and `sections`, parsed from the changelog bundled with the server by the same `@bb/domain/changelog` parser the app and website use. With no arguments it returns the installed release (the newest bundled release at or below the installed version, or the newest one for a dev build). `version` returns one release; a version newer than the bundled changelog is read from the published changelog on GitHub, and a failed read is `503 release_notes_unavailable`. `since` returns every release after it up to the installed one, newest first. An unknown version is `404 release_not_found`; passing both, or a value that is not a version, is `400 invalid_request`. Each release also carries `visual` (the `RELEASE_META` visual id, or null) and `hero` (`{ src, darkSrc, alt }`, or null). It is read-only: the What's new seen record lives in each client's local storage, owned by the What's new plugin, so reading notes never hides a sidebar card. `bb whats-new` and the What's new plugin (`bb--whats-new`, sidebar card and Settings → Updates block) use it. No host-daemon wire change.
+
+Stabilize after deciding whether `visual` should become a closed enum in the contract rather than a string that clients narrow, and whether hero images need a server-served asset URL.

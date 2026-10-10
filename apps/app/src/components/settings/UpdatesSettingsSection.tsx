@@ -5,8 +5,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import type { ProviderInfo } from "@bb/domain";
 import type {
@@ -21,7 +20,6 @@ import {
   type UpdateState,
 } from "@bb/domain/update-state";
 import { Button, type ButtonProps } from "@bb/shared-ui/button";
-import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -55,12 +53,7 @@ import {
   startAppUpdateCheck,
   subscribeAppUpdateCheck,
 } from "@/components/settings/app-update-check-store";
-import {
-  fetchLatestChangelogEntry,
-  LATEST_CHANGELOG_ENTRY,
-  RELEASE_META,
-  type ChangelogBlock,
-} from "@/components/settings/changelog-preview";
+import { PluginUpdatesSettingsSections } from "@/components/plugin/PluginSettingsSections";
 import { openAppUpdateResultDetails } from "@/components/app-update/app-update-details-store";
 import {
   formatAppUpdateRevision,
@@ -76,7 +69,6 @@ import {
 } from "@bb/shared-ui/confirm-delete-dialog";
 import { appToast } from "@/components/ui/app-toast";
 import { BbLogo } from "@/components/ui/bb-logo";
-import { OverflowFade } from "@/components/ui/overflow-fade";
 import { SettingsSection } from "@/components/ui/settings-section";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { hydrateAppUpdateStatus } from "@/hooks/cache-owners/app-update-cache-owner";
@@ -96,47 +88,12 @@ import {
   hostNeedsUpdate,
   hostUpdateIsStalled,
 } from "@/lib/host-update-status";
-import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import {
   useSystemConfig,
   useSystemProviders,
 } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
-import { rawStringLocalStorage } from "@/lib/browser-storage";
-
-const CHANGELOG_URL = "https://getbb.app/changelog";
-const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
-const CHANGELOG_DISMISSED_VERSION_STORAGE_KEY =
-  "bb.settings.updates.dismissed-changelog-version";
-const CHANGELOG_DISMISS_CONFIRMATION_MS = 2_000;
-const CHANGELOG_DISMISS_EXIT_MS = 180;
-
-interface ChangelogDismissal {
-  phase: "confirming" | "exiting";
-  version: string;
-}
-
-function isNewerChangelogVersion(
-  candidate: string,
-  dismissed: string,
-): boolean {
-  const versionPattern = /^\d+(?:\.\d+)*$/;
-  if (!versionPattern.test(candidate) || !versionPattern.test(dismissed)) {
-    return candidate !== dismissed;
-  }
-  const candidateParts = candidate.split(".").map(Number);
-  const dismissedParts = dismissed.split(".").map(Number);
-  const partCount = Math.max(candidateParts.length, dismissedParts.length);
-  for (let index = 0; index < partCount; index += 1) {
-    const candidatePart = candidateParts[index] ?? 0;
-    const dismissedPart = dismissedParts[index] ?? 0;
-    if (candidatePart !== dismissedPart) {
-      return candidatePart > dismissedPart;
-    }
-  }
-  return false;
-}
 
 const BULK_RETRY_THRESHOLD = 1;
 
@@ -466,322 +423,6 @@ function RowActions({ children }: { children: ReactNode }) {
     <span className="ml-auto flex h-5 shrink-0 items-center justify-end gap-1">
       {children}
     </span>
-  );
-}
-
-const CHANGELOG_INLINE_COMPONENTS: Components = {
-  p: ({ children }) => <>{children}</>,
-  img: ({ src, alt }) => (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      className="mt-4 h-auto w-full rounded-lg"
-    />
-  ),
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-      onClick={(event) => {
-        event.preventDefault();
-        if (href !== undefined) {
-          openUrlInExternalBrowser(href);
-        }
-      }}
-    >
-      {children}
-    </a>
-  ),
-  code: ({ children }) => (
-    <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-      {children}
-    </code>
-  ),
-  strong: ({ children }) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
-  ),
-};
-
-function ChangelogInline({ text }: { text: string }) {
-  return (
-    <ReactMarkdown components={CHANGELOG_INLINE_COMPONENTS} skipHtml>
-      {text}
-    </ReactMarkdown>
-  );
-}
-
-function ChangelogBlocks({
-  blocks,
-  lede = false,
-}: {
-  blocks: ChangelogBlock[];
-  lede?: boolean;
-}) {
-  return blocks.map((block, index) =>
-    block.kind === "list" ? (
-      <ul key={index} className="mt-2.5 space-y-1.5">
-        {block.items.map((item) => (
-          <li
-            key={item}
-            className="relative pl-4 text-sm leading-normal text-muted-foreground before:absolute before:left-0 before:top-2 before:size-1 before:rounded-sm before:bg-border"
-          >
-            <ChangelogInline text={item} />
-          </li>
-        ))}
-      </ul>
-    ) : (
-      <p
-        key={index}
-        className={cn(
-          "mt-2.5 text-sm leading-relaxed text-muted-foreground first:mt-0",
-          lede && "text-foreground/80",
-        )}
-      >
-        <ChangelogInline text={block.text} />
-      </p>
-    ),
-  );
-}
-
-export function ChangelogPreviewCard() {
-  const changelogQuery = useQuery({
-    queryKey: ["updates", "changelog", "latest"],
-    queryFn: ({ signal }) => fetchLatestChangelogEntry(fetch, signal),
-    placeholderData: LATEST_CHANGELOG_ENTRY ?? undefined,
-    retry: false,
-    staleTime: CHANGELOG_STALE_TIME_MS,
-  });
-  const entry = changelogQuery.data ?? LATEST_CHANGELOG_ENTRY;
-  const [dismissedVersion, setDismissedVersion] = useState(() =>
-    rawStringLocalStorage.getItem(CHANGELOG_DISMISSED_VERSION_STORAGE_KEY, ""),
-  );
-  const [dismissal, setDismissal] = useState<ChangelogDismissal | null>(null);
-  const prefersReducedMotion = usePrefersReducedMotion();
-  const releaseBodyRef = useRef<HTMLDivElement>(null);
-  const [moreBelow, setMoreBelow] = useState(false);
-  const syncFade = (node: HTMLDivElement | null) => {
-    if (node === null) {
-      return;
-    }
-    setMoreBelow(node.scrollTop + node.clientHeight < node.scrollHeight - 1);
-  };
-  useEffect(() => {
-    syncFade(releaseBodyRef.current);
-  }, [entry]);
-  useEffect(() => {
-    if (dismissal?.phase !== "confirming") {
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      setDismissal((current) =>
-        current?.version === dismissal.version
-          ? { ...current, phase: "exiting" }
-          : current,
-      );
-    }, CHANGELOG_DISMISS_CONFIRMATION_MS);
-    return () => window.clearTimeout(timeoutId);
-  }, [dismissal]);
-  useEffect(() => {
-    if (dismissal?.phase !== "exiting") {
-      return;
-    }
-    const dismissedEntryVersion = dismissal.version;
-    const timeoutId = window.setTimeout(
-      () => {
-        setDismissedVersion(dismissedEntryVersion);
-        setDismissal((current) =>
-          current?.version === dismissedEntryVersion ? null : current,
-        );
-      },
-      prefersReducedMotion ? 0 : CHANGELOG_DISMISS_EXIT_MS,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [dismissal, prefersReducedMotion]);
-  if (entry === null) {
-    return null;
-  }
-  if (
-    dismissedVersion.length > 0 &&
-    (changelogQuery.dataUpdatedAt === 0 ||
-      !isNewerChangelogVersion(entry.version, dismissedVersion))
-  ) {
-    return null;
-  }
-  const releaseMeta = RELEASE_META[entry.version];
-  const dismissalPhase =
-    dismissal?.version === entry.version ? dismissal.phase : "visible";
-  const releaseVisible = dismissalPhase === "visible";
-  return (
-    <div
-      data-updates-domain="changelog"
-      data-changelog-dismiss-phase={dismissalPhase}
-      className={cn(
-        "grid transition-[grid-template-rows,margin,opacity,transform] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none [&>section]:min-h-0 [&>section]:overflow-hidden",
-        dismissalPhase === "exiting"
-          ? "-mb-6 grid-rows-[0fr] -translate-y-1 opacity-0"
-          : "grid-rows-[1fr] translate-y-0 opacity-100",
-      )}
-    >
-      <section className="overflow-hidden rounded-lg border border-border bg-card">
-        <div
-          data-changelog-release-panel
-          aria-hidden={!releaseVisible}
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-            releaseVisible
-              ? "grid-rows-[1fr] opacity-100"
-              : "pointer-events-none grid-rows-[0fr] opacity-0",
-          )}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <article data-changelog-preview className="min-w-0 p-4 sm:p-5">
-              <div
-                data-changelog-header
-                className="flex min-w-0 items-center justify-between gap-4"
-              >
-                <h2 className="min-w-0">
-                  <span
-                    data-changelog-label
-                    className="inline-flex rounded-sm border border-border bg-muted/40 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground"
-                  >
-                    What's new
-                  </span>
-                </h2>
-                {releaseVisible ? (
-                  <Tooltip delayDuration={300} disableHoverableContent>
-                    <TooltipTrigger asChild>
-                      <Button
-                        data-changelog-dismiss
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-foreground"
-                        aria-label={`Dismiss bb ${entry.version} changelog preview`}
-                        onClick={() => {
-                          rawStringLocalStorage.setItem(
-                            CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
-                            entry.version,
-                          );
-                          setDismissal({
-                            phase: "confirming",
-                            version: entry.version,
-                          });
-                        }}
-                      >
-                        <Icon aria-hidden name="X" className="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">Dismiss</TooltipContent>
-                  </Tooltip>
-                ) : null}
-              </div>
-              {releaseMeta === undefined ? null : (
-                <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  <span
-                    data-changelog-version={entry.version}
-                    className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground"
-                  >
-                    {entry.version}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {releaseMeta.date}
-                  </span>
-                </div>
-              )}
-
-              <div
-                className={cn(
-                  "relative min-w-0",
-                  releaseMeta === undefined ? "mt-4" : "mt-3",
-                )}
-              >
-                <div
-                  ref={releaseBodyRef}
-                  data-changelog-release-scroll
-                  onScroll={(event) => syncFade(event.currentTarget)}
-                  className="max-h-56 overflow-y-auto pr-3"
-                >
-                  <h3 className="text-lg font-semibold leading-snug tracking-tight text-foreground">
-                    {releaseMeta?.headline ?? entry.version}
-                  </h3>
-                  {entry.lede.length === 0 ? null : (
-                    <div className="mt-2">
-                      <ChangelogBlocks blocks={entry.lede} lede />
-                    </div>
-                  )}
-                  {entry.sections.map((section) => (
-                    <div key={section.title} className="mt-4">
-                      <h4 className="text-sm font-semibold leading-snug text-foreground">
-                        {section.title}
-                      </h4>
-                      <ChangelogBlocks blocks={section.blocks} />
-                    </div>
-                  ))}
-                </div>
-                {moreBelow ? <OverflowFade placement="below" inset /> : null}
-              </div>
-            </article>
-            <div
-              data-changelog-footer
-              className="flex items-center justify-end border-t border-foreground bg-foreground px-4 py-2.5 text-background sm:px-5"
-            >
-              <button
-                type="button"
-                disabled={!releaseVisible}
-                aria-label={`Open the full bb ${entry.version} changelog`}
-                onClick={() =>
-                  openUrlInExternalBrowser(
-                    `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
-                  )
-                }
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-xs font-semibold text-background underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-background"
-              >
-                Full changelog
-                <Icon aria-hidden name="ExternalLink" className="size-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-        <div
-          data-changelog-dismiss-confirmation
-          role="status"
-          aria-live="polite"
-          aria-hidden={releaseVisible}
-          className={cn(
-            "grid transition-[grid-template-rows,opacity] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
-            releaseVisible
-              ? "pointer-events-none grid-rows-[0fr] opacity-0"
-              : "grid-rows-[1fr] opacity-100",
-          )}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <div className="p-4 text-center sm:p-5">
-              <div className="mx-auto max-w-sm">
-                <div className="flex items-center justify-center gap-2">
-                  <Icon
-                    aria-hidden
-                    name="CircleCheck"
-                    className="size-4 text-muted-foreground"
-                  />
-                  <span className="inline-flex rounded-full border border-border bg-muted/30 px-2.5 py-1 font-mono text-xs font-semibold leading-none tracking-tight text-foreground">
-                    {entry.version}
-                  </span>
-                </div>
-                <h3 className="mt-3 text-lg font-semibold leading-snug tracking-tight text-foreground">
-                  You're all caught up
-                </h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                  We'll show the next bb release here.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
   );
 }
 
@@ -1993,13 +1634,7 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-interface UpdatesSettingsSectionProps {
-  showChangelogPreview?: boolean;
-}
-
-export function UpdatesSettingsSection({
-  showChangelogPreview = false,
-}: UpdatesSettingsSectionProps = {}) {
+export function UpdatesSettingsSection() {
   const queryClient = useQueryClient();
   const inventory = useUpdateInventory();
   const { localDaemonHostId } = useHostDaemon();
@@ -2189,8 +1824,6 @@ export function UpdatesSettingsSection({
 
   return (
     <div className="space-y-6">
-      {showChangelogPreview ? <ChangelogPreviewCard /> : null}
-
       <BbUpdatesCard>
         {serverRunsSeparately ? serverAppRow : appRow}
         {serverRunsSeparately && desktopRowNeedsAttention(desktopInfo)
@@ -2216,6 +1849,8 @@ export function UpdatesSettingsSection({
           void invalidateHostProviderCliStatus({ queryClient, hostId });
         }}
       />
+
+      <PluginUpdatesSettingsSections />
       <ConfirmDeleteDialog
         open={confirmingAppUpdateThreads !== null}
         onOpenChange={(open) => {

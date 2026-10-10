@@ -190,6 +190,11 @@
     "icon": "Palette"
   },
   {
+    "id": "bb--whats-new",
+    "name": "What's new",
+    "icon": "News01"
+  },
+  {
     "id": "thread-list",
     "name": "Thread list",
     "icon": "ListView"

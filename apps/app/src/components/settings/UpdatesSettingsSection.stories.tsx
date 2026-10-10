@@ -15,7 +15,6 @@ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   BbAppUpdateRows,
   BbUpdatesCard,
-  ChangelogPreviewCard,
   MachineUpdateRow,
   ProviderCliUpdatesSection,
 } from "./UpdatesSettingsSection";
@@ -1172,16 +1171,6 @@ export function SectionVariations() {
               ])
             }
           />
-        </div>
-      </StoryRow>
-      <StoryRow
-        label="Changelog preview"
-        hint="The optional release preview appears above the update cards."
-      >
-        <div className="w-full space-y-6">
-          <ChangelogPreviewCard />
-          <BbUpdatesCard>{serverRow}</BbUpdatesCard>
-          <StoryProviderClis machines={[workstation]} />
         </div>
       </StoryRow>
     </StoryCard>

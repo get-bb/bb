@@ -30,7 +30,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import { RELEASE_META } from "../../../../changelog-metadata";
 import { useInitAnalytics } from "../landing/analytics";
 import adobeLogo from "../assets/company-logos/adobe.svg";
 import atlassianLogo from "../assets/company-logos/atlassian.svg";
@@ -64,7 +63,7 @@ import vercelLogo from "../assets/company-logos/vercel.svg";
 import zooxLogo from "../assets/company-logos/zoox.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
-import { parseChangelog } from "../../../../changelog-parser";
+import { parseChangelog, RELEASE_META } from "@bb/domain/changelog";
 import { DiscordLink, GitHubLink, SubscribeSection } from "../landing/cta";
 import { siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";

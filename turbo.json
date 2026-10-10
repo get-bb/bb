@@ -26,8 +26,7 @@
         "$TURBO_ROOT$/plugins/*/icons/*.svg",
         "$TURBO_ROOT$/plugins/*/*.svg",
         "$TURBO_ROOT$/CHANGELOG.md",
-        "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/domain/src/changelog*.ts",
         "$TURBO_ROOT$/apps/web/package.json",
         "$TURBO_ROOT$/apps/web/src/**",
         "$TURBO_ROOT$/apps/web/tsconfig.json",
@@ -54,8 +53,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/CHANGELOG.md",
-        "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/domain/src/changelog*.ts",
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/anatomy-manifest.json",
         "$TURBO_ROOT$/plugins/theme-preview/taxonomy.ts",
         "$TURBO_ROOT$/vitest*.ts"
@@ -88,8 +86,7 @@
         "$TURBO_ROOT$/.env*",
         ".env*",
         "$TURBO_ROOT$/CHANGELOG.md",
-        "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/domain/src/changelog*.ts",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
         "$TURBO_ROOT$/pnpm-lock.yaml",
@@ -472,7 +469,8 @@
       "inputs": [
         "scripts/generate-templates.mjs",
         "scripts/write-generated.mjs",
-        "src/templates/**"
+        "src/templates/**",
+        "$TURBO_ROOT$/CHANGELOG.md"
       ],
       "outputs": ["src/generated/templates.generated.ts"]
     },
@@ -512,16 +510,14 @@
       "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts"
+        "$TURBO_ROOT$/packages/domain/src/changelog*.ts"
       ]
     },
     "@bb/web#typecheck": {
       "dependsOn": ["topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/changelog-metadata.ts",
-        "$TURBO_ROOT$/changelog-parser.ts",
+        "$TURBO_ROOT$/packages/domain/src/changelog*.ts",
         "$TURBO_ROOT$/packages/shared-ui/src/**",
         "$TURBO_ROOT$/plugins/plugin-api-docs/src/**"
       ]
@@ -1315,6 +1311,24 @@
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
+      ]
+    },
+    "bb-plugin-bb--whats-new#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--whats-new#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
       ]
     },
     "bb-plugin-bb--provider-usage#typecheck": {

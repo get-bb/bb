@@ -71,7 +71,12 @@ Slot props contracts (versioned, additive-only):
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
-  settings sections.
+  settings sections. `experimental_page: "mobile"` renders the section on
+  Settings → Mobile instead (only for the plugin that owns the selected access
+  provider), and `experimental_page: "updates"` renders it on Settings →
+  Updates below bb's update rows, for every enabled plugin, in plugin id
+  order. Page sections do not also render on the plugin detail page.
+  Experimental: see `docs/api_to_audit.md`.
 - `experimental_appOverlay` → `{}` (deliberately no props). An additive,
   app-wide React owner for floating plugin UI. Registration:
   `{ id, component }`. BB mounts every registration once per app window
@@ -220,6 +225,16 @@ target? })`. Inside the fixed-tab component,
   returns nothing. BB keeps only one disclosure open across all plugins.
   The component owns everything inside, including tabs and navigation.
   Experimental: see `docs/api_to_audit.md`.
+- `experimental_sidebarFooterSection` → `{ isCompactViewport, onNavigate }`.
+  Renders a component in the app sidebar directly above the footer row, for
+  short, dismissible content such as an announcement card. Registration:
+  `{ id, component }`. Additive: every enabled plugin's registrations render,
+  in plugin id order. bb hides the region while the sidebar is collapsed,
+  while the footer is being customized, and while a footer disclosure is open;
+  on compact layouts it renders inside the sidebar drawer. Call `onNavigate()`
+  after navigating so the compact drawer closes. Plain clicks on app-relative
+  anchors (`<a href="/settings/updates">`) route in place. Render `null` when
+  there is nothing to show. Experimental: see `docs/api_to_audit.md`.
 - `sidebarFooterAction` → compatibility API for a host-rendered footer action.
   Registration remains `{ id, title, icon, run }`, and `run` still receives
   `{ openSettings }`. New plugins should use

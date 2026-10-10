@@ -33,6 +33,7 @@ import ListViewIcon from "@hugeicons/core-free-icons/ListViewIcon";
 import LockIcon from "@hugeicons/core-free-icons/LockIcon";
 import Mail02Icon from "@hugeicons/core-free-icons/Mail02Icon";
 import MessageQuestionIcon from "@hugeicons/core-free-icons/MessageQuestionIcon";
+import News01Icon from "@hugeicons/core-free-icons/News01Icon";
 import PaintBoardIcon from "@hugeicons/core-free-icons/PaintBoardIcon";
 import PuzzleIcon from "@hugeicons/core-free-icons/PuzzleIcon";
 import RepeatIcon from "@hugeicons/core-free-icons/RepeatIcon";
@@ -84,6 +85,7 @@ const PLUGIN_ICONS: Readonly<Record<string, IconSvgElement | undefined>> = {
   Mail: Mail02Icon,
   MessageQuestion: MessageQuestionIcon,
   MessageSquarePlus: BubbleChatAddIcon,
+  News01: News01Icon,
   Palette: PaintBoardIcon,
   PanelLeft: SidebarLeftIcon,
   Puzzle: PuzzleIcon,

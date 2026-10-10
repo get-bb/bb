@@ -365,6 +365,53 @@ export const systemVersionQuerySchema = z.object({
 });
 export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 
+const releaseNotesBlockSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("paragraph"), text: z.string() }),
+  z.object({ kind: z.literal("list"), items: z.array(z.string()) }),
+]);
+
+export const releaseNotesSchema = z.object({
+  version: z.string(),
+  date: z.string().nullable(),
+  headline: z.string().nullable(),
+  visual: z.string().nullable(),
+  hero: z
+    .object({
+      src: z.string(),
+      darkSrc: z.string().nullable(),
+      alt: z.string(),
+    })
+    .nullable(),
+  lede: z.array(releaseNotesBlockSchema),
+  sections: z.array(
+    z.object({
+      title: z.string(),
+      blocks: z.array(releaseNotesBlockSchema),
+    }),
+  ),
+});
+export type ReleaseNotes = z.infer<typeof releaseNotesSchema>;
+
+export const systemReleaseNotesQuerySchema = z
+  .object({
+    version: z.string().trim().min(1).optional(),
+    since: z.string().trim().min(1).optional(),
+  })
+  .refine((query) => query.version === undefined || query.since === undefined, {
+    message: "Pass either version or since, not both",
+  });
+export type SystemReleaseNotesQuery = z.infer<
+  typeof systemReleaseNotesQuerySchema
+>;
+
+export const systemReleaseNotesResponseSchema = z.object({
+  installedVersion: z.string(),
+  releases: z.array(releaseNotesSchema),
+});
+export type SystemReleaseNotesResponse = z.infer<
+  typeof systemReleaseNotesResponseSchema
+>;
+
 export const systemAppUpdateRevisionSchema = z.object({
   commit: z.string().nullable(),
   version: z.string(),

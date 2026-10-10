@@ -15,7 +15,6 @@ function renderSection(
       disabled={false}
       performanceDiagnosticsAvailable={performanceDiagnosticsAvailable}
       experiments={{
-        changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
       }}
@@ -30,12 +29,11 @@ describe("ExperimentsSettingsSection", () => {
     expect(
       screen.queryByLabelText("Server performance diagnostics"),
     ).toBeNull();
-    expect(screen.getByLabelText("Changelog preview")).toBeTruthy();
     expect(screen.getByLabelText("Server move")).toBeTruthy();
   });
 
   it.each([
-    ["Changelog preview", "changelogPreview"],
+    ["Server move", "serverMove"],
     ["Server performance diagnostics", "performanceDiagnostics"],
   ])("reports %s changes", (label, key) => {
     const onChange = vi.fn();
