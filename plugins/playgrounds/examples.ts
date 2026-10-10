@@ -214,7 +214,7 @@ footer { display: flex; align-items: center; justify-content: space-between; mar
 <footer><div class="pg-dots" id="dots"></div><div><button class="pg-btn" id="back">Back</button> <button class="pg-btn pg-btn-primary" id="next">Next →</button></div></footer>
 <script>
 const steps = [["Water the day before", "Moist roots slide out of the old pot without tearing."], ["Loosen the root ball", "Tease circling roots apart with your fingers."], ["Set it at the same depth", "Fill around the roots with fresh mix and water until it drains."]];
-let step = Math.min(steps.length - 1, Math.max(0, answer.state?.step ?? 0));
+let step = Math.min(steps.length - 1, Math.max(0, playground.state?.step ?? 0));
 const $ = (id) => document.getElementById(id);
 $("dots").innerHTML = steps.map(() => "<i></i>").join("");
 function show() {
@@ -222,7 +222,7 @@ function show() {
   [$("name").textContent, $("text").textContent] = steps[step];
   [...$("dots").children].forEach((dot, i) => i === step ? dot.setAttribute("aria-current", "step") : dot.removeAttribute("aria-current"));
   $("back").disabled = step === 0; $("next").disabled = step === steps.length - 1;
-  answer.save({ step });
+  playground.save({ step });
 }
 $("back").onclick = () => { step--; show(); };
 $("next").onclick = () => { step++; show(); };
