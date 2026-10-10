@@ -1,0 +1,57 @@
+name: CI reliability verification
+on:
+  push:
+    branches: [bb/ci-reliability-verification-5324]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Repeat real provider replay and process lifecycle tests
+        shell: bash
+        run: |
+          mkdir -p verification
+          for iteration in 1 2 3 4 5; do
+            pnpm exec turbo run test --filter=@bb/provider-parity --force > "verification/parity-$iteration.log" 2>&1 || { cat "verification/parity-$iteration.log"; exit 1; }
+            pnpm exec turbo run test --filter=@bb/host-daemon --force -- src/server-move/activation.test.ts src/server-move/service.test.ts > "verification/activation-$iteration.log" 2>&1 || { cat "verification/activation-$iteration.log"; exit 1; }
+            pnpm exec turbo run test --filter=@bb/agent-runtime --force -- src/runtime.process-lifecycle.test.ts > "verification/lifecycle-$iteration.log" 2>&1 || { cat "verification/lifecycle-$iteration.log"; exit 1; }
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: windows-repetitions
+          path: verification/
+  linux:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-workspace-tools
+        with:
+          node-version: '22.x'
+          pnpm-version: '9.15.0'
+      - run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter '!@bb/mobile'
+      - name: Repeat Linux app shard and Git fixture
+        env:
+          VITEST_MAX_WORKERS: '2'
+        run: |
+          mkdir -p verification
+          for iteration in 1 2 3; do
+            BB_CI_TEST_SHARD=6/8 pnpm exec turbo run test --filter=@bb/app --force > "verification/app-$iteration.log" 2>&1 || { cat "verification/app-$iteration.log"; exit 1; }
+            pnpm exec turbo run test --filter=@bb/host-workspace --force -- test/workspace-diff.test.ts > "verification/git-$iteration.log" 2>&1 || { cat "verification/git-$iteration.log"; exit 1; }
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: linux-repetitions
+          path: verification/
