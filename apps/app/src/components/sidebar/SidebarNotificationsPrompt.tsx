@@ -88,6 +88,79 @@ export function useSidebarNotificationsPrompt(): SidebarNotificationsPromptState
   };
 }
 
+const ART_INK = "color-mix(in oklch, var(--ink) 82%, var(--canvas))";
+const ART_LINE = {
+  stroke: "currentColor",
+  strokeWidth: 1.1,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  fill: "none",
+} as const;
+
+function NotificationArt() {
+  return (
+    <svg
+      aria-hidden
+      focusable="false"
+      data-testid="sidebar-notifications-art"
+      viewBox="0 0 48 48"
+      className="size-10 shrink-0"
+      style={{ color: ART_INK }}
+    >
+      <rect
+        {...ART_LINE}
+        x={13}
+        y={5}
+        width={22}
+        height={38}
+        rx={4.5}
+        fill="currentColor"
+        fillOpacity={0.1}
+      />
+      <line
+        {...ART_LINE}
+        strokeOpacity={0.4}
+        x1={21.5}
+        y1={9}
+        x2={26.5}
+        y2={9}
+      />
+      <g style={{ color: "var(--timeline-accent)" }}>
+        <rect
+          {...ART_LINE}
+          x={6}
+          y={16}
+          width={30}
+          height={11}
+          rx={3}
+          fill="var(--canvas)"
+        />
+        <rect
+          x={6}
+          y={16}
+          width={30}
+          height={11}
+          rx={3}
+          fill="currentColor"
+          fillOpacity={0.18}
+        />
+        <circle cx={11.5} cy={21.5} r={2} fill="currentColor" />
+        <line {...ART_LINE} x1={16} y1={19.5} x2={30} y2={19.5} />
+        <line
+          {...ART_LINE}
+          strokeOpacity={0.5}
+          x1={16}
+          y1={23.5}
+          x2={26}
+          y2={23.5}
+        />
+      </g>
+      <line {...ART_LINE} strokeOpacity={0.4} x1={18} y1={33} x2={30} y2={33} />
+      <line {...ART_LINE} strokeOpacity={0.4} x1={18} y1={37} x2={26} y2={37} />
+    </svg>
+  );
+}
+
 export function SidebarNotificationsCard({
   prompt,
 }: {
@@ -99,22 +172,25 @@ export function SidebarNotificationsCard({
     <section
       aria-labelledby={labelId}
       data-testid="sidebar-notifications-prompt"
-      className={`${CARD_SURFACE_CLASS} px-3 pb-2.5 pt-2.5`}
+      className={`${CARD_SURFACE_CLASS} px-3 pb-3 pt-3`}
     >
-      <p
-        id={labelId}
-        className="pr-6 text-sm font-medium leading-snug text-foreground"
-      >
-        Get notified when this agent needs you
-      </p>
-      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+      <div className="flex min-w-0 items-start gap-3 pr-5">
+        <NotificationArt />
+        <p
+          id={labelId}
+          className="min-w-0 flex-1 pt-0.5 text-sm font-medium leading-snug text-foreground"
+        >
+          Get notified when this agent needs you
+        </p>
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
         bb tells you when it finishes or asks you a question, even in another
         tab.
       </p>
       <button
         type="button"
         onClick={prompt.turnOn}
-        className="mt-1.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
+        className="mt-2.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
       >
         Notify me
         <Icon aria-hidden name="ChevronRight" className="size-3" />
