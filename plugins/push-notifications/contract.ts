@@ -56,8 +56,7 @@ export const THREAD_NOTIFICATIONS_CHANNEL = "threadNotifications";
 export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
 export const threadNotificationsUpdateSchema = z
   .object({
-    threadId: z.string().min(1),
-    notifications: threadNotificationInputsSchema.nullable(),
+    threads: z.record(z.string(), threadNotificationInputsSchema),
   })
   .strict();
 export type ThreadNotificationsUpdate = z.infer<

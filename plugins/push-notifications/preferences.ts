@@ -121,10 +121,10 @@ function isUnset(inputs: ThreadNotificationInputs): boolean {
 
 const SDK_THREAD_BATCH_MAX_IDS = 200;
 
-function chunk(ids: readonly string[]): string[][] {
-  const chunks: string[][] = [];
-  for (let start = 0; start < ids.length; start += SDK_THREAD_BATCH_MAX_IDS) {
-    chunks.push(ids.slice(start, start + SDK_THREAD_BATCH_MAX_IDS));
+function chunk<T>(items: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += SDK_THREAD_BATCH_MAX_IDS) {
+    chunks.push(items.slice(start, start + SDK_THREAD_BATCH_MAX_IDS));
   }
   return chunks;
 }
@@ -162,23 +162,15 @@ export interface NotificationPreferences {
     id: string;
     parentThreadId: string | null;
   }): Promise<NotificationLevel>;
-  followParent(thread: {
-    id: string;
-    parentThreadId: string | null;
-  }): Promise<void>;
+  publishSubtree(threadId: string): Promise<void>;
 }
 
 export function createNotificationPreferences(args: {
   bb: BbPluginApi;
   getDefaults(): Promise<NotificationDefaults>;
-  publish(threadId: string, inputs: ThreadNotificationInputs | null): void;
+  publish(threads: Record<string, ThreadNotificationInputs>): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
-  const knownParents = new Map<string, string | null>();
-
-  function rememberParent(threadId: string, parentThreadId: string | null) {
-    if (!knownParents.has(threadId)) knownParents.set(threadId, parentThreadId);
-  }
 
   async function readOwnLevels(
     threadIds: readonly string[],
@@ -216,9 +208,6 @@ export function createNotificationPreferences(args: {
     ]);
     const resolved = new Map<string, ResolvedThreadInputs>();
     for (const { threadId, ancestorIds } of ancestry) {
-      [threadId, ...ancestorIds].forEach((id, index) =>
-        rememberParent(id, ancestorIds[index] ?? null),
-      );
       let ancestorCap: ThreadNotificationInputs["ancestorCap"] = null;
       for (const ancestorId of ancestorIds) {
         const level = levels.get(ancestorId);
@@ -243,8 +232,22 @@ export function createNotificationPreferences(args: {
     return resolved;
   }
 
-  function publishInputs(threadId: string, inputs: ThreadNotificationInputs) {
-    publish(threadId, isUnset(inputs) ? null : inputs);
+  async function publishSubtree(
+    threadId: string,
+  ): Promise<Map<string, ResolvedThreadInputs>> {
+    const { threads } = await bb.sdk.threads.experimental_listDescendants({
+      threadIds: [threadId],
+    });
+    const resolved = await resolveInputs([
+      threadId,
+      ...(threads[0]?.descendantIds ?? []),
+    ]);
+    for (const batch of chunk([...resolved])) {
+      publish(
+        Object.fromEntries(batch.map(([id, { inputs }]) => [id, inputs])),
+      );
+    }
+    return resolved;
   }
 
   return {
@@ -269,9 +272,9 @@ export function createNotificationPreferences(args: {
           ? { threadId, remove: [NOTIFICATIONS_METADATA_KEY] }
           : { threadId, set: { [NOTIFICATIONS_METADATA_KEY]: { own: level } } },
       );
-      const { inputs } = await requireInputs(threadId);
-      publishInputs(threadId, inputs);
-      return inputs;
+      const resolved = (await publishSubtree(threadId)).get(threadId);
+      if (resolved === undefined) throw new Error("Thread not found");
+      return resolved.inputs;
     },
     async effectiveLevel(thread) {
       const [resolved, defaults] = await Promise.all([
@@ -284,12 +287,8 @@ export function createNotificationPreferences(args: {
         defaults,
       ).effective;
     },
-    async followParent(thread) {
-      const known = knownParents.get(thread.id);
-      knownParents.set(thread.id, thread.parentThreadId);
-      if (known === undefined || known === thread.parentThreadId) return;
-      const resolved = (await resolveInputs([thread.id])).get(thread.id);
-      if (resolved !== undefined) publishInputs(thread.id, resolved.inputs);
+    async publishSubtree(threadId) {
+      await publishSubtree(threadId);
     },
   };
 }

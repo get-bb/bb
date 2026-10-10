@@ -66,13 +66,17 @@ function sameInputs(
   );
 }
 
-function withLevel(
+function withLevels(
   levels: ReadonlyMap<string, ThreadNotificationInputs>,
-  threadId: string,
-  stored: ThreadNotificationInputs,
+  rows: readonly (readonly [string, ThreadNotificationInputs])[],
 ): ReadonlyMap<string, ThreadNotificationInputs> {
-  if (sameInputs(levels.get(threadId), stored)) return levels;
-  return new Map(levels).set(threadId, stored);
+  const changed = rows.filter(
+    ([threadId, stored]) => !sameInputs(levels.get(threadId), stored),
+  );
+  if (changed.length === 0) return levels;
+  const next = new Map(levels);
+  for (const [threadId, stored] of changed) next.set(threadId, stored);
+  return next;
 }
 
 function bump(changes: Map<string, number>, ids: Iterable<string>): void {
@@ -105,22 +109,10 @@ function useThreadNotificationsData({
         void rpc
           .call("threadNotifications.list", { threadIds: batch })
           .then(({ threads }) => {
-            const fresh = unchanged();
-            setLevels((current) => {
-              const changed = fresh.filter(
-                (id) =>
-                  !sameInputs(
-                    current.get(id),
-                    threads[id] ?? UNSET_THREAD_NOTIFICATIONS,
-                  ),
-              );
-              if (changed.length === 0) return current;
-              const next = new Map(current);
-              for (const id of changed) {
-                next.set(id, threads[id] ?? UNSET_THREAD_NOTIFICATIONS);
-              }
-              return next;
-            });
+            const rows = unchanged().map(
+              (id) => [id, threads[id] ?? UNSET_THREAD_NOTIFICATIONS] as const,
+            );
+            setLevels((current) => withLevels(current, rows));
           })
           .catch(() => {
             for (const id of unchanged()) requested.current.delete(id);
@@ -159,16 +151,15 @@ function useThreadNotificationsData({
   useRealtime(THREAD_NOTIFICATIONS_CHANNEL, (payload) => {
     const update = threadNotificationsUpdateSchema.safeParse(payload);
     if (!update.success) return;
-    const { threadId, notifications } = update.data;
-    bump(changes.current, [threadId]);
-    setLevels((current) =>
-      withLevel(
-        current,
-        threadId,
-        notifications ?? UNSET_THREAD_NOTIFICATIONS,
-      ),
+    const rows = Object.entries(update.data.threads).filter(([threadId]) =>
+      requested.current.has(threadId),
     );
-    rereadShown();
+    if (rows.length === 0) return;
+    bump(
+      changes.current,
+      rows.map(([threadId]) => threadId),
+    );
+    setLevels((current) => withLevels(current, rows));
   });
 
   const setLevel = useCallback(
@@ -178,7 +169,7 @@ function useThreadNotificationsData({
         level,
       });
       bump(changes.current, [threadId]);
-      setLevels((current) => withLevel(current, threadId, stored));
+      setLevels((current) => withLevels(current, [[threadId, stored]]));
     },
     [rpc],
   );

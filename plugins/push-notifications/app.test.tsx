@@ -290,7 +290,7 @@ describe("thread notifications action", () => {
     await waitFor(() => expect(summary()?.selected).toBe("muted"));
   });
 
-  it("applies its own write, realtime updates, and a reload after reconnecting", async () => {
+  it("applies its own write, realtime rows, and a reload after reconnecting", async () => {
     const { view, item, summary, restore, listCalls } = renderNotifications(
       {},
       ["thr_top"],
@@ -305,8 +305,7 @@ describe("thread notifications action", () => {
     expect(summary()?.selected).toBe("muted");
 
     await view.behavior.emitRealtime("threadNotifications", {
-      threadId: "thr_top",
-      notifications: null,
+      threads: { thr_top: { own: "inherit", ancestorCap: null } },
     });
     expect(summary()?.selected).toBe("inherit");
 
@@ -314,7 +313,7 @@ describe("thread notifications action", () => {
     await view.behavior.setRealtimeConnectionState("reconnecting");
     await view.behavior.setRealtimeConnectionState("connected");
     await waitFor(() => expect(summary()?.selected).toBe("all"));
-    expect(listCalls()).toHaveLength(3);
+    expect(listCalls()).toHaveLength(2);
   });
 
   it("keeps a level cleared to Default when a read from before the clear lands", async () => {
@@ -331,17 +330,17 @@ describe("thread notifications action", () => {
     );
     restore({});
     await view.behavior.emitRealtime("threadNotifications", {
-      threadId: "thr_b",
-      notifications: null,
+      threads: { thr_b: { own: "inherit", ancestorCap: null } },
     });
     await release();
 
     expect(summary({ id: "thr_a" })?.selected).toBe("inherit");
     expect(summary({ id: "thr_b" })?.selected).toBe("inherit");
+    expect(listCalls()).toHaveLength(1);
   });
 
-  it("re-reads shown rows when a parent's level changes", async () => {
-    const { view, summary, restore, listCalls } = renderNotifications({}, [
+  it("applies a parent's change to its children on screen without a request", async () => {
+    const { view, summary, listCalls } = renderNotifications({}, [
       "thr_child",
       "thr_top",
     ]);
@@ -349,59 +348,52 @@ describe("thread notifications action", () => {
     const child = { id: "thr_child", parentThreadId: "thr_top" };
     expect(summary(child)?.detail).toBe("Needs input only");
 
-    const muted = { own: "muted", ancestorCap: null } as const;
-    restore({
-      thr_top: muted,
-      thr_child: {
-        own: "inherit",
-        ancestorCap: { level: "muted", threadId: "thr_top" },
+    await view.behavior.emitRealtime("threadNotifications", {
+      threads: {
+        thr_top: { own: "muted", ancestorCap: null },
+        thr_child: {
+          own: "inherit",
+          ancestorCap: { level: "muted", threadId: "thr_top" },
+        },
       },
     });
-    await view.behavior.emitRealtime("threadNotifications", {
-      threadId: "thr_top",
-      notifications: muted,
+    expect(summary(child)).toMatchObject({
+      detail: "Muted",
+      hint: "Limited by a parent thread",
     });
-    await waitFor(() =>
-      expect(summary(child)).toMatchObject({
-        detail: "Muted",
-        hint: "Limited by a parent thread",
-      }),
-    );
     expect(summary()?.selected).toBe("muted");
-    expect(listCalls()).toEqual([
-      { threadIds: ["thr_child", "thr_top"] },
-      { threadIds: ["thr_child", "thr_top"] },
-    ]);
+    expect(listCalls()).toHaveLength(1);
   });
 
   it("sends no request for rows already seen, including reads still in flight", async () => {
-    const { view, show, listCalls, holdReads } = renderNotifications({}, []);
+    const { view, show, summary, listCalls, holdReads } = renderNotifications(
+      {},
+      [],
+    );
     const release = holdReads();
     show(["thr_a", "thr_b"]);
     await waitFor(() => expect(listCalls()).toHaveLength(1));
     show(["thr_b", "thr_c"]);
     await waitFor(() => expect(listCalls()).toHaveLength(2));
+    await view.behavior.emitRealtime("threadNotifications", {
+      threads: { thr_b: { own: "muted", ancestorCap: null } },
+    });
     await release();
 
-    await view.behavior.emitRealtime("threadNotifications", {
-      threadId: "thr_elsewhere",
-      notifications: null,
-    });
-    await waitFor(() => expect(listCalls()).toHaveLength(3));
+    expect(summary({ id: "thr_b" })?.selected).toBe("muted");
     show(["thr_c"]);
-    show(["thr_b", "thr_c"]);
+    show(["thr_a", "thr_b", "thr_c"]);
     await act(async () => {});
     expect(listCalls()).toEqual([
       { threadIds: ["thr_a", "thr_b"] },
       { threadIds: ["thr_c"] },
-      { threadIds: ["thr_b", "thr_c"] },
     ]);
   });
 
-  it("re-reads rows that were off screen during an update when they are shown again", async () => {
+  it("updates rows held off screen and fetches rows it never held when shown", async () => {
     const muted = { own: "muted", ancestorCap: null } as const;
-    const { view, show, summary, restore, listCalls } = renderNotifications(
-      { thr_a: muted, thr_b: muted },
+    const { view, show, summary, listCalls } = renderNotifications(
+      { thr_a: muted, thr_b: muted, thr_new: muted },
       ["thr_a", "thr_b"],
     );
     await waitFor(() =>
@@ -409,22 +401,21 @@ describe("thread notifications action", () => {
     );
     show(["thr_a"]);
 
-    restore({ thr_a: muted, thr_b: { own: "all", ancestorCap: null } });
     await view.behavior.emitRealtime("threadNotifications", {
-      threadId: "thr_elsewhere",
-      notifications: null,
+      threads: {
+        thr_b: { own: "all", ancestorCap: null },
+        thr_new: { own: "all", ancestorCap: null },
+      },
     });
+    show(["thr_a", "thr_b", "thr_new"]);
     await waitFor(() => expect(listCalls()).toHaveLength(2));
-
-    show(["thr_a", "thr_b"]);
     await waitFor(() =>
-      expect(summary({ id: "thr_b" })?.selected).toBe("all"),
+      expect(summary({ id: "thr_new" })?.selected).toBe("muted"),
     );
-    expect(summary({ id: "thr_a" })?.selected).toBe("muted");
+    expect(summary({ id: "thr_b" })?.selected).toBe("all");
     expect(listCalls()).toEqual([
       { threadIds: ["thr_a", "thr_b"] },
-      { threadIds: ["thr_a"] },
-      { threadIds: ["thr_b"] },
+      { threadIds: ["thr_new"] },
     ]);
   });
 
