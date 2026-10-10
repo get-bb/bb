@@ -67,23 +67,12 @@ const sharesConversation = (thread: ThreadLink) =>
 export function createStore(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
-    "CREATE TABLE answers (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, document TEXT NOT NULL)",
+    "CREATE TABLE answers (id TEXT NOT NULL, thread_id TEXT NOT NULL, document TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (id, thread_id))",
     "CREATE INDEX answers_thread ON answers(thread_id)",
-    "ALTER TABLE answers ADD COLUMN kind TEXT NOT NULL DEFAULT 'document'",
-    "CREATE TABLE answer_state (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+    "CREATE TABLE answer_state (id TEXT NOT NULL, thread_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (id, thread_id))",
     "CREATE INDEX answer_state_thread ON answer_state(thread_id)",
     "CREATE TABLE answer_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL)",
     "CREATE INDEX answer_events_answer ON answer_events(answer_id, seq)",
-    "CREATE TABLE answers_by_thread (id TEXT NOT NULL, thread_id TEXT NOT NULL, document TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (id, thread_id))",
-    "INSERT INTO answers_by_thread (id, thread_id, document, kind) SELECT id, thread_id, document, kind FROM answers",
-    "DROP TABLE answers",
-    "ALTER TABLE answers_by_thread RENAME TO answers",
-    "CREATE INDEX answers_thread ON answers(thread_id)",
-    "CREATE TABLE answer_state_by_thread (id TEXT NOT NULL, thread_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (id, thread_id))",
-    "INSERT INTO answer_state_by_thread (id, thread_id, state, version, updated_at) SELECT id, thread_id, state, version, updated_at FROM answer_state",
-    "DROP TABLE answer_state",
-    "ALTER TABLE answer_state_by_thread RENAME TO answer_state",
-    "CREATE INDEX answer_state_thread ON answer_state(thread_id)",
     "CREATE INDEX answer_events_thread ON answer_events(thread_id)",
   ]);
   const owned = db.prepare(
