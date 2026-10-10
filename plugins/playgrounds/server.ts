@@ -31,6 +31,7 @@ import {
   createLibrary,
   LIBRARY_MIGRATIONS,
   uuidv7,
+  VERSION_META_MIGRATIONS,
 } from "./library.js";
 import { CATALOG_MIGRATIONS, catalogBase, createCatalog } from "./catalog.js";
 import { libraryHandlers, libraryRpc } from "./library-rpc.js";
@@ -89,6 +90,7 @@ export function createStore(bb: BbPluginApi, deps: CatalogDeps = {}) {
     "CREATE INDEX answer_events_answer ON answer_events(answer_id, seq)",
     ...LIBRARY_MIGRATIONS,
     ...CATALOG_MIGRATIONS,
+    ...VERSION_META_MIGRATIONS,
   ]);
   const owned = db.prepare(
     "SELECT 1 FROM answers WHERE id = ? AND thread_id = ?",

@@ -31,7 +31,7 @@ export const LIBRARY_MIGRATIONS = [
   "CREATE TABLE library_apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, selected_version_id TEXT NOT NULL, revision INTEGER NOT NULL, origin_kind TEXT NOT NULL, origin_ref TEXT, publish_catalog_id TEXT, published_version TEXT, published_digest TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER)",
   "CREATE UNIQUE INDEX library_apps_catalog ON library_apps(origin_ref) WHERE origin_kind = 'catalog'",
   "CREATE UNIQUE INDEX library_apps_publish ON library_apps(publish_catalog_id) WHERE publish_catalog_id IS NOT NULL",
-  "CREATE TABLE library_versions (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, label TEXT NOT NULL, package TEXT NOT NULL, meta TEXT NOT NULL, digest TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE (app_id, label))",
+  "CREATE TABLE library_versions (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, label TEXT NOT NULL, package TEXT NOT NULL, digest TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE (app_id, label))",
   "CREATE TABLE library_runs (answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, app_id TEXT NOT NULL, version_id TEXT NOT NULL, origin TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'run', inherited INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY (answer_id, thread_id))",
   "CREATE INDEX library_runs_resume ON library_runs(app_id, thread_id, created_at)",
   "CREATE INDEX library_runs_thread ON library_runs(thread_id)",
@@ -50,6 +50,11 @@ const PRUNE_BATCH = 200;
 const RECONCILE_BATCH = 50;
 const UUID_V7 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export const VERSION_META_MIGRATIONS = [
+  "ALTER TABLE library_versions ADD COLUMN meta TEXT",
+  "UPDATE library_versions SET meta = json_object('contentKind', json_extract(package, '$.content.kind'), 'agentActions', json_extract(package, '$.actions.mode'), 'author', json(COALESCE(json_extract(package, '$.author'), json_extract(package, '$.origin.author'))), 'license', COALESCE(json_extract(package, '$.license'), json_extract(package, '$.origin.license')))",
+];
 
 export function uuidv7(now = Date.now()): string {
   const bytes = randomBytes(16);
