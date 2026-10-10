@@ -537,7 +537,7 @@
 .pga-card {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 14px;
   border: 1px solid var(--border);
