@@ -9,7 +9,7 @@ Keep threads moving when a provider is overloaded or your subscription window is
 
 ## How it works
 
-The plugin reacts to each failed turn. It only retries overload errors and subscription-window rate limits with a known reset time. Credit and spend limits are not retried. Each retry waits a little past the reset and adds a random spread. Many threads on one account then do not wake at the same instant.
+The plugin reacts to each failed turn. It retries overload errors, subscription-window rate limits with a known reset time, and rate-limit failures routed through Account Pooler when the pool reports a usable account or a known recovery time. Credit and spend limits are not retried. Each retry waits a little past the reset and adds a random spread. Many threads on one account then do not wake at the same instant.
 
 ## Settings
 
@@ -20,3 +20,7 @@ The plugin reacts to each failed turn. It only retries overload errors and subsc
 - `bb provider-retry status [thread-id] [--json]`: show pending retries.
 - `bb provider-retry retry <thread-id>`: send a pending retry now.
 - `bb provider-retry cancel <thread-id>`: cancel a pending retry.
+
+For pooled threads, the pool’s availability overrides provider-local quota snapshots, which can be missing or refer to an account the pool has already replaced. Recovery uses the earliest usable account after all its blocking windows and temporary holds clear, including limits for the failed request’s model. Parent pools use the same authenticated availability lookup. Unknown resets, authentication failures, and unavailable sources are explained without scheduling a speculative retry.
+
+Run `bb provider-retry explain [thread-id] [--json]` to inspect the last automatic decision, including skipped retries. This is a historical decision, not the current queue state; use `status` for pending retries. Decisions are recorded after this version is loaded and survive restart. The same diagnostic is available through `bb.sdk.plugins.callRpc` using plugin `provider-retry`, method `decision.get`, and input `{ threadId }`.

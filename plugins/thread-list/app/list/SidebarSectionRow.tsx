@@ -23,7 +23,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_GAP_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "../ui/sidebar-hover-actions.js";
+} from "@/components/ui/sidebar-hover-actions";
 import { cn } from "@/lib/utils";
 import type { SidebarSectionId } from "../model/sidebar-section-id.js";
 import type { CollapsedChildActivity } from "../model/thread-activity.js";
@@ -32,11 +32,11 @@ import {
   SIDEBAR_ROW_BASE_CLASS,
   SIDEBAR_GROUP_TEXT_CLASS,
   getSidebarThreadRowPaddingLeft,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import { SidebarChildToggleChevron } from "../rows/SidebarChildToggleChevron.js";
 import { CollapsedThreadStatusGlyph } from "../rows/ThreadRow.js";
-import type { SidebarSortableDragBindings } from "../rows/sortableMotion.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,

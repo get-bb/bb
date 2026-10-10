@@ -1,6 +1,7 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import {
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useAtomValue } from "jotai";
 import { Icon } from "@/components/ui/icon";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import {
   Tooltip,
   TooltipContent,
@@ -26,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import {
   hasThreadListWorkingActivity,
+  resolveThreadListIndicator,
+  resolveThreadStatus,
   threadListIndicatorStateForThread,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
@@ -34,6 +38,7 @@ import {
 import {
   experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
   experimental_ThreadActionsMenu as ThreadActionsMenu,
+  experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_THREAD_ACTION_GROUPS,
   experimental_useThreadActions,
   experimental_useSidebarThreadSplit,
@@ -67,8 +72,8 @@ import {
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_INSET_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
-} from "../ui/sidebar-hover-actions.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+} from "@/components/ui/sidebar-hover-actions";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron.js";
 import { useSidebarRename } from "./SidebarInlineRename.js";
 import { SidebarRowControls } from "./SidebarRowControls.js";
@@ -83,13 +88,13 @@ import {
   SIDEBAR_STATUS_GLYPH_BOX_CLASS,
   getSidebarThreadGroupLineLeft,
   getSidebarThreadRowPaddingLeft,
-} from "./sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import type {
   SidebarNestTargetState,
   SidebarReorderPlacement,
   ThreadRowNestDrop,
 } from "./sidebarThreadRowDroppable.js";
-import type { SidebarSortableDragBindings } from "./sortableMotion.js";
+import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motion";
 import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap.js";
 import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";
@@ -105,11 +110,6 @@ import {
   ThreadRowActionsEditor,
   focusFirstRowActionSlot,
 } from "../list/ThreadRowActionsCustomize.js";
-import {
-  ThreadStatusGlyph,
-  resolveThreadStatus,
-  type ThreadStatusGlyphProps,
-} from "./ThreadStatusGlyph.js";
 
 const SIDEBAR_TITLE_DOUBLE_CLICK_MS = 400;
 
@@ -270,23 +270,29 @@ export function CollapsedThreadStatusGlyph({
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
   };
-  return <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />;
+  return (
+    <ThreadStatusGlyph
+      indicator={resolveThreadListIndicator(statusProps)}
+      rowStatus={pluginStatus}
+    />
+  );
 }
 
-type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
-  pluginStatus: PluginSidebarThreadRowStatus | null;
-};
-
 function ThreadTrailingIndicator({
-  pluginStatus,
-  ...statusProps
-}: ThreadTrailingIndicatorProps) {
-  const { indicatorKind, pluginStatusIsVisible } = resolveThreadStatus(
-    statusProps,
-    pluginStatus,
+  state,
+  hideIdleDraftLabel,
+  rowStatus,
+}: {
+  state: ThreadListIndicatorState;
+  hideIdleDraftLabel: boolean;
+  rowStatus: PluginSidebarThreadRowStatus | null;
+}) {
+  const { indicatorKind, rowStatusIsVisible } = resolveThreadStatus(
+    state,
+    rowStatus,
   );
 
-  if (indicatorKind === "none" && !pluginStatusIsVisible) {
+  if (indicatorKind === "none" && !rowStatusIsVisible) {
     return null;
   }
 
@@ -298,7 +304,11 @@ function ThreadTrailingIndicator({
         SIDEBAR_STATUS_GLYPH_BOX_CLASS,
       )}
     >
-      <ThreadStatusGlyph {...statusProps} pluginStatus={pluginStatus} />
+      <ThreadStatusGlyph
+        indicator={indicatorKind}
+        rowStatus={rowStatus}
+        hideIdleDraftLabel={hideIdleDraftLabel}
+      />
     </span>
   );
 }
@@ -423,6 +433,8 @@ function ThreadRowComponent({
     },
   });
   const customizeRowActions = useCustomizeThreadRowActions();
+  const isCompactViewport = useIsCompactViewport();
+  const pendingMenuCustomize = useRef<(() => void) | null>(null);
   const inlineMenuActions: PluginThreadActionsInlineItem[] =
     customizeRowActions === null
       ? []
@@ -433,7 +445,11 @@ function ThreadRowComponent({
             action: {
               label: "Customize row actions",
               icon: "FilterHorizontal",
-              run: () => customizeRowActions(thread.id),
+              run: () => {
+                const begin = () => customizeRowActions(thread.id);
+                if (isCompactViewport) begin();
+                else pendingMenuCustomize.current = begin;
+              },
             },
           },
         ];
@@ -543,6 +559,13 @@ function ThreadRowComponent({
   );
 
   const rowLinkRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (isCustomizingActions) {
+      focusFirstRowActionSlot(
+        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
+      );
+    }
+  }, [isCustomizingActions]);
   const handleRowClick = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
       if (event.target !== event.currentTarget) {
@@ -555,11 +578,11 @@ function ThreadRowComponent({
     [],
   );
   const handleActionsMenuCloseAutoFocus = (event: Event) => {
-    if (isCustomizingActions) {
+    const begin = pendingMenuCustomize.current;
+    if (begin) {
+      pendingMenuCustomize.current = null;
       event.preventDefault();
-      focusFirstRowActionSlot(
-        rowLinkRef.current?.closest("[data-sidebar-rename-row]"),
-      );
+      begin();
       return;
     }
     rename.onCloseAutoFocus(event);
@@ -792,11 +815,11 @@ function ThreadRowComponent({
                   </span>
                 ) : (
                   <ThreadTrailingIndicator
-                    {...trailingIndicatorState}
+                    state={trailingIndicatorState}
                     hideIdleDraftLabel={
                       !hasHiddenChildren && trailingIndicatorKind === "draft"
                     }
-                    pluginStatus={pluginThreadRowStatus}
+                    rowStatus={pluginThreadRowStatus}
                   />
                 )}
               </span>

@@ -282,8 +282,10 @@ describe("TopLevelSidebarSection", () => {
       </TopLevelSidebarSection>,
     );
 
-    const indicator = screen.getByLabelText("Thread working");
-    const activitySlot = indicator.closest(
+    const indicator = document.querySelector(
+      '[data-thread-status-glyph="runtime"]',
+    );
+    const activitySlot = indicator?.closest(
       "[data-sidebar-collapsed-activity-edge]",
     );
     const trailingControls = activitySlot?.parentElement;
@@ -355,12 +357,16 @@ describe("TopLevelSidebarSection", () => {
       },
     });
 
-    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    const glyph = document.querySelector("[data-thread-status-glyph]");
+    expect(glyph?.getAttribute("data-row-status")).toBe(
+      "Plugin improving draft",
+    );
+    expect(glyph?.getAttribute("data-row-status-tone")).toBe("running");
     expect(screen.queryByText("Draft thread")).toBeNull();
 
     result.rerender(<Slot>{renderSection(false)}</Slot>);
 
-    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(document.querySelector("[data-thread-status-glyph]")).toBeNull();
     expect(screen.getByText("Draft thread")).not.toBeNull();
   });
 });

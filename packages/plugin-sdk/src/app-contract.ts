@@ -11,6 +11,7 @@ import type {
   ProviderInfo,
   ReasoningLevel,
   ServiceTier,
+  SessionOptionSelections,
   EnvironmentWorkspaceDisplayKind,
   ThreadQueuedWork,
   ThreadRuntimeDisplayStatus,
@@ -23,6 +24,8 @@ import type {
 } from "@bb/server-contract";
 import type {
   BbSdkAreas,
+  PluginThreadMetadataListArgs,
+  PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataResult,
   ThreadPluginMetadataUpdateArgs,
@@ -1194,11 +1197,16 @@ export interface ExperimentalClipboardContent {
  */
 export type PluginBoundThreadsArea = Omit<
   BbSdkAreas["threads"],
-  "getPluginMetadata" | "updatePluginMetadata"
+  "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
 > & {
   getPluginMetadata(
     args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
   ): Promise<ThreadPluginMetadataResult>;
+  experimental_listPluginMetadata(
+    args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+      pluginId?: string;
+    },
+  ): Promise<PluginThreadMetadataListResult>;
   updatePluginMetadata(
     args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
       pluginId?: string;
@@ -1222,6 +1230,29 @@ export type PluginBrowserBbSdk = Omit<BbSdkAreas, "threads"> & {
 export interface PluginThreadTitleProps {
   /** A thread in the sidebar's live view; renders nothing for an unknown id. */
   threadId: string;
+}
+
+/**
+ * Props for {@link PluginSdkApp.experimental_ThreadStatusGlyph}: bb's thread
+ * status glyph, the one its own lists draw. The caller resolves the
+ * indicator, so a row can fold in state the host does not know about, such
+ * as collapsed children or a client-local draft.
+ */
+export interface PluginThreadStatusGlyphProps {
+  /** The indicator to draw; "none" draws nothing unless `rowStatus` shows. */
+  indicator: PluginSidebarThreadIndicator;
+  /** Draws the archive glyph instead of the indicator. */
+  archived?: boolean;
+  /**
+   * A status another plugin set on the row (see
+   * {@link PluginSdkApp.useSidebarThreadRowStatus}). It replaces every
+   * indicator except "runtime", "unread-error", and "waiting-for-input".
+   */
+  rowStatus?: PluginSidebarThreadRowStatus | null;
+  /** Hides the idle draft glyph from assistive technology. */
+  hideIdleDraftLabel?: boolean;
+  /** "compact" draws a 14 px glyph; "default" matches bb's sidebar rows. */
+  size?: "default" | "compact";
 }
 
 /**
@@ -1403,8 +1434,12 @@ export interface PluginThreadActionChoice {
  * button. `run` receives the picked choice's `id` as `value`.
  */
 export interface PluginThreadActionChoices {
+  /**
+   * Title of the drawer step and the quick-action popover; defaults to the
+   * action's label. Desktop submenus show none: their trigger names them.
+   */
   heading?: string;
-  /** Secondary text under the heading, e.g. where the current value comes from. */
+  /** Footnote below the choices, e.g. why the current value differs from the pick. */
   hint?: string;
   items: readonly PluginThreadActionChoice[];
 }
@@ -1424,6 +1459,11 @@ export interface PluginThreadActionRunInput {
 /** One evaluated thread action: what a registration shows for one thread. */
 export interface PluginThreadAction {
   label: string;
+  /**
+   * Short secondary text on a muted second line under the label, e.g. the
+   * current value of a choice list.
+   */
+  detail?: string;
   icon: BbIconName;
   variant?: "default" | "destructive";
   disabled?: boolean;
@@ -1433,6 +1473,19 @@ export interface PluginThreadAction {
    * or async) are contained and logged; they never break the menu.
    */
   run(input: PluginThreadActionRunInput): void | Promise<void>;
+}
+
+/** What a registration's `useData` receives. */
+export interface PluginThreadActionDataInput {
+  /**
+   * Every thread a visible surface currently shows actions for (sidebar rows
+   * on screen, the open thread's header, open menus); a hidden sidebar
+   * contributes none. Sorted, deduplicated, and published once the set has
+   * been quiet for 32 ms (at most 100 ms after the first change), so rows
+   * that mount a frame apart arrive together. Load per-thread state for these
+   * ids, fetching only ids not loaded yet.
+   */
+  threadIds: readonly string[];
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
@@ -1458,8 +1511,9 @@ export interface PluginThreadActionItemInput<Data> {
  * Delete, …) are registrations of this same shape.
  *
  * `useData` is a React hook the host calls once for the whole app, never per
- * thread or per menu; read app-wide state there (preferences, a batched
- * per-thread map, a realtime channel). `item` is pure and synchronous: it
+ * thread or per menu; read app-wide state there (preferences, a realtime
+ * channel, per-thread state for the `threadIds` it receives, fetched in one
+ * batch for the ids not loaded yet). `item` is pure and synchronous: it
  * derives the action for one thread from that thread and `data`, closing over
  * everything `run` needs, or returns null to hide it. A throw from either
  * drops only this registration.
@@ -1480,7 +1534,7 @@ export interface PluginThreadActionRegistration<Data = undefined> {
    */
   group: string;
   order?: number;
-  useData?(): Data;
+  useData?(input: PluginThreadActionDataInput): Data;
   item(input: PluginThreadActionItemInput<Data>): PluginThreadAction | null;
 }
 
@@ -2564,6 +2618,11 @@ export type ComposerMention = {
       argumentHint: string | null;
     }
   | {
+      kind: "attachment";
+      /** The stored path of a file attached to the same draft. */
+      path: string;
+    }
+  | {
       kind: "plugin";
       /** The plugin that owns the pill. */
       pluginId: string;
@@ -3128,6 +3187,12 @@ export interface NewThreadRequest {
   /** Omitted when the selected provider has no service tiers. */
   serviceTier?: ServiceTier;
   /**
+   * Agent options the user chose in the model picker or the mode menu, keyed
+   * by option id. Present only when the user changed at least one option the
+   * selected provider declares. Forward it to `threads.spawn` unchanged.
+   */
+  sessionOptions?: SessionOptionSelections;
+  /**
    * Per-field provenance (caller-explicit vs. default) for the execution
    * options above, forwarded to `spawn` so the server records what the user
    * actually chose.
@@ -3662,6 +3727,12 @@ export interface PluginSdkApp {
    * form is `displayTitle` on the thread.
    */
   ThreadTitle: ComponentType<PluginThreadTitleProps>;
+  /**
+   * bb's thread status glyph (see {@link PluginThreadStatusGlyphProps}): the
+   * same icons, colors, and accessible labels as bb's own thread lists.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadStatusGlyph: ComponentType<PluginThreadStatusGlyphProps>;
   /**
    * bb's environment provider catalog (see
    * {@link PluginEnvironmentProvidersState}), the directory a thread's

@@ -42,6 +42,7 @@ import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_TEXT_SM_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { CopyableInlineLabel } from "@/components/ui/copy-button.js";
+import { useFittedPathMiddle } from "@/components/ui/truncate-path-middle";
 import {
   DetailCard,
   DetailRow,
@@ -373,8 +374,24 @@ function isReusableEnvironment(environment: Environment): boolean {
   return environment.status === "ready" && environment.path !== null;
 }
 
+function measureCopyIconWidth(container: HTMLElement): number {
+  const label = container.querySelector("button");
+  const icon = label?.querySelector("svg");
+  if (!label || !icon) return 0;
+  const gap = Number.parseFloat(getComputedStyle(label).columnGap);
+  return icon.getBoundingClientRect().width + (Number.isNaN(gap) ? 0 : gap);
+}
+
 export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   if (!environment?.path) return null;
+  return <WorkspacePathValue path={environment.path} />;
+}
+
+function WorkspacePathValue({ path }: { path: string }) {
+  const { containerRef, fitted } = useFittedPathMiddle<HTMLDivElement>(
+    formatHomePathForDisplay(path),
+    measureCopyIconWidth,
+  );
 
   return (
     <DetailRow
@@ -383,17 +400,17 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
       }
       valueClassName="min-w-0"
     >
-      <CopyableInlineLabel
-        text={environment.path}
-        label="Copy directory"
-        title={environment.path}
-        successMessage="Directory copied"
-        errorMessage="Failed to copy directory"
-      >
-        <span className="text-muted-foreground">
-          {formatHomePathForDisplay(environment.path)}
-        </span>
-      </CopyableInlineLabel>
+      <div ref={containerRef} className="min-w-0">
+        <CopyableInlineLabel
+          text={path}
+          label="Copy directory"
+          title={path}
+          successMessage="Directory copied"
+          errorMessage="Failed to copy directory"
+        >
+          <span className="text-muted-foreground">{fitted}</span>
+        </CopyableInlineLabel>
+      </div>
     </DetailRow>
   );
 }

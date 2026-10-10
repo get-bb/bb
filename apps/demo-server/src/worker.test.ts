@@ -188,7 +188,7 @@ it("keeps unsupported API and mutation requests out of the SPA fallback", async 
 });
 
 it("isolates automatic sidebar preference writes by client and validates revisions and values", async () => {
-  const key = "sidebar.collapsedThreads";
+  const key = "sidebar.hiddenFooterItems";
   const firstClient = {
     "cf-connecting-ip": "192.0.2.1",
     "content-type": "application/json",

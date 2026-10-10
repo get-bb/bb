@@ -57,7 +57,7 @@ interface Collected {
 function Probe({ collected }: { collected: { current: Collected | null } }) {
   const useData = moveThreadAction.useData;
   if (useData === undefined) throw new Error("Move reads its destinations");
-  const data = useData();
+  const data = useData({ threadIds: [] });
   const sdk: PluginBrowserBbSdk = useSdk();
   const navigate: BbNavigate = useBbNavigate();
   collected.current = {

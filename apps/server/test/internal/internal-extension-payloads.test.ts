@@ -5,10 +5,12 @@ import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
+import { threadTimelineResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { EXTENSION_PAYLOAD_MAX_BYTES } from "../../src/internal/extension-payloads.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { resolvePendingThreadSessionOptions } from "../../src/services/threads/thread-session-options.js";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
@@ -521,6 +523,203 @@ describe("extension kind ownership at ingest", () => {
           },
         },
       ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("accepts bb's own thread state kinds from any provider and serves them on the timeline", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      const response = await post(harness, session.id, [
+        extensionStateEvent(
+          thread.id,
+          {
+            commands: [
+              { name: "review", description: "Review the diff" },
+              { name: "web", description: "", inputHint: "query" },
+            ],
+          },
+          "bb/provider-commands",
+        ),
+        extensionStateEvent(
+          thread.id,
+          {
+            options: [
+              {
+                type: "select",
+                id: "mode",
+                label: "Mode",
+                category: "mode",
+                value: "plan",
+                values: [
+                  { id: "plan", label: "Plan" },
+                  { id: "build", label: "Build" },
+                ],
+              },
+            ],
+          },
+          "bb/session-options",
+        ),
+      ]);
+      expect(response.status).toBe(200);
+      expect(storedRows(harness, thread.id).map((row) => row.type)).toEqual([
+        "thread/extensionState/updated",
+        "thread/extensionState/updated",
+      ]);
+
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(
+          await harness.app.request(`/api/v1/threads/${thread.id}/timeline`),
+        ),
+      );
+      expect(timeline.providerCommands).toEqual([
+        {
+          name: "review",
+          source: "command",
+          origin: "builtin",
+          description: "Review the diff",
+          argumentHint: null,
+        },
+        {
+          name: "web",
+          source: "command",
+          origin: "builtin",
+          description: null,
+          argumentHint: "query",
+        },
+      ]);
+      expect(timeline.sessionOptions).toEqual([
+        {
+          type: "select",
+          id: "mode",
+          label: "Mode",
+          description: null,
+          category: "mode",
+          value: "plan",
+          pendingValue: null,
+          values: [
+            { id: "plan", label: "Plan", description: null, group: null },
+            { id: "build", label: "Build", description: null, group: null },
+          ],
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("keeps a chosen session option pending until the agent reports it, and refuses the server's own state kind from a provider", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      const modeState = (value: string) =>
+        extensionStateEvent(
+          thread.id,
+          {
+            options: [
+              {
+                type: "select",
+                id: "mode",
+                label: "Mode",
+                value,
+                values: [
+                  { id: "plan", label: "Plan" },
+                  { id: "build", label: "Build" },
+                ],
+              },
+              { type: "boolean", id: "web", label: "Web", value: false },
+            ],
+          },
+          "bb/session-options",
+        );
+      const patch = (sessionOptions: Record<string, unknown>) =>
+        harness.app.request(`/api/v1/threads/${thread.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionOptions }),
+        });
+      const pendingValues = async () =>
+        Object.fromEntries(
+          (
+            threadTimelineResponseSchema.parse(
+              await readJson(
+                await harness.app.request(
+                  `/api/v1/threads/${thread.id}/timeline`,
+                ),
+              ),
+            ).sessionOptions ?? []
+          ).map((option) => [option.id, option.pendingValue]),
+        );
+
+      expect((await patch({ mode: "build" })).status).toBe(400);
+      expect(
+        (await post(harness, session.id, [modeState("plan")])).status,
+      ).toBe(200);
+
+      expect((await patch({ mode: "yolo" })).status).toBe(400);
+      expect((await patch({ absent: "plan" })).status).toBe(400);
+      expect((await patch({ web: "true" })).status).toBe(400);
+      expect(await pendingValues()).toEqual({ mode: null, web: null });
+
+      expect((await patch({ mode: "build", web: true })).status).toBe(200);
+      expect(await pendingValues()).toEqual({ mode: "build", web: true });
+      expect(
+        resolvePendingThreadSessionOptions(harness.deps.db, thread.id),
+      ).toEqual({ mode: "build", web: true });
+
+      expect((await patch({ web: null })).status).toBe(200);
+      expect(await pendingValues()).toEqual({ mode: "build", web: null });
+
+      expect(
+        (await post(harness, session.id, [modeState("build")])).status,
+      ).toBe(200);
+      expect(await pendingValues()).toEqual({ mode: null, web: null });
+      expect(
+        resolvePendingThreadSessionOptions(harness.deps.db, thread.id),
+      ).toEqual({});
+
+      expect(
+        (await post(harness, session.id, [modeState("plan")])).status,
+      ).toBe(200);
+      expect(await pendingValues()).toEqual({ mode: null, web: null });
+
+      const forged = await post(harness, session.id, [
+        extensionStateEvent(
+          thread.id,
+          { selections: { mode: "build" } },
+          "bb/session-option-selections",
+        ),
+      ]);
+      expect(forged.status).toBe(200);
+      expect(storedRows(harness, thread.id).at(-1)?.type).toBe(
+        "provider/unhandled",
+      );
+      expect(await pendingValues()).toEqual({ mode: null, web: null });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("replaces a bb thread state whose payload does not match bb's schema with provider/unhandled", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      const response = await post(harness, session.id, [
+        extensionStateEvent(
+          thread.id,
+          { commands: [{ description: "nameless" }] },
+          "bb/provider-commands",
+        ),
+      ]);
+      expect(response.status).toBe(200);
+      expect(storedRows(harness, thread.id).map((row) => row.type)).toEqual([
+        "provider/unhandled",
+      ]);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(
+          await harness.app.request(`/api/v1/threads/${thread.id}/timeline`),
+        ),
+      );
+      expect(timeline.providerCommands).toBeNull();
     } finally {
       await harness.cleanup();
     }

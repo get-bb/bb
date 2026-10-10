@@ -457,7 +457,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(runtime.waitForActiveTurn).toHaveBeenCalledWith("thread-1", {
       timeoutMs: 5_000,
     });
@@ -501,7 +501,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(runtime.steerTurn).toHaveBeenCalledWith(
       expect.objectContaining({ expectedTurnId: "turn-new" }),
     );
@@ -535,7 +535,7 @@ describe("dispatchCommand", () => {
       },
     );
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(runtime.waitForActiveTurn).not.toHaveBeenCalled();
     expect(runtime.runTurn).toHaveBeenCalledOnce();
   });
@@ -881,7 +881,7 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(oldRuntime.stopThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
@@ -2370,7 +2370,7 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ trace: { spans: [] } });
     expect(fixture.runtime.runTurn).toHaveBeenCalledTimes(1);
     expect(fixture.runtime.resumeThread).not.toHaveBeenCalled();
     expect(fixture.createRuntimeSpy).toHaveBeenCalledTimes(1);

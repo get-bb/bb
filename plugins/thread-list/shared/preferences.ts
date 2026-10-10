@@ -176,37 +176,37 @@ export const preferenceDefinitions = {
     z.array(collapsibleSectionIdSchema).max(LIST_MAX_LENGTH),
     [],
     "Built-in sections (pinned, threads) that are collapsed.",
-    "sidebar.collapsedSections",
+    null,
   ),
   collapsedProjects: definePreference(
     stringListSchema,
     [],
     "Project ids whose rows are collapsed.",
-    "sidebar.collapsedProjects",
+    null,
   ),
   collapsedThreads: definePreference(
     stringListSchema,
     [],
     "Thread ids whose child threads are collapsed.",
-    "sidebar.collapsedThreads",
+    null,
   ),
   collapsedEnvironments: definePreference(
     stringListSchema,
     [],
     "Environment ids whose rows are collapsed.",
-    "sidebar.collapsedEnvironments",
+    null,
   ),
   collapsedThreadSections: definePreference(
     stringListSchema,
     [],
     "Custom section ids that are collapsed.",
-    "sidebar.collapsedThreadSections",
+    null,
   ),
   collapsedMachines: definePreference(
     stringListSchema,
     [],
     "Machine ids whose rows are collapsed.",
-    "sidebar.collapsedMachines",
+    null,
   ),
 } as const;
 

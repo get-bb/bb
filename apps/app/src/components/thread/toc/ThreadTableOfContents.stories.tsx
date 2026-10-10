@@ -81,6 +81,7 @@ const timelineRows: TimelineRow[] = Array.from(
               imageUrls: ["/icon-192.png"],
               localImagePaths: [],
               localFilePaths: [],
+              localFileDetails: [],
             }
           : null,
     }),

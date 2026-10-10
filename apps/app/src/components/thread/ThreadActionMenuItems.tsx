@@ -6,7 +6,6 @@ import type {
 import { Fragment } from "react";
 import {
   ContextMenuItem,
-  ContextMenuLabel,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -23,7 +22,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import {
   ActionMenuItem,
   ActionMenuSeparator,
-} from "@/components/ui/action-menu-items";
+} from "@bb/shared-ui/action-menu-items";
 import {
   bindThreadAction,
   useDefaultRequestRename,
@@ -109,38 +108,34 @@ function ThreadActionChoiceRows({
   ));
 }
 
-function ThreadActionChoicesHeading({
+function ThreadActionChoicesHint({
   entry,
   surface,
 }: {
   entry: ThreadActionMenuEntry;
   surface: ThreadActionMenuSurface;
 }) {
-  const choices = entry.action.choices;
-  if (choices === undefined) return null;
-  const Label = surface === "context" ? ContextMenuLabel : DropdownMenuLabel;
+  const hint = entry.action.choices?.hint;
+  if (hint === undefined) return null;
   return (
     <>
-      <Label>{choices.heading ?? entry.action.label}</Label>
-      {choices.hint !== undefined ? (
-        <div className="px-2 pb-1 text-xs text-muted-foreground">
-          {choices.hint}
-        </div>
-      ) : null}
+      <ActionMenuSeparator surface={surface} />
+      <div className="max-w-56 px-2 py-1 text-xs text-muted-foreground">
+        {hint}
+      </div>
     </>
   );
 }
 
-export function ThreadActionChoices({
-  entry,
-}: {
-  entry: ThreadActionMenuEntry;
-}) {
+function ThreadActionLabel({ action }: { action: PluginBoundThreadAction }) {
+  if (action.detail === undefined) return action.label;
   return (
-    <>
-      <ThreadActionChoicesHeading entry={entry} surface="dropdown" />
-      <ThreadActionChoiceRows entry={entry} surface="dropdown" />
-    </>
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span className="truncate">{action.label}</span>
+      <span className="truncate text-2xs text-muted-foreground">
+        {action.detail}
+      </span>
+    </span>
   );
 }
 
@@ -167,7 +162,7 @@ function ThreadActionMenuRow({
           void action.run();
         }}
       >
-        {action.label}
+        <ThreadActionLabel action={action} />
       </ActionMenuItem>
     );
   }
@@ -181,7 +176,11 @@ function ThreadActionMenuRow({
         }}
       >
         <Icon name={action.icon} aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate">{action.label}</span>
+        {action.detail === undefined ? (
+          <span className="min-w-0 flex-1 truncate">{action.label}</span>
+        ) : (
+          <ThreadActionLabel action={action} />
+        )}
         <Icon name="ChevronRight" className="ml-auto" aria-hidden="true" />
       </DropdownMenuItem>
     );
@@ -195,14 +194,11 @@ function ThreadActionMenuRow({
     <Sub>
       <SubTrigger disabled={action.disabled}>
         <Icon name={action.icon} aria-hidden="true" />
-        {action.label}
+        <ThreadActionLabel action={action} />
       </SubTrigger>
       <SubContent className={CHOICES_CONTENT_CLASS}>
-        {action.choices.heading !== undefined ||
-        action.choices.hint !== undefined ? (
-          <ThreadActionChoicesHeading entry={entry} surface={surface} />
-        ) : null}
         <ThreadActionChoiceRows entry={entry} surface={surface} />
+        <ThreadActionChoicesHint entry={entry} surface={surface} />
       </SubContent>
     </Sub>
   );
@@ -227,7 +223,11 @@ function ThreadActionDrawerStep({
         Back
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <ThreadActionChoices entry={entry} />
+      <DropdownMenuLabel>
+        {entry.action.choices?.heading ?? entry.action.label}
+      </DropdownMenuLabel>
+      <ThreadActionChoiceRows entry={entry} surface="dropdown" />
+      <ThreadActionChoicesHint entry={entry} surface="dropdown" />
     </>
   );
 }

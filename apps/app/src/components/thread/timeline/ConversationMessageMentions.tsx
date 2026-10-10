@@ -208,7 +208,7 @@ export function PromptMentionPill({
     );
   }
 
-  if (resource.kind === "path") {
+  if (resource.kind === "path" || resource.kind === "attachment") {
     const activate = resolveMentionLink?.(resource) ?? null;
     if (activate) {
       return (

@@ -1254,7 +1254,7 @@ describe("useThreadTimelineController commits", () => {
     },
   );
 
-  it("still reports timelineLoading while refetching an empty timeline", async () => {
+  it("keeps a loaded empty timeline out of the loading state while it refetches", async () => {
     vi.mocked(sdk.threads.timeline)
       .mockResolvedValueOnce(makeTimelineResponse())
       .mockReturnValueOnce(new Promise(() => {}));
@@ -1262,10 +1262,13 @@ describe("useThreadTimelineController commits", () => {
     const view = await renderSettledController(wrapper, []);
 
     startTimelineRefetch(queryClient);
-
     await waitFor(() => {
-      expect(view.latest().timelineLoading).toBe(true);
+      expect(sdk.threads.timeline).toHaveBeenCalledTimes(2);
     });
+    await flushQueryNotifications();
+
+    expect(queryClient.isFetching({ queryKey: TIMELINE_QUERY_KEY })).toBe(1);
+    expect(view.latest().timelineLoading).toBe(false);
   });
 
   it("reads only query result properties covered by the notify lists", async () => {

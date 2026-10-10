@@ -17,7 +17,10 @@ import {
   hasProviderCliAction,
   useProviderCliInstallRunner,
 } from "@/components/provider-cli/provider-cli-install";
-import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
+import {
+  openProviderCliInstallLog,
+  providerCliJobKey,
+} from "@/components/provider-cli/provider-cli-install-store";
 import { ThreadTerminalView } from "@/components/thread/terminal/ThreadTerminalView";
 import { appToast } from "@/components/ui/app-toast";
 import { applyPluginInstallJob } from "@/hooks/cache-owners/plugin-cache-owner";
@@ -92,7 +95,7 @@ const SIGN_IN_TERMINAL_ROWS = 14;
 const SIGN_IN_OUTPUT_POLL_INTERVAL_MS = 1_000;
 const SIGN_IN_OUTPUT_TAIL_BYTES = 64 * 1024;
 const SIGN_IN_TERMINAL_FALLBACK_DELAY_MS = 6_000;
-const INSTALL_FAILED_MESSAGE = "Install failed. Check the log, then retry.";
+const INSTALL_FAILED_MESSAGE = "Install failed";
 const PLUGIN_TOGGLE_SETTLE_TIMEOUT_MS = 10_000;
 
 function decodeTerminalChunks(chunks: readonly TerminalOutputChunk[]): string {
@@ -385,6 +388,15 @@ function AgentStepContainer({
     installRunner.startInstall({ hostId, issue });
   };
 
+  const viewInstallLog = (providerId: string) => {
+    if (hostId === null) return;
+    const failure = installRunner.failuresByJobKey.get(
+      providerCliJobKey(hostId, providerId),
+    );
+    if (failure === undefined) return;
+    openProviderCliInstallLog(failure.logDialogState);
+  };
+
   const agents: OnboardingAgent[] | null =
     hostId === null || states === undefined
       ? null
@@ -440,6 +452,7 @@ function AgentStepContainer({
         });
 
   const agentReady = hasReadyAgent(states);
+  const agentBlocked = agents === null ? statesQuery.isError : !agentReady;
   return (
     <OnboardingLayout
       {...chrome}
@@ -447,11 +460,11 @@ function AgentStepContainer({
       title="Connect a coding agent"
       description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
       footerNote={
-        agentReady ? null : "Threads can't start until one agent is ready."
+        agentBlocked ? "Threads can't start until one agent is ready." : null
       }
       primaryLabel="Continue"
       primaryDisabled={!agentReady}
-      secondaryLabel={agentReady ? undefined : "Skip for now"}
+      secondaryLabel={agentBlocked ? "Skip for now" : undefined}
       onPrimary={onContinue}
       onSecondary={onContinue}
     >
@@ -460,6 +473,7 @@ function AgentStepContainer({
         agents={agents}
         onSignIn={(providerId) => void startSignIn(providerId)}
         onInstall={startInstall}
+        onViewInstallLog={viewInstallLog}
         onCancelSignIn={endSignIn}
         onRecheck={() => {
           void refetchStates();

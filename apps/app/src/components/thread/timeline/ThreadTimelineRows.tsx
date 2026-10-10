@@ -76,6 +76,12 @@ import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
 import { TimelineReasoningDetail } from "./TimelineReasoningDetail.js";
 import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
+import { TimelineRowBodyPlaceholder } from "./TimelineRowBodyPlaceholder.js";
+import {
+  timelineDetailIdentity,
+  usePreloadTimelineRowBody,
+  useTimelineRowBodyRenderersReady,
+} from "./timeline-row-body-preload.js";
 import {
   TimelineActionRowHeader,
   TimelineLeadingIcon,
@@ -958,7 +964,17 @@ const ConversationRowContent = memo(function ConversationRowContent({
             input.push({ type: "localImage", path });
           }
           for (const path of row.attachments?.localFilePaths ?? []) {
-            input.push({ type: "localFile", path });
+            const detail = row.attachments?.localFileDetails.find(
+              (file) => file.path === path,
+            );
+            input.push({
+              type: "localFile",
+              path,
+              ...(detail ? { name: detail.name } : {}),
+              ...(detail?.sizeBytes == null
+                ? {}
+                : { sizeBytes: detail.sizeBytes }),
+            });
           }
           onEditMessage({
             messageId: row.id,
@@ -1102,26 +1118,6 @@ function TimelineSystemDetailBlock({
   );
 }
 
-interface DeferredContentResult {
-  isError: boolean;
-  retry: () => void;
-  rows: TimelineRow[] | undefined;
-}
-
-function DeferredContentLoader({
-  identity,
-  onResult,
-}: {
-  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity;
-  onResult: (result: DeferredContentResult) => void;
-}) {
-  const { isError, retry, rows } = useTimelineDetailRows(identity, true);
-  useEffect(() => {
-    onResult({ isError, retry, rows });
-  }, [isError, onResult, retry, rows]);
-  return null;
-}
-
 function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
   const { row } = props;
   const { threadId } = useTimelineRendererStaticContext();
@@ -1132,20 +1128,16 @@ function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
   if (itemId === null && row !== lastInlineRow) {
     setLastInlineRow(row);
   }
-  const [deferred, setDeferred] = useState<DeferredContentResult | null>(null);
-  const { sourceSeqEnd, sourceSeqStart, threadId: rowThreadId, turnId } = row;
-  const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
-    () => ({
-      itemId: itemId ?? "",
-      sourceSeqEnd,
-      sourceSeqStart,
-      threadId: threadId ?? rowThreadId,
-      turnId: turnId ?? "",
-    }),
-    [itemId, sourceSeqEnd, sourceSeqStart, rowThreadId, turnId, threadId],
+  const preloadBody = usePreloadTimelineRowBody(row, threadId);
+  useEffect(() => {
+    preloadBody();
+  }, [preloadBody]);
+  const deferred = useTimelineDetailRows(
+    timelineDetailIdentity(row, threadId, itemId ?? ""),
+    itemId !== null,
   );
   const resolved =
-    itemId !== null && deferred?.rows !== undefined
+    itemId !== null && deferred.rows !== undefined
       ? resolveDeferredTimelineContent(row, deferred.rows)
       : null;
   const displayRow =
@@ -1155,27 +1147,21 @@ function TimelineExpandableBody(props: TimelineExpandableBodyProps) {
         (lastInlineRow !== null && lastInlineRow.id === row.id
           ? lastInlineRow
           : null));
+  const renderersReady = useTimelineRowBodyRenderersReady(row);
 
-  return (
-    <>
-      {itemId === null ? null : (
-        <DeferredContentLoader identity={identity} onResult={setDeferred} />
-      )}
-      {displayRow !== null ? (
-        <TimelineExpandableBodyContent {...props} row={displayRow} />
-      ) : deferred?.isError || deferred?.rows !== undefined ? (
-        <TimelineDetailLoadError
-          horizontalPadding="flush"
-          label="Failed to load details."
-          onRetry={deferred.retry}
-        />
-      ) : (
-        <TimelineStaticRowHeader horizontalPadding="flush">
-          <span className={PAST_ROW_DIM_CLASS_NAME}>Loading details...</span>
-        </TimelineStaticRowHeader>
-      )}
-    </>
-  );
+  if (displayRow !== null && renderersReady) {
+    return <TimelineExpandableBodyContent {...props} row={displayRow} />;
+  }
+  if (displayRow === null && (deferred.isError || deferred.rows !== undefined)) {
+    return (
+      <TimelineDetailLoadError
+        horizontalPadding="flush"
+        label="Failed to load details."
+        onRetry={deferred.retry}
+      />
+    );
+  }
+  return <TimelineRowBodyPlaceholder />;
 }
 
 function TimelineExpandableBodyContent({
@@ -1396,18 +1382,10 @@ function LazyTurnRowBody({
   showAssistantMessageActions,
 }: TurnRowBodyProps) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const { sourceSeqEnd, sourceSeqStart, threadId: rowThreadId, turnId } = row;
-  const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
-    () => ({
-      itemId: null,
-      sourceSeqEnd,
-      sourceSeqStart,
-      threadId: threadId ?? rowThreadId,
-      turnId,
-    }),
-    [sourceSeqEnd, sourceSeqStart, rowThreadId, turnId, threadId],
+  const detail = useTimelineDetailRows(
+    timelineDetailIdentity(row, threadId, null),
+    true,
   );
-  const detail = useTimelineDetailRows(identity, true);
   const rows = detail.rows
     ? getViewRows(detail.rows, { closedScope: true })
     : null;
@@ -1478,28 +1456,14 @@ function DeferredDelegationChildRows({
   row: TimelineViewDelegationWorkRow;
 }) {
   const { getViewRows, threadId } = useTimelineRendererStaticContext();
-  const {
-    callId,
-    sourceSeqEnd,
-    sourceSeqStart,
-    threadId: rowThreadId,
-    turnId,
-  } = row;
-  const identity = useMemo<ThreadTimelineTurnSummaryDetailsQueryIdentity>(
-    () => ({
-      itemId: callId,
-      sourceSeqEnd,
-      sourceSeqStart,
-      threadId: threadId ?? rowThreadId,
-      turnId: turnId ?? "",
-    }),
-    [callId, sourceSeqEnd, sourceSeqStart, rowThreadId, turnId, threadId],
+  const detail = useTimelineDetailRows(
+    timelineDetailIdentity(row, threadId, row.callId),
+    true,
   );
-  const detail = useTimelineDetailRows(identity, true);
   const loadedRows = detail.rows
     ? (findDelegationViewRow(
         getViewRows(detail.rows, { closedScope: true }),
-        callId,
+        row.callId,
       )?.childRows ?? [])
     : null;
   const rows = loadedRows ?? fallbackRows;
@@ -1712,6 +1676,7 @@ type GeneratedMessageProps = ComponentProps<
 >;
 const NO_ATTACHMENTS: GeneratedMessageProps["attachmentItems"] = {
   filePaths: [],
+  fileDetails: [],
   imageItems: [],
 };
 const NO_MENTIONS: GeneratedMessageProps["mentions"] = [];
@@ -1882,7 +1847,8 @@ function TimelineExpandableRowView({
   horizontalPadding,
   row,
 }: TimelineExpandableRowViewProps) {
-  const { onTitleAction } = useTimelineRendererStaticContext();
+  const { onTitleAction, threadId } = useTimelineRendererStaticContext();
+  const preloadBody = usePreloadTimelineRowBody(row, threadId);
   const {
     initialAutoExpandedRowIds,
     liveAutoExpandedRowIds,
@@ -1941,6 +1907,7 @@ function TimelineExpandableRowView({
       forceExpanded={searchExpandedRowIds.has(row.id)}
       terminalAutoExpanded={terminalAutoExpandedRowIds.has(row.id)}
       onTitleAction={onTitleAction}
+      onIntent={preloadBody}
       renderBody={renderBody}
     />
   );

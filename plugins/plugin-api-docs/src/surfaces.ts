@@ -133,6 +133,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginSidebarThreadShortcut",
           "ThreadTitle",
           "PluginThreadTitleProps",
+          "experimental_ThreadStatusGlyph",
+          "PluginThreadStatusGlyphProps",
           "useEnvironmentProviders",
           "PluginEnvironmentProvidersState",
           "useSdk",
@@ -195,6 +197,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
         apiSymbols: [
           "PluginThreadActionRegistration",
+          "PluginThreadActionDataInput",
           "PluginThreadActionItemInput",
           "PluginThreadActionTarget",
           "PluginThreadAction",
@@ -207,7 +210,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_ThreadActionsContextMenu",
           "experimental_THREAD_ACTION_GROUPS",
         ],
-        firstParty: ["Thread list"],
+        firstParty: ["Push notifications", "Thread list"],
         experimental: true,
       },
       {
@@ -943,7 +946,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         summary:
           "Run server code when threads change state or environments are removed. With this, a plugin can:",
         bullets: [
-          "React when threads start, finish, fail, are archived or unarchived, or are deleted",
+          "React when threads start, finish, fail, change parent, are archived or unarchived, or are deleted",
           "Follow queued messages, including ones cancelled before dispatch",
           "Get the provider's error and rate-limit windows when a turn fails",
           "Observe successful environment removal with its previous machine and path",
@@ -1177,6 +1180,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "AcpLaunchSpec",
           "experimental_acpLaunchSpecSchema",
           "experimental_probeAcpAgent",
+          "experimental_registerAcpDialect",
           "AcpDialect",
           "experimental_nativeRootsHostContract",
           "experimental_filterResolvedNativeRoots",
@@ -1254,6 +1258,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.plugins.experimental_updateJobs",
           "PluginBbSdk.threads.queuedMessages.experimental_holdForEdit",
           "PluginBbSdk.threads.queuedMessages.experimental_releaseEditHold",
+          "PluginBbSdk.threads.experimental_listDescendants",
         ],
         firstParty: [
           "Account Pooler [Experimental]",
@@ -1295,6 +1300,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Keep plugin data with the thread it belongs to, hidden from the model",
           "Seed it when spawning or forking a thread",
           "Read it when configuring that thread's agent",
+          "Read it for many threads at once, along with each thread's ancestors",
         ],
         apiSymbols: [
           "PluginBbSdk",
@@ -1302,7 +1308,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ReadonlyJsonValue",
           "BbPluginApi",
         ],
-        firstParty: ["Workflows"],
+        firstParty: ["Push notifications", "Workflows"],
       },
       {
         id: "desktop-browsers",

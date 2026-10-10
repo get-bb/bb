@@ -962,6 +962,46 @@ is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
 
+## The rebuilt ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp-next`)
+
+**Experimental preview (2026-10-09).** The rebuilt ACP bridge, published
+beside the original kit so the two can be compared before one replaces the
+other. The built-in "ACP providers (new adapter)" plugin
+(`plugins/provider-acp-next`, off by default) is its consumer: its `bb.host`
+artifact re-exports `experimental_acpProviderBridge` from this subpath the way
+the original plugin re-exports it from `provider-bridge/acp`. Turning that
+plugin on turns the original ACP plugin off, and the reverse.
+
+**What it does.** The same members as the original kit
+(`experimental_acpProviderBridge`, `experimental_probeAcpAgent`,
+`experimental_acpAgentProbeSchema`, `experimental_acpLaunchSpecSchema` and
+their types), backed by `packages/provider-bridge-acp-next`: transport on the
+official `@agentclientprotocol/sdk`, a session model that opens turns for
+agent-started work, live slash commands and session options published as bb
+thread state, elicitation forms as question cards, and sign-in guidance from
+the agent's advertised auth methods.
+
+**`experimental_registerAcpDialect`.** New in this kit by owner decision, so a
+third-party plugin can describe an agent bb does not ship. A plugin calls it
+at module load in its `bb.host` artifact with an `AcpDialect` (`id` plus the
+optional hooks `toolIdentity`, `classifyToolCall`, `commandResult`,
+`normalizeCommandEvent`, `clientRequestMethods` with `handleClientRequest`,
+and `maintenance`) and names the id as `acpDialect` in its registration. It
+throws for an empty id and for a built-in id (`acp`, `cursor`, `grok`, `omp`,
+`opencode`); a second registration of the same id replaces the first; an id
+nothing registered resolves to the generic dialect. Core uses the same path:
+the bridge resolves every dialect, shipped or registered, through the one
+registry (`packages/provider-bridge-acp-next/src/dialect.ts`,
+`resolveAcpDialect`), and the built-in plugin names its dialects by id the way
+a third-party plugin does.
+
+**Audit before stabilizing.** Decide when this kit replaces the original: the
+subpath should then be removed and its members move to `provider-bridge/acp`,
+so no plugin is left importing a name that says "next". The open questions
+on the original kit apply here unchanged (what `probeAcpAgent` owes a caller,
+hook versioning for `AcpDialect`, naming a dialect by value, a bridge factory
+instead of a module-level registry).
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -1162,6 +1202,107 @@ the server, so no client older than this field is served.
    presentation hint into a client release. Decide whether descriptor schemas
    should tolerate unknown fields so a hint degrades to the one-line input on
    an older client instead of failing the whole settings view.
+
+## `bb.sdk.threads.experimental_listPluginMetadata`
+
+**What it does.** `POST /threads/plugin-metadata` with
+`{ pluginId, threadIds }` (1–200 ids) returns `{ threads: { threadId,
+metadata }[] }` for each requested thread that holds that plugin's metadata
+namespace, archived and deleted threads included, in one
+`WHERE plugin_id = ? AND thread_id IN (…)` query on the
+`thread_plugin_metadata` primary key. Threads without a namespace are omitted;
+corrupt namespaces are omitted and logged without their content, like the
+single-thread read. The core SDK takes `{ pluginId, threadIds, signal? }`; the
+plugin-bound SDKs (backend `bb.sdk`, app `useSdk()`, and the fake host) default
+`pluginId` to the calling plugin, like `getPluginMetadata` and
+`updatePluginMetadata`. The route trusts its `pluginId` like the single-thread
+routes, because app requests carry no plugin identity. First caller: push-notifications'
+`threadNotifications.list`, which the Notifications thread action calls with
+the ids it has not cached yet.
+
+**Audit before stabilizing.**
+
+1. **Route binding.** Any caller can read any plugin's namespace, as with
+   the single-thread metadata routes. Decide whether plugin requests should
+   carry an identity the routes can enforce.
+2. **Batch size.** 200 ids per request; callers chunk. Revisit if the
+   attributes layer replaces per-registration reads.
+
+## `bb.sdk.threads.experimental_listAncestors`
+
+**What it does.** `POST /threads/ancestors` with `{ threadIds }` (1–200 ids)
+returns `{ threads: { threadId, ancestorIds }[] }`: each requested thread that
+exists, once, with its ancestors' ids from the parent up to the root (empty
+for a root thread). Archived and deleted threads are included; unknown ids
+are omitted. One recursive query follows `parent_thread_id` by primary key,
+so the cost is one indexed lookup per level, and core's depth limit keeps
+that to a few. Available unchanged on the core SDK and the plugin-bound SDKs.
+First caller: push-notifications, which reads each thread's ancestors and
+then their levels with `threads.experimental_listPluginMetadata`, so a
+parent's limit always follows the current tree, including a thread nested
+under a new parent or released when its parent is archived.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers also need each ancestor's thread
+   (title, status) rather than only ids, and whether it should merge with
+   `experimental_listDescendants` into one tree read.
+2. **Batch size.** 200 ids per request; callers chunk, like
+   `experimental_listPluginMetadata`.
+
+## `bb.sdk.threads.experimental_listDescendants`
+
+**What it does.** `POST /threads/descendants` with `{ threadIds,
+includeArchived?, includeHidden? }` (1–200 ids) returns `{ threads: {
+threadId, descendantIds }[] }`: each requested thread that exists and is not
+deleted, once, with the ids of every thread below it in breadth-first order,
+children first (empty for a leaf). Archived and hidden descendants are
+omitted unless their flag is true, matching `threads.count`; the walk still
+passes through them, so a visible thread under an archived one is returned.
+Deleted threads, anything only reachable through one, and unknown ids are
+always omitted. One recursive query follows `parent_thread_id` through
+`threads_parent_idx`, so the cost is one indexed lookup per thread in the
+subtree, archived ones included. Available unchanged on the core SDK and the
+plugin-bound SDKs. First caller: push-notifications, which publishes the
+levels of a thread and its unarchived, visible descendants when the thread's
+level or parent changes, because a parent's level limits its whole subtree,
+and republishes a thread's subtree on `thread.unarchived`.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers need the tree's edges (each
+   descendant's parent) or thread fields rather than a flat id list, and
+   whether it should merge with `experimental_listAncestors`.
+2. **Size.** A subtree of live threads has no cap, and the query walks
+   archived threads even when it omits them. Decide whether to page.
+3. **Omitted threads.** Unlike `experimental_listAncestors`, deleted threads
+   are always omitted and archived and hidden ones by default. Confirm that
+   callers never need deleted ones. No event announces a hidden thread
+   becoming visible, so a caller that skips hidden threads cannot refresh
+   one when it appears; decide whether visibility changes need an event.
+
+## `PluginSettingDescriptor.experimental_optionLabels`
+
+**What it does.** A `type: "select"` setting descriptor field
+(`bb.settings.define`): a record from option value to display label. The
+settings form shows the label in the picker and as the current value; an
+option without a label shows its value, as before. Stored values, defaults,
+`settings.get()` and `bb plugin config <id> set <key> <value>` keep using the
+option values, so a plugin can rename a label without migrating stored data.
+A label keyed by something that is not one of `options` is refused at define
+time. The field travels in the settings view (`GET /plugins/:id/settings`)
+like `experimental_multiline`. First consumer: push-notifications'
+`defaultLevel` and `childLevel` (`all` shows as "All activity").
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide between this parallel record and `options` accepting
+   `{ value, label, description? }` objects; the object form keeps labels
+   beside their values and makes per-option descriptions possible, but every
+   reader of `options` (host policy, server contract, CLI, settings form) has
+   to handle both forms.
+2. **CLI.** `bb plugin config <id>` still lists raw option values, which is
+   what `set` accepts; decide whether it should also print labels.
 
 ## `bb.server.experimental_dataDir`
 
@@ -2346,7 +2487,8 @@ counterpart to `ThreadChat`. It renders bb's full control set — prompt editor
 with @-mentions and expand, `+` attachments, provider/model/reasoning picker,
 voice, submit, and the row beneath with project, environment, "Branch from:",
 and permission mode — and calls `onSubmit` with a `NewThreadRequest`
-carrying every resolved selection.
+carrying every resolved selection, including `sessionOptions` when the user
+changed an agent option the provider declares.
 
 The composer deliberately does **not** create the thread. The plugin does,
 through `bb.sdk.threads.spawn`, which auto-fills `origin: "plugin"` and
@@ -2975,15 +3117,36 @@ surface pays one subscription and one pure `item` call per registration; a
 throw from `useData` drops that registration, a throw from `item` drops it for
 that thread, and `run` errors are logged and contained.
 
+`useData` receives `{ threadIds }`: every thread some surface currently
+evaluates actions for (`experimental_useThreadActions` callers, so sidebar
+rows on screen, the open thread's header, and open menus), reference-counted
+in the registry, sorted and deduplicated. A change is published once the set
+has been quiet for 32 ms, at most 100 ms after the first change, so rows that
+mount a frame apart during a scroll step arrive in one change. A surface
+counts only while it is visible: the app sidebar wraps the thread list in
+`ThreadActionSurfaceVisibility`, visible when its body is shown and the
+sidebar (or the compact drawer) is open, so a hidden sidebar on a settings
+route contributes no ids even if a plugin list mounts rows. It lives in
+its own store read only by the collectors, so a change re-renders one
+collector per registration, never the rows. Registrations without per-thread
+state ignore it. This is the recommended pattern for per-thread data until an
+attributes layer lands: keep an id-keyed cache, fetch only the ids not in it
+in one batch, apply realtime updates per id, and fetch nothing for an empty
+list.
+
 Placement is static: a registration carries `group` and `order?`, and the
 host keeps registrations sorted by `group` (string compare), then `order`
 (unset sorts last), then registration order, so menus (with a separator
 between groups) and the quick-action picker share one order. An evaluated
-action is `{ label, icon, variant?, disabled?, choices?, run }`. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
+action is `{ label, detail?, icon, variant?, disabled?, choices?, run }`;
+`detail` is a muted second line under the label (and follows the label in a
+quick-action tooltip), such as a choice list's current value. bb's groups are `experimental_THREAD_ACTION_GROUPS` (`1_open`,
 `2_organize`, `3_settings`, `4_lifecycle`); any other string forms its own
 group. `choices` is data (heading, hint, items): a submenu on desktop, a drawer
 step with Back at compact width, a popover from a row quick-action button; the
-picked id reaches `run` as `value`. `run` also receives `requestRename`, the
+picked id reaches `run` as `value`. `heading` (default: the label) titles the
+drawer step and the popover; desktop submenus show none because their trigger
+names them. `hint` is a footnote below the choices. `run` also receives `requestRename`, the
 surface's own rename editor or bb's dialog.
 
 bb's own actions are registrations of the same shape under the reserved
@@ -2992,6 +3155,22 @@ environment, Copy thread link, Mark read/unread, Pin/Unpin, Rename,
 Archive/Unarchive, and Delete. The
 thread-list plugin registers Move to section (`thread-list/move`) because the
 destinations depend on its organization and section-order preferences. The
+push-notifications plugin registers Notifications
+(`push-notifications/notifications`) in `3_settings`: its `useData` keeps an
+id-keyed cache of levels, fetches the `threadIds` it has not loaded in
+`threadNotifications.list` batches of up to 200 (built on
+`threads.experimental_listAncestors` and
+`threads.experimental_listPluginMetadata`, so a parent's limit is read from
+the current tree), and refetches the ones on screen after a reconnect. When a
+thread's level or parent changes (its `threadNotifications.set` RPC, or
+`experimental_thread.parentChanged`), the plugin server resolves that thread
+and its unarchived, visible descendants
+(`threads.experimental_listDescendants`) and publishes their levels on the
+`threadNotifications` realtime channel, and does the same for a thread on
+`thread.unarchived`; clients apply the rows they hold without a request. `item` resolves the level
+with the plugin's shared resolver, shows it as `detail` with a per-level icon
+(declared `push-notifications/ringing` and `push-notifications/off`, built-in
+`BellDot`), and `choices` sets it. The
 header menu, mobile recents, and both sidebar row menus render the host
 components; the row's hover quick actions read `experimental_useThreadActions`
 with `keys`; the thread archive keyboard command runs `bb--core/archive`.
@@ -3021,9 +3200,10 @@ menu surface against the same registrations.
 
 **Audit before stabilizing.**
 
-1. **Per-thread data.** `useData` has no visible-id batching; a plugin with
-   per-thread state loads its whole map once. Decide whether the host should
-   pass visible thread ids before a plugin needs paging.
+1. **Per-thread data.** `threadIds` makes each registration fetch and cache
+   per-thread state itself. Decide whether a host attributes layer should
+   batch those reads across registrations, and whether `useData` should move
+   onto `experimental_useRpcQuery`.
 2. **Picker catalog.** The row-actions picker lists every registration,
    including actions that rarely make sense as row buttons (Delete, New thread
    in environment). Decide whether a registration should opt out.
@@ -3124,8 +3304,9 @@ runtime-only exports.
    dependencies must name fields (`composer.draft`), not the handle. Confirm
    the lint and documentation guidance is enough.
 2. **Mention shape.** `ComposerMention` exposes core resource fields (path
-   source and entry kind, command source and origin). Confirm these are
-   stable enough to be public.
+   source and entry kind, command source and origin, and the stored path an
+   `attachment` mention shares with a file attached to the same draft).
+   Confirm these are stable enough to be public.
 3. **Canonical pill text.** `insert` writes the editor's canonical pill text
    (`@label` for plugin mentions), while `insertMention` keeps writing the
    bare label. Decide whether `insertMention` should converge.
@@ -3551,6 +3732,24 @@ After callback invocation, core completes pause and resumes for queued work. Rec
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
 
+## Thread parent-change notifications
+
+`PluginEvents.on("experimental_thread.parentChanged", handler)` delivers
+`{thread, previousParentThreadId}` after a thread's `parentThreadId` changes:
+a `threads.update` that moves or releases it (from the shared ownership seam,
+which also writes the ownership timeline entry and parent system messages), or
+core releasing an archived thread's unarchived children (one event per
+released child, after the archive transaction commits). An update that keeps
+the same parent delivers nothing. `thread` is the public DTO with the new
+parent. Threads below the moved one move with it and get no event; callers
+read them with `bb.sdk.threads.experimental_listDescendants`. Delivery is
+fire-and-forget like every other event, so a plugin that was not loaded never
+sees the move. Push-notifications uses it to publish the moved subtree's
+levels to open menus; before it, the only signal was the ownership timeline
+entry behind `experimental_thread.events`, which forced the plugin to remember
+each thread's last parent. Stabilization requires deciding whether a general
+`thread.updated` event should replace it, and a second consumer.
+
 ## Host deletion notifications
 
 `PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
@@ -3724,6 +3923,35 @@ same-id isolation and legacy override fallback,
 asset-vs-glyph precedence, cross-plugin overrides, reload/error/recursion behavior,
 accessibility and theme rendering on desktop and mobile. Keep metadata fetching
 and plugin branding separate from provider artwork resolution.
+
+## `experimental_ThreadStatusGlyph` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Renders bb's thread status glyph, the one bb's own thread
+lists draw, from `PluginThreadStatusGlyphProps`: `indicator` (a
+`PluginSidebarThreadIndicator` the caller resolved), optional `archived`,
+`rowStatus` (another plugin's row status, which replaces every indicator
+except `runtime`, `unread-error`, and `waiting-for-input`),
+`hideIdleDraftLabel`, and `size` (`default` or `compact`). The host owns the
+icons, colors, shimmer, and accessible labels; the caller owns the indicator,
+so a row can fold in collapsed children or a client-local draft first. The
+SDK test fake renders nothing for `none` without a row status and otherwise
+exposes the props as `data-thread-status-glyph`, `data-row-status`,
+`data-row-status-tone`, `data-hide-idle-draft-label`, and `data-size`.
+
+**Core callers on the same path.** `ThreadStatusGlyph`
+(`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK
+implementation and the glyph in the thread search palette, the related threads
+info section, and mobile recents. The thread-list plugin draws its rows and
+collapsed-group rollups with it.
+
+**Audit before stabilizing.**
+
+1. **Indicator resolution.** The caller resolves the indicator, so the
+   thread-list plugin keeps its own copy of the indicator precedence and labels
+   that `@bb/client-core` holds for bb's surfaces. Decide whether the SDK should
+   export the resolver and labels instead.
+2. **Archived rows.** No plugin passes `archived` yet; confirm the archived
+   glyph belongs on this component rather than in the archived list.
 
 ## `HostsArea.experimental_reconcile`
 

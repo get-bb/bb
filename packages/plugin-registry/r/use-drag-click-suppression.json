@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-drag-click-suppression",
+  "type": "registry:ui",
+  "title": "use-drag-click-suppression",
+  "description": "BB ui \"use-drag-click-suppression\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/use-drag-click-suppression.ts",
+      "content": "import { useCallback, useEffect, useRef } from \"react\";\n\nconst DRAG_CLICK_SUPPRESSION_MS = 350;\n\nexport type ConsumeDragClickSuppression = () => boolean;\n\ninterface UseDragClickSuppressionResult {\n  beginDragClickSuppression: () => void;\n  clearDragClickSuppressionSoon: () => void;\n  consumeDragClickSuppression: ConsumeDragClickSuppression;\n}\n\nexport function useDragClickSuppression(): UseDragClickSuppressionResult {\n  const suppressClickRef = useRef(false);\n  const timeoutRef = useRef<number | null>(null);\n\n  const clearScheduledTimeout = useCallback(() => {\n    if (timeoutRef.current === null) {\n      return;\n    }\n    window.clearTimeout(timeoutRef.current);\n    timeoutRef.current = null;\n  }, []);\n\n  const clearSuppression = useCallback(() => {\n    clearScheduledTimeout();\n    suppressClickRef.current = false;\n  }, [clearScheduledTimeout]);\n\n  const beginDragClickSuppression = useCallback(() => {\n    clearScheduledTimeout();\n    suppressClickRef.current = true;\n  }, [clearScheduledTimeout]);\n\n  const clearDragClickSuppressionSoon = useCallback(() => {\n    clearScheduledTimeout();\n    timeoutRef.current = window.setTimeout(() => {\n      timeoutRef.current = null;\n      suppressClickRef.current = false;\n    }, DRAG_CLICK_SUPPRESSION_MS);\n  }, [clearScheduledTimeout]);\n\n  const consumeDragClickSuppression =\n    useCallback<ConsumeDragClickSuppression>(() => {\n      if (!suppressClickRef.current) {\n        return false;\n      }\n      clearSuppression();\n      return true;\n    }, [clearSuppression]);\n\n  useEffect(() => {\n    const handleDocumentClick = (event: MouseEvent) => {\n      if (!consumeDragClickSuppression()) {\n        return;\n      }\n      event.preventDefault();\n      event.stopPropagation();\n      event.stopImmediatePropagation();\n    };\n\n    document.addEventListener(\"click\", handleDocumentClick, true);\n    return () => {\n      document.removeEventListener(\"click\", handleDocumentClick, true);\n    };\n  }, [consumeDragClickSuppression]);\n\n  useEffect(() => clearScheduledTimeout, [clearScheduledTimeout]);\n\n  return {\n    beginDragClickSuppression,\n    clearDragClickSuppressionSoon,\n    consumeDragClickSuppression,\n  };\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/use-drag-click-suppression.ts"
+    }
+  ]
+}

@@ -45,6 +45,7 @@ import {
   resolveConversationCollapseControl,
 } from "./panelToggleControlState";
 import { SecondaryPanelHostLayoutContext } from "./SecondaryPanelHostLayoutContext";
+import { useWindowTitleBarHostsRightPanelToggle } from "@/components/layout/WindowRightPanelToggle";
 import { MobilePanelTabPager } from "./MobilePanelTabPager";
 import { SecondaryPanelTabStrip } from "./SecondaryPanelTabStrip";
 import { ImageTabLightboxProvider } from "./ImageTabLightboxContext";
@@ -71,7 +72,10 @@ import {
 import { useSecondaryPanelResize } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
 import { GitDiffToolbar } from "./GitDiffToolbar";
-import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
+import {
+  GitDiffLoadingSkeleton,
+  GitDiffTabContent,
+} from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -425,6 +429,8 @@ function ThreadSecondaryPanelContent({
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
   const sidebarKeepsCollapsedRail = useSidebarKeepsCollapsedRail();
+  const titleBarHostsRightPanelToggle =
+    useWindowTitleBarHostsRightPanelToggle();
   const collapsedPanelTrafficLightReserveClassName =
     resolveCollapsedPanelTrafficLightReserveClassName({
       isConversationCollapsed,
@@ -853,7 +859,9 @@ function ThreadSecondaryPanelContent({
                   : null}
                 {renderRemoveSplitButton(onRemoveSplit)}
                 {showOuterControls &&
-                (renderAsDrawer || inlinePanelToggle === "button")
+                (renderAsDrawer ||
+                  (inlinePanelToggle === "button" &&
+                    !titleBarHostsRightPanelToggle))
                   ? renderHidePanelButton()
                   : null}
               </div>
@@ -868,6 +876,9 @@ function ThreadSecondaryPanelContent({
                 isDiffFilesLoading || gitDiffTarget === undefined
               }
               stats={gitDiffStats}
+              isStatsLoading={
+                isDiffFilesLoading || gitDiffTarget === undefined
+              }
               totalFilesCount={diffFiles.length}
               isTruncated={isGitDiffTruncated}
               fileFilter={gitDiffFileFilter}
@@ -919,8 +930,8 @@ function ThreadSecondaryPanelContent({
               {fixedSurfaceContent}
             </div>
           ) : isSurfaceDiffEligibilityPending ? (
-            <EmptyStatePanel className="m-4 rounded-lg" role="status">
-              {resolvedGitDiffTabStatus === "error" ? (
+            resolvedGitDiffTabStatus === "error" ? (
+              <EmptyStatePanel className="m-4 rounded-lg" role="status">
                 <div className="flex flex-col items-center gap-3 text-center">
                   <span>
                     Could not determine whether this workspace uses Git.
@@ -936,10 +947,10 @@ function ThreadSecondaryPanelContent({
                     </Button>
                   ) : null}
                 </div>
-              ) : (
-                "Checking Git support…"
-              )}
-            </EmptyStatePanel>
+              </EmptyStatePanel>
+            ) : (
+              <GitDiffLoadingSkeleton />
+            )
           ) : isSurfaceDiffActive ? (
             <GitDiffTabContent
               environmentId={environmentId}

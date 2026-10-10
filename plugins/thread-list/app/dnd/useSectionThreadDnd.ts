@@ -34,12 +34,13 @@ import {
   reorderSidebarSectionOrder,
 } from "../model/sidebar-section-order.js";
 import { sidebarCollapsedThreadSectionsAtom } from "../preferences/atoms.js";
-import { useSidebarReorderDnd } from "./useSidebarReorderDnd.js";
+import { useSidebarReorderDnd } from "@/components/ui/use-sidebar-reorder-dnd";
+import { SidebarTouchSensor } from "./sidebarTouchSensor.js";
 import {
   reorderCollisionDetection,
   type ReorderDndContextProps,
-} from "../ui/useReorderDnd.js";
-import type { ConsumeDragClickSuppression } from "../ui/use-drag-click-suppression.js";
+} from "@/components/ui/use-reorder-dnd";
+import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { useNeighborReorderSortable } from "./useNeighborReorderSortable.js";
 import {
   getSidebarThreadRowDroppableId,
@@ -1443,6 +1444,7 @@ export function useSectionThreadDnd({
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({
+      touchSensor: SidebarTouchSensor,
       axis: "free",
       collisionDetection,
       measuring: SECTION_THREAD_DROPPABLE_MEASURING,

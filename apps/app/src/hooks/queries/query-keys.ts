@@ -18,6 +18,7 @@ const HOST_CLONE_DEFAULT_PATH_QUERY_KEY = "hostCloneDefaultPath";
 const PROJECTS_QUERY_KEY = "projects";
 const PROJECT_PATHS_QUERY_KEY = "projectPaths";
 const PROJECT_FILE_PREVIEW_QUERY_KEY = "projectFilePreview";
+const PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY = "projectAttachmentPreview";
 export const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
 const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
@@ -165,6 +166,11 @@ type ProjectFilePreviewQueryKey = readonly [
   string | null,
   string | null,
   string | null,
+];
+type ProjectAttachmentPreviewQueryKey = readonly [
+  typeof PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY,
+  string,
+  string,
 ];
 type ProjectSourceBranchesQueryKey = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
@@ -603,6 +609,13 @@ export function projectFilePreviewQueryKey(
     hostId,
     path,
   ];
+}
+
+export function projectAttachmentPreviewQueryKey(
+  projectId: string,
+  path: string,
+): ProjectAttachmentPreviewQueryKey {
+  return [PROJECT_ATTACHMENT_PREVIEW_QUERY_KEY, projectId, path];
 }
 
 export function allProjectPathsQueryKeyPrefix(): AllProjectPathsQueryKeyPrefix {

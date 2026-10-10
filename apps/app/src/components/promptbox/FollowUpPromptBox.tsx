@@ -156,6 +156,7 @@ export interface FollowUpPromptBoxProps {
   contextWindowUsage: ContextWindowUsage | null;
   execution: ExecutionControlsProps;
   permission: ExecutionPermissionConfig;
+  sessionOptionsControl?: ReactNode;
   executionReadOnly?: boolean;
   permissionReadOnly?: boolean;
   typeahead: TypeaheadConfig;
@@ -233,6 +234,7 @@ function FollowUpPromptBoxWithComposer({
   contextWindowUsage,
   execution,
   permission,
+  sessionOptionsControl = null,
   executionReadOnly,
   permissionReadOnly,
   typeahead,
@@ -290,13 +292,15 @@ function FollowUpPromptBoxWithComposer({
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
   const composerInteractionRef = useRef<HTMLDivElement>(null);
-  const interactionExpandedRef = useRef(false);
+  const focusesEditorOnMount = !isPointerCoarse;
+  const interactionExpandedRef = useRef(focusesEditorOnMount);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
   const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const deferredControlFocusLossRef = useRef<(() => void) | null>(null);
   const pressedComposerControlRef = useRef(false);
   const pressedComposerControlCleanupRef = useRef<(() => void) | null>(null);
-  const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
+  const [isInteractionExpanded, setIsInteractionExpanded] =
+    useState(focusesEditorOnMount);
   const [widePromptBoxCollapsedFor, setWidePromptBoxCollapsedFor] = useState<
     string | number | null
   >(null);
@@ -804,6 +808,7 @@ function FollowUpPromptBoxWithComposer({
             {isCompactViewport ? compactEnvironmentSummary : environmentSummary}
           </div>
           <div className="flex shrink-0 items-center gap-2 max-md:gap-0">
+            {sessionOptionsControl}
             {permissionControl}
             {contextWindowUsage ? (
               <ThreadContextWindowIndicator usage={contextWindowUsage} />

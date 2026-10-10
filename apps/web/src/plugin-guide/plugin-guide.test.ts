@@ -1,8 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { plainSurfaceCopy } from "../../../../plugins/plugin-api-docs/src/surface-copy";
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import { pluginPageHref } from "./plugin-directory";
+import { PluginSurfaceIndex } from "./plugin-surface-index";
 
 const pluginsDir = new URL("../../../../plugins/", import.meta.url);
 const guideSourceDir = new URL("plugin-api-docs/src/", pluginsDir);
@@ -92,5 +96,43 @@ describe("Plugin Guide on the web", () => {
       .flatMap((surface) => surface.firstParty ?? [])
       .filter((name) => pluginPageHref(name) === null);
     expect([...new Set(unlinked)]).toEqual([]);
+  });
+
+  it("lists every slide and surface in the visible surface index", () => {
+    const html = renderToStaticMarkup(createElement(PluginSurfaceIndex));
+    const escape = (text: string) =>
+      text
+        .replace(/&/gu, "&amp;")
+        .replace(/</gu, "&lt;")
+        .replace(/>/gu, "&gt;")
+        .replace(/"/gu, "&quot;")
+        .replace(/'/gu, "&#x27;");
+    const surfaces = SURFACE_GROUPS.flatMap((group) => group.surfaces);
+    const missing = [
+      ...SURFACE_GROUPS.map(
+        (group) =>
+          `href="/plugin-guide?slide=${group.id}">${escape(group.title)}</a>`,
+      ),
+      ...surfaces.map(
+        (surface) =>
+          `<span class="surface-index-name">${escape(surface.title)}</span>`,
+      ),
+    ].filter((fragment) => !html.includes(fragment));
+    expect(missing).toEqual([]);
+    expect(html).not.toMatch(
+      /`|\]\(|\{experimental\}|With this, a plugin can/u,
+    );
+    expect(html).not.toContain("sr-only");
+  });
+
+  it.each([
+    ["Run `bb <name>` from a shell.", "Run bb <name> from a shell."],
+    [
+      "Open it from a [side-panel tab](thread-panel).",
+      "Open it from a side-panel tab.",
+    ],
+    ["Add a banner. {experimental}", "Add a banner."],
+  ])("turns surface copy %j into plain text", (copy, plain) => {
+    expect(plainSurfaceCopy(copy)).toBe(plain);
   });
 });

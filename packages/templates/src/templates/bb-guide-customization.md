@@ -113,7 +113,7 @@ A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
 destinations and Customize rail; Settings is at the bottom. New thread sits in
-the sidebar header. The list beside the rail swaps between the thread list,
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
 Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
 leaves the rail. Rail order and visibility are `bb settings ui` keys
 (`sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`). In the macOS
@@ -217,9 +217,7 @@ and `null` clears a preference that can be unset.
 `bb settings replay-onboarding` clears `onboardingCompletedAt`, so the first-run
 setup guide (connect an agent, add projects, pick plugins, set up devices) shows
 again in every open client. Settings → General → Setup guide has the same
-button. `setupChecklistVisible` controls the "Finish setting up bb" checklist
-on the home screen; the guide turns it on when steps are left undone, and
-dismissing the checklist turns it off.
+button.
 
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final
@@ -350,7 +348,10 @@ windows must stay open; browser permission is requested in the plugin settings.
   bb push-notifications remove <id>
   bb push-notifications status
   bb push-notifications test <web|desktop>
+  bb push-notifications thread <thread> [--level inherit|all|input-only|muted]
   bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
+  bb plugin config push-notifications set defaultLevel <all|input-only|muted>
+  bb plugin config push-notifications set childLevel <inherit|all|input-only|muted>
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
@@ -361,6 +362,12 @@ config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
 The three channel switches default to true and apply immediately across this
 server. `test` broadcasts to all connected clients of the selected type with
 permission; OS notification settings still control whether a banner appears.
+`thread` prints a thread's resolved notification level and its source; with
+`--level` it sets the thread's own level. A thread uses its own level, else
+`childLevel` if it has a parent (default `input-only`; `inherit` follows
+`defaultLevel`), else `defaultLevel` (default `all`). A thread's level also
+limits its child threads: every ancestor's own level caps the result. `all` notifies on finished turns too, `input-only` keeps
+questions, approvals, and errors only, and `muted` sends nothing.
 
 Host files and voice transcription
 

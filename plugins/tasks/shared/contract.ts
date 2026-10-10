@@ -42,16 +42,7 @@ export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
-export const presetReasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "ultracode",
-  "max",
-  "ultra",
-]);
+export const presetReasoningLevelSchema = nonBlankStringSchema;
 export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
 export const presetServiceTierSchema = nonBlankStringSchema;
 export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;

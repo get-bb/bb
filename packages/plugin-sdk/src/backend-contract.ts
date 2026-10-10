@@ -24,6 +24,8 @@ import type {
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  PluginThreadMetadataListArgs,
+  PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadPluginMetadataResult,
@@ -106,6 +108,8 @@ export type PluginSettingDescriptor =
       label: string;
       description?: string;
       options: string[];
+      /** Display labels keyed by option value; options without one show the value itself. */
+      experimental_optionLabels?: Record<string, string>;
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
@@ -270,6 +274,17 @@ export interface PluginThreadEventPayloads {
 
   /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
   "experimental_thread.events": { thread: ThreadResponse; sequence: number };
+  /**
+   * Fired after a thread moves to a new parent or loses its parent: a
+   * `threads.update` that changes `parentThreadId`, or core releasing a
+   * thread's unarchived children when it is archived. `thread` carries the
+   * new `parentThreadId`. Every thread below it moved with it and gets no
+   * event of its own. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.parentChanged": {
+    thread: ThreadResponse;
+    previousParentThreadId: string | null;
+  };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
   /**
@@ -1395,13 +1410,17 @@ export interface PluginProviderFallbackModel {
   /** Picker display name ("Opus 5 (1M)"). */
   displayName: string;
   description: string;
-  /** Reasoning levels this model supports, lowest to highest. Non-empty. */
+  /** Reasoning levels this model supports, lowest to highest. Non-empty.
+   * `reasoningEffort` is a standard ladder entry or any provider-specific id
+   * the bridge accepts back as `reasoningLevel`; `label` names a
+   * provider-specific id in the picker. */
   supportedReasoningEfforts: readonly {
-    reasoningEffort: PluginProviderReasoningLevel;
+    reasoningEffort: PluginProviderReasoningLevel | (string & {});
+    label?: string;
     description: string;
   }[];
   /** Must be one of `supportedReasoningEfforts`. */
-  defaultReasoningEffort: PluginProviderReasoningLevel;
+  defaultReasoningEffort: PluginProviderReasoningLevel | (string & {});
   /** Exactly one entry in the list is the default. */
   isDefault: boolean;
 }
@@ -2032,8 +2051,9 @@ export interface PluginStatusApi {
 }
 
 /**
- * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
- * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
+ * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata`,
+ * `threads.experimental_listPluginMetadata` and `threads.updatePluginMetadata`
+ * default `pluginId` to that plugin's id. An
  * explicit `pluginId` must be a plugin id (lowercase letters, digits, and
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
@@ -2043,11 +2063,16 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata"
+    "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
   > & {
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
     ): Promise<ThreadPluginMetadataResult>;
+    experimental_listPluginMetadata(
+      args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+        pluginId?: string;
+      },
+    ): Promise<PluginThreadMetadataListResult>;
     updatePluginMetadata(
       args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
         pluginId?: string;

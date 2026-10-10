@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { useSetAtom } from "jotai";
 import { useNavigate } from "react-router-dom";
 import type {
   ChangedMessage,
@@ -11,7 +10,6 @@ import {
   destroyPersistedBrowserViewsForEnvironment,
   destroyPersistedBrowserViewsForThread,
 } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
-import { collapsedProjectIdsAtom } from "@/components/sidebar/sidebarCollapsedAtoms";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteState } from "../useRouteState";
@@ -50,18 +48,13 @@ function isDeletedEnvironmentMessage(
 
 export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandler {
   const navigate = useNavigate();
-  const setCollapsedProjectIdList = useSetAtom(collapsedProjectIdsAtom);
   const { projectId: routeProjectId, threadId: routeThreadId } =
     useRouteState();
 
   return useCallback(
     (message: ChangedMessage) => {
       if (isDeletedProjectMessage(message)) {
-        const deletedProjectId = message.id;
-        setCollapsedProjectIdList((current) =>
-          current.filter((projectId) => projectId !== deletedProjectId),
-        );
-        if (routeProjectId === deletedProjectId) {
+        if (routeProjectId === message.id) {
           navigate(getRootComposeRoutePath(), { replace: true });
         }
         return;
@@ -87,6 +80,6 @@ export function useDeletedResourceRouteOwner(): DeletedResourceRouteChangeHandle
 
       navigate(getRootComposeRoutePath());
     },
-    [navigate, routeProjectId, routeThreadId, setCollapsedProjectIdList],
+    [navigate, routeProjectId, routeThreadId],
   );
 }

@@ -4,6 +4,7 @@
 
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
+bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }) => { ... }); // see backend-sdk.md
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
 bb.events.on("experimental_environment.removed", ({ removal }) => { ... });
 bb.events.on("experimental_host.deleted", ({ host }) => { ... });

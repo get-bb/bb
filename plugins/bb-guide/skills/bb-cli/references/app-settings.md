@@ -19,9 +19,6 @@ every window and client sees the same value.
   or skipped; `null` means the guide is showing.
 - `bb settings replay-onboarding` clears it. Settings → General → Setup guide
   has the same button.
-- `setupChecklistVisible` shows the "Finish setting up bb" checklist on the
-  home screen. Turn it off with
-  `bb settings general setupChecklistVisible false`.
 - `bb project discover [--machine <id-or-name>]` lists the git repositories the
   guide offers to import; add one with `bb project create --name <name> --root <path>`.
 
@@ -249,8 +246,8 @@ hide the navigation rail's destinations (see Navigation rail below).
   every screen size. Home is at the top and returns to the last thread; the
   visible destinations (Plugins, Skills, and plugin panels) follow; More holds
   hidden destinations and Customize rail; Settings is at the bottom.
-- New thread sits in the sidebar header. The list beside the rail swaps
-  between the thread list, Plugins, Skills, and Settings.
+- New thread sits in the sidebar header and cannot be hidden. The list beside
+  the rail swaps between the thread list, Plugins, Skills, and Settings.
 - Collapsing the sidebar hides the list beside the rail and leaves the rail in
   place.
 - `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show

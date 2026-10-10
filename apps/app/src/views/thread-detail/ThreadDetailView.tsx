@@ -87,6 +87,7 @@ import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
+import { ThreadTimelineLoadingSkeleton } from "@/components/thread/timeline/ThreadTimelineLoadingSkeleton";
 import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
 import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk";
 import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
@@ -187,6 +188,7 @@ import {
   LazyHostFilePreviewTabContent,
   LazyNewTabPage,
   LazyThreadStorageFilePreviewTabContent,
+  LazyAttachmentFilePreviewTabContent,
   LazyThreadTerminalPanel,
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
@@ -204,6 +206,10 @@ import {
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
+import {
+  AttachmentOpenerContext,
+  type OpenAttachmentRequest,
+} from "@/components/secondary-panel/AttachmentOpenerContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
@@ -278,6 +284,7 @@ import {
 } from "./threadSecondaryPanelSelection";
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import { useWindowRightPanel } from "@/components/layout/WindowRightPanelToggle";
 import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
@@ -789,6 +796,8 @@ function ThreadDetailViewInternal(
     contextBoundarySeq,
     contextWindowUsage,
     goal,
+    providerCommands,
+    sessionOptions,
     hasOlderTimelineRows,
     isCatchingUpTimeline,
     isLoadingOlderTimelineRows,
@@ -1354,6 +1363,13 @@ function ThreadDetailViewInternal(
       ),
     [handleSecondaryPanelChange, threadFixedViewTabs],
   );
+  const openAttachment = useCallback(
+    (attachment: OpenAttachmentRequest) => {
+      openTab({ kind: "attachment-file-preview", ...attachment });
+      openCompactDrawer();
+    },
+    [openCompactDrawer, openTab],
+  );
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
@@ -1367,6 +1383,16 @@ function ThreadDetailViewInternal(
       }
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
+      }
+      if (resource.kind === "attachment") {
+        const attachmentProjectId = projectId;
+        if (!attachmentProjectId) return null;
+        return () =>
+          openAttachment({
+            name: resource.label,
+            path: resource.path,
+            projectId: attachmentProjectId,
+          });
       }
       if (resource.kind !== "path" || resource.entryKind !== "file") {
         return null;
@@ -1388,6 +1414,7 @@ function ThreadDetailViewInternal(
         });
     },
     [
+      openAttachment,
       navigate,
       navigateInPane,
       openStorageFile,
@@ -1489,6 +1516,7 @@ function ThreadDetailViewInternal(
     toggleSecondaryPanel();
     return true;
   });
+  useWindowRightPanel({ isOpen: isSecondaryPanelOpen, enabled: isFocused });
   useAppCommandHandler("panel.fullScreen.toggle", () => {
     if (
       !isFocused ||
@@ -2176,7 +2204,11 @@ function ThreadDetailViewInternal(
   );
 
   if (threadQueryState.status === "loading") {
-    return <RouteLoadingSkeleton isBoundedPane={isBoundedPane} />;
+    return (
+      <RouteLoadingSkeleton isBoundedPane={isBoundedPane}>
+        <ThreadTimelineLoadingSkeleton />
+      </RouteLoadingSkeleton>
+    );
   }
   if (!thread || thread.projectId !== projectId) {
     return (
@@ -2437,6 +2469,8 @@ function ThreadDetailViewInternal(
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      providerCommands={providerCommands}
+      sessionOptions={sessionOptions}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
@@ -2547,6 +2581,16 @@ function ThreadDetailViewInternal(
           />
         );
       }
+      case "attachment-file-preview":
+        return (
+          <LazyAttachmentFilePreviewTabContent
+            isPanelOpen={isSecondaryPanelOpen}
+            name={tab.name}
+            onSelectionAddToChat={handleSelectionAddToChat}
+            path={tab.path}
+            projectId={tab.projectId}
+          />
+        );
       case "thread-storage-file-preview": {
         const copyPath = resolveAbsoluteFilePath({
           path: tab.path,
@@ -2679,6 +2723,14 @@ function ThreadDetailViewInternal(
             statusLabel: null,
             onSelect: () => handleActivateFileTab(tab.id),
           };
+        case "attachment-file-preview":
+          return {
+            ...shared,
+            label: tab.name,
+            leadingVisual: <RightPanelFileTabIcon path={tab.name} />,
+            statusLabel: null,
+            onSelect: () => handleActivateFileTab(tab.id),
+          };
         case "new-tab":
           return {
             ...shared,
@@ -2722,7 +2774,9 @@ function ThreadDetailViewInternal(
           <ThreadDetailSecondaryContent
             footer={composerFooter}
             header={timelineHeader}
-            isMetadataLoading={environmentQuery.isLoading}
+            isMetadataLoading={
+              !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
+            }
             isSecondaryPanelOpen={isSecondaryPanelOpen}
             isConversationCollapsed={isConversationCollapsed}
             isBoundedPane={isBoundedPane}
@@ -2881,7 +2935,9 @@ function ThreadDetailViewInternal(
             <MarkdownLocalFileOpenTargetsContext.Provider
               value={fileOpenTargets}
             >
-              {threadDetailContent}
+              <AttachmentOpenerContext.Provider value={openAttachment}>
+                {threadDetailContent}
+              </AttachmentOpenerContext.Provider>
             </MarkdownLocalFileOpenTargetsContext.Provider>
           </PluginDetailPanelContext.Provider>
         </PluginThreadPanelNavigationProvider>

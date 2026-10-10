@@ -87,6 +87,10 @@ import {
   canSubmitFollowUpShortcut,
   shouldQueueFollowUpMessage,
 } from "@bb/client-core";
+import {
+  SHORT_LIVED_STATUS_DELAY_MS,
+  useSustainedFlag,
+} from "@/hooks/useSustainedFlag";
 import { useActiveComposerDraft } from "./useActiveComposerDraft";
 import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -352,7 +356,7 @@ function EmbeddedThreadChatWithComposer({
     activeComposerDraft,
     activeComposerDraftInput,
     handleChangeMessage,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
   } = useActiveComposerDraft({
     draftScope: composer.draftScope,
     inlineDraft: inlineEditingQueuedMessage?.draft ?? null,
@@ -874,9 +878,13 @@ function EmbeddedThreadChatWithComposer({
     queuedPluginComposerHost?.textEffectKey ?? null,
   );
 
+  const isProvisioningSustained = useSustainedFlag(
+    isProvisioning,
+    SHORT_LIVED_STATUS_DELAY_MS,
+  );
   const composerPlaceholder = isStopRequested
     ? "Stopping thread..."
-    : isProvisioning
+    : isProvisioningSustained
       ? "Provisioning thread..."
       : "Reply…";
 
@@ -968,7 +976,7 @@ function EmbeddedThreadChatWithComposer({
       pendingUploads: bottomPendingUploads,
       error: bottomAttachmentError,
       onAttachFiles: handleAttachBottomFiles,
-      onRemove: promptDraft.removeAttachment,
+      onUpdate: promptDraft.updateAttachments,
     }),
     [
       bottomAttachmentError,
@@ -977,7 +985,7 @@ function EmbeddedThreadChatWithComposer({
       isAttachingBottomFiles,
       bottomPendingUploads,
       projectId,
-      promptDraft.removeAttachment,
+      promptDraft.updateAttachments,
     ],
   );
   const inlineAttachmentsConfig = useMemo<AttachmentsConfig>(
@@ -988,7 +996,7 @@ function EmbeddedThreadChatWithComposer({
       pendingUploads: inlinePendingUploads,
       error: inlineAttachmentError,
       onAttachFiles: handleAttachInlineFiles,
-      onRemove: removeActiveComposerAttachment,
+      onUpdate: updateActiveComposerAttachments,
     }),
     [
       activeComposerDraft.attachments,
@@ -997,7 +1005,7 @@ function EmbeddedThreadChatWithComposer({
       isAttachingInlineFiles,
       inlinePendingUploads,
       projectId,
-      removeActiveComposerAttachment,
+      updateActiveComposerAttachments,
     ],
   );
 
@@ -1015,7 +1023,7 @@ function EmbeddedThreadChatWithComposer({
         options: modelOptions,
         moreOptions: moreModelOptions,
         loadError: modelLoadError,
-        isLoading: isLoadingModels,
+        isLoading: isLoadingModels || isDefaultExecutionOptionsLoading,
         loadFailed: modelLoadFailed,
         onChange: setSelectedModel,
       },
@@ -1036,6 +1044,7 @@ function EmbeddedThreadChatWithComposer({
       activeModel,
       executionOptionsRouting,
       hasMultipleProviders,
+      isDefaultExecutionOptionsLoading,
       isLoadingModels,
       modelLoadFailed,
       modelLoadError,

@@ -746,33 +746,35 @@ describe("ThreadTimelineRows message directive subscription", () => {
     );
 
     render(
-      <MemoryRouter>
-        <ThreadTimelineRows
-          initialExpanded={new Set(["del_1"])}
-          threadId="thr_main"
-          projectId="proj_main"
-          timelineRows={[
-            conversationRow({
-              id: "asst_1",
-              role: "assistant",
-              text: '::inline-vis{file="top.html"}',
-              threadId: "thr_main",
-              turnId: "turn_top",
-            }),
-            delegationRow({
-              id: "del_1",
-              status: "pending",
-              durationMs: null,
-              output: '::inline-vis{file="nested.html"}',
-              threadId: "thr_main",
-              turnId: "turn_del",
-              childRows: [],
-            }),
-          ]}
-          threadRuntimeDisplayStatus="active"
-          workspaceRootPath={undefined}
-        />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            initialExpanded={new Set(["del_1"])}
+            threadId="thr_main"
+            projectId="proj_main"
+            timelineRows={[
+              conversationRow({
+                id: "asst_1",
+                role: "assistant",
+                text: '::inline-vis{file="top.html"}',
+                threadId: "thr_main",
+                turnId: "turn_top",
+              }),
+              delegationRow({
+                id: "del_1",
+                status: "pending",
+                durationMs: null,
+                output: '::inline-vis{file="nested.html"}',
+                threadId: "thr_main",
+                turnId: "turn_del",
+                childRows: [],
+              }),
+            ]}
+            threadRuntimeDisplayStatus="active"
+            workspaceRootPath={undefined}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const mounts = screen.getAllByTestId("inline-vis");

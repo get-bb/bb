@@ -7,6 +7,7 @@ import {
   defaultAppSettings,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
+  type ThreadSessionOption,
 } from "@bb/domain";
 import {
   act,
@@ -101,6 +102,7 @@ const mocks = vi.hoisted(() => ({
   machineProviders: [] as SystemMachineProvider[],
   modelsLoading: false,
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
+  modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
 }));
 
 vi.mock("@/views/RootComposePanelCommandHandlers", () => ({
@@ -244,16 +246,6 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
         },
 }));
 
-vi.mock("@/components/onboarding/SetupChecklistHost", () => ({
-  SetupChecklistBanner: () => null,
-  hasSetupChecklistBanner: () => false,
-  useSetupChecklist: () => ({
-    items: null,
-    agentMissing: false,
-    open: () => {},
-    dismiss: () => {},
-  }),
-}));
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [
@@ -333,6 +325,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 model: "gpt-5.6",
                 displayName: "GPT-5.6",
                 isDefault: true,
+                sessionOptions: mocks.modelSessionOptions,
                 supportedReasoningEfforts: [
                   { reasoningEffort: "low" },
                   { reasoningEffort: "medium" },
@@ -343,6 +336,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
                 model: "gpt-5.6-sol",
                 displayName: "GPT-5.6 Sol",
                 isDefault: false,
+                sessionOptions: mocks.modelSessionOptions,
                 supportedReasoningEfforts: [
                   { reasoningEffort: "medium" },
                   { reasoningEffort: "high" },
@@ -694,6 +688,7 @@ describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     resetFixedPanelTabsStateForTest();
     mocks.closeTerminal.mockClear();
+    mocks.modelSessionOptions = undefined;
     mocks.promptBoxProps.length = 0;
     mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
@@ -1038,6 +1033,67 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted).toHaveLength(1);
     expect(submitted[0]?.providerId).toBe("claude-code");
     expect(submitted[0]?.executionInputSources.providerId).toBe("explicit");
+  });
+
+  it("puts declared agent options in the picker, keeps the mode in the footer and submits what the user chose", async () => {
+    mocks.modelSessionOptions = [
+      { type: "boolean", id: "daybreak", label: "Daybreak", value: false },
+      {
+        type: "select",
+        id: "mode",
+        label: "Mode",
+        category: "mode",
+        value: "agent",
+        values: [
+          { id: "agent", label: "Agent" },
+          { id: "plan", label: "Plan" },
+        ],
+      },
+    ];
+    const submitted: NewThreadRequest[] = [];
+    render(
+      <MemoryRouter>
+        <PluginNewThreadComposer
+          draftKey="agent-options"
+          defaultProjectId="proj_1"
+          initialPrompt="hello"
+          onSubmit={(request) => {
+            submitted.push(request);
+          }}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const pickerSections = () =>
+      latestPromptBoxProps().execution.agentOptions.sections.map(
+        (section: { id: string; selectedLabel: string }) => [
+          section.id,
+          section.selectedLabel,
+        ],
+      );
+    const footerMenu = () =>
+      latestPromptBoxProps().modeConfig.sessionOptionsControl.props;
+    expect(pickerSections()).toEqual([["daybreak", "Off"]]);
+    expect(
+      footerMenu().options.map((option: { id: string }) => option.id),
+    ).toEqual(["mode"]);
+
+    await act(async () => {
+      latestPromptBoxProps().execution.agentOptions.onChange("daybreak", true);
+    });
+    await act(async () => {
+      footerMenu().onChange("mode", "plan");
+    });
+    expect(pickerSections()).toEqual([["daybreak", "On"]]);
+    expect(footerMenu().options[0].value).toBe("plan");
+    await submit();
+
+    expect(submitted[0]?.sessionOptions).toEqual({
+      daybreak: true,
+      mode: "plan",
+    });
   });
 
   it("submits a draft populated after an empty composer unmounts", async () => {

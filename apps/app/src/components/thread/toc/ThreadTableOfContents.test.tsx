@@ -1281,6 +1281,7 @@ describe("ThreadTableOfContents timeline item cache", () => {
         attachments: {
           imageUrls: [],
           localFilePaths: [],
+          localFileDetails: [],
           localFiles: 0,
           localImagePaths: ["/tmp/screenshot.png"],
           localImages: 1,

@@ -1,27 +1,113 @@
+import type { CompareMeta } from "../compare/compare-types";
+import type { GuideMeta } from "../guides/guide-types";
+import type { LandingMeta } from "./landing-template";
+
 export interface ContentLink {
   label: string;
   href: string;
 }
 
-export const GUIDE_LINKS: ContentLink[] = [];
+export interface ContentGroup {
+  label: string;
+  links: ContentLink[];
+}
 
-export const COMPARE_LINKS: ContentLink[] = [
-  { label: "bb vs Conductor", href: "/compare/conductor-alternatives" },
-  { label: "bb vs Cursor", href: "/compare/cursor-alternative" },
-  { label: "bb vs Superset", href: "/compare/superset-alternative" },
-  { label: "bb vs T3 Code", href: "/compare/t3-code-alternatives" },
-  { label: "bb vs Vibe Kanban", href: "/compare/vibe-kanban-alternative" },
-];
+const GUIDE_MODULES = import.meta.glob<GuideMeta>("../guides/pages/*.meta.ts", {
+  eager: true,
+  import: "meta",
+});
+const COMPARE_MODULES = import.meta.glob<CompareMeta>(
+  "../compare/pages/*.meta.ts",
+  { eager: true, import: "meta" },
+);
+const LANDING_MODULES = import.meta.glob<LandingMeta>("./pages/*.meta.ts", {
+  eager: true,
+  import: "meta",
+});
 
-export const LANDING_LINKS: ContentLink[] = [
-  { label: "Claude Code on your phone", href: "/claude-code-mobile" },
-  { label: "Claude Code with Codex", href: "/claude-code-and-codex" },
-  { label: "Parallel coding agents", href: "/claude-code-parallel-agents" },
-];
+function metas<T>(modules: Record<string, T>): T[] {
+  return Object.values(modules);
+}
 
-export const LANDING_PATHS: string[] = LANDING_LINKS.map((link) => link.href);
+function once<T>(build: () => T): () => T {
+  let value: { built: T } | null = null;
+  return () => {
+    value ??= { built: build() };
+    return value.built;
+  };
+}
 
-export const CONTENT_PATHS: string[] = [
-  ...[...GUIDE_LINKS, ...COMPARE_LINKS].map((link) => link.href),
-  ...LANDING_PATHS,
-];
+function guidePath(meta: GuideMeta): string {
+  return `/guides/${meta.slug}`;
+}
+
+const navGuides = once(() =>
+  metas(GUIDE_MODULES)
+    .flatMap((meta) => (meta.nav ? [{ meta, nav: meta.nav }] : []))
+    .sort((a, b) => a.nav.order - b.nav.order),
+);
+
+export const guideLinks = once((): ContentLink[] =>
+  navGuides().map(({ meta }) => ({ label: meta.title, href: guidePath(meta) })),
+);
+
+export const guideFooterLinks = once((): ContentLink[] =>
+  navGuides().map(({ meta, nav }) => ({
+    label: nav.label,
+    href: guidePath(meta),
+  })),
+);
+
+export const guideMenu = once((): (ContentGroup | ContentLink)[] =>
+  navGuides().reduce<(ContentGroup | ContentLink)[]>((menu, { meta, nav }) => {
+    const link = { label: nav.label, href: guidePath(meta) };
+    if (nav.group === null) {
+      return [...menu, link];
+    }
+    const existing = menu.find(
+      (item): item is ContentGroup =>
+        "links" in item && item.label === nav.group,
+    );
+    if (existing) {
+      existing.links.push(link);
+      return menu;
+    }
+    return [...menu, { label: nav.group, links: [link] }];
+  }, []),
+);
+
+export const compareLinks = once((): ContentLink[] =>
+  metas(COMPARE_MODULES)
+    .map((meta) => ({
+      label: `bb vs ${meta.competitor.name}`,
+      href: `/compare/${meta.slug}`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+);
+
+const landingLinks = once((): ContentLink[] =>
+  metas(LANDING_MODULES)
+    .map((meta) => ({ label: meta.label, href: `/${meta.slug}` }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+);
+
+const canonicalPaths = once(
+  (): Record<string, string> =>
+    Object.fromEntries(
+      metas(GUIDE_MODULES).flatMap((meta) =>
+        meta.canonical ? [[guidePath(meta), meta.canonical]] : [],
+      ),
+    ),
+);
+
+export function canonicalPath(path: string): string {
+  return canonicalPaths()[path] ?? path;
+}
+
+export const contentPaths = once((): string[] => [
+  ...metas(GUIDE_MODULES)
+    .filter((meta) => meta.canonical === null)
+    .map(guidePath),
+  ...compareLinks().map((link) => link.href),
+  ...landingLinks().map((link) => link.href),
+]);

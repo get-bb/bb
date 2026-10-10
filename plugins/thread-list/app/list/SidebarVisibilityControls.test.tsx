@@ -13,43 +13,12 @@ import {
   SidebarMore,
   SidebarOverflowItem,
 } from "./SidebarVisibilityControls.js";
-import { SidebarVisibilityCustomize } from "./SidebarVisibilityCustomize.js";
 
 installTestPluginRuntime();
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-});
-
-describe("shared sidebar visibility controls", () => {
-  it("loads group customization and toggles visibility without navigating away", async () => {
-    const onVisibleChange = vi.fn();
-    const onDone = vi.fn();
-    render(
-      <CompactViewportOverrideProvider isCompactViewport={false}>
-        <SidebarVisibilityCustomize
-          items={[{ id: "section:review", title: "Review" }]}
-          visibleIds={[]}
-          title="Customize list"
-          listLabel="Sections"
-          testIdPrefix="sidebar-thread-list"
-          variant="card"
-          onVisibleChange={onVisibleChange}
-          onReorder={() => {}}
-          onDone={onDone}
-        />
-      </CompactViewportOverrideProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Review" }));
-    expect(onVisibleChange).toHaveBeenCalledWith("section:review", true);
-    expect(onDone).not.toHaveBeenCalled();
-    fireEvent.keyDown(screen.getByRole("button", { name: "Review" }), {
-      key: "Escape",
-    });
-    expect(onDone).toHaveBeenCalledOnce();
-  });
 });
 
 describe("thread overflow submenus", () => {

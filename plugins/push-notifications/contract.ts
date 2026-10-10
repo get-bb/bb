@@ -1,5 +1,9 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
+import {
+  ownNotificationLevelSchema,
+  threadNotificationInputsSchema,
+} from "./preferences.js";
 
 export const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 export const EXPO_PUSH_TOKEN_MAX_LENGTH = 512;
@@ -48,6 +52,17 @@ export const clientNotificationSchema = z
   .strict();
 export type ClientNotification = z.infer<typeof clientNotificationSchema>;
 
+export const THREAD_NOTIFICATIONS_CHANNEL = "threadNotifications";
+export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
+export const threadNotificationsUpdateSchema = z
+  .object({
+    threads: z.record(z.string(), threadNotificationInputsSchema),
+  })
+  .strict();
+export type ThreadNotificationsUpdate = z.infer<
+  typeof threadNotificationsUpdateSchema
+>;
+
 const emptyInputSchema = z.object({}).strict();
 export const listPushSubscriptionsOutputSchema = z
   .object({ subscriptions: z.array(pushSubscriptionSummarySchema) })
@@ -69,6 +84,30 @@ export const pushNotificationsRpcContract = defineRpcContract({
   "pushSubscriptions.remove": {
     input: removePushSubscriptionInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
+  },
+  "threadNotifications.list": {
+    input: z
+      .object({
+        threadIds: z
+          .array(z.string().min(1))
+          .min(1)
+          .max(THREAD_NOTIFICATIONS_LIST_MAX_IDS),
+      })
+      .strict(),
+    output: z
+      .object({
+        threads: z.record(z.string(), threadNotificationInputsSchema),
+      })
+      .strict(),
+  },
+  "threadNotifications.set": {
+    input: z
+      .object({
+        threadId: z.string().min(1),
+        level: ownNotificationLevelSchema,
+      })
+      .strict(),
+    output: threadNotificationInputsSchema,
   },
 });
 

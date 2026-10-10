@@ -24,12 +24,16 @@ const timelineTurnSummaryDetails = vi.mocked(
 );
 
 function renderExpandedRow(row: TimelineRow) {
+  return renderRow(row, new Set([row.id]));
+}
+
+function renderRow(row: TimelineRow, initialExpanded: ReadonlySet<string>) {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <Wrapper>
         <ThreadTimelineRows
-          initialExpanded={new Set([row.id])}
+          initialExpanded={initialExpanded}
           threadId="thr_main"
           timelineRows={[row]}
           threadRuntimeDisplayStatus="idle"
@@ -271,5 +275,35 @@ describe("deferred timeline details", () => {
     });
     expect(await screen.findByText(/FINAL LINE 2/)).toBeTruthy();
     expect(screen.queryByText("Loading details...")).toBeNull();
+  });
+
+  it("starts loading a collapsed row's deferred content when its header is pressed", async () => {
+    const loaded = commandRow({
+      id: "cmd-pressed",
+      command: "pnpm lint",
+      output: "LINT OUTPUT FROM SERVER",
+      sourceSeqStart: 4,
+      sourceSeqEnd: 7,
+      threadId: "thr_main",
+      turnId: "turn_1",
+    });
+    timelineTurnSummaryDetails.mockResolvedValue({
+      olderCursor: null,
+      rows: [loaded],
+    });
+
+    renderRow({ ...loaded, output: "", contentDeferred: true }, new Set());
+    fireEvent.pointerDown(screen.getByText(/pnpm lint/));
+
+    expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
+    expect(timelineTurnSummaryDetails.mock.calls[0]?.[0]).toMatchObject({
+      itemId: loaded.callId,
+    });
+    expect(screen.queryByText(/LINT OUTPUT FROM SERVER/)).toBeNull();
+
+    fireEvent.click(screen.getByText(/pnpm lint/));
+
+    expect(await screen.findByText(/LINT OUTPUT FROM SERVER/)).toBeTruthy();
+    expect(timelineTurnSummaryDetails).toHaveBeenCalledTimes(1);
   });
 });

@@ -315,7 +315,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -403,8 +414,7 @@ A new install opens a first-run setup guide (connect an agent, add projects,
 pick plugins, set up devices). `onboardingCompletedAt` in general settings
 records when it was finished or skipped; `bb settings replay-onboarding`, or
 Settings → General → Setup guide, clears it so the guide shows again.
-`setupChecklistVisible` controls the "Finish setting up bb" home-screen
-checklist. The projects step lists what `bb project discover` and
+The projects step lists what `bb project discover` and
 `bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
@@ -784,6 +794,23 @@ CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
 listed.
 
+The rebuilt ACP adapter ships as a second built-in plugin, "ACP providers (new
+adapter)", which is off by default. Turn it on in Settings → Plugins or with
+`bb plugin enable bb--provider-acp-next`. It registers the same provider ids,
+so existing threads keep working, and only one of the two ACP plugins runs at
+a time: turning the new one on turns "ACP providers" off, turning it off
+turns "ACP providers" back on, and the `customAgents` list follows the switch
+in both directions. The new adapter adds agent options in the model picker
+(the agent's mode stays in the composer footer), live slash commands in the
+composer, agent questions as question cards, sign-in
+guidance, and the official ACP registry: its settings page lists the
+registry's agents with an Add button, and `bb acp registry`, `bb acp add
+<agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding
+one writes a `customAgents` entry that runs the registry's `npx` or `uvx`
+package on the thread's host, so the host needs Node.js or uv. Agents the
+registry ships only as a downloadable binary are listed but must be installed
+by hand and added as a custom agent.
+
 Add your own agent through the ACP providers plugin's `customAgents` setting,
 which holds a JSON array. In the app it is the multi-line editor on the
 plugin's settings page (Settings → Plugins → ACP providers); from the CLI:
@@ -1034,12 +1061,6 @@ client wrote first, so a stale window cannot silently clobber a newer value.
 | `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
 | `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
 | `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.collapsedSections`          | Collapsed built-in sections (`pinned`, `threads`)                                         |
-| `sidebar.collapsedProjects`          | Collapsed project ids                                                                     |
-| `sidebar.collapsedThreads`           | Thread ids whose children are collapsed                                                   |
-| `sidebar.collapsedEnvironments`      | Collapsed environment ids                                                                 |
-| `sidebar.collapsedThreadSections`    | Collapsed thread section ids                                                              |
-| `sidebar.collapsedMachines`          | Collapsed machine ids                                                                     |
 | `sidebar.footerOrder`                | Footer action order                                                                       |
 | `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
 | `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
@@ -1060,7 +1081,7 @@ A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
 destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
 destinations and Customize rail; Settings is at the bottom. New thread sits in
-the sidebar header. The list beside the rail swaps between the thread list,
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
 Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
 leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
 order and show or hide rail destinations.

@@ -1,5 +1,6 @@
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
+  infiniteQueryOptions,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -1067,11 +1068,10 @@ function mergeTimelineTurnSummaryDetailsPages(
   return rows;
 }
 
-export function useThreadTimelineTurnSummaryDetails(
+function threadTimelineTurnSummaryDetailsQueryOptions(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
-  options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
 ) {
-  return useInfiniteQuery<
+  return infiniteQueryOptions<
     TimelineTurnSummaryDetailsResponse,
     Error,
     TimelineRow[],
@@ -1096,17 +1096,39 @@ export function useThreadTimelineTurnSummaryDetails(
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.olderCursor ?? undefined,
     select: mergeTimelineTurnSummaryDetailsPages,
-    enabled:
-      (options?.enabled ?? true) &&
-      Boolean(identity.threadId) &&
-      Boolean(identity.turnId),
     meta: {
       errorMessage: "Failed to load turn summary details.",
       showErrorToast: false,
     },
+    staleTime: Infinity,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
+  });
+}
+
+export function prefetchThreadTimelineTurnSummaryDetails(
+  queryClient: QueryClient,
+  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+): void {
+  if (!identity.threadId || !identity.turnId) {
+    return;
+  }
+  void queryClient.prefetchInfiniteQuery(
+    threadTimelineTurnSummaryDetailsQueryOptions(identity),
+  );
+}
+
+export function useThreadTimelineTurnSummaryDetails(
+  identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
+) {
+  return useInfiniteQuery({
+    ...threadTimelineTurnSummaryDetailsQueryOptions(identity),
+    enabled:
+      (options?.enabled ?? true) &&
+      Boolean(identity.threadId) &&
+      Boolean(identity.turnId),
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
-    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 

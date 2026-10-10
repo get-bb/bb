@@ -1,5 +1,7 @@
 import type {
+  ProviderCommand,
   ThreadContextWindowUsage,
+  ThreadTimelineSessionOption,
   TimelineActivityIntent,
   TimelineConversationAttachments,
   TimelineFileChange,
@@ -63,6 +65,10 @@ import {
   type PlanCommand,
 } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
+import {
+  extractThreadProviderCommands,
+  extractThreadSessionOptions,
+} from "./provider-state-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
@@ -100,6 +106,8 @@ export interface ThreadTimelineFromEventsResult {
   goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
+  providerCommands: ProviderCommand[] | null;
+  sessionOptions: ThreadTimelineSessionOption[] | null;
   rows: TimelineRow[];
 }
 
@@ -327,6 +335,7 @@ function toConversationAttachments(
     imageUrls: attachments.imageUrls ?? [],
     localImagePaths: attachments.localImagePaths ?? [],
     localFilePaths: attachments.localFilePaths ?? [],
+    localFileDetails: attachments.localFileDetails ?? [],
   };
 }
 
@@ -1203,6 +1212,12 @@ export function buildThreadTimelineFromEvents(
     goal: !args.options.isLatestPage
       ? null
       : extractThreadTimelineGoal(stateEvents),
+    providerCommands: !args.options.isLatestPage
+      ? null
+      : extractThreadProviderCommands(stateEvents),
+    sessionOptions: !args.options.isLatestPage
+      ? null
+      : extractThreadSessionOptions(stateEvents),
     modelFallback: !args.options.isLatestPage
       ? null
       : extractThreadTimelineModelFallback(args.events),

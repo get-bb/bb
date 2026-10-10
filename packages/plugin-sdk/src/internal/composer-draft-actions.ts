@@ -35,6 +35,7 @@ const mentionSchema = z.discriminatedUnion("kind", [
     origin: z.enum(["builtin", "project", "user"]),
     argumentHint: z.string().nullable(),
   }),
+  z.object({ ...range, kind: z.literal("attachment"), path: z.string() }),
   z.object({
     ...range,
     kind: z.literal("plugin"),

@@ -2,18 +2,19 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   getThreadListIndicatorLabel,
-  resolveThreadListIndicator,
   type ThreadListIndicatorKind,
-  type ThreadListIndicatorState,
 } from "@bb/client-core";
-import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
+import type {
+  PluginComposerThreadRowStatus,
+  PluginThreadStatusGlyphProps,
+} from "@get-bb/plugin-sdk";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import {
   SIDEBAR_STATUS_ICON_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-} from "@/components/sidebar/sidebarRowClasses";
+} from "@bb/shared-ui/sidebar-row-classes";
 
 const WORKING_ACTIVITY_ICONS = {
   workflow: "Workflow",
@@ -107,81 +108,50 @@ function PluginThreadRowStatusIndicator({
 interface ThreadStatusResolution {
   accessibleLabel: string | null;
   indicatorKind: ThreadListIndicatorKind | "archived";
-  pluginStatusIsVisible: boolean;
+  rowStatusIsVisible: boolean;
 }
 
 export function resolveThreadStatus(
-  statusProps: ThreadListIndicatorState,
-  pluginStatus: PluginComposerThreadRowStatus | null = null,
+  indicator: ThreadListIndicatorKind,
+  rowStatus: PluginComposerThreadRowStatus | null = null,
   archived = false,
 ): ThreadStatusResolution {
-  const indicatorKind = archived
-    ? "archived"
-    : resolveThreadListIndicator(statusProps);
-  const pluginStatusIsVisible =
+  const indicatorKind = archived ? "archived" : indicator;
+  const rowStatusIsVisible =
     !archived &&
-    pluginStatus !== null &&
+    rowStatus !== null &&
     indicatorKind !== "runtime" &&
     indicatorKind !== "unread-error" &&
     indicatorKind !== "waiting-for-input";
 
   return {
-    accessibleLabel: pluginStatusIsVisible
-      ? pluginStatus.label
+    accessibleLabel: rowStatusIsVisible
+      ? rowStatus.label
       : indicatorKind === "archived"
         ? "Archived thread"
         : getThreadListIndicatorLabel(indicatorKind),
     indicatorKind,
-    pluginStatusIsVisible,
+    rowStatusIsVisible,
   };
 }
 
-export interface ThreadStatusGlyphProps extends ThreadListIndicatorState {
-  archived?: boolean;
-  pluginStatus?: PluginComposerThreadRowStatus | null;
-  hideIdleDraftLabel?: boolean;
-  size?: "default" | "compact";
-}
-
 export function ThreadStatusGlyph({
+  indicator,
   archived = false,
-  pluginStatus = null,
-  hasPendingInteraction,
-  hasUnsubmittedDraft,
-  hasUnreadError,
-  hasUnreadSuccess,
+  rowStatus = null,
   hideIdleDraftLabel = false,
-  isBackgroundAgentActive,
-  isBackgroundCommandActive,
-  isGoalActive,
-  isPlanModeActive,
-  isRuntimeActive,
-  isWorkflowActive,
-  queuedWork,
   size = "default",
-}: ThreadStatusGlyphProps) {
+}: PluginThreadStatusGlyphProps) {
   const iconSizeClass =
     size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS;
-  const { indicatorKind: kind, pluginStatusIsVisible } = resolveThreadStatus(
-    {
-      hasPendingInteraction,
-      hasUnsubmittedDraft,
-      hasUnreadError,
-      hasUnreadSuccess,
-      isBackgroundAgentActive,
-      isBackgroundCommandActive,
-      isGoalActive,
-      isPlanModeActive,
-      isRuntimeActive,
-      isWorkflowActive,
-      queuedWork,
-    },
-    pluginStatus,
+  const { indicatorKind: kind, rowStatusIsVisible } = resolveThreadStatus(
+    indicator,
+    rowStatus,
     archived,
   );
 
-  if (pluginStatusIsVisible && pluginStatus) {
-    return <PluginThreadRowStatusIndicator status={pluginStatus} size={size} />;
+  if (rowStatusIsVisible && rowStatus) {
+    return <PluginThreadRowStatusIndicator status={rowStatus} size={size} />;
   }
 
   switch (kind) {

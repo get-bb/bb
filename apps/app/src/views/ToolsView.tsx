@@ -22,7 +22,7 @@ import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOv
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { AddPluginDialog } from "@/components/plugin/management/AddPluginDialog";
 import { resolvePluginDetailKey } from "@/components/plugin/management/installed-plugin-catalog";
 import {

@@ -34,19 +34,17 @@ export function RelatedThreadsSection({
         getKey={(relatedThread) => relatedThread.id}
         renderItem={(relatedThread) => {
           const title = getThreadDisplayTitle(relatedThread);
-          const indicatorState = threadListIndicatorStateForThread(
-            relatedThread,
-            false,
+          const indicator = resolveThreadListIndicator(
+            threadListIndicatorStateForThread(relatedThread, false),
           );
           return (
             <InfoListRow
               leading={
                 <span className="flex items-center text-subtle-foreground [&_[data-icon-root]]:size-3">
-                  {idleIcon !== undefined &&
-                  resolveThreadListIndicator(indicatorState) === "none" ? (
+                  {idleIcon !== undefined && indicator === "none" ? (
                     <Icon name={idleIcon} aria-hidden="true" />
                   ) : (
-                    <ThreadStatusGlyph {...indicatorState} size="compact" />
+                    <ThreadStatusGlyph indicator={indicator} size="compact" />
                   )}
                 </span>
               }

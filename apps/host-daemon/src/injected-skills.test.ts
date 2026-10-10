@@ -200,6 +200,15 @@ describe("data-dir skills root", () => {
   });
 });
 
+async function countStoredTrees(dataDir: string): Promise<number> {
+  const entries = await readdir(path.join(dataDir, "runtime", "skill-store"), {
+    withFileTypes: true,
+  });
+  return entries.filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith(".tmp-"),
+  ).length;
+}
+
 describe("injected skill staging", () => {
   it("pulls a missing tree, stages identical bytes and modes, and reuses the store", async () => {
     const dataDir = await makeTempDir();
@@ -537,15 +546,11 @@ describe("injected skill staging", () => {
       injectedSkillSources: [createTreeSource(name, payload.treeHash)],
     });
 
-    const entries = await readdir(
-      path.join(dataDir, "runtime", "skill-store"),
-      {
-        withFileTypes: true,
-      },
-    );
-    expect(entries.filter((entry) => entry.isDirectory()).length).toBe(
-      MAX_SKILL_STORE_TREES,
-    );
+    await vi.waitFor(async () => {
+      await expect(countStoredTrees(dataDir)).resolves.toBe(
+        MAX_SKILL_STORE_TREES,
+      );
+    });
     await expect(lstat(oldestRoot)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(
       lstat(path.join(dataDir, "runtime", "skill-store", payload.treeHash)),
@@ -607,6 +612,11 @@ describe("injected skill staging", () => {
         dataDir,
         fetchSkillTree: async () => newcomer,
         injectedSkillSources: [createTreeSource("newcomer", newcomer.treeHash)],
+      });
+      await vi.waitFor(async () => {
+        await expect(countStoredTrees(dataDir)).resolves.toBe(
+          MAX_SKILL_STORE_TREES,
+        );
       });
       resumeCollection();
 
@@ -750,6 +760,91 @@ describe("injected skill staging", () => {
     });
 
     expect(second.catalogHash).not.toBe(first.catalogHash);
+  });
+
+  it("reuses a collected tree without returning to the skill store", async () => {
+    const dataDir = await makeTempDir();
+    const payload = createTreePayload("memo-tree");
+    const fetchSkillTree = vi.fn(async () => payload);
+    const source = createTreeSource("memo-tree", payload.treeHash);
+    const first = await stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree,
+      injectedSkillSources: [source],
+    });
+    await rm(path.join(dataDir, "runtime", "skill-store"), {
+      recursive: true,
+      force: true,
+    });
+    await rm(path.join(dataDir, "runtime", "global-skills"), {
+      recursive: true,
+      force: true,
+    });
+
+    const second = await stageInjectedSkillSources({
+      dataDir,
+      fetchSkillTree,
+      injectedSkillSources: [source],
+    });
+
+    expect(second.catalogHash).toBe(first.catalogHash);
+    expect(fetchSkillTree).toHaveBeenCalledTimes(1);
+    await expect(
+      readFile(
+        path.join(
+          requireSkillRoot(second.skillRoots).path,
+          "memo-tree",
+          "SKILL.md",
+        ),
+        "utf8",
+      ),
+    ).resolves.toContain("tree bytes");
+    await expect(
+      access(path.join(dataDir, "runtime", "skill-store", payload.treeHash)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("restages a host skill edited in place with its size and mtime unchanged", async () => {
+    const dataDir = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      body: "aaaa",
+      rootPath: path.join(dataDir, "source-skills"),
+      name: "release-notes",
+    });
+    const skillFilePath = path.join(skillRootPath, "SKILL.md");
+    const pinnedTime = new Date(1_700_000_000_000);
+    await utimes(skillFilePath, pinnedTime, pinnedTime);
+    const source = createDataDirSource({
+      dataDir,
+      skillName: "release-notes",
+      skillRootPath,
+    });
+    const first = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [source],
+    });
+
+    await writeFile(
+      skillFilePath,
+      (await readFile(skillFilePath, "utf8")).replace("aaaa", "bbbb"),
+    );
+    await utimes(skillFilePath, pinnedTime, pinnedTime);
+    const second = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [source],
+    });
+
+    expect(second.catalogHash).not.toBe(first.catalogHash);
+    await expect(
+      readFile(
+        path.join(
+          requireSkillRoot(second.skillRoots).path,
+          "release-notes",
+          "SKILL.md",
+        ),
+        "utf8",
+      ),
+    ).resolves.toContain("bbbb");
   });
 
   it("stages the same catalog concurrently without sharing temp directories", async () => {

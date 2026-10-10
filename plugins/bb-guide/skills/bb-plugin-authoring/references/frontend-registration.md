@@ -167,13 +167,18 @@ sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 
 `useData` is a hook the host runs once for the whole app, never per row: read
-your preferences, a batched per-thread map, or a realtime channel there.
+your preferences or a realtime channel there. It receives `{ threadIds }`, the
+sorted ids of every thread on screen or in an open menu; for per-thread state,
+keep an id-keyed cache and fetch only the ids not in it, in one batch (for
+example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
 `useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
 of bb's groups through `experimental_THREAD_ACTION_GROUPS` or name your own. `choices` renders as a submenu, a drawer step with Back, or
-a popover; the picked id reaches `run` as `value`.
+a popover; the picked id reaches `run` as `value`. Set `detail` to show the
+current value on a muted line under the label, and `choices.hint` for a footnote below the
+choices.
 
 ```tsx
 app.slots.experimental_threadAction({
@@ -181,9 +186,10 @@ app.slots.experimental_threadAction({
   title: "Notifications",
   icon: "Notification",
   group: experimental_THREAD_ACTION_GROUPS.settings,
-  useData: () => useNotificationLevels(),
+  useData: ({ threadIds }) => useNotificationLevels(threadIds),
   item: ({ thread, data, sdk }) => ({
     label: "Notifications",
+    detail: data.get(thread.id) === "muted" ? "Muted" : "All activity",
     icon: "Notification",
     choices: {
       items: [
@@ -393,6 +399,12 @@ menu (archive and delete confirmation included) plus every plugin's thread
 actions; see "An action in every thread menu".
 `experimental_useArchiveEnvironmentThreads()` archives a whole environment
 group with bb's pane cleanup and Undo toast.
+
+**bb's status glyph on your row.** Render `experimental_ThreadStatusGlyph`
+with the row's `indicator` (start from the thread's own, then fold in what
+your row knows, such as collapsed children or `useSidebarThreadDraft`) and
+`useSidebarThreadRowStatus(threadId)` as `rowStatus`; bb draws the same icon,
+color, and accessible label its own lists use.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or

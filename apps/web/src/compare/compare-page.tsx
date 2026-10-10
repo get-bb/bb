@@ -28,7 +28,7 @@ import type {
   CompareHighlight,
   Comparison,
   Mark,
-} from "./comparisons";
+} from "./compare-types";
 import { BrandMark, type BrandLogo } from "./compare-visuals";
 import {
   PLUGINS_COPY,
@@ -125,10 +125,7 @@ export function templatePageHead({
 }) {
   return {
     meta: pageMeta(title, description, path),
-    links: [
-      ...siteHeadLinks(compareCss),
-      { rel: "canonical", href: `https://getbb.app${path}` },
-    ],
+    links: siteHeadLinks(compareCss),
     scripts: [{ type: "application/ld+json", children: faqJsonLd(faq) }],
   };
 }

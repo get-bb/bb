@@ -69,6 +69,10 @@ list; main and manual runs always run the full list. Use
   `@types/better-sqlite3`, `hono`, and `cron-parser` for `createTestPluginHost`;
   `@testing-library/react`, `@testing-library/dom`, `jsdom`, `react`,
   `react-dom`, and their `@types` for `renderSlot`.
+- **One copy of shared UI.** A component both the app and a listed plugin
+  need has one home, chosen by the rules in
+  [What belongs in shared-ui](#what-belongs-in-shared-ui); neither side keeps
+  a copy.
 - **Portable tests.** Tests use the SDK test harness and plugin-local fixtures.
   They do not import app or workspace source, and they do not assert on host
   behavior. Tests of the plugin's own components live in the plugin. Host
@@ -92,3 +96,27 @@ list; main and manual runs always run the full list. Use
   until it renames them; the list only guarantees that the copy builds.
 - **SDK floor.** `engines.bbPluginSdk` names the SDK version that introduced
   the newest hook the plugin calls.
+
+## What belongs in shared-ui
+
+When the app and a plugin need the same component, place it by the first rule
+that fits:
+
+1. **shared-ui and the registry.** Presentation primitives with no bb domain
+   knowledge: nothing imported from `@bb/domain` or app code, props are plain
+   data, and the component would make sense in another app. Dialog shells,
+   `use-dialog-state`, drag-click suppression, the reorder DnD hooks, the
+   compact long-press menu, action-menu items, and sortable motion qualify.
+   Where the app and a plugin need different behaviour, the one component
+   takes the difference as a prop, as `useSidebarReorderDnd` takes the touch
+   sensor.
+2. **Host-rendered through the SDK.** Anything that needs host state or host
+   data, and a thread-aware component the app still renders after a plugin
+   owns the surface: `experimental_BranchPicker`,
+   `experimental_ThreadActionsMenu`, `experimental_ThreadStatusGlyph`.
+3. **The owning plugin.** Thread-aware code that does not need the host lives
+   in the plugin that owns the surface, and the app deletes its copy.
+4. **Plugin-local.** Anything only one plugin uses, even if the app once had
+   it.
+
+Thread-aware components do not go into shared-ui.

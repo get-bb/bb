@@ -19,6 +19,7 @@ import type {
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { EventProjection } from "./event-projection.js";
 
 const eventProjectionMessageStatusValues = [
@@ -114,6 +115,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
     imageUrls?: string[];
     localImagePaths?: string[];
     localFilePaths?: string[];
+    localFileDetails?: TimelineConversationAttachments["localFileDetails"];
   };
 }
 

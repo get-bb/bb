@@ -1,3 +1,4 @@
+import type { BbDesktopServerChoice } from "./servers.js";
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
@@ -63,6 +64,11 @@ export type BbDesktopCloseWindowRequestHandler = () => boolean;
 
 export interface BbDesktopApi extends BbDesktopInfo {
   browser: BbDesktopBrowserApi;
+  getServerChoices?(): Promise<BbDesktopServerChoice[]>;
+  onServerChoicesChange?(
+    listener: (choices: BbDesktopServerChoice[]) => void,
+  ): () => void;
+  selectServer?(id: string): void;
   checkForUpdates(): Promise<BbDesktopInfo>;
   getInfo(): Promise<BbDesktopInfo>;
   focusWindow?(): void;

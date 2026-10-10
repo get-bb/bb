@@ -2,7 +2,7 @@ import { useChronologicalSectionThreadDnd } from "./SectionThreadDndContext.js";
 import {
   SIDEBAR_SECTION_DROP_TARGET_CLASS,
   SIDEBAR_SECTION_DROP_TARGET_UNCHANGED_CLASS,
-} from "../rows/sidebarRowClasses.js";
+} from "@/components/ui/sidebar-row-classes";
 import type { SectionThreadDndState } from "./useSectionThreadDnd.js";
 
 export type SidebarSectionDropState = "active" | "unchanged";

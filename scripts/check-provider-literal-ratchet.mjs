@@ -82,6 +82,7 @@ const EXCLUDED_PREFIXES = [
   // code like plugins/provider-*, not core.
   join("plugins", "account-pool"),
   join("packages", "provider-bridge-acp"),
+  join("packages", "provider-bridge-acp-next"),
   // Test-only helpers: they name providers so tests can pick a model.
   join("packages", "test-helpers"),
   join("examples", ""),

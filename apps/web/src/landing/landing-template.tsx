@@ -12,10 +12,17 @@ import {
   withPluginsSlot,
 } from "../compare/compare-page";
 import { PLUGINS_COPY } from "../compare/compare-sections";
-import type { CompareFaqGroup, CompareHighlight } from "../compare/comparisons";
+import type {
+  CompareFaqGroup,
+  CompareHighlight,
+} from "../compare/compare-types";
 
-export type LandingPage = {
+export type LandingMeta = {
   slug: string;
+  label: string;
+};
+
+export type LandingPage = LandingMeta & {
   title: string;
   description: string;
   headline: string;

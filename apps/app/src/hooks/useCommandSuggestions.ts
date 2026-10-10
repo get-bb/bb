@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import type { ProviderCommand } from "@bb/server-contract";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
@@ -19,6 +20,7 @@ interface UseCommandSuggestionsArgs {
   skillsTriggers: readonly PromptMentionCommandTrigger[];
   activeTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
+  threadProviderCommands?: readonly ProviderCommand[] | null;
   environmentId: string | null;
   hostId?: string | null;
   query: string | null;
@@ -75,6 +77,24 @@ export function promptActionCommandSuggestions({
         },
       ];
     }),
+    query,
+  );
+}
+
+export function threadProviderCommandSuggestions({
+  commands,
+  query,
+  trigger,
+}: {
+  commands: readonly ProviderCommand[] | null | undefined;
+  query: string;
+  trigger: PromptMentionCommandTrigger | null;
+}): ProviderCommandSuggestion[] {
+  if (trigger !== "/") {
+    return [];
+  }
+  return filterCommandSuggestions(
+    (commands ?? []).map(toProviderCommandSuggestion),
     query,
   );
 }
@@ -184,10 +204,18 @@ export function useCommandSuggestions(
       trimmedQuery,
     );
     return mergeCommandSuggestions(
-      promptActionSuggestions,
+      mergeCommandSuggestions(
+        promptActionSuggestions,
+        threadProviderCommandSuggestions({
+          commands: args.threadProviderCommands,
+          query: trimmedQuery,
+          trigger,
+        }),
+      ),
       discoveredSuggestions,
     );
   }, [
+    args.threadProviderCommands,
     commandsQuery.data?.commands,
     args.commandScope,
     trigger,

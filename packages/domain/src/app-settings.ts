@@ -46,7 +46,6 @@ export const appSettingsSchema = z
     machineGitCredentialsEnabled: z.boolean(),
     defaultMachineAccess: z.string().min(1).nullable(),
     onboardingCompletedAt: z.string().min(1).nullable(),
-    setupChecklistVisible: z.boolean(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -69,7 +68,6 @@ export const defaultAppSettings: AppSettings = {
   defaultMachineAccess: null,
   machineGitCredentialsEnabled: true,
   onboardingCompletedAt: null,
-  setupChecklistVisible: false,
 };
 
 export const disabledProviderIdsSchema = z.array(z.string().min(1));
@@ -83,7 +81,6 @@ export const appSettingsUpdateSchema = z.union([
     keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean().optional(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
-    setupChecklistVisible: z.boolean().optional(),
   }),
   appSettingsSchema.omit({ showDiagnosticEvents: true }).extend({
     allowFastServiceTier: z.boolean().optional(),
@@ -93,7 +90,6 @@ export const appSettingsUpdateSchema = z.union([
     keepHistoryAfterContextClear: z.boolean().optional(),
     showUnhandledProviderEvents: z.boolean(),
     onboardingCompletedAt: z.string().min(1).nullable().optional(),
-    setupChecklistVisible: z.boolean().optional(),
   }),
 ]);
 export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;

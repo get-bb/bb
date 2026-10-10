@@ -208,9 +208,17 @@ function renderProjectRow(
   return { ...result, onToggleEnvironmentCollapsed, onToggleProjectCollapsed };
 }
 
-function expectCollapsedActivityAtSidebarEdge(label: string) {
-  const edgeSlot = screen
-    .getAllByLabelText(label)
+function renderedIndicators(): Array<string | null> {
+  return Array.from(
+    document.querySelectorAll("[data-thread-status-glyph]"),
+    (glyph) => glyph.getAttribute("data-thread-status-glyph"),
+  );
+}
+
+function expectCollapsedActivityAtSidebarEdge(indicator: string) {
+  const edgeSlot = Array.from(
+    document.querySelectorAll(`[data-thread-status-glyph="${indicator}"]`),
+  )
     .map((indicator) =>
       indicator.closest("[data-sidebar-collapsed-activity-edge]"),
     )
@@ -657,8 +665,7 @@ describe("ProjectRow interactions", () => {
         name: "Expand Feature workspace threads",
       }),
     ).not.toBeNull();
-    expect(screen.getByLabelText("Thread working")).not.toBeNull();
-    expect(screen.queryByLabelText("Workflow running")).toBeNull();
+    expect(renderedIndicators()).toEqual(["runtime"]);
   });
 
   it.each([
@@ -736,10 +743,7 @@ describe("ProjectRow interactions", () => {
       { draftThreadIds: ["thr_worktree_draft"] },
     );
 
-    expect(
-      screen.getByLabelText("Thread working with unsubmitted draft"),
-    ).not.toBeNull();
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(renderedIndicators()).toEqual(["working-draft"]);
   });
 
   it("keeps a duplicate section name in place until corrected", async () => {
@@ -824,10 +828,8 @@ describe("ProjectRow interactions", () => {
     ).toBe(sectionId);
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getAllByLabelText("Plan mode active")).not.toHaveLength(0);
-    expectCollapsedActivityAtSidebarEdge("Plan mode active");
-    expect(screen.queryByLabelText("Thread working")).toBeNull();
-    expect(screen.queryByLabelText("Goal active")).toBeNull();
+    expect(renderedIndicators()).toEqual(["plan-mode"]);
+    expectCollapsedActivityAtSidebarEdge("plan-mode");
   });
 
   it("shows a working draft before Plan for a collapsed section", () => {
@@ -849,10 +851,7 @@ describe("ProjectRow interactions", () => {
       ["thr_section_draft"],
     );
 
-    expect(
-      screen.getAllByLabelText("Thread working with unsubmitted draft"),
-    ).not.toHaveLength(0);
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
+    expect(renderedIndicators()).toEqual(["working-draft"]);
   });
 
   it("hides loose Threads in More and restores them", async () => {
@@ -1036,8 +1035,8 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(screen.queryByText("Test thread")).toBeNull();
-    expect(screen.getAllByLabelText("Goal active")).not.toHaveLength(0);
-    expectCollapsedActivityAtSidebarEdge("Goal active");
+    expect(renderedIndicators()).toEqual(["goal"]);
+    expectCollapsedActivityAtSidebarEdge("goal");
   });
 
   it("shows unread success before an idle draft for a collapsed project", () => {
@@ -1059,10 +1058,7 @@ describe("ProjectRow interactions", () => {
       { draftThreadIds: ["thr_project_draft"] },
     );
 
-    expect(
-      screen.getAllByLabelText("Unread thread succeeded"),
-    ).not.toHaveLength(0);
-    expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
+    expect(renderedIndicators()).toEqual(["unread-success"]);
   });
 
   it("excludes hidden side-chat activity from a collapsed project", () => {
@@ -1090,8 +1086,7 @@ describe("ProjectRow interactions", () => {
       { draftThreadIds: ["thr_side_chat"] },
     );
 
-    expect(screen.queryByLabelText("Plan mode active")).toBeNull();
-    expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
+    expect(renderedIndicators()).toEqual([]);
   });
 
   it.each([false, true])(

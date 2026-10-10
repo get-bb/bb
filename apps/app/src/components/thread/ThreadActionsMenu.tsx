@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
+import { CompactLongPressMenu } from "@bb/shared-ui/compact-long-press-menu";
 import {
   ThreadActionMenuRows,
   useThreadActionMenuGroups,
