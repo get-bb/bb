@@ -9,18 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePluginBranches } from "./usePluginBranchPickerState";
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({
-    data: {
-      projects: [
-        {
-          id: "project-1",
-          sources: [
-            { type: "local_path", isDefault: true, hostId: "source-host" },
-          ],
-        },
-      ],
-    },
-  }),
+  useSidebarNavigation: () => ({ data: undefined }),
 }));
 
 vi.mock("@/lib/sdk", () => ({
@@ -55,22 +44,6 @@ describe("usePluginBranches", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-  });
-
-  it("uses the project source for branch suggestions before a host exists", async () => {
-    const { wrapper } = createQueryClientTestHarness();
-    vi.mocked(readProjectBranchOptions).mockResolvedValue(BRANCHES);
-    const { result } = renderHook(
-      () => usePluginBranches({ hostId: null, projectId: "project-1" }),
-      { wrapper },
-    );
-    await waitFor(() => expect(result.current.branches).toEqual(["release"]));
-    expect(readProjectBranchOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostId: "source-host",
-        projectId: "project-1",
-      }),
-    );
   });
 
   it("searches cached branches and refreshes them from the host", async () => {

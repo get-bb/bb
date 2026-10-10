@@ -21,6 +21,7 @@
     "server.test.ts",
     "app.tsx",
     "app.test.tsx",
+    "message-action.test.ts",
     "vitest.config.ts"
   ]
 }
