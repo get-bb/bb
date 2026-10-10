@@ -1,11 +1,5 @@
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import { SWITCH_TOOLS, switchGuide } from "../shared/switch";
-
-export const meta: GuideMeta = {
-  slug: "switch-from-cursor",
-  title: "Switch from Cursor to bb",
-  nav: null,
-  canonical: null,
-};
+import { meta } from "./switch-from-cursor.meta";
 
 export const guide: Guide = switchGuide(meta, SWITCH_TOOLS.cursor);

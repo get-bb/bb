@@ -117,7 +117,7 @@ const AGENT_OPTIONS = {
   provider: {
     type: "string",
     placeholder: "id",
-    description: "Provider id, for example claude or codex",
+    description: "Provider id, for example claude-code or codex",
   },
   model: {
     type: "string",

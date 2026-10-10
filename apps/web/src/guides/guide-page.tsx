@@ -26,17 +26,15 @@ import type { Guide, GuideFaq, GuideStep } from "./guide-types";
 import { getGuide } from "./guides";
 import guidesCss from "./guides.css?url";
 
-export function loadGuide(slug: string) {
-  if (!getGuide(slug)) {
+export function guideRouteData(slug: string) {
+  const guide = getGuide(slug);
+  if (!guide) {
     throw notFound();
   }
-  return { slug };
+  return { slug, head: guideHead(guide) };
 }
 
-export function guideHead(guide: Guide | undefined) {
-  if (!guide) {
-    return { meta: [{ title: "bb" }] };
-  }
+function guideHead(guide: Guide) {
   return {
     meta: pageMeta(
       `${guide.title} — bb`,

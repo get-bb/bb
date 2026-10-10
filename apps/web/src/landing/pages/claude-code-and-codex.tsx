@@ -1,4 +1,4 @@
-import type { LandingMeta, LandingPage } from "../landing-template";
+import type { LandingPage } from "../landing-template";
 import {
   FAQ_AGENTS,
   FAQ_PARALLEL,
@@ -20,11 +20,7 @@ import {
   PHONE_FAQ,
   START_FAQ,
 } from "../landing-shared";
-
-export const meta: LandingMeta = {
-  slug: "claude-code-and-codex",
-  label: "Claude Code with Codex",
-};
+import { meta } from "./claude-code-and-codex.meta";
 
 export const page: LandingPage = {
   ...meta,

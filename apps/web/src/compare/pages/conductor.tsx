@@ -1,5 +1,4 @@
-import conductorIcon from "../../assets/competitors/conductor.png";
-import type { CompareMeta, Comparison } from "../compare-types";
+import type { Comparison } from "../compare-types";
 import {
   BB_ROWS,
   CLOSER,
@@ -31,9 +30,8 @@ import {
   LIMITS_COPY,
   limitsSection,
 } from "../compare-sections";
-import { FleetVisual, type BrandLogo } from "../compare-visuals";
-
-const CONDUCTOR_LOGO: BrandLogo = { kind: "image", src: conductorIcon };
+import { FleetVisual } from "../compare-visuals";
+import { CONDUCTOR_LOGO, meta } from "./conductor.meta";
 
 const COST_SECTION = pricingSection(PRICING_COPY, {
   plan: "Conductor Teams",
@@ -41,11 +39,6 @@ const COST_SECTION = pricingSection(PRICING_COPY, {
   yearlyPerSeatMonthly: 60,
   priceNote: "Conductor Teams at $60 per person a month.",
 });
-
-export const meta: CompareMeta = {
-  slug: "conductor-alternatives",
-  competitor: { name: "Conductor", logo: CONDUCTOR_LOGO },
-};
 
 export const comparison: Comparison = {
   ...meta,

@@ -1,7 +1,7 @@
 import { BrowserConcept } from "../concepts";
 import { PromptBlock, Ui } from "../guide-blocks";
 import { skillOffer, withIntake } from "../prompt-intake";
-import type { Guide, GuideMeta } from "../guide-types";
+import type { Guide } from "../guide-types";
 import {
   annotateStep,
   BROWSER_FAQ,
@@ -9,6 +9,7 @@ import {
   PLUGINS_STEP,
   SIGN_INS_STEP,
 } from "../shared/browser";
+import { meta } from "./agent-browser.meta";
 
 const AGENT_PROMPT = withIntake(
   [
@@ -22,7 +23,7 @@ Guide: https://getbb.app/guides/agent-browser
 
 Do every step below, with a Check after each step. Stop if a check fails and tell me what failed. Don't commit, push, or deploy unless I ask.
 
-1. Set up browser access. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation if it's missing, or enable it with bb plugin enable browser-automation if it's off. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Then read bb guide browser and bb browser-automation --help. Find this thread's machine with bb status --json and bb machine list.
+1. Set up browser access. Run bb plugin list. Browser Automation isn't installed by default: install it with bb plugin install browser-automation --yes if it's missing, or enable it with bb plugin enable browser-automation if it's off. Agent Annotations is built in but off: enable it with bb plugin enable agent-annotations. Then read bb guide browser and bb browser-automation --help. Find this thread's machine with bb status --json and bb machine list.
    Check: both plugins are running and the chosen browser machine is connected.
 
 2. Open the app.
@@ -37,18 +38,11 @@ Do every step below, with a Check after each step. Stop if a check fails and tel
 3. Verify the change. Take a fresh snapshot, click through the requested flow using its element references, and check the visible result. Check the console and the layout at each size in Screen sizes. Use bb browser-automation screenshot <session-id> --page <name> --json and inspect the returned images. Show the screenshots that matter in this thread as images; for another browser host, fetch them with bb file read. Fix failures within the requested change and recheck the affected flow.
    Check: the flow behaves as requested, the layout works at each size, and any console errors are explained. Report what you actually exercised and show the screenshots; don't call a screenshot alone a passing interaction test.
 
-4. Leave the app ready for feedback. Close the automation session with bb browser-automation close and keep the preview server running. In desktop bb, use bb browser create with the selected host, instance, generation, current thread, URL, and --reveal to leave a Browser tab open for annotations. If no desktop instance is connected, explain that element annotations require the desktop app and give me the app URL. Tell me to choose Annotate elements, click the element, write the change, and choose Add to prompt. When I send an annotation, use its element context to make the change and verify it in a new browser session.
+4. Leave the app ready for feedback. Close the automation session with bb browser-automation close <session-id> and keep the preview server running. In desktop bb, use bb browser create with the selected host, instance, generation, current thread, URL, and --reveal to leave a Browser tab open for annotations. If no desktop instance is connected, explain that element annotations require the desktop app and give me the app URL. Tell me to choose Annotate elements, click the element, write the change, and choose Add to prompt. When I send an annotation, use its element context to make the change and verify it in a new browser session.
    Check: the automation session is closed, the preview route still responds, and the feedback tab is open when desktop is available. Report the URL, terminal ID, browser machine, screenshots, and anything you couldn't verify.
 
 ${skillOffer("check-in-browser", "my App URL, dev server command, sign-in, Screen sizes, and browser machine")}`,
 );
-
-export const meta: GuideMeta = {
-  slug: "agent-browser",
-  title: "Let your coding agent use a browser",
-  nav: { group: "Automate", label: "Test web apps", order: 3 },
-  canonical: null,
-};
 
 export const guide: Guide = {
   ...meta,
@@ -78,7 +72,7 @@ export const guide: Guide = {
         </>
       ),
       shot: {
-        src: "/guides/agent-browser/window-check-full.png",
+        src: "/guides/agent-browser/window-check-full.webp",
         alt: "A bb thread where the agent is trying new order filters, with the full live preview of the Acme Store Orders page in its browser",
         width: 2048,
         height: 1280,
@@ -95,7 +89,7 @@ export const guide: Guide = {
             </p>
           ),
           shot: {
-            src: "/guides/agent-browser/window-screenshots-full.png",
+            src: "/guides/agent-browser/window-screenshots-full.webp",
             alt: "The agent's phone screenshots side by side in a bb thread: before, the search box and Total column are cut off; after, both fit",
             width: 2048,
             height: 1280,
@@ -116,7 +110,7 @@ export const guide: Guide = {
       target: "the element",
       note: "your note",
       shot: {
-        src: "/guides/agent-browser/window-annotate.png",
+        src: "/guides/agent-browser/window-annotate.webp",
         alt: "A Browser tab in bb with the All filter selected for annotation, and the note: Use our brand blue for the selected filter, like Export CSV",
         width: 2048,
         height: 1280,
