@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { count, eq, inArray, isNull } from "drizzle-orm";
 import {
   aiServiceSelectionSchema,
   AI_TASKS,
@@ -15,7 +15,7 @@ import {
   type AppSettings,
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
-import { appSettingsValues } from "../schema.js";
+import { appSettingsValues, threads } from "../schema.js";
 
 const appSettingsKeySchema = appSettingsSchema.keyof();
 const appSettingsKeys = appSettingsKeySchema.options;
@@ -25,6 +25,7 @@ const AI_SERVICE_SELECTIONS_KEY = "aiServiceSelections";
 const PLUGIN_SAFE_MODE_KEY = "pluginSafeMode";
 const DISABLED_PROVIDER_IDS_KEY = "disabledProviderIds";
 const LEGACY_DIAGNOSTIC_EVENTS_KEY = "showUnhandledProviderEvents";
+const FIRST_FINISHED_TURN_KEY = "firstFinishedTurnRecorded";
 
 function parseStoredValue(text: string): unknown {
   try {
@@ -230,4 +231,20 @@ export function forgetPluginProviders(
       .where(eq(appSettingsValues.key, pluginProviderCatalogKey(pluginId)))
       .run();
   });
+}
+
+export function claimFirstFinishedTurn(db: DbConnection, now: number): boolean {
+  const inserted = db
+    .insert(appSettingsValues)
+    .values({ key: FIRST_FINISHED_TURN_KEY, value: "true", updatedAt: now })
+    .onConflictDoNothing()
+    .run();
+  if (inserted.changes !== 1) return false;
+  const rootThreads =
+    db
+      .select({ count: count() })
+      .from(threads)
+      .where(isNull(threads.parentThreadId))
+      .get()?.count ?? 0;
+  return rootThreads <= 1;
 }

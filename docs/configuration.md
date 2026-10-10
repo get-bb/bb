@@ -2095,8 +2095,18 @@ Automations plugin when any surface creates an automation (its trigger,
 `schedule` or `once`; its mode, `agent` or `script`; and its origin, `human`,
 `app`, or `agent`) and `split_view_opened` when a pane is added to the split
 view (the pane count after it opens, 2-8; restoring a saved layout does not
-count). That route accepts only those events and their fixed, non-identifying
-properties.
+count), and `device_paired` from the bundled Push Notifications plugin when a
+new phone registers for notifications (`mobile_ios` or `mobile_android`) and
+from the server when a new machine enrolls (`machine`; the server's own machine
+and re-enrollments do not count), each with `first_of_kind`. That route accepts
+only those events and their fixed, non-identifying properties.
+
+The server also sends `turn_finished` when an agent turn ends: `outcome`
+(`completed`, `failed`, or `stopped`), `provider` (a built-in provider id, or
+`other` for any custom or third-party provider), `error_category` (`none`,
+`auth`, `billing`, `rate_limit`, `provider_unavailable`, `limit_reached`,
+`process_exited`, `start_failed`, or `other`; never the error text), and
+`first_turn` (true only for the install's first finished turn).
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference

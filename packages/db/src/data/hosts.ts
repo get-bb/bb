@@ -1,5 +1,5 @@
 import { prepareCachedQuery } from "../connection.js";
-import { and, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, ne, placeholder } from "drizzle-orm";
 import {
   resolveEnvironmentHostLifecycle,
   type HostChangeKind,
@@ -210,6 +210,24 @@ export function getNonDestroyedHostByLaunchKey(
 
 export function listHosts(db: DbConnection) {
   return db.select().from(hosts).all();
+}
+
+export function countActiveHostsExcept(
+  db: DbConnection,
+  excludedHostId: string | null,
+): number {
+  return (
+    db
+      .select({ count: count() })
+      .from(hosts)
+      .where(
+        and(
+          isNull(hosts.destroyedAt),
+          ...(excludedHostId === null ? [] : [ne(hosts.id, excludedHostId)]),
+        ),
+      )
+      .get()?.count ?? 0
+  );
 }
 
 export function listPublicHosts(

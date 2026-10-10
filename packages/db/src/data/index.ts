@@ -121,6 +121,7 @@ export type {
 } from "./threads.js";
 
 export {
+  claimFirstFinishedTurn,
   forgetPluginProviders,
   getAiServiceSelections,
   getAppKeybindingOverrides,
@@ -263,6 +264,7 @@ export type { EnvironmentRow } from "./environments.js";
 
 export {
   upsertHost,
+  countActiveHostsExcept,
   getHost,
   getNonDestroyedHost,
   getNonDestroyedHostByLaunchKey,

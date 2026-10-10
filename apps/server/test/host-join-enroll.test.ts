@@ -6,10 +6,11 @@ import {
   type HostDaemonEnrollKeyResponse,
 } from "@bb/host-daemon-contract";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createServerErrorHandler } from "../src/errors.js";
 import { TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY } from "../src/request-context.js";
 import { registerInternalHostRoutes } from "../src/internal/hosts.js";
+import type { TelemetryService } from "../src/services/system/telemetry.js";
 import type { AppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
 import {
@@ -190,6 +191,44 @@ describe("host enroll routes", () => {
       );
 
       expect(replayResponse.status).toBe(401);
+    });
+  });
+
+  it("reports each newly enrolled machine once, without its name or id", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const enroll = async (hostId: string) => {
+        const key = await requestHostEnrollKey(harness.deps, hostId);
+        const response = await harness.app.request("/internal/hosts/enroll", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${key.enrollKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ hostId: key.hostId, hostName: "laptop" }),
+        });
+        expect(response.status).toBe(201);
+      };
+
+      await enroll("host_first_machine");
+      await enroll("host_second_machine");
+      await enroll("host_first_machine");
+
+      expect(
+        capture.mock.calls
+          .map(([event]) => event)
+          .filter((event) => event.name === "device_paired"),
+      ).toEqual([
+        {
+          name: "device_paired",
+          properties: { device: "machine", first_of_kind: true },
+        },
+        {
+          name: "device_paired",
+          properties: { device: "machine", first_of_kind: false },
+        },
+      ]);
     });
   });
 

@@ -33,6 +33,7 @@ import {
   type LastSendOutcome,
 } from "./sender.js";
 import { createPushSubscriptionStore } from "./subscriptions.js";
+import { recordPhonePaired } from "./telemetry.js";
 
 interface PushNotificationsPluginOptions {
   coalesceMs?: number;
@@ -254,7 +255,16 @@ export function createPushNotificationsPlugin(
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
       }),
-      "pushSubscriptions.add": (input) => subscriptions.add(input),
+      "pushSubscriptions.add": async (input) => {
+        const result = await subscriptions.add(input);
+        if (result.created) {
+          const devicesOnPlatform = (await subscriptions.list()).filter(
+            (subscription) => subscription.platform === input.platform,
+          ).length;
+          void recordPhonePaired(bb, input.platform, devicesOnPlatform);
+        }
+        return result;
+      },
       "pushSubscriptions.remove": async ({ id }) => {
         if (!(await subscriptions.remove(id))) {
           throw new Error(`Push subscription not found: ${id}`);
