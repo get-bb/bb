@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 import type { ExperimentalProviderIconProps } from "@get-bb/plugin-sdk/app";
 import { Button } from "@bb/shared-ui/button";
 import { Checkbox } from "@bb/shared-ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ResourceBrowseGrid } from "@bb/shared-ui/resource-list";
 import { Switch } from "@bb/shared-ui/switch";
@@ -43,6 +49,25 @@ interface OnboardingLayoutProps {
   onBack?: () => void;
   onSelectStep: (step: OnboardingStepId) => void;
   onSkipAll: () => void;
+}
+
+const DONE_TEXT_CLASS = "text-diff-added";
+
+function DoneMark({ label, srLabel }: { label?: string; srLabel?: string }) {
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 text-xs font-medium",
+        DONE_TEXT_CLASS,
+      )}
+    >
+      <Icon name="CircleCheck" aria-hidden className="size-4" />
+      {label}
+      {srLabel === undefined ? null : (
+        <span className="sr-only">{srLabel}</span>
+      )}
+    </span>
+  );
 }
 
 export function OnboardingLayout({
@@ -109,7 +134,7 @@ export function OnboardingLayout({
                   className={cn(
                     "flex size-5 items-center justify-center rounded-full text-xs tabular-nums",
                     active && "bg-foreground text-background",
-                    done && "bg-success text-background",
+                    done && "bg-diff-added text-background",
                     !active && !done && "border border-border",
                   )}
                 >
@@ -265,12 +290,7 @@ function AgentRow({
             className="size-4 animate-spin text-muted-foreground"
           />
         ) : null}
-        {state.status === "ready" ? (
-          <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-            <Icon name="CircleCheck" aria-hidden className="size-4" />
-            Ready
-          </span>
-        ) : null}
+        {state.status === "ready" ? <DoneMark label="Ready" /> : null}
         {state.status === "signIn" && state.canSignIn ? (
           <Button size="sm" onClick={() => onSignIn(agent.id)}>
             Sign in
@@ -373,8 +393,8 @@ export function AgentStep({
         </ul>
       )}
       <p className="text-xs text-muted-foreground">
-        Don't see your agent? bb picks up other ACP agents, such as opencode,
-        once they are installed.
+        Don't see your agent? Install any ACP agent, like OpenCode, and bb
+        should pick it up.
       </p>
     </div>
   );
@@ -618,66 +638,83 @@ export function ProjectsStep({
     );
   }
 
-  const selectableCount = repos.filter((repo) => !repo.added).length;
+  const newRepos = repos.filter((repo) => !repo.added);
+  const addedRepos = repos.filter((repo) => repo.added);
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1">
-          {selectedIds.size} of {selectableCount} selected
-        </span>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectAll}
-        >
-          Select all
-        </button>
-        <button
-          type="button"
-          className="hover:text-foreground"
-          onClick={onSelectNone}
-        >
-          Select none
-        </button>
-      </div>
-      <ul className="divide-y divide-border-hairline rounded-lg border border-border">
-        {repos.map((repo) => (
-          <li key={repo.id}>
-            <label
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5",
-                repo.added
-                  ? "text-muted-foreground"
-                  : "cursor-pointer hover:bg-state-hover",
-              )}
+    <div className="flex flex-col gap-5">
+      {newRepos.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Every repo bb found is already added.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="min-w-0 flex-1 font-medium text-foreground">
+              {selectedIds.size} of {newRepos.length} selected
+            </span>
+            <button
+              type="button"
+              className="text-subtle-foreground hover:text-foreground"
+              onClick={onSelectAll}
             >
-              <Checkbox
-                checked={repo.added || selectedIds.has(repo.id)}
-                disabled={repo.added}
-                onCheckedChange={() => onToggle(repo.id)}
-              />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">
-                    {repo.name}
-                  </span>
-                  {repo.remote ? (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {repo.remote}
+              Select all
+            </button>
+            <button
+              type="button"
+              className="text-subtle-foreground hover:text-foreground"
+              onClick={onSelectNone}
+            >
+              Select none
+            </button>
+          </div>
+          <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+            {newRepos.map((repo) => (
+              <li key={repo.id}>
+                <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-state-hover">
+                  <Checkbox
+                    checked={selectedIds.has(repo.id)}
+                    onCheckedChange={() => onToggle(repo.id)}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {repo.name}
+                      </span>
+                      {repo.remote ? (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {repo.remote}
+                        </span>
+                      ) : null}
                     </span>
-                  ) : null}
-                </span>
-                <span className="truncate font-mono text-xs text-muted-foreground">
-                  {repo.path}
-                </span>
-              </span>
-              <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {repo.added ? "Already added" : repo.lastActive}
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+                    <span className="truncate text-xs text-subtle-foreground">
+                      {repo.path}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                    {repo.lastActive}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {addedRepos.length === 0 ? null : (
+        <div className="flex flex-col gap-2">
+          <span className="text-xs text-muted-foreground">Already added</span>
+          <ul className="flex flex-col">
+            {addedRepos.map((repo) => (
+              <li
+                key={repo.id}
+                className="flex items-center gap-3 px-3 py-1.5 text-sm text-muted-foreground"
+              >
+                <span className="min-w-0 flex-1 truncate">{repo.name}</span>
+                <DoneMark srLabel="Already added" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {status.truncated ? (
         <p className="text-xs text-muted-foreground">
           The scan ran out of time, so some repos may be missing.
@@ -686,7 +723,7 @@ export function ProjectsStep({
       <button
         type="button"
         onClick={onAddFolder}
-        className="flex items-center gap-2 self-start rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        className="flex items-center gap-2 self-start rounded-md px-2 py-1 text-xs text-subtle-foreground hover:bg-state-hover hover:text-foreground"
       >
         <Icon name="FolderPlus" aria-hidden className="size-3.5" />
         Add a folder that isn't listed
@@ -863,9 +900,73 @@ interface DevicesStepProps {
   connectSetupOpen: boolean;
   otherMachineCount: number;
   mobileLinks: { ios: string; android: string };
+  mobilePlatform: "ios" | "android" | null;
+  showMobileApp: boolean;
   onToggleConnectSetup: () => void;
   onCopyConnectUrl: (url: string) => void;
   onAddMachine: () => void;
+}
+
+function MobileAppCard({
+  mobileLinks,
+  mobilePlatform,
+}: {
+  mobileLinks: { ios: string; android: string };
+  mobilePlatform: "ios" | "android" | null;
+}) {
+  return (
+    <section
+      aria-label="Get the mobile app"
+      className="flex items-center gap-4 rounded-lg border border-border p-4"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-state-hover">
+        <Icon
+          name="Smartphone"
+          aria-hidden
+          className="size-5 text-foreground"
+        />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-sm font-medium">Get the mobile app</span>
+        <span className="text-sm text-muted-foreground">
+          Get a push when an agent finishes or needs your answer, and check on
+          every thread from your phone.
+        </span>
+      </div>
+      {mobilePlatform === null ? (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" className="shrink-0">
+              Get the app
+              <Icon name="ChevronDown" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" mobileTitle="Get the mobile app">
+            <DropdownMenuItem asChild>
+              <a href={mobileLinks.ios} target="_blank" rel="noreferrer">
+                iPhone (TestFlight)
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a href={mobileLinks.android} target="_blank" rel="noreferrer">
+                Android (APK)
+              </a>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button size="sm" variant="outline" className="shrink-0" asChild>
+          <a
+            href={mobileLinks[mobilePlatform]}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Get the app
+          </a>
+        </Button>
+      )}
+    </section>
+  );
 }
 
 export function DevicesStep({
@@ -874,75 +975,73 @@ export function DevicesStep({
   connectSetupOpen,
   otherMachineCount,
   mobileLinks,
+  mobilePlatform,
+  showMobileApp,
   onToggleConnectSetup,
   onCopyConnectUrl,
   onAddMachine,
 }: DevicesStepProps) {
   return (
-    <ul className="divide-y divide-border-hairline rounded-lg border border-border">
-      <DeviceRow
-        icon="ComputerCloud"
-        title="Open bb from any browser"
-        description={
-          connect.status === "unavailable"
-            ? "bb connect is turned off on this server. Enable its plugin to get a private getbb.app address."
-            : "bb connect gives this bb a private getbb.app address that only you can open."
-        }
-        action={
-          connect.status === "on" ? (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-              <Icon name="CircleCheck" aria-hidden className="size-4" />
-              On
-            </span>
-          ) : connect.status === "off" ? (
-            <Button size="sm" variant="outline" onClick={onToggleConnectSetup}>
-              {connectSetupOpen ? "Hide" : "Set up"}
+    <div className="flex flex-col gap-4">
+      {showMobileApp ? (
+        <MobileAppCard
+          mobileLinks={mobileLinks}
+          mobilePlatform={mobilePlatform}
+        />
+      ) : null}
+      <ul className="divide-y divide-border-hairline rounded-lg border border-border">
+        <DeviceRow
+          icon="ComputerCloud"
+          title="Open bb from any browser"
+          description={
+            connect.status === "unavailable"
+              ? "Turn on the bb connect plugin to get a private address."
+              : "A private getbb.app address only you can open."
+          }
+          action={
+            connect.status === "on" ? (
+              <DoneMark label="On" />
+            ) : connect.status === "off" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={onToggleConnectSetup}
+              >
+                {connectSetupOpen ? "Hide" : "Set up"}
+              </Button>
+            ) : null
+          }
+        >
+          {connect.status === "on" ? (
+            <CopyableLine value={connect.url} onCopy={onCopyConnectUrl} />
+          ) : null}
+          {connect.status === "off" && connectSetupOpen ? (
+            <div className="mt-3 rounded-md border border-border p-3">
+              {connectSetup}
+            </div>
+          ) : null}
+        </DeviceRow>
+        <DeviceRow
+          icon="Laptop"
+          title="Add another machine"
+          description={
+            otherMachineCount > 0
+              ? `${otherMachineCount} other ${otherMachineCount === 1 ? "machine is" : "machines are"} connected. Run agents on more.`
+              : "Run agents on a server or another computer."
+          }
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              onClick={onAddMachine}
+            >
+              Add machine
             </Button>
-          ) : null
-        }
-      >
-        {connect.status === "on" ? (
-          <CopyableLine value={connect.url} onCopy={onCopyConnectUrl} />
-        ) : null}
-        {connect.status === "off" && connectSetupOpen ? (
-          <div className="mt-3 rounded-md border border-border p-3">
-            {connectSetup}
-          </div>
-        ) : null}
-      </DeviceRow>
-      <DeviceRow
-        icon="Laptop"
-        title="Add another machine"
-        description={
-          otherMachineCount > 0
-            ? `${otherMachineCount} other ${otherMachineCount === 1 ? "machine is" : "machines are"} already connected. Add more to run agents on a server, a desktop, or a cloud box.`
-            : "Run agents on a server, a desktop, or a cloud box and steer them all from here."
-        }
-        action={
-          <Button size="sm" variant="outline" onClick={onAddMachine}>
-            Add machine
-          </Button>
-        }
-      />
-      <DeviceRow
-        icon="Smartphone"
-        title="Get the mobile app"
-        description="Get a push when a thread needs you."
-        action={
-          <span className="flex items-center gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.ios} target="_blank" rel="noreferrer">
-                iOS
-              </a>
-            </Button>
-            <Button size="sm" variant="outline" asChild>
-              <a href={mobileLinks.android} target="_blank" rel="noreferrer">
-                Android
-              </a>
-            </Button>
-          </span>
-        }
-      />
-    </ul>
+          }
+        />
+      </ul>
+    </div>
   );
 }
