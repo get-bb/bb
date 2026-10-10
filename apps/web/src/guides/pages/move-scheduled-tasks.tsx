@@ -28,13 +28,13 @@ Only read the old tasks. Don't edit, pause, or delete them. Create every bb auto
 3. Match each task to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose folder or repository matches. If none does, ask me whether to add it.
    Check: every task has a project ID.
 4. Turn each schedule into a five-field cron in my Timezone. If a schedule has no exact cron, like every other week, pick the closest one and tell me.
-   Check each task's model against \`bb provider models <claude-code or codex> --json\`. If it isn't listed, my account can't use it here: ask me which listed model to use, suggesting the closest one.
+   Check each task's model against \`bb provider models <claude-code or codex> --json\`. If it isn't listed, ask me which model to use, and suggest the one marked isDefault: it's the model bb already runs for that agent.
 5. Create each automation paused. Read \`bb automation create --help\` first.
    bb automation create --project <project-id> --name "<task name>" --disabled --cron "<cron>" --timezone <Timezone> --provider <claude-code for Claude Code tasks, codex for Codex tasks> --model <the task's model, or the one I picked> --permission-mode auto --new-environment worktree --prompt "<the task's prompt, word for word>"
    If a prompt relies on something only the old app had, like a claude.ai connector or a GitHub trigger, tell me what it needs instead of guessing.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
 6. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
-   Check: the run finished and did what its prompt asks. If not, leave it paused, note why, and go on to the next one.
+   Check: the run finished and did what its prompt asks. If it failed because the model isn't supported on my account, switch it to the isDefault model with \`bb automation update <id> --project <project-id> --model <model>\`, tell me, and test it again. If it failed for another reason, leave it paused, note why, and go on to the next one.
 
 Reply with a table of each task: where it came from, its bb schedule, project, and test result. Then tell me to switch each one on in Automations and to pause the original in Codex or Claude Code, so nothing runs twice.`,
 );
