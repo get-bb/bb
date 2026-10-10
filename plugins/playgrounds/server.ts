@@ -67,7 +67,8 @@ const sharesConversation = (thread: ThreadLink) =>
 export function createStore(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
-    "CREATE TABLE answers (id TEXT NOT NULL, thread_id TEXT NOT NULL, document TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (id, thread_id))",
+    "CREATE TABLE answer_documents (id TEXT PRIMARY KEY, document TEXT NOT NULL, kind TEXT NOT NULL)",
+    "CREATE TABLE answers (id TEXT NOT NULL REFERENCES answer_documents(id), thread_id TEXT NOT NULL, PRIMARY KEY (id, thread_id))",
     "CREATE INDEX answers_thread ON answers(thread_id)",
     "CREATE TABLE answer_state (id TEXT NOT NULL, thread_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (id, thread_id))",
     "CREATE INDEX answer_state_thread ON answer_state(thread_id)",
@@ -83,7 +84,7 @@ export function createStore(bb: BbPluginApi) {
   const copyAnswers = db.transaction(
     (fromThreadId: string, toThreadId: string, id: string | null) => {
       db.prepare(
-        "INSERT OR IGNORE INTO answers (id, thread_id, document, kind) SELECT id, ?, document, kind FROM answers WHERE thread_id = ? AND (? IS NULL OR id = ?)",
+        "INSERT OR IGNORE INTO answers (id, thread_id) SELECT id, ? FROM answers WHERE thread_id = ? AND (? IS NULL OR id = ?)",
       ).run(toThreadId, fromThreadId, id, id);
       db.prepare(
         "INSERT OR IGNORE INTO answer_state (id, thread_id, state, version, updated_at) SELECT id, ?, state, version, updated_at FROM answer_state WHERE thread_id = ? AND (? IS NULL OR id = ?)",
@@ -110,15 +111,22 @@ export function createStore(bb: BbPluginApi) {
   };
   const insert = (threadId: string, kind: Answer["kind"], content: string) => {
     const id = randomUUID();
-    db.prepare(
-      "INSERT INTO answers (id, thread_id, document, kind) VALUES (?, ?, ?, ?)",
-    ).run(id, threadSchema.parse(threadId), content, kind);
+    const thread = threadSchema.parse(threadId);
+    db.transaction(() => {
+      db.prepare(
+        "INSERT INTO answer_documents (id, document, kind) VALUES (?, ?, ?)",
+      ).run(id, content, kind);
+      db.prepare("INSERT INTO answers (id, thread_id) VALUES (?, ?)").run(
+        id,
+        thread,
+      );
+    })();
     return { id, directive: `::playground{id="${id}"}` };
   };
   const get = (threadId: string, id: string): Answer => {
     const row = db
       .prepare(
-        "SELECT document, kind FROM answers WHERE id = ? AND thread_id = ?",
+        "SELECT d.document, d.kind FROM answers a JOIN answer_documents d ON d.id = a.id WHERE a.id = ? AND a.thread_id = ?",
       )
       .get(idSchema.parse(id), threadSchema.parse(threadId)) as
       | { document: string; kind: string }
@@ -161,7 +169,18 @@ export function createStore(bb: BbPluginApi) {
       );
     },
     removeThread(threadId: string) {
-      db.prepare("DELETE FROM answers WHERE thread_id = ?").run(threadId);
+      db.transaction(() => {
+        const ids = (
+          db
+            .prepare("SELECT id FROM answers WHERE thread_id = ?")
+            .all(threadId) as { id: string }[]
+        ).map((row) => row.id);
+        db.prepare("DELETE FROM answers WHERE thread_id = ?").run(threadId);
+        const unused = db.prepare(
+          "DELETE FROM answer_documents WHERE id = ? AND NOT EXISTS (SELECT 1 FROM answers WHERE answers.id = answer_documents.id)",
+        );
+        for (const id of ids) unused.run(id);
+      })();
       live.removeThread(threadId);
     },
   };
