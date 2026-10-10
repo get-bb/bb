@@ -65,7 +65,10 @@ words; never put metrics, percentages, or sample sizes in this repository.
 ## Voice
 
 - Plain and direct: "Ask bb to…", "Your agent can…", "Press ⌘K to…".
-- Say what the person gets, not how the feature is built.
+- Describe the outcome, not the mechanism: say what the person gets, not
+  how the feature is built. Use bb UI terms (such as "child threads") only
+  when pointing at that UI, or in a prompt that tells the agent which feature
+  to use.
 - No feature-toggle caveats, no "new!", no exclamation marks.
 - Use `{version}`, `{paletteKeys}`, and `{searchKeys}` instead of hard-coding them.
 

@@ -189,8 +189,8 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     source: { kind: "feature", ref: "child-threads" },
     addedAt: "0.46.0",
     reviewedAt: "0.46.0",
-    title: "Run work in parallel",
-    body: "Ask bb to try three approaches at once in child threads, or to have one review this work.",
+    title: "Split a big task across helpers",
+    body: "Ask bb to try three approaches in parallel, or have a second agent review the work.",
     action: {
       kind: "prompt",
       label: "Try it",
@@ -436,8 +436,8 @@ export const TIP_CATALOG: readonly TipDefinition[] = [
     source: { kind: "feature", ref: "multiple providers" },
     addedAt: "0.46.0",
     reviewedAt: "0.46.0",
-    title: "Try a second agent on the same task",
-    body: "Ask bb to hand this task to another agent in a child thread, then compare the two results.",
+    title: "Compare two agents on one task",
+    body: "Ask bb to have another agent do the same task, then compare both results and pick the better one.",
     action: {
       kind: "prompt",
       label: "Try it",

@@ -13,8 +13,8 @@ orders the work.
    feature people miss. Set `source`, `addedAt` (the release it ships in), and
    `reviewedAt`. Add `expiresAt` only for tips about a release or a limited-time
    change.
-2. **Write the copy** in `plugins/tips/catalog.ts` to the voice and length
-   rules. Add the id to `TIP_IDS` in `plugins/tips/contract.ts` and to
+2. **Write the copy** in `plugins/tips/catalog.ts` to AUTHORING.md's voice
+   and length rules: describe the outcome, not the mechanism. Add the id to `TIP_IDS` in `plugins/tips/contract.ts` and to
    `TIP_TELEMETRY_IDS` in `packages/server-contract/src/api/system.ts`; tests
    fail when the three lists differ.
 3. **Choose one action type.** Use `open-plugin` only for plugins in

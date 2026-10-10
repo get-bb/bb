@@ -10,8 +10,8 @@ const PROMPT_TIP: TipView = {
   id: "child-threads",
   illustration: "child-threads",
   tone: "blue",
-  title: "Run work in parallel",
-  body: "Ask bb to spin up child threads that try three approaches at once.",
+  title: "Split a big task across helpers",
+  body: "Ask bb to try three approaches in parallel.",
   action: {
     kind: "prompt",
     label: "Try it",
@@ -149,12 +149,14 @@ describe("Tips homepage section", () => {
 
   it("shows three tips as a feed for the selected project", async () => {
     const slot = renderTips();
-    expect(await slot.findByText("Run work in parallel")).toBeTruthy();
+    expect(
+      await slot.findByText("Split a big task across helpers"),
+    ).toBeTruthy();
     expect(slot.getByRole("region", { name: "Tips" })).toBeTruthy();
     expect(slot.getAllByRole("listitem")).toHaveLength(3);
     expect(
       slot.getByRole("button", {
-        name: /Run work in parallel.*Adds prompt to composer$/u,
+        name: /Split a big task across helpers.*Adds prompt to composer$/u,
       }),
     ).toBe(tile(slot, "child-threads"));
     expect(slot.getByRole("button", { name: /Opens Get the app$/u })).toBe(
@@ -214,13 +216,15 @@ describe("Tips homepage section", () => {
     slot.lifecycle.rerender(
       <Section projectId="proj_1" experimental_setupComplete />,
     );
-    expect(await slot.findByText("Run work in parallel")).toBeTruthy();
+    expect(
+      await slot.findByText("Split a big task across helpers"),
+    ).toBeTruthy();
     expect(methods(slot)).toEqual(["current"]);
   });
 
   it("records each tip shown once per visit with its position and action", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     await slot.behavior.emitRealtime("tips-changed", {});
     await waitFor(() => expect(methods(slot)).toEqual(["current", "current"]));
     expect(telemetry(slot)).toEqual([
@@ -245,7 +249,7 @@ describe("Tips homepage section", () => {
 
   it("records a used tip with its position and action", async () => {
     const slot = renderTips(undefined, { openAppRoute: () => true });
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "phone"));
     expect(telemetry(slot)).toContainEqual({
       name: "tip_used",
@@ -255,7 +259,7 @@ describe("Tips homepage section", () => {
 
   it("records nothing for a tip id outside the catalog", async () => {
     const slot = renderTips([{ ...PROMPT_TIP, id: "someone-elses-tip" }]);
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "someone-elses-tip"));
     expect(telemetry(slot)).toEqual([]);
   });
@@ -269,7 +273,7 @@ describe("Tips homepage section", () => {
 
   it("previews a prompt tip as the composer placeholder on hover and focus", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.mouseEnter(tile(slot, "child-threads"));
     await waitFor(() =>
       expect(slot.composer.placeholderPreview).toBe(
@@ -291,7 +295,7 @@ describe("Tips homepage section", () => {
 
   it("fills the composer with a prompt tip, puts the draft in its task slot, and focuses it", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     await slot.setComposerText("  fix the flaky login test ");
     fireEvent.click(tile(slot, "child-threads"));
     expect(slot.composer.text).toBe(
@@ -300,7 +304,9 @@ describe("Tips homepage section", () => {
     expect(slot.composer.focusCount).toBe(1);
     expect(slot.inspection.navigateCalls).toEqual([]);
     expect(
-      await slot.findByText("Added “Run work in parallel” to the composer"),
+      await slot.findByText(
+        "Added “Split a big task across helpers” to the composer",
+      ),
     ).toBeTruthy();
     expect(slot.queryByText("In composer")).toBeNull();
     await waitFor(() =>
@@ -313,14 +319,14 @@ describe("Tips homepage section", () => {
 
   it("fills an empty composer with the prompt alone", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "child-threads"));
     expect(slot.composer.text).toBe("Spin up three child threads. Task: ");
   });
 
   it("opens a bb page for a route tip", async () => {
     const slot = renderTips(undefined, { openAppRoute: () => true });
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "phone"));
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_openAppRoute", path: "/settings/mobile" },
@@ -330,7 +336,7 @@ describe("Tips homepage section", () => {
 
   it("announces when bb refuses the route and still marks the tip used", async () => {
     const slot = renderTips(undefined, { openAppRoute: () => false });
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "phone"));
     expect(
       await slot.findByText("Couldn't open Get the app here."),
@@ -379,7 +385,7 @@ describe("Tips homepage section", () => {
 
   it("asks for a new visit only on mount, not on refetches", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     await slot.behavior.emitRealtime("tips-changed", {});
     await waitFor(() =>
       expect(
@@ -393,7 +399,7 @@ describe("Tips homepage section", () => {
 
   it("runs the app command for a command tip", async () => {
     const slot = renderTips(undefined, { runAppCommand: () => true });
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(tile(slot, "command-palette"));
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_runAppCommand", commandId: "palette.open" },
@@ -403,7 +409,7 @@ describe("Tips homepage section", () => {
 
   it("turns tips off from Hide tips and undoes it", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     fireEvent.click(slot.getByRole("button", { name: /Hide tips/u }));
     expect(await slot.findByText(/Tips are off\./u)).toBeTruthy();
     expect(
@@ -419,12 +425,14 @@ describe("Tips homepage section", () => {
       method: "setEnabled",
       input: { enabled: true },
     });
-    expect(await slot.findByText("Run work in parallel")).toBeTruthy();
+    expect(
+      await slot.findByText("Split a big task across helpers"),
+    ).toBeTruthy();
   });
 
   it("refetches when tips change elsewhere", async () => {
     const slot = renderTips();
-    await slot.findByText("Run work in parallel");
+    await slot.findByText("Split a big task across helpers");
     await slot.behavior.emitRealtime("tips-changed", {});
     await waitFor(() => expect(methods(slot)).toEqual(["current", "current"]));
   });
