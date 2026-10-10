@@ -2683,6 +2683,7 @@ describe("connect CLI", () => {
     expect(text.stdout).toContain("Apex:       https://getbb.app");
     expect(text.stdout).toContain("in about 10 min");
     expect(text.stdout).toContain("Settings → Mobile → Add mobile device");
+    expect(text.stdout).toMatch(/Encryption: ([0-9A-F]{4}-){5}[0-9A-F]{4}/u);
 
     const json = await current.harness.runCli(["machine-code", "--json"]);
     expect(json.exitCode).toBe(0);
@@ -2692,6 +2693,13 @@ describe("connect CLI", () => {
       serverUrl: "https://sawyer.getbb.app",
       apex: "https://getbb.app",
       expiresAt: expect.any(Number),
+      sealed: {
+        serverKey: expect.any(String),
+        fingerprint: expect.stringMatching(/^([0-9A-F]{4}-){5}[0-9A-F]{4}$/u),
+        deviceCode: expect.stringMatching(
+          /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/u,
+        ),
+      },
     });
     expect(parsed.expiresAt as number).toBeGreaterThanOrEqual(before + 600_000);
   });

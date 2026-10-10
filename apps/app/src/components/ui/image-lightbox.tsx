@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
+import { SealedImage } from "@/lib/sealed";
 import { Button } from "@bb/shared-ui/button";
 import { usePersistentOverlayFocus } from "@bb/shared-ui/responsive-overlay";
 import { usePortalScopeProps } from "@bb/shared-ui/lib/portal-scope";
@@ -205,7 +206,7 @@ export function ImageLightbox({
         {title}
       </h2>
       {imageSrc ? (
-        <img
+        <SealedImage
           src={imageSrc}
           alt={imageAlt}
           style={IMAGE_TRANSPARENCY_CHECKER_STYLE}

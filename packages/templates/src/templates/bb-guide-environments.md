@@ -227,6 +227,22 @@ Remote access (bb connect):
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
   bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
+  bb connect encryption                   Server key fingerprint, policy, and sealed devices
+  bb connect require-encryption on|off    Refuse readable relay traffic; demotes devices
+                                          approved while it was off
+  bb connect devices                      List sealed devices (pending, approved, revoked)
+  bb connect approve-device <id>          Approve a pending device after checking its fingerprint
+  bb connect revoke-device <id>           Revoke a device and close its sealed connections
+  bb connect remove-device <id>           Forget a device record
+  bb connect device-code                  Mint a one-time code that approves a device
+  bb connect rotate-key --yes             Replace the server's encryption key
+
+  Remote browsers, the desktop app, and the mobile app open sealed connections
+  the relay cannot read. The trust-changing commands above run only on the
+  computer running bb (they refuse callers that arrived through bb Connect),
+  and every approved device has the same API access as this shell, so approve
+  only devices whose fingerprint you checked. See
+  `docs/connect-end-to-end-encryption.md` for the threat model.
 
   Port sharing works from threads on any enrolled host. In a thread,
   `bb connect expose <port>` resolves the thread environment's host; outside a

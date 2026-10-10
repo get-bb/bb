@@ -6,18 +6,47 @@ import {
   type PageToShellMessage,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
+import {
+  base64UrlDecode,
+  base64UrlEncode,
+  createDelegation,
+  type DeviceIdentity,
+} from "@bb/sealed-channel";
 import { useCallback, useMemo, useRef } from "react";
 import { Linking, Platform, Share } from "react-native";
 import type { WebView, WebViewMessageEvent } from "react-native-webview";
 import { describeError } from "@/lib/describe-error";
+import type { SealedServerTrust } from "@/lib/profiles";
 import { haptic } from "@/lib/haptics";
 import { buildBridgeSharePayload, isExternallyOpenable } from "@/lib/shell";
 import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
+
+export interface ShellBridgeSealed {
+  identity(): Promise<DeviceIdentity>;
+  deviceName: string;
+  trustFor(origin: string): SealedServerTrust | null;
+  expectsSealed(origin: string): boolean;
+}
 
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
   onPath(path: string): void;
   onOpenNative(screen: NativeScreen): void;
+  sealed?: ShellBridgeSealed;
+}
+
+export const SEALED_PAGE_DELEGATION_TTL_MS = 12 * 60 * 60 * 1000;
+
+export function pageOrigin(url: string | undefined): string | null {
+  if (url === undefined) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:"
+      ? parsed.origin
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface ShellBridge {
@@ -47,7 +76,10 @@ export function useShellBridge(
   );
 
   const handle = useCallback(
-    async (message: PageToShellMessage): Promise<void> => {
+    async (
+      message: PageToShellMessage,
+      origin: string | null,
+    ): Promise<void> => {
       switch (message.type) {
         case "ready":
           callbacksRef.current.onReady(message.path);
@@ -90,6 +122,90 @@ export function useShellBridge(
                 error: describeError(error),
               });
             }
+            return;
+          }
+          if (
+            message.request.kind === "clipboard" ||
+            message.request.kind === "clipboard-html"
+          ) {
+            return;
+          }
+          const sealed = callbacksRef.current.sealed;
+          const trust =
+            origin === null ? null : (sealed?.trustFor(origin) ?? null);
+          if (sealed === undefined || origin === null) {
+            respond(message.id, {
+              ok: false,
+              error: "end-to-end encryption is unavailable in this shell",
+            });
+            return;
+          }
+          try {
+            if (message.request.kind === "sealed-identity") {
+              if (trust === null) {
+                respond(message.id, {
+                  ok: false,
+                  error: "this page is not the paired server",
+                });
+                return;
+              }
+              const identity = await sealed.identity();
+              respond(message.id, {
+                ok: true,
+                result: {
+                  publicKey: base64UrlEncode(identity.publicKey),
+                  deviceName: sealed.deviceName,
+                },
+              });
+              return;
+            }
+            if (message.request.kind === "sealed-delegate") {
+              if (
+                trust === null ||
+                trust.serverKey !== message.request.payload.serverKey
+              ) {
+                respond(message.id, {
+                  ok: false,
+                  error:
+                    "this page is not the pinned server for the active profile",
+                });
+                return;
+              }
+              const identity = await sealed.identity();
+              const delegation = await createDelegation(
+                identity,
+                base64UrlDecode(message.request.payload.publicKey),
+                Date.now() + SEALED_PAGE_DELEGATION_TTL_MS,
+                base64UrlDecode(trust.serverKey),
+              );
+              respond(message.id, {
+                ok: true,
+                result: {
+                  parentPublicKey: base64UrlEncode(delegation.parentPublicKey),
+                  expiresAt: delegation.expiresAt,
+                  signature: base64UrlEncode(delegation.signature),
+                },
+              });
+              return;
+            }
+            const requestedOrigin = message.request.payload.origin;
+            const requested = requestedOrigin === origin ? trust : null;
+            const expected =
+              requestedOrigin === origin && sealed.expectsSealed(origin);
+            respond(message.id, {
+              ok: true,
+              result:
+                requested === null
+                  ? { expected, serverKey: null }
+                  : {
+                      expected: true,
+                      serverKey: requested.serverKey,
+                      fingerprint: requested.fingerprint,
+                      verified: requested.verified,
+                    },
+            });
+          } catch (error) {
+            respond(message.id, { ok: false, error: describeError(error) });
           }
           return;
         }
@@ -107,7 +223,7 @@ export function useShellBridge(
         return;
       }
       if (__DEV__) console.log("shell bridge", JSON.stringify(parsed.message));
-      void handle(parsed.message);
+      void handle(parsed.message, pageOrigin(event.nativeEvent.url));
     },
     [handle],
   );

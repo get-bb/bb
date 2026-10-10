@@ -165,6 +165,9 @@ importers:
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@bb/sealed-channel':
+        specifier: workspace:*
+        version: link:../../packages/sealed-channel
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
@@ -588,9 +591,15 @@ importers:
         specifier: ^0.38.0
         version: 0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4)
     devDependencies:
+      '@bb/sealed-channel':
+        specifier: workspace:*
+        version: link:../../packages/sealed-channel
       '@bb/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
+      '@bb/tunnel-client':
+        specifier: workspace:*
+        version: link:../../packages/tunnel-client
       '@better-auth/drizzle-adapter':
         specifier: ^1.6.23
         version: 1.6.23(@better-auth/core@1.6.23(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(better-call@1.3.7(zod@4.6.5))(jose@6.2.3)(kysely@0.29.3)(nanostores@1.2.0))(@better-auth/utils@0.4.2)(drizzle-orm@0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4))
@@ -603,6 +612,12 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      bb-plugin-connect:
+        specifier: workspace:*
+        version: link:../../plugins/connect
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@tanstack/react-start@1.168.25(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0)))(better-sqlite3@12.10.0)(drizzle-orm@0.38.4(@cloudflare/workers-types@4.20260702.1)(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/react@19.2.13)(better-sqlite3@12.10.0)(kysely@0.29.3)(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(vitest@4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0)))(vue@3.5.39(@typescript/typescript6@6.0.2))
@@ -624,6 +639,9 @@ importers:
       wrangler:
         specifier: ^4.100.0
         version: 4.107.0(@cloudflare/workers-types@4.20260702.1)
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
 
   apps/demo-server:
     dependencies:
@@ -673,6 +691,9 @@ importers:
       '@bb/host-daemon-contract':
         specifier: workspace:*
         version: link:../../packages/host-daemon-contract
+      '@bb/sealed-channel':
+        specifier: workspace:*
+        version: link:../../packages/sealed-channel
       bb-app:
         specifier: workspace:*
         version: link:../../packages/bb-app
@@ -906,6 +927,9 @@ importers:
       '@bb/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@bb/sealed-channel':
+        specifier: workspace:*
+        version: link:../../packages/sealed-channel
       '@bb/server-contract':
         specifier: workspace:*
         version: link:../../packages/server-contract
@@ -2688,6 +2712,46 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/sealed-channel:
+    dependencies:
+      '@bb/tunnel-contract':
+        specifier: workspace:*
+        version: link:../tunnel-contract
+      '@noble/ciphers':
+        specifier: ^2.1.1
+        version: 2.1.1
+      '@noble/curves':
+        specifier: ^2.0.1
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.4.0))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/secret-storage:
     devDependencies:
       '@bb/tsconfig':
@@ -3556,6 +3620,9 @@ importers:
       '@bb/connect-client':
         specifier: workspace:*
         version: link:../../packages/connect-client
+      '@bb/sealed-channel':
+        specifier: workspace:*
+        version: link:../../packages/sealed-channel
       '@bb/shared-ui':
         specifier: workspace:*
         version: link:../../packages/shared-ui
@@ -7978,6 +8045,10 @@ packages:
 
   '@noble/ciphers@2.1.1':
     resolution: {integrity: sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/curves@2.4.0':
+    resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
     engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@1.4.0':
@@ -18467,7 +18538,7 @@ snapshots:
 
   '@better-auth/utils@0.4.2':
     dependencies:
-      '@noble/hashes': 2.0.1
+      '@noble/hashes': 2.4.0
 
   '@better-fetch/fetch@1.3.1': {}
 
@@ -20337,6 +20408,10 @@ snapshots:
     optional: true
 
   '@noble/ciphers@2.1.1': {}
+
+  '@noble/curves@2.4.0':
+    dependencies:
+      '@noble/hashes': 2.4.0
 
   '@noble/hashes@1.4.0': {}
 

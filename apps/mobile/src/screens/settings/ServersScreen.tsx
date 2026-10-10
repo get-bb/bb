@@ -160,7 +160,9 @@ export function ServersScreen() {
                 subtitle={
                   IS_IOS
                     ? profile.mode === "connect"
-                      ? `@${profile.handle} · ${profile.serverUrl}`
+                      ? profile.sealed !== undefined
+                        ? `@${profile.handle} · sealed transport, ${profile.sealed.verified ? "verified" : "unverified"} key ${profile.sealed.fingerprint}`
+                        : `@${profile.handle} · ${profile.serverUrl}`
                       : profile.serverUrl
                     : profile.serverUrl
                         .replace(/^https?:\/\//, "")

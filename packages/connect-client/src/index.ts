@@ -23,4 +23,5 @@ export {
   mobilePairingPayload,
   parseMobilePairingPayload,
   type MobilePairingPayload,
+  type MobilePairingSealedPayload,
 } from "./mobile-pairing.js";

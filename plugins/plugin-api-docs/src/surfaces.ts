@@ -767,6 +767,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Run the same command from a terminal, a script, or an agent mid-task",
           "Get argument parsing, `--help`, and JSON errors from one declaration",
           "Know which thread and project it was run from",
+          "Know whether a call came through bb Connect and insist on a local caller when trust is at stake",
         ],
         apiSymbols: [
           "PluginCli",

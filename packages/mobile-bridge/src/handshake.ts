@@ -18,6 +18,7 @@ export const NATIVE_CAPABILITIES = [
   "open-external",
   "safe-area",
   "open-native",
+  "sealed",
 ] as const;
 
 export const nativeCapabilitySchema = z.enum(NATIVE_CAPABILITIES);

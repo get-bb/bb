@@ -103,6 +103,21 @@ import {
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
+  createSealedDeviceStore,
+  type SealedDeviceStore,
+} from "./sealed-device-store.js";
+import {
+  createSealedRemoteFetch,
+  type SealedRemoteFetchResult,
+} from "./sealed-remote-fetch.js";
+import {
+  BB_DESKTOP_SEALED_GET_CONTEXT_CHANNEL,
+  BB_DESKTOP_SEALED_GET_TRUST_CHANNEL,
+  BB_DESKTOP_SEALED_SET_TRUST_CHANNEL,
+  BB_DESKTOP_SEALED_SIGN_CHANNEL,
+} from "./sealed-ipc.js";
+import { bbDesktopSealedTrustSchema } from "@bb/desktop-contract";
+import {
   applyServerMove,
   createServerMovedWatcher,
   createServerMoveNoticeStore,
@@ -424,6 +439,7 @@ let quitting = false;
 let serverTargetStore: ServerTargetStore | null = null;
 let connectServerSync: ConnectServerSync | null = null;
 let connectCredentialCache: ConnectCredentialCache | null = null;
+let sealedDeviceStore: SealedDeviceStore | null = null;
 let cachedConnectCredential: ConnectCredential | null = null;
 let enrollingDesktopMachine: Promise<void> | null = null;
 let connectSessionRenewal: ConnectSessionRenewal | null = null;
@@ -1054,16 +1070,79 @@ async function refreshSystemConfig(
   }
 }
 
+let sealedRemoteFetch: Extract<
+  SealedRemoteFetchResult,
+  { kind: "sealed" }
+> | null = null;
+
+function assertSealedIpcSender(event: IpcMainInvokeEvent): void {
+  if (
+    !applicationWindowWebContentsIds.has(event.sender.id) ||
+    event.senderFrame !== event.sender.mainFrame
+  ) {
+    throw new Error("sealed IPC is only available to the app window");
+  }
+}
+
+function connectTargetOrigin(): string | null {
+  const target = serverTargetStore?.getTarget();
+  if (target === undefined || target.kind !== "connect") return null;
+  try {
+    return new URL(target.server.url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function sealedIpcSenderOrigin(event: IpcMainInvokeEvent): string | null {
+  try {
+    return new URL(event.sender.getURL()).origin;
+  } catch {
+    return null;
+  }
+}
+
+function requireSealedDeviceStore(): SealedDeviceStore {
+  if (sealedDeviceStore === null) {
+    throw new Error("sealed device store is not ready");
+  }
+  return sealedDeviceStore;
+}
+
+async function remoteCookieHeader(serverUrl: string): Promise<string | null> {
+  const cookies = await session.defaultSession.cookies.get({ url: serverUrl });
+  if (cookies.length === 0) return null;
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+}
+
+async function resolveRemoteFetch(serverUrl: string): Promise<typeof fetch> {
+  const plaintext: typeof fetch = (input, init) =>
+    net.fetch(input as string | Request, { ...init, credentials: "include" });
+  const store = sealedDeviceStore;
+  if (store === null) return plaintext;
+  if (sealedRemoteFetch !== null) return sealedRemoteFetch.fetch;
+  const origin = new URL(serverUrl).origin;
+  const result = await createSealedRemoteFetch({
+    store,
+    origin,
+    cookieHeader: () => remoteCookieHeader(serverUrl),
+  });
+  if (result.kind === "sealed") {
+    sealedRemoteFetch = result;
+    return result.fetch;
+  }
+  return () => Promise.reject(new Error(result.reason));
+}
+
 function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
   function refresh(): void {
-    void refreshSystemConfig({
-      fetchImpl: (input, init) =>
-        net.fetch(input as string | Request, {
-          ...init,
-          credentials: "include",
-        }),
-      serverUrl,
-    });
+    void resolveRemoteFetch(serverUrl)
+      .then((fetchImpl) => refreshSystemConfig({ fetchImpl, serverUrl }))
+      .catch((error: unknown) => {
+        desktopLogger.warn(
+          `[desktop] remote system config sync failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
   }
 
   const timer = setInterval(refresh, REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS);
@@ -1075,6 +1154,8 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
     stop(): void {
       clearInterval(timer);
       refreshRemoteSystemConfig = null;
+      sealedRemoteFetch?.close();
+      sealedRemoteFetch = null;
     },
   };
 }
@@ -2245,6 +2326,58 @@ function registerDesktopUpdateIpc(): void {
   ipcMain.handle(BB_DESKTOP_GET_INFO_CHANNEL, () => {
     return getCurrentDesktopInfo();
   });
+  ipcMain.handle(BB_DESKTOP_SEALED_GET_CONTEXT_CHANNEL, async (event) => {
+    assertSealedIpcSender(event);
+    const store = requireSealedDeviceStore();
+    return {
+      remote: serverTargetStore?.getTarget().kind === "connect",
+      publicKey: await store.publicKey(),
+      deviceName: store.deviceName(),
+    };
+  });
+  ipcMain.handle(
+    BB_DESKTOP_SEALED_SIGN_CHANNEL,
+    async (event, transcript: unknown) => {
+      assertSealedIpcSender(event);
+      if (typeof transcript !== "string" || transcript.length === 0) {
+        throw new Error("sealed sign expects a base64url transcript");
+      }
+      const senderOrigin = sealedIpcSenderOrigin(event);
+      const store = requireSealedDeviceStore();
+      if (
+        senderOrigin === null ||
+        (senderOrigin !== connectTargetOrigin() &&
+          (await store.getTrust(senderOrigin)) === null)
+      ) {
+        throw new Error(
+          "sealed signing is only available to the bb server page",
+        );
+      }
+      return store.signClientAuth(transcript);
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_SEALED_GET_TRUST_CHANNEL,
+    (event, origin: unknown) => {
+      assertSealedIpcSender(event);
+      if (typeof origin !== "string" || origin.length === 0) return null;
+      if (sealedIpcSenderOrigin(event) !== origin) return null;
+      return requireSealedDeviceStore().getTrust(origin);
+    },
+  );
+  ipcMain.handle(
+    BB_DESKTOP_SEALED_SET_TRUST_CHANNEL,
+    async (event, origin: unknown, trust: unknown) => {
+      assertSealedIpcSender(event);
+      if (typeof origin !== "string" || origin.length === 0) return;
+      if (sealedIpcSenderOrigin(event) !== origin) return;
+      const parsed = bbDesktopSealedTrustSchema.nullable().safeParse(trust);
+      if (!parsed.success) return;
+      await requireSealedDeviceStore().setTrust(origin, parsed.data);
+      sealedRemoteFetch?.close();
+      sealedRemoteFetch = null;
+    },
+  );
   ipcMain.handle(BB_DESKTOP_GET_WINDOW_STATE_CHANNEL, (event) => {
     return getSenderDesktopWindowState(event);
   });
@@ -2854,6 +2987,10 @@ async function runDesktopApp(): Promise<void> {
     storagePath: join(userDataPath, MACHINE_SERVICE_NOTICE_FILE_NAME),
   });
   connectCredentialCache = createConnectCredentialCache({
+    encryption: safeStorage,
+    userDataPath,
+  });
+  sealedDeviceStore = createSealedDeviceStore({
     encryption: safeStorage,
     userDataPath,
   });

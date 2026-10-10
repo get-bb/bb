@@ -9,6 +9,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
+import { SealedImage } from "@/lib/sealed";
 import {
   getLocalAttachmentPreviewSrc,
   releaseLocalAttachmentPreview,
@@ -63,10 +64,19 @@ function ImageUploadPreview({ file }: { file: File }) {
       className="relative shrink-0 overflow-hidden rounded-md border border-border bg-surface-recessed"
     >
       <span className="block h-16 w-24">
-        {previewUrl ? <img src={previewUrl} alt="" className="size-full object-cover opacity-50" /> : null}
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt=""
+            className="size-full object-cover opacity-50"
+          />
+        ) : null}
       </span>
       <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-background/90 py-1 text-xs text-foreground">
-        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+        <Icon
+          name="Loading"
+          className="size-3 animate-spin motion-reduce:animate-none"
+        />
         Uploading
       </span>
     </div>
@@ -107,7 +117,10 @@ function FileUploadPreview({ file }: { file: File }) {
     >
       <span className="truncate">{file.name}</span>
       <span className="inline-flex size-4 shrink-0 items-center justify-center">
-        <Icon name="Loading" className="size-3 animate-spin motion-reduce:animate-none" />
+        <Icon
+          name="Loading"
+          className="size-3 animate-spin motion-reduce:animate-none"
+        />
       </span>
     </span>
   );
@@ -160,15 +173,22 @@ export function AttachmentPreview({
           data-promptbox-attachments=""
           role={uploadingCount > 0 ? "status" : "img"}
           aria-label={[
-            attachmentCount > 0 ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}` : null,
+            attachmentCount > 0
+              ? `${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`
+              : null,
             uploadingCount > 0 ? `${uploadingCount} uploading` : null,
-          ].filter(Boolean).join(", ")}
+          ]
+            .filter(Boolean)
+            .join(", ")}
           className="ml-3 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-surface-recessed px-1.5 text-xs text-muted-foreground"
         >
           <Icon name="Paperclip" className="size-3.5" />
           <span aria-hidden="true">{attachmentCount + uploadingCount}</span>
           {uploadingCount > 0 ? (
-            <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" />
+            <Icon
+              name="Loading"
+              className="size-3.5 animate-spin motion-reduce:animate-none"
+            />
           ) : null}
         </span>
       ) : (
@@ -183,7 +203,7 @@ export function AttachmentPreview({
                     onClick={() => onExpandedImageIndexChange(index)}
                     title={attachment.name}
                   >
-                    <img
+                    <SealedImage
                       src={attachmentImageItems[index]?.src}
                       alt={attachment.name}
                       className="h-16 w-24 object-cover"
@@ -210,7 +230,9 @@ export function AttachmentPreview({
                   ) : null}
                 </div>
               ))}
-              {imageUploads.map((upload) => <ImageUploadPreview key={upload.id} file={upload.file} />)}
+              {imageUploads.map((upload) => (
+                <ImageUploadPreview key={upload.id} file={upload.file} />
+              ))}
             </div>
           ) : null}
 
@@ -224,7 +246,9 @@ export function AttachmentPreview({
                   <FileAttachmentName
                     name={attachment.name}
                     path={attachment.path}
-                    projectId={attachment.sourceProjectId ?? attachmentProjectId}
+                    projectId={
+                      attachment.sourceProjectId ?? attachmentProjectId
+                    }
                   />
                   {onRemoveAttachment ? (
                     <span className="relative size-4 shrink-0">
@@ -246,7 +270,9 @@ export function AttachmentPreview({
                   ) : null}
                 </span>
               ))}
-              {fileUploads.map((upload) => <FileUploadPreview key={upload.id} file={upload.file} />)}
+              {fileUploads.map((upload) => (
+                <FileUploadPreview key={upload.id} file={upload.file} />
+              ))}
             </div>
           ) : null}
         </div>

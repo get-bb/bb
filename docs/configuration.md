@@ -1458,6 +1458,47 @@ Settings → Machines.
 The CLI commands are proxied to the plugins, and Settings → bb connect
 drives connect's rpc (including shared ports).
 
+### Sealed connections (end-to-end encryption)
+
+Remote clients open a sealed connection to
+`/api/v1/plugins/connect/http/sealed` that the relay forwards but cannot
+decrypt; the threat model and coverage table are in
+[connect-end-to-end-encryption.md](connect-end-to-end-encryption.md). The
+Connect plugin owns the server's encryption identity and a device registry in
+its kv storage. Commands, all with `--json`:
+
+- `bb connect encryption` shows the server key fingerprint, whether encryption
+  is required, active sealed connections, and pending devices.
+- `bb connect require-encryption on|off` sets the policy the Remote access
+  section also controls (it lives in the plugin's kv storage, not in plugin
+  settings). When on, the tunnel client answers readable API and realtime
+  requests with HTTP 403 `{"code":"sealed_required"}`, closes readable
+  streams that are already open, new devices wait for approval, and every
+  device approved while the policy was off is demoted to pending; the app
+  shell, plugin UI bundles, installers, `/health`, port shares, and
+  bearer-authenticated daemon traffic stay readable. Pairing a server turns
+  the policy on unless a policy was already stored, so servers paired before
+  this feature keep it off until you turn it on. When off,
+  devices that pass the account gate are approved automatically and the relay
+  can still call the API through the readable tunnel, so run
+  `bb connect rotate-key` after turning the policy on if the server was
+  reachable through Connect before. Trust-changing commands refuse to run when
+  invoked through bb Connect, but an approved device can still reach them
+  through a terminal on the server; approving a device grants that much.
+- `bb connect devices`, `approve-device <id>`, `revoke-device <id>`, and
+  `remove-device <id>` manage devices. Approve only after comparing the
+  fingerprint the device shows with the one the server prints. The Settings
+  UI drives the same operations through plugin HTTP routes under
+  `/api/v1/plugins/connect/http/sealed/`, which refuse callers that arrive
+  through the relay or a sealed connection.
+- `bb connect device-code` mints a one-time twelve-character code (ten
+  minutes) that a device and the server prove to each other over the
+  handshake; it approves the device in one step and pins the key it verified.
+- `bb connect rotate-key --yes` replaces the identity; every device must
+  verify the new fingerprint.
+- `bb connect machine-code --json` now includes a `sealed` block
+  (`serverKey`, `fingerprint`, `deviceCode`) that the mobile QR code encodes.
+
 ### Pairing the bb mobile app
 
 Android source builds optionally read `GOOGLE_SERVICES_JSON`, an absolute path

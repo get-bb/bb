@@ -3,7 +3,13 @@ import {
   ConnectMachineRedeemError,
   redeemMachineCredential,
   type ConnectCredential,
+  type MobilePairingSealedPayload,
 } from "@bb/connect-client";
+import {
+  base64UrlDecode,
+  isValidPublicKey,
+  keyFingerprint,
+} from "@bb/sealed-channel";
 import {
   PROFILE_LABEL_MAX_LENGTH,
   type NewServerProfile,
@@ -103,7 +109,13 @@ export interface RedeemedEnrollment {
 }
 
 export async function redeemEnrollment(
-  args: { apexUrl: string; code: string; deviceName: string; label?: string },
+  args: {
+    apexUrl: string;
+    code: string;
+    deviceName: string;
+    label?: string;
+    sealed?: MobilePairingSealedPayload | null;
+  },
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<RedeemedEnrollment> {
   const credential = await redeemMachineCredential(
@@ -114,6 +126,13 @@ export async function redeemEnrollment(
     0,
     PROFILE_LABEL_MAX_LENGTH,
   );
+  const sealed = args.sealed ?? null;
+  if (sealed !== null) {
+    const serverKey = base64UrlDecode(sealed.serverKey);
+    if (!isValidPublicKey(serverKey)) {
+      throw new Error("The pairing code carries an invalid server key.");
+    }
+  }
   return {
     credential,
     profile: {
@@ -122,6 +141,16 @@ export async function redeemEnrollment(
       handle: credential.handle,
       credential: credential.credential,
       label,
+      ...(sealed !== null
+        ? {
+            sealed: {
+              serverKey: sealed.serverKey,
+              fingerprint: keyFingerprint(base64UrlDecode(sealed.serverKey)),
+              verified: true,
+              deviceCode: sealed.deviceCode,
+            },
+          }
+        : {}),
     },
   };
 }

@@ -64,6 +64,7 @@ import {
   FilePreviewPath,
 } from "./FilePreviewChrome.js";
 import { useImageTabLightbox } from "./ImageTabLightboxContext.js";
+import { useSealedMediaSrc } from "@/lib/sealed";
 
 export interface FilePreviewFile {
   cacheKey?: string;
@@ -1157,6 +1158,7 @@ function CsvFilePreview({ file, onSelectionAddToChat }: CsvFilePreviewProps) {
 }
 
 function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
+  const sealedImageSrc = useSealedMediaSrc(url);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const imageTabLightbox = useImageTabLightbox();
 
@@ -1180,7 +1182,11 @@ function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
           setIsLightboxOpen(true);
         }}
       >
-        <img src={url} alt={alt} className="mx-auto block h-auto max-w-full" />
+        <img
+          src={sealedImageSrc ?? undefined}
+          alt={alt}
+          className="mx-auto block h-auto max-w-full"
+        />
       </button>
       {imageTabLightbox === null ? (
         <ImageLightbox
@@ -1195,10 +1201,11 @@ function FilePreviewImage({ url, alt }: FilePreviewImageProps) {
 }
 
 function FilePreviewVideo({ url, title }: FilePreviewVideoProps) {
+  const sealedVideoSrc = useSealedMediaSrc(url);
   return (
     <div className="pt-4">
       <video
-        src={url}
+        src={sealedVideoSrc ?? undefined}
         title={title}
         className="block max-h-[34rem] w-full bg-black"
         controls
@@ -1256,6 +1263,7 @@ function IframeFilePreview({
   loadState: IframeLoadState;
   onLoadStateChange: (state: IframeLoadState) => void;
 }) {
+  const sealedFrameSrc = useSealedMediaSrc(url);
   if (loadState === "error") {
     return (
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -1271,7 +1279,7 @@ function IframeFilePreview({
     <div className="min-h-0 flex-1 overflow-hidden">
       <iframe
         title={title}
-        src={url}
+        src={sealedFrameSrc ?? undefined}
         sandbox={sandbox}
         style={HTML_FILE_PREVIEW_IFRAME_STYLE}
         onLoad={() => onLoadStateChange("loaded")}

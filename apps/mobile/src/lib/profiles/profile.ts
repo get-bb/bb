@@ -13,11 +13,24 @@ const directServerProfileSchema = profileBaseSchema
   .extend({ mode: z.literal("direct") })
   .strict();
 
+export const sealedServerTrustSchema = z
+  .object({
+    serverKey: z.string().min(1),
+    fingerprint: z.string().min(1),
+    verified: z.boolean(),
+    acknowledged: z.boolean().optional(),
+    deviceCode: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type SealedServerTrust = z.infer<typeof sealedServerTrustSchema>;
+
 const connectServerProfileSchema = profileBaseSchema
   .extend({
     mode: z.literal("connect"),
     handle: z.string().min(1),
     credential: z.string().min(1),
+    sealed: sealedServerTrustSchema.optional(),
   })
   .strict();
 
@@ -34,5 +47,8 @@ export type NewServerProfile =
   | Omit<ConnectServerProfile, "id" | "createdAt">;
 
 export type ServerProfilePatch = Partial<
-  Pick<ConnectServerProfile, "label" | "serverUrl" | "handle" | "credential">
+  Pick<
+    ConnectServerProfile,
+    "label" | "serverUrl" | "handle" | "credential" | "sealed"
+  >
 >;

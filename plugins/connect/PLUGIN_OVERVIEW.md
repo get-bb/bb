@@ -20,3 +20,14 @@ When you view bb remotely, agents are told to share servers with `bb connect exp
 ## Requirements
 
 A getbb.app account and the bb account plugin. Share links open only for viewers with your getbb.app session; they are not public. Mobile pairing is available under Mobile → Add mobile device.
+
+# Sealed connections
+
+The plugin hosts the end-to-end encrypted channel remote clients use through the
+relay: a WebSocket route at `/sealed` plus `GET /sealed/info`. `src/sealed/`
+holds the server identity (kv `sealed-identity`), the device registry (kv
+`sealed-device:<id>`), one-time device codes (memory), the require policy that
+the tunnel client enforces on readable streams, and the route that runs a
+tunnel session per sealed channel against the loopback origin. The protocol
+lives in `@bb/sealed-channel`; `docs/connect-end-to-end-encryption.md` is the
+threat model.

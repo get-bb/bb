@@ -35,6 +35,8 @@ const sharePayloadSchema = z
 
 export type BridgeSharePayload = z.infer<typeof sharePayloadSchema>;
 
+const base64UrlSchema = z.string().regex(/^[A-Za-z0-9_-]+$/u);
+
 const bridgeRequestSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("share"), payload: sharePayloadSchema }).strict(),
   z
@@ -53,7 +55,24 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
         .strict(),
     })
     .strict(),
+  z.object({ kind: z.literal("sealed-identity"), payload: z.null() }).strict(),
+  z
+    .object({
+      kind: z.literal("sealed-delegate"),
+      payload: z
+        .object({ publicKey: base64UrlSchema, serverKey: base64UrlSchema })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("sealed-trust"),
+      payload: z.object({ origin: z.string().min(1) }).strict(),
+    })
+    .strict(),
 ]);
+
+export type BridgeRequest = z.infer<typeof bridgeRequestSchema>;
 
 export const NATIVE_SCREENS = ["device-settings"] as const;
 export const nativeScreenSchema = z.enum(NATIVE_SCREENS);

@@ -947,6 +947,12 @@ export interface PluginCliContext {
   projectId?: string;
   /** Aborted when the invoking CLI HTTP request disconnects. */
   signal?: AbortSignal;
+  /**
+   * True when the invoking request reached the server through bb Connect
+   * (the readable tunnel or a sealed connection) rather than from a local
+   * surface. Commands that change trust or access policy should refuse.
+   */
+  experimental_remoteCaller?: boolean;
 }
 
 export type PluginInteractionCancelReason =

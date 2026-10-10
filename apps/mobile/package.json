@@ -24,6 +24,7 @@
     "@bb/domain": "workspace:*",
     "@bb/mobile-bridge": "workspace:*",
     "@bb/sdk": "workspace:*",
+    "@bb/sealed-channel": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@expo/ui": "57.0.11",
     "@gorhom/bottom-sheet": "^5.2.14",

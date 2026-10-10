@@ -7,11 +7,13 @@ import {
 } from "../realtime/mobile-realtime";
 import { realtimeUrlForServer } from "../realtime/realtime-url";
 import { createMobileFetch, type MobileFetchOptions } from "./mobile-fetch";
+import type { MobileSealedTransport } from "../sealed/sealed-transport";
 
 export interface MobileSdk {
   sdk: BrowserBbSdk;
   realtime: MobileRealtime;
   fetch: typeof fetch;
+  sealed: MobileSealedTransport | null;
 }
 
 export interface CreateMobileSdkOptions {
@@ -19,13 +21,16 @@ export interface CreateMobileSdkOptions {
   onAuthFailure?: MobileFetchOptions["onAuthFailure"];
   onServerMoved?: MobileFetchOptions["onServerMoved"];
   realtime?: Omit<CreateMobileRealtimeOptions, "url">;
+  sealed?: MobileSealedTransport | null;
 }
 
 export function createMobileSdk(
   profile: Pick<ServerProfile, "serverUrl">,
   options: CreateMobileSdkOptions = {},
 ): MobileSdk {
-  const baseFetch = options.fetch ?? ((input, init) => fetch(input, init));
+  const sealed = options.sealed ?? null;
+  const baseFetch =
+    sealed?.fetch ?? options.fetch ?? ((input, init) => fetch(input, init));
   const mobileFetch = createMobileFetch(baseFetch, {
     onAuthFailure: options.onAuthFailure,
     onServerMoved: options.onServerMoved,
@@ -36,7 +41,10 @@ export function createMobileSdk(
   });
   const realtime = createMobileRealtime({
     ...options.realtime,
+    ...(sealed !== null && options.realtime?.socketFactory === undefined
+      ? { socketFactory: sealed.socketFactory }
+      : {}),
     url: realtimeUrlForServer(profile.serverUrl),
   });
-  return { sdk, realtime, fetch: mobileFetch };
+  return { sdk, realtime, fetch: mobileFetch, sealed };
 }

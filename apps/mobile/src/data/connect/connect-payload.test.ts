@@ -20,6 +20,7 @@ describe("parseConnectPairingPayload", () => {
       serverUrl: "https://bee.getbb.app",
       apexUrl: "https://getbb.app",
       expiresAt: Date.UTC(2026, 7, 19, 10),
+      sealed: null,
     });
     expect(
       parseConnectPairingPayload(
@@ -30,6 +31,7 @@ describe("parseConnectPairingPayload", () => {
       serverUrl: null,
       apexUrl: null,
       expiresAt: 1700000000000,
+      sealed: null,
     });
     expect(parseConnectPairingPayload('{"serverUrl":"https://x.y"}')).toBe(
       null,
@@ -47,12 +49,14 @@ describe("parseConnectPairingPayload", () => {
       serverUrl: "https://bee.getbb.app",
       apexUrl: null,
       expiresAt: null,
+      sealed: null,
     });
     expect(parseConnectPairingPayload("  abcd-efgh\n")).toEqual({
       code: "ABCD-EFGH",
       serverUrl: null,
       apexUrl: null,
       expiresAt: null,
+      sealed: null,
     });
     expect(parseConnectPairingPayload("https://example.com/menu")).toBe(null);
     expect(parseConnectPairingPayload("hello world")).toBe(null);
@@ -73,6 +77,7 @@ describe("resolveEnrollmentTarget", () => {
       code: "ABCD-EFGH",
       apexUrl: "https://getbb.app",
       serverUrl: "https://bee.getbb.app",
+      sealed: null,
     });
     expect(
       resolveEnrollmentTarget({
@@ -85,6 +90,7 @@ describe("resolveEnrollmentTarget", () => {
       code: "ABCD-EFGH",
       apexUrl: "https://localhost:42998",
       serverUrl: "https://stub.localhost:42998",
+      sealed: null,
     });
     expect(
       resolveEnrollmentTarget({
@@ -97,6 +103,7 @@ describe("resolveEnrollmentTarget", () => {
       code: "ABCD-EFGH",
       apexUrl: "https://connect.example.com",
       serverUrl: "https://bee.connect.example.com",
+      sealed: null,
     });
     expect(
       resolveEnrollmentTarget({ code: "ABCD-EFGH", server: "", apexUrl: "" }),
@@ -105,6 +112,7 @@ describe("resolveEnrollmentTarget", () => {
       code: "ABCD-EFGH",
       apexUrl: "https://getbb.app",
       serverUrl: null,
+      sealed: null,
     });
   });
 

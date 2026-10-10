@@ -1403,6 +1403,61 @@ describe("bb mobile app-link association files", () => {
   });
 });
 
+describe("gate worker sealed endpoint", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+    mockRefreshAccountSession.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const SEALED_PATH = "/api/v1/plugins/connect/http/sealed";
+
+  it("forwards an owner's sealed upgrade to the tunnel with the gate marker and strips a forged one", async () => {
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails());
+    const { env, ctx, captured } = makeEnv(() => new Response("upgraded"));
+    const res = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", SEALED_PATH, {
+        headers: { upgrade: "websocket", [GATE_AUTH_HEADER]: "machine" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(new URL(captured[0].url).pathname).toBe(SEALED_PATH);
+    expect(captured[0].headers.get(GATE_AUTH_HEADER)).toBe("session");
+  });
+
+  it("refuses a sealed upgrade from a visitor without an owner session or from another account", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("upgraded"));
+    mockParseCookie.mockReturnValue(null);
+    const anonymous = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", SEALED_PATH, {
+        headers: { upgrade: "websocket" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(anonymous.status).not.toBe(200);
+    mockParseCookie.mockReturnValue("session-token");
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
+    const stranger = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", SEALED_PATH, {
+        headers: { upgrade: "websocket" },
+      }),
+      env as never,
+      ctx,
+    );
+    expect(stranger.status).not.toBe(200);
+    expect(captured).toHaveLength(0);
+  });
+});
+
 describe("gate worker share hosts", () => {
   beforeEach(() => {
     vi.clearAllMocks();

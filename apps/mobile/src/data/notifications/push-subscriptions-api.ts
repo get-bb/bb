@@ -74,10 +74,7 @@ function mapRpcError(error: unknown): Error {
     }
     return new Error(failure.data.error);
   }
-  return new PushRpcError(
-    failure.data.error.code,
-    failure.data.error.message,
-  );
+  return new PushRpcError(failure.data.error.code, failure.data.error.message);
 }
 
 function isMissingSubscriptionError(error: Error): boolean {
@@ -97,8 +94,10 @@ export interface PushSubscriptionsApi {
   list(serverUrl: string): Promise<PushSubscriptionRecord[]>;
 }
 
+export type PushFetchResolver = (serverUrl: string) => typeof fetch;
+
 export function createPushSubscriptionsApi(
-  fetchImpl: typeof fetch,
+  fetchFor: PushFetchResolver,
 ): PushSubscriptionsApi {
   const clients = new Map<string, ReturnType<typeof createBrowserBbSdk>>();
 
@@ -106,7 +105,10 @@ export function createPushSubscriptionsApi(
     const key = serverUrl.replace(/\/+$/u, "");
     let sdk = clients.get(key);
     if (!sdk) {
-      sdk = createBrowserBbSdk({ baseUrl: key, fetch: fetchImpl });
+      sdk = createBrowserBbSdk({
+        baseUrl: key,
+        fetch: (input, init) => fetchFor(key)(input, init),
+      });
       clients.set(key, sdk);
     }
     return sdk;

@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@bb/connect-client": "workspace:*",
+    "@bb/sealed-channel": "workspace:*",
     "@bb/shared-ui": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",

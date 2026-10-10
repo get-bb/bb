@@ -12,6 +12,7 @@ import {
   isProjectAttachmentPath,
 } from "@/lib/file-content-urls";
 import { formatByteSize } from "@/lib/format-byte-size";
+import { SealedImage, openSealedLink } from "@/lib/sealed";
 import { useAttachmentOpener } from "@/components/secondary-panel/AttachmentOpenerContext";
 import type {
   ThreadTimelineLocalFileLinkHandler,
@@ -137,7 +138,7 @@ export function ConversationAttachments({
               onClick={() => setExpandedImageIndex(index)}
               title={imageItem.alt}
             >
-              <img
+              <SealedImage
                 src={imageItem.src}
                 alt={imageItem.alt}
                 className={cn(
@@ -200,6 +201,7 @@ export function ConversationAttachments({
                   href={attachmentHref}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) => openSealedLink(event, attachmentHref)}
                   className={cn(
                     className,
                     "cursor-pointer hover:bg-state-hover",

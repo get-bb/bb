@@ -12,36 +12,50 @@ import { installForeignDomMutationGuard } from "./lib/foreign-dom-mutation-guard
 import { installAppQueryClientBrowserEvents } from "./lib/query-client";
 import { appQueryClient } from "./lib/app-query-client";
 import { applyCachedAppThemeCss } from "./lib/themes";
+import { shouldPrepareSealedTransport } from "./lib/sealed/should-prepare";
 import "./app.css";
 
 installForeignDomMutationGuard();
 
 Error.stackTraceLimit = 50;
 
-installAppQueryClientBrowserEvents(appQueryClient);
-registerProviderCliInstallQueryClient(appQueryClient);
-
 initializePreferredTheme();
 applyCachedAppThemeCss();
 initializeFavicon();
 
-createRoot(document.getElementById("root")!, {
-  onUncaughtError: (error, errorInfo) => {
-    console.error(
-      "[bb] uncaught render error — the app root was torn down",
-      error,
-      errorInfo.componentStack,
-    );
-  },
-}).render(
-  <StrictMode>
-    <AppErrorBoundary>
-      <QueryClientProvider client={appQueryClient}>
-        <BrowserRouter>
-          <App />
-          <AppToaster />
-        </BrowserRouter>
-      </QueryClientProvider>
-    </AppErrorBoundary>
-  </StrictMode>,
-);
+async function boot(): Promise<void> {
+  if (shouldPrepareSealedTransport()) {
+    const { prepareSealedTransport } = await import("./lib/sealed/bootstrap");
+    await prepareSealedTransport();
+  }
+
+  installAppQueryClientBrowserEvents(appQueryClient);
+  registerProviderCliInstallQueryClient(appQueryClient);
+
+  renderApp();
+}
+
+function renderApp(): void {
+  createRoot(document.getElementById("root")!, {
+    onUncaughtError: (error, errorInfo) => {
+      console.error(
+        "[bb] uncaught render error — the app root was torn down",
+        error,
+        errorInfo.componentStack,
+      );
+    },
+  }).render(
+    <StrictMode>
+      <AppErrorBoundary>
+        <QueryClientProvider client={appQueryClient}>
+          <BrowserRouter>
+            <App />
+            <AppToaster />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </StrictMode>,
+  );
+}
+
+void boot();

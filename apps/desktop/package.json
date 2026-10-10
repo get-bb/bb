@@ -33,6 +33,7 @@
   "dependencies": {
     "@bb/connect-client": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
+    "@bb/sealed-channel": "workspace:*",
     "bb-app": "workspace:*",
     "electron-updater": "^6.8.3",
     "semver": "^7.7.0",

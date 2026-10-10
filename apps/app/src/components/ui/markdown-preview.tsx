@@ -111,6 +111,7 @@ import { resolveRouteHref } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
 import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
+import { useSealedMediaSrc } from "@/lib/sealed";
 import {
   RawThreadMentionBatchProvider,
   useRawThreadMentionResources,
@@ -1022,11 +1023,12 @@ function MarkdownRenderedImage({
 }: MarkdownImageRendererArgs) {
   const openGallery = useContext(InlineImageGalleryContext);
   const imageUrl = typeof src === "string" ? src : "";
+  const sealedImageSrc = useSealedMediaSrc(imageUrl);
   if (!imageUrl) return null;
   return (
     <img
       {...imageAttributes}
-      src={imageUrl}
+      src={sealedImageSrc ?? undefined}
       alt={typeof alt === "string" ? alt : "Image"}
       className="my-2 max-h-[max(384px,50vh)] max-w-full cursor-zoom-in object-contain"
       loading="lazy"
@@ -1358,13 +1360,17 @@ function buildMarkdownComponents({
     title,
     "aria-label": label,
   }: ComponentPropsWithoutRef<"video"> & ExtraProps) {
+    const sealedSrc = useSealedMediaSrc(typeof src === "string" ? src : null);
+    const sealedPoster = useSealedMediaSrc(
+      typeof poster === "string" ? poster : null,
+    );
     if (imagePolicy === "alt-text") {
       return <span>[Video: {label || title || "video"}]</span>;
     }
     return (
       <video
-        src={src}
-        poster={poster}
+        src={sealedSrc ?? undefined}
+        poster={sealedPoster ?? undefined}
         aria-label={label || title || "Video"}
         controls={controls}
         playsInline={playsInline}

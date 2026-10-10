@@ -2,6 +2,7 @@ import {
   deriveConnectBaseUrl,
   parseMobilePairingPayload,
   serverUrlForHandle,
+  type MobilePairingSealedPayload,
 } from "@bb/connect-client";
 
 export const DEFAULT_CONNECT_APEX_URL = "https://getbb.app";
@@ -11,6 +12,7 @@ export interface ConnectPairingInput {
   serverUrl: string | null;
   apexUrl: string | null;
   expiresAt: number | null;
+  sealed: MobilePairingSealedPayload | null;
 }
 
 const CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{3,63}$/u;
@@ -56,6 +58,7 @@ function fromRecord(
     serverUrl: httpOrigin(record.serverUrl),
     apexUrl: httpOrigin(record.apex ?? record.apexUrl),
     expiresAt: epochMs(record.expiresAt),
+    sealed: null,
   };
 }
 
@@ -74,11 +77,13 @@ export function parseConnectPairingPayload(
         serverUrl: httpOrigin(shared.serverUrl),
         apexUrl: httpOrigin(shared.apex),
         expiresAt: shared.expiresAt,
+        sealed: shared.sealed ?? null,
       };
     }
     try {
       const parsed: unknown = JSON.parse(trimmed);
       if (typeof parsed !== "object" || parsed === null) return null;
+      if ("sealed" in parsed) return null;
       return fromRecord(parsed as Record<string, unknown>);
     } catch {
       return null;
@@ -103,7 +108,7 @@ export function parseConnectPairingPayload(
   }
   const code = normalizeConnectCode(trimmed);
   return isValidConnectCode(code)
-    ? { code, serverUrl: null, apexUrl: null, expiresAt: null }
+    ? { code, serverUrl: null, apexUrl: null, expiresAt: null, sealed: null }
     : null;
 }
 
@@ -111,6 +116,7 @@ export interface EnrollmentTargetInput {
   code: string;
   server: string;
   apexUrl: string;
+  sealed?: MobilePairingSealedPayload | null;
 }
 
 export type EnrollmentTarget =
@@ -119,6 +125,7 @@ export type EnrollmentTarget =
       code: string;
       apexUrl: string;
       serverUrl: string | null;
+      sealed: MobilePairingSealedPayload | null;
     }
   | { ok: false; field: "code" | "server" | "apexUrl"; message: string };
 
@@ -178,5 +185,6 @@ export function resolveEnrollmentTarget(
     code,
     apexUrl: apexUrl ?? DEFAULT_CONNECT_APEX_URL,
     serverUrl,
+    sealed: input.sealed ?? null,
   };
 }

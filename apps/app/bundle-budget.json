@@ -123,7 +123,8 @@
     "leaving about 15% raw headroom, and both journey limits are set 25% above",
     "their measured sizes (20% headroom) so ordinary feature work does not hit",
     "them every week. The forbidden-package and split-boundary guards catch",
-    "structural regressions."
+    "structural regressions.",
+    "On 2026-09-27 the sealed-channel crypto (@noble/*) joined onDemandPackages, gated behind the sealed-transport bootstrap that only remote origins import."
   ],
   "maxBootBytes": 1640415,
   "maxBootBrotliBytes": 403839,
@@ -264,7 +265,10 @@
     "katex": "src/components/ui/markdown-katex.ts",
     "rehype-katex": "src/components/ui/markdown-katex.ts",
     "rehype-raw": "src/components/ui/markdown-html.tsx",
-    "rehype-sanitize": "src/components/ui/markdown-html.tsx"
+    "rehype-sanitize": "src/components/ui/markdown-html.tsx",
+    "@noble/ciphers": "src/lib/sealed/bootstrap.ts",
+    "@noble/curves": "src/lib/sealed/bootstrap.ts",
+    "@noble/hashes": "src/lib/sealed/bootstrap.ts"
   },
   "routeClosures": {
     "ThreadPage": {

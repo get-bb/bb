@@ -18,6 +18,29 @@ const subscriptionRef = {
 };
 
 describe("createPushSubscriptionsApi", () => {
+  it("resolves the fetch for each server so sealed profiles stay sealed", async () => {
+    const sealedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse(200, { ok: true, result: { subscriptions: [] } }),
+      );
+    const plainFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse(200, { ok: true, result: { subscriptions: [] } }),
+      );
+    const api = createPushSubscriptionsApi((serverUrl) =>
+      serverUrl === "https://bee.getbb.app" ? sealedFetch : plainFetch,
+    );
+    await api.list("https://bee.getbb.app/");
+    await api.list("http://127.0.0.1:2000");
+    expect(sealedFetch).toHaveBeenCalledTimes(1);
+    expect(plainFetch).toHaveBeenCalledTimes(1);
+    expect(String(sealedFetch.mock.calls[0]?.[0])).toContain(
+      "https://bee.getbb.app/api/v1/plugins/push-notifications/rpc/",
+    );
+  });
+
   it("registers through the push-notifications plugin RPC", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse(200, {
@@ -25,7 +48,7 @@ describe("createPushSubscriptionsApi", () => {
         result: { id: "sub_1", created: true },
       }),
     );
-    const api = createPushSubscriptionsApi(fetchImpl);
+    const api = createPushSubscriptionsApi(() => fetchImpl);
 
     await expect(
       api.register("https://bee.getbb.app/", {
@@ -57,7 +80,7 @@ describe("createPushSubscriptionsApi", () => {
         },
       }),
     );
-    const api = createPushSubscriptionsApi(fetchImpl);
+    const api = createPushSubscriptionsApi(() => fetchImpl);
 
     await expect(
       api.unregister("https://bee.getbb.app", subscriptionRef),
@@ -79,7 +102,7 @@ describe("createPushSubscriptionsApi", () => {
           error: message,
         }),
       );
-      const api = createPushSubscriptionsApi(fetchImpl);
+      const api = createPushSubscriptionsApi(() => fetchImpl);
 
       await expect(
         api.register("https://bee.getbb.app", {
