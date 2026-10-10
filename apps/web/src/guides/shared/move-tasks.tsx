@@ -10,7 +10,8 @@ export type MoveTasksTool = {
   id: string;
   slug: string;
   name: string;
-  provider: string;
+  modelsCommand: string;
+  providerFlag: string;
   tasks: string;
   description: string;
   find: string;
@@ -20,7 +21,7 @@ export type MoveTasksTool = {
   faq: GuideFaq[];
 };
 
-const MODEL_STEP = `Check each task's model against \`bb provider models <provider> --json\`. If it isn't listed, ask me which model to use, and suggest the one marked isDefault: it's the model bb already runs for that agent.`;
+const MODEL_STEP = `Check each task's model against \`<models>\`. If it isn't listed, ask me which model to use, and suggest the one marked isDefault: it's the model bb already runs for that agent.`;
 
 function movePrompt(tool: MoveTasksTool): string {
   return withIntake(
@@ -40,9 +41,9 @@ ${tool.find}
 2. Match each one to a bb project. Run \`bb project list --include-personal --json\` and pick the project whose folder or repository matches. If none does, ask me whether to add it.
    Check: every one has a project ID.
 3. Turn each schedule into a five-field cron in my Timezone. If a schedule has no exact cron, like every other week, pick the closest one and tell me.
-   ${MODEL_STEP.replace("<provider>", tool.provider)}
+   ${MODEL_STEP.replace("<models>", tool.modelsCommand)}
 4. Create each automation paused. Read \`bb automation create --help\` first.
-   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <Timezone> --provider ${tool.provider} --model <the model, or the one I picked> --permission-mode auto --new-environment worktree --prompt "<the prompt, word for word>"
+   bb automation create --project <project-id> --name "<name>" --disabled --cron "<cron>" --timezone <Timezone> ${tool.providerFlag} --model <the model, or the one I picked> --permission-mode auto --new-environment worktree --prompt "<the prompt, word for word>"
    If a prompt relies on something only ${tool.name} had, like a connector or an event trigger, tell me what it needs instead of guessing.
    Check: \`bb automation list --project <project-id>\` shows each new automation, paused.
 5. Test every automation, even if an earlier test fails. Run \`bb automation run <id> --project <project-id>\`, then read its run with \`bb automation runs <id> --project <project-id>\` and the thread it started.
@@ -182,7 +183,8 @@ export const MOVE_TASKS_TOOLS = {
     id: "claude",
     slug: "move-claude-code-routines",
     name: "Claude Code",
-    provider: "claude-code",
+    modelsCommand: "bb provider models claude-code --json",
+    providerFlag: "--provider claude-code",
     tasks: "routines",
     description:
       "Bring your Claude Code routines into bb automations, local and cloud. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
@@ -297,7 +299,8 @@ export const MOVE_TASKS_TOOLS = {
     id: "codex-app",
     slug: "move-codex-scheduled-tasks",
     name: "Codex",
-    provider: "codex",
+    modelsCommand: "bb provider models codex --json",
+    providerFlag: "--provider codex",
     tasks: "scheduled tasks",
     description:
       "Bring your Codex scheduled tasks into bb automations. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
