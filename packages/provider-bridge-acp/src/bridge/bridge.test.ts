@@ -2367,6 +2367,192 @@ describe("acp bridge", () => {
     });
   });
 
+  it.each([
+    {
+      text: "/example-skill summarize the repo",
+      start: 0,
+      end: 14,
+      source: "skill",
+      name: "example-skill",
+      expected: 'Use the bb skill "example-skill" summarize the repo',
+    },
+    {
+      text: "/example-skill",
+      start: 0,
+      end: 14,
+      source: "skill",
+      name: "example-skill",
+      expected: 'Use the bb skill "example-skill"',
+    },
+    {
+      text: "😀 /example-skill\nkeep this text",
+      start: 3,
+      end: 17,
+      source: "skill",
+      name: "example-skill",
+      expected: '😀 Use the bb skill "example-skill"\nkeep this text',
+    },
+    {
+      text: "/init do the work",
+      start: 0,
+      end: 5,
+      source: "command",
+      name: "init",
+      expected: "/init do the work",
+    },
+    {
+      text: "/native-skill do the work",
+      start: 0,
+      end: 13,
+      source: "skill",
+      name: "native-skill",
+      expected: "/native-skill do the work",
+    },
+    {
+      text: "/example-skill do the work",
+      start: 1,
+      end: 14,
+      source: "skill",
+      name: "example-skill",
+      expected: "/example-skill do the work",
+    },
+    {
+      text: "/example-skill do the work",
+      start: 0,
+      end: 14,
+      source: "command",
+      name: "example-skill",
+      expected: "/example-skill do the work",
+    },
+  ] as const)(
+    "translates only injected bb skill chips: $text ($source/$name/$start)",
+    async ({ text, start, end, source, name, expected }) => {
+      await waitForResponse(
+        sendRequest("skills/configure", {
+          roots: [
+            {
+              id: "test-skills",
+              path: "/staged/bb-skills",
+              skills: [{ name: "example-skill", description: "Example skill" }],
+            },
+          ],
+        }),
+      );
+      try {
+        const promptLog = join(workspaceDir, "skill-prompt.jsonl");
+        const { providerThreadId } = await startThread({
+          envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+        });
+        sendTurnRequest("turn/start", providerThreadId, {
+          input: [{ type: "text", text: "warmup", mentions: [] }],
+        });
+        await waitForTurnCompleted();
+        const completed = threadEventsOfType("turn/completed").length;
+        const turn = sendTurnRequest("turn/start", providerThreadId, {
+          input: [
+            {
+              type: "text",
+              text,
+              mentions: [
+                {
+                  start,
+                  end,
+                  resource: {
+                    kind: "command",
+                    trigger: "/",
+                    name,
+                    source,
+                    origin: "user",
+                    label: name,
+                    argumentHint: null,
+                  },
+                },
+              ],
+            },
+          ],
+        });
+        expect((await waitForResponse(turn)).error).toBeUndefined();
+        await waitFor(
+          () =>
+            threadEventsOfType("turn/completed").length > completed
+              ? true
+              : undefined,
+          "skill invocation completion",
+        );
+        expect(loggedPrompts(promptLog).at(-1)).toBe(expected);
+        expect(loggedPrompts(promptLog)[0]).toContain(
+          join("example-skill", "SKILL.md"),
+        );
+      } finally {
+        await waitForResponse(sendRequest("skills/configure", { roots: [] }));
+      }
+    },
+  );
+
+  it("preserves unmarked text and translates multiple bb skill chips without shifting offsets", async () => {
+    await waitForResponse(
+      sendRequest("skills/configure", {
+        roots: [
+          {
+            id: "test-skills",
+            path: "/staged/bb-skills",
+            skills: [
+              { name: "one", description: "First" },
+              { name: "two", description: "Second" },
+            ],
+          },
+        ],
+      }),
+    );
+    try {
+      const promptLog = join(workspaceDir, "multiple-skills.jsonl");
+      const { providerThreadId } = await startThread({
+        envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+      });
+      const resource = (name: string) => ({
+        kind: "command" as const,
+        trigger: "/" as const,
+        name,
+        source: "skill" as const,
+        origin: "user" as const,
+        label: name,
+        argumentHint: null,
+      });
+      for (const input of [
+        [{ type: "text" as const, text: "warmup", mentions: [] }],
+        [
+          {
+            type: "text" as const,
+            text: "/one and /two finish",
+            mentions: [
+              { start: 0, end: 4, resource: resource("one") },
+              { start: 9, end: 13, resource: resource("two") },
+              { start: 9, end: 13, resource: resource("two") },
+            ],
+          },
+        ],
+        [{ type: "text" as const, text: "/one untouched", mentions: [] }],
+      ]) {
+        const completed = threadEventsOfType("turn/completed").length;
+        const turn = sendTurnRequest("turn/start", providerThreadId, { input });
+        expect((await waitForResponse(turn)).error).toBeUndefined();
+        await waitFor(
+          () =>
+            threadEventsOfType("turn/completed").length > completed
+              ? true
+              : undefined,
+          "multiple skills completion",
+        );
+      }
+      expect(loggedPrompts(promptLog).slice(1)).toEqual([
+        'Use the bb skill "one" and Use the bb skill "two" finish',
+        "/one untouched",
+      ]);
+    } finally {
+      await waitForResponse(sendRequest("skills/configure", { roots: [] }));
+    }
+  });
+
   it("lists skills/configure roots in canonical session instructions", async () => {
     const configureId = sendRequest("skills/configure", {
       roots: [
