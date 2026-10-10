@@ -99,10 +99,7 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
         id: enrollment.metadata.hostId,
         name: payload.hostName,
       });
-      if (
-        isNewHost &&
-        enrollment.metadata.enrollSource === "public-multi-machine"
-      ) {
+      if (isNewHost && enrollment.enrollSource === "public-multi-machine") {
         recordMachinePaired(deps, enrollment.metadata.hostId);
       }
 
