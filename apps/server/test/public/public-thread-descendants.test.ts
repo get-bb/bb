@@ -1,4 +1,4 @@
-import { markThreadDeleted } from "@bb/db";
+import { archiveThread, markThreadDeleted } from "@bb/db";
 import { threadDescendantsListResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { archiveThreadAndReleaseChildren } from "../../src/services/threads/thread-ownership.js";
@@ -19,8 +19,15 @@ async function listDescendants(harness: TestAppHarness, body: unknown) {
   return { status: response.status, body: await readJson(response) };
 }
 
-async function descendantsOf(harness: TestAppHarness, threadIds: string[]) {
-  const { status, body } = await listDescendants(harness, { threadIds });
+async function descendantsOf(
+  harness: TestAppHarness,
+  threadIds: string[],
+  flags: { includeArchived?: boolean; includeHidden?: boolean } = {},
+) {
+  const { status, body } = await listDescendants(harness, {
+    threadIds,
+    ...flags,
+  });
   expect(status).toBe(200);
   return Object.fromEntries(
     threadDescendantsListResponseSchema
@@ -95,6 +102,35 @@ describe("POST /threads/descendants", () => {
         [other.id]: [],
         [child.id]: [grandchild.id],
       });
+    });
+  });
+
+  it("omits archived and hidden descendants unless asked, still walking through them", async () => {
+    await withTestHarness(async (harness) => {
+      const { root, child, grandchild, sibling } = seedTree(harness);
+      const hidden = seedThread(harness.deps, {
+        projectId: root.projectId,
+        parentThreadId: root.id,
+        visibility: "hidden",
+      });
+      archiveThread(harness.db, harness.hub, child.id);
+      const sorted = async (flags: {
+        includeArchived?: boolean;
+        includeHidden?: boolean;
+      }) => (await descendantsOf(harness, [root.id], flags))[root.id]?.sort();
+
+      await expect(sorted({})).resolves.toEqual(
+        [sibling.id, grandchild.id].sort(),
+      );
+      await expect(sorted({ includeArchived: true })).resolves.toEqual(
+        [child.id, sibling.id, grandchild.id].sort(),
+      );
+      await expect(sorted({ includeHidden: true })).resolves.toEqual(
+        [sibling.id, hidden.id, grandchild.id].sort(),
+      );
+      await expect(
+        descendantsOf(harness, [child.id, hidden.id]),
+      ).resolves.toEqual({ [child.id]: [grandchild.id], [hidden.id]: [] });
     });
   });
 

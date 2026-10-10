@@ -1252,28 +1252,34 @@ under a new parent or released when its parent is archived.
 
 ## `bb.sdk.threads.experimental_listDescendants`
 
-**What it does.** `POST /threads/descendants` with `{ threadIds }` (1–200 ids)
-returns `{ threads: { threadId, descendantIds }[] }`: each requested thread
-that exists and is not deleted, once, with the ids of every thread below it
-in breadth-first order, children first (empty for a leaf). Archived threads
-are included; deleted threads, and anything only reachable through one, are
-omitted, as are unknown ids. One recursive query follows `parent_thread_id`
-through `threads_parent_idx`, so the cost is one indexed lookup per thread in
-the subtree. Available unchanged on the core SDK and the plugin-bound SDKs.
-First caller: push-notifications, which publishes the levels of a thread and
-everything below it when the thread's level or parent changes, because a
-parent's level limits its whole subtree.
+**What it does.** `POST /threads/descendants` with `{ threadIds,
+includeArchived?, includeHidden? }` (1–200 ids) returns `{ threads: {
+threadId, descendantIds }[] }`: each requested thread that exists and is not
+deleted, once, with the ids of every thread below it in breadth-first order,
+children first (empty for a leaf). Archived and hidden descendants are
+omitted unless their flag is true, matching `threads.count`; the walk still
+passes through them, so a visible thread under an archived one is returned.
+Deleted threads, anything only reachable through one, and unknown ids are
+always omitted. One recursive query follows `parent_thread_id` through
+`threads_parent_idx`, so the cost is one indexed lookup per thread in the
+subtree, archived ones included. Available unchanged on the core SDK and the
+plugin-bound SDKs. First caller: push-notifications, which publishes the
+levels of a thread and its unarchived, visible descendants when the thread's
+level or parent changes, because a parent's level limits its whole subtree,
+and republishes a thread's subtree on `thread.unarchived`.
 
 **Audit before stabilizing.**
 
 1. **Shape.** Decide whether callers need the tree's edges (each
    descendant's parent) or thread fields rather than a flat id list, and
    whether it should merge with `experimental_listAncestors`.
-2. **Size.** A subtree has no cap; a thread with thousands of archived
-   workers returns them all. Decide whether to page or to filter archived
-   threads.
-3. **Deleted threads.** Unlike `experimental_listAncestors`, deleted threads
-   are omitted. Confirm that callers never need them.
+2. **Size.** A subtree of live threads has no cap, and the query walks
+   archived threads even when it omits them. Decide whether to page.
+3. **Omitted threads.** Unlike `experimental_listAncestors`, deleted threads
+   are always omitted and archived and hidden ones by default. Confirm that
+   callers never need deleted ones. No event announces a hidden thread
+   becoming visible, so a caller that skips hidden threads cannot refresh
+   one when it appears; decide whether visibility changes need an event.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
@@ -3153,9 +3159,10 @@ id-keyed cache of levels, fetches the `threadIds` it has not loaded in
 the current tree), and refetches the ones on screen after a reconnect. When a
 thread's level or parent changes (its `threadNotifications.set` RPC, or
 `experimental_thread.parentChanged`), the plugin server resolves that thread
-and its descendants (`threads.experimental_listDescendants`) and publishes
-their levels on the `threadNotifications` realtime channel; clients apply the
-rows they hold without a request. `item` resolves the level
+and its unarchived, visible descendants
+(`threads.experimental_listDescendants`) and publishes their levels on the
+`threadNotifications` realtime channel, and does the same for a thread on
+`thread.unarchived`; clients apply the rows they hold without a request. `item` resolves the level
 with the plugin's shared resolver, shows it as `detail` with a per-level icon
 (declared `push-notifications/ringing` and `push-notifications/off`, built-in
 `BellDot`), and `choices` sets it. The

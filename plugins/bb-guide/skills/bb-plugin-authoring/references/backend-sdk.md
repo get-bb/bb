@@ -107,8 +107,9 @@ the limit fails with HTTP 413 and leaves the namespace unchanged.
 
 `bb.sdk.threads.experimental_listAncestors({ threadIds })` returns each thread's
 ancestor ids from its parent up to the root, and
-`bb.sdk.threads.experimental_listDescendants({ threadIds })` every live thread
-below it, children first (1–200 ids per call). Pair them with
+`bb.sdk.threads.experimental_listDescendants({ threadIds })` every thread below
+it, children first (1–200 ids per call), leaving out archived and hidden ones
+unless you pass `includeArchived` or `includeHidden`. Pair them with
 `experimental_listPluginMetadata` to read a setting that a parent applies to its
 subtree. `bb.events.on("experimental_thread.parentChanged", handler)` fires after
 a thread moves to a new parent or loses its parent (a `threads.update` of

@@ -277,6 +277,8 @@ export interface ThreadAncestorsListArgs {
 }
 export interface ThreadDescendantsListArgs {
   threadIds: readonly string[];
+  includeArchived?: boolean;
+  includeHidden?: boolean;
   signal?: AbortSignal;
 }
 export interface ThreadPluginMetadataUpdateArgs {
@@ -635,8 +637,9 @@ export interface ThreadsArea {
   /**
    * Each of `threadIds` (1–200 per request) that exists and is not deleted,
    * with `descendantIds` for every thread below it, children first (empty
-   * for a leaf); archived threads included, deleted threads and unknown ids
-   * omitted.
+   * for a leaf). Archived and hidden descendants are omitted unless
+   * `includeArchived` / `includeHidden` is true; threads below them are still
+   * returned. Deleted threads and unknown ids are always omitted.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_listDescendants(
@@ -1285,7 +1288,17 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async experimental_listDescendants(input) {
       return transport.readJson(
         transport.api.v1.threads.descendants.$post(
-          { json: { threadIds: [...input.threadIds] } },
+          {
+            json: {
+              threadIds: [...input.threadIds],
+              ...(input.includeArchived === undefined
+                ? {}
+                : { includeArchived: input.includeArchived }),
+              ...(input.includeHidden === undefined
+                ? {}
+                : { includeHidden: input.includeHidden }),
+            },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );

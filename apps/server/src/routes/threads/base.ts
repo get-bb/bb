@@ -269,7 +269,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.descendants, (context, payload) => {
     return context.json({
-      threads: listThreadDescendants(deps.db, payload.threadIds),
+      threads: listThreadDescendants(deps.db, payload.threadIds, {
+        includeArchived: payload.includeArchived ?? false,
+        includeHidden: payload.includeHidden ?? false,
+      }),
     } satisfies ThreadDescendantsListResponse);
   });
 

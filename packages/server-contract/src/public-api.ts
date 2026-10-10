@@ -1396,8 +1396,10 @@ export const publicApiRoutes = {
     }),
     /**
      * Each of `threadIds` (1–200) that exists and is not deleted, with the
-     * ids of every thread below it, children first; archived threads
-     * included, deleted threads and unknown ids omitted.
+     * ids of every thread below it, children first. Archived and hidden
+     * descendants are omitted unless `includeArchived` / `includeHidden` is
+     * true, but threads below them are still returned; deleted threads and
+     * unknown ids are always omitted.
      */
     descendants: defineRoute({
       path: "/threads/descendants",

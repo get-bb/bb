@@ -600,6 +600,8 @@ export const threadDescendantsListRequestSchema = z
       .array(z.string().min(1))
       .min(1)
       .max(THREAD_DESCENDANTS_LIST_MAX_IDS),
+    includeArchived: z.boolean().optional(),
+    includeHidden: z.boolean().optional(),
   })
   .strict();
 export type ThreadDescendantsListRequest = z.infer<

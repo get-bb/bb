@@ -2017,21 +2017,42 @@ export function listThreadAncestors(
   return result;
 }
 
+export interface ListThreadDescendantsOptions {
+  includeArchived: boolean;
+  includeHidden: boolean;
+}
+
 export function listThreadDescendants(
   db: DbQueryConnection,
   threadIds: readonly string[],
+  options: ListThreadDescendantsOptions,
 ): Array<{ threadId: string; descendantIds: string[] }> {
   if (threadIds.length === 0) return [];
-  const rows = db.all<{ id: string; parentId: string | null }>(sql`
-    WITH RECURSIVE tree(id, parent_id) AS (
-      SELECT id, parent_thread_id FROM threads
+  const rows = db.all<{
+    id: string;
+    parentId: string | null;
+    archived: number;
+    hidden: number;
+  }>(sql`
+    WITH RECURSIVE tree(id, parent_id, archived, hidden) AS (
+      SELECT id, parent_thread_id, archived_at IS NOT NULL, visibility = 'hidden' FROM threads
       WHERE ${inArray(threads.id, [...threadIds])} AND deleted_at IS NULL
       UNION
-      SELECT t.id, t.parent_thread_id FROM threads t JOIN tree ON t.parent_thread_id = tree.id
+      SELECT t.id, t.parent_thread_id, t.archived_at IS NOT NULL, t.visibility = 'hidden'
+      FROM threads t JOIN tree ON t.parent_thread_id = tree.id
       WHERE t.deleted_at IS NULL
     )
-    SELECT id, parent_id AS parentId FROM tree
+    SELECT id, parent_id AS parentId, archived, hidden FROM tree
   `);
+  const omittedIds = new Set(
+    rows
+      .filter(
+        (row) =>
+          (!options.includeArchived && row.archived === 1) ||
+          (!options.includeHidden && row.hidden === 1),
+      )
+      .map((row) => row.id),
+  );
   const childIdsByParent = new Map<string, string[]>();
   for (const row of rows) {
     if (row.parentId === null) continue;
@@ -2053,7 +2074,10 @@ export function listThreadDescendants(
         descendantIds.push(childId);
       }
     }
-    result.push({ threadId, descendantIds });
+    result.push({
+      threadId,
+      descendantIds: descendantIds.filter((id) => !omittedIds.has(id)),
+    });
   }
   return result;
 }
