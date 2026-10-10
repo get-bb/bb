@@ -232,13 +232,14 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
-  it("hides the stepper when only one question is waiting", () => {
+  it("hides the stepper and Back when only one child thread is waiting", () => {
     render(bannerElement(section([newest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
     expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
+    expect(screen.queryByRole("button", { name: "Back" })).toBe(null);
   });
 
   it("drops the bottom collapse row while a question is open", () => {

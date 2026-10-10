@@ -556,6 +556,8 @@ function ChildQuestionSummary({
 
 function ChildQuestionBody({
   backButtonRef,
+  titleLinkRef,
+  canGoBack,
   current,
   index,
   total,
@@ -563,6 +565,8 @@ function ChildQuestionBody({
   onBack,
 }: {
   backButtonRef: RefObject<HTMLButtonElement | null>;
+  titleLinkRef: RefObject<HTMLAnchorElement | null>;
+  canGoBack: boolean;
   current: ChildThreadQuestion;
   index: number;
   total: number;
@@ -570,52 +574,72 @@ function ChildQuestionBody({
   onBack: () => void;
 }) {
   const position = `${index + 1} of ${total}`;
+  const showNav = canGoBack || total > 1;
   return (
     <div className="px-3 pb-1 pt-1">
-      <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
-        <button
-          ref={backButtonRef}
-          type="button"
-          onClick={onBack}
-          className="-ml-1.5 flex h-6 items-center gap-0.5 justify-self-start rounded-md pl-0.5 pr-1.5 text-foreground/90 hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
-          Back
-        </button>
-        {total > 1 ? (
-          <div className="-mr-1.5 flex items-center justify-self-end">
+      {showNav ? (
+        <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
+          {canGoBack ? (
             <button
+              ref={backButtonRef}
               type="button"
-              aria-label="Previous question"
-              onClick={() => onStep(-1)}
-              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+              onClick={onBack}
+              className="-ml-1.5 flex h-6 items-center gap-0.5 rounded-md pl-0.5 pr-1.5 text-foreground/90 hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <Icon
                 name="ChevronLeft"
                 className="size-3.5"
                 aria-hidden="true"
               />
+              Back
             </button>
-            <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
-              {position}
-            </span>
-            <button
-              type="button"
-              aria-label="Next question"
-              onClick={() => onStep(1)}
-              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
-            >
-              <Icon
-                name="ChevronRight"
-                className="size-3.5"
-                aria-hidden="true"
-              />
-            </button>
-          </div>
-        ) : null}
-      </div>
-      <p className="mt-1 text-xs text-foreground">
-        <NavLink to={current.href} className="underline underline-offset-2">
+          ) : (
+            <span />
+          )}
+          {total > 1 ? (
+            <div className="-mr-1.5 flex items-center">
+              <button
+                type="button"
+                aria-label="Previous question"
+                onClick={() => onStep(-1)}
+                className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+              >
+                <Icon
+                  name="ChevronLeft"
+                  className="size-3.5"
+                  aria-hidden="true"
+                />
+              </button>
+              <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
+                {position}
+              </span>
+              <button
+                type="button"
+                aria-label="Next question"
+                onClick={() => onStep(1)}
+                className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+              >
+                <Icon
+                  name="ChevronRight"
+                  className="size-3.5"
+                  aria-hidden="true"
+                />
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <p
+        className={cn(
+          "text-center text-xs text-foreground",
+          showNav ? "mt-1" : "mt-0.5",
+        )}
+      >
+        <NavLink
+          ref={titleLinkRef}
+          to={current.href}
+          className="underline underline-offset-2"
+        >
           {current.childTitle}
         </NavLink>
         :{" "}
@@ -902,12 +926,13 @@ function ActiveChildThreadsCard({
   }
   const cardRef = useRef<HTMLElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
+  const titleLinkRef = useRef<HTMLAnchorElement>(null);
   const focusBackOnOpen = useRef(false);
   const openChildThreadId = currentQuestion?.childThreadId ?? null;
   useEffect(() => {
     if (openChildThreadId !== null && focusBackOnOpen.current) {
       focusBackOnOpen.current = false;
-      backButtonRef.current?.focus();
+      (backButtonRef.current ?? titleLinkRef.current)?.focus();
     }
   }, [openChildThreadId]);
   useEffect(() => {
@@ -1051,6 +1076,8 @@ function ActiveChildThreadsCard({
         {currentQuestion ? (
           <ChildQuestionBody
             backButtonRef={backButtonRef}
+            titleLinkRef={titleLinkRef}
+            canGoBack={items.length > 1}
             current={currentQuestion}
             index={questionIndex}
             total={pendingInteractions.length}
