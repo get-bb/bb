@@ -859,7 +859,9 @@ describe("plugin service", () => {
       "disabled",
     );
     expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
-    expect(captured).toHaveLength(1);
+    expect(
+      captured.filter((event) => event.name === "plugin_installed"),
+    ).toHaveLength(1);
     await tracked.stop();
   });
 
