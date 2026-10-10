@@ -1508,8 +1508,8 @@ Opening the card, dismissing it with ×, or visiting the section hides it until
 the next release. A client with no seen record (a new install or a new
 browser) records its installed release as seen and shows no card until the
 next update. The card is hidden while the sidebar is collapsed. Turn off
-What's new from the card's ⋯ menu (with Undo), with the Show What's new
-switch in Settings → Plugins → What's new, with
+What's new from the confirmation shown after dismissing the card (with Undo),
+with the Show What's new switch in Settings → Plugins → What's new, with
 `bb plugin config bb--whats-new set enabled false`, or by disabling the
 plugin (`bb plugin disable bb--whats-new`; `bb plugin enable bb--whats-new`
 turns it back on). `bb whats-new` prints the same release notes in the

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { WhatsNewCard, WhatsNewOffNotice } from "./card.js";
+import { WhatsNewCard, WhatsNewConfirmationNudge } from "./card.js";
 import { WhatsNewNotes } from "./notes.js";
 import type { ReleaseNotes } from "./state.js";
 
@@ -123,28 +123,28 @@ export function SidebarCard() {
     <Themes className="flex flex-wrap items-start gap-4 bg-sidebar p-6 text-sidebar-foreground">
       {[NATIVE_WINDOWS, DIFF_FILTERING, NEXT_RELEASE].map((release) => (
         <div key={release.version} className="w-64">
-          <WhatsNewCard
-            release={release}
-            onOpen={noop}
-            onDismiss={noop}
-            onTurnOff={noop}
-          />
+          <WhatsNewCard release={release} onOpen={noop} onDismiss={noop} />
         </div>
       ))}
     </Themes>
   );
 }
 
-export function TurnedOffNotice() {
+export function DismissedConfirmation() {
   return (
-    <Themes className="bg-sidebar p-6 text-sidebar-foreground">
-      <div className="w-64">
-        <WhatsNewOffNotice
-          settingsHref="/settings/plugins/bb--whats-new"
-          onUndo={noop}
-          onClose={noop}
-        />
-      </div>
+    <Themes className="flex flex-wrap items-start gap-4 bg-sidebar p-6 text-sidebar-foreground">
+      {(["hidden", "off"] as const).map((state) => (
+        <div key={state} className="w-64">
+          <WhatsNewConfirmationNudge
+            release={NATIVE_WINDOWS}
+            state={state}
+            settingsHref="/settings/plugins/bb--whats-new"
+            onTurnOff={noop}
+            onUndo={noop}
+            onClose={noop}
+          />
+        </div>
+      ))}
     </Themes>
   );
 }

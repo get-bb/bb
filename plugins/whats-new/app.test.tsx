@@ -8,7 +8,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import { WHATS_NEW_CONFIRMATION_MS } from "./card.js";
 import { compareVersions } from "./seen.js";
+import { whatsNewNotesNavigation } from "./sidebar-section.js";
 import {
   resetWhatsNewEnabledOverrideForTest,
   type ReleaseNotes,
@@ -238,37 +240,37 @@ describe("What's new sidebar card", () => {
     const { slot } = renderCard();
 
     const section = await slot.findByTestId("sidebar-whats-new");
-    expect(section.textContent).toContain("What’s new · v0.5.0");
-    expect(section.textContent).toContain("Five headline");
+    expect(section.textContent).toContain("bb 0.5.0: Five headline");
     expect(
       section
         .querySelector('[data-release-visual="native-windows"]')
         ?.getAttribute("aria-hidden"),
     ).toBe("true");
     expect(
-      slot
-        .getByRole("link", { name: "See what's new in bb 0.5.0" })
-        .getAttribute("href"),
-    ).toBe("/settings/updates#whats-new");
+      within(section)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["", "See what’s new"]);
   });
 
-  it("marks the release seen and closes the drawer when opened", async () => {
+  it("marks the release seen, closes the drawer, and opens the notes", async () => {
     window.localStorage.setItem(SEEN_KEY, "0.4.0");
-    const stopNavigation = (event: MouseEvent) => event.preventDefault();
-    document.addEventListener("click", stopNavigation);
+    const open = vi
+      .spyOn(whatsNewNotesNavigation, "open")
+      .mockImplementation(() => {});
     const { slot, onNavigate } = renderCard();
 
     fireEvent.click(
-      await slot.findByRole("link", { name: "See what's new in bb 0.5.0" }),
+      await slot.findByRole("button", { name: "See what’s new" }),
     );
 
-    document.removeEventListener("click", stopNavigation);
     expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith("/settings/updates#whats-new");
     expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
     expect(card()).toBeNull();
   });
 
-  it("dismisses one release and keeps the version it updated from", async () => {
+  it("confirms a dismissal inside the nudge and keeps the version it updated from", async () => {
     window.localStorage.setItem(SEEN_KEY, "0.4.0");
     const { slot } = renderCard();
 
@@ -279,8 +281,49 @@ describe("What's new sidebar card", () => {
     );
 
     expect(card()).toBeNull();
+    const confirmation = slot.getByTestId("sidebar-whats-new-confirmation");
+    expect(within(confirmation).getByRole("status").textContent).toBe(
+      "Hidden until the next release",
+    );
     expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
     expect(window.localStorage.getItem(PREVIOUS_KEY)).toBe("0.4.0");
+
+    fireEvent.click(
+      within(confirmation).getByRole("button", { name: "Close" }),
+    );
+
+    expect(slot.queryByTestId("sidebar-whats-new-confirmation")).toBeNull();
+    expect(card()).toBeNull();
+  });
+
+  it("collapses the dismissal confirmation on its own unless the pointer is on it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      window.localStorage.setItem(SEEN_KEY, "0.4.0");
+      const { slot } = renderCard();
+      fireEvent.click(
+        await slot.findByRole("button", {
+          name: "Dismiss what's new in bb 0.5.0",
+        }),
+      );
+      const confirmation = slot.getByTestId("sidebar-whats-new-confirmation");
+
+      fireEvent.pointerEnter(confirmation.parentElement as HTMLElement);
+      act(() => {
+        vi.advanceTimersByTime(WHATS_NEW_CONFIRMATION_MS + 1);
+      });
+      expect(
+        slot.queryByTestId("sidebar-whats-new-confirmation"),
+      ).not.toBeNull();
+
+      fireEvent.pointerLeave(confirmation.parentElement as HTMLElement);
+      act(() => {
+        vi.advanceTimersByTime(WHATS_NEW_CONFIRMATION_MS + 1);
+      });
+      expect(slot.queryByTestId("sidebar-whats-new-confirmation")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stays hidden once the release has been seen", async () => {
@@ -308,26 +351,24 @@ describe("What's new sidebar card", () => {
     expect(card()).toBeNull();
   });
 
-  it("turns What's new off from the card and undoes it inline", async () => {
+  it("turns What's new off from the dismissal confirmation and undoes it inline", async () => {
     window.localStorage.setItem(SEEN_KEY, "0.4.0");
     const { slot } = renderCard();
 
-    fireEvent.pointerDown(
-      await slot.findByRole("button", { name: "What's new options" }),
-      { button: 0 },
-    );
     fireEvent.click(
-      await slot.findByRole("menuitem", { name: "Turn off What’s new" }),
+      await slot.findByRole("button", {
+        name: "Dismiss what's new in bb 0.5.0",
+      }),
     );
+    fireEvent.click(slot.getByRole("button", { name: "Turn off What’s new" }));
 
-    expect(card()).toBeNull();
-    const notice = await slot.findByTestId("sidebar-whats-new-off");
-    expect(notice.textContent).toContain(
-      "What’s new is off. Turn it back on in Settings → Plugins → What’s new.",
+    const confirmation = slot.getByTestId("sidebar-whats-new-confirmation");
+    expect(within(confirmation).getByRole("status").textContent).toBe(
+      "What’s new is off",
     );
     expect(
-      within(notice)
-        .getByRole("link", { name: "Settings → Plugins → What’s new" })
+      within(confirmation)
+        .getByRole("link", { name: "Settings → Plugins" })
         .getAttribute("href"),
     ).toBe("/settings/plugins/bb--whats-new");
     await waitFor(() => {
@@ -336,39 +377,46 @@ describe("What's new sidebar card", () => {
       ]);
     });
 
-    fireEvent.click(within(notice).getByRole("button", { name: "Undo" }));
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Undo" }));
 
-    expect(await slot.findByTestId("sidebar-whats-new")).toBeTruthy();
-    expect(slot.queryByTestId("sidebar-whats-new-off")).toBeNull();
+    expect(
+      within(slot.getByTestId("sidebar-whats-new-confirmation")).getByRole(
+        "status",
+      ).textContent,
+    ).toBe("Hidden until the next release");
     await waitFor(() => {
       expect(slot.inspection.rpcCalls.at(-1)).toEqual({
         method: "setEnabled",
         input: { enabled: true },
       });
     });
-    expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.4.0");
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe("0.5.0");
   });
 
-  it("keeps What's new off after the notice closes", async () => {
+  it("keeps What's new off after the confirmation closes", async () => {
     window.localStorage.setItem(SEEN_KEY, "0.4.0");
     const { slot } = renderCard();
 
-    fireEvent.pointerDown(
-      await slot.findByRole("button", { name: "What's new options" }),
-      { button: 0 },
-    );
     fireEvent.click(
-      await slot.findByRole("menuitem", { name: "Turn off What’s new" }),
+      await slot.findByRole("button", {
+        name: "Dismiss what's new in bb 0.5.0",
+      }),
     );
+    fireEvent.click(slot.getByRole("button", { name: "Turn off What’s new" }));
     fireEvent.click(
-      within(await slot.findByTestId("sidebar-whats-new-off")).getByRole(
+      within(slot.getByTestId("sidebar-whats-new-confirmation")).getByRole(
         "button",
         { name: "Close" },
       ),
     );
 
-    expect(slot.queryByTestId("sidebar-whats-new-off")).toBeNull();
+    expect(slot.queryByTestId("sidebar-whats-new-confirmation")).toBeNull();
     expect(card()).toBeNull();
+    await waitFor(() => {
+      expect(slot.inspection.rpcCalls).toEqual([
+        { method: "setEnabled", input: { enabled: false } },
+      ]);
+    });
   });
 
   it("disappears once the Settings → Updates notes show the release", async () => {

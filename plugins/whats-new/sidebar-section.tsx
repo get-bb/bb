@@ -5,7 +5,12 @@ import {
   useSdk,
   type ExperimentalSidebarFooterSectionProps,
 } from "@get-bb/plugin-sdk/app";
-import { WhatsNewCard, WhatsNewOffNotice } from "./card.js";
+import {
+  WHATS_NEW_NOTES_HREF,
+  WhatsNewCard,
+  WhatsNewConfirmationNudge,
+  type WhatsNewConfirmation,
+} from "./card.js";
 import type { whatsNewRpcContract } from "./contract.js";
 import {
   isWhatsNewVersionUnseen,
@@ -18,6 +23,12 @@ import {
   useWhatsNewEnabled,
   type ReleaseNotes,
 } from "./state.js";
+
+export const whatsNewNotesNavigation = {
+  open(href: string) {
+    window.location.assign(href);
+  },
+};
 
 function useInstalledRelease(): ReleaseNotes | null {
   const sdk = useSdk();
@@ -47,7 +58,10 @@ export function WhatsNewSidebarSection({
   const enabled = useWhatsNewEnabled();
   const seenVersion = useWhatsNewSeenVersion();
   const release = useInstalledRelease();
-  const [turnedOff, setTurnedOff] = useState(false);
+  const [confirmation, setConfirmation] = useState<{
+    state: WhatsNewConfirmation;
+    release: ReleaseNotes;
+  } | null>(null);
 
   useEffect(() => {
     if (release !== null && seenVersion.length === 0) {
@@ -60,15 +74,23 @@ export function WhatsNewSidebarSection({
     void rpc.call("setEnabled", { enabled: next }).catch(() => {});
   };
 
-  if (turnedOff) {
+  if (confirmation !== null) {
+    const { release: dismissed } = confirmation;
     return (
-      <WhatsNewOffNotice
+      <WhatsNewConfirmationNudge
+        key={confirmation.state}
+        release={dismissed}
+        state={confirmation.state}
         settingsHref={`/settings/plugins/${pluginId}`}
+        onTurnOff={() => {
+          setConfirmation({ state: "off", release: dismissed });
+          setEnabled(false);
+        }}
         onUndo={() => {
-          setTurnedOff(false);
+          setConfirmation({ state: "hidden", release: dismissed });
           setEnabled(true);
         }}
-        onClose={() => setTurnedOff(false)}
+        onClose={() => setConfirmation(null)}
       />
     );
   }
@@ -85,11 +107,11 @@ export function WhatsNewSidebarSection({
       onOpen={() => {
         markWhatsNewVersionSeen(release.version);
         onNavigate();
+        whatsNewNotesNavigation.open(WHATS_NEW_NOTES_HREF);
       }}
-      onDismiss={() => markWhatsNewVersionSeen(release.version)}
-      onTurnOff={() => {
-        setTurnedOff(true);
-        setEnabled(false);
+      onDismiss={() => {
+        markWhatsNewVersionSeen(release.version);
+        setConfirmation({ state: "hidden", release });
       }}
     />
   );

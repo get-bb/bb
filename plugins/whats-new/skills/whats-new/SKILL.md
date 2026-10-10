@@ -24,8 +24,8 @@ What's new is a built-in plugin (`bb--whats-new`), on by default.
 
 - `bb plugin config bb--whats-new set enabled false` hides the card and the
   Settings → Updates section; `... set enabled true` shows them again. This is
-  the Show What's new switch in Settings → Plugins → What's new, and the card's
-  ⋯ → Turn off What's new.
+  the Show What's new switch in Settings → Plugins → What's new, and the
+  Turn off What's new link shown after dismissing the card.
 - `bb plugin disable bb--whats-new` turns the whole plugin off;
   `bb plugin enable bb--whats-new` turns it back on.
 

@@ -2,15 +2,15 @@ See what changed after each bb update. What's new shows a small card above the s
 
 ## What you get
 
-- After bb updates, a card above the sidebar footer names the new version, shows its headline and a small drawing, and links to the full notes. A brand-new install shows no card until its first update.
-- Click the card to open Settings → Updates at What's new. Dismiss it with × to hide it until the next release. Opening Settings → Updates hides it too.
+- After bb updates, a card above the sidebar footer names the new version and its headline beside a small drawing, with **See what's new** for the full notes. A brand-new install shows no card until its first update.
+- **See what's new** opens Settings → Updates at What's new. Dismiss the card with × to hide it until the next release; the card confirms that in place. Opening Settings → Updates hides it too.
 - Settings → Updates shows What's new below the update rows: a one-line summary of the installed release with **Show all changes** for the full notes, the releases you skipped since you last looked, and the notes for an available update.
 - Each highlight in the full notes has a **Show me** link. It fills the new-thread composer with a prompt asking the agent to walk you through that feature one step at a time, as an interactive answer when the Interactive Answers plugin is installed or as numbered steps otherwise. Nothing is sent until you press Send.
 - The card hides while the sidebar is collapsed and follows the sidebar into the drawer on phones.
 
 ## Turn it off
 
-- From the card: open the ⋯ menu and choose **Turn off What's new**. The card says where to turn it back on and offers **Undo**.
+- From the card: dismiss it with ×, then choose **Turn off What's new** in the confirmation. It says where to turn it back on and offers **Undo**.
 - In the app: switch off **Show What's new** in Settings → Plugins → What's new, or disable the plugin there.
 - From a terminal: `bb plugin config bb--whats-new set enabled false`, or `bb plugin disable bb--whats-new` (`bb plugin enable bb--whats-new` turns it back on).
 

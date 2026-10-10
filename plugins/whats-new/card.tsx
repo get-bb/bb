@@ -1,139 +1,138 @@
-import { useId } from "react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { useEffect, useRef, useState, type FocusEvent } from "react";
 import { Icon } from "@/components/ui/icon";
+import { InlineConfirmation } from "@/components/ui/inline-confirmation";
+import { SidebarNudge } from "@/components/ui/sidebar-nudge";
 import { ReleaseVisual } from "./release-visual.js";
 import { WHATS_NEW_SECTION_ID } from "./seen.js";
 import { UPDATES_ROUTE, type ReleaseNotes } from "./state.js";
 
-const CARD_SURFACE_CLASS =
-  "relative rounded-lg bg-card shadow-xs dark:bg-sidebar-accent/50 dark:shadow-none";
-const CARD_CONTROL_CLASS =
-  "flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-state-hover hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-hover motion-reduce:transition-none";
-
 export const WHATS_NEW_NOTES_HREF = `${UPDATES_ROUTE}#${WHATS_NEW_SECTION_ID}`;
+
+export const WHATS_NEW_CONFIRMATION_MS = 8_000;
+
+const QUIET_LINK_CLASS =
+  "cursor-pointer text-xs font-medium text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring";
+
+function ReleaseTile({ release }: { release: ReleaseNotes }) {
+  return release.visual === null ? (
+    <Icon aria-hidden name="News01" className="size-4" />
+  ) : (
+    <ReleaseVisual visual={release.visual} className="size-7" />
+  );
+}
 
 export interface WhatsNewCardProps {
   release: ReleaseNotes;
   onOpen(): void;
   onDismiss(): void;
-  onTurnOff(): void;
 }
 
 export function WhatsNewCard({
   release,
   onOpen,
   onDismiss,
-  onTurnOff,
 }: WhatsNewCardProps) {
-  const labelId = useId();
   const { version } = release;
   return (
-    <section
-      aria-labelledby={labelId}
-      data-testid="sidebar-whats-new"
-      data-whats-new-version={version}
-      className={`${CARD_SURFACE_CLASS} px-3 pb-2.5 pt-2.5 transition-colors has-[[data-whats-new-open]:hover]:bg-sidebar-accent/40 has-[[data-whats-new-open]:focus-visible]:ring-1 has-[[data-whats-new-open]:focus-visible]:ring-sidebar-ring motion-reduce:transition-none`}
+    <SidebarNudge
+      testId="sidebar-whats-new"
+      icon={<ReleaseTile release={release} />}
+      dismissLabel={`Dismiss what's new in bb ${version}`}
+      onDismiss={onDismiss}
+      action={{ label: "See what’s new", onAction: onOpen }}
     >
-      <p
-        id={labelId}
-        className="pr-14 text-xs leading-snug text-subtle-foreground"
-      >
-        What&rsquo;s new · v{version}
-      </p>
-      <div className="mt-1.5 flex min-w-0 items-start gap-2.5">
-        <ReleaseVisual visual={release.visual} className="size-10" />
-        <p className="line-clamp-3 min-w-0 flex-1 text-sm font-medium leading-snug text-foreground">
-          {release.headline ?? `bb ${version}`}
-        </p>
-      </div>
-      <a
-        href={WHATS_NEW_NOTES_HREF}
-        data-whats-new-open
-        aria-label={`See what's new in bb ${version}`}
-        onClick={onOpen}
-        className="mt-1.5 inline-flex cursor-pointer items-center gap-0.5 text-xs font-medium text-muted-foreground after:absolute after:inset-0 after:rounded-lg after:content-[''] hover:text-foreground focus-visible:outline-none"
-      >
-        See what&rsquo;s new
-        <Icon aria-hidden name="ChevronRight" className="size-3" />
-      </a>
-      <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5">
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="What's new options"
-              className={CARD_CONTROL_CLASS}
-            >
-              <Icon aria-hidden name="MoreHorizontal" className="size-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" mobileTitle="What's new">
-            <DropdownMenuItem onSelect={onTurnOff}>
-              Turn off What&rsquo;s new
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <button
-          type="button"
-          aria-label={`Dismiss what's new in bb ${version}`}
-          onClick={onDismiss}
-          className={CARD_CONTROL_CLASS}
-        >
-          <Icon aria-hidden name="X" className="size-3.5" />
-        </button>
-      </div>
-    </section>
+      bb {version}: {release.headline ?? "see what changed in this release."}
+    </SidebarNudge>
   );
 }
 
-export function WhatsNewOffNotice({
-  settingsHref,
-  onUndo,
-  onClose,
-}: {
+export type WhatsNewConfirmation = "hidden" | "off";
+
+export interface WhatsNewConfirmationNudgeProps {
+  release: ReleaseNotes;
+  state: WhatsNewConfirmation;
   settingsHref: string;
+  onTurnOff(): void;
   onUndo(): void;
   onClose(): void;
-}) {
+}
+
+function useAutoClose(active: boolean, onClose: () => void) {
+  const [paused, setPaused] = useState(false);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    if (!active || paused) return;
+    const timer = window.setTimeout(
+      () => close.current(),
+      WHATS_NEW_CONFIRMATION_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [active, paused]);
+  return {
+    onPointerEnter: () => setPaused(true),
+    onPointerLeave: () => setPaused(false),
+    onFocus: () => setPaused(true),
+    onBlur: (event: FocusEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false);
+    },
+  };
+}
+
+export function WhatsNewConfirmationNudge({
+  release,
+  state,
+  settingsHref,
+  onTurnOff,
+  onUndo,
+  onClose,
+}: WhatsNewConfirmationNudgeProps) {
+  const pauseHandlers = useAutoClose(state === "hidden", onClose);
   return (
-    <section
-      aria-label="What's new is off"
-      data-testid="sidebar-whats-new-off"
-      className={`${CARD_SURFACE_CLASS} px-3 py-2.5`}
-    >
-      <p
-        role="status"
-        className="pr-6 text-xs leading-relaxed text-muted-foreground"
+    <div {...pauseHandlers}>
+      <SidebarNudge
+        testId="sidebar-whats-new-confirmation"
+        icon={<ReleaseTile release={release} />}
+        dismissLabel="Close"
+        onDismiss={onClose}
       >
-        What&rsquo;s new is off. Turn it back on in{" "}
-        <a
-          href={settingsHref}
-          className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
-        >
-          Settings → Plugins → What&rsquo;s new
-        </a>
-        .{" "}
-        <button
-          type="button"
-          onClick={onUndo}
-          className="cursor-pointer font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
-        >
-          Undo
-        </button>
-      </p>
-      <button
-        type="button"
-        aria-label="Close"
-        onClick={onClose}
-        className={`absolute right-1.5 top-1.5 ${CARD_CONTROL_CLASS}`}
-      >
-        <Icon aria-hidden name="X" className="size-3.5" />
-      </button>
-    </section>
+        {state === "hidden" ? (
+          <>
+            <InlineConfirmation>
+              Hidden until the next release
+            </InlineConfirmation>
+            <span aria-hidden className="mx-1.5 text-xs text-subtle-foreground">
+              ·
+            </span>
+            <button
+              type="button"
+              onClick={onTurnOff}
+              className={QUIET_LINK_CLASS}
+            >
+              Turn off What&rsquo;s new
+            </button>
+          </>
+        ) : (
+          <>
+            <InlineConfirmation>What&rsquo;s new is off</InlineConfirmation>
+            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+              Turn it back on in{" "}
+              <a href={settingsHref} className={QUIET_LINK_CLASS}>
+                Settings → Plugins
+              </a>
+              , or{" "}
+              <button
+                type="button"
+                onClick={onUndo}
+                className={QUIET_LINK_CLASS}
+              >
+                Undo
+              </button>
+              .
+            </span>
+          </>
+        )}
+      </SidebarNudge>
+    </div>
   );
 }
