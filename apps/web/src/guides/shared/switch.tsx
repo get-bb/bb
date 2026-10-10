@@ -21,6 +21,24 @@ function askingHandoffShot(file: string, conversation: string): GuideShot {
   };
 }
 
+const GENERIC_AUTOMATIONS = (
+  <>
+    Not on their own. Recreate each one in{" "}
+    <a href="/guides/run-an-agent-on-a-schedule">bb automations</a>: paste its
+    schedule and prompt, and your agent sets it up.
+  </>
+);
+
+function moveAutomations(href: string, title: string, tasks: string) {
+  return (
+    <>
+      Your agent can move them for you. Follow <a href={href}>{title}</a>: it
+      recreates each of your {tasks} as a bb automation with the same prompt and
+      schedule, and tests it.
+    </>
+  );
+}
+
 const GENERIC_SETUP_STEP = (
   <>
     Put your setup commands in a <code>.bb-env-setup.sh</code> at the repo root,
@@ -37,6 +55,7 @@ export type SwitchTool = {
   keepsWorking: string;
   setupStep: ReactNode;
   handoffShot: GuideShot;
+  automations: ReactNode;
 };
 
 export const SWITCH_TOOLS = {
@@ -50,6 +69,12 @@ export const SWITCH_TOOLS = {
     setupStep: GENERIC_SETUP_STEP,
 
     handoffShot: CLAUDE_HANDOFF_SHOT,
+
+    automations: moveAutomations(
+      "/guides/move-claude-code-routines",
+      "Move your Claude Code routines to bb",
+      "routines",
+    ),
   },
   "codex-app": {
     id: "codex-app",
@@ -63,6 +88,12 @@ export const SWITCH_TOOLS = {
     handoffShot: askingHandoffShot(
       "window-handoff-codex.webp",
       "the latest prior conversation",
+    ),
+
+    automations: moveAutomations(
+      "/guides/move-codex-scheduled-tasks",
+      "Move your Codex scheduled tasks to bb",
+      "scheduled tasks",
     ),
   },
   conductor: {
@@ -81,6 +112,8 @@ export const SWITCH_TOOLS = {
     ),
 
     handoffShot: CLAUDE_HANDOFF_SHOT,
+
+    automations: GENERIC_AUTOMATIONS,
   },
   cursor: {
     id: "cursor",
@@ -101,6 +134,8 @@ export const SWITCH_TOOLS = {
       "window-handoff-cursor.webp",
       "the latest Cursor conversation",
     ),
+
+    automations: GENERIC_AUTOMATIONS,
   },
   superset: {
     id: "superset",
@@ -119,6 +154,8 @@ export const SWITCH_TOOLS = {
     ),
 
     handoffShot: CLAUDE_HANDOFF_SHOT,
+
+    automations: GENERIC_AUTOMATIONS,
   },
   "t3-code": {
     id: "t3-code",
@@ -139,6 +176,8 @@ export const SWITCH_TOOLS = {
       "window-handoff-t3-code.webp",
       "the latest OpenCode conversation",
     ),
+
+    automations: GENERIC_AUTOMATIONS,
   },
   "vibe-kanban": {
     id: "vibe-kanban",
@@ -157,6 +196,8 @@ export const SWITCH_TOOLS = {
     ),
 
     handoffShot: CLAUDE_HANDOFF_SHOT,
+
+    automations: GENERIC_AUTOMATIONS,
   },
 } satisfies Record<string, SwitchTool>;
 
@@ -318,13 +359,7 @@ export function switchGuide(meta: GuideMeta, tool: SwitchTool): Guide {
       },
       {
         question: "Do my automations come along?",
-        answer: (
-          <p>
-            Not on their own. Recreate each one in{" "}
-            <a href="/guides/run-an-agent-on-a-schedule">bb automations</a>:
-            paste its schedule and prompt, and your agent sets it up.
-          </p>
-        ),
+        answer: <p>{tool.automations}</p>,
       },
       COST_FAQ,
       AGENTS_FAQ,
