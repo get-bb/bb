@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const STATIC_IMPORT =
-  /^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+"(\.{1,2}\/[^"?]+)"/gmu;
+  /^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+"((?:\.{1,2}|@)\/[^"?]+)"/gmu;
 const EAGER_GLOB =
   /import\.meta\.glob(?:<[^(]*>)?\(\s*"([^"]+)"\s*,\s*\{[^}]*\beager:\s*true/gu;
 const PAGE_CONTENT = [
@@ -16,8 +16,17 @@ const PAGE_CONTENT = [
 ];
 
 function resolveModule(from: string, specifier: string): string | null {
-  const base = resolve(dirname(from), specifier.replace(/\.js$/u, ""));
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`]) {
+  const path = specifier.replace(/\.js$/u, "");
+  const base = path.startsWith("@/")
+    ? resolve(SRC, path.slice(2))
+    : resolve(dirname(from), path);
+  for (const candidate of [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}/index.ts`,
+    `${base}/index.tsx`,
+  ]) {
     if (/\.tsx?$/u.test(candidate) && existsSync(candidate)) {
       return candidate;
     }
