@@ -226,6 +226,10 @@ export interface PluginThreadEventEmitter {
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadUnarchived(thread: Thread): void;
+  emitThreadParentChanged(
+    thread: Thread,
+    previousParentThreadId: string | null,
+  ): void;
   emitThreadDeleted(thread: Thread): void;
   emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**

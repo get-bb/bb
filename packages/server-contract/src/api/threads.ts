@@ -592,6 +592,33 @@ export const threadAncestorsListResponseSchema = z
 export type ThreadAncestorsListResponse = z.infer<
   typeof threadAncestorsListResponseSchema
 >;
+export const THREAD_DESCENDANTS_LIST_MAX_IDS = 200;
+
+export const threadDescendantsListRequestSchema = z
+  .object({
+    threadIds: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(THREAD_DESCENDANTS_LIST_MAX_IDS),
+    includeArchived: z.boolean().optional(),
+    includeHidden: z.boolean().optional(),
+  })
+  .strict();
+export type ThreadDescendantsListRequest = z.infer<
+  typeof threadDescendantsListRequestSchema
+>;
+export const threadDescendantsListResponseSchema = z
+  .object({
+    threads: z.array(
+      z
+        .object({ threadId: z.string(), descendantIds: z.array(z.string()) })
+        .strict(),
+    ),
+  })
+  .strict();
+export type ThreadDescendantsListResponse = z.infer<
+  typeof threadDescendantsListResponseSchema
+>;
 export const updateThreadPluginMetadataRequestSchema = z
   .object({
     pluginId: pluginIdSchema,

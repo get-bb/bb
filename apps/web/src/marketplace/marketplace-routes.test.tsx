@@ -1,4 +1,4 @@
-import { isNotFound } from "@tanstack/react-router";
+import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 
 import { stringifySiteSearch } from "../lib/search-serialization.js";
@@ -12,6 +12,7 @@ import {
 } from "./marketplace-response-status.js";
 import {
   marketplaceAuthorRouteEntries,
+  marketplaceIndexHead,
   marketplaceIndexMeta,
   marketplacePluginRouteEntry,
   validateMarketplaceSearch,
@@ -53,19 +54,119 @@ describe("marketplace routes", () => {
     });
   });
 
-  it("returns notFound for an unknown plugin and author", () => {
+  it.each([
+    {
+      name: "an unknown plugin",
+      select: () =>
+        marketplacePluginRouteEntry(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/missing",
+        ),
+      location: { to: "/marketplace" },
+    },
+    {
+      name: "an unknown author",
+      select: () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/author/missing",
+        ),
+      location: { to: "/marketplace" },
+    },
+    {
+      name: "an author in non-canonical case",
+      select: () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "Acme-Tools",
+          "/marketplace/author/Acme-Tools",
+        ),
+      location: {
+        to: "/marketplace/author/$github",
+        params: { github: "acme-tools" },
+      },
+    },
+  ])("permanently redirects $name", ({ select, location }) => {
+    let thrown: unknown;
+    try {
+      select();
+    } catch (error) {
+      thrown = error;
+    }
+    if (!isRedirect(thrown)) throw new Error("The route did not redirect");
+    expect(thrown.options).toMatchObject({ ...location, statusCode: 301 });
+    expect(thrown.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("returns notFound for paths deeper than a plugin or author", () => {
     for (const select of [
-      () => marketplacePluginRouteEntry(AVAILABLE_MARKETPLACE, "missing"),
-      () => marketplaceAuthorRouteEntries(AVAILABLE_MARKETPLACE, "missing"),
+      () =>
+        marketplacePluginRouteEntry(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/missing/extra",
+        ),
+      () =>
+        marketplaceAuthorRouteEntries(
+          AVAILABLE_MARKETPLACE,
+          "missing",
+          "/marketplace/author/missing/extra",
+        ),
     ]) {
+      let thrown: unknown;
       try {
         select();
-        throw new Error("The route did not return notFound");
       } catch (error) {
-        expect(isNotFound(error)).toBe(true);
+        thrown = error;
       }
+      expect(isNotFound(thrown)).toBe(true);
     }
   });
+
+  it("indexes a listed category under its own title and URL", () => {
+    expect(
+      marketplaceIndexHead(AVAILABLE_MARKETPLACE, "code-and-reviews").meta,
+    ).toEqual(
+      expect.arrayContaining([
+        { title: "Code & Reviews plugins — bb Plugin Marketplace" },
+        {
+          property: "og:url",
+          content: "https://web.test/marketplace?category=code-and-reviews",
+        },
+      ]),
+    );
+  });
+
+  it("omits a missing category description from the meta description", () => {
+    const meta = marketplaceIndexMeta(true, {
+      id: "no-copy",
+      displayName: "No Copy",
+    });
+    expect(meta).toContainEqual({
+      name: "description",
+      content: "Browse No Copy plugins for bb.",
+    });
+    expect(JSON.stringify(meta)).not.toContain("undefined");
+  });
+
+  it.each([
+    { category: undefined, href: "https://getbb.app/marketplace" },
+    {
+      category: "code-and-reviews",
+      href: "https://getbb.app/marketplace?category=code-and-reviews",
+    },
+    { category: "future-tools", href: "https://getbb.app/marketplace" },
+    { category: "missing", href: "https://getbb.app/marketplace" },
+  ])(
+    "gives the marketplace index one canonical for category $category",
+    ({ category, href }) => {
+      expect(
+        marketplaceIndexHead(AVAILABLE_MARKETPLACE, category).canonical,
+      ).toEqual({ rel: "canonical", href });
+    },
+  );
 
   it("keeps the first category parameter and round-trips it", () => {
     const first = validateMarketplaceSearch({

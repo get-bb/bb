@@ -54,23 +54,33 @@ function chunk(ids: readonly string[]): string[][] {
   return chunks;
 }
 
-function cachedLevel(
+function sameInputs(
+  cached: ThreadNotificationInputs | undefined,
   stored: ThreadNotificationInputs,
-): ThreadNotificationInputs | null {
-  return stored.own === "inherit" && stored.ancestorCap === null
-    ? null
-    : stored;
+): boolean {
+  return (
+    cached !== undefined &&
+    cached.own === stored.own &&
+    cached.ancestorCap?.level === stored.ancestorCap?.level &&
+    cached.ancestorCap?.threadId === stored.ancestorCap?.threadId
+  );
 }
 
-function withLevel(
+function withLevels(
   levels: ReadonlyMap<string, ThreadNotificationInputs>,
-  threadId: string,
-  stored: ThreadNotificationInputs | null,
+  rows: readonly (readonly [string, ThreadNotificationInputs])[],
 ): ReadonlyMap<string, ThreadNotificationInputs> {
+  const changed = rows.filter(
+    ([threadId, stored]) => !sameInputs(levels.get(threadId), stored),
+  );
+  if (changed.length === 0) return levels;
   const next = new Map(levels);
-  if (stored === null) next.delete(threadId);
-  else next.set(threadId, stored);
+  for (const [threadId, stored] of changed) next.set(threadId, stored);
   return next;
+}
+
+function bump(changes: Map<string, number>, ids: Iterable<string>): void {
+  for (const id of ids) changes.set(id, (changes.get(id) ?? 0) + 1);
 }
 
 function useThreadNotificationsData({
@@ -82,51 +92,38 @@ function useThreadNotificationsData({
   const previousConnection = useRef(connection);
   const latestThreadIds = useRef(threadIds);
   const requested = useRef(new Set<string>());
+  const changes = useRef(new Map<string, number>());
   const [levels, setLevels] = useState<
     ReadonlyMap<string, ThreadNotificationInputs>
   >(() => new Map());
 
   const fetchLevels = useCallback(
-    (ids: readonly string[], replace: boolean) => {
+    (ids: readonly string[]) => {
       for (const id of ids) requested.current.add(id);
       for (const batch of chunk(ids)) {
+        const started = batch.map((id) => changes.current.get(id) ?? 0);
+        const unchanged = () =>
+          batch.filter(
+            (id, index) => (changes.current.get(id) ?? 0) === started[index],
+          );
         void rpc
           .call("threadNotifications.list", { threadIds: batch })
           .then(({ threads }) => {
-            setLevels((current) => {
-              const changed = batch.filter((id) =>
-                replace
-                  ? current.get(id) !== threads[id]
-                  : threads[id] !== undefined && !current.has(id),
-              );
-              if (changed.length === 0) return current;
-              const next = new Map(current);
-              for (const id of changed) {
-                const stored = threads[id];
-                if (stored === undefined) next.delete(id);
-                else next.set(id, stored);
-              }
-              return next;
-            });
+            const rows = unchanged().map(
+              (id) => [id, threads[id] ?? UNSET_THREAD_NOTIFICATIONS] as const,
+            );
+            setLevels((current) => withLevels(current, rows));
           })
           .catch(() => {
-            for (const id of batch) requested.current.delete(id);
+            for (const id of unchanged()) requested.current.delete(id);
           });
       }
     },
     [rpc],
   );
 
-  useEffect(() => {
-    latestThreadIds.current = threadIds;
-    const missing = threadIds.filter((id) => !requested.current.has(id));
-    if (missing.length > 0) fetchLevels(missing, false);
-  }, [fetchLevels, threadIds]);
-
-  useEffect(() => {
-    const previous = previousConnection.current;
-    previousConnection.current = connection;
-    if (previous !== "reconnecting" || connection !== "connected") return;
+  const rereadShown = useCallback(() => {
+    bump(changes.current, requested.current);
     requested.current = new Set();
     const shown = new Set(latestThreadIds.current);
     setLevels((current) => {
@@ -134,15 +131,35 @@ function useThreadNotificationsData({
       return next.size === current.size ? current : next;
     });
     if (latestThreadIds.current.length > 0) {
-      fetchLevels(latestThreadIds.current, true);
+      fetchLevels(latestThreadIds.current);
     }
-  }, [connection, fetchLevels]);
+  }, [fetchLevels]);
+
+  useEffect(() => {
+    latestThreadIds.current = threadIds;
+    const missing = threadIds.filter((id) => !requested.current.has(id));
+    if (missing.length > 0) fetchLevels(missing);
+  }, [fetchLevels, threadIds]);
+
+  useEffect(() => {
+    const previous = previousConnection.current;
+    previousConnection.current = connection;
+    if (previous !== "reconnecting" || connection !== "connected") return;
+    rereadShown();
+  }, [connection, rereadShown]);
 
   useRealtime(THREAD_NOTIFICATIONS_CHANNEL, (payload) => {
     const update = threadNotificationsUpdateSchema.safeParse(payload);
     if (!update.success) return;
-    const { threadId, notifications } = update.data;
-    setLevels((current) => withLevel(current, threadId, notifications));
+    const rows = Object.entries(update.data.threads).filter(([threadId]) =>
+      requested.current.has(threadId),
+    );
+    if (rows.length === 0) return;
+    bump(
+      changes.current,
+      rows.map(([threadId]) => threadId),
+    );
+    setLevels((current) => withLevels(current, rows));
   });
 
   const setLevel = useCallback(
@@ -151,7 +168,8 @@ function useThreadNotificationsData({
         threadId,
         level,
       });
-      setLevels((current) => withLevel(current, threadId, cachedLevel(stored)));
+      bump(changes.current, [threadId]);
+      setLevels((current) => withLevels(current, [[threadId, stored]]));
     },
     [rpc],
   );

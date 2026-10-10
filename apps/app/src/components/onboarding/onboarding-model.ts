@@ -11,7 +11,7 @@ export const ONBOARDING_STEPS: readonly {
   id: OnboardingStepId;
   label: string;
 }[] = [
-  { id: "agent", label: "Agent" },
+  { id: "agent", label: "Agents" },
   { id: "projects", label: "Projects" },
   { id: "plugins", label: "Plugins" },
   { id: "devices", label: "Devices" },
@@ -22,16 +22,46 @@ export const ONBOARDING_PLUGIN_MARKETPLACE = "bb-official";
 export const ONBOARDING_PLUGINS: readonly {
   entryId: string;
   pluginId: string;
+  description: string;
 }[] = [
-  { entryId: "browser-automation", pluginId: "browser-automation" },
-  { entryId: "workflows", pluginId: "workflows" },
-  { entryId: "monaco-editor", pluginId: "monaco-editor" },
-  { entryId: "prompt-library", pluginId: "bb--prompt-library" },
-  { entryId: "agent-annotations", pluginId: "agent-annotations" },
-  { entryId: "ask-user-question", pluginId: "ask-user-question" },
+  {
+    entryId: "workflows",
+    pluginId: "workflows",
+    description:
+      "Split one task across several agents working at the same time.",
+  },
+  {
+    entryId: "browser-automation",
+    pluginId: "browser-automation",
+    description:
+      "Let agents open your app in a browser and check their own work.",
+  },
+  {
+    entryId: "agent-annotations",
+    pluginId: "agent-annotations",
+    description:
+      "Point at part of a page in bb's browser and tell the agent what to change.",
+  },
+  {
+    entryId: "github",
+    pluginId: "github",
+    description: "See your issues and pull requests, and send an agent to one.",
+  },
+  {
+    entryId: "ask-user-question",
+    pluginId: "ask-user-question",
+    description:
+      "Agents ask you a quick multiple-choice question instead of guessing.",
+  },
+  {
+    entryId: "monaco-editor",
+    pluginId: "monaco-editor",
+    description: "Edit a file next to the thread without leaving bb.",
+  },
 ];
 
 export const CONNECT_PLUGIN_ID = "connect";
+export const PUSH_NOTIFICATIONS_PLUGIN_ID = "push-notifications";
 
 export type AgentSetupState =
   | { status: "checking" }
@@ -129,6 +159,17 @@ export function hasReadyAgent(
 
 const RECENT_REPO_WINDOW_MS = 7 * 86_400_000;
 const DEFAULT_SELECTED_REPO_LIMIT = 5;
+
+export function hasRecentImportableRepo(
+  repos: readonly HostDiscoveredRepo[],
+  now: number,
+): boolean {
+  return repos.some(
+    (repo) =>
+      repo.projectId === null &&
+      now - Date.parse(repo.lastActivityAt) <= RECENT_REPO_WINDOW_MS,
+  );
+}
 
 export function defaultSelectedRepoPaths(
   repos: readonly HostDiscoveredRepo[],

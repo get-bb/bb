@@ -73,10 +73,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   return (
     <TooltipProvider delayDuration={300} disableHoverableContent>
-      <div className="flex h-dvh w-full flex-col bg-background">
+      <div className="flex h-dvh w-full flex-col bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))] pl-[env(safe-area-inset-left)]">
         <Suspense fallback={null}>
           <OnboardingFlow
             initialStep="agent"
+            entry={seenBefore ? "replay" : "first_run"}
             onClose={() => {
               setFirstRunClosed(true);
               updateSettings.mutate({

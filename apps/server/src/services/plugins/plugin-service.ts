@@ -1384,6 +1384,12 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitThreadParentChanged(thread, previousParentThreadId) {
+        emitThreadEvent("experimental_thread.parentChanged", () => ({
+          thread: buildThreadDto(thread),
+          previousParentThreadId,
+        }));
+      },
       emitThreadDeleted(thread) {
         emitThreadEvent("thread.deleted", () => ({
           thread: buildThreadDto(thread),

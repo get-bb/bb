@@ -8,10 +8,12 @@ import {
 } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
+  recordTelemetryEventRequestSchema,
   setAiServiceSelectionRequestSchema,
   systemProviderEnabledRequestSchema,
   testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
+  type RecordTelemetryEventRequest,
   type SetAiServiceSelectionRequest,
   type SystemAiServicesResponse,
   type SystemProviderCatalogEntry,
@@ -261,6 +263,8 @@ import type {
   PluginThreadMetadataListResponse,
   ThreadAncestorsListRequest,
   ThreadAncestorsListResponse,
+  ThreadDescendantsListRequest,
+  ThreadDescendantsListResponse,
   ThreadPluginMetadataQuery,
   ThreadPluginMetadataResponse,
   ThreadSearchQuery,
@@ -323,6 +327,7 @@ import {
   updateThreadPluginMetadataRequestSchema,
   pluginThreadMetadataListRequestSchema,
   threadAncestorsListRequestSchema,
+  threadDescendantsListRequestSchema,
   threadPluginMetadataQuerySchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -1391,6 +1396,21 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ThreadAncestorsListResponse>(),
     }),
+    /**
+     * Each of `threadIds` (1–200) that exists and is not deleted, with the
+     * ids of every thread below it, children first. Archived and hidden
+     * descendants are omitted unless `includeArchived` / `includeHidden` is
+     * true, but threads below them are still returned; deleted threads and
+     * unknown ids are always omitted.
+     */
+    descendants: defineRoute({
+      path: "/threads/descendants",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadDescendantsListRequest>(
+        threadDescendantsListRequestSchema,
+      ),
+      response: jsonResponse<ThreadDescendantsListResponse>(),
+    }),
     pluginMetadata: {
       /**
        * `pluginId`'s metadata for each of `threadIds` (1–200) that has any,
@@ -1900,6 +1920,20 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    /**
+     * Forward one anonymous product event from a bb client to the server's
+     * usage telemetry. Only the onboarding, setup checklist, and notification
+     * prompt events in the request schema are accepted, and the server drops
+     * them when usage data sharing is off.
+     */
+    recordTelemetryEvent: defineRoute({
+      path: "/system/telemetry/events",
+      method: "post",
+      request: jsonRequest<EmptyInput, RecordTelemetryEventRequest>(
+        recordTelemetryEventRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     generalSettings: defineRoute({
       path: "/settings/general",

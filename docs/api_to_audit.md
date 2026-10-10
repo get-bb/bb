@@ -1245,10 +1245,41 @@ under a new parent or released when its parent is archived.
 **Audit before stabilizing.**
 
 1. **Shape.** Decide whether callers also need each ancestor's thread
-   (title, status) rather than only ids, and whether descendants belong in
-   the same API.
+   (title, status) rather than only ids, and whether it should merge with
+   `experimental_listDescendants` into one tree read.
 2. **Batch size.** 200 ids per request; callers chunk, like
    `experimental_listPluginMetadata`.
+
+## `bb.sdk.threads.experimental_listDescendants`
+
+**What it does.** `POST /threads/descendants` with `{ threadIds,
+includeArchived?, includeHidden? }` (1–200 ids) returns `{ threads: {
+threadId, descendantIds }[] }`: each requested thread that exists and is not
+deleted, once, with the ids of every thread below it in breadth-first order,
+children first (empty for a leaf). Archived and hidden descendants are
+omitted unless their flag is true, matching `threads.count`; the walk still
+passes through them, so a visible thread under an archived one is returned.
+Deleted threads, anything only reachable through one, and unknown ids are
+always omitted. One recursive query follows `parent_thread_id` through
+`threads_parent_idx`, so the cost is one indexed lookup per thread in the
+subtree, archived ones included. Available unchanged on the core SDK and the
+plugin-bound SDKs. First caller: push-notifications, which publishes the
+levels of a thread and its unarchived, visible descendants when the thread's
+level or parent changes, because a parent's level limits its whole subtree,
+and republishes a thread's subtree on `thread.unarchived`.
+
+**Audit before stabilizing.**
+
+1. **Shape.** Decide whether callers need the tree's edges (each
+   descendant's parent) or thread fields rather than a flat id list, and
+   whether it should merge with `experimental_listAncestors`.
+2. **Size.** A subtree of live threads has no cap, and the query walks
+   archived threads even when it omits them. Decide whether to page.
+3. **Omitted threads.** Unlike `experimental_listAncestors`, deleted threads
+   are always omitted and archived and hidden ones by default. Confirm that
+   callers never need deleted ones. No event announces a hidden thread
+   becoming visible, so a caller that skips hidden threads cannot refresh
+   one when it appears; decide whether visibility changes need an event.
 
 ## `PluginSettingDescriptor.experimental_optionLabels`
 
@@ -3125,8 +3156,13 @@ id-keyed cache of levels, fetches the `threadIds` it has not loaded in
 `threadNotifications.list` batches of up to 200 (built on
 `threads.experimental_listAncestors` and
 `threads.experimental_listPluginMetadata`, so a parent's limit is read from
-the current tree), applies its `threadNotifications` realtime channel, and
-refetches after a reconnect; `item` resolves the level
+the current tree), and refetches the ones on screen after a reconnect. When a
+thread's level or parent changes (its `threadNotifications.set` RPC, or
+`experimental_thread.parentChanged`), the plugin server resolves that thread
+and its unarchived, visible descendants
+(`threads.experimental_listDescendants`) and publishes their levels on the
+`threadNotifications` realtime channel, and does the same for a thread on
+`thread.unarchived`; clients apply the rows they hold without a request. `item` resolves the level
 with the plugin's shared resolver, shows it as `detail` with a per-level icon
 (declared `push-notifications/ringing` and `push-notifications/off`, built-in
 `BellDot`), and `choices` sets it. The
@@ -3691,6 +3727,24 @@ After callback invocation, core completes pause and resumes for queued work. Rec
 alone must not release work during preservation. Cancellation is reported as a rejected
 pause, not a successful save.
 
+## Thread parent-change notifications
+
+`PluginEvents.on("experimental_thread.parentChanged", handler)` delivers
+`{thread, previousParentThreadId}` after a thread's `parentThreadId` changes:
+a `threads.update` that moves or releases it (from the shared ownership seam,
+which also writes the ownership timeline entry and parent system messages), or
+core releasing an archived thread's unarchived children (one event per
+released child, after the archive transaction commits). An update that keeps
+the same parent delivers nothing. `thread` is the public DTO with the new
+parent. Threads below the moved one move with it and get no event; callers
+read them with `bb.sdk.threads.experimental_listDescendants`. Delivery is
+fire-and-forget like every other event, so a plugin that was not loaded never
+sees the move. Push-notifications uses it to publish the moved subtree's
+levels to open menus; before it, the only signal was the ownership timeline
+entry behind `experimental_thread.events`, which forced the plugin to remember
+each thread's last parent. Stabilization requires deciding whether a general
+`thread.updated` event should replace it, and a second consumer.
+
 ## Host deletion notifications
 
 `PluginEvents.on("experimental_host.deleted", handler)` delivers `{host}` once after a
@@ -4023,6 +4077,10 @@ Stabilize after verifying group archive and Undo with descendants, already archi
 Starts a server-owned plugin update and returns its job immediately. `experimental_updateJobs.list/get` exposes queued/running phases and terminal update, rollback, or failure results. Jobs continue across client disconnects; finished jobs remain for ten minutes. Jobs are in memory and do not survive server restarts. `applyUpdate` retains its result contract by polling the job; raw callers without `Prefer: respond-async` retain the synchronous response. Running updates cannot be cancelled during activation or rollback.
 
 Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.
+
+## `PluginBbSdk.system.experimental_recordTelemetryEvent`
+
+`system.experimental_recordTelemetryEvent(event)` posts one anonymous product event to `POST /api/v1/system/telemetry/events`, which forwards it to the server's usage telemetry under the install's anonymous id and drops it when usage data sharing is off. The request schema is a strict allow-list of setup-guide and notification-card events with fixed enum or boolean properties; anything else is rejected with 400. Core callers, all through `recordTelemetryEvent` in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide (`OnboardingFlow`) and the sidebar notification card (`SidebarNotificationsPrompt` and `apps/app/src/hooks/useNotificationPermission.ts`). Stabilize after deciding whether third-party plugins may emit product events at all (and, if so, how events are namespaced per plugin and rate limited), then rename project-wide and remove this entry.
 
 ## `PluginBbSdk.hosts.experimental_discoverRepos`
 

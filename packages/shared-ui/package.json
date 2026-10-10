@@ -324,6 +324,11 @@
       "types": "./src/components/ui/sidebar-customize-panel.tsx",
       "default": "./src/components/ui/sidebar-customize-panel.tsx"
     },
+    "./sidebar-nudge": {
+      "source": "./src/components/ui/sidebar-nudge.tsx",
+      "types": "./src/components/ui/sidebar-nudge.tsx",
+      "default": "./src/components/ui/sidebar-nudge.tsx"
+    },
     "./sidebar-row-classes": {
       "source": "./src/components/ui/sidebar-row-classes.ts",
       "types": "./src/components/ui/sidebar-row-classes.ts",

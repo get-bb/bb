@@ -121,10 +121,10 @@ function isUnset(inputs: ThreadNotificationInputs): boolean {
 
 const SDK_THREAD_BATCH_MAX_IDS = 200;
 
-function chunk(ids: readonly string[]): string[][] {
-  const chunks: string[][] = [];
-  for (let start = 0; start < ids.length; start += SDK_THREAD_BATCH_MAX_IDS) {
-    chunks.push(ids.slice(start, start + SDK_THREAD_BATCH_MAX_IDS));
+function chunk<T>(items: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += SDK_THREAD_BATCH_MAX_IDS) {
+    chunks.push(items.slice(start, start + SDK_THREAD_BATCH_MAX_IDS));
   }
   return chunks;
 }
@@ -162,14 +162,16 @@ export interface NotificationPreferences {
     id: string;
     parentThreadId: string | null;
   }): Promise<NotificationLevel>;
+  publishSubtree(threadId: string): Promise<void>;
 }
 
 export function createNotificationPreferences(args: {
   bb: BbPluginApi;
   getDefaults(): Promise<NotificationDefaults>;
-  publish(threadId: string, inputs: ThreadNotificationInputs | null): void;
+  publish(threads: Record<string, ThreadNotificationInputs>): void;
 }): NotificationPreferences {
   const { bb, getDefaults, publish } = args;
+  let publicationQueue: Promise<void> = Promise.resolve();
 
   async function readOwnLevels(
     threadIds: readonly string[],
@@ -225,10 +227,37 @@ export function createNotificationPreferences(args: {
     return resolved;
   }
 
-  async function requireInputs(threadId: string): Promise<ResolvedThreadInputs> {
+  async function requireInputs(
+    threadId: string,
+  ): Promise<ResolvedThreadInputs> {
     const resolved = (await resolveInputs([threadId])).get(threadId);
     if (resolved === undefined) throw new Error("Thread not found");
     return resolved;
+  }
+
+  function publishSubtree(
+    threadId: string,
+  ): Promise<Map<string, ResolvedThreadInputs>> {
+    const result = publicationQueue.then(async () => {
+      const { threads } = await bb.sdk.threads.experimental_listDescendants({
+        threadIds: [threadId],
+      });
+      const resolved = await resolveInputs([
+        threadId,
+        ...(threads[0]?.descendantIds ?? []),
+      ]);
+      for (const batch of chunk([...resolved])) {
+        publish(
+          Object.fromEntries(batch.map(([id, { inputs }]) => [id, inputs])),
+        );
+      }
+      return resolved;
+    });
+    publicationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   return {
@@ -253,9 +282,9 @@ export function createNotificationPreferences(args: {
           ? { threadId, remove: [NOTIFICATIONS_METADATA_KEY] }
           : { threadId, set: { [NOTIFICATIONS_METADATA_KEY]: { own: level } } },
       );
-      const { inputs } = await requireInputs(threadId);
-      publish(threadId, isUnset(inputs) ? null : inputs);
-      return inputs;
+      const resolved = (await publishSubtree(threadId)).get(threadId);
+      if (resolved === undefined) throw new Error("Thread not found");
+      return resolved.inputs;
     },
     async effectiveLevel(thread) {
       const [resolved, defaults] = await Promise.all([
@@ -267,6 +296,9 @@ export function createNotificationPreferences(args: {
         { parentThreadId: thread.parentThreadId },
         defaults,
       ).effective;
+    },
+    async publishSubtree(threadId) {
+      await publishSubtree(threadId);
     },
   };
 }

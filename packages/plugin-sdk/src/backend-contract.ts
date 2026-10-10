@@ -274,6 +274,17 @@ export interface PluginThreadEventPayloads {
 
   /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
   "experimental_thread.events": { thread: ThreadResponse; sequence: number };
+  /**
+   * Fired after a thread moves to a new parent or loses its parent: a
+   * `threads.update` that changes `parentThreadId`, or core releasing a
+   * thread's unarchived children when it is archived. `thread` carries the
+   * new `parentThreadId`. Every thread below it moved with it and gets no
+   * event of its own. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.parentChanged": {
+    thread: ThreadResponse;
+    previousParentThreadId: string | null;
+  };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
   /**
