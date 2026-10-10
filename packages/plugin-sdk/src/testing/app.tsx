@@ -2459,6 +2459,7 @@ export function renderSlot<
     bbContext: { projectId, threadId },
     pluginId: options.pluginId ?? "test-plugin",
     questionFormHost: {
+      density: "default",
       shortcuts: new Map(),
       registerChoiceHandler: () => () => {},
     },

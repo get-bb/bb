@@ -36,11 +36,13 @@ Hooks:
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, registerChoiceHandler }`
-  inside a `pendingInteraction` component: the host-owned answer shortcuts by
-  zero-based option index, and a way to act when the person presses one. The
-  registry's `question-form` item uses it. Empty outside a pending interaction
-  and in `renderSlot`.
+- `experimental_useQuestionFormHost()` → `{ density, shortcuts,
+  registerChoiceHandler }` inside a `pendingInteraction` component: how much
+  room the host gives the form (`"compact"` inside a parent's child threads
+  banner, otherwise `"default"`), the host-owned answer shortcuts by zero-based
+  option index, and a way to act when the person presses one. The registry's
+  `question-form` item uses it. Outside a pending interaction and in
+  `renderSlot`, density is `"default"` and there are no shortcuts.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),

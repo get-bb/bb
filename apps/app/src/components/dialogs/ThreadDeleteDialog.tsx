@@ -3,6 +3,7 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@bb/shared-ui/confirm-delete-dialog";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 export interface ThreadDeleteDialogTarget {
   thread: Thread;
@@ -50,15 +51,24 @@ export function ThreadDeleteDialogContent({
   onDelete,
 }: ThreadDeleteDialogContentProps) {
   const label = "thread";
-  const sentences = [
-    target.childThreadCount ? "Child threads will be deleted." : null,
-    "This action cannot be undone.",
-  ].filter((part): part is string => part !== null);
 
   return (
     <ConfirmDeleteDialogContent
       title={`Delete ${label}?`}
-      description={sentences.join(" ")}
+      description={
+        <>
+          {target.childThreadCount ? (
+            <>
+              Its{" "}
+              <span className="font-semibold">
+                {formatChildThreadCount(target.childThreadCount)}
+              </span>{" "}
+              will be deleted too.{" "}
+            </>
+          ) : null}
+          This action cannot be undone.
+        </>
+      }
       confirmLabel={`Delete ${label}`}
       pending={pending}
       onConfirm={() => onDelete(target)}

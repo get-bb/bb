@@ -30,6 +30,7 @@ import {
   ThreadTitle,
   useResolveThreadTitle,
 } from "@/components/thread/ThreadTitleMentions";
+import { CHILD_THREAD_NOUN } from "@/lib/child-thread-copy";
 
 const ALL_PROJECTS = "all";
 const ARCHIVED_THREAD_SEARCH_LIMIT = 50;
@@ -39,7 +40,7 @@ const KIND_OPTIONS: ReadonlyArray<{
   value: ArchivedThreadsKindFilter;
 }> = [
   { label: "All threads", value: "all" },
-  { label: "Root threads", value: "root" },
+  { label: "Threads", value: "root" },
   { label: "Child threads", value: "child" },
 ];
 
@@ -264,7 +265,14 @@ export function ArchivedThreadsSettingsSection() {
                         <ThreadTitle title={getThreadDisplayTitle(thread)} />
                         {thread.parentThreadId !== null ? (
                           <Pill variant="outline" className="shrink-0">
-                            child
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              <Icon
+                                name="ChildThread"
+                                className="size-3"
+                                aria-hidden
+                              />
+                              {CHILD_THREAD_NOUN}
+                            </span>
                           </Pill>
                         ) : null}
                       </span>
