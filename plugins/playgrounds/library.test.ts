@@ -670,3 +670,64 @@ it("bounds packages, exports stored bytes verbatim, and rejects unsupported pack
     version: { actions: { actions: [{ name: "set" }, { name: "reset" }] } },
   });
 });
+
+it("dispatches once when two calls race with the same request ID, and purging an app closes its draft and open releases", async () => {
+  const { host } = tracked(setup());
+  const { callRpc } = host.harness.behavior;
+  const { appId } = (await callRpc("appsImport", { text: documented() })) as {
+    appId: string;
+  };
+  const { runId } = (await callRpc("appsOpen", {
+    appId,
+    threadId: "thr_a",
+    fresh: false,
+  })) as { runId: string };
+  await callRpc("presence", {
+    id: runId,
+    threadId: "thr_a",
+    clientId: "client-card-1",
+    actions: ["next"],
+    active: true,
+  });
+  const requestId = uuidv7();
+  const call = () =>
+    callRpc("appsInvoke", {
+      runId,
+      threadId: "thr_a",
+      action: "next",
+      args: [1],
+      requestId,
+    }) as Promise<Record<string, unknown>>;
+  const first = call();
+  const second = call();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const commands = host.harness.inspection.realtimeSignals.filter(
+    (s) => s.channel === "command",
+  );
+  expect(commands).toHaveLength(1);
+  await callRpc("result", {
+    cmdId: (commands[0]!.payload as { cmdId: string }).cmdId,
+    clientId: "client-card-1",
+    ok: true,
+    value: { step: 2 },
+  });
+  const results = await Promise.all([first, second]);
+  expect(results.map((r) => r.replayed).sort()).toEqual([false, true]);
+
+  await callRpc("draftOpen", { appId });
+  const { releaseId } = (await callRpc("releasePrepare", {
+    appId,
+    changelog: "First",
+    catalogId: "example/stepper",
+    author: { name: "Example" },
+    license: "MIT",
+    reviewed: true,
+  })) as { releaseId: string };
+  await callRpc("appsTrash", { appId });
+  await callRpc("appsPurge", { appId, confirm: true });
+  expect(await callRpc("releaseShow", { releaseId })).toMatchObject({
+    status: "failed",
+    note: "The app was deleted.",
+  });
+  await expect(callRpc("draftGet", { appId })).rejects.toThrow("No app");
+});

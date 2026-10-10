@@ -170,7 +170,7 @@ sessions.
 
 ```sh
 bb playgrounds apps draft start <app>
-bb playgrounds apps draft show <app> --json      # package, revision, diff
+bb playgrounds apps draft show <app> --json      # revision and diff; add --package for the source
 bb playgrounds apps draft set <app> --revision N --html-stdin   # or --document-stdin,
                                                  # --actions, --title, --summary,
                                                  # --from-playground <id>
@@ -204,7 +204,8 @@ digest. Record a declined or closed pull request with `apps release failed`.
 (downloads and verifies the package, runs nothing), `community add <id>
 [--version]` (also updates), and `community refresh`. Community needs the
 plugin's **Community catalog URL** setting: the https URL of a catalog
-`index.json`. Without it, Community says no catalog is configured. Installed
+`index.json` (`bb plugin config playgrounds set catalogUrl <url>`). Without
+it, Community says no catalog is configured. Installed
 apps keep working offline and after delisting. Updates change only the default
 for new runs; existing runs keep their version.
 

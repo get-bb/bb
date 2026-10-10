@@ -1127,6 +1127,13 @@ function ReleasePanel({
                 ...(form.license ? { license: form.license } : {}),
               });
               setPreparing(false);
+              setForm((f) => ({
+                ...f,
+                version: "",
+                changelog: "",
+                reviewed: false,
+                catalogId: "",
+              }));
               const view = (await rpc.call("releaseShow", {
                 releaseId,
               })) as ReleaseView;

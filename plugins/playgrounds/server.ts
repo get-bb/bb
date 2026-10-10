@@ -26,7 +26,12 @@ import {
   FRAME_PATH,
 } from "./widget.js";
 import { createLive, liveRpc } from "./live.js";
-import { createLibrary, LIBRARY_MIGRATIONS, uuidv7 } from "./library.js";
+import {
+  compactDraft,
+  createLibrary,
+  LIBRARY_MIGRATIONS,
+  uuidv7,
+} from "./library.js";
 import { CATALOG_MIGRATIONS, catalogBase, createCatalog } from "./catalog.js";
 import { libraryHandlers, libraryRpc } from "./library-rpc.js";
 import { libraryCommands } from "./library-cli.js";
@@ -460,6 +465,10 @@ function setup(bb: BbPluginApi, deps: CatalogDeps): void {
         title: z.string().max(160).optional(),
         summary: z.string().max(400).optional(),
         fromPlayground: idSchema.optional(),
+        includePackage: z
+          .boolean()
+          .optional()
+          .describe("draft_show: include the whole draft package"),
       })
       .strict(),
     execute: async (input, ctx) => {
@@ -513,44 +522,50 @@ function setup(bb: BbPluginApi, deps: CatalogDeps): void {
           );
         case "request_id":
           return uuidv7();
-        case "draft_show":
+        case "draft_show": {
+          const draft = library.draftGet({ appId: need(input.appId, "appId") });
           return JSON.stringify(
-            library.draftGet({ appId: need(input.appId, "appId") }),
+            input.includePackage ? draft : compactDraft(draft),
           );
+        }
         case "draft_start":
           return JSON.stringify(
-            library.draftOpen({
-              appId: need(input.appId, "appId"),
-              ...(input.versionId ? { versionId: input.versionId } : {}),
-            }),
+            compactDraft(
+              library.draftOpen({
+                appId: need(input.appId, "appId"),
+                ...(input.versionId ? { versionId: input.versionId } : {}),
+              }),
+            ),
           );
         case "draft_set":
           return JSON.stringify(
-            await library.draftWrite({
-              appId: need(input.appId, "appId"),
-              expectedRevision: need(input.revision, "revision"),
-              edit: {
-                ...(input.html !== undefined ? { html: input.html } : {}),
-                ...(input.document !== undefined
-                  ? { documentJson: input.document }
-                  : {}),
-                ...(input.actions !== undefined
-                  ? { actionsJson: input.actions }
-                  : {}),
-                ...(input.title !== undefined ? { title: input.title } : {}),
-                ...(input.summary !== undefined
-                  ? { summary: input.summary }
-                  : {}),
-                ...(input.fromPlayground
-                  ? {
-                      fromAnswer: {
-                        answerId: input.fromPlayground,
-                        threadId: threadId(),
-                      },
-                    }
-                  : {}),
-              },
-            }),
+            compactDraft(
+              await library.draftWrite({
+                appId: need(input.appId, "appId"),
+                expectedRevision: need(input.revision, "revision"),
+                edit: {
+                  ...(input.html !== undefined ? { html: input.html } : {}),
+                  ...(input.document !== undefined
+                    ? { documentJson: input.document }
+                    : {}),
+                  ...(input.actions !== undefined
+                    ? { actionsJson: input.actions }
+                    : {}),
+                  ...(input.title !== undefined ? { title: input.title } : {}),
+                  ...(input.summary !== undefined
+                    ? { summary: input.summary }
+                    : {}),
+                  ...(input.fromPlayground
+                    ? {
+                        fromAnswer: {
+                          answerId: input.fromPlayground,
+                          threadId: threadId(),
+                        },
+                      }
+                    : {}),
+                },
+              }),
+            ),
           );
         case "draft_preview":
           return JSON.stringify(

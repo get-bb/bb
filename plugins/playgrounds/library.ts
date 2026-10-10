@@ -16,6 +16,7 @@ import { diffText } from "./diff.js";
 import {
   LICENSES,
   catalogIdSchema,
+  compareVersions,
   nextMinor,
   packagePath,
   type CatalogIndex,
@@ -30,7 +31,7 @@ export const LIBRARY_MIGRATIONS = [
   "CREATE TABLE library_apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, selected_version_id TEXT NOT NULL, revision INTEGER NOT NULL, origin_kind TEXT NOT NULL, origin_ref TEXT, publish_catalog_id TEXT, published_version TEXT, published_digest TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, trashed_at INTEGER)",
   "CREATE UNIQUE INDEX library_apps_catalog ON library_apps(origin_ref) WHERE origin_kind = 'catalog'",
   "CREATE UNIQUE INDEX library_apps_publish ON library_apps(publish_catalog_id) WHERE publish_catalog_id IS NOT NULL",
-  "CREATE TABLE library_versions (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, label TEXT NOT NULL, package TEXT NOT NULL, digest TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE (app_id, label))",
+  "CREATE TABLE library_versions (id TEXT PRIMARY KEY, app_id TEXT NOT NULL, label TEXT NOT NULL, package TEXT NOT NULL, meta TEXT NOT NULL, digest TEXT NOT NULL, bytes INTEGER NOT NULL, created_at INTEGER NOT NULL, UNIQUE (app_id, label))",
   "CREATE TABLE library_runs (answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, app_id TEXT NOT NULL, version_id TEXT NOT NULL, origin TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'run', inherited INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, PRIMARY KEY (answer_id, thread_id))",
   "CREATE INDEX library_runs_resume ON library_runs(app_id, thread_id, created_at)",
   "CREATE INDEX library_runs_thread ON library_runs(thread_id)",
@@ -108,6 +109,12 @@ type AppRow = {
   created_at: number;
   updated_at: number;
   trashed_at: number | null;
+};
+type VersionMeta = {
+  contentKind: "html" | "document";
+  agentActions: Manifest["mode"];
+  author: { name: string; url?: string } | null;
+  license: string | null;
 };
 type VersionRow = {
   id: string;
@@ -245,6 +252,27 @@ function sourceText(pkg: AppPackage) {
   ].join("\n");
 }
 
+const COMPACT_DIFF_CHARS = 20_000;
+export function compactDraft<
+  T extends {
+    package: AppPackage;
+    diff: string;
+  },
+>(view: T | null) {
+  if (!view) return null;
+  const { package: pkg, diff, ...rest } = view;
+  return {
+    ...rest,
+    title: pkg.title,
+    contentKind: pkg.content.kind,
+    bytes: Buffer.byteLength(JSON.stringify(pkg), "utf8"),
+    diff:
+      diff.length <= COMPACT_DIFF_CHARS
+        ? diff
+        : `${diff.slice(0, COMPACT_DIFF_CHARS)}\n… diff truncated; use \`apps draft show --package\` for the full draft.`,
+  };
+}
+
 export type LibraryStore = {
   resolve(threadId: string, id: string): Promise<string>;
   get(threadId: string, id: string): Answer;
@@ -276,9 +304,19 @@ export function createLibrary({
   const versionsOf = (appId: string) =>
     db
       .prepare(
-        "SELECT * FROM library_versions WHERE app_id = ? ORDER BY created_at, rowid",
+        "SELECT id, label, digest, bytes, created_at FROM library_versions WHERE app_id = ? ORDER BY created_at, rowid",
       )
-      .all(appId) as VersionRow[];
+      .all(appId) as Omit<VersionRow, "app_id" | "package">[];
+  const versionMeta = (id: string) => {
+    const row = db
+      .prepare("SELECT id, label, meta FROM library_versions WHERE id = ?")
+      .get(id) as { id: string; label: string; meta: string };
+    return {
+      id: row.id,
+      label: row.label,
+      ...(JSON.parse(row.meta) as VersionMeta),
+    };
+  };
   const requireApp = (id: string) => {
     const app = appRow(id);
     if (!app) throw new LibraryError("not_found", `No app ${id} in My apps.`);
@@ -339,6 +377,15 @@ export function createLibrary({
       );
     return { id, at, digest, existing };
   };
+  const claim = (id: string, op: string, digest: string) => {
+    const raced = operation(id);
+    if (raced && (raced.op !== op || raced.digest !== digest))
+      throw new LibraryError(
+        "request_reused",
+        "This request ID was already used for a different request.",
+      );
+    return raced;
+  };
   const idempotent = <T>(
     op: string,
     requestId: string | undefined,
@@ -397,16 +444,23 @@ export function createLibrary({
       at,
       at,
     );
-    insertVersion(appId, versionId, pkg.version, text, at);
+    insertVersion(appId, versionId, pkg, text, at);
     return { appId, versionId, versionLabel: pkg.version };
   };
   const insertVersion = (
     appId: string,
     versionId: string,
-    label: string,
+    pkg: AppPackage,
     text: string,
     at: number,
   ) => {
+    const label = pkg.version;
+    const meta: VersionMeta = {
+      contentKind: pkg.content.kind,
+      agentActions: pkg.actions.mode,
+      author: pkg.author ?? pkg.origin?.author ?? null,
+      license: pkg.license ?? pkg.origin?.license ?? null,
+    };
     const taken = db
       .prepare("SELECT 1 FROM library_versions WHERE app_id = ? AND label = ?")
       .get(appId, label);
@@ -416,12 +470,13 @@ export function createLibrary({
         `Version ${label} already exists for this app; choose another label.`,
       );
     db.prepare(
-      "INSERT INTO library_versions (id, app_id, label, package, digest, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO library_versions (id, app_id, label, package, meta, digest, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       versionId,
       appId,
       label,
       text,
+      JSON.stringify(meta),
       sha256(text),
       Buffer.byteLength(text, "utf8"),
       at,
@@ -447,8 +502,7 @@ export function createLibrary({
   };
 
   const summary = (app: AppRow) => {
-    const version = versionRow(app.selected_version_id)!;
-    const pkg = packageOf(version);
+    const version = versionMeta(app.selected_version_id);
     return {
       id: app.id,
       name: app.name,
@@ -456,10 +510,10 @@ export function createLibrary({
       revision: app.revision,
       origin: { kind: app.origin_kind, ref: app.origin_ref },
       selectedVersion: { id: version.id, label: version.label },
-      contentKind: pkg.content.kind,
-      agentActions: pkg.actions.mode,
-      author: pkg.author ?? pkg.origin?.author ?? null,
-      license: pkg.license ?? pkg.origin?.license ?? null,
+      contentKind: version.contentKind,
+      agentActions: version.agentActions,
+      author: version.author,
+      license: version.license,
       createdAt: app.created_at,
       updatedAt: app.updated_at,
       trashedAt: app.trashed_at,
@@ -615,6 +669,40 @@ export function createLibrary({
     }
     if (edit.summary !== undefined)
       next = { ...next, summary: edit.summary.trim() };
+    return next;
+  };
+  const proposeVersion = (
+    appId: string,
+    catalogId: string,
+    listing: CatalogListing | null,
+  ) => {
+    const app = appRow(appId);
+    const known = [
+      ...(app?.published_version ? [app.published_version] : []),
+      ...(
+        db
+          .prepare(
+            "SELECT version_label FROM library_releases WHERE app_id = ? OR catalog_id = ?",
+          )
+          .all(appId, catalogId) as { version_label: string }[]
+      ).map((r) => r.version_label),
+      ...(listing?.versions.map((v) => v.version) ?? []),
+    ];
+    const taken = new Set([
+      ...known,
+      ...(
+        db
+          .prepare("SELECT label FROM library_versions WHERE app_id = ?")
+          .all(appId) as { label: string }[]
+      ).map((r) => r.label),
+    ]);
+    let next = nextMinor(
+      known.reduce<string | null>(
+        (max, v) => (max === null || compareVersions(v, max) > 0 ? v : max),
+        null,
+      ),
+    );
+    while (taken.has(next)) next = nextMinor(next);
     return next;
   };
   const requireRelease = (id: string) => {
@@ -980,6 +1068,11 @@ export function createLibrary({
       threadId?: string;
       requestId?: string;
     }) {
+      if (requireApp(input.appId).origin_kind === "catalog")
+        throw new LibraryError(
+          "invalid",
+          "Apps added from Community take new versions only from Community. Remix it to make your own versions.",
+        );
       let source: { pkg: AppPackage; text: string | null };
       if (input.packageText !== undefined)
         source = {
@@ -1036,13 +1129,14 @@ export function createLibrary({
               .get(app.id, source.pkg.version)
               ? source.pkg.version
               : nextLabel(app.id));
+          const labelled: AppPackage = { ...source.pkg, version: label };
           const text =
             source.text !== null && source.pkg.version === label
               ? source.text
-              : serializePackage({ ...source.pkg, version: label });
+              : serializePackage(labelled);
           bumpRevision(app, input.expectedRevision);
           const versionId = randomUUID();
-          insertVersion(app.id, versionId, label, text, now());
+          insertVersion(app.id, versionId, labelled, text, now());
           db.prepare(
             "UPDATE library_apps SET selected_version_id = ? WHERE id = ?",
           ).run(versionId, app.id);
@@ -1158,6 +1252,10 @@ export function createLibrary({
         const versions = db
           .prepare("DELETE FROM library_versions WHERE app_id = ?")
           .run(appId).changes;
+        db.prepare("DELETE FROM library_drafts WHERE app_id = ?").run(appId);
+        db.prepare(
+          "UPDATE library_releases SET status = 'failed', note = 'The app was deleted.', updated_at = ? WHERE app_id = ? AND status IN ('prepared', 'submitted')",
+        ).run(now(), appId);
         db.prepare("DELETE FROM library_apps WHERE id = ?").run(appId);
         return { appId, purgedVersions: versions };
       })();
@@ -1197,6 +1295,18 @@ export function createLibrary({
       if (before === "deleted") throw unavailable();
       if (before === "unknown") throw pendingVerification();
       const { run, resumed } = db.transaction(() => {
+        const raced = claim(id, "open", digest);
+        if (raced) {
+          const recorded = raced.result
+            ? (JSON.parse(raced.result) as OpenResult)
+            : null;
+          const replayed = recorded
+            ? runRow(recorded.runId, input.threadId)
+            : undefined;
+          if (raced.status === "tombstone" || !recorded || !replayed)
+            throw unavailable();
+          return { run: replayed, resumed: recorded.resumed };
+        }
         const current = requireApp(input.appId);
         const latest = input.fresh
           ? undefined
@@ -1301,11 +1411,10 @@ export function createLibrary({
         args: input.args,
         clientId: input.clientId ?? null,
       });
-      if (existing) {
-        if (existing.status === "tombstone" || !existing.result)
-          throw unavailable();
-        const recorded = JSON.parse(existing.result) as InvokeResult;
-        return existing.status === "pending"
+      const replay = (row: OperationRow): InvokeResult => {
+        if (row.status === "tombstone" || !row.result) throw unavailable();
+        const recorded = JSON.parse(row.result) as InvokeResult;
+        return row.status === "pending"
           ? {
               ...recorded,
               status: "unknown",
@@ -1314,7 +1423,8 @@ export function createLibrary({
                 "This request is still in flight or its outcome is unknown. It was not sent again. Inspect the app's state before deciding to send a new request.",
             }
           : { ...recorded, replayed: true };
-      }
+      };
+      if (existing) return replay(existing);
       const owner = await store.resolve(input.threadId, input.runId);
       const found = manifestFor(input.runId, owner);
       if (!found)
@@ -1373,6 +1483,8 @@ export function createLibrary({
         replayed: false,
         untrusted: true,
       };
+      const raced = claim(id, "invoke", digest);
+      if (raced) return replay(raced);
       recordOperation(id, at, "invoke", digest, "pending", base, owner);
       const { acknowledged, outcome } = await live.dispatch(
         owner,
@@ -1536,6 +1648,21 @@ export function createLibrary({
       if (before === "deleted") throw unavailable();
       if (before === "unknown") throw pendingVerification();
       const run = db.transaction(() => {
+        const raced = claim(id, "preview", digest);
+        if (raced) {
+          const recorded = raced.result
+            ? (JSON.parse(raced.result) as {
+                runId: string;
+                draftRevision: number;
+              })
+            : null;
+          const replayed = recorded
+            ? runRow(recorded.runId, input.threadId)
+            : undefined;
+          if (raced.status === "tombstone" || !recorded || !replayed)
+            throw unavailable();
+          return { created: replayed, revision: recorded.draftRevision };
+        }
         const app = requireApp(input.appId);
         const draft = draftRow(app.id);
         if (!draft)
@@ -1691,13 +1818,7 @@ export function createLibrary({
               "Community apps document their agent actions or declare themselves manual-only. Edit the draft's actions first.",
             );
           const version = versionLabel.parse(
-            input.version ??
-              nextMinor(
-                app.published_version ??
-                  previous?.version_label ??
-                  listing?.versions.at(-1)?.version ??
-                  null,
-              ),
+            input.version ?? proposeVersion(app.id, catalogId, listing),
           );
           if (
             db
@@ -1720,7 +1841,7 @@ export function createLibrary({
           const text = serializePackage(pkg);
           const versionId = randomUUID();
           const at = now();
-          insertVersion(app.id, versionId, version, text, at);
+          insertVersion(app.id, versionId, pkg, text, at);
           db.prepare(
             "UPDATE library_apps SET selected_version_id = ?, publish_catalog_id = ?, revision = revision + 1, updated_at = ? WHERE id = ?",
           ).run(versionId, catalogId, at, app.id);
@@ -1989,7 +2110,7 @@ export function createLibrary({
             };
           }
           const versionId = randomUUID();
-          insertVersion(existing.id, versionId, pkg.version, input.text, now());
+          insertVersion(existing.id, versionId, pkg, input.text, now());
           if (input.select)
             db.prepare(
               "UPDATE library_apps SET selected_version_id = ?, revision = revision + 1, updated_at = ? WHERE id = ?",

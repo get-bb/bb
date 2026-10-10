@@ -280,6 +280,13 @@ it("installs the same verified package on two servers with separate state, keeps
       threadId: "thr_a",
     }),
   ).toMatchObject({ state: { preset: "Lead" } });
+  await expect(
+    one.harness.behavior.callRpc("appsCreateVersion", {
+      appId: added[0]!.appId,
+      expectedRevision: 1,
+      packageText: makePackage("9.0.0"),
+    }),
+  ).rejects.toThrow("Remix");
   expect(
     await one.harness.behavior
       .callRpc("draftOpen", { appId: added[0]!.appId })
@@ -527,6 +534,7 @@ it("lets an author develop, preview, and release updates to the same listing whi
     { threadId: "thr_a" },
   );
   expect(edited.exitCode).toBe(0);
+  expect(JSON.parse(edited.stdout!)).not.toHaveProperty("package");
   const stale = await runCli(
     [
       "apps",
@@ -610,13 +618,13 @@ it("lets an author develop, preview, and release updates to the same listing whi
   })) as { revision: number };
   const v3 = (await callRpc("releasePrepare", {
     appId,
-    version: "1.1.1",
     changelog: "Fix typo",
     reviewed: true,
   })) as { releaseId: string };
   expect(
     await callRpc("releaseShow", { releaseId: v3.releaseId }),
   ).toMatchObject({
+    version: "1.2.0",
     prUrl: "https://github.com/example/catalog/pull/2",
     status: "prepared",
   });
@@ -629,7 +637,7 @@ it("lets an author develop, preview, and release updates to the same listing whi
   await expect(
     callRpc("releasePrepare", {
       appId,
-      version: "1.1.1",
+      version: "1.2.0",
       changelog: "Again",
       reviewed: true,
     }),
@@ -647,7 +655,7 @@ it("lets an author develop, preview, and release updates to the same listing whi
   const v3Package = (await callRpc("releasePackage", {
     releaseId: v3.releaseId,
   })) as { text: string };
-  catalog.publish("example/pocket-synth", "1.1.1", v3Package.text, "Fix typo");
+  catalog.publish("example/pocket-synth", "1.2.0", v3Package.text, "Fix typo");
   await callRpc("communityRefresh", {});
   expect(
     await callRpc("releaseShow", { releaseId: v3.releaseId }),
@@ -666,7 +674,7 @@ it("lets an author develop, preview, and release updates to the same listing whi
   expect(otherList.apps).toHaveLength(1);
   expect(otherList.apps[0]).toMatchObject({
     updateAvailable: true,
-    latest: { version: "1.1.1" },
+    latest: { version: "1.2.0" },
   });
   await other.harness.behavior.callRpc("communityAdd", {
     catalogId: "example/pocket-synth",
@@ -682,5 +690,5 @@ it("lets an author develop, preview, and release updates to the same listing whi
       runId: otherRun.runId,
       threadId: "thr_z",
     }),
-  ).toMatchObject({ versionLabel: "1.0.0", selectedVersionLabel: "1.1.1" });
+  ).toMatchObject({ versionLabel: "1.0.0", selectedVersionLabel: "1.2.0" });
 });

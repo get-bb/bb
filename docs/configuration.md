@@ -1036,21 +1036,21 @@ schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                                  | Value                                                                                     |
-| ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                  |
-| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                |
-| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                  |
-| `sidebar.sectionOrder`               | Section id list for **By project**                                                        |
-| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                          |
-| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                        |
-| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin |
-| `sidebar.footerOrder`                | Footer action order                                                                       |
-| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                            |
-| `sidebar.pluginPanelOrder`           | Rail destination order                                                                    |
-| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                  |
-| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                   |
-| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`)                   |
+| Key                                  | Value                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                         |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                       |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                         |
+| `sidebar.sectionOrder`               | Section id list for **By project**                                                               |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                                 |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                               |
+| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin        |
+| `sidebar.footerOrder`                | Footer action order                                                                              |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                                   |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                           |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                         |
+| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                          |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `forks`, `threadStorage`) |
 
 The sidebar thread list defaults to `__automatic__`: the first installed thread list
 plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
@@ -2146,3 +2146,14 @@ Settings. Search scope is remembered in browser local storage separately for
 new-thread and follow-up composers. Starred text and mentions persist in the
 plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
 for CLI and SDK commands.
+
+## Playgrounds Community catalog
+
+The Playgrounds plugin's **Community catalog URL** setting is the https URL of
+a curated catalog `index.json`. It is empty by default, so the Community tab
+says no catalog is configured while My apps keeps working. Packages and preview
+images are fetched only from that index's origin and directory, and every
+package must match the size and SHA-256 recorded in the index. Set it in the
+plugin's settings or with
+`bb plugin config playgrounds set catalogUrl <url>`; see the `playgrounds` skill for
+the catalog and release commands.

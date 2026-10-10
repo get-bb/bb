@@ -5,7 +5,7 @@ import {
 } from "@get-bb/plugin-sdk";
 import { idSchema, threadSchema } from "./model.js";
 import { catalogIdSchema } from "./catalog-format.js";
-import { uuidv7, type Library } from "./library.js";
+import { compactDraft, uuidv7, type Library } from "./library.js";
 import type { Catalog } from "./catalog.js";
 
 const json = (value: unknown) => ({
@@ -465,12 +465,19 @@ export function libraryCommands(
       summary:
         "Show an app's private working draft and its diff from the base version",
       positionals: [app],
-      options: { json: asJson },
+      options: {
+        json: asJson,
+        package: {
+          type: "boolean",
+          description: "Include the whole draft package in the JSON output",
+        },
+      },
       run: ({ positionals, options }) => {
         const draft = library.draftGet({
           appId: idSchema.parse(positionals.app),
         });
-        if (options.json) return json(draft);
+        if (options.json)
+          return json(options.package ? draft : compactDraft(draft));
         if (!draft)
           return text(["No draft. Start one with `apps draft start`."]);
         return text([
@@ -491,12 +498,14 @@ export function libraryCommands(
       },
       run: ({ positionals, options }) =>
         json(
-          library.draftOpen({
-            appId: idSchema.parse(positionals.app),
-            ...(options.version
-              ? { versionId: idSchema.parse(options.version) }
-              : {}),
-          }),
+          compactDraft(
+            library.draftOpen({
+              appId: idSchema.parse(positionals.app),
+              ...(options.version
+                ? { versionId: idSchema.parse(options.version) }
+                : {}),
+            }),
+          ),
         ),
     }),
     "apps draft set": cliCommand({
@@ -542,39 +551,43 @@ export function libraryCommands(
       },
       run: async ({ positionals, options }, ctx) =>
         json(
-          await library.draftWrite({
-            appId: idSchema.parse(positionals.app),
-            expectedRevision: options.revision,
-            edit: {
-              ...(options.package !== undefined
-                ? { packageText: options.package }
-                : {}),
-              ...(options.html !== undefined ? { html: options.html } : {}),
-              ...(options.document !== undefined
-                ? { documentJson: options.document }
-                : {}),
-              ...(options.actions !== undefined
-                ? { actionsJson: options.actions }
-                : {}),
-              ...(options.title !== undefined ? { title: options.title } : {}),
-              ...(options.summary !== undefined
-                ? { summary: options.summary }
-                : {}),
-              ...(options.width !== undefined
-                ? { width: options.width === 0 ? null : options.width }
-                : {}),
-              ...(options["from-playground"]
-                ? {
-                    fromAnswer: {
-                      answerId: idSchema.parse(options["from-playground"]),
-                      threadId: threadSchema.parse(
-                        options.thread ?? ctx.threadId,
-                      ),
-                    },
-                  }
-                : {}),
-            },
-          }),
+          compactDraft(
+            await library.draftWrite({
+              appId: idSchema.parse(positionals.app),
+              expectedRevision: options.revision,
+              edit: {
+                ...(options.package !== undefined
+                  ? { packageText: options.package }
+                  : {}),
+                ...(options.html !== undefined ? { html: options.html } : {}),
+                ...(options.document !== undefined
+                  ? { documentJson: options.document }
+                  : {}),
+                ...(options.actions !== undefined
+                  ? { actionsJson: options.actions }
+                  : {}),
+                ...(options.title !== undefined
+                  ? { title: options.title }
+                  : {}),
+                ...(options.summary !== undefined
+                  ? { summary: options.summary }
+                  : {}),
+                ...(options.width !== undefined
+                  ? { width: options.width === 0 ? null : options.width }
+                  : {}),
+                ...(options["from-playground"]
+                  ? {
+                      fromAnswer: {
+                        answerId: idSchema.parse(options["from-playground"]),
+                        threadId: threadSchema.parse(
+                          options.thread ?? ctx.threadId,
+                        ),
+                      },
+                    }
+                  : {}),
+              },
+            }),
+          ),
         ),
     }),
     "apps draft discard": cliCommand({
