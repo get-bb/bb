@@ -178,17 +178,18 @@ export function sortMarketplaceEntries(
 export function indexableMarketplaceCategories(
   manifest: MarketplaceV2Manifest,
 ): MarketplaceCategory[] {
-  return manifest.categories.filter((category) =>
-    manifest.plugins.some((entry) => entry.category === category.id),
+  const listed = new Set(
+    marketplaceCategoryOptions(manifest, manifest.plugins).map(
+      (option) => option.id,
+    ),
   );
+  return manifest.categories.filter((category) => listed.has(category.id));
 }
 
-export function marketplaceIndexPath(
-  category: MarketplaceCategory | undefined,
-): string {
-  return category === undefined
+export function marketplaceIndexPath(categoryId: string | undefined): string {
+  return categoryId === undefined
     ? "/marketplace"
-    : `/marketplace?category=${encodeURIComponent(category.id)}`;
+    : `/marketplace?category=${encodeURIComponent(categoryId)}`;
 }
 
 export function parseMarketplaceCategory(input: unknown): string | undefined {

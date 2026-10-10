@@ -8,12 +8,10 @@ import {
 import { siteHeadLinks } from "../landing/page-head.js";
 import marketplaceCss from "../marketplace/marketplace.css?url";
 import {
-  marketplaceIndexCategory,
-  marketplaceIndexMeta,
+  marketplaceIndexHead,
   validateMarketplaceSearch,
 } from "../marketplace/marketplace-route-data.js";
 import { getPublicMarketplace } from "../marketplace/marketplace-server.js";
-import { marketplaceIndexPath } from "../marketplace/marketplace-view-model.js";
 import {
   PublicMarketplaceNotFoundPage,
   PublicMarketplacePage,
@@ -30,7 +28,6 @@ export const Route = createFileRoute("/marketplace_")({
     renderedAt: Date.now(),
   }),
   head: ({ loaderData, match, matches }) => {
-    const available = loaderData?.status === "available";
     const lastMatch = matches.at(-1);
     const isIndex = lastMatch?.routeId === match.routeId;
     const notFound = matches.some(
@@ -47,20 +44,8 @@ export const Route = createFileRoute("/marketplace_")({
       };
     }
     if (!isIndex) return { links: sharedLinks };
-    const category = marketplaceIndexCategory(
-      loaderData,
-      match.search.category,
-    );
-    return {
-      meta: marketplaceIndexMeta(available, category),
-      links: [
-        ...sharedLinks,
-        {
-          rel: "canonical",
-          href: `https://getbb.app${marketplaceIndexPath(category)}`,
-        },
-      ],
-    };
+    const head = marketplaceIndexHead(loaderData, match.search.category);
+    return { meta: head.meta, links: [...sharedLinks, head.canonical] };
   },
   notFoundComponent: PublicMarketplaceNotFoundPage,
   component: MarketplaceRoute,

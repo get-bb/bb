@@ -51,7 +51,7 @@ export function sitemapXml(
     for (const category of indexableMarketplaceCategories(
       marketplace.manifest,
     )) {
-      pages.push({ path: marketplaceIndexPath(category) });
+      pages.push({ path: marketplaceIndexPath(category.id) });
     }
     for (const plugin of marketplace.manifest.plugins) {
       pages.push({

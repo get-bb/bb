@@ -41,6 +41,7 @@ import {
   marketplaceAuthorPath,
   marketplaceCategoryOptions,
   marketplaceDetailPath,
+  marketplaceIndexPath,
   marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
@@ -360,7 +361,7 @@ function Shelf({
     ? `#${shelf.id}`
     : notable
       ? "/marketplace?sort=recently-added"
-      : `/marketplace?category=${encodeURIComponent(shelf.id)}`;
+      : marketplaceIndexPath(shelf.id);
   return (
     <section
       id={builtIn ? shelf.id : undefined}
@@ -870,7 +871,7 @@ function MoreInCategory({
           )}
         </div>
         <MarketplaceLink
-          href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+          href={marketplaceIndexPath(categoryId)}
         >
           View all
         </MarketplaceLink>
@@ -926,7 +927,7 @@ export function PublicMarketplaceDetailPage({
           <MarketplaceLink href="/marketplace">Marketplace</MarketplaceLink>
           <span aria-hidden>/</span>
           <MarketplaceLink
-            href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+            href={marketplaceIndexPath(categoryId)}
           >
             {category}
           </MarketplaceLink>
@@ -960,7 +961,7 @@ export function PublicMarketplaceDetailPage({
               )}
               <MarketplaceLink
                 className="marketplace-detail-category"
-                href={`/marketplace?category=${encodeURIComponent(categoryId)}`}
+                href={marketplaceIndexPath(categoryId)}
               >
                 {category}
               </MarketplaceLink>

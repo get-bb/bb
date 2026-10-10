@@ -1,17 +1,15 @@
 import type { MouseEvent } from "react";
 
+import { plainSurfaceCopy } from "../../../../plugins/plugin-api-docs/src/surface-copy";
 import {
   SURFACE_GROUPS,
   type PluginSurface,
 } from "../../../../plugins/plugin-api-docs/src/surfaces";
 
 function surfaceDescription(surface: PluginSurface): string {
-  return surface.summary
-    .replace(/ With this, a plugin can:$/, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([a-z0-9-]+\)/g, "$1")
-    .replace(/\s*\{experimental\}/g, "")
-    .trim();
+  return plainSurfaceCopy(
+    surface.summary.replace(/ With this, a plugin can:$/, ""),
+  );
 }
 
 function pluginGuideSlideHref(slideId: string): string {

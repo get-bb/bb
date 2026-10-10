@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { plainSurfaceCopy } from "../../../../plugins/plugin-api-docs/src/surface-copy";
 import { SURFACE_GROUPS } from "../../../../plugins/plugin-api-docs/src/surfaces";
 import { pluginPageHref } from "./plugin-directory";
 import { PluginSurfaceIndex } from "./plugin-surface-index";
@@ -128,5 +129,17 @@ describe("Plugin Guide on the web", () => {
       /`|\]\(|\{experimental\}|With this, a plugin can/u,
     );
     expect(html).not.toContain("sr-only");
+  });
+
+  it.each([
+    ["Run `bb <name>` from a shell.", "Run bb <name> from a shell."],
+    [
+      "Open it from a [side-panel tab](thread-panel).",
+      "Open it from a side-panel tab.",
+    ],
+    ["Add a banner. {experimental}", "Add a banner."],
+    ["Plain copy stays as it is.", "Plain copy stays as it is."],
+  ])("turns surface copy %j into plain text", (copy, plain) => {
+    expect(plainSurfaceCopy(copy)).toBe(plain);
   });
 });

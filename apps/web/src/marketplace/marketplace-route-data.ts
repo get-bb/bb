@@ -49,12 +49,14 @@ export function marketplaceIndexMeta(
   const description =
     category === undefined
       ? MARKETPLACE_PAGE_DESCRIPTION
-      : `${category.description} Browse ${category.displayName} plugins for bb.`;
+      : [category.description, `Browse ${category.displayName} plugins for bb.`]
+          .filter((part) => part !== undefined)
+          .join(" ");
   return [
     { title },
     { name: "description", content: description },
     { name: "robots", content: available ? "index, follow" : "noindex" },
-    ...unfurlMeta(title, description, marketplaceIndexPath(category)),
+    ...unfurlMeta(title, description, marketplaceIndexPath(category?.id)),
   ];
 }
 
@@ -98,6 +100,20 @@ export function marketplaceAuthorRouteEntries(
 }
 
 const UNCACHED_REDIRECT_HEADERS = { "cache-control": "no-store" };
+
+export function marketplaceIndexHead(
+  marketplace: PublicMarketplaceData | undefined,
+  categoryId: string | undefined,
+) {
+  const category = marketplaceIndexCategory(marketplace, categoryId);
+  return {
+    meta: marketplaceIndexMeta(marketplace?.status === "available", category),
+    canonical: {
+      rel: "canonical",
+      href: `https://getbb.app${marketplaceIndexPath(category?.id)}`,
+    },
+  };
+}
 
 function pathSegmentCount(pathname: string): number {
   return pathname.split("/").filter((segment) => segment !== "").length;

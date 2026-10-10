@@ -13,6 +13,7 @@ import {
 import {
   marketplaceAuthorRouteEntries,
   marketplaceIndexCategory,
+  marketplaceIndexHead,
   marketplaceIndexMeta,
   marketplacePluginRouteEntry,
   validateMarketplaceSearch,
@@ -146,6 +147,35 @@ describe("marketplace routes", () => {
       ).toBeUndefined();
     }
   });
+
+  it("omits a missing category description from the meta description", () => {
+    const meta = marketplaceIndexMeta(true, {
+      id: "no-copy",
+      displayName: "No Copy",
+    });
+    expect(meta).toContainEqual({
+      name: "description",
+      content: "Browse No Copy plugins for bb.",
+    });
+    expect(JSON.stringify(meta)).not.toContain("undefined");
+  });
+
+  it.each([
+    { category: undefined, href: "https://getbb.app/marketplace" },
+    {
+      category: "code-and-reviews",
+      href: "https://getbb.app/marketplace?category=code-and-reviews",
+    },
+    { category: "future-tools", href: "https://getbb.app/marketplace" },
+    { category: "missing", href: "https://getbb.app/marketplace" },
+  ])(
+    "gives the marketplace index one canonical for category $category",
+    ({ category, href }) => {
+      expect(
+        marketplaceIndexHead(AVAILABLE_MARKETPLACE, category).canonical,
+      ).toEqual({ rel: "canonical", href });
+    },
+  );
 
   it("keeps the first category parameter and round-trips it", () => {
     const first = validateMarketplaceSearch({
