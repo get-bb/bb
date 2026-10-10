@@ -101,16 +101,15 @@ export function WhatsNewConfirmationNudge({
             <InlineConfirmation>
               Hidden until the next release
             </InlineConfirmation>
-            <span aria-hidden className="mx-1.5 text-xs text-subtle-foreground">
-              ·
+            <span className="mt-1 block">
+              <button
+                type="button"
+                onClick={onTurnOff}
+                className={QUIET_LINK_CLASS}
+              >
+                Turn off What&rsquo;s new
+              </button>
             </span>
-            <button
-              type="button"
-              onClick={onTurnOff}
-              className={QUIET_LINK_CLASS}
-            >
-              Turn off What&rsquo;s new
-            </button>
           </>
         ) : (
           <>
