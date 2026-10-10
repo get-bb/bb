@@ -36,10 +36,7 @@ import {
   ProviderCliBanner,
   providerCliBlockedReason,
 } from "@/components/promptbox/banner/ProviderCliBanner";
-import {
-  ProviderSignInBanner,
-  resolveProviderSignInWarning,
-} from "@/components/promptbox/banner/ProviderSignInBanner";
+import { resolveComposerSignInState } from "@/components/promptbox/composer-sign-in-state";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -706,24 +703,27 @@ function RootComposeSurface({
     enabled: rootProjectHostId !== null,
     ...(rootProjectHostId === null ? {} : { hostId: rootProjectHostId }),
   }).data?.providers;
-  const providerSignInWarning = useMemo(
+  const openSetupGuide = useOpenSetupGuide();
+  const composerSignInState = useMemo(
     () =>
       blockingProviderCliStatus === null
-        ? resolveProviderSignInWarning(
+        ? resolveComposerSignInState(
             providerStates?.find(
               (state) => state.providerId === selectedProviderId,
             ),
+            rootProjectHostId !== null && rootProjectHostId === primaryHostId
+              ? () => openSetupGuide("agent")
+              : null,
           )
         : null,
-    [blockingProviderCliStatus, providerStates, selectedProviderId],
-  );
-  const openSetupGuide = useOpenSetupGuide();
-  const handleProviderSignIn = useMemo(
-    () =>
-      rootProjectHostId !== null && rootProjectHostId === primaryHostId
-        ? () => openSetupGuide("agent")
-        : null,
-    [openSetupGuide, primaryHostId, rootProjectHostId],
+    [
+      blockingProviderCliStatus,
+      openSetupGuide,
+      primaryHostId,
+      providerStates,
+      rootProjectHostId,
+      selectedProviderId,
+    ],
   );
 
   useFixedPanelTabsStorageMaintenance();
@@ -1455,14 +1455,7 @@ function RootComposeSurface({
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
   const promptBanner = useMemo(() => {
-    if (blockingProviderCliStatus === null) {
-      return providerSignInWarning === null ? null : (
-        <ProviderSignInBanner
-          warning={providerSignInWarning}
-          onSignIn={handleProviderSignIn}
-        />
-      );
-    }
+    if (blockingProviderCliStatus === null) return null;
     return (
       <ProviderCliBanner
         displayName={blockingProviderCliStatus.displayName}
@@ -1485,8 +1478,6 @@ function RootComposeSurface({
     );
   }, [
     blockingProviderCliStatus,
-    handleProviderSignIn,
-    providerSignInWarning,
     rootProjectHostId,
     handleRunProviderCliAction,
     queuedJobKeys,
@@ -1521,9 +1512,11 @@ function RootComposeSurface({
     mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
     blockedReason:
-      blockingProviderCliStatus === null
-        ? undefined
-        : providerCliBlockedReason(blockingProviderCliStatus),
+      blockingProviderCliStatus !== null
+        ? providerCliBlockedReason(blockingProviderCliStatus)
+        : composerSignInState?.placeholder,
+    placeholder: composerSignInState?.placeholder,
+    blockedAction: composerSignInState?.blockedAction,
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,

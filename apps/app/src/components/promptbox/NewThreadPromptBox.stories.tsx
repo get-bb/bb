@@ -298,6 +298,34 @@ function UnsupportedCodexCliRow() {
   );
 }
 
+function SignedOutRow() {
+  const { value, mentionRanges, onChange } = useControlledValue("");
+  return (
+    <PromptStage>
+      <NewThreadPromptBoxUI
+        mentionMenuPlacement="bottom"
+        id="story-new-thread-signed-out"
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={noop}
+        isSubmitting={false}
+        disabled
+        disabledReason="Codex isn't signed in"
+        placeholder="Codex isn't signed in"
+        blockedAction={{ label: "Sign in", onAction: noop }}
+        autoFocus={false}
+        history={baseHistory}
+        typeahead={makeTypeahead()}
+        attachments={makeAttachments()}
+        modeConfig={baseModeConfig}
+        project={baseProject}
+        execution={baseExecution}
+      />
+    </PromptStage>
+  );
+}
+
 function MissingCodexCliRow() {
   const { value, mentionRanges, onChange } = useControlledValue(
     "Investigate the timeline pagination flicker.",
@@ -645,6 +673,12 @@ export function Overview() {
           hint="thread creation blocked; banner exposes Update action"
         >
           <UnsupportedCodexCliRow />
+        </StoryRow>
+        <StoryRow
+          label="agent signed out"
+          hint="the placeholder names the problem and the submit button becomes Sign in, which opens the setup guide's Agents step"
+        >
+          <SignedOutRow />
         </StoryRow>
         <StoryRow
           label="missing Codex CLI"
