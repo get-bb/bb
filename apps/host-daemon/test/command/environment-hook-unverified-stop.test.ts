@@ -1,12 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { expect, it, vi } from "vitest";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
-import {
-  cleanupTempDirs,
-  createHarness,
-  makeTempDir,
-} from "./dispatch-helpers.js";
+import { createHarness } from "./dispatch-helpers.js";
 
 vi.mock("../../src/environment-lifecycle-script.js", async (importOriginal) => {
   const actual =
@@ -27,8 +24,6 @@ vi.mock("../../src/environment-lifecycle-script.js", async (importOriginal) => {
       }),
   };
 });
-
-afterEach(cleanupTempDirs);
 
 it("answers unknown when a cancelled hook's processes could not be confirmed stopped", async () => {
   const path = await makeTempDir("bb-hook-unverified-");

@@ -1,8 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { formatFileSize, formatRelativeTime, splitSystemBody } from "./time.js";
+import type { DisplayComment } from "../../shared/contract.js";
+import {
+  commentByline,
+  formatFileSize,
+  formatRelativeTime,
+  splitSystemBody,
+} from "./time.js";
 
 const NOW = Date.parse("2026-07-15T12:00:00.000Z");
 const at = (offsetMs: number) => new Date(NOW - offsetMs).toISOString();
+
+const agentComment: DisplayComment = {
+  id: "01HZZZZZZZZZZZZZZZZZZZZZC1",
+  taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
+  kind: "agent",
+  authorName: "agent (thr_worker)",
+  presetName: null,
+  threadId: "thr_worker",
+  threadTitle: "Fix the login bug",
+  provider: null,
+  body: "Done",
+  notifiedCount: 0,
+  createdAt: "2026-07-15T00:00:00.000Z",
+};
+
+describe("commentByline", () => {
+  it.each<[string, Partial<DisplayComment>, ReturnType<typeof commentByline>]>([
+    [
+      "links an agent comment to its resolved thread",
+      {},
+      {
+        kind: "thread-link",
+        threadId: "thr_worker",
+        title: "Fix the login bug",
+      },
+    ],
+    [
+      "falls back to the author name when the thread title is unresolved",
+      { threadTitle: null },
+      { kind: "text", name: "agent (thr_worker)" },
+    ],
+    [
+      "never links a user comment even with a thread id and title",
+      { kind: "user", authorName: "You", threadTitle: "Should be ignored" },
+      { kind: "text", name: "You" },
+    ],
+  ])("%s", (_name, overrides, expected) => {
+    expect(commentByline({ ...agentComment, ...overrides })).toEqual(expected);
+  });
+});
 
 describe("formatRelativeTime", () => {
   it("covers the just-now/minutes/hours/days ladder", () => {

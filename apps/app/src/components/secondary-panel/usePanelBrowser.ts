@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import {
   openUrlByPreference,
@@ -26,6 +27,30 @@ export interface PanelBrowser {
   ) => void;
   open: ((url?: string) => void) | null;
   openUrl: (url: string) => boolean;
+}
+
+export function subscribeDesktopOpenRequests(
+  browserApi: Pick<BbDesktopBrowserApi, "onOpenTab" | "onScopedOpenTab"> | null,
+  {
+    browserTabIds,
+    isFocused,
+    openUrl,
+  }: {
+    browserTabIds: ReadonlySet<string>;
+    isFocused: boolean;
+    openUrl: (url: string) => void;
+  },
+): (() => void) | undefined {
+  if (browserApi === null) return;
+  if (browserApi.onScopedOpenTab) {
+    return browserApi.onScopedOpenTab(({ tabId, url }) => {
+      if (browserTabIds.has(tabId)) openUrl(url);
+    });
+  }
+  if (!isFocused) return;
+  return browserApi.onOpenTab(({ url }) => {
+    if (!isRoutePath({ path: url })) openUrl(url);
+  });
 }
 
 export function usePanelBrowser({
@@ -81,19 +106,15 @@ export function usePanelBrowser({
     () => new Set(browserTabs.map((tab) => tab.id)),
     [browserTabs],
   );
-  useEffect(() => {
-    const browserApi = getDesktopBrowserApi();
-    if (browserApi === null) return;
-    if (browserApi.onScopedOpenTab) {
-      return browserApi.onScopedOpenTab(({ tabId, url }) => {
-        if (browserTabIds.has(tabId)) openUrl(url);
-      });
-    }
-    if (!isFocused) return;
-    return browserApi.onOpenTab(({ url }) => {
-      if (!isRoutePath({ path: url })) openUrl(url);
-    });
-  }, [browserTabIds, isFocused, openUrl]);
+  useEffect(
+    () =>
+      subscribeDesktopOpenRequests(getDesktopBrowserApi(), {
+        browserTabIds,
+        isFocused,
+        openUrl,
+      }),
+    [browserTabIds, isFocused, openUrl],
+  );
 
   return {
     addressFocusRequest,

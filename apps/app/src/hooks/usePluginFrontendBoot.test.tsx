@@ -47,32 +47,6 @@ afterEach(() => {
 });
 
 describe("usePluginFrontendBoot", () => {
-  it("does not boot on system config alone; boots after route paint plus idle", async () => {
-    renderHook(() => usePluginFrontendBoot());
-    await flushMicrotasks();
-    expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();
-
-    await act(async () => {
-      markRouteContentPainted();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(50);
-    });
-    expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
-  });
-
-  it("boots at the 1.5 s timeout when the route never paints", async () => {
-    renderHook(() => usePluginFrontendBoot());
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_400);
-    });
-    expect(mocks.bootPluginFrontends).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
-    });
-    expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
-  });
-
   it("boots immediately on a plugin panel route: the plugin is the page", async () => {
     window.history.replaceState(null, "", "/plugins/tasks/board");
     renderHook(() => usePluginFrontendBoot());

@@ -200,8 +200,14 @@ describe("NewTabActions", () => {
     });
   });
 
-  it("uses the default order after stored data has an invalid shape", () => {
-    window.localStorage.setItem("bb.newTab.actionOrder", JSON.stringify({}));
+  it.each([
+    { shape: "a non-array", stored: {} },
+    { shape: "a non-string entry", stored: ["side-chat", 7] },
+  ])("uses the default order after stored data has $shape", ({ stored }) => {
+    window.localStorage.setItem(
+      "bb.newTab.actionOrder",
+      JSON.stringify(stored),
+    );
     const store = createStore();
 
     render(

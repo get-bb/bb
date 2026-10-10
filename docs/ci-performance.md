@@ -499,3 +499,31 @@ checkout then hit the same timeout. SDK checkouts now use `filter: blob:none`
 to retain commit history without historical file contents. A fresh fetch of all
 branches and tags completed with a 23 MB pack, and the unchanged SDK check passed
 against that full-history checkout.
+
+## Per-file test setup
+
+Server tests used to run all 143 migrations for each test that needed a database: 607
+migrations and about 58 seconds of CPU per run, at 80 ms each. `@bb/db/testing` now builds
+one migrated template per run in `globalSetup` and copies it in 0.4 ms. That leaves 24
+migrations per run: the template build itself, on-disk databases, and migration
+replays. A server test rejects new `createConnection(":memory:")` setups.
+
+In apps/app, about 400 of the roughly 595 files use jsdom. Each one runs isolated in a
+fresh fork. Per-file diagnostics on a loaded 16-core Mac show where the median file's time
+goes:
+
+- importing its own module graph: about 0.76 s;
+- the jsdom environment: about 0.5 s, mostly `require("jsdom")` (230–535 ms in a fresh
+  process, against 33 ms to construct a `JSDOM`);
+- the shared setup file: about 0.1 s;
+- the tests themselves: about 0.35 s.
+
+Two experiments on an 80-file jsdom sample did not pay off:
+
+- `vmForks` cut summed environment time from 41 s to 13 s and imports from 61 s to 40 s.
+  Wall time still rose from 10.8 s to 13.2 s, and six files failed.
+- Vite's dependency optimizer did not reduce imports (64 s against 57 s) and broke
+  `importOriginal` mocks.
+
+Merging small files would only remove the environment share. Reusing jsdom workers across
+files would cut it for every file, but it reverses the rule that DOM tests run isolated.

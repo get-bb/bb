@@ -1,12 +1,15 @@
-// @vitest-environment jsdom
-
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { renderHookStatically } from "@/test/render-hook-statically";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getActiveThreadPanelOpener,
-  resetActiveThreadPanelOpenerForTest,
-} from "@/components/plugin/plugin-thread-panel-navigation";
+import type { PluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
 import { usePanelPluginPanels } from "./usePanelPluginPanels";
+
+const publishThreadPanelOpener = vi.hoisted(() =>
+  vi.fn<(opener: PluginThreadPanelOpenHandler, isActive: boolean) => void>(),
+);
+
+vi.mock("@/components/plugin/plugin-thread-panel-navigation", () => ({
+  usePublishThreadPanelOpener: publishThreadPanelOpener,
+}));
 
 interface SurfaceCase {
   name: string;
@@ -28,7 +31,7 @@ const SURFACES: readonly SurfaceCase[] = [
 function renderSurface(surface: SurfaceCase, isFocused = true) {
   const openPluginPanel = vi.fn();
   const reveal = vi.fn();
-  const { result } = renderHook(() =>
+  const openThreadPanel = renderHookStatically(() =>
     usePanelPluginPanels({
       actions: surface.actions,
       isFocused,
@@ -37,28 +40,25 @@ function renderSurface(surface: SurfaceCase, isFocused = true) {
       slot: surface.slot,
     }),
   );
-  return { openPluginPanel, result, reveal };
+  return { openPluginPanel, openThreadPanel, reveal };
 }
 
 afterEach(() => {
-  cleanup();
-  resetActiveThreadPanelOpenerForTest();
+  publishThreadPanelOpener.mockReset();
   vi.restoreAllMocks();
 });
 
 describe.each(SURFACES)("panel plugin tabs on the $name", (surface) => {
   it("opens a registered action with its default title and JSON params", () => {
-    const { openPluginPanel, result, reveal } = renderSurface(surface);
-    let accepted = false;
-    act(() => {
-      accepted = result.current({
+    const { openPluginPanel, openThreadPanel, reveal } = renderSurface(surface);
+
+    expect(
+      openThreadPanel({
         pluginId: "demo",
         actionId: "board",
         params: { id: 7 },
-      });
-    });
-
-    expect(accepted).toBe(true);
+      }),
+    ).toBe(true);
     expect(openPluginPanel).toHaveBeenCalledWith({
       pluginId: "demo",
       actionId: "board",
@@ -70,16 +70,16 @@ describe.each(SURFACES)("panel plugin tabs on the $name", (surface) => {
 
   it("declines unknown actions and non-JSON params without revealing", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { openPluginPanel, result, reveal } = renderSurface(surface);
+    const { openPluginPanel, openThreadPanel, reveal } = renderSurface(surface);
 
-    expect(result.current({ pluginId: "demo", actionId: "missing" })).toBe(
+    expect(openThreadPanel({ pluginId: "demo", actionId: "missing" })).toBe(
       false,
     );
-    expect(result.current({ pluginId: "other", actionId: "board" })).toBe(
+    expect(openThreadPanel({ pluginId: "other", actionId: "board" })).toBe(
       false,
     );
     expect(
-      result.current({
+      openThreadPanel({
         pluginId: "demo",
         actionId: "board",
         params: { when: new Date() } as never,
@@ -89,13 +89,17 @@ describe.each(SURFACES)("panel plugin tabs on the $name", (surface) => {
     expect(reveal).not.toHaveBeenCalled();
   });
 
-  it("is the opener plugin commands use while the surface is focused", () => {
-    renderSurface(surface, false);
-    expect(getActiveThreadPanelOpener()).toBeNull();
+  it("publishes itself as the plugin command opener only while focused", () => {
+    const unfocused = renderSurface(surface, false);
+    expect(publishThreadPanelOpener).toHaveBeenLastCalledWith(
+      unfocused.openThreadPanel,
+      false,
+    );
 
-    cleanup();
-    const { openPluginPanel } = renderSurface(surface, true);
-    getActiveThreadPanelOpener()?.({ pluginId: "demo", actionId: "board" });
-    expect(openPluginPanel).toHaveBeenCalledTimes(1);
+    const focused = renderSurface(surface, true);
+    expect(publishThreadPanelOpener).toHaveBeenLastCalledWith(
+      focused.openThreadPanel,
+      true,
+    );
   });
 });

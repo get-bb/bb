@@ -3,15 +3,14 @@ import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-reg
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createConnection, migrate } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { createPluginRuntime } from "../../../src/services/plugins/plugin-runtime.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import { createMigratedConnection } from "@bb/db/testing";
 
 async function createRuntime() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   return createPluginRuntime({
     machineEnrollments: null,
     includedBuiltinNames: new Set(),

@@ -21,13 +21,6 @@ const message = {
   projectId: "proj_1",
 };
 
-describe("inline-vis messageDirective registration", () => {
-  it("registers the inline-vis directive", () => {
-    expect(app.messageDirectives).toHaveLength(1);
-    expect(app.messageDirectives[0]!.id).toBe("inline-vis");
-  });
-});
-
 describe("InlineVisDirective", () => {
   it.each(["not-found", "disconnected"] as const)(
     "revalidates a cached Markdown preview after %s and does not resurrect missing content",

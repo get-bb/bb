@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
-  createConnection,
   createProject,
   createThread,
   listStoredEventRows,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { parseStoredEvent } from "../../src/services/threads/thread-data.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

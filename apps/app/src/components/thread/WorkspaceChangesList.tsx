@@ -26,6 +26,19 @@ const WORKSPACE_CHANGE_ROW_CLASS =
 
 export const WORKSPACE_CHANGES_LIST_MAX_ROWS = 200;
 
+export function capWorkspaceChangedFiles(
+  files: readonly WorkspaceChangedFile[],
+): {
+  visibleFiles: readonly WorkspaceChangedFile[];
+  hiddenFileCount: number;
+} {
+  const visibleFiles =
+    files.length > WORKSPACE_CHANGES_LIST_MAX_ROWS
+      ? files.slice(0, WORKSPACE_CHANGES_LIST_MAX_ROWS)
+      : files;
+  return { visibleFiles, hiddenFileCount: files.length - visibleFiles.length };
+}
+
 function formatHiddenFileCount(count: number): string {
   return `${count.toLocaleString()} more ${count === 1 ? "file" : "files"} not shown`;
 }
@@ -89,11 +102,7 @@ export function WorkspaceChangesList({
     return <EmptyState message="No changed files detected." />;
   }
 
-  const visibleFiles =
-    files.length > WORKSPACE_CHANGES_LIST_MAX_ROWS
-      ? files.slice(0, WORKSPACE_CHANGES_LIST_MAX_ROWS)
-      : files;
-  const hiddenFileCount = files.length - visibleFiles.length;
+  const { visibleFiles, hiddenFileCount } = capWorkspaceChangedFiles(files);
 
   return (
     <ul className={cn("space-y-1 overflow-auto", className)}>

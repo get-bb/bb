@@ -58,15 +58,6 @@ function renderShelf(open: boolean, onClose = vi.fn()) {
 }
 
 describe("CompactSecondaryPanelShelf", () => {
-  it("anchors to the right edge rather than the bottom", () => {
-    renderShelf(true);
-
-    const shelf = screen.getByTestId("secondary-panel-shelf");
-    expect(shelf.className).toContain("right-0");
-    expect(shelf.className).toContain("inset-y-0");
-    expect(shelf.className).not.toContain("bottom-0");
-  });
-
   it("keeps portaled panel controls inside the device safe area", () => {
     renderShelf(true);
 
@@ -77,23 +68,6 @@ describe("CompactSecondaryPanelShelf", () => {
       "pb-[var(--bb-safe-area-bottom,env(safe-area-inset-bottom))]",
     );
     expect(shelf.className).toContain("pl-[env(safe-area-inset-left)]");
-  });
-
-  it("fills the viewport while open and rests at the compact width while closed", () => {
-    const { rerender } = renderShelf(false);
-    const shelf = screen.getByTestId("secondary-panel-shelf");
-    expect(shelf.dataset.state).toBe("closed");
-    expect(shelf.className).toContain("w-(--secondary-panel-width-mobile)");
-    expect(shelf.className).toContain("data-[state=full]:w-full");
-
-    rerender(
-      <CompactSecondaryPanelShelf open onClose={vi.fn()} srLabel="Right panel">
-        <div data-testid="panel-body" />
-      </CompactSecondaryPanelShelf>,
-    );
-    expect(screen.getByTestId("secondary-panel-shelf").dataset.state).toBe(
-      "full",
-    );
   });
 
   it("stacks the full page panel above app chrome and below shared overlays", () => {

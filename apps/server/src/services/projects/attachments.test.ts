@@ -1,15 +1,10 @@
 import type { PromptInput } from "@bb/domain";
-import {
-  createConnection,
-  getProjectAttachment,
-  migrate,
-  projects,
-} from "@bb/db";
-import { beforeEach } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { getProjectAttachment, projects, type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
+import { makeTempDir } from "@bb/test-helpers";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   copyProjectAttachments,
   readAttachment,
@@ -17,11 +12,9 @@ import {
   storeAttachment,
 } from "./attachments.js";
 
-const tempDirs: string[] = [];
-let db: ReturnType<typeof createConnection>;
+let db: DbConnection;
 beforeEach(() => {
-  db = createConnection(":memory:");
-  migrate(db);
+  db = createMigratedConnection();
   for (const id of ["proj_test", "proj_source", "proj_target"])
     db.insert(projects)
       .values({
@@ -35,17 +28,8 @@ beforeEach(() => {
       .run();
 });
 
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "bb-attachments-"));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
+afterEach(() => {
   db.$client.close();
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
 });
 
 describe("project attachments", () => {

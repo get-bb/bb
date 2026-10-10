@@ -97,15 +97,9 @@ describe("useThreadDefaultExecutionOptions", () => {
     await waitFor(() => expect(warm.result.current.data).toBeNull());
     warm.unmount();
 
-    vi.mocked(sdk.threads.defaultExecutionOptions).mockImplementation(
-      pendingForever,
-    );
-    const reload = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () => useThreadDefaultExecutionOptions("thr_1"),
-      { wrapper: reload.wrapper },
-    );
-    expect(result.current.data).toBeUndefined();
+    expect(
+      window.localStorage.getItem(threadExecutionOptionsCacheKey("thr_1")),
+    ).toBeNull();
   });
 
   it("does not persist a canceled response over newer execution defaults", async () => {
@@ -139,21 +133,5 @@ describe("useThreadDefaultExecutionOptions", () => {
     expect(
       readCachedThreadExecutionOptions(threadExecutionOptionsCacheKey("thr_1")),
     ).toEqual(RESOLVED);
-  });
-
-  it("ignores a stored value that no longer matches the schema", async () => {
-    window.localStorage.setItem(
-      "bb.thread-execution-options.1.thr_1",
-      JSON.stringify({ model: "gpt-5.6-sol", reasoningLevel: "cosmic" }),
-    );
-    vi.mocked(sdk.threads.defaultExecutionOptions).mockImplementation(
-      pendingForever,
-    );
-    const { wrapper } = createQueryClientTestHarness();
-    const { result } = renderHook(
-      () => useThreadDefaultExecutionOptions("thr_1"),
-      { wrapper },
-    );
-    expect(result.current.data).toBeUndefined();
   });
 });

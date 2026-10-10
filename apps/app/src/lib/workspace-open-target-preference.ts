@@ -294,6 +294,18 @@ export function resolvePreferredWorkspaceOpenFileTarget(
   });
 }
 
+export function shouldOverrideUnknownOpenTargetPreference(
+  preferredTargetId: StoredWorkspaceOpenTargetPreference,
+  targets: WorkspaceOpenTarget[] | undefined,
+): boolean {
+  return (
+    preferredTargetId !== null &&
+    targets !== undefined &&
+    !targets.some((target) => target.id === preferredTargetId) &&
+    targets.some((target) => target.id === "default-app")
+  );
+}
+
 function useOverrideUnknownOpenTargetPreference(
   preferredTargetId: StoredWorkspaceOpenTargetPreference,
   setPreferredTargetId: (targetId: StoredWorkspaceOpenTargetPreference) => void,
@@ -301,10 +313,7 @@ function useOverrideUnknownOpenTargetPreference(
 ): void {
   useEffect(() => {
     if (
-      preferredTargetId === null ||
-      targets === undefined ||
-      targets.some((target) => target.id === preferredTargetId) ||
-      !targets.some((target) => target.id === "default-app")
+      !shouldOverrideUnknownOpenTargetPreference(preferredTargetId, targets)
     ) {
       return;
     }

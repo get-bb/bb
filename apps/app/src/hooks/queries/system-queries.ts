@@ -212,14 +212,12 @@ export function useKnownProviderModelCatalogScope(
   return undefined;
 }
 
-export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+export function systemProvidersQueryOptions(args: UseSystemProvidersArgs = {}) {
   const capability = args.capability ?? null;
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
-  const enabled = args.enabled ?? true;
-  useSystemRealtimeSubscription({ enabled });
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
-  return useQuery<ProviderInfo[]>({
+  return queryOptions<ProviderInfo[]>({
     queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
     queryFn: async ({ signal }) => {
       const capabilityFilter =
@@ -242,7 +240,7 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
       }
       return providers;
     },
-    enabled,
+    enabled: args.enabled ?? true,
     staleTime: 60_000,
     placeholderData: () => {
       const remembered = readCachedProviderList(providersCacheKey);
@@ -256,6 +254,28 @@ export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
   });
 }
 
+export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+  useSystemRealtimeSubscription({ enabled: args.enabled ?? true });
+  return useQuery(systemProvidersQueryOptions(args));
+}
+
+export function resolveSystemProviderInfo({
+  providers,
+  providerId,
+  queryClient,
+}: {
+  providers: readonly ProviderInfo[] | undefined;
+  providerId: string | undefined;
+  queryClient: QueryClient;
+}): ProviderInfo | null {
+  return (
+    providers?.find((provider) => provider.id === providerId) ??
+    (providerId === undefined
+      ? null
+      : findCachedProviderInfo(queryClient, providerId))
+  );
+}
+
 export function useSystemProviderInfo({
   providerId,
   ...args
@@ -265,12 +285,11 @@ export function useSystemProviderInfo({
     ...args,
     enabled: (args.enabled ?? true) && providerId !== undefined,
   });
-  return (
-    providersQuery.data?.find((provider) => provider.id === providerId) ??
-    (providerId === undefined
-      ? null
-      : findCachedProviderInfo(queryClient, providerId))
-  );
+  return resolveSystemProviderInfo({
+    providers: providersQuery.data,
+    providerId,
+    queryClient,
+  });
 }
 
 async function requestOfferedProviderExecutionOptions({
@@ -404,29 +423,26 @@ export function prefetchSystemExecutionOptions(
   }
 }
 
-export function useSystemExecutionOptions(
+export function liveSystemExecutionOptionsQueryOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
   const providerId = args.providerId ?? null;
-  const enabled = args.enabled ?? true;
-  useSystemRealtimeSubscription({ enabled });
-  useHostListRealtimeSubscription({ enabled });
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
   const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
     providerId,
   });
-  return useQuery({
+  return queryOptions({
     ...systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
       writeLastKnown: true,
     }),
-    enabled,
+    enabled: args.enabled ?? true,
     placeholderData: (previousData, previousQuery) =>
       resolveExecutionOptionsPlaceholder({
         previousData,
@@ -438,6 +454,15 @@ export function useSystemExecutionOptions(
         providersCacheKey,
       }),
   });
+}
+
+export function useSystemExecutionOptions(
+  args: UseSystemExecutionOptionsArgs = {},
+) {
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+  useHostListRealtimeSubscription({ enabled });
+  return useQuery(liveSystemExecutionOptionsQueryOptions(args));
 }
 
 export function systemConfigQueryOptions() {
@@ -525,11 +550,11 @@ interface UseHostProviderCliStatusArgs {
   enabled?: boolean;
 }
 
-export function useHostProviderCliStatus({
+export function hostProviderCliStatusQueryOptions({
   hostId,
   enabled,
 }: UseHostProviderCliStatusArgs) {
-  return useQuery<ProviderCliStatusResponse>({
+  return queryOptions<ProviderCliStatusResponse>({
     queryKey: hostProviderCliStatusQueryKey(hostId),
     queryFn: ({ signal }) =>
       sdk.hosts.providerCliStatus({
@@ -545,12 +570,16 @@ export function useHostProviderCliStatus({
   });
 }
 
-export function useSystemProviderStates(
+export function useHostProviderCliStatus(args: UseHostProviderCliStatusArgs) {
+  return useQuery(hostProviderCliStatusQueryOptions(args));
+}
+
+export function systemProviderStatesQueryOptions(
   options: UseSystemProviderStatesOptions = {},
 ) {
   const environmentId = options.environmentId ?? null;
   const hostId = options.hostId ?? null;
-  return useQuery<SystemProviderStatesResponse>({
+  return queryOptions<SystemProviderStatesResponse>({
     queryKey: systemProviderStatesQueryKey({ environmentId, hostId }),
     queryFn: ({ signal }) =>
       sdk.system.providerStates({
@@ -563,6 +592,12 @@ export function useSystemProviderStates(
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
   });
+}
+
+export function useSystemProviderStates(
+  options: UseSystemProviderStatesOptions = {},
+) {
+  return useQuery(systemProviderStatesQueryOptions(options));
 }
 
 export function useSystemProviderCatalog() {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolvePreferredWorkspaceOpenFileTarget,
   resolvePreferredWorkspaceOpenTarget,
+  shouldOverrideUnknownOpenTargetPreference,
 } from "./workspace-open-target-preference";
 
 const finderTarget: WorkspaceOpenTarget = {
@@ -191,5 +192,22 @@ describe("resolvePreferredWorkspaceOpenFileTarget", () => {
         targets: [defaultAppTarget, remoteVscodeTarget],
       }),
     ).toBe(remoteVscodeTarget);
+  });
+});
+
+describe("shouldOverrideUnknownOpenTargetPreference", () => {
+  it("overrides an unknown stored target id when Default App is offered", () => {
+    expect(
+      shouldOverrideUnknownOpenTargetPreference("removed-editor", [
+        vscodeTarget,
+        defaultAppTarget,
+      ]),
+    ).toBe(true);
+  });
+
+  it("does not override preferences before available targets load", () => {
+    expect(
+      shouldOverrideUnknownOpenTargetPreference("removed-editor", undefined),
+    ).toBe(false);
   });
 });

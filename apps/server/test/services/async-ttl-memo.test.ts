@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAsyncTtlMemo } from "../../src/services/lib/async-ttl-memo.js";
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
-}
+import { createDeferredPromise } from "@bb/test-helpers";
 
 describe("createAsyncTtlMemo", () => {
   it("starts TTL at completion and shares cold and refresh bursts", async () => {
@@ -18,7 +9,7 @@ describe("createAsyncTtlMemo", () => {
       ttlMs: 100,
       now: () => now,
     });
-    const first = deferred<string>();
+    const first = createDeferredPromise<string>();
     const load = vi.fn(() => first.promise);
     const readers = Array.from({ length: 10 }, () => cache.run("key", load));
     now = 500;
@@ -27,7 +18,7 @@ describe("createAsyncTtlMemo", () => {
     now = 599;
     expect(await cache.run("key", load)).toBe("old");
     expect(load).toHaveBeenCalledTimes(1);
-    const next = deferred<string>();
+    const next = createDeferredPromise<string>();
     load.mockImplementation(() => next.promise);
     const refreshes = Array.from({ length: 10 }, () =>
       cache.run("key", load, true),
@@ -36,7 +27,7 @@ describe("createAsyncTtlMemo", () => {
     next.resolve("new");
     expect(await Promise.all(refreshes)).toEqual(Array(10).fill("new"));
     now = 699;
-    const expired = deferred<string>();
+    const expired = createDeferredPromise<string>();
     load.mockImplementation(() => expired.promise);
     let completed = false;
     const waiting = cache.run("key", load).then((value) => {
@@ -62,8 +53,8 @@ describe("createAsyncTtlMemo", () => {
         ttlMs: 100,
         now: () => 0,
       });
-      const stale = deferred<string>();
-      const fresh = deferred<string>();
+      const stale = createDeferredPromise<string>();
+      const fresh = createDeferredPromise<string>();
       const before = cache.run("key", () => stale.promise);
       if (operation === "clear") cache.clear();
       else cache.invalidateWhere((key) => key === "key");
@@ -95,14 +86,14 @@ describe("createAsyncTtlMemo", () => {
     });
     await cache.run("key", async () => "old");
     now = 100;
-    const failed = deferred<string>();
+    const failed = createDeferredPromise<string>();
     const load = vi.fn(() => failed.promise);
     expect(await cache.run("key", load)).toBe("old");
     expect(await cache.run("key", load)).toBe("old");
     expect(load).toHaveBeenCalledTimes(1);
     failed.reject(new Error("offline"));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const next = deferred<string>();
+    const next = createDeferredPromise<string>();
     load.mockImplementation(() => next.promise);
     expect(await cache.run("key", load)).toBe("old");
     expect(load).toHaveBeenCalledTimes(2);
@@ -111,7 +102,7 @@ describe("createAsyncTtlMemo", () => {
       expect(await cache.run("key", load)).toBe("new"),
     );
     now = 300;
-    const forced = deferred<string>();
+    const forced = createDeferredPromise<string>();
     load.mockImplementation(() => forced.promise);
     const refreshed = cache.run("key", load, true);
     const waiting = cache.run("key", load);
@@ -123,7 +114,7 @@ describe("createAsyncTtlMemo", () => {
 
   it("retries rejected and synchronously throwing lookups", async () => {
     const cache = createAsyncTtlMemo<string, string>({ ttlMs: 100 });
-    const failed = deferred<string>();
+    const failed = createDeferredPromise<string>();
     const first = cache.run("key", () => failed.promise);
     const second = cache.run("key", () => Promise.resolve("wrong"));
     failed.reject(new Error("offline"));

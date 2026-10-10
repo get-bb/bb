@@ -5,7 +5,7 @@ import {
   replaceStoredUiPreference,
   type DbConnection,
 } from "../../src/index.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 describe("ui preferences data", () => {
   let db: DbConnection;

@@ -12,12 +12,8 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  createConnection,
-  migrate,
-  upsertInstalledPlugin,
-  type DbConnection,
-} from "@bb/db";
+import { upsertInstalledPlugin, type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
@@ -68,8 +64,7 @@ describe("prebuilt server bundle loading", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-prebuilt-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -237,8 +232,7 @@ export default function plugin() {
     const linkedDataDir = join(workDir, "linked-data");
     await mkdir(realDataDir);
     await symlink(realDataDir, linkedDataDir, "dir");
-    const linkedDb = createConnection(":memory:");
-    migrate(linkedDb);
+    const linkedDb = createMigratedConnection();
     const linkedService = createPluginService({
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),

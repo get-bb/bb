@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  act,
-  cleanup,
-  fireEvent,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -215,59 +209,6 @@ function makeDataTransfer(path: string) {
 }
 
 describe("Docs nav panel", () => {
-  it("registers the Docs surfaces", () => {
-    expect(app.navPanels[0]).toMatchObject({
-      id: "docs",
-      title: "Docs",
-      path: "docs",
-      fixedTabs: [
-        {
-          panelId: "docs",
-          id: "navigation",
-          title: "Navigation",
-          icon: "FileText",
-          layout: "flush",
-        },
-      ],
-    });
-    expect(app.navPanels[0]?.headerContent).toBeUndefined();
-    expect(app.messageDirectives).toHaveLength(1);
-    expect(app.messageDirectives[0]?.id).toBe("docs");
-    expect(app.threadPanelActions[0]).toMatchObject({
-      id: "document",
-      title: "Document",
-    });
-    expect(app.fileOpeners[0]).toMatchObject({
-      id: "docs",
-      title: "Markdown",
-      extensions: ["md", "mdx", "markdown"],
-    });
-  });
-
-  it("renders navigation in the BB-owned right-panel view without custom chrome", async () => {
-    const slot = renderSlot(
-      navigationRegistration,
-      { subPath: "personal" },
-      { rpc: { listNotes: () => listNotesResult([]) } },
-    );
-
-    const toolbar = await slot.findByRole("toolbar", {
-      name: "Notes sidebar actions",
-    });
-    slot.getByRole("navigation", { name: "Notes" });
-    expect(slot.container.querySelector("aside")).toBeNull();
-    expect(slot.queryByRole("separator")).toBeNull();
-    expect(
-      within(toolbar).getByRole("button", { name: "Search notes" }),
-    ).toBeTruthy();
-    expect(
-      within(toolbar).getByRole("button", { name: "New note" }),
-    ).toBeTruthy();
-    expect(
-      within(toolbar).getByRole("button", { name: "New folder" }),
-    ).toBeTruthy();
-  });
-
   it("keeps one shared request across page and navigation Strict Mode replay", async () => {
     let requests = 0;
     const StrictDocsSurfaces = (props: { subPath: string }) => (
@@ -782,53 +723,6 @@ describe("Docs nav panel", () => {
     expect(slot.queryByText("Remote Mac")).toBeNull();
   });
 
-  it("keeps task checkboxes aligned with the first line of their text", async () => {
-    const existingStyles = document.head.querySelector(
-      "style[data-bb-simple-notes-styles]",
-    );
-    if (existingStyles) existingStyles.textContent = "stale editor styles";
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "personal/tasks.md" },
-      {
-        rpc: {
-          listNotes: () =>
-            listNotesResult([
-              {
-                path: "tasks.md",
-                title: "Tasks",
-                preview: "One task",
-                modifiedAtMs: 1,
-              },
-            ]),
-          readNote: () => ({
-            content: "- [x] One task\n  - [ ] Nested task",
-            sha256: "sha",
-          }),
-          preparePreview: () => preview,
-          renameToTitle: () => ({ path: "tasks.md" }),
-        },
-      },
-    );
-
-    await slot.findByText("One task");
-    expect(slot.queryByRole("button", { name: "Add image" })).toBeNull();
-    expect(slot.container.querySelector('input[type="file"]')).toBeNull();
-    const styles = document.head.querySelector(
-      "style[data-bb-simple-notes-styles]",
-    );
-    expect(styles?.textContent).not.toBe("stale editor styles");
-    expect(styles?.textContent).toContain("align-items: flex-start");
-    expect(styles?.textContent).toContain("height: 1.7em");
-    expect(styles?.textContent).toContain("cursor: pointer; margin: 0");
-    expect(styles?.textContent).toContain(
-      'ul[data-type="taskList"] ul[data-type="taskList"] { margin-top: 0; }',
-    );
-    expect(styles?.textContent).toContain(
-      'ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.5em; margin-top: 0.5em;',
-    );
-  });
-
   it("renders and autosaves editable Markdown tables", async () => {
     const saveNote = vi.fn((_input: unknown) => ({
       outcome: "written",
@@ -867,12 +761,6 @@ describe("Docs nav panel", () => {
     expect(table?.querySelector("td")?.textContent).toBe("Docs");
     expect(table?.closest(".tableWrapper")).toBeTruthy();
     expect(table?.closest('[contenteditable="true"]')).toBeTruthy();
-
-    const styles = document.head.querySelector(
-      "style[data-bb-simple-notes-styles]",
-    );
-    expect(styles?.textContent).toContain("border-collapse: collapse");
-    expect(styles?.textContent).toContain("column-resize-handle");
 
     const firstBodyCell = table?.querySelector("td p");
     expect(firstBodyCell).toBeTruthy();

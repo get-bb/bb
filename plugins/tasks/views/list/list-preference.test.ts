@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryStorage } from "../../test-fixtures.js";
 import {
   DEFAULT_LIST_PREFERENCE,
   LIST_PREFERENCE_STORAGE_KEY,
@@ -9,11 +9,15 @@ import {
   storeListPreference,
 } from "./list-preference.js";
 
+let storage = createMemoryStorage();
+
 beforeEach(() => {
-  window.localStorage.clear();
+  storage = createMemoryStorage();
+  vi.stubGlobal("window", { localStorage: storage });
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -111,16 +115,16 @@ describe("loadListPreference / storeListPreference", () => {
   });
 
   it("recovers from corrupt JSON and invalid document shapes", () => {
-    window.localStorage.setItem(LIST_PREFERENCE_STORAGE_KEY, "{not-json");
+    storage.setItem(LIST_PREFERENCE_STORAGE_KEY, "{not-json");
     expect(loadListPreference("all").sort).toBe("manual");
 
-    window.localStorage.setItem(
+    storage.setItem(
       LIST_PREFERENCE_STORAGE_KEY,
       JSON.stringify({ version: 1, scopes: "nope" }),
     );
     expect(loadListPreference("all").filters.statuses).toEqual([]);
 
-    window.localStorage.setItem(
+    storage.setItem(
       LIST_PREFERENCE_STORAGE_KEY,
       JSON.stringify({
         version: 1,
@@ -149,7 +153,7 @@ describe("loadListPreference / storeListPreference", () => {
         },
       },
     });
-    window.localStorage.setItem(LIST_PREFERENCE_STORAGE_KEY, future);
+    storage.setItem(LIST_PREFERENCE_STORAGE_KEY, future);
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
       sort: "due",
@@ -158,13 +162,11 @@ describe("loadListPreference / storeListPreference", () => {
       filters: { statuses: ["done"], priorities: [], labelNames: [] },
       sort: "manual",
     });
-    expect(window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY)).toBe(
-      future,
-    );
+    expect(storage.getItem(LIST_PREFERENCE_STORAGE_KEY)).toBe(future);
   });
 
   it("swallows storage read failures", () => {
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    vi.spyOn(storage, "getItem").mockImplementation(() => {
       throw new DOMException("Storage is disabled", "SecurityError");
     });
     expect(loadListPreference("all")).toEqual({

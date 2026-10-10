@@ -69,6 +69,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/culori": "^4.0.1",

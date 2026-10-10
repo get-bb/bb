@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyFixedPanelTabsUpdate,
   removeFixedRightTerminalTabInState,
   upsertTerminalTab,
 } from "./fixed-panel-tabs";
@@ -47,5 +48,31 @@ describe("plugin right-panel Terminal tabs", () => {
       removeFixedRightTerminalTabInState(state, terminal.terminalId).secondary
         .activeTabId,
     ).toBe(after.id);
+  });
+});
+
+describe("applyFixedPanelTabsUpdate", () => {
+  it("skips the write when an update leaves the state unchanged", () => {
+    const tab = createTerminalFixedPanelTab({ terminalId: "term_1" });
+    const current = createEmptyFixedPanelTabsState({
+      lastUsedAt: 1,
+      secondary: { activeTabId: tab.id, isOpen: true, tabs: [tab] },
+    });
+
+    expect(applyFixedPanelTabsUpdate(current, (state) => state, 2)).toBeNull();
+    expect(
+      applyFixedPanelTabsUpdate(
+        current,
+        (state) => ({
+          ...state,
+          secondary: { ...state.secondary, isOpen: false },
+        }),
+        2,
+      ),
+    ).toEqual({
+      ...current,
+      lastUsedAt: 2,
+      secondary: { ...current.secondary, isOpen: false },
+    });
   });
 });

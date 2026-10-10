@@ -4,13 +4,6 @@ import {
   PUSH_NOTIFICATIONS_PLUGIN_DISABLED_STATUS,
 } from "./push-subscriptions-api";
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 const subscriptionRef = {
   subscriptionId: "sub_1",
   expoPushToken: "ExponentPushToken[abc]",
@@ -20,7 +13,7 @@ const subscriptionRef = {
 describe("createPushSubscriptionsApi", () => {
   it("registers through the push-notifications plugin RPC", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse(200, {
+      Response.json({
         ok: true,
         result: { id: "sub_1", created: true },
       }),
@@ -49,13 +42,16 @@ describe("createPushSubscriptionsApi", () => {
 
   it("treats a missing row as already removed", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-      jsonResponse(500, {
-        ok: false,
-        error: {
-          code: "handler_error",
-          message: "Push subscription not found: sub_1",
+      Response.json(
+        {
+          ok: false,
+          error: {
+            code: "handler_error",
+            message: "Push subscription not found: sub_1",
+          },
         },
-      }),
+        { status: 500 },
+      ),
     );
     const api = createPushSubscriptionsApi(fetchImpl);
 
@@ -74,10 +70,13 @@ describe("createPushSubscriptionsApi", () => {
     "maps the unavailable plugin response to the settings status",
     async ({ status, message }) => {
       const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
-        jsonResponse(status, {
-          ok: false,
-          error: message,
-        }),
+        Response.json(
+          {
+            ok: false,
+            error: message,
+          },
+          { status },
+        ),
       );
       const api = createPushSubscriptionsApi(fetchImpl);
 

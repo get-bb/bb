@@ -11,7 +11,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type PluginPendingInteraction } from "@bb/domain";
+import type { PluginPendingInteraction } from "@bb/domain";
 import type { PluginPendingInteractionProps } from "@get-bb/plugin-sdk";
 import {
   resetPluginSlotStoreForTest,
@@ -37,26 +37,10 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { sdk } from "@/lib/sdk";
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings },
-      keybindings: [1, 2, 3].map((digit) => ({
-        command: `question.select.${digit}`,
-        desktopOnly: false,
-        shortcut: {
-          key: String(digit),
-          mod: false,
-          meta: false,
-          control: false,
-          alt: false,
-          shift: false,
-        },
-        when: { all: ["questionOpen"], none: [] },
-      })),
-    },
-  }),
-}));
+vi.mock(
+  "@/hooks/queries/system-queries",
+  () => import("@/test/question-shortcuts-system-queries-mock"),
+);
 vi.mock("@/lib/bb-desktop", () => ({ getBbDesktopInfo: () => null }));
 const pane = vi.hoisted(() => ({ isFocused: true }));
 vi.mock("@/views/thread-detail/PaneContext", () => ({

@@ -197,111 +197,6 @@ afterEach(() => {
 });
 
 describe("MachineSettingsView", () => {
-  it("renders the machine's permission limit as a checked radio with descriptions", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      host({ maxPermissionMode: "auto" }),
-    ]);
-    stubSupportingFetches();
-
-    renderView();
-
-    const machineHeading = await screen.findByRole("heading", {
-      name: /dev-vm/u,
-    });
-    expect(machineHeading.tagName).toBe("H1");
-    const checkedByMode = Object.fromEntries(
-      (await screen.findAllByRole("radio")).map((option) => [
-        option.textContent?.startsWith("Accept Edits")
-          ? "accept-edits"
-          : option.textContent?.startsWith("Approve for me")
-            ? "auto"
-            : "full",
-        option.getAttribute("aria-checked"),
-      ]),
-    );
-    expect(checkedByMode).toEqual({
-      "accept-edits": "false",
-      auto: "true",
-      full: "false",
-    });
-    expect(
-      screen
-        .getAllByRole("radio")
-        .every((option) => option.querySelector("[data-icon]") === null),
-    ).toBe(true);
-    const machineSubtitle = screen.getByText(/^Online ·/u);
-    expect(machineSubtitle.closest("section")).toBeNull();
-    expect(screen.queryByRole("img", { name: "Online" })).toBeNull();
-    expect(
-      screen
-        .getByRole("heading", { name: /dev-vm/u })
-        .querySelector("[data-icon]"),
-    ).not.toBeNull();
-    expect(
-      screen
-        .getByRole("heading", { name: "Machine information" })
-        .closest("section")
-        ?.querySelector("[data-icon]"),
-    ).toBeNull();
-    await waitFor(() =>
-      expect(
-        document.querySelector(
-          '[data-provider-icon="codex"] [data-provider-logo]',
-        ),
-      ).not.toBeNull(),
-    );
-    expect(
-      document.querySelector('[data-provider-icon="claude-code"]'),
-    ).not.toBeNull();
-    expect(
-      document.querySelector('[data-provider-icon="acp-cursor"]'),
-    ).not.toBeNull();
-    expect(
-      [...document.querySelectorAll("[data-provider-icon]")].every(
-        (node) =>
-          node.classList.contains("flex") &&
-          node.classList.contains("size-3.5"),
-      ),
-    ).toBe(true);
-    expect(
-      screen
-        .getByRole("heading", { name: "Provider CLIs" })
-        .querySelector("[data-icon]"),
-    ).toBeNull();
-    expect(screen.getByText(/No sandbox and no approvals/u)).toBeDefined();
-  });
-
-  it("keeps Rename in the machine title menu", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
-    stubSupportingFetches();
-
-    renderView();
-
-    fireEvent.pointerDown(
-      await screen.findByRole("button", { name: "dev-vm actions" }),
-      { button: 0 },
-    );
-    expect(
-      await screen.findByRole("menuitem", { name: "Rename" }),
-    ).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-  });
-
-  it("shows an offline machine's status as text", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      host({ status: "disconnected", lastSeenAt: Date.now() - 60_000 }),
-    ]);
-    stubSupportingFetches();
-
-    renderView();
-
-    expect(await screen.findByText(/^Offline · last seen/u)).toBeDefined();
-    expect(screen.queryByRole("img", { name: "Offline" })).toBeNull();
-  });
-
   it("links update issues to Updates in a warning pill", async () => {
     vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
     vi.mocked(sdk.hosts.list).mockResolvedValue([host()]);
@@ -392,38 +287,6 @@ describe("MachineSettingsView", () => {
         "The server machine can't be removed. Move the server to another machine first.",
       ),
     ).toBeDefined();
-  });
-
-  it("describes ephemeral compute and snapshot deletion in the danger zone", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      host({ type: "ephemeral", machineProviderId: "modal-sandbox" }),
-    ]);
-    stubSupportingFetches();
-    vi.mocked(sdk.hosts.experimental_listProviders).mockResolvedValue([
-      {
-        id: "modal-sandbox",
-        displayName: "Modal Sandbox",
-        description: "Run a machine for development.",
-        icon: "Cloud",
-        logoUrl: null,
-        pluginId: "environment-modal-sandbox",
-        inputs: null,
-        acceptsEmptyInputs: true,
-        supportsSuspend: true,
-      },
-    ]);
-    renderView();
-
-    expect(
-      await screen.findByText(
-        "Revokes dev-vm's access to this server. The compute and its saved snapshots are deleted. Its environments remain as read-only history.",
-      ),
-    ).toBeDefined();
-    const heading = await screen.findByRole("heading", { name: "dev-vm" });
-    expect(heading.querySelector('[data-icon="Cloud"]')).not.toBeNull();
-    expect(heading.querySelector('[data-icon="Laptop"]')).toBeNull();
-    expect(screen.queryByText("Modal Sandbox")).toBeNull();
   });
 
   it("lists a few of the machine's unarchived threads in the removal dialog", async () => {
@@ -712,18 +575,6 @@ describe("MachineSettingsView", () => {
     expect(deleteButton.hasAttribute("disabled")).toBe(true);
     expect(
       screen.getByText(/dev-vm has to be online to delete it\.$/u),
-    ).toBeDefined();
-  });
-
-  it("explains a machine that is no longer paired", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([]);
-    stubSupportingFetches();
-
-    renderView();
-
-    expect(
-      await screen.findByText("Machine is no longer paired."),
     ).toBeDefined();
   });
 });

@@ -9,6 +9,35 @@ export interface HeldReadStatus {
 
 export type ThreadUnreadPredicate = (thread: SidebarThread) => boolean;
 
+let lastHeldReadStatus: HeldReadStatus | null = null;
+
+export function rememberHeldReadStatus(held: HeldReadStatus | null): void {
+  lastHeldReadStatus = held;
+}
+
+export function restoreHeldReadStatus(
+  selectedThreadId: string | undefined,
+): HeldReadStatus | null {
+  return lastHeldReadStatus?.threadId === selectedThreadId
+    ? lastHeldReadStatus
+    : null;
+}
+
+export function resolveHeldReadStatus(
+  held: HeldReadStatus | null,
+  threads: readonly SidebarThread[],
+  selectedThreadId: string | undefined,
+): HeldReadStatus | null {
+  if (held?.threadId === selectedThreadId) {
+    return held;
+  }
+  const thread =
+    selectedThreadId === undefined
+      ? undefined
+      : threads.find((candidate) => candidate.id === selectedThreadId);
+  return thread ? { threadId: thread.id, isUnread: thread.isUnread } : null;
+}
+
 export function createThreadUnreadPredicate(
   held: HeldReadStatus | null,
 ): ThreadUnreadPredicate {

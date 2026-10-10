@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { RESERVED_AGENT_TOOL_NAMES } from "@get-bb/plugin-sdk/internal/host-policy";
@@ -66,8 +67,7 @@ describe("bb.agents.registerTool", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-test-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),
@@ -569,8 +569,7 @@ describe("bb.agents.contributeInstructions", () => {
   let service: PluginService;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
     service = createPluginService({
       aiServices: createAiServiceRegistry(),

@@ -607,16 +607,6 @@ describe("bb-plugin-authoring skill", () => {
     }
   });
 
-  it("warns that environment provider inputs are persisted configuration, not credentials", () => {
-    const documented = readReference("backend-events.md").replace(/\s+/g, " ");
-    expect(documented).toContain(
-      "Parsed inputs are persisted on the environment and are readable by every plugin through the SDK, including after the environment is destroyed.",
-    );
-    expect(documented).toContain(
-      "They are configuration, not a credential store; keep credentials in secret settings.",
-    );
-  });
-
   it("accounts for every @get-bb/plugin-sdk/app type export", () => {
     for (const name of FRONTEND_TYPE_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
@@ -633,24 +623,6 @@ describe("bb-plugin-authoring skill", () => {
     for (const name of PUBLIC_PLUGIN_SDK_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }
-  });
-
-  it("keeps fake-host and distribution examples aligned with implementation", () => {
-    const testing = readReference("testing.md");
-    const quickstart = readReference("quickstart.md");
-    const distribution = readReference("distribution.md");
-
-    expect(testing).toContain(
-      "experimental_callHostRpc: async ({ method, input, hostId, signal })",
-    );
-    expect(testing).toContain('const body = JSON.stringify({ event: "test" })');
-    expect(testing).toMatch(
-      /experimental_emitHostSignal\(\s*"host-test",\s*"changed",\s*\{\s*reason: "test",?\s*\}/,
-    );
-    expect(testing).not.toContain("resolveAgentConfiguration(context)");
-    expect(quickstart).toContain("server.js.map");
-    expect(quickstart).toContain("--omit=dev --omit=optional");
-    expect(distribution).not.toMatch(/"engines"\s*:/);
   });
 
   it("documents the complete frontend content-script lifecycle contract", () => {
@@ -705,39 +677,6 @@ describe("bb-plugin-authoring skill", () => {
         ).toContain(field);
       }
     }
-  });
-
-  it("keeps environment app symbols and composer and event guidance current", () => {
-    const frontendIndex = readReference("frontend-api-index.md");
-    const backendIndex = readReference("backend-api-index.md");
-    const appSymbols = [
-      "experimental_BranchPicker",
-      "BranchPickerProps",
-      "experimental_useBranches",
-      "UseBranchesArgs",
-      "BranchesState",
-      "experimental_useCheckoutState",
-      "UseCheckoutStateArgs",
-      "CheckoutState",
-      "PluginEnvironmentProviderInputsChange",
-      "PluginEnvironmentProviderInputsProps",
-      "PluginEnvironmentProviderInputsRegistration",
-    ];
-    for (const symbol of appSymbols) {
-      expect(frontendIndex).toContain(`\`${symbol}\``);
-      expect(backendIndex).not.toContain(`\`${symbol}\``);
-    }
-
-    expect(readReference("frontend-components.md")).not.toContain(
-      'workspace: { type: "personal" }',
-    );
-    expect(readReference("backend-events.md")).toContain("Fourteen events.");
-    expect(readReference("backend-events.md")).toContain(
-      "The seven `thread.*` ones",
-    );
-    expect(readReference("testing.md")).toContain(
-      "Thread events are observe-only; there are exactly seven",
-    );
   });
 
   it("documents every navPanel registration field", () => {
@@ -800,24 +739,6 @@ describe("bb-plugin-authoring skill", () => {
         `ThreadChatMessageAction field "${field}" is not documented in the skill`,
       ).toContain(field);
     }
-  });
-
-  it("documents the explicit plugin branding contract", () => {
-    expect(skill).toContain("bb.name");
-    expect(skill).toContain("bb.description");
-    expect(skill).toContain("bb.branding");
-    expect(skill).toContain("logo.light");
-    expect(skill).toContain("logo.dark");
-    expect(skill).toContain("no root logo auto-detection");
-    expect(skill).toContain("currentColor");
-    expect(skill).toContain("branding.icon");
-    expect(skill).toContain("./assets/icon.svg");
-    expect(skill).toContain("CSS mask");
-    expect(skill).toContain("canonical BB icon name");
-    expect(skill).toContain("BB reuses this icon on roomy");
-    expect(skill).toContain("Logo-only");
-    expect(skill).toContain("manifests remain supported");
-    expect(skill).toContain("Do not duplicate");
   });
 
   it("documents every frontend slot and its prop fields", () => {

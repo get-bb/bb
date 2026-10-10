@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
-  createConnection,
   getInstalledPlugin,
   getPluginMarketplace,
   getPluginMarketplaceIcon,
-  migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
@@ -59,13 +58,6 @@ function manifest(
   };
 }
 
-function jsonResponse(body: unknown, headers: Record<string, string> = {}) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json", ...headers },
-  });
-}
-
 function svgResponse(bytes: Buffer) {
   return new Response(new Uint8Array(bytes), {
     status: 200,
@@ -81,8 +73,7 @@ describe("third-party marketplaces", () => {
   const restoreEnv: (() => void)[] = [];
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     installedCatalogEntries = [];
     dataDir = await mkdtemp(join(tmpdir(), "bb-marketplace-data-"));
     cleanup.push(dataDir);
@@ -136,7 +127,7 @@ describe("third-party marketplaces", () => {
   ): MarketplaceFetch {
     return async (url) => {
       const document = documents[url];
-      if (document !== undefined) return jsonResponse(document);
+      if (document !== undefined) return Response.json(document);
       const icon = icons[url];
       if (icon !== undefined) return svgResponse(icon);
       return new Response("not found", { status: 404 });
@@ -478,7 +469,7 @@ describe("third-party marketplaces", () => {
     const catalog = service({
       fetch: async (url) =>
         url === ACME_URL
-          ? jsonResponse(
+          ? Response.json(
               manifest("acme-plugins", [
                 entry({ source: { npm: { package: packageName } } }),
               ]),
@@ -618,13 +609,13 @@ describe("third-party marketplaces", () => {
       warn: (message) => warnings.push(message),
       fetch: async (url) => {
         if (url === OFFICIAL_URL) {
-          return jsonResponse(
+          return Response.json(
             manifest("bb-community", [entry({ id: "official-notes" })]),
           );
         }
         if (url === ACME_URL) {
           if (acmeFails) return new Response("boom", { status: 503 });
-          return jsonResponse(manifest("acme-plugins", [entry()]));
+          return Response.json(manifest("acme-plugins", [entry()]));
         }
         return new Response("not found", { status: 404 });
       },

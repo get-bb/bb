@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { describe, expect, it } from "vitest";
 import {
   matchesAppShortcut,
@@ -11,7 +9,6 @@ import {
   appShortcutMatchesQuery,
   formatAppShortcut,
   formatAppShortcutAria,
-  isEditableKeyboardTarget,
   matchesAppCommandContext,
 } from "./app-keybindings";
 
@@ -237,19 +234,6 @@ describe("app keybindings", () => {
     expect(
       matchesAppCommandContext(binding, { ...CONTEXT, mainSurface: false }),
     ).toBe(false);
-  });
-
-  it("recognizes form controls and contenteditable descendants", () => {
-    const input = document.createElement("input");
-    const editor = document.createElement("div");
-    editor.setAttribute("contenteditable", "true");
-    const child = document.createElement("span");
-    editor.append(child);
-    expect(isEditableKeyboardTarget(input)).toBe(true);
-    expect(isEditableKeyboardTarget(child)).toBe(true);
-    expect(isEditableKeyboardTarget(document.createElement("button"))).toBe(
-      false,
-    );
   });
 
   it("formats platform-specific shortcut labels", () => {

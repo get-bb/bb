@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type Thread } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   deleteThreadEventSuffixInTransaction,
@@ -9,12 +8,12 @@ import {
   getThread,
   getThreadConversationOutlineRecord,
   insertEvents,
-  migrate,
   noopNotifier,
   threads,
   upsertHost,
   type SlowDbQueryLogFields,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { eq } from "drizzle-orm";
 import {
   buildThreadConversationOutline,
@@ -23,7 +22,7 @@ import {
 
 function setup(status: Thread["status"] = "starting") {
   const queries: SlowDbQueryLogFields[] = [];
-  const db = createConnection(":memory:", {
+  const db = createMigratedConnection({
     slowQueryThresholdMs: 0,
     slowQueryLogger: {
       info(fields) {
@@ -31,7 +30,6 @@ function setup(status: Thread["status"] = "starting") {
       },
     },
   });
-  migrate(db);
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

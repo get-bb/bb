@@ -15,6 +15,8 @@ import {
 } from "@bb/host-workspace";
 import {
   createDeferredPromise,
+  initRepo,
+  makeTempDir,
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
@@ -68,14 +70,6 @@ interface RuntimeManagerProviderMaintenanceInternals {
 }
 
 const execFileAsync = promisify(execFile);
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
 async function runGit(
   args: readonly string[],
   options: RunGitOptions,
@@ -84,17 +78,6 @@ async function runGit(
     cwd: options.cwd,
   });
   return result.stdout;
-}
-
-async function initRepo(): Promise<string> {
-  const repoPath = await makeTempDir("bb-runtime-manager-repo-");
-  await runGit(["init", "-b", "main"], { cwd: repoPath });
-  await runGit(["config", "user.name", "BB Tests"], { cwd: repoPath });
-  await runGit(["config", "user.email", "bb@example.com"], { cwd: repoPath });
-  await fs.writeFile(path.join(repoPath, "README.md"), "hello\n", "utf8");
-  await runGit(["add", "."], { cwd: repoPath });
-  await runGit(["commit", "-m", "Initial commit"], { cwd: repoPath });
-  return repoPath;
 }
 
 async function writeInjectedSkillSource(
@@ -125,13 +108,8 @@ async function writeInjectedSkillSource(
   };
 }
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
 });
 
 function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
@@ -923,7 +901,9 @@ describe("RuntimeManager", () => {
   });
 
   it("passes unmanaged linked worktree git metadata roots to created runtimes", async () => {
-    const repoPath = await initRepo();
+    const repoPath = await initRepo(
+      await makeTempDir("bb-runtime-manager-repo-"),
+    );
     const parentDir = await makeTempDir("bb-runtime-manager-unmanaged-wt-");
     const worktreePath = path.join(parentDir, "env");
     await runGit(["worktree", "add", "-B", "bb/unmanaged", worktreePath], {

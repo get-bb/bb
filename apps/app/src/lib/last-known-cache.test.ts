@@ -1,13 +1,19 @@
-// @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMemoryStorage } from "@bb/test-helpers";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createLastKnownCache } from "./last-known-cache";
 
 const schema = z.object({ models: z.array(z.string()) });
+const localStorage = createMemoryStorage();
+vi.stubGlobal("window", { localStorage });
 
 afterEach(() => {
-  window.localStorage.clear();
+  localStorage.clear();
   vi.restoreAllMocks();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("createLastKnownCache", () => {
@@ -29,10 +35,7 @@ describe("createLastKnownCache", () => {
       version: "1",
       schema,
     });
-    window.localStorage.setItem(
-      cache.key("x"),
-      JSON.stringify({ models: "nope" }),
-    );
+    localStorage.setItem(cache.key("x"), JSON.stringify({ models: "nope" }));
     expect(cache.read(cache.key("x"))).toBeNull();
   });
 
@@ -42,7 +45,7 @@ describe("createLastKnownCache", () => {
       version: "1",
       schema,
     });
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
       throw new DOMException("quota", "QuotaExceededError");
     });
     expect(() => cache.write(cache.key("x"), { models: [] })).not.toThrow();
@@ -55,7 +58,7 @@ describe("createLastKnownCache", () => {
       version: "1",
       schema,
     });
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
       throw new DOMException("blocked", "SecurityError");
     });
     expect(cache.read(cache.key("x"))).toBeNull();
@@ -71,32 +74,29 @@ describe("createLastKnownCache", () => {
 
     const nextLoad = createLastKnownCache(config);
     expect(nextLoad.read(nextLoad.key())).toEqual({ models: ["kept"] });
-    expect(window.localStorage.getItem("bb.test.1")).not.toBeNull();
+    expect(localStorage.getItem("bb.test.1")).not.toBeNull();
   });
 
   it("prunes entries written under another version of the same cache", () => {
-    window.localStorage.setItem(
-      "bb.test.0.old",
-      JSON.stringify({ models: [] }),
-    );
-    window.localStorage.setItem("bb.other.0.keep", "1");
+    localStorage.setItem("bb.test.0.old", JSON.stringify({ models: [] }));
+    localStorage.setItem("bb.other.0.keep", "1");
     const cache = createLastKnownCache({
       prefix: "bb.test",
       version: "1",
       schema,
     });
     cache.write(cache.key("new"), { models: ["b"] });
-    expect(window.localStorage.getItem("bb.test.0.old")).toBeNull();
-    expect(window.localStorage.getItem("bb.other.0.keep")).toBe("1");
+    expect(localStorage.getItem("bb.test.0.old")).toBeNull();
+    expect(localStorage.getItem("bb.other.0.keep")).toBe("1");
     expect(cache.read(cache.key("new"))).toEqual({ models: ["b"] });
   });
 
   it("prunes obsolete cache families on first access", () => {
-    window.localStorage.setItem(
+    localStorage.setItem(
       "bb.test-legacy.2.scope-a",
       JSON.stringify({ models: ["old"] }),
     );
-    window.localStorage.setItem(
+    localStorage.setItem(
       "bb.test-legacy.2.scope-b",
       JSON.stringify({ models: ["old"] }),
     );
@@ -109,8 +109,8 @@ describe("createLastKnownCache", () => {
 
     cache.read(cache.key("current"));
 
-    expect(window.localStorage.getItem("bb.test-legacy.2.scope-a")).toBeNull();
-    expect(window.localStorage.getItem("bb.test-legacy.2.scope-b")).toBeNull();
+    expect(localStorage.getItem("bb.test-legacy.2.scope-a")).toBeNull();
+    expect(localStorage.getItem("bb.test-legacy.2.scope-b")).toBeNull();
   });
 
   it("bounds scoped entries while retaining the key being accessed", () => {
@@ -126,12 +126,12 @@ describe("createLastKnownCache", () => {
     for (const key of keys) cache.write(key, { models: [key] });
 
     expect(
-      keys.filter((key) => window.localStorage.getItem(key) !== null),
+      keys.filter((key) => localStorage.getItem(key) !== null),
     ).toHaveLength(3);
     expect(cache.read(firstKey)).toBeNull();
     expect(cache.read(lastKey)).toEqual({ models: [lastKey] });
     expect(
-      keys.filter((key) => window.localStorage.getItem(key) !== null),
+      keys.filter((key) => localStorage.getItem(key) !== null),
     ).toHaveLength(3);
   });
 });

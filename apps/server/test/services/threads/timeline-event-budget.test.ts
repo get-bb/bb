@@ -23,10 +23,10 @@ import {
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import type {
   ThreadTimelineResponse,
@@ -117,8 +117,7 @@ function setup(connection?: DbConnection): {
   db: DbConnection;
   thread: Thread;
 } {
-  const db = connection ?? createConnection(":memory:");
-  if (connection === undefined) migrate(db);
+  const db = connection ?? createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

@@ -38,6 +38,7 @@ describe("tooltip focus modality", () => {
     renderTooltip();
     const trigger = screen.getByRole("button", { name: "Open usage" });
 
+    fireEvent.keyDown(document.body, { key: "Tab" });
     fireEvent.pointerDown(trigger, { pointerType: "touch" });
     fireEvent.pointerUp(trigger, { pointerType: "touch" });
     fireEvent.focus(trigger);
@@ -49,6 +50,7 @@ describe("tooltip focus modality", () => {
     renderTooltip();
     const trigger = screen.getByRole("button", { name: "Open usage" });
 
+    fireEvent.keyDown(document.body, { key: "Tab" });
     fireEvent.pointerDown(document.body, { pointerType: "touch" });
     fireEvent.pointerUp(document.body, { pointerType: "touch" });
     trigger.focus();

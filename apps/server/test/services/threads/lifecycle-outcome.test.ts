@@ -2,17 +2,16 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   appendStoredThreadEvent,
-  createConnection,
   createEnvironment,
   createProject,
   createThread,
   getThread,
-  migrate,
   noopNotifier,
   openSession,
   upsertHost,
   type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   changedMessageSchema,
   formatClientTurnRequestIdSuffix,
@@ -116,8 +115,7 @@ interface Setup {
 }
 
 function setup(status: ThreadStatus): Setup {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const hub = new NotificationHub();
   const host = upsertHost(db, noopNotifier, {
     id: "host-lifecycle-outcome",

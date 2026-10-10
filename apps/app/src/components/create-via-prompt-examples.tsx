@@ -67,7 +67,7 @@ interface CreateExample {
   prompt: string;
 }
 
-export function getCreateExamples(kind: CreateViaPromptKind): {
+function getCreateExamples(kind: CreateViaPromptKind): {
   examples: CreateExample[];
 } {
   const config = CONFIG[kind];

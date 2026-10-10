@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { createMemoryStorage } from "@bb/test-helpers";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { threadTabsSchema } from "@bb/server-contract";
 import {
   EMPTY_FIXED_PANEL_TABS_STATE,
@@ -16,9 +17,11 @@ import {
   createThreadStorageFilePreviewFixedPanelTab,
   createWorkspaceFilePreviewFixedPanelTab,
   ensureOpenFixedPanelHasActiveTab,
+  FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
   getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
   parseFixedPanelTabsState,
+  pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
   type FixedPanelTabsState,
@@ -646,5 +649,55 @@ describe("legacy side-chat tabs", () => {
     });
 
     expect(parsed.secondary.tabs).toEqual([browserTab]);
+  });
+});
+
+describe("pruneFixedPanelTabsStorage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("prunes expired and malformed blobs and keeps fresh ones", () => {
+    const localStorage = createMemoryStorage();
+    vi.stubGlobal("window", { localStorage });
+    const now = Date.now();
+    const freshKey = getFixedPanelTabsStateStorageKey({ threadId: "fresh" });
+    const expiredKey = getFixedPanelTabsStateStorageKey({
+      threadId: "expired",
+    });
+    const garbageKey = getFixedPanelTabsStateStorageKey({
+      threadId: "garbage",
+    });
+    const staleShapeKey = getFixedPanelTabsStateStorageKey({
+      threadId: "stale-shape",
+    });
+    localStorage.setItem(
+      freshKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({ lastUsedAt: now }),
+      }),
+    );
+    localStorage.setItem(
+      expiredKey,
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          lastUsedAt: now - FIXED_PANEL_TABS_IDLE_EXPIRY_MS - 1,
+        }),
+      }),
+    );
+    localStorage.setItem(garbageKey, "{not json");
+    localStorage.setItem(
+      staleShapeKey,
+      JSON.stringify({ lastUsedAt: now, secondary: "nope" }),
+    );
+    localStorage.setItem("unrelated", "keep");
+
+    pruneFixedPanelTabsStorage({ now });
+
+    expect(localStorage.getItem(freshKey)).not.toBeNull();
+    expect(localStorage.getItem(expiredKey)).toBeNull();
+    expect(localStorage.getItem(garbageKey)).toBeNull();
+    expect(localStorage.getItem(staleShapeKey)).toBeNull();
+    expect(localStorage.getItem("unrelated")).toBe("keep");
   });
 });

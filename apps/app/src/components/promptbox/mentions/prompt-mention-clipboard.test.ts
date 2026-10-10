@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { describe, expect, it } from "vitest";
 import {
   parsePromptMentionClipboardElement,
@@ -40,9 +38,15 @@ describe("serializedTextForPromptMentionResource", () => {
   });
 });
 
+function attributeElement(
+  attributes: ReturnType<typeof promptMentionClipboardDataAttributes>,
+): Pick<Element, "getAttribute"> {
+  const values = new Map<string, string>(Object.entries(attributes));
+  return { getAttribute: (name) => values.get(name) ?? null };
+}
+
 describe("parsePromptMentionClipboardElement", () => {
   it("preserves the typed trigger for a plugin mention copied from a pill", () => {
-    const element = document.createElement("span");
     const resource = {
       kind: "plugin" as const,
       pluginId: "github",
@@ -50,14 +54,12 @@ describe("parsePromptMentionClipboardElement", () => {
       itemId: "issue:owner/repo#42",
       label: "#42 Fix login bug",
     };
-    for (const [key, value] of Object.entries(
+    const element = attributeElement(
       promptMentionClipboardDataAttributes({
         resource,
         serializedText: "#42 Fix login bug",
       }),
-    )) {
-      element.setAttribute(key, value);
-    }
+    );
 
     expect(parsePromptMentionClipboardElement({ element })).toEqual({
       resource,
@@ -66,8 +68,7 @@ describe("parsePromptMentionClipboardElement", () => {
   });
 
   it("rejects plugin mention clipboard text that does not match the resource label", () => {
-    const element = document.createElement("span");
-    for (const [key, value] of Object.entries(
+    const element = attributeElement(
       promptMentionClipboardDataAttributes({
         resource: {
           kind: "plugin",
@@ -78,9 +79,7 @@ describe("parsePromptMentionClipboardElement", () => {
         },
         serializedText: "#999 Different issue",
       }),
-    )) {
-      element.setAttribute(key, value);
-    }
+    );
 
     expect(parsePromptMentionClipboardElement({ element })).toBeNull();
   });

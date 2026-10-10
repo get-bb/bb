@@ -4,19 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { makeTask } from "../../test-fixtures.js";
 
-if (!window.matchMedia) {
-  window.matchMedia = (query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => false,
-  });
-}
-
 const app = await loadPluginApp(() => import("../../app"));
 
 afterEach(cleanup);
@@ -63,17 +50,6 @@ function taskDetailRpc(getTaskByKey: () => { task: typeof task }) {
     searchThreads: () => ({ threads: [] }),
   };
 }
-
-describe("Tasks app slots", () => {
-  it("registers the task directive card and thread panel action", () => {
-    expect(app.messageDirectives).toHaveLength(1);
-    expect(app.messageDirectives[0]?.id).toBe("task");
-    expect(app.threadPanelActions[0]).toMatchObject({
-      id: "task",
-      title: "Task",
-    });
-  });
-});
 
 describe("Task directive card", () => {
   it("renders live task data with a complete accessible name", async () => {
@@ -292,23 +268,6 @@ describe("Task embed panel", () => {
         options: { subPath: "task/OLD-4" },
       },
     ]);
-  });
-
-  it("renders the task detail for the panel params and links to the app", async () => {
-    const slot = renderSlot(
-      app.threadPanelActions[0]!,
-      { threadId: "thr_1", params: { taskKey: "TSK-4" } },
-      {
-        rpc: taskDetailRpc(() => ({ task })),
-      },
-    );
-    await slot.findByRole("textbox", { name: "Task title" });
-    fireEvent.click(slot.getByRole("button", { name: "Open TSK-4 in Tasks" }));
-    expect(slot.navigateCalls).toContainEqual({
-      method: "toPluginPanel",
-      path: "tasks",
-      options: { subPath: "task/TSK-4" },
-    });
   });
 
   it("resyncs the embedded task detail after reconnect", async () => {

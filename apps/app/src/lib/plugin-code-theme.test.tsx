@@ -14,6 +14,7 @@ function renderProbe() {
   }
   const view = render(<Probe />);
   return {
+    initial: () => states[0]!,
     latest: () => states[states.length - 1]!,
     unmount: () => view.unmount(),
   };
@@ -86,7 +87,7 @@ describe("useCodeTheme", () => {
     first.unmount();
 
     const second = renderProbe();
-    expect(second.latest().theme?.name).toBe("solarized-light");
+    expect(second.initial().theme?.name).toBe("solarized-light");
     second.unmount();
   });
 });

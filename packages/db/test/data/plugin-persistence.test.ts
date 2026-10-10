@@ -14,7 +14,7 @@ import {
   type DbConnection,
 } from "../../src/index.js";
 import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 describe("normalized plugin persistence", () => {
   let db: DbConnection;

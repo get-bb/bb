@@ -710,6 +710,18 @@
         "$TURBO_ROOT$/vitest*.ts"
       ]
     },
+    // Opt-in benchmarks: each package's bench script sets its own enable
+    // variable; output and size knobs pass through. Timings are not cacheable.
+    "bench": {
+      "dependsOn": ["//#ensure-native-modules", "topo"],
+      "cache": false,
+      "passThroughEnv": [
+        "BB_SIDEBAR_BENCH_OUT",
+        "BB_SIDEBAR_BENCH_THREADS",
+        "BB_WATCHER_BENCHMARK_OUTPUT",
+        "PROMPTBOX_PERF_FIXTURE_OUT"
+      ]
+    },
     // The provider-corpus gates read a private corpus through
     // BB_PROVIDER_CORPUS_DIR and write snapshots next to it, so the task is
     // uncacheable and must see those two variables (strict env mode strips

@@ -10,30 +10,14 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type PendingInteraction } from "@bb/domain";
+import type { PendingInteraction } from "@bb/domain";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
 
-vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: {
-      generalSettings: { ...defaultAppSettings },
-      keybindings: [1, 2].map((digit) => ({
-        command: `question.select.${digit}` as const,
-        desktopOnly: false,
-        shortcut: {
-          key: String(digit),
-          mod: false,
-          meta: false,
-          control: false,
-          alt: false,
-          shift: false,
-        },
-        when: { all: ["questionOpen" as const], none: [] },
-      })),
-    },
-  }),
-}));
+vi.mock(
+  "@/hooks/queries/system-queries",
+  () => import("@/test/question-shortcuts-system-queries-mock"),
+);
 
 vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,

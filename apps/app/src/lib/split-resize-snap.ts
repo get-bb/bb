@@ -123,49 +123,34 @@ function equalGridCoordinate(
   );
 }
 
-export function createSplitResizeSnapSession(
-  divider: HTMLElement,
-  axis: SplitResizeAxis,
-  target: SplitResizeGridTarget,
-): SplitResizeSnapSession {
-  let guide: HTMLElement | null = null;
+interface SplitResizeSnapResolver {
+  reset: () => void;
+  resolve: (
+    args: ResolveSplitResizePositionArgs,
+  ) => ResolvedSplitResizePosition;
+}
+
+export function createSplitResizeSnapResolver({
+  extent,
+  gridCoordinate,
+  usesPanelWidthLimits,
+}: {
+  extent: number;
+  gridCoordinate: number | null;
+  usesPanelWidthLimits: boolean;
+}): SplitResizeSnapResolver {
   let fastCrossingAnchor: number | null = null;
   let lastPointer: number | null = null;
   let releasePending = false;
   let snapped = false;
-  const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
-  const gridRect = grid?.getBoundingClientRect() ?? null;
-  const extent = axisExtent(divider.getBoundingClientRect(), axis);
-  const usesPanelWidthLimits =
-    axis === "x" && divider.matches("[data-panel-resize-snap-handle]");
-  const gridCoordinate =
-    gridRect === null
-      ? null
-      : equalGridCoordinate(gridRect, axis, extent, target);
-
-  const clear = () => {
-    guide?.remove();
-    guide = null;
-    fastCrossingAnchor = null;
-    lastPointer = null;
-    releasePending = false;
-    snapped = false;
-  };
-
-  const showGuide = (coordinate: number) => {
-    if (gridRect === null) return;
-    guide ??= createGuide(divider.ownerDocument, axis, coordinate, gridRect);
-    if (axis === "x") guide.style.left = `${coordinate}px`;
-    else guide.style.top = `${coordinate}px`;
-  };
-
-  const hideGuide = () => {
-    guide?.remove();
-    guide = null;
-  };
 
   return {
-    clear,
+    reset: () => {
+      fastCrossingAnchor = null;
+      lastPointer = null;
+      releasePending = false;
+      snapped = false;
+    },
     resolve: ({ end, pointer, start }) => {
       const span = end - start;
       const contentSpan = span - extent;
@@ -184,7 +169,6 @@ export function createSplitResizeSnapSession(
       if (gridCoordinate === null || contentSpan <= 0) {
         releasePending = false;
         snapped = false;
-        hideGuide();
         return {
           coordinate:
             start + Math.max(0, contentSpan) * unsnappedFraction + extent / 2,
@@ -239,7 +223,6 @@ export function createSplitResizeSnapSession(
         fastCrossingAnchor = null;
         releasePending = false;
         snapped = false;
-        hideGuide();
         return {
           coordinate:
             start + Math.max(0, contentSpan) * unsnappedFraction + extent / 2,
@@ -249,8 +232,52 @@ export function createSplitResizeSnapSession(
       }
 
       snapped = true;
-      showGuide(coordinate);
       return { coordinate, fraction, snapped: true };
+    },
+  };
+}
+
+export function createSplitResizeSnapSession(
+  divider: HTMLElement,
+  axis: SplitResizeAxis,
+  target: SplitResizeGridTarget,
+): SplitResizeSnapSession {
+  let guide: HTMLElement | null = null;
+  const grid = divider.closest<HTMLElement>("[data-split-resize-grid-root]");
+  const gridRect = grid?.getBoundingClientRect() ?? null;
+  const extent = axisExtent(divider.getBoundingClientRect(), axis);
+  const resolver = createSplitResizeSnapResolver({
+    extent,
+    gridCoordinate:
+      gridRect === null
+        ? null
+        : equalGridCoordinate(gridRect, axis, extent, target),
+    usesPanelWidthLimits:
+      axis === "x" && divider.matches("[data-panel-resize-snap-handle]"),
+  });
+
+  const showGuide = (coordinate: number) => {
+    if (gridRect === null) return;
+    guide ??= createGuide(divider.ownerDocument, axis, coordinate, gridRect);
+    if (axis === "x") guide.style.left = `${coordinate}px`;
+    else guide.style.top = `${coordinate}px`;
+  };
+
+  const hideGuide = () => {
+    guide?.remove();
+    guide = null;
+  };
+
+  return {
+    clear: () => {
+      hideGuide();
+      resolver.reset();
+    },
+    resolve: (args) => {
+      const resolved = resolver.resolve(args);
+      if (resolved.snapped) showGuide(resolved.coordinate);
+      else hideGuide();
+      return resolved;
     },
   };
 }

@@ -9,7 +9,8 @@ import {
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
+import { LocationProbe } from "@/test/location-probe";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
@@ -114,10 +115,6 @@ const LAYOUT: SplitLayout = {
   },
   focusedPaneId: "pane-env",
 };
-
-function LocationProbe() {
-  return <div data-testid="location">{useLocation().pathname}</div>;
-}
 
 function ArchiveEnvironmentButton() {
   const { archiveEnvironmentThreads } = useThreadActions();

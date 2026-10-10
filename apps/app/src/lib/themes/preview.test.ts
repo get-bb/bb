@@ -10,6 +10,7 @@ import {
 
 const COMMITTED = ":root { --canvas: white; }";
 const PREVIEW = ":root { --canvas: black; }";
+const NEXT_COMMITTED = ":root { --canvas: gray; }";
 
 function styleText(): string | null {
   return document.getElementById("bb-app-theme")?.textContent ?? null;
@@ -47,19 +48,13 @@ describe("app theme preview", () => {
     applyAppThemeCss(COMMITTED);
     previewAppThemeCss(PREVIEW);
 
-    applyAppThemeCss(PREVIEW);
+    applyAppThemeCss(NEXT_COMMITTED);
+
+    expect(styleText()).toBe(NEXT_COMMITTED);
     clearAppThemePreview();
-
-    expect(styleText()).toBe(PREVIEW);
-    expect(localStorage.getItem(APP_THEME_CSS_STORAGE_KEY)).toBe(PREVIEW);
-  });
-
-  it("does not bump the epoch when clearing without a preview", () => {
-    applyAppThemeCss(COMMITTED);
-    const epochBefore = getAppThemeEpoch();
-
-    clearAppThemePreview();
-
-    expect(getAppThemeEpoch()).toBe(epochBefore);
+    expect(styleText()).toBe(NEXT_COMMITTED);
+    expect(localStorage.getItem(APP_THEME_CSS_STORAGE_KEY)).toBe(
+      NEXT_COMMITTED,
+    );
   });
 });

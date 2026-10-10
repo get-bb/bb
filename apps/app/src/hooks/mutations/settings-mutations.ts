@@ -1,4 +1,5 @@
 import {
+  mutationOptions,
   type QueryClient,
   useMutation,
   useQueryClient,
@@ -73,10 +74,8 @@ export function useUpdateExperiments() {
   });
 }
 
-export function useUpdateGeneralSettings() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
+export function generalSettingsMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     mutationKey: generalSettingsMutationKey,
     scope: { id: generalSettingsMutationKey.join(":") },
     meta: {
@@ -128,10 +127,13 @@ export function useUpdateGeneralSettings() {
   });
 }
 
-export function useUpdateKeyboardSettings() {
+export function useUpdateGeneralSettings() {
   const queryClient = useQueryClient();
+  return useMutation(generalSettingsMutationOptions(queryClient));
+}
 
-  return useMutation({
+export function keyboardSettingsMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
     meta: {
       errorMessage: "Failed to update keyboard shortcuts.",
     },
@@ -149,6 +151,11 @@ export function useUpdateKeyboardSettings() {
       invalidateSystemConfig({ queryClient });
     },
   });
+}
+
+export function useUpdateKeyboardSettings() {
+  const queryClient = useQueryClient();
+  return useMutation(keyboardSettingsMutationOptions(queryClient));
 }
 
 export function useInstallCliSkills() {

@@ -33,7 +33,7 @@
 
 - Use targeted `WHERE`/`JOIN` queries instead of loading all rows and filtering in JavaScript. Add indexes only when required by the query.
 - Change Drizzle schemas and regenerate migrations/snapshots; never edit snapshot JSON manually.
-- Never mock the database in tests. Use `createConnection(":memory:")` and `migrate(db)`.
+- Never mock the database in tests. Use `createMigratedConnection()` from `@bb/db/testing`, a real SQLite database copied from a template built once by the real migrations. Call `migrate(db)` directly only when testing migrations or an on-disk database.
 
 ## UI
 

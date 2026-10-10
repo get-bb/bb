@@ -12,7 +12,7 @@ import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { openSession } from "../../src/data/sessions.js";
 import { createThread } from "../../src/data/threads.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 type TestDb = ReturnType<typeof createConnection>;
 type TestHost = ReturnType<typeof upsertHost>;

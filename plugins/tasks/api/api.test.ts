@@ -892,6 +892,45 @@ describe("Tasks RPC domain API", () => {
     }
   });
 
+  it("signals every subtask promoted by deleting its parent", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Review",
+      prefix: "REV",
+      color: "blue",
+    });
+    const parent = store.tasks.createTask({
+      projectId: project.id,
+      title: "Parent task",
+    });
+    const child = store.tasks.createTask({
+      projectId: project.id,
+      title: "Former child",
+      parentTaskId: parent.id,
+    });
+
+    try {
+      await expect(
+        harness.callRpc("deleteTask", { taskId: parent.id }),
+      ).resolves.toEqual({ deleted: true });
+      expect(store.tasks.getTask(child.id)?.parentTaskId).toBeNull();
+      expect(harness.realtimeSignals).toEqual([
+        {
+          channel: "tasks:changed",
+          payload: { taskId: parent.id, projectId: project.id },
+        },
+        {
+          channel: "tasks:changed",
+          payload: { taskId: child.id, projectId: project.id },
+        },
+      ]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("removes attachment blobs when force-deleting a project", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

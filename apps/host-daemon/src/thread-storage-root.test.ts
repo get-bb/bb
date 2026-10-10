@@ -1,24 +1,11 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureThreadStorageRoot } from "./thread-storage-root.js";
 
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await Promise.all(
-    tempDirs.splice(0).map(async (dir) => {
-      await fs.rm(dir, { force: true, recursive: true });
-    }),
-  );
 });
 
 describe("thread storage root", () => {

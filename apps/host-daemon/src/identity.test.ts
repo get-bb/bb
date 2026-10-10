@@ -1,16 +1,8 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { detectHostName, loadHostIdentity, persistHostId } from "./identity.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(prefix: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
 
 async function readFileOrNull(filePath: string): Promise<string | null> {
   try {
@@ -24,14 +16,6 @@ async function readFileOrNull(filePath: string): Promise<string | null> {
     throw error;
   }
 }
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
-  );
-});
 
 describe("identity", () => {
   it("resolves a host ID once persisted and reuses it on subsequent runs", async () => {

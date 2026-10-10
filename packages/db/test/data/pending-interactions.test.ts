@@ -12,7 +12,7 @@ import {
   setPendingInteractionResolved,
 } from "../../src/data/pending-interactions.js";
 import { createThread } from "../../src/data/threads.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();

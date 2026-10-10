@@ -1,15 +1,8 @@
-import {
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import os from "node:os";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { withFileLock } from "@bb/config/file-lock";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it, vi } from "vitest";
 import {
   extractServerArchive,
   installImportedServerFiles,
@@ -45,22 +38,6 @@ vi.mock("@bb/config/file-lock", async (importOriginal) => {
       return actual.withFileLock(args);
     },
   };
-});
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-server-lock-"));
-  tempDirs.push(tempDir);
-  return tempDir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => rm(tempDir, { force: true, recursive: true })),
-  );
 });
 
 async function writeDataFile(

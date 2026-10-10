@@ -1,11 +1,5 @@
-import {
-  createConnection,
-  createProject,
-  createThread,
-  migrate,
-  noopNotifier,
-  upsertHost,
-} from "@bb/db";
+import { createProject, createThread, noopNotifier, upsertHost } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
@@ -16,8 +10,7 @@ import {
 type ThrowingCallback = () => void;
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

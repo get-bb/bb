@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { ThreadTimelinePanelLoadingSkeleton } from "./ThreadChatLoading";
+import { resolveThreadOngoingIndicator } from "./thread-ongoing-indicator";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { useThread } from "@/hooks/queries/thread-queries";
@@ -56,26 +56,18 @@ export function ThreadTimelinePanelContent({
   });
   const resolvedTimeline = timeline ?? ownedTimeline;
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
-  const isProvisioningDisplayStatus =
-    displayStatus === "provisioning" || displayStatus === "starting";
-  const hasActiveBackgroundWork =
-    resolvedTimeline.activeWorkflows.length > 0 ||
-    resolvedTimeline.activeBackgroundCommands.length > 0 ||
-    (threadQuery.data?.activeBackgroundAgentCount ?? 0) > 0;
-  const backgroundOnlyIndicatorLabel =
-    displayStatus === "idle" && hasActiveBackgroundWork
-      ? "Background work running"
-      : undefined;
-  const ongoingIndicatorLabel = isProvisioningDisplayStatus
-    ? "Provisioning thread..."
-    : backgroundOnlyIndicatorLabel;
-  const showOngoingIndicator =
-    threadQuery.data?.status !== "stopping" &&
-    (isProvisioningDisplayStatus ||
-      (!resolvedTimeline.timelineLoading &&
-        (isTurnSubmitting ||
-          isRunningThreadRuntimeDisplayStatus(displayStatus) ||
-          backgroundOnlyIndicatorLabel !== undefined)));
+  const ongoingIndicator = resolveThreadOngoingIndicator({
+    displayStatus,
+    activeBackgroundAgentCount:
+      threadQuery.data?.activeBackgroundAgentCount ?? 0,
+    activeBackgroundCommandCount:
+      resolvedTimeline.activeBackgroundCommands.length,
+    activeWorkflowCount: resolvedTimeline.activeWorkflows.length,
+    isStopping: threadQuery.data?.status === "stopping",
+    isTurnSubmitting,
+    timelineLoading: resolvedTimeline.timelineLoading,
+  });
+  const showOngoingIndicator = ongoingIndicator.show;
   const timelineRows = resolvedTimeline.timelineRows;
   const isChildThreadMissing =
     threadQuery.error instanceof BbHttpError &&
@@ -119,7 +111,7 @@ export function ThreadTimelinePanelContent({
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       showOngoingIndicator={showOngoingIndicator}
-      ongoingIndicatorLabel={ongoingIndicatorLabel}
+      ongoingIndicatorLabel={ongoingIndicator.label}
       timelineErrorClassName="mx-2 mt-4 text-destructive"
       timelineRows={timelineRows}
       threadId={threadId}

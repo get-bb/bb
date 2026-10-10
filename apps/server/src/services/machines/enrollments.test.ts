@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createConnection, migrate, hosts } from "@bb/db";
+import { hosts } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMachineAuthService } from "../machine-auth.js";
 import { createMachineEnrollmentService } from "./enrollments.js";
@@ -17,8 +18,7 @@ afterEach(async () => {
 
 async function harness() {
   const dataDir = await mkdtemp(join(tmpdir(), "bb-enrollments-test-"));
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   cleanup.push(async () => {
     db.$client.close();
     await rm(dataDir, { recursive: true, force: true });

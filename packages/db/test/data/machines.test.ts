@@ -14,7 +14,7 @@ import { createProject } from "../../src/data/projects.js";
 import { archiveThread, createThread } from "../../src/data/threads.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { environments, threads } from "../../src/schema.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();

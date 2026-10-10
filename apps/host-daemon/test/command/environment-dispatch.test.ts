@@ -1,19 +1,16 @@
 import fs from "node:fs/promises";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {
-  cleanupTempDirs,
   createFakeRuntime,
   createFakeWorkspace,
   createHarness,
   makeDispatchOptions,
-  makeTempDir,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
-
-afterEach(cleanupTempDirs);
 
 function streamedEntries(emitted: EventSinkInput[]) {
   return emitted.flatMap((input) =>

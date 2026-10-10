@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMemoryStorage } from "../test-fixtures.js";
 import {
   VIEW_PREFERENCE_STORAGE_KEY,
   VIEW_PREFERENCE_VERSION,
@@ -9,7 +9,16 @@ import {
 
 const PROJECT_A = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 
-beforeEach(() => window.localStorage.clear());
+let storage = createMemoryStorage();
+
+beforeEach(() => {
+  storage = createMemoryStorage();
+  vi.stubGlobal("window", { localStorage: storage });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("view preference storage", () => {
   it("falls back to the list before anything is stored", () => {
@@ -17,10 +26,10 @@ describe("view preference storage", () => {
   });
 
   it("treats corrupt or partial documents as unset rather than throwing", () => {
-    window.localStorage.setItem(VIEW_PREFERENCE_STORAGE_KEY, "{not json");
+    storage.setItem(VIEW_PREFERENCE_STORAGE_KEY, "{not json");
     expect(loadViewMode(PROJECT_A)).toBe("list");
 
-    window.localStorage.setItem(
+    storage.setItem(
       VIEW_PREFERENCE_STORAGE_KEY,
       JSON.stringify({
         version: VIEW_PREFERENCE_VERSION,
@@ -38,12 +47,10 @@ describe("view preference storage", () => {
       projects: { [PROJECT_A]: "board" },
       timeline: "view a future build added",
     });
-    window.localStorage.setItem(VIEW_PREFERENCE_STORAGE_KEY, future);
+    storage.setItem(VIEW_PREFERENCE_STORAGE_KEY, future);
 
     expect(loadViewMode(PROJECT_A)).toBe("board");
     storeViewMode(PROJECT_A, "list");
-    expect(window.localStorage.getItem(VIEW_PREFERENCE_STORAGE_KEY)).toBe(
-      future,
-    );
+    expect(storage.getItem(VIEW_PREFERENCE_STORAGE_KEY)).toBe(future);
   });
 });

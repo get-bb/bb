@@ -39,8 +39,8 @@ pass after the owner-boundary repair. A regression test that never demonstrably
 failed proves the mock, not the fix. One regression at the owner boundary
 covers the bug; do not replay the same scenario at every layer it crosses.
 
-bb test rules: never mock the database; use `createConnection(":memory:")`
-and `migrate(db)` from `@bb/db`. Vitest projects come from
+bb test rules: never mock the database; use `createMigratedConnection()` from
+`@bb/db/testing`, which copies a template built by the real migrations. Vitest projects come from
 `sharedWorkerProjects` in `vitest.shared.ts`: Node test files share workers
 (`isolate: false`), and files that use `vi.mock`, `vi.stubGlobal`, fake timers,
 `process.env` writes, or global assignments are isolated automatically.

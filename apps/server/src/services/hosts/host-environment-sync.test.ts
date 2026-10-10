@@ -1,11 +1,5 @@
-import {
-  createConnection,
-  migrate,
-  noopNotifier,
-  setAppSettings,
-  updateHost,
-  upsertHost,
-} from "@bb/db";
+import { noopNotifier, setAppSettings, updateHost, upsertHost } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { defaultAppSettings } from "@bb/domain";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -16,11 +10,10 @@ import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 import { HostEnvironmentSync } from "./host-environment-sync.js";
 
 it("synchronizes configured variables to every connected host", async () => {
-  const db = createConnection(":memory:");
+  const db = createMigratedConnection();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-machine-env-sync-"));
   const hub = new NotificationHub();
   try {
-    migrate(db);
     setAppSettings(db, {
       ...defaultAppSettings,
       machineGitCredentialsEnabled: false,

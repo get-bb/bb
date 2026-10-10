@@ -27,6 +27,7 @@ import {
   makePluginListItem,
   makePluginRegistrationSet,
 } from "@/test/fixtures/plugins";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 interface RecordedRequest {
   url: string;
@@ -46,14 +47,6 @@ function jsonError(message: string): Response {
     status: 400,
     headers: { "content-type": "application/json" },
   });
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
 }
 
 const SETTINGS_VIEW = {
@@ -243,8 +236,8 @@ describe("PluginSettingsForm", () => {
   });
 
   it("preserves text typed while an older save is pending", async () => {
-    const first = deferred<Response>();
-    const second = deferred<Response>();
+    const first = createDeferredPromise<Response>();
+    const second = createDeferredPromise<Response>();
     const requests: RecordedRequest[] = [];
     let saveCount = 0;
     vi.stubGlobal(
@@ -296,8 +289,8 @@ describe("PluginSettingsForm", () => {
   });
 
   it("preserves restored saved text while an older save is pending", async () => {
-    const first = deferred<Response>();
-    const second = deferred<Response>();
+    const first = createDeferredPromise<Response>();
+    const second = createDeferredPromise<Response>();
     const requests: RecordedRequest[] = [];
     let saveCount = 0;
     vi.stubGlobal(
@@ -498,9 +491,9 @@ describe("PluginSettingsForm", () => {
   });
 
   it("serializes immediate autosaves so the latest repeated toggle wins", async () => {
-    const first = deferred<Response>();
-    const second = deferred<Response>();
-    const third = deferred<Response>();
+    const first = createDeferredPromise<Response>();
+    const second = createDeferredPromise<Response>();
+    const third = createDeferredPromise<Response>();
     const requests: RecordedRequest[] = [];
     let saveCount = 0;
     vi.stubGlobal(

@@ -6,7 +6,12 @@ import {
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
 import { Input } from "@/components/ui/input";
-import { MAX_LIMIT_VALUE, parseLimitValue } from "./limits.js";
+import {
+  commitGlobalLimitDraft,
+  commitHostLimitDraft,
+  MAX_LIMIT_VALUE,
+  type LimitDraftCommit,
+} from "./limits.js";
 import type { concurrencyLimitRpcContract } from "./server.js";
 
 type ConfigurationView = StandardSchemaV1InferOutput<
@@ -33,15 +38,6 @@ function draftsFor(view: ConfigurationView): Record<string, string> {
     drafts[host.id] = host.override === null ? "" : String(host.override);
   }
   return drafts;
-}
-
-function parseDraft(
-  raw: string,
-): { ok: true; value: number | null } | { ok: false } {
-  const trimmed = raw.trim();
-  if (trimmed === "") return { ok: true, value: null };
-  const value = parseLimitValue(trimmed);
-  return value === null ? { ok: false } : { ok: true, value };
 }
 
 function ConcurrencyLimitSettings() {
@@ -108,37 +104,28 @@ function ConcurrencyLimitSettings() {
     if (invalidField === field) setInvalidField(null);
   }
 
-  function commitGlobal(): void {
-    if (view === null) return;
-    const parsed = parseDraft(drafts[GLOBAL_FIELD] ?? "");
-    if (!parsed.ok) {
-      setInvalidField(GLOBAL_FIELD);
+  function applyCommit(field: string, commit: LimitDraftCommit): void {
+    if (commit.kind === "invalid") {
+      setInvalidField(field);
       return;
     }
-    if (parsed.value === view.globalLimit) return;
-    void save({
-      globalLimit: parsed.value,
-      hostOverrides: view.hostOverrides,
-    });
+    if (commit.kind === "changed") void save(commit.configuration);
+  }
+
+  function commitGlobal(): void {
+    if (view === null) return;
+    applyCommit(
+      GLOBAL_FIELD,
+      commitGlobalLimitDraft(view, drafts[GLOBAL_FIELD] ?? ""),
+    );
   }
 
   function commitHost(hostId: string): void {
     if (view === null) return;
-    const parsed = parseDraft(drafts[hostId] ?? "");
-    if (!parsed.ok) {
-      setInvalidField(hostId);
-      return;
-    }
-    const existing = view.hostOverrides.find(
-      (override) => override.hostId === hostId,
+    applyCommit(
+      hostId,
+      commitHostLimitDraft(view, hostId, drafts[hostId] ?? ""),
     );
-    if (parsed.value === (existing?.limit ?? null)) return;
-    const hostOverrides = view.hostOverrides.filter(
-      (override) => override.hostId !== hostId,
-    );
-    if (parsed.value !== null)
-      hostOverrides.push({ hostId, limit: parsed.value });
-    void save({ globalLimit: view.globalLimit, hostOverrides });
   }
 
   if (view === null) {

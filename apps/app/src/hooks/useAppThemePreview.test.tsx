@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultResolvedCodeTheme, type AppTheme } from "@bb/domain";
 import { applyAppThemeCss, clearAppThemePreview } from "@/lib/themes";
 import { useAppThemePreview } from "./useAppThemePreview";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const resolveMock = vi.hoisted(() => vi.fn());
 
@@ -22,16 +23,6 @@ function customTheme(themeId: string, customCss: string): AppTheme {
     faviconColor: "default",
     resolvedCodeTheme: defaultResolvedCodeTheme,
   };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
 }
 
 function styleText(): string | null {
@@ -80,7 +71,7 @@ describe("useAppThemePreview", () => {
 
   it("ignores a resolution that lands after the pointer left", async () => {
     applyAppThemeCss(COMMITTED);
-    const slow = deferred<AppTheme>();
+    const slow = createDeferredPromise<AppTheme>();
     resolveMock.mockReturnValue(slow.promise);
     const { result } = renderPreviewHook();
 
@@ -94,8 +85,8 @@ describe("useAppThemePreview", () => {
 
   it("keeps the latest hovered theme when an earlier fetch resolves late", async () => {
     applyAppThemeCss(COMMITTED);
-    const first = deferred<AppTheme>();
-    const second = deferred<AppTheme>();
+    const first = createDeferredPromise<AppTheme>();
+    const second = createDeferredPromise<AppTheme>();
     resolveMock
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);

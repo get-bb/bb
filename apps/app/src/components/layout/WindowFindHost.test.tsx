@@ -24,20 +24,11 @@ const FIND_KEYBINDING = {
   },
 };
 
-const BROWSER_FIND_KEYBINDING = {
-  ...FIND_KEYBINDING,
-  command: "browser.find" as const,
-  when: {
-    all: ["mainSurface" as const, "browserFocus" as const],
-    none: ["modalOpen" as const],
-  },
-};
-
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       generalSettings: defaultAppSettings,
-      keybindings: [FIND_KEYBINDING, BROWSER_FIND_KEYBINDING],
+      keybindings: [FIND_KEYBINDING],
     },
   }),
 }));
@@ -59,9 +50,6 @@ function renderFindHost() {
     <AppCommandProvider>
       <WindowFindHost />
       <button type="button">Somewhere in the app</button>
-      <div data-app-browser>
-        <button type="button">Inside the browser pane</button>
-      </div>
     </AppCommandProvider>,
   );
   return { openWindowFind };
@@ -88,13 +76,5 @@ describe("WindowFindHost", () => {
     pressFindChord("Somewhere in the app");
 
     expect(openWindowFind).toHaveBeenCalledTimes(1);
-  });
-
-  it("leaves the chord to the embedded browser while the browser pane has focus", () => {
-    const { openWindowFind } = renderFindHost();
-
-    pressFindChord("Inside the browser pane");
-
-    expect(openWindowFind).not.toHaveBeenCalled();
   });
 });

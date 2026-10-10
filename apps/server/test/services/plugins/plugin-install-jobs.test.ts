@@ -16,6 +16,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 const BASE = "http://127.0.0.1:3334";
 let PLUGIN: InstalledPlugin;
@@ -25,16 +26,6 @@ beforeAll(async () => {
     h.pluginService.install("builtin:keep-awake", { kind: "root" }),
   );
 });
-
-function deferred<T>() {
-  let resolve: (value: T) => void = () => {};
-  let reject: (error: unknown) => void = () => {};
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 function sourceTarget(source: string) {
   return {
@@ -47,7 +38,7 @@ function sourceTarget(source: string) {
 describe("plugin install jobs", () => {
   it("runs installs one at a time and folds a repeat request into the active job", async () => {
     const jobs = createPluginInstallJobs({ notifyChanged: () => {} });
-    const first = deferred<InstalledPlugin>();
+    const first = createDeferredPromise<InstalledPlugin>();
     const second = vi.fn(async () => PLUGIN);
 
     const a = jobs.start({
@@ -80,7 +71,7 @@ describe("plugin install jobs", () => {
 
   it("drops a cancelled queued install without starting it", async () => {
     const jobs = createPluginInstallJobs({ notifyChanged: () => {} });
-    const first = deferred<InstalledPlugin>();
+    const first = createDeferredPromise<InstalledPlugin>();
     const queuedRun = vi.fn(async () => PLUGIN);
     jobs.start({
       target: sourceTarget("npm:a"),
@@ -108,7 +99,7 @@ describe("plugin install jobs", () => {
     "reports a cancelled running install as $expected when it $outcome",
     async ({ outcome, expected }) => {
       const jobs = createPluginInstallJobs({ notifyChanged: () => {} });
-      const run = deferred<InstalledPlugin>();
+      const run = createDeferredPromise<InstalledPlugin>();
       const job = jobs.start({
         target: sourceTarget("npm:a"),
         displayName: "a",

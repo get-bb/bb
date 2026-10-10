@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 import { QueryClient } from "@tanstack/react-query";
 import type { SidebarBootstrapResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -6,19 +6,10 @@ import {
   detachActivePluginToolCallForUserInput,
 } from "../../../src/services/plugins/plugin-tool-calls.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createDeferredPromise } from "@bb/test-helpers";
 
 function textResponse(text: string, success = true): ToolCallResponse {
   return { success, contentItems: [{ type: "inputText", text }] };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
 }
 
 describe("PluginToolCallRegistry", () => {
@@ -37,7 +28,7 @@ describe("PluginToolCallRegistry", () => {
     const registry = createRegistry();
     const roundTrip = new AbortController();
     const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
+    const result = createDeferredPromise<ToolCallResponse>();
 
     const response = registry.run({
       pluginId: "fixture",
@@ -59,7 +50,7 @@ describe("PluginToolCallRegistry", () => {
     const registry = createRegistry();
     const roundTrip = new AbortController();
     const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
+    const result = createDeferredPromise<ToolCallResponse>();
     let toolSignal: AbortSignal | undefined;
     const response = registry.run({
       pluginId: "fixture",
@@ -107,7 +98,7 @@ describe("PluginToolCallRegistry", () => {
   it("keeps a slow tool on its round trip beyond the former deadline", async () => {
     const registry = createRegistry();
     const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
+    const result = createDeferredPromise<ToolCallResponse>();
     const response = registry.run({
       pluginId: "fixture",
       threadId: "thread",
@@ -132,7 +123,7 @@ describe("PluginToolCallRegistry", () => {
     const registry = createRegistry();
     const roundTrip = new AbortController();
     const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
+    const result = createDeferredPromise<ToolCallResponse>();
     let toolSignal: AbortSignal | undefined;
 
     const response = registry.run({
@@ -172,7 +163,7 @@ describe("PluginToolCallRegistry", () => {
     const registry = createRegistry();
     const roundTrip = new AbortController();
     const onDetachedResult = vi.fn(async () => undefined);
-    const result = deferred<ToolCallResponse>();
+    const result = createDeferredPromise<ToolCallResponse>();
     let toolSignal: AbortSignal | undefined;
 
     void registry.run({

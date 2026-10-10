@@ -3,6 +3,7 @@ import {
   buildNeighborReorderRequest,
 } from "./neighbor-reorder.js";
 import type { SidebarSectionId } from "./sidebar-section-id.js";
+import { reorderStoredOrder } from "./stored-order.js";
 
 type SidebarEntitySectionKind = "project" | "section" | "machine";
 export type LegacySidebarEntityAnchor = "projects" | "sections" | "machines";
@@ -124,6 +125,44 @@ export function normalizeSidebarSectionOrder({
   }
 
   return normalized;
+}
+
+interface ApplyVisibleSidebarSectionOrderArgs {
+  storedOrder: readonly string[];
+  nextVisibleOrder: readonly SidebarSectionId[];
+  entitySectionIds: readonly SidebarSectionId[];
+  entityKind: SidebarEntitySectionKind;
+  legacyEntityAnchor: LegacySidebarEntityAnchor;
+  hasThreadsSection?: boolean;
+}
+
+export function applyVisibleSidebarSectionOrder({
+  storedOrder,
+  nextVisibleOrder,
+  entitySectionIds,
+  entityKind,
+  legacyEntityAnchor,
+  hasThreadsSection,
+}: ApplyVisibleSidebarSectionOrderArgs): SidebarSectionId[] | null {
+  const nextIds = new Set(nextVisibleOrder);
+  const storedEntityIds = storedOrder
+    .filter((id) => id.startsWith(`${entityKind}:`))
+    .map((id) =>
+      buildSidebarEntitySectionId(entityKind, id.slice(entityKind.length + 1)),
+    );
+  const fullOrder = normalizeSidebarSectionOrder({
+    storedOrder,
+    entitySectionIds: [...entitySectionIds, ...storedEntityIds],
+    legacyEntityAnchor,
+    hasPinnedSection: true,
+    hasThreadsSection:
+      hasThreadsSection !== false || storedOrder.includes("threads"),
+  });
+  return reorderStoredOrder({
+    order: fullOrder,
+    visibleIds: fullOrder.filter((id) => nextIds.has(id)),
+    nextVisibleIds: nextVisibleOrder,
+  });
 }
 
 interface InsertSidebarSectionAfterArgs {

@@ -1,15 +1,14 @@
 import {
-  createConnection,
   createEnvironment,
   createProject,
   createThread,
   environments,
   threads,
-  migrate,
   noopNotifier,
   updateThread,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { eq } from "drizzle-orm";
 import {
   hostDaemonServerWsMessageSchema,
@@ -21,8 +20,7 @@ import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
 function setup(queries?: string[]) {
-  const db = createConnection(
-    ":memory:",
+  const db = createMigratedConnection(
     queries
       ? {
           slowQueryThresholdMs: 0,
@@ -34,7 +32,6 @@ function setup(queries?: string[]) {
         }
       : undefined,
   );
-  migrate(db);
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const host = upsertHost(db, noopNotifier, {

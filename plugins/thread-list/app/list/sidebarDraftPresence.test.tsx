@@ -4,13 +4,31 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { memo } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const draftIds = vi.hoisted(() => ({
-  current: new Set<string>() as ReadonlySet<string>,
-}));
+const draftIds = vi.hoisted(() => {
+  let current: ReadonlySet<string> = new Set();
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    set(next: ReadonlySet<string>) {
+      current = next;
+      for (const listener of listeners) listener();
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+});
 
-vi.mock("@get-bb/plugin-sdk/app", () => ({
-  useSidebarThreadDraftIds: () => draftIds.current,
-}));
+vi.mock("@get-bb/plugin-sdk/app", async () => {
+  const { useSyncExternalStore } = await import("react");
+  return {
+    useSidebarThreadDraftIds: () =>
+      useSyncExternalStore(draftIds.subscribe, draftIds.get),
+  };
+});
 
 const { SidebarDraftPresenceSync, useThreadsHaveDraft } =
   await import("./sidebarDraftPresence.js");
@@ -51,16 +69,15 @@ function SidebarProbe() {
 afterEach(() => {
   cleanup();
   renderCounts.clear();
-  draftIds.current = new Set();
+  draftIds.set(new Set());
 });
 
 describe("sidebar draft presence", () => {
   it("re-renders only the collapsed row whose hidden thread gains a draft", () => {
-    const view = render(<SidebarProbe />);
+    render(<SidebarProbe />);
     const initialCounts = new Map(renderCounts);
 
-    draftIds.current = new Set(["thr_child_7"]);
-    view.rerender(<SidebarProbe />);
+    act(() => draftIds.set(new Set(["thr_child_7"])));
 
     expect(screen.getByTestId("row_7").textContent).toBe("draft");
     expect(screen.getByTestId("row_8").textContent).toBe("none");
@@ -71,18 +88,17 @@ describe("sidebar draft presence", () => {
   });
 
   it("clears the dot when the hidden draft is emptied", () => {
-    draftIds.current = new Set(["thr_child_3"]);
-    const view = render(<SidebarProbe />);
+    draftIds.set(new Set(["thr_child_3"]));
+    render(<SidebarProbe />);
     expect(screen.getByTestId("row_3").textContent).toBe("draft");
 
-    draftIds.current = new Set();
-    act(() => view.rerender(<SidebarProbe />));
+    act(() => draftIds.set(new Set()));
 
     expect(screen.getByTestId("row_3").textContent).toBe("none");
   });
 
   it("keeps the dots while another sidebar list is still mounted", () => {
-    draftIds.current = new Set(["thr_child_5"]);
+    draftIds.set(new Set(["thr_child_5"]));
     function TwoLists({ withSecond }: { withSecond: boolean }) {
       return (
         <>
