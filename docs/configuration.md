@@ -2076,6 +2076,19 @@ modes bypass the cache. The cache has no user configuration and can be removed
 while no builds are running. See [build performance](build-performance.md) for
 its identity, portability, and verification contract.
 
+Anonymous usage telemetry sends these PostHog events with a random install id,
+the app version, install kind, platform, OS release, architecture, and Node
+version: `app_started`, `telemetry_disabled`, `thread_created`,
+`user_message_sent`, and `plugin_installed`, plus setup events the app reports
+through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordTelemetryEvent`):
+`onboarding_started` (whether an agent was installed or ready at first launch),
+`onboarding_step_reached`, `onboarding_step_completed`, and
+`onboarding_step_skipped` (per setup-guide step, marked first run or replay),
+`onboarding_finished` (completed or skipped), and the sidebar notification card's
+`notification_prompt_shown`, `notification_prompt_accepted`,
+`notification_prompt_dismissed`, and `notification_prompt_denied`. That route
+accepts only those events and their fixed, non-identifying properties.
+
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use

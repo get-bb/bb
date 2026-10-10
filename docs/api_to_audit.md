@@ -4078,6 +4078,10 @@ Starts a server-owned plugin update and returns its job immediately. `experiment
 
 Stabilization requires exercising reconnect/reload, concurrent deduplication, rollback delivery, missing jobs after restart, and CLI/SDK parity before dropping the experimental prefix. No host-daemon wire change.
 
+## `PluginBbSdk.system.experimental_recordTelemetryEvent`
+
+`system.experimental_recordTelemetryEvent(event)` posts one anonymous product event to `POST /api/v1/system/telemetry/events`, which forwards it to the server's usage telemetry under the install's anonymous id and drops it when usage data sharing is off. The request schema is a strict allow-list of setup-guide and notification-card events with fixed enum or boolean properties; anything else is rejected with 400. Core callers, all through `recordTelemetryEvent` in `apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide (`OnboardingFlow`) and the sidebar notification card (`SidebarNotificationsPrompt` and `apps/app/src/hooks/useNotificationPermission.ts`). Stabilize after deciding whether third-party plugins may emit product events at all (and, if so, how events are namespaced per plugin and rate limited), then rename project-wide and remove this entry.
+
 ## `PluginBbSdk.hosts.experimental_discoverRepos`
 
 `hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).

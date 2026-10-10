@@ -58,6 +58,7 @@ import {
   getBbDesktopInfo,
   shouldReserveMacosTrafficLights,
 } from "@/lib/bb-desktop";
+import { isInsideNativeShell } from "@/lib/native-shell/native-shell";
 import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { sdk } from "@/lib/sdk";
@@ -81,6 +82,7 @@ import {
   ONBOARDING_PLUGIN_MARKETPLACE,
   connectAccessUrl,
   defaultSelectedRepoPaths,
+  hasRecentImportableRepo,
   hasReadyAgent,
   parseSignInOutput,
   resolveAgentSetupState,
@@ -88,6 +90,10 @@ import {
   shortRemoteName,
   type OnboardingStepId,
 } from "./onboarding-model";
+import {
+  recordTelemetryEvent,
+  type OnboardingEntry,
+} from "./onboarding-telemetry";
 
 const SIGN_IN_POLL_INTERVAL_MS = 3_000;
 const SIGN_IN_TERMINAL_COLS = 200;
@@ -458,7 +464,11 @@ function AgentStepContainer({
       {...chrome}
       step="agent"
       title="Connect a coding agent"
-      description="bb runs the agents you already use. You need one that is installed and signed in on this computer."
+      description={`bb runs the agents you already use. You need one that is installed and signed in on ${
+        isLocalDaemonHost(hostId)
+          ? "this computer"
+          : (hostName ?? "this machine")
+      }.`}
       footerNote={
         agentBlocked ? "Threads can't start until one agent is ready." : null
       }
@@ -487,15 +497,19 @@ function AgentStepContainer({
 function ProjectsStepContainer({
   chrome,
   hostId,
+  hostName,
   projectIdsAtOpen,
   onBack,
   onContinue,
+  onSkip,
 }: {
   chrome: StepChrome;
   hostId: string | null;
+  hostName: string | null;
   projectIdsAtOpen: ReadonlySet<string> | null;
   onBack: () => void;
   onContinue: () => void;
+  onSkip: () => void;
 }) {
   const reposQuery = useHostDiscoveredRepos(hostId);
   const createProject = useCreateProject();
@@ -604,12 +618,22 @@ function ProjectsStepContainer({
   };
 
   const scanning = hostId === null || reposQuery.isPending || rescanning;
+  const machineLabel = hostName ?? "this computer";
   return (
     <OnboardingLayout
       {...chrome}
       step="projects"
       title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      description={
+        discovered === undefined ||
+        discovered.every((repo) => repo.projectId !== null)
+          ? `Repos you've worked in recently on ${machineLabel}.`
+          : `Repos you've worked in recently on ${machineLabel}. ${
+              hasRecentImportableRepo(discovered, now)
+                ? "We picked this week's."
+                : "We picked the most recent one."
+            }`
+      }
       primaryLabel={
         scanning || selectedPaths.size === 0
           ? "Continue"
@@ -622,7 +646,7 @@ function ProjectsStepContainer({
         if (selectedPaths.size === 0) onContinue();
         else void importSelected();
       }}
-      onSecondary={onContinue}
+      onSecondary={onSkip}
       onBack={onBack}
     >
       <ProjectsStep
@@ -632,7 +656,7 @@ function ProjectsStepContainer({
             : reposQuery.isError
               ? {
                   kind: "error",
-                  message: "bb couldn't scan this computer for git repos.",
+                  message: `bb couldn't scan ${machineLabel} for git repos.`,
                 }
               : { kind: "results", truncated: reposQuery.data.truncated }
         }
@@ -753,10 +777,12 @@ function PluginsStepContainer({
   chrome,
   onBack,
   onContinue,
+  onSkip,
 }: {
   chrome: StepChrome;
   onBack: () => void;
   onContinue: () => void;
+  onSkip: () => void;
 }) {
   const catalogQuery = usePluginCatalogSearch("", { enabled: true });
   const listQuery = usePluginList({ enabled: true });
@@ -775,13 +801,13 @@ function PluginsStepContainer({
   const entries = useMemo(() => {
     const all = catalogQuery.data?.entries;
     if (all === undefined) return null;
-    return ONBOARDING_PLUGINS.flatMap(({ entryId }) => {
+    return ONBOARDING_PLUGINS.flatMap(({ entryId, description }) => {
       const entry = all.find(
         (candidate) =>
           candidate.marketplace === ONBOARDING_PLUGIN_MARKETPLACE &&
           candidate.entryId === entryId,
       );
-      return entry === undefined ? [] : [entry];
+      return entry === undefined ? [] : [{ ...entry, description }];
     });
   }, [catalogQuery.data?.entries]);
 
@@ -789,12 +815,12 @@ function PluginsStepContainer({
     <OnboardingLayout
       {...chrome}
       step="plugins"
-      title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
+      title="Give your agents more to work with"
+      description="Optional, and off until you turn them on. You can change them anytime in Plugins."
       primaryLabel="Continue"
       secondaryLabel="Skip"
       onPrimary={onContinue}
-      onSecondary={onContinue}
+      onSecondary={onSkip}
       onBack={onBack}
     >
       <OnboardingPluginGrid compact={chrome.compact}>
@@ -821,27 +847,37 @@ function PluginsStepContainer({
   );
 }
 
+function detectMobilePlatform(): "ios" | "android" | null {
+  const userAgent = navigator.userAgent;
+  if (/iPhone|iPad|iPod/u.test(userAgent)) return "ios";
+  if (/Android/u.test(userAgent)) return "android";
+  return null;
+}
+
 function DevicesStepContainer({
   chrome,
   hostId,
   onBack,
   onFinish,
+  onLeave,
 }: {
   chrome: StepChrome;
   hostId: string | null;
   onBack: () => void;
   onFinish: () => void;
+  onLeave: () => void;
 }) {
   const configQuery = useSystemConfig();
   const hostsQuery = useHosts();
   const [connectSetupOpen, setConnectSetupOpen] = useState(false);
   const [addMachineOpen, setAddMachineOpen] = useState(false);
+  const [mobilePlatform] = useState(detectMobilePlatform);
   const location = useLocation();
   const [initialPathname] = useState(location.pathname);
   const navigatedAway = location.pathname !== initialPathname;
   useEffect(() => {
-    if (navigatedAway) onFinish();
-  }, [navigatedAway, onFinish]);
+    if (navigatedAway) onLeave();
+  }, [navigatedAway, onLeave]);
   const otherMachineCount = (hostsQuery.data ?? []).filter(
     (host) => host.id !== hostId,
   ).length;
@@ -850,9 +886,9 @@ function DevicesStepContainer({
     <OnboardingLayout
       {...chrome}
       step="devices"
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      title="Check on agents away from your desk"
+      description="Optional. Also in Settings → Machines."
+      primaryLabel="Start your first thread"
       onPrimary={onFinish}
       onBack={onBack}
     >
@@ -862,6 +898,8 @@ function DevicesStepContainer({
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={mobileAppDownloads}
+        mobilePlatform={mobilePlatform}
+        showMobileApp={!isInsideNativeShell()}
         onToggleConnectSetup={() => setConnectSetupOpen((open) => !open)}
         onCopyConnectUrl={(url) => void copyToClipboardWithToast(url)}
         onAddMachine={() => setAddMachineOpen(true)}
@@ -883,9 +921,11 @@ const STEP_ORDER: readonly OnboardingStepId[] = [
 
 export function OnboardingFlow({
   initialStep,
+  entry,
   onClose,
 }: {
   initialStep: OnboardingStepId;
+  entry: OnboardingEntry;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(initialStep);
@@ -900,6 +940,56 @@ export function OnboardingFlow({
   const primaryHost = usePrimaryHost();
   const hostId = primaryHost?.id ?? null;
   useHostDiscoveredRepos(hostId);
+  const agentStates = useSystemProviderStates({
+    enabled: hostId !== null,
+    poll: false,
+    ...(hostId === null ? {} : { hostId }),
+  }).data?.providers;
+  const startReportedRef = useRef(entry !== "first_run");
+  useEffect(() => {
+    if (startReportedRef.current || agentStates === undefined) return;
+    startReportedRef.current = true;
+    recordTelemetryEvent({
+      name: "onboarding_started",
+      properties: {
+        agent_installed: agentStates.some(
+          (state) =>
+            state.status !== "not_installed" && state.status !== "unknown",
+        ),
+        agent_ready: hasReadyAgent(agentStates),
+      },
+    });
+  }, [agentStates]);
+  const reachedStepsRef = useRef(new Set<OnboardingStepId>());
+  useEffect(() => {
+    if (reachedStepsRef.current.has(step)) return;
+    reachedStepsRef.current.add(step);
+    recordTelemetryEvent({
+      name: "onboarding_step_reached",
+      properties: { step, entry },
+    });
+  }, [entry, step]);
+  const finishedRef = useRef(false);
+  const close = (outcome: "completed" | "skipped") => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    if (outcome === "skipped") {
+      recordTelemetryEvent({
+        name: "onboarding_step_skipped",
+        properties: { step, entry },
+      });
+    } else {
+      recordTelemetryEvent({
+        name: "onboarding_step_completed",
+        properties: { step, entry },
+      });
+    }
+    recordTelemetryEvent({
+      name: "onboarding_finished",
+      properties: { outcome, entry, last_step: step },
+    });
+    onClose();
+  };
   const compact = useMediaQuery("(max-width: 640px)");
   const [desktopInfo] = useState(getBbDesktopInfo);
   const windowState = useDesktopWindowState();
@@ -910,11 +1000,21 @@ export function OnboardingFlow({
       windowState,
     }),
     onSelectStep: setStep,
-    onSkipAll: onClose,
+    onSkipAll: () => close("skipped"),
   };
   const goTo = (offset: number) => () => {
     const next = STEP_ORDER[STEP_ORDER.indexOf(step) + offset];
     if (next !== undefined) setStep(next);
+  };
+  const advance = (outcome: "completed" | "skipped") => () => {
+    recordTelemetryEvent({
+      name:
+        outcome === "completed"
+          ? "onboarding_step_completed"
+          : "onboarding_step_skipped",
+      properties: { step, entry },
+    });
+    goTo(1)();
   };
 
   switch (step) {
@@ -924,7 +1024,9 @@ export function OnboardingFlow({
           chrome={chrome}
           hostId={hostId}
           hostName={primaryHost?.name ?? null}
-          onContinue={goTo(1)}
+          onContinue={advance(
+            hasReadyAgent(agentStates) ? "completed" : "skipped",
+          )}
         />
       );
     case "projects":
@@ -932,9 +1034,11 @@ export function OnboardingFlow({
         <ProjectsStepContainer
           chrome={chrome}
           hostId={hostId}
+          hostName={primaryHost?.name ?? null}
           projectIdsAtOpen={projectIdsAtOpen}
           onBack={goTo(-1)}
-          onContinue={goTo(1)}
+          onContinue={advance("completed")}
+          onSkip={advance("skipped")}
         />
       );
     case "plugins":
@@ -942,7 +1046,8 @@ export function OnboardingFlow({
         <PluginsStepContainer
           chrome={chrome}
           onBack={goTo(-1)}
-          onContinue={goTo(1)}
+          onContinue={advance("completed")}
+          onSkip={advance("skipped")}
         />
       );
     case "devices":
@@ -951,7 +1056,8 @@ export function OnboardingFlow({
           chrome={chrome}
           hostId={hostId}
           onBack={goTo(-1)}
-          onFinish={onClose}
+          onFinish={() => close("completed")}
+          onLeave={() => close("skipped")}
         />
       );
   }

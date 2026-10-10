@@ -197,45 +197,44 @@ const PLUGINS: readonly {
   description: string;
 }[] = [
   {
+    id: "workflows",
+    name: "Workflows",
+    icon: "Workflow",
+    description:
+      "Split one task across several agents working at the same time.",
+  },
+  {
     id: "browser-automation",
     name: "Browser Automation",
     icon: "Globe",
     description:
-      "Let BB control the in-app browser and browsers on connected machines, with inline previews for headless sessions.",
-  },
-  {
-    id: "workflows",
-    name: "Workflows",
-    icon: "Workflow",
-    description: "Run durable, provider-independent agent workflows.",
-  },
-  {
-    id: "monaco-editor",
-    name: "File Editor",
-    icon: "Code",
-    description:
-      "Edit files in BB with the Monaco editor instead of the read-only preview.",
-  },
-  {
-    id: "prompt-library",
-    name: "Prompt Library",
-    icon: "Clock",
-    description:
-      "Search previous prompts, star favorites, and insert them into the composer.",
+      "Let agents open your app in a browser and check their own work.",
   },
   {
     id: "agent-annotations",
     name: "Agent Annotations",
     icon: "MessageSquarePlus",
     description:
-      "Select elements in a Browser tab, comment on them, and add them to the prompt.",
+      "Point at part of a page in bb's browser and tell the agent what to change.",
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    icon: "Github",
+    description: "See your issues and pull requests, and send an agent to one.",
   },
   {
     id: "ask-user-question",
     name: "Ask User Question",
     icon: "MessageQuestion",
     description:
-      "Let any provider ask the user a multiple-choice question, the way Claude Code's AskUserQuestion does natively.",
+      "Agents ask you a quick multiple-choice question instead of guessing.",
+  },
+  {
+    id: "monaco-editor",
+    name: "File Editor",
+    icon: "Code",
+    description: "Edit a file next to the thread without leaving bb.",
   },
 ];
 
@@ -367,7 +366,7 @@ function ProjectsFrame({
       step="projects"
       compact={chrome.compact}
       title="Add your projects"
-      description="Git repos on this computer that you've worked in over the last 30 days."
+      description={`Repos you've worked in recently on ${MACHINE_NAME}. We picked this week's.`}
       primaryLabel={
         scanning || selectedIds.size === 0
           ? "Continue"
@@ -412,8 +411,8 @@ function PluginsFrame({
     <OnboardingLayout
       step="plugins"
       compact={chrome.compact}
-      title="Make bb yours"
-      description="Most of bb is plugins. These ones are off until you want them, and you can change your mind in Plugins."
+      title="Give your agents more to work with"
+      description="Optional, and off until you turn them on. You can change them anytime in Plugins."
       primaryLabel="Continue"
       secondaryLabel="Skip"
       onPrimary={chrome.onPrimary ?? noop}
@@ -460,9 +459,9 @@ function DevicesFrame({
     <OnboardingLayout
       step="devices"
       compact={chrome.compact}
-      title="Use bb from anywhere"
-      description="All optional. Everything here also lives in Settings → Machines."
-      primaryLabel="Start using bb"
+      title="Check on agents away from your desk"
+      description="Optional. Also in Settings → Machines."
+      primaryLabel="Start your first thread"
       onPrimary={chrome.onPrimary ?? noop}
       onBack={chrome.onBack ?? noop}
       onSelectStep={chrome.onSelectStep ?? noop}
@@ -479,6 +478,8 @@ function DevicesFrame({
         connectSetupOpen={connectSetupOpen}
         otherMachineCount={otherMachineCount}
         mobileLinks={MOBILE_LINKS}
+        mobilePlatform={null}
+        showMobileApp
         onToggleConnectSetup={onToggleConnectSetup}
         onCopyConnectUrl={noop}
         onAddMachine={noop}
@@ -904,7 +905,7 @@ export function Step3Plugins() {
       >
         <StoryWindow>
           <PluginsFrame
-            enabledIds={new Set(["workflows", "prompt-library"])}
+            enabledIds={new Set(["workflows", "github"])}
             pendingIds={new Set(["browser-automation"])}
           />
         </StoryWindow>

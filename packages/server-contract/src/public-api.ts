@@ -8,10 +8,12 @@ import {
 } from "./api/machine-environment.js";
 import {
   machineEnvironmentReplaceSchema,
+  recordTelemetryEventRequestSchema,
   setAiServiceSelectionRequestSchema,
   systemProviderEnabledRequestSchema,
   testAiServiceRequestSchema,
   type MachineEnvironmentReplace,
+  type RecordTelemetryEventRequest,
   type SetAiServiceSelectionRequest,
   type SystemAiServicesResponse,
   type SystemProviderCatalogEntry,
@@ -1918,6 +1920,20 @@ export const publicApiRoutes = {
         testAiServiceRequestSchema,
       ),
       response: jsonResponse<TestAiServiceResponse>(),
+    }),
+    /**
+     * Forward one anonymous product event from a bb client to the server's
+     * usage telemetry. Only the onboarding, setup checklist, and notification
+     * prompt events in the request schema are accepted, and the server drops
+     * them when usage data sharing is off.
+     */
+    recordTelemetryEvent: defineRoute({
+      path: "/system/telemetry/events",
+      method: "post",
+      request: jsonRequest<EmptyInput, RecordTelemetryEventRequest>(
+        recordTelemetryEventRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     generalSettings: defineRoute({
       path: "/settings/general",
