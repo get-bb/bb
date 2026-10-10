@@ -168,6 +168,8 @@ const SCHEDULE_GUIDE = "/guides/run-an-agent-on-a-schedule";
 
 const CLAUDE_TASKS_FILE =
   "~/Library/Application Support/Claude/claude-code-sessions/*/*/scheduled-tasks.json";
+const CLAUDE_AI =
+  "env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL";
 const CODEX_DB = "~/.codex/sqlite/codex-dev.db";
 const CODEX_DB_SHELL = "$HOME/.codex/sqlite/codex-dev.db";
 
@@ -184,10 +186,10 @@ export const MOVE_TASKS_TOOLS = {
       "Turn your Claude Code routines into bb automations. bb recreates each one and tests them before you switch over.",
     find: `1. Find my routines.
    - Local routines: read ${CLAUDE_TASKS_FILE}. Each entry in scheduledTasks has its schedule (cronExpression), enabled, model, folder (cwd, or the first of userSelectedFolders), useWorktree, and filePath: the SKILL.md under ~/.claude/scheduled-tasks/ whose body is the prompt. Skip entries with enabled false, and one-time ones with fireAt instead of cronExpression.
-   - Cloud routines live on my claude.ai account. List them with Claude Code's /schedule list, using my claude.ai login: \`claude -p "/schedule list"\`. Get each one's prompt, schedule, repository, and model. Each cloud run gets a fresh clone, so use a worktree for these. If you can't reach them, skip them and say so.
+   - Cloud routines live on my claude.ai account. List them with Claude Code's /schedule, using my claude.ai login rather than any key bb set: \`${CLAUDE_AI} claude -p "/schedule list" --allowedTools RemoteTrigger\`. Get each one's prompt, schedule, repository, and model. Each cloud run gets a fresh clone, so use a worktree for these. If you can't reach them, skip them and say so.
    - Skip /loop tasks. They end with their session.
    Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
-    pause: `   Pause the original. For a cloud routine, turn it off with /schedule update in \`claude -p\`.
+    pause: `   Pause the original. For a cloud routine, turn it off the same way: \`${CLAUDE_AI} claude -p "/schedule update <routine id>: set enabled to false" --allowedTools RemoteTrigger\`.
    The Claude desktop app reads scheduled-tasks.json only when it starts, so pause the local routines together after the last test: quit the app with \`osascript -e 'quit app "Claude"'\` and wait until it has closed, copy scheduled-tasks.json to scheduled-tasks.before-bb.json, set each moved entry's "enabled" to false with a JSON-aware edit, read the file back, then reopen the app with \`open -a Claude\`.`,
     changeNote:
       " To pause local routines, it quits and reopens the Claude Code desktop app.",
