@@ -52,6 +52,18 @@ function guide() {
     examples: { savings, bill, stepper },
   };
 }
+const UNAVAILABLE =
+  "This answer is unavailable. Ask the agent to publish it again in this thread.";
+const MAX_FORK_DEPTH = 8;
+type ThreadLink = {
+  sourceThreadId: string | null;
+  lifecycleOwnerThreadId: string | null;
+  visibility: string;
+};
+const sharesConversation = (thread: ThreadLink) =>
+  thread.visibility === "hidden" &&
+  thread.sourceThreadId !== null &&
+  thread.lifecycleOwnerThreadId === thread.sourceThreadId;
 export function createStore(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, [
@@ -62,7 +74,50 @@ export function createStore(bb: BbPluginApi) {
     "CREATE INDEX answer_state_thread ON answer_state(thread_id)",
     "CREATE TABLE answer_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, answer_id TEXT NOT NULL, thread_id TEXT NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL)",
     "CREATE INDEX answer_events_answer ON answer_events(answer_id, seq)",
+    "CREATE TABLE answers_by_thread (id TEXT NOT NULL, thread_id TEXT NOT NULL, document TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (id, thread_id))",
+    "INSERT INTO answers_by_thread (id, thread_id, document, kind) SELECT id, thread_id, document, kind FROM answers",
+    "DROP TABLE answers",
+    "ALTER TABLE answers_by_thread RENAME TO answers",
+    "CREATE INDEX answers_thread ON answers(thread_id)",
+    "CREATE TABLE answer_state_by_thread (id TEXT NOT NULL, thread_id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (id, thread_id))",
+    "INSERT INTO answer_state_by_thread (id, thread_id, state, version, updated_at) SELECT id, thread_id, state, version, updated_at FROM answer_state",
+    "DROP TABLE answer_state",
+    "ALTER TABLE answer_state_by_thread RENAME TO answer_state",
+    "CREATE INDEX answer_state_thread ON answer_state(thread_id)",
   ]);
+  const owned = db.prepare(
+    "SELECT 1 FROM answers WHERE id = ? AND thread_id = ?",
+  );
+  const exists = (threadId: string, id: string) =>
+    owned.get(idSchema.parse(id), threadSchema.parse(threadId)) !== undefined;
+  const copyAnswers = db.transaction(
+    (fromThreadId: string, toThreadId: string, id: string | null) => {
+      db.prepare(
+        "INSERT OR IGNORE INTO answers (id, thread_id, document, kind) SELECT id, ?, document, kind FROM answers WHERE thread_id = ? AND (? IS NULL OR id = ?)",
+      ).run(toThreadId, fromThreadId, id, id);
+      db.prepare(
+        "INSERT OR IGNORE INTO answer_state (id, thread_id, state, version, updated_at) SELECT id, ?, state, version, updated_at FROM answer_state WHERE thread_id = ? AND (? IS NULL OR id = ?)",
+      ).run(toThreadId, fromThreadId, id, id);
+    },
+  );
+  const lookupThread = (threadId: string): Promise<ThreadLink | null> =>
+    Promise.resolve()
+      .then(() => bb.sdk.threads.get({ threadId }))
+      .catch(() => null);
+  const resolveFrom = async (
+    threadId: string,
+    id: string,
+    depth: number,
+  ): Promise<string> => {
+    if (exists(threadId, id)) return threadId;
+    const thread = depth < MAX_FORK_DEPTH ? await lookupThread(threadId) : null;
+    if (!thread?.sourceThreadId) throw new Error(UNAVAILABLE);
+    if (sharesConversation(thread))
+      return resolveFrom(thread.sourceThreadId, id, depth + 1);
+    const origin = await resolveFrom(thread.sourceThreadId, id, depth + 1);
+    copyAnswers(origin, threadId, id);
+    return threadId;
+  };
   const insert = (threadId: string, kind: Answer["kind"], content: string) => {
     const id = randomUUID();
     db.prepare(
@@ -78,10 +133,7 @@ export function createStore(bb: BbPluginApi) {
       .get(idSchema.parse(id), threadSchema.parse(threadId)) as
       | { document: string; kind: string }
       | undefined;
-    if (!row)
-      throw new Error(
-        "This answer is unavailable. Ask the agent to publish it again in this thread.",
-      );
+    if (!row) throw new Error(UNAVAILABLE);
     return row.kind === "html"
       ? {
           id,
@@ -96,10 +148,18 @@ export function createStore(bb: BbPluginApi) {
           document: parseDocument(row.document),
         };
   };
-  const live = createLive(bb, db, (threadId, id) => void get(threadId, id));
+  const live = createLive(bb, db, (threadId, id) => {
+    if (!exists(threadId, id)) throw new Error(UNAVAILABLE);
+  });
   return {
     live,
     get,
+    resolve: (threadId: string, id: string) =>
+      resolveFrom(threadSchema.parse(threadId), idSchema.parse(id), 0),
+    copyFork(thread: ThreadLink & { id: string }) {
+      if (thread.sourceThreadId && !sharesConversation(thread))
+        copyAnswers(thread.sourceThreadId, thread.id, null);
+    },
     publish(threadId: string, json: string) {
       return insert(threadId, "document", JSON.stringify(parseDocument(json)));
     },
@@ -133,34 +193,63 @@ export default function plugin(bb: BbPluginApi): void {
   const store = createStore(bb);
   const { live } = store;
   bb.rpc.register(rpcContract, {
-    get: ({ id, threadId }) => store.get(threadId, id),
-    getState: ({ id, threadId }) => {
-      const { state, version } = live.getState(threadId, id);
+    get: async ({ id, threadId }) =>
+      store.get(await store.resolve(threadId, id), id),
+    getState: async ({ id, threadId }) => {
+      const { state, version } = live.getState(
+        await store.resolve(threadId, id),
+        id,
+      );
       return { state, version };
     },
-    setState: ({ id, threadId, clientId, state }) => ({
-      version: live.setState(threadId, id, state, clientId),
+    setState: async ({ id, threadId, clientId, state }) => ({
+      version: live.setState(
+        await store.resolve(threadId, id),
+        id,
+        state,
+        clientId,
+      ),
     }),
-    event: ({ id, threadId, clientId, name, data }) => ({
-      seq: live.event(threadId, id, clientId, name, data),
+    event: async ({ id, threadId, clientId, name, data }) => ({
+      seq: live.event(
+        await store.resolve(threadId, id),
+        id,
+        clientId,
+        name,
+        data,
+      ),
     }),
-    presence: ({ id, threadId, clientId, actions, active, closed }) => {
-      live.presence(threadId, id, clientId, actions, active, closed);
+    presence: async ({ id, threadId, clientId, actions, active, closed }) => {
+      live.presence(
+        await store.resolve(threadId, id),
+        id,
+        clientId,
+        actions,
+        active,
+        closed,
+      );
       return { ok: true as const };
     },
-    share: ({ id, threadId, clientId, label, data }) => ({
-      itemId: live.share(threadId, id, clientId, label, data),
+    share: async ({ id, threadId, clientId, label, data }) => ({
+      itemId: live.share(
+        await store.resolve(threadId, id),
+        id,
+        clientId,
+        label,
+        data,
+      ),
     }),
     result: ({ cmdId, clientId, ok, value, error }) => {
       live.result(cmdId, clientId, { ok, value, error });
       return { ok: true as const };
     },
   });
-  bb.http.route("GET", FRAME_PATH, (c) => {
+  bb.http.route("GET", FRAME_PATH, async (c) => {
     try {
+      const id = String(c.req.query("id") ?? "");
       const answer = store.get(
-        String(c.req.query("thread") ?? ""),
-        String(c.req.query("id") ?? ""),
+        await store.resolve(String(c.req.query("thread") ?? ""), id),
+        id,
       );
       if (answer.kind !== "html")
         return new Response("Not an HTML answer", { status: 404 });
@@ -312,8 +401,11 @@ export default function plugin(bb: BbPluginApi): void {
             },
             thread,
           },
-          run: ({ positionals, options }, ctx) => {
-            const threadId = threadSchema.parse(options.thread ?? ctx.threadId);
+          run: async ({ positionals, options }, ctx) => {
+            const threadId = await store.resolve(
+              options.thread ?? ctx.threadId ?? "",
+              positionals.id,
+            );
             if (options.set !== undefined)
               live.setState(
                 threadId,
@@ -348,7 +440,10 @@ export default function plugin(bb: BbPluginApi): void {
           },
           run: async ({ positionals, options }, ctx) => {
             const found = await live.watch(
-              threadSchema.parse(options.thread ?? ctx.threadId),
+              await store.resolve(
+                options.thread ?? ctx.threadId ?? "",
+                positionals.id,
+              ),
               positionals.id,
               options.since,
               options.wait,
@@ -381,7 +476,10 @@ export default function plugin(bb: BbPluginApi): void {
             const parsed: unknown =
               options.args === undefined ? [] : JSON.parse(options.args);
             const outcome = await live.command(
-              threadSchema.parse(options.thread ?? ctx.threadId),
+              await store.resolve(
+                options.thread ?? ctx.threadId ?? "",
+                positionals.id,
+              ),
               positionals.id,
               positionals.action,
               Array.isArray(parsed) ? parsed : [parsed],
@@ -395,9 +493,11 @@ export default function plugin(bb: BbPluginApi): void {
           summary: "List where an answer is open and the actions it exposes",
           positionals: [answerId],
           options: { thread },
-          run: ({ positionals, options }, ctx) => {
-            const threadId = threadSchema.parse(options.thread ?? ctx.threadId);
-            store.get(threadId, positionals.id);
+          run: async ({ positionals, options }, ctx) => {
+            const threadId = await store.resolve(
+              options.thread ?? ctx.threadId ?? "",
+              positionals.id,
+            );
             const open = live.openClients(threadId, positionals.id);
             return json({
               open: open.length,
@@ -433,5 +533,6 @@ export default function plugin(bb: BbPluginApi): void {
       };
     },
   });
+  bb.events.on("thread.created", ({ thread }) => store.copyFork(thread));
   bb.events.on("thread.deleted", ({ thread }) => store.removeThread(thread.id));
 }

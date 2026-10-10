@@ -1,4 +1,7 @@
-import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import {
+  createFakePluginHost,
+  makeThreadResponse,
+} from "@get-bb/plugin-sdk/testing";
 import { expect, it } from "vitest";
 import plugin from "./server.js";
 import { bill, stepper } from "./examples.js";
@@ -272,6 +275,105 @@ it("shares answer state, logs events for watch, and runs agent commands in the m
     expect((await provider.resolve(itemId)).context).toContain(
       '{"keys":[["C4",0,1]]}',
     );
+  } finally {
+    await host.harness.lifecycle.dispose();
+  }
+});
+
+it("copies answers into forks so they change independently, and shows side chats the same live answer", async () => {
+  const threads = {
+    thr_fork: makeThreadResponse({
+      id: "thr_fork",
+      sourceThreadId: "thr_test",
+    }),
+    thr_side: makeThreadResponse({
+      id: "thr_side",
+      sourceThreadId: "thr_test",
+      lifecycleOwnerThreadId: "thr_test",
+      visibility: "hidden",
+    }),
+    thr_late: makeThreadResponse({
+      id: "thr_late",
+      sourceThreadId: "thr_fork",
+    }),
+  };
+  const host = createFakePluginHost({
+    pluginId: "interactive-answers",
+    sdk: {
+      threads: {
+        get: (async ({ threadId }: { threadId: string }) => {
+          if (!(threadId in threads)) throw new Error("no such thread");
+          return threads[threadId as keyof typeof threads];
+        }) as never,
+      },
+    },
+  });
+  try {
+    plugin(host.bb);
+    const { runCli, callRpc, emitThreadEvent } = host.harness.behavior;
+    const id = /id="([^"]+)"/.exec(
+      (
+        await runCli([
+          "publish",
+          "--thread",
+          "thr_test",
+          "--answer",
+          JSON.stringify(stepper),
+        ])
+      ).stdout!,
+    )![1];
+    const save = (threadId: string, step: number) =>
+      callRpc("setState", {
+        id,
+        threadId,
+        clientId: "client-one-123",
+        state: { step },
+      });
+    const read = (threadId: string) => callRpc("getState", { id, threadId });
+    await save("thr_test", 2);
+    await emitThreadEvent("thread.created", { thread: threads.thr_fork });
+    await save("thr_fork", 5);
+    expect(await read("thr_test")).toEqual({ state: { step: 2 }, version: 1 });
+    expect(await read("thr_fork")).toEqual({ state: { step: 5 }, version: 2 });
+    expect(await callRpc("get", { id, threadId: "thr_fork" })).toMatchObject({
+      threadId: "thr_fork",
+    });
+
+    await emitThreadEvent("thread.created", { thread: threads.thr_side });
+    expect(await callRpc("get", { id, threadId: "thr_side" })).toMatchObject({
+      threadId: "thr_test",
+    });
+    await save("thr_side", 3);
+    expect(await read("thr_test")).toMatchObject({ state: { step: 3 } });
+    expect(await read("thr_fork")).toMatchObject({ state: { step: 5 } });
+
+    expect(await callRpc("get", { id, threadId: "thr_late" })).toMatchObject({
+      threadId: "thr_late",
+    });
+    expect(await read("thr_late")).toMatchObject({ state: { step: 5 } });
+
+    await emitThreadEvent("thread.deleted", {
+      thread: makeThreadResponse({ id: "thr_test" }),
+    });
+    await expect(callRpc("get", { id, threadId: "thr_test" })).rejects.toThrow(
+      "unavailable",
+    );
+    expect(await callRpc("get", { id, threadId: "thr_fork" })).toMatchObject({
+      threadId: "thr_fork",
+      kind: "html",
+    });
+    expect(await read("thr_fork")).toMatchObject({ state: { step: 5 } });
+    expect(
+      (
+        await host.harness.behavior.fetchHttp(
+          "GET",
+          `/frame?thread=thr_fork&id=${id}`,
+        )
+      ).status,
+    ).toBe(200);
+    await expect(
+      callRpc("get", { id, threadId: "thr_unrelated" }),
+    ).rejects.toThrow("unavailable");
   } finally {
     await host.harness.lifecycle.dispose();
   }
