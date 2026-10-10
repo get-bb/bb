@@ -124,8 +124,8 @@ export function moveTasksGuide(meta: GuideMeta, tool: MoveTasksTool): Guide {
           </Substeps>
         ),
         shot: {
-          src: "/guides/run-an-agent-on-a-schedule/window-detail-paused.webp",
-          alt: "The Morning issue triage automation in bb, paused, with its schedule, prompt, model, and a Run now button under Runs",
+          src: `/guides/${tool.slug}/window-detail-run.webp`,
+          alt: `A paused Daily dependency check automation in bb running ${tool.name}, with its schedule, prompt, model, and a finished test run under Runs`,
           width: 2048,
           height: 1280,
         },
@@ -190,7 +190,7 @@ export const MOVE_TASKS_TOOLS = {
     description:
       "Bring your Claude Code routines into bb automations, local and cloud. Your agent recreates each one paused with the same prompt and schedule, and tests it before you switch over.",
     find: `1. Find my routines.
-   - Local routines are Desktop scheduled tasks. Each is ~/.claude/scheduled-tasks/<name>/SKILL.md, with the prompt as the body. Its schedule, folder, model, and whether it runs in a worktree aren't in the file, so ask me for them: I can read them on Routines in the Claude Code desktop app.
+   - Local routines are Desktop scheduled tasks. Each is ~/.claude/scheduled-tasks/<name>/SKILL.md, with the prompt as the body. Its schedule, folder, model, and whether it runs in a worktree aren't in the file, so ask me for them before you plan; don't guess. I can read them on Routines in the Claude Code desktop app.
    - Cloud routines live on my claude.ai account, not this computer. Ask me to run /schedule list in Claude Code, or open claude.ai/code/routines, and paste each routine's prompt, schedule, repositories, and model. Each cloud run gets a fresh clone, so use a worktree for these.
    - Skip /loop tasks. They end with their session.
    Check: list each routine's name, local or cloud, schedule in plain words, folder or repository, worktree or not, and model.`,
