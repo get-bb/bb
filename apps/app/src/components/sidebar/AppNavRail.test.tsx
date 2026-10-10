@@ -212,7 +212,7 @@ function rail(): HTMLElement {
 
 function railButton(name: string): HTMLElement {
   const button = Array.from(
-    document.querySelectorAll(
+    document.querySelectorAll<HTMLButtonElement>(
       '[data-testid="app-nav-rail"] button, button[aria-label="Settings"]',
     ),
   ).find((candidate) => candidate.getAttribute("aria-label") === name);
@@ -222,7 +222,7 @@ function railButton(name: string): HTMLElement {
 
 function railLabels(): (string | null)[] {
   return Array.from(
-    document.querySelectorAll(
+    document.querySelectorAll<HTMLButtonElement>(
       '[data-testid="app-nav-rail"] button, button[aria-label="Settings"]',
     ),
     (button) => button.getAttribute("aria-label"),
@@ -231,7 +231,7 @@ function railLabels(): (string | null)[] {
 
 function currentRailLabels(): (string | null)[] {
   return Array.from(
-    document.querySelectorAll(
+    document.querySelectorAll<HTMLButtonElement>(
       '[data-testid="app-nav-rail"] button[aria-current="page"], button[aria-label="Settings"][aria-current="page"]',
     ),
     (button) => button.getAttribute("aria-label"),

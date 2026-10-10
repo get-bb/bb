@@ -221,9 +221,9 @@ export function AppSidebar({
           />
         </ThreadActionSurfaceVisibility>
       </SidebarContent>
-      <SidebarFooter
+      <div
         className={cn(
-          "relative p-0",
+          "relative flex flex-col gap-2",
           (isFooterCustomizing || pluginSidebarFooter.activeItem !== null) &&
             "px-2 pt-2",
         )}
@@ -244,7 +244,7 @@ export function AppSidebar({
             onDismiss={pluginSidebarFooter.dismiss}
           />
         )}
-      </SidebarFooter>
+      </div>
       <SidebarResizeHandle
         testId="app-sidebar-resize-handle"
         isResizing={isResizing}
