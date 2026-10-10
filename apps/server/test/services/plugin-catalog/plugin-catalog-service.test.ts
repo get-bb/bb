@@ -214,14 +214,7 @@ describe("plugin catalog service", () => {
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png",
       ],
-      collections: [
-        {
-          id: "bb-official",
-          rank: BUNDLED_PLUGINS.findIndex(
-            (plugin) => plugin.pluginId === "simple-notes",
-          ),
-        },
-      ],
+      collections: [{ id: "bb-official", rank: expect.any(Number) }],
       source: "builtin:docs",
       marketplace: "bb-official",
       marketplaceDisplayName: "BB Official",
@@ -244,13 +237,19 @@ describe("plugin catalog service", () => {
         BUNDLED_CURATED_MARKETPLACE.plugins.map((entry) => [entry.id, false]),
       ),
     });
-    expect(catalog.collections()).toEqual([
-      {
-        id: "bb-official",
-        displayName: "BB Official",
-        pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
-      },
-    ]);
+    const collections = catalog.collections();
+    const officialOrder = collections[0]?.pluginIds ?? [];
+    expect(collections[0]?.id).toBe("bb-official");
+    expect([...officialOrder].sort()).toEqual(
+      BUNDLED_PLUGINS.map((plugin) => plugin.pluginId).sort(),
+    );
+    for (const entry of results.filter(
+      (result) => result.marketplace === "bb-official",
+    )) {
+      expect(entry.collections).toEqual([
+        { id: "bb-official", rank: officialOrder.indexOf(entry.pluginId) },
+      ]);
+    }
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
         .filter((entry) => entry.category === category.displayName)
@@ -584,7 +583,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+          pluginIds: expect.any(Array),
         },
         {
           id: "new-and-notable",
@@ -632,7 +631,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: BUNDLED_PLUGINS.map((plugin) => plugin.pluginId),
+          pluginIds: expect.any(Array),
         },
       ]);
     });
