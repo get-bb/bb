@@ -63,6 +63,17 @@ keeps loaded older pages and replaces the rows the latest page covers, so
 streaming does not unload history. Otherwise a later event changed a row the
 page omitted, and loaded rows are replaced.
 
+The merge applies one rule whether or not the snapshot changed. A loaded row
+the latest page returns is replaced by it. A loaded row it does not return is
+kept only when it is older than the page: it ends before the window start, ends
+at or before `olderRowsSourceSeqEnd`, or arrives in `olderRowUpdates`. Any other
+loaded row is gone from the window, for example a running turn's rows that the
+completed turn folded into its summary; the merge drops it and the walk
+restarts from the latest page's cursor. When nothing is dropped the deeper of
+the loaded and latest cursors is kept. After a stale-cursor 400,
+`recoverLoadedTimelineAfterStaleCursor` reloads from the latest page when the
+snapshot changed, and otherwise merges and takes the latest cursor.
+
 A latest page sends omitted rows whose `sourceSeqEnd` reaches its window start
 in `timelinePage.olderRowUpdates` instead of in `olderRowsSourceSeqEnd`, such as
 a running background delegation that started on an older page. Each update

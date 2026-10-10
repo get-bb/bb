@@ -445,6 +445,45 @@ describe("timeline scrollback against the server", () => {
     });
   });
 
+  it.each([0, 1])(
+    "drops in-turn rows a completed turn absorbed, scrolled back %i pages",
+    async (pages) => {
+      await withTestHarness(SMALL_WINDOW, async (harness) => {
+        const script = createThreadScript(harness);
+        script.finishedTurn(1);
+        const turnId = script.startTurn(2);
+        for (let index = 0; index < 12; index += 1) {
+          script.append("item/completed", turnScope(turnId), {
+            item: command(`turn-2-command-${index}`, "completed", `${index}`),
+          });
+        }
+        script.append("item/agentMessage/delta", turnScope(turnId), {
+          itemId: "turn-2-answer",
+          delta: "Done.\n",
+        });
+        const client = await openThread(harness, script.threadId);
+        await scrollBack(harness, client, script.threadId, pages);
+
+        script.append("item/completed", turnScope(turnId), {
+          item: { type: "agentMessage", id: "turn-2-answer", text: "Done.\n" },
+        });
+        script.append("turn/completed", turnScope(turnId), {
+          status: "completed",
+        });
+        await refresh(harness, client, script.threadId);
+
+        expect(client.loaded.rows).toEqual(client.latest.rows);
+        expect(client.loaded.olderCursor).toEqual(
+          client.latest.timelinePage.olderCursor,
+        );
+        await walkToStart(harness, client, script.threadId);
+        expect(client.loaded.rows).toEqual(
+          await freshWalk(harness, script.threadId),
+        );
+      });
+    },
+  );
+
   it("updates a scrolled-back item that completes in a later turn", async () => {
     await withTestHarness(SMALL_WINDOW, async (harness) => {
       const script = createThreadScript(harness);

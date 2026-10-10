@@ -142,7 +142,7 @@ describe("scrollback inside a running turn cut by the response byte budget", () 
     });
   });
 
-  it("drops the scrolled-back rows of the turn on a refetch with no new events", async () => {
+  it("keeps the scrolled-back rows of the turn on a refetch with no new events", async () => {
     await withTestHarness(async (harness) => {
       const { threadId } = seedRunningTurn(harness, 40);
       const thread = getThread(harness.db, threadId)!;
@@ -158,10 +158,7 @@ describe("scrollback inside a running turn cut by the response byte budget", () 
         surfaceKey: loaded.surfaceKey,
       });
 
-      expect(merged.rows.map((row) => row.id)).toEqual(
-        refetched.rows.map((row) => row.id),
-      );
-      expect(merged.rows.length).toBeLessThan(loaded.rows.length);
+      expect(merged.rows).toBe(loaded.rows);
       expect(merged.olderCursor).toEqual(loaded.olderCursor);
     });
   });

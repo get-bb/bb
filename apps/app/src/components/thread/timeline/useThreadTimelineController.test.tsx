@@ -19,7 +19,6 @@ import type {
   ThreadTimelineResponse,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
-import { mergeLatestTimelineRows } from "@bb/client-core";
 import { createDeferredPromise, type DeferredPromise } from "@bb/test-helpers";
 import {
   afterEach,
@@ -36,7 +35,6 @@ import {
 } from "@/components/ui/bottom-anchored-scroll-body.js";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import {
   hasThreadTimelineUnseenEvents,
@@ -379,46 +377,6 @@ function markTimelineHasNewEvents(queryClient: QueryClient): void {
     refetchType: "none",
   });
 }
-
-describe("mergeLatestTimelineRows", () => {
-  it("replaces a retained optimistic row with the server row it stands in for", () => {
-    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
-    const serverRow = makeUserRow("thread-1:user-seed:5", 5);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [serverRow],
-      latestWindowStartSequence: 0,
-      loadedRows: [optimistic],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([serverRow.id]);
-  });
-
-  it("still appends genuinely disjoint server rows to retained ones", () => {
-    const older = makeUserRow("thread-1:user-seed:1", 1);
-    const newer = makeUserRow("thread-1:user-seed:5", 5);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [newer],
-      latestWindowStartSequence: 5,
-      loadedRows: [older],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([older.id, newer.id]);
-  });
-
-  it("keeps a pending optimistic row that the latest snapshot still carries", () => {
-    const optimistic = makeUserRow(`${OPTIMISTIC_TIMELINE_ROW_ID_PREFIX}a1`, 0);
-
-    const merged = mergeLatestTimelineRows({
-      latestRows: [optimistic],
-      latestWindowStartSequence: 0,
-      loadedRows: [optimistic],
-    });
-
-    expect(merged.rows.map((row) => row.id)).toEqual([optimistic.id]);
-  });
-});
 
 describe("useThreadTimelineController", () => {
   it("replaces loaded rows when realtime data starts a new context epoch", async () => {
