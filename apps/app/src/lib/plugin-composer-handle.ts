@@ -50,7 +50,7 @@ export type ComposerSource = Pick<
 
 type ComposerLifecycle = Pick<
   ComposerHandleController,
-  "setTextEffect" | "setInputLock" | "onSubmitted"
+  "setTextEffect" | "setInputLock" | "setPlaceholderPreview" | "onSubmitted"
 >;
 
 const composerSelectionSchema = z.object({
@@ -273,6 +273,8 @@ export function detachedComposerController(
   return composerHandleController(pluginId, host, {
     setTextEffect: () => warnNoLifecycle("setTextEffect"),
     setInputLock: () => warnNoLifecycle("setInputLock"),
+    setPlaceholderPreview: () =>
+      warnNoLifecycle("experimental_setPlaceholderPreview"),
     onSubmitted: (listener) => subscribeComposerSubmitted(scope, listener),
   });
 }

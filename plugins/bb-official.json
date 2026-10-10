@@ -106,6 +106,10 @@
     "category": "thread-management",
     "screenshots": []
   },
+  "tips": {
+    "category": "memory-and-context",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []

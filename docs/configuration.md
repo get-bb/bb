@@ -355,6 +355,23 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
+The builtin Tips plugin shows three contextual tips as a small feed under the
+composer on the desktop and web New thread page, never on phones or compact
+layouts. Each new visit adds one tip at the top and drops the oldest, cycling through every eligible tip before repeating; a clicked tip stays out of the next visit. A tip retires once its feature is in use or it is dismissed. Its "Show tips" switch (`enabled`) has no fixed
+default: the first time Tips runs it turns tips on for new installs (no
+threads, or none older than two weeks) and off for existing ones, saves that
+to the switch, and never revisits it. An explicit choice always wins. "Hide
+tips" on the page turns the switch off; set it with
+`bb plugin config bb--tips set enabled true|false`. Inspect or change tips from
+an agent or terminal with:
+
+```sh
+bb tips [--all] [--json]
+bb tips hide [--undo] [--json]
+bb tips dismiss <id> [--json]
+bb tips reset [--json]
+```
+
 The "Show diagnostic events" toggle in Settings → General → Privacy & diagnostics shows provider
 environment resolution and raw provider events that bb does not yet understand.
 It defaults to off in all builds. Warnings, errors, and model fallback remain
@@ -2086,8 +2103,12 @@ through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordT
 `onboarding_step_skipped` (per setup-guide step, marked first run or replay),
 `onboarding_finished` (completed or skipped), and the sidebar notification card's
 `notification_prompt_shown`, `notification_prompt_accepted`,
-`notification_prompt_dismissed`, and `notification_prompt_denied`. That route
-accepts only those events and their fixed, non-identifying properties.
+`notification_prompt_dismissed`, and `notification_prompt_denied`, plus
+`tip_shown` (once per tip per visit to the New thread page) and `tip_used` (on
+click) from the bundled Tips plugin, each with the built-in tip id, its position
+in the feed (1-3), and its action type (`prompt`, `open-page`, `run-command`,
+`open-plugin`, or `learn-more`). That route accepts only those events and their
+fixed, non-identifying properties.
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference

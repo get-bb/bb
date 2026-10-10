@@ -36,6 +36,7 @@
     "plugins/tasks",
     "plugins/theme-preview",
     "plugins/thread-list",
+    "plugins/tips",
     "plugins/workflows"
   ]
 }

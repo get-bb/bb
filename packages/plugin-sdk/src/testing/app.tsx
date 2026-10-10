@@ -200,6 +200,8 @@ export type NavigateCall =
       method: "experimental_openFileExternally";
       options: ExperimentalFileOpenOptions;
     }
+  | { method: "experimental_openAppRoute"; path: string }
+  | { method: "experimental_runAppCommand"; commandId: string }
   | {
       method: "experimental_openTerminal";
       options: Parameters<BbNavigate["experimental_openTerminal"]>[0];
@@ -234,6 +236,9 @@ export interface ComposerLog {
   /** Whether this plugin currently holds the composer input lock. */
   inputLocked: boolean;
   inputLockCalls: boolean[];
+  /** Latest placeholder preview the plugin set, or null when it cleared it. */
+  placeholderPreview: string | null;
+  placeholderPreviewCalls: Array<string | null>;
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
@@ -1823,6 +1828,10 @@ export interface RenderSlotOptions<
   openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
   /** Host acceptance for preferred-external file intents. */
   openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for `experimental_openAppRoute`; omitted → false. */
+  openAppRoute?: (path: string) => boolean;
+  /** Host acceptance for `experimental_runAppCommand`; omitted → false. */
+  runAppCommand?: (commandId: string) => boolean;
   /** Host acceptance for `useBbNavigate().experimental_openTerminal`. */
   openTerminal?: (
     options: Parameters<BbNavigate["experimental_openTerminal"]>[0],
@@ -2186,6 +2195,14 @@ export function renderSlot<
       });
       return options.openFileExternally?.(fileOptions) ?? false;
     },
+    experimental_openAppRoute(path) {
+      navigateCalls.push({ method: "experimental_openAppRoute", path });
+      return options.openAppRoute?.(path) ?? false;
+    },
+    experimental_runAppCommand(commandId) {
+      navigateCalls.push({ method: "experimental_runAppCommand", commandId });
+      return options.runAppCommand?.(commandId) ?? false;
+    },
     async experimental_openTerminal(terminalOptions) {
       navigateCalls.push({
         method: "experimental_openTerminal",
@@ -2294,6 +2311,8 @@ export function renderSlot<
     textEffectCalls: [],
     inputLocked: false,
     inputLockCalls: [],
+    placeholderPreview: null,
+    placeholderPreviewCalls: [],
     quotes: [],
     mentions: [],
     focusCount: 0,
@@ -2393,6 +2412,11 @@ export function renderSlot<
         if (!composerOwnership.active) return;
         composerLog.inputLocked = locked;
         composerLog.inputLockCalls.push(locked);
+      },
+      setPlaceholderPreview(text) {
+        if (!composerOwnership.active) return;
+        composerLog.placeholderPreview = text;
+        composerLog.placeholderPreviewCalls.push(text);
       },
       onSubmitted(listener) {
         submissionListeners.add(listener);
@@ -2508,6 +2532,7 @@ export function renderSlot<
     composerOwnership.active = false;
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
+    composerLog.placeholderPreview = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>

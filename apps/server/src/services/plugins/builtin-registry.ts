@@ -180,6 +180,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "tips",
+    pluginId: "bb--tips",
+    defaultEnabled: true,
+  },
+  {
     name: "prompt-library",
     pluginId: "bb--prompt-library",
     defaultEnabled: false,

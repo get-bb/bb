@@ -1923,8 +1923,8 @@ export const publicApiRoutes = {
     }),
     /**
      * Forward one anonymous product event from a bb client to the server's
-     * usage telemetry. Only the onboarding, setup checklist, and notification
-     * prompt events in the request schema are accepted, and the server drops
+     * usage telemetry. Only the onboarding, setup, notification prompt, and Tips
+     * events in the request schema are accepted, and the server drops
      * them when usage data sharing is off.
      */
     recordTelemetryEvent: defineRoute({

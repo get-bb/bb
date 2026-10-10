@@ -190,6 +190,11 @@
     "icon": "Palette"
   },
   {
+    "id": "bb--tips",
+    "name": "Tips",
+    "icon": "Explore"
+  },
+  {
     "id": "thread-list",
     "name": "Thread list",
     "icon": "ListView"
