@@ -12,9 +12,9 @@ function scopeUtilities(utilities: string): string {
 }
 
 describe("scopePluginUtilities", () => {
-  it("emits a descendant arm and a self arm per selector", () => {
+  it("emits separate descendant and self rules per selector", () => {
     expect(scopeUtilities(".flex-col{flex-direction:column}")).toBe(
-      `@layer utilities{${SCOPE} .flex-col,${SCOPE}.flex-col{flex-direction:column}}`,
+      `@layer utilities{${SCOPE} .flex-col{flex-direction:column}${SCOPE}.flex-col{flex-direction:column}}`,
     );
   });
 
@@ -24,10 +24,16 @@ describe("scopePluginUtilities", () => {
     );
   });
 
+  it("preserves nesting specificity when the original selector list has different specificities", () => {
+    expect(scopeUtilities(".a,#b{&:hover{color:red}}")).toBe(
+      `@layer utilities{${SCOPE} .a,${SCOPE}.a,${SCOPE} #b,${SCOPE}#b{&:hover{color:red}}}`,
+    );
+  });
+
   it("keeps commas inside :is()/:not() out of the selector split", () => {
     const scoped = scopeUtilities(":is(.a,.b) > .c{color:red}");
     expect(scoped).toBe(
-      `@layer utilities{${SCOPE} :is(.a,.b) > .c,${SCOPE}:is(.a,.b) > .c{color:red}}`,
+      `@layer utilities{${SCOPE} :is(.a,.b) > .c{color:red}${SCOPE}:is(.a,.b) > .c{color:red}}`,
     );
   });
 
@@ -51,10 +57,10 @@ describe("scopePluginUtilities", () => {
 
   it("keeps both arms when a sibling combinator precedes & so the subject stays on the element", () => {
     expect(scopeUtilities(".x{.a ~ &{color:red}}")).toBe(
-      `@layer utilities{${SCOPE} .x,${SCOPE}.x{.a ~ &{color:red}}}`,
+      `@layer utilities{${SCOPE} .x{.a ~ &{color:red}}${SCOPE}.x{.a ~ &{color:red}}}`,
     );
     expect(scopeUtilities(".x{&:hover{color:red}}")).toBe(
-      `@layer utilities{${SCOPE} .x,${SCOPE}.x{&:hover{color:red}}}`,
+      `@layer utilities{${SCOPE} .x{&:hover{color:red}}${SCOPE}.x{&:hover{color:red}}}`,
     );
   });
 
@@ -76,7 +82,7 @@ describe("scopePluginUtilities", () => {
   it("survives escaped class names and braces inside strings", () => {
     const scoped = scopeUtilities(String.raw`.w-\[50\%\]{content:"}"}`);
     expect(scoped).toBe(
-      `@layer utilities{${SCOPE} .w-\\[50\\%\\],${SCOPE}.w-\\[50\\%\\]{content:"}"}}`,
+      `@layer utilities{${SCOPE} .w-\\[50\\%\\]{content:"}"}${SCOPE}.w-\\[50\\%\\]{content:"}"}}`,
     );
   });
 
@@ -85,7 +91,7 @@ describe("scopePluginUtilities", () => {
       "@media (min-width:40rem){.md-flex{display:flex}}",
     );
     expect(scoped).toBe(
-      `@layer utilities{@media (min-width:40rem){${SCOPE} .md-flex,${SCOPE}.md-flex{display:flex}}}`,
+      `@layer utilities{@media (min-width:40rem){${SCOPE} .md-flex{display:flex}${SCOPE}.md-flex{display:flex}}}`,
     );
   });
 
