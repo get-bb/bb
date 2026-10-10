@@ -1,3 +1,4 @@
+export const PLUGIN_ID = "bb--playgrounds";
 export const WIDGET_MESSAGE_SOURCE = "playground";
 export const THEME_TOKENS = [
   "background",

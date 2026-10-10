@@ -369,3 +369,272 @@
     animation: none;
   }
 }
+.pga {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pga h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.pga h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pga h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pga p {
+  margin: 0;
+}
+.pga button,
+.pga input,
+.pga select,
+.pga textarea,
+.pga-save button,
+.pga-save input {
+  font: inherit;
+  color: inherit;
+}
+.pga-section,
+.pga-form,
+.pga-release {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.pga-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pga-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  justify-self: start;
+}
+.pga-tabs button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.pga-tabs button[aria-pressed="true"] {
+  background: var(--foreground);
+  color: var(--background);
+}
+.pga-btn {
+  border: 1px solid var(--border);
+  background: var(--card, var(--background));
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.pga-btn:hover:not(:disabled) {
+  background: var(--muted);
+}
+.pga-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pga-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.pga-primary:hover:not(:disabled) {
+  background: var(--primary);
+  opacity: 0.88;
+}
+.pga-danger {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.pga-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  justify-self: start;
+}
+.pga-search,
+.pga input:not([type="checkbox"]):not([type="radio"]),
+.pga select,
+.pga textarea,
+.pga-save input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--background);
+  min-width: 0;
+}
+.pga-search {
+  flex: 1;
+}
+.pga-meta {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.pga-empty {
+  color: var(--muted-foreground);
+  padding: 18px 0;
+}
+.pga-error {
+  color: var(--destructive);
+}
+.pga-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.pga-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card, var(--background));
+}
+.pga-card-main {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.pga-preview {
+  width: 96px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--muted);
+}
+.pga-panel {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+.pga-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.pga-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.pga-picker select {
+  max-width: 280px;
+}
+.pga-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.pga-field input,
+.pga-field textarea,
+.pga-field select {
+  color: var(--foreground);
+  font-size: 13px;
+}
+.pga-code,
+.pga-diff {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.pga-diff {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre;
+  border-radius: 8px;
+  background: var(--muted);
+}
+.pga-check {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+}
+.pga-actions,
+.pga-versions,
+.pga-releases {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.pga-versions {
+  list-style: none;
+  padding: 0;
+}
+.pga-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.pga-chip[data-status="published"] {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+.pga-chip[data-status="failed"] {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.pga-save {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.pga-save.pga-form {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.pga-save .pga-link {
+  color: var(--muted-foreground);
+}
+.pga-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}

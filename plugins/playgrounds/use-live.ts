@@ -15,6 +15,7 @@ type Options = {
   actions: string[];
   onRemoteState: (state: unknown, version: number) => void;
   onCommand: (action: string, args: unknown[]) => Promise<unknown>;
+  surface?: "card" | "panel";
 };
 const SAVE_DELAY_MS = 300;
 const HEARTBEAT_MS = 10_000;
@@ -46,6 +47,7 @@ export function useLiveAnswer({
   actions,
   onRemoteState,
   onCommand,
+  surface = "card",
 }: Options) {
   const rpc = useRpc<typeof rpcContract>();
   const [clientId] = useState(() => crypto.randomUUID());
@@ -130,10 +132,11 @@ export function useLiveAnswer({
           actions: actionsKey ? actionsKey.split("\n") : [],
           active,
           ...(closed ? { closed } : {}),
+          ...(surface === "panel" ? { surface } : {}),
         })
         .catch(() => {});
     },
-    [rpc, id, threadId, clientId, actionsKey],
+    [rpc, id, threadId, clientId, actionsKey, surface],
   );
   useEffect(() => {
     ping(false);

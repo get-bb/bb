@@ -50,6 +50,25 @@ actions with `window.playground.expose()`. `window.playground.send()` attaches d
 the user's next message as a pill. Commands run in the copy used most
 recently, and the card shows "Agent · <action>" each time the agent acts.
 
+## Saved apps and Community
+
+**Save as app** under a playground keeps an immutable copy in My apps on this
+bb server. Open it from the Apps page in any thread's app panel: Open resumes
+that thread's latest run and Start fresh begins a separate one. Agents find,
+open, and operate apps with `bb playgrounds apps …` and the `playground_apps`
+tool. Saving never copies inputs, recordings, or messages; removing an app
+never breaks threads that already use it.
+
+Authors develop a private draft, preview it, and prepare releases with a
+changelog and diff. Submitting a release opens a pull request on the Community
+catalog through an agent's existing GitHub access, after the person sends the
+prepared request; the catalog's maintainers decide what is published.
+
+Community browses a curated, Git-backed catalog set with the
+**Community catalog URL** setting (an https `index.json`). It is empty until a
+catalog is configured. Packages are checked against the catalog's SHA-256 and
+size before they are saved, and browsing never runs app code.
+
 ## HTML playgrounds
 
 HTML playgrounds are served from the plugin's `/frame` route and rendered in an

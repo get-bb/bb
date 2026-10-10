@@ -67,6 +67,7 @@ export const liveRpc = {
         actions: z.array(actionName).max(50),
         active: z.boolean(),
         closed: z.boolean().optional(),
+        surface: z.enum(["card", "panel"]).optional(),
       })
       .strict(),
     output: z.object({ ok: z.literal(true) }).strict(),
@@ -103,11 +104,18 @@ export type LiveEvent = {
   at: number;
   data: unknown;
 };
+export type Surface = "card" | "panel";
 type Client = {
   threadId: string;
   lastSeen: number;
   lastActive: number;
   actions: string[];
+  surface: Surface;
+};
+export type CommandOutcome = { ok: boolean; value?: unknown; error?: string };
+export type DispatchOutcome = {
+  acknowledged: boolean;
+  outcome: CommandOutcome;
 };
 
 export function createLive(
@@ -219,7 +227,47 @@ export function createLive(
         clientId,
         actions: c.actions,
         lastActive: c.lastActive,
+        surface: c.surface,
       }));
+  };
+  const dispatch = async (
+    threadId: string,
+    id: string,
+    clientId: string,
+    action: string,
+    args: unknown[],
+  ): Promise<DispatchOutcome> => {
+    const cmdId = randomUUID();
+    log(threadId, id, "command", { action, args, to: clientId });
+    const outcome = await new Promise<DispatchOutcome>((resolve) => {
+      const timer = setTimeout(() => {
+        pending.delete(cmdId);
+        resolve({
+          acknowledged: false,
+          outcome: {
+            ok: false,
+            error: "The playground did not respond in time.",
+          },
+        });
+      }, COMMAND_TIMEOUT_MS);
+      pending.set(cmdId, {
+        clientId,
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve({ acknowledged: true, outcome: v });
+        },
+      });
+      bb.realtime.publish(COMMAND_CHANNEL, {
+        cmdId,
+        id,
+        threadId,
+        clientId,
+        action,
+        args,
+      });
+    });
+    log(threadId, id, "result", { action, ...outcome.outcome });
+    return outcome;
   };
 
   return {
@@ -227,6 +275,8 @@ export function createLive(
     setState,
     events,
     openClients,
+    dispatch,
+    assertAnswer,
     event(
       threadId: string,
       id: string,
@@ -273,6 +323,7 @@ export function createLive(
       actions: string[],
       active: boolean,
       closed = false,
+      surface: Surface = "card",
     ) {
       assertAnswer(threadId, id);
       const answerKey = keyOf(threadId, id);
@@ -294,6 +345,7 @@ export function createLive(
         lastSeen: now,
         lastActive: active || !prev ? now : prev.lastActive,
         actions,
+        surface,
       });
     },
     result(
@@ -339,37 +391,13 @@ export function createLive(
         throw new Error(
           `Unknown action "${action}". Available: ${target.actions.join(", ") || "none"}.`,
         );
-      const cmdId = randomUUID();
-      log(threadId, id, "command", { action, args, to: target.clientId });
-      const outcome = await new Promise<{
-        ok: boolean;
-        value?: unknown;
-        error?: string;
-      }>((resolve) => {
-        const timer = setTimeout(() => {
-          pending.delete(cmdId);
-          resolve({
-            ok: false,
-            error: "The playground did not respond in time.",
-          });
-        }, COMMAND_TIMEOUT_MS);
-        pending.set(cmdId, {
-          clientId: target.clientId,
-          resolve: (v) => {
-            clearTimeout(timer);
-            resolve(v);
-          },
-        });
-        bb.realtime.publish(COMMAND_CHANNEL, {
-          cmdId,
-          id,
-          threadId,
-          clientId: target.clientId,
-          action,
-          args,
-        });
-      });
-      log(threadId, id, "result", { action, ...outcome });
+      const { outcome } = await dispatch(
+        threadId,
+        id,
+        target.clientId,
+        action,
+        args,
+      );
       return outcome;
     },
     removeThread(threadId: string) {

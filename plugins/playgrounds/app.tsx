@@ -33,12 +33,14 @@ import { useLiveAnswer, type LiveSnapshot } from "./use-live.js";
 import {
   fallbackTheme,
   FRAME_PATH,
+  PLUGIN_ID,
   THEME_TOKENS,
   WIDGET_MESSAGE_SOURCE,
   type WidgetTheme,
 } from "./widget.js";
 import "./app.css";
 import { Diagram } from "./diagram.js";
+import { registerLibrary, SaveAsApp } from "./library-app.js";
 
 function readInputs(
   doc: AnswerDocument,
@@ -54,13 +56,17 @@ function readInputs(
   return values;
 }
 
+export type Surface = "card" | "panel";
+
 function AgentHost({
   agent,
   maxWidth,
+  footer,
   children,
 }: {
   agent: { label: string; key: number } | null;
   maxWidth?: number;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -76,6 +82,7 @@ function AgentHost({
           Agent · {agent.label}
         </span>
       )}
+      {footer}
     </div>
   );
 }
@@ -324,7 +331,6 @@ function Chart({
   );
 }
 
-const PLUGIN_ID = "bb--playgrounds";
 const GESTURE_INTERVAL_MS = 1000;
 const MESSAGE_BURST = 40;
 const MESSAGES_PER_SECOND = 10;
@@ -415,11 +421,15 @@ function HtmlAnswerView({
   threadId,
   widget,
   initial,
+  surface,
+  footer,
 }: {
   id: string;
   threadId: string;
   widget: HtmlAnswer;
   initial: LiveSnapshot;
+  surface: Surface;
+  footer?: ReactNode;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(240);
@@ -442,6 +452,7 @@ function HtmlAnswerView({
     threadId,
     initial,
     actions,
+    surface,
     onRemoteState: (state, version) => {
       latestState.current = { state };
       remoteVersion.current = version;
@@ -480,6 +491,12 @@ function HtmlAnswerView({
     return true;
   };
   const send = (label: string, data: unknown) => {
+    if (
+      surface === "panel" &&
+      (composer.scope.kind === "new-thread" ||
+        composer.scope.threadId !== threadId)
+    )
+      return;
     if (!takeGesture()) return;
     rpc
       .call("share", {
@@ -637,7 +654,7 @@ function HtmlAnswerView({
     };
   }, [id, save, emit, active]);
   return (
-    <AgentHost agent={live.agent} maxWidth={widget.width}>
+    <AgentHost agent={live.agent} maxWidth={widget.width} footer={footer}>
       <div className="pg-widget">
         <iframe
           ref={frame}
@@ -664,12 +681,16 @@ function HtmlAnswerView({
   );
 }
 
-function AnswerView({
+export function AnswerView({
   answer,
   initial,
+  surface = "card",
+  footer,
 }: {
   answer: Answer;
   initial: LiveSnapshot;
+  surface?: Surface;
+  footer?: ReactNode;
 }) {
   if (answer.kind === "html")
     return (
@@ -678,9 +699,18 @@ function AnswerView({
         threadId={answer.threadId}
         widget={answer.widget}
         initial={initial}
+        surface={surface}
+        footer={footer}
       />
     );
-  return <DocumentAnswerView answer={answer} initial={initial} />;
+  return (
+    <DocumentAnswerView
+      answer={answer}
+      initial={initial}
+      surface={surface}
+      footer={footer}
+    />
+  );
 }
 
 const DOCUMENT_ACTIONS = ["set", "reset"];
@@ -688,9 +718,13 @@ const DOCUMENT_ACTIONS = ["set", "reset"];
 function DocumentAnswerView({
   answer,
   initial,
+  surface,
+  footer,
 }: {
   answer: Extract<Answer, { kind: "document" }>;
   initial: LiveSnapshot;
+  surface: Surface;
+  footer?: ReactNode;
 }) {
   const doc = answer.document;
   const [inputs, setInputs] = useState<Values | null>(null);
@@ -719,6 +753,7 @@ function DocumentAnswerView({
     threadId: answer.threadId,
     initial,
     actions: DOCUMENT_ACTIONS,
+    surface,
     onRemoteState: (state) => apply(readInputs(doc, state)),
     onCommand: async (action, args) => {
       if (action === "reset") {
@@ -752,7 +787,7 @@ function DocumentAnswerView({
     live.save(next);
   }
   return (
-    <AgentHost agent={live.agent}>
+    <AgentHost agent={live.agent} footer={footer}>
       <article
         className="pg-answer"
         aria-label={doc.title}
@@ -940,6 +975,7 @@ function AnswerDirective({ attributes, message }: PluginMessageDirectiveProps) {
       key={`${answer.answer.threadId}:${answer.answer.id}`}
       answer={answer.answer}
       initial={answer.initial}
+      footer={<SaveAsApp answer={answer.answer} />}
     />
   ) : (
     <div className="pg-answer" role="status">
@@ -952,4 +988,5 @@ export default definePluginApp((app) => {
     id: "playground",
     component: AnswerDirective,
   });
+  registerLibrary(app, AnswerView);
 });
