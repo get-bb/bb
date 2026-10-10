@@ -374,6 +374,21 @@ it("copies answers into forks so they change independently, and shows side chats
     await expect(
       callRpc("get", { id, threadId: "thr_unrelated" }),
     ).rejects.toThrow("unavailable");
+    const documents = () =>
+      (
+        host.bb.storage
+          .database()
+          .prepare("SELECT count(*) AS n FROM answer_documents")
+          .get() as { n: number }
+      ).n;
+    expect(documents()).toBe(1);
+    await emitThreadEvent("thread.deleted", { thread: threads.thr_fork });
+    expect(documents()).toBe(1);
+    expect(await callRpc("get", { id, threadId: "thr_late" })).toMatchObject({
+      kind: "html",
+    });
+    await emitThreadEvent("thread.deleted", { thread: threads.thr_late });
+    expect(documents()).toBe(0);
   } finally {
     await host.harness.lifecycle.dispose();
   }
