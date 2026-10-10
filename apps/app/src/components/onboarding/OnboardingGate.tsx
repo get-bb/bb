@@ -62,6 +62,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             <Suspense fallback={null}>
               <OnboardingFlow
                 initialStep={requestedStep}
+                entry="replay"
                 onClose={() => setRequestedStep(null)}
               />
             </Suspense>
