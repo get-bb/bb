@@ -19,7 +19,7 @@ export default defineWorkspaceTestConfig({
       pkgDir: __dirname,
       aliases: { "@": path.resolve(__dirname, "./src") },
       name: "@bb/mobile",
-      include: ["src/**/*.test.ts"],
+      include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     }),
   },
 });

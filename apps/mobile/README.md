@@ -253,6 +253,69 @@ upload certificate, in `ASSETLINKS_SHA256_FINGERPRINTS` on the apex and connect
 gate. Verify real HTTPS app links after installing the Play-signed build.
 The native `bb://` scheme works without those certificates.
 
+### Automated Android beta releases
+
+Use **Release Android beta** (`mobile-android-beta.yml`) on `main`. Choose a
+testing destination (`open`, the Play `beta` track, or `internal`) and an action
+(`draft` or `review`). The default is an open-testing draft. This workflow has
+no production-track option. The EAS build profile is named `production` because
+it builds a signed AAB; that name does not select the Play production track.
+
+```bash
+gh workflow run mobile-android-beta.yml --ref main -f track=open -f action=draft
+gh workflow run mobile-android-beta.yml --ref main -f track=open -f action=review
+```
+
+Each command creates a new build. EAS increments the version code, and EAS Submit
+uploads that exact build ID and waits for the upload result. No manual download
+is needed. `review` requests a completed rollout on the selected testing track,
+subject to Google's review and managed publishing settings. Internal testing may
+become available immediately. `draft` holds the release for later Console action.
+Store metadata, Data safety declarations, reviewer access, countries, and tester
+eligibility must already be configured in Play Console. Review submission does
+not resolve policy rejections or appeals. Google can require Console submission
+after a rejection; the workflow never silently retries with another policy.
+
+One-time credentials:
+
+1. Enable the **Google Play Android Developer API** in the service account's
+   Google Cloud project and create a service-account JSON key.
+2. In Play Console **Users and permissions**, invite the service-account email
+   and grant access to `app.getbb.mobile`, including **View app information** and
+   **Release apps to testing tracks**. Production-release access is not needed.
+3. Store the key as the repository Actions secret
+   `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`. Keep it separate from the Firebase push
+   credential. The repository also needs the existing `EXPO_TOKEN` and EAS
+   Android signing credentials. Do not commit the JSON key.
+
+The workflow checks API access before starting a paid build. It writes the key
+only for submission, removes it afterward, and preserves build/version/download
+details in the `android-beta-release` artifact for 90 days, including when
+submission fails. Inspect Play Console before retrying a failed submission; do
+not rerun the entire build merely to retry an upload. To recover a completed
+build manually, download its AAB from the run summary and add it to the intended
+testing track in Console.
+
+**Android beta review status** checks the release after the workflow finishes
+and every six hours afterward. It monitors the latest 100 completed beta runs
+within 90 days and matches both track and version code. A `Google Play …` check
+on the release commit shows draft, in review, approved awaiting publication,
+rejected, or published. A newly detected rejection or required Console action
+fails the monitor run, using normal GitHub Actions notification settings. Enable
+Actions notifications for this workflow to receive failures; the run summary and
+commit check retain all results. Google uses “published” for partial or halted
+rollouts too; inspect Console for coverage. This monitor only reads Play state.
+
+Terminal results stop polling. After a manual Console action, explicitly recheck
+the original **release workflow** run ID to resume monitoring:
+
+```bash
+gh workflow run mobile-android-beta-status.yml --ref main -f run_id=RELEASE_RUN_ID
+```
+
+The APK workflow **Mobile Android (EAS)** remains available for GitHub APK
+distribution. The beta workflow does not change the Settings → Mobile link.
+
 Pending credentials do not establish push delivery or verified HTTPS app-link
 coverage. Test those separately once Firebase/signing are configured.
 
