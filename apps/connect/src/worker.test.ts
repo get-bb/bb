@@ -2320,10 +2320,14 @@ function fakeTunnelSocket(
   send?: (data: ArrayBuffer | ArrayBufferView | string) => void,
   readyState = 1,
 ) {
+  let attachment: unknown = null;
   return {
     send: send ?? vi.fn(),
     close: vi.fn(),
-    deserializeAttachment: () => null,
+    serializeAttachment: (value: unknown) => {
+      attachment = value;
+    },
+    deserializeAttachment: () => attachment,
     readyState,
   } as unknown as WebSocket;
 }
@@ -3355,6 +3359,151 @@ describe("TunnelDO records how long a server went without a tunnel", () => {
 
     expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
     expect(state.storage.get("tunnelReplacedLive")).toBe(false);
+  });
+});
+
+describe("TunnelDO drops a tunnel that stops heartbeating", () => {
+  const NOW = 50_000_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function connectedTunnel(
+    openedMsAgo: number,
+    heartbeatMsAgo: number | null,
+  ) {
+    const state = mockDoState({
+      protocolVersion: 1,
+      serverId: "srv",
+      tunnelOpenedAt: NOW - openedMsAgo,
+    });
+    const tunnel = fakeTunnelSocket();
+    vi.mocked(tunnel.close).mockImplementation(() => {
+      Object.defineProperty(tunnel, "readyState", { value: 2 });
+    });
+    tunnel.serializeAttachment({
+      tunnelOpenedAt: NOW - openedMsAgo,
+      host: "sawyer.getbb.app",
+      dropped: false,
+    });
+    state.addSocket(tunnel, ["tunnel"]);
+    if (heartbeatMsAgo !== null) {
+      state.autoResponded(tunnel, new Date(NOW - heartbeatMsAgo));
+    }
+    const env = makeDoEnv();
+    const dob = new TunnelDO(state.api, env);
+    await state.restore;
+    return { state, tunnel, env, dob };
+  }
+
+  async function status(dob: TunnelDO) {
+    const response = await dob.fetch(
+      new Request("https://tunnel/__control/status"),
+    );
+    return response.json();
+  }
+
+  it.each([
+    {
+      label: "stopped heartbeating",
+      openedMsAgo: 600_000,
+      heartbeatMsAgo: 80_000,
+      silentMs: 80_000,
+      heartbeated: 1,
+    },
+    {
+      label: "never heartbeated",
+      openedMsAgo: 80_000,
+      heartbeatMsAgo: null,
+      silentMs: 80_000,
+      heartbeated: 0,
+    },
+  ])(
+    "closes a tunnel that $label for over 70 s and records the loss",
+    async ({ openedMsAgo, heartbeatMsAgo, silentMs, heartbeated }) => {
+      const { state, tunnel, env, dob } = await connectedTunnel(
+        openedMsAgo,
+        heartbeatMsAgo,
+      );
+
+      await expect(status(dob)).resolves.toMatchObject({ connected: false });
+
+      expect(tunnel.close).toHaveBeenCalledWith(
+        1011,
+        "tunnel heartbeat missed",
+      );
+      expect(state.storage.get("tunnelClosedAt")).toBe(NOW);
+      expect(state.storage.get("tunnelLostAt")).toBe(NOW);
+      expect(env.GATE_EVENTS.writeDataPoint).toHaveBeenCalledWith({
+        indexes: ["sawyer.getbb.app"],
+        blobs: ["tunnel-silent", "", "", "sawyer.getbb.app", "", ""],
+        doubles: [silentMs, heartbeated, -1],
+      });
+    },
+  );
+
+  it.each([
+    {
+      label: "a heartbeat 30 s ago",
+      openedMsAgo: 600_000,
+      heartbeatMsAgo: 30_000,
+    },
+    {
+      label: "no heartbeat yet 30 s after opening",
+      openedMsAgo: 30_000,
+      heartbeatMsAgo: null,
+    },
+  ])("keeps a tunnel with $label", async ({ openedMsAgo, heartbeatMsAgo }) => {
+    const { tunnel, env, dob } = await connectedTunnel(
+      openedMsAgo,
+      heartbeatMsAgo,
+    );
+
+    await expect(status(dob)).resolves.toMatchObject({ connected: true });
+
+    expect(tunnel.close).not.toHaveBeenCalled();
+    expect(env.GATE_EVENTS.writeDataPoint).not.toHaveBeenCalled();
+  });
+
+  it("does not forward a visitor request into a silent tunnel", async () => {
+    const sent: Uint8Array[] = [];
+    const { state, dob } = await connectedTunnel(600_000, 80_000);
+    const silent = state.api.getWebSockets("tunnel")[0]!;
+    Object.defineProperty(silent, "send", {
+      value: (data: Uint8Array) => sent.push(data),
+    });
+
+    const pending = dob.fetch(new Request("https://do.internal/app.js"));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(sent).toEqual([]);
+    expect(silent.close).toHaveBeenCalled();
+    await dob.fetch(new Request("https://do.internal/__control/close"));
+    expect((await pending).status).toBe(503);
+  });
+
+  it("checks for a silent tunnel on the presence alarm", async () => {
+    const { tunnel, dob } = await connectedTunnel(600_000, 80_000);
+
+    await dob.alarm();
+
+    expect(tunnel.close).toHaveBeenCalledWith(1011, "tunnel heartbeat missed");
+  });
+
+  it("does not record the dropped tunnel's later close a second time", async () => {
+    const { state, tunnel, dob } = await connectedTunnel(600_000, 80_000);
+    await status(dob);
+    vi.setSystemTime(NOW + 30_000);
+
+    dob.webSocketClose(tunnel, 1006, "");
+
+    expect(state.storage.get("tunnelClosedAt")).toBe(NOW);
   });
 });
 

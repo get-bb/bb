@@ -51,6 +51,8 @@ const TUNNEL_REPLACED_LIVE_KEY = "tunnelReplacedLive";
 const TUNNEL_VANISHED_KEY = "tunnelVanished";
 const VANISHED_TUNNEL_GRACE_MS = 5_000;
 const TUNNEL_RETURN_GRACE_MS = 15_000;
+const TUNNEL_SILENCE_LIMIT_MS = 70_000;
+const TUNNEL_SILENT_CLOSE_CODE = 1011;
 const PRESENCE_INTERVAL_MIN_MS = 40_000;
 const PRESENCE_INTERVAL_JITTER_MS = 20_000;
 const PRESENCE_ON_CHANGE_INTERVAL_MIN_MS = 25 * 60_000;
@@ -82,6 +84,12 @@ interface SocketAttachment {
   streamId?: number;
   relay?: boolean;
   done?: boolean;
+}
+
+interface TunnelAttachment {
+  tunnelOpenedAt: number;
+  host: string;
+  dropped: boolean;
 }
 
 function readTunnelTarget(headers: Headers): string | undefined {
@@ -168,6 +176,7 @@ export class TunnelDO {
       );
     }
     if (url.pathname === "/__control/status") {
+      this.dropSilentTunnel();
       const tunnel = this.tunnelSocket();
       const heartbeatAt =
         tunnel === null
@@ -198,6 +207,7 @@ export class TunnelDO {
       return new Response(null, { status: 204 });
     }
 
+    this.dropSilentTunnel();
     const tunnel = this.tunnelSocket();
     if (!tunnel) {
       return this.awaitReturningTunnel().then((returned) =>
@@ -339,6 +349,7 @@ export class TunnelDO {
   }
 
   async alarm(): Promise<void> {
+    this.dropSilentTunnel();
     await this.restartIfTunnelVanished();
     if (!this.tunnelSocket()) {
       await this.state.storage.delete("serverId");
@@ -404,6 +415,12 @@ export class TunnelDO {
     void this.state.storage.delete(TUNNEL_VANISHED_KEY);
     void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
     const pair = new WebSocketPair();
+    const attachment: TunnelAttachment = {
+      tunnelOpenedAt: now,
+      host: new URL(request.url).host,
+      dropped: false,
+    };
+    pair[1].serializeAttachment(attachment);
     this.state.acceptWebSocket(pair[1], [TUNNEL_TAG]);
     setTimeout(() => this.wakeTunnelWaiters(), 0);
     return new Response(null, { status: 101, webSocket: pair[0] });
@@ -679,6 +696,43 @@ export class TunnelDO {
     }
   }
 
+  private recordTunnelEnd(now: number, lost: boolean): void {
+    void this.state.storage.put(TUNNEL_CLOSED_AT_KEY, now);
+    if (lost) {
+      void this.state.storage.put(TUNNEL_LOST_AT_KEY, now);
+    } else {
+      void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
+    }
+    if (presenceWritesOnChange(this.env)) void this.markPresence();
+    this.abandonStreams(
+      "tunnel disconnected mid-request",
+      "tunnel disconnected",
+    );
+  }
+
+  private dropSilentTunnel(): void {
+    const tunnel = this.tunnelSocket();
+    if (tunnel === null) return;
+    const attachment =
+      tunnel.deserializeAttachment() as TunnelAttachment | null;
+    if (attachment === null) return;
+    const heartbeatAt = this.state.getWebSocketAutoResponseTimestamp(tunnel);
+    const now = Date.now();
+    const silentMs =
+      now - (heartbeatAt?.getTime() ?? attachment.tunnelOpenedAt);
+    if (silentMs <= TUNNEL_SILENCE_LIMIT_MS) return;
+    tunnel.serializeAttachment({ ...attachment, dropped: true });
+    try {
+      tunnel.close(TUNNEL_SILENT_CLOSE_CODE, "tunnel heartbeat missed");
+    } catch {}
+    this.env.GATE_EVENTS.writeDataPoint({
+      indexes: [attachment.host],
+      blobs: ["tunnel-silent", "", "", attachment.host, "", ""],
+      doubles: [silentMs, heartbeatAt === null ? 0 : 1, -1],
+    });
+    if (this.tunnelSocket() === null) this.recordTunnelEnd(now, true);
+  }
+
   private abandonStreams(httpReason: string, wsReason: string): void {
     for (const streamId of [...this.pendingHttp.keys()]) {
       this.failHttpStream(streamId, 502, httpReason);
@@ -879,19 +933,11 @@ export class TunnelDO {
   webSocketClose(ws: WebSocket, code: number, reason: string): void {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
+      const tunnelAttachment =
+        ws.deserializeAttachment() as TunnelAttachment | null;
+      if (tunnelAttachment?.dropped === true) return;
       if (this.tunnelSocket() !== null) return;
-      const now = Date.now();
-      void this.state.storage.put(TUNNEL_CLOSED_AT_KEY, now);
-      if (code === CLEAN_CLOSE_CODE) {
-        void this.state.storage.delete(TUNNEL_LOST_AT_KEY);
-      } else {
-        void this.state.storage.put(TUNNEL_LOST_AT_KEY, now);
-      }
-      if (presenceWritesOnChange(this.env)) void this.markPresence();
-      this.abandonStreams(
-        "tunnel disconnected mid-request",
-        "tunnel disconnected",
-      );
+      this.recordTunnelEnd(Date.now(), code !== CLEAN_CLOSE_CODE);
       return;
     }
     const attachment = ws.deserializeAttachment() as SocketAttachment & {
