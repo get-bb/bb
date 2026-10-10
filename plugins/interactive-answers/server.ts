@@ -119,9 +119,11 @@ export function createStore(bb: BbPluginApi) {
           owners.set(key, current);
           return current;
         }
-        const thread = await bb.sdk.threads
-          .get({ threadId: current })
-          .catch(() => null);
+        const lookup: string = current;
+        const thread: { sourceThreadId: string | null } | null =
+          await Promise.resolve()
+            .then(() => bb.sdk.threads.get({ threadId: lookup }))
+            .catch(() => null);
         current = thread?.sourceThreadId ?? null;
       }
       throw new Error(UNAVAILABLE);
