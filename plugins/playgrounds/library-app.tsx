@@ -1713,6 +1713,7 @@ function Community() {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<CommunityState | null>(null);
   const [inspected, setInspected] = useState<Record<string, unknown>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const { busy, error, run } = useAsync();
   const load = useCallback(
     (refreshIfStale: boolean) =>
@@ -1831,7 +1832,7 @@ function Community() {
                       New in v{app.latest.version}: {app.latest.notes}
                     </p>
                   )}
-                  {details && (
+                  {expanded[app.id] && (
                     <div className="pga-panel">
                       <Screenshots
                         shots={app.screenshots.map((shot, n) => ({
@@ -1839,12 +1840,22 @@ function Community() {
                           alt: shot.alt,
                         }))}
                       />
-                      <ActionsDoc actions={details.actions} />
-                      <p className="pga-meta">
-                        v{details.version} · sha256{" "}
-                        <code>{details.digest.slice(0, 16)}</code>
-                        {details.source ? ` · ${details.source}` : ""}
-                      </p>
+                      {details ? (
+                        <>
+                          <ActionsDoc actions={details.actions} />
+                          <p className="pga-meta">
+                            v{details.version} · sha256{" "}
+                            <code>{details.digest.slice(0, 16)}</code>
+                            {details.source ? ` · ${details.source}` : ""}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="pga-meta" role="status">
+                          {busy
+                            ? "Downloading and checking the package…"
+                            : "Agent actions appear once the package downloads and passes its checks."}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1853,15 +1864,17 @@ function Community() {
                     <button
                       type="button"
                       className="pga-btn"
+                      aria-expanded={!!expanded[app.id]}
                       disabled={busy || !app.latest}
-                      onClick={() =>
+                      onClick={() => {
+                        setExpanded((m) => ({ ...m, [app.id]: true }));
                         void run(() =>
                           rpc.call("communityInspect", { catalogId: app.id }),
                         ).then(
                           (d) =>
                             d && setInspected((m) => ({ ...m, [app.id]: d })),
-                        )
-                      }
+                        );
+                      }}
                     >
                       Details
                     </button>
