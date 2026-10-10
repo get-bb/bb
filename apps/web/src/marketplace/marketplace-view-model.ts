@@ -1,7 +1,3 @@
-import {
-  BB_OFFICIAL_COLLECTION_ID,
-  rankPluginShelf,
-} from "@bb/domain/plugin-shelf-ranking";
 import type {
   MarketplaceCategory,
   MarketplaceV2Entry,
@@ -99,31 +95,6 @@ export function marketplaceShelves(
           },
         ];
   return [...collectionShelves, ...categoryShelves, ...uncategorizedShelves];
-}
-
-export function rankMarketplaceShelves(
-  shelves: readonly MarketplaceShelf[],
-  stats: MarketplaceStats | null,
-  now: number,
-): MarketplaceShelf[] {
-  return shelves.map((shelf) =>
-    shelf.kind === "collection" && shelf.id === BB_OFFICIAL_COLLECTION_ID
-      ? {
-          ...shelf,
-          entries: rankPluginShelf(
-            shelf.entries,
-            (entry) => ({
-              id: entry.id,
-              recentInstalls: stats?.plugins[entry.id]?.recentInstalls ?? null,
-              ...(entry.publishedAt === undefined
-                ? {}
-                : { publishedAt: entry.publishedAt }),
-            }),
-            now,
-          ),
-        }
-      : shelf,
-  );
 }
 
 export function marketplaceCategoryOptions(

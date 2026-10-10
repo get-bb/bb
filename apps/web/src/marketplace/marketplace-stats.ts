@@ -10,10 +10,7 @@ const marketplaceStatsSchema = z.object({
   generatedAt: z.string(),
   plugins: z.record(
     z.string(),
-    z.object({
-      installs: z.number().int().nonnegative(),
-      recentInstalls: z.number().int().nonnegative().optional(),
-    }),
+    z.object({ installs: z.number().int().nonnegative() }),
   ),
 });
 

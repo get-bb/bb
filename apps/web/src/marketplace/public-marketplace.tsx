@@ -45,7 +45,6 @@ import {
   marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
-  rankMarketplaceShelves,
   moreInMarketplaceCategory,
   moreFromMarketplaceAuthor,
   resolveMarketplaceCategory,
@@ -691,7 +690,6 @@ function MarketplaceBrowser({
   hero: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const renderedAt = useContext(MarketplaceRenderTimeContext) ?? Date.now();
   const options = marketplaceCategoryOptions(manifest, entries);
   const activeCategory = options.some((option) => option.id === state.category)
     ? state.category
@@ -781,11 +779,7 @@ function MarketplaceBrowser({
             />
           </section>
         ) : (
-          rankMarketplaceShelves(
-            marketplaceShelves(manifest, entries),
-            stats,
-            renderedAt,
-          ).map((shelf) => (
+          marketplaceShelves(manifest, entries).map((shelf) => (
             <Shelf
               key={`${shelf.kind}:${shelf.id}`}
               manifest={manifest}

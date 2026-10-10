@@ -28,18 +28,14 @@ describe("marketplace install stats", () => {
         ...MARKETPLACE_STATS_FIXTURE,
         plugins: {
           ...MARKETPLACE_STATS_FIXTURE.plugins,
-          "future-plugin": {
-            installs: 2,
-            recentInstalls: 1,
-            futureField: true,
-          },
+          "future-plugin": { installs: 2, futureField: true },
           "Bad Plugin": { installs: 99 },
         },
       }),
     ).toMatchObject({
       plugins: {
         "prompt-library": { installs: 1_204 },
-        "future-plugin": { installs: 2, recentInstalls: 1 },
+        "future-plugin": { installs: 2 },
       },
     });
     expect(() =>

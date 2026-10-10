@@ -54,11 +54,6 @@
       "types": "./src/plugin-install-badge.ts",
       "default": "./src/plugin-install-badge.ts"
     },
-    "./plugin-shelf-ranking": {
-      "source": "./src/plugin-shelf-ranking.ts",
-      "types": "./src/plugin-shelf-ranking.ts",
-      "default": "./src/plugin-shelf-ranking.ts"
-    },
     "./provider-fork": {
       "source": "./src/provider-fork.ts",
       "types": "./src/provider-fork.ts",
