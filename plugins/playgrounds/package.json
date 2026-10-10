@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Answers you can play with: calculators, guides, previews.",
+  "license": "MIT",
   "engines": {
     "bb": ">=0.0",
     "bbPluginSdk": ">=0.6.37"
