@@ -186,6 +186,19 @@ export function defaultSelectedRepoPaths(
   return new Set(chosen.map((repo) => repo.path));
 }
 
+export function mostRecentImportedProjectId(
+  imported: readonly { projectId: string; lastActivityAt: string }[],
+): string | null {
+  let latest: { projectId: string; activity: number } | null = null;
+  for (const entry of imported) {
+    const activity = Date.parse(entry.lastActivityAt);
+    if (latest === null || activity > latest.activity) {
+      latest = { projectId: entry.projectId, activity };
+    }
+  }
+  return latest?.projectId ?? null;
+}
+
 export function shortRemoteName(originUrl: string | null): string | null {
   if (originUrl === null) return null;
   const match =

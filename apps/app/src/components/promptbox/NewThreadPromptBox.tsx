@@ -33,6 +33,7 @@ import {
 import {
   DEFAULT_COMPOSER_SCOPE,
   PromptBoxInternal,
+  type ComposerBlockedAction,
   type AttachmentsConfig,
   type HistoryConfig,
   type MentionMenuPlacement,
@@ -129,6 +130,7 @@ interface NewThreadPromptBoxUIProps {
   isSubmitting: boolean;
   disabled: boolean;
   disabledReason?: string;
+  blockedAction?: ComposerBlockedAction;
   autoFocus?: boolean;
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
@@ -162,6 +164,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   isSubmitting,
   disabled,
   disabledReason,
+  blockedAction,
   autoFocus,
   pluginComposerHost,
   textEffects,
@@ -216,6 +219,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           isSubmitting={isSubmitting}
           disabled={disabled}
           disabledReason={disabledReason}
+          blockedAction={blockedAction}
           autoFocus={autoFocus}
           textEffects={textEffects}
           placeholder={placeholderOverride}
@@ -256,6 +260,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   isSubmitting,
   disabled,
   disabledReason,
+  blockedAction,
   autoFocus,
   textEffects,
   placeholder: placeholderOverride,
@@ -317,6 +322,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         promptActions={promptActions}
         voice={voice}
         submission={{
+          blockedAction,
           isSubmitting,
           disabled,
           disabledReason,

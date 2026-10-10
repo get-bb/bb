@@ -11,7 +11,11 @@ import { useRootComposePlacement } from "@/lib/root-compose-selection";
 import { useInitialPromptDraft } from "@/components/promptbox/mentions/initial-prompt-draft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useSystemProviders } from "@/hooks/queries/system-queries";
+import {
+  useSystemProviderStates,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
+import { useOpenSetupGuide } from "@/components/onboarding/setup-guide-request";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
@@ -32,6 +36,7 @@ import {
   ProviderCliBanner,
   providerCliBlockedReason,
 } from "@/components/promptbox/banner/ProviderCliBanner";
+import { resolveComposerSignInState } from "@/components/promptbox/composer-sign-in-state";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
@@ -693,6 +698,33 @@ function RootComposeSurface({
       issue: selectedProviderCliIssue,
     });
   }, [selectedProviderCliIssue, rootProjectHostId, startInstall]);
+
+  const providerStates = useSystemProviderStates({
+    enabled: rootProjectHostId !== null,
+    ...(rootProjectHostId === null ? {} : { hostId: rootProjectHostId }),
+  }).data?.providers;
+  const openSetupGuide = useOpenSetupGuide();
+  const composerSignInState = useMemo(
+    () =>
+      blockingProviderCliStatus === null
+        ? resolveComposerSignInState(
+            providerStates?.find(
+              (state) => state.providerId === selectedProviderId,
+            ),
+            rootProjectHostId !== null && rootProjectHostId === primaryHostId
+              ? () => openSetupGuide("agent")
+              : null,
+          )
+        : null,
+    [
+      blockingProviderCliStatus,
+      openSetupGuide,
+      primaryHostId,
+      providerStates,
+      rootProjectHostId,
+      selectedProviderId,
+    ],
+  );
 
   useFixedPanelTabsStorageMaintenance();
   const fixedPanelTabsState = useFixedPanelTabsState(
@@ -1423,9 +1455,7 @@ function RootComposeSurface({
     [parsedEnvironment, setEnvironmentSelectionValue],
   );
   const promptBanner = useMemo(() => {
-    if (blockingProviderCliStatus === null) {
-      return null;
-    }
+    if (blockingProviderCliStatus === null) return null;
     return (
       <ProviderCliBanner
         displayName={blockingProviderCliStatus.displayName}
@@ -1482,9 +1512,11 @@ function RootComposeSurface({
     mentionMenuPlacement: isCompactViewport ? "top" : "bottom",
     banner: promptBanner,
     blockedReason:
-      blockingProviderCliStatus === null
-        ? undefined
-        : providerCliBlockedReason(blockingProviderCliStatus),
+      blockingProviderCliStatus !== null
+        ? providerCliBlockedReason(blockingProviderCliStatus)
+        : composerSignInState?.placeholder,
+    placeholder: composerSignInState?.placeholder,
+    blockedAction: composerSignInState?.blockedAction,
     resolveMentionLink,
     pluginComposerHost,
     textEffects: promptTextEffects,
