@@ -120,13 +120,17 @@ export function createThreadTimelineWindows(
       includeDiagnosticOperations,
       includeNestedRows: request.includeNestedRows,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      planCommand: resolveProviderPlanCommand(
+        deps.providerRegistry,
+        thread.providerId,
+      ),
       providerDisplayName,
     };
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,
       surface: resolveThreadTimelineSurface(deps.db, thread, surfaceOptions)
-        .key,
+        .cacheKey,
       page: request.page,
       summaryOnly: request.summaryOnly,
     };
@@ -142,10 +146,6 @@ export function createThreadTimelineWindows(
             eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
             maxSeq,
             page: request.page,
-            planCommand: resolveProviderPlanCommand(
-              deps.providerRegistry,
-              thread.providerId,
-            ),
             summaryOnly: request.summaryOnly,
           },
         );

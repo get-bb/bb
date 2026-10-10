@@ -152,18 +152,20 @@ export function resolveThreadTimelineSurface(
 ): ThreadTimelineSurface {
   const threadName = thread.title ?? thread.titleFallback ?? "";
   const workspaceRoot = resolveThreadWorkspaceRoot(db, thread);
+  const cursorKey = JSON.stringify([
+    options.includeClearedContextHistory,
+    options.includeDiagnosticOperations,
+    options.includeNestedRows ?? false,
+    options.deferContent ?? false,
+    options.maxInlineOutputChars,
+    options.providerDisplayName ?? null,
+    threadName,
+    workspaceRoot,
+    options.completedTurnDisplay,
+  ]);
   return {
-    key: JSON.stringify([
-      options.includeClearedContextHistory,
-      options.includeDiagnosticOperations,
-      options.includeNestedRows ?? false,
-      options.deferContent ?? false,
-      options.maxInlineOutputChars,
-      options.providerDisplayName ?? null,
-      threadName,
-      workspaceRoot,
-      options.completedTurnDisplay,
-    ]),
+    cursorKey,
+    cacheKey: JSON.stringify([cursorKey, options.planCommand ?? null]),
     threadName,
     workspaceRoot,
   };
@@ -193,10 +195,12 @@ export interface ThreadTimelineSurfaceOptions {
   includeNestedRows?: boolean;
   maxInlineOutputChars: InlineOutputCharLimit;
   providerDisplayName?: string;
+  planCommand?: ProviderComposerCommand | null;
 }
 
 interface ThreadTimelineSurface {
-  key: string;
+  cursorKey: string;
+  cacheKey: string;
   threadName: string;
   workspaceRoot: string | null;
 }
@@ -207,7 +211,6 @@ interface BuildThreadTimelineOptions extends ThreadTimelineSurfaceOptions {
   maxSeq: number;
   page: ThreadTimelinePageRequest;
   summaryOnly?: boolean;
-  planCommand?: ProviderComposerCommand | null;
 }
 
 interface BuildTimelineTurnSummaryDetailsOptions extends TimelineTurnSummarySelection {
@@ -1286,7 +1289,7 @@ function buildThreadTimelineInternal(
     db,
     thread,
     options.page,
-    surface.key,
+    surface.cursorKey,
     options.maxSeq === 0 ? undefined : options.maxSeq,
   );
   const contentCursor = readTimelineContentCursor(options.page);
