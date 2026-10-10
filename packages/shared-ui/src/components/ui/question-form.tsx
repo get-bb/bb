@@ -556,21 +556,18 @@ export function QuestionForm({
           shortcuts={shortcuts}
         />
       </div>
-      {density === "compact" ? (
-        <div className="mt-1.5 flex shrink-0 items-center justify-end gap-1">
-          {cancelButton}
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2",
+          density === "compact" ? "mt-1.5" : "mt-3",
+        )}
+      >
+        {cancelButton}
+        <div className="flex items-center gap-2">
           {backButton}
           {advanceButton}
         </div>
-      ) : (
-        <div className="mt-3 flex shrink-0 items-center justify-between gap-2">
-          {cancelButton}
-          <div className="flex items-center gap-2">
-            {backButton}
-            {advanceButton}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

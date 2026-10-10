@@ -573,23 +573,40 @@ function ChildQuestionNav({
   return (
     <div
       id={SECTION_IDS.childThreads.toggle}
-      className="flex min-h-8 min-w-0 items-center justify-between gap-2 px-3 py-1 text-xs"
+      className={activityRowClass(
+        "active",
+        "flex min-h-8 min-w-0 items-center",
+      )}
     >
       {canGoBack ? (
         <button
           ref={backButtonRef}
           type="button"
           onClick={onBack}
-          className="-ml-1.5 flex h-6 items-center gap-0.5 rounded-md pl-0.5 pr-1.5 text-foreground/90 hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className={cn(
+            PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+            "w-auto flex-1 hover:bg-transparent",
+          )}
         >
-          <Icon name="ChevronLeft" className="size-3.5" aria-hidden="true" />
-          Child threads
+          <Icon
+            name="ChevronLeft"
+            className={activityIconClass("active", "size-3.5 shrink-0")}
+            aria-hidden="true"
+          />
+          <span
+            className={activityTextClass(
+              "active",
+              "min-w-0 flex-1 truncate text-left font-normal",
+            )}
+          >
+            Active child threads
+          </span>
         </button>
       ) : (
-        <span />
+        <span className="flex-1" />
       )}
       {total > 1 ? (
-        <div className="-mr-1.5 flex items-center">
+        <div className="flex shrink-0 items-center pr-1.5 text-xs">
           <button
             type="button"
             aria-label="Previous question"

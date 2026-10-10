@@ -180,7 +180,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Child threads" }),
+      screen.getByRole("button", { name: "Active child threads" }),
     );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
@@ -252,7 +252,9 @@ describe("ThreadPromptContextBanner child questions", () => {
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
     expect(shownSource()).toBe("Child thr_b");
-    expect(screen.queryByRole("button", { name: "Child threads" })).toBe(null);
+    expect(screen.queryByRole("button", { name: "Active child threads" })).toBe(
+      null,
+    );
   });
 
   it("drops the bottom collapse row while a question is open", () => {
@@ -271,7 +273,9 @@ describe("ThreadPromptContextBanner child questions", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Child threads" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Active child threads" }),
+    );
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
