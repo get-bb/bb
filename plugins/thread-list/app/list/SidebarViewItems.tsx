@@ -16,6 +16,7 @@ import type { HeaderCreationActions } from "./SidebarHeaderControls.js";
 import { ThreadListVisibilityMenuItems } from "./ThreadListVisibility.js";
 import {
   sidebarThreadLifecyclesAtom,
+  sidebarProjectThreadLifecyclesAtom,
   sidebarOrganizationModeAtom,
   sidebarChronologicalSortAtom,
   sidebarSortDirectionAtom,
@@ -38,10 +39,22 @@ const SIDEBAR_SORT_OPTIONS = [
 ] as const;
 
 type SidebarViewPage = "organize" | "sort" | "filter";
+type ThreadLifecycle = "active" | "archived";
+
+function sameLifecycles(
+  left: readonly ThreadLifecycle[],
+  right: readonly ThreadLifecycle[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((lifecycle) => right.includes(lifecycle))
+  );
+}
 
 export function SidebarHeaderMenuContents({
   creation,
   anchorSectionId,
+  filterProjectId,
   compact,
   page,
   onPageChange,
@@ -49,6 +62,7 @@ export function SidebarHeaderMenuContents({
 }: {
   creation: HeaderCreationActions;
   anchorSectionId?: SidebarSectionId;
+  filterProjectId?: string;
   compact: boolean;
   page: SidebarViewPage | null;
   onPageChange: (page: SidebarViewPage | null) => void;
@@ -67,7 +81,7 @@ export function SidebarHeaderMenuContents({
           Back
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <SidebarViewItems page={page} />
+        <SidebarViewItems page={page} filterProjectId={filterProjectId} />
       </>
     );
   }
@@ -115,7 +129,10 @@ export function SidebarHeaderMenuContents({
                     : "w-max min-w-28 max-w-64"
                 }
               >
-                <SidebarViewItems page={item.page} />
+                <SidebarViewItems
+                  page={item.page}
+                  filterProjectId={filterProjectId}
+                />
               </DropdownMenuSubContent>
             </DropdownMenuPortal>
           </DropdownMenuSub>
@@ -133,8 +150,39 @@ export function SidebarHeaderMenuContents({
   );
 }
 
-function SidebarViewItems({ page }: { page: SidebarViewPage }) {
-  const [lifecycles, setLifecycles] = useAtom(sidebarThreadLifecyclesAtom);
+function SidebarViewItems({
+  page,
+  filterProjectId,
+}: {
+  page: SidebarViewPage;
+  filterProjectId?: string;
+}) {
+  const [globalLifecycles, setGlobalLifecycles] = useAtom(
+    sidebarThreadLifecyclesAtom,
+  );
+  const [projectLifecycles, setProjectLifecycles] = useAtom(
+    sidebarProjectThreadLifecyclesAtom,
+  );
+  const lifecycles =
+    filterProjectId === undefined
+      ? globalLifecycles
+      : (projectLifecycles[filterProjectId] ?? globalLifecycles);
+  const setLifecycles = (next: ThreadLifecycle[]) => {
+    if (filterProjectId === undefined) {
+      setGlobalLifecycles(next);
+      return;
+    }
+    setProjectLifecycles((current) => {
+      const others = Object.fromEntries(
+        Object.entries(current).filter(
+          ([projectId]) => projectId !== filterProjectId,
+        ),
+      );
+      return sameLifecycles(next, globalLifecycles)
+        ? others
+        : { ...others, [filterProjectId]: next };
+    });
+  };
   const [organization, setOrganization] = useAtom(sidebarOrganizationModeAtom);
   const [sort, setSort] = useAtom(sidebarChronologicalSortAtom);
   const [savedDirection, setDirection] = useAtom(sidebarSortDirectionAtom);
@@ -160,8 +208,10 @@ function SidebarViewItems({ page }: { page: SidebarViewPage }) {
               aria-checked={checked}
               title={required ? "Keep at least one filter selected" : undefined}
               onSelect={(event) => {
-                event.preventDefault();
-                if (required) return;
+                if (required) {
+                  event.preventDefault();
+                  return;
+                }
                 setLifecycles(
                   checked
                     ? lifecycles.filter((value) => value !== lifecycle)

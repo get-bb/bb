@@ -105,6 +105,7 @@ export type ArchivedThreadsKindFilter = "all" | "root" | "child";
 
 export interface ArchivedThreadsListFilters {
   projectId?: string;
+  projectIds?: readonly string[];
   kind?: ArchivedThreadsKindFilter;
 }
 
@@ -197,6 +198,10 @@ type ArchivedThreadsListQueryKey = readonly [
   typeof THREADS_QUERY_KEY,
   typeof ARCHIVED_THREADS_LIST_KIND,
   ArchivedThreadsListFilters,
+];
+type ArchivedThreadsListQueryKeyPrefix = readonly [
+  typeof THREADS_QUERY_KEY,
+  typeof ARCHIVED_THREADS_LIST_KIND,
 ];
 type DisabledThreadListQueryKey = readonly [
   typeof THREADS_DISABLED_QUERY_KEY,
@@ -716,6 +721,10 @@ export function threadSearchQueryKey(
 
 export function threadSearchQueryKeyPrefix(): ThreadSearchQueryKeyPrefix {
   return [THREAD_SEARCH_QUERY_KEY];
+}
+
+export function archivedThreadsListQueryKeyPrefix(): ArchivedThreadsListQueryKeyPrefix {
+  return [THREADS_QUERY_KEY, ARCHIVED_THREADS_LIST_KIND];
 }
 
 export function archivedThreadsListQueryKey(

@@ -6,6 +6,8 @@ import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import { QueryClient } from "@tanstack/react-query";
+import { archivedThreadsListQueryKey } from "@/hooks/queries/query-keys";
 import {
   useSidebarThreadActions,
   useSidebarThreadDraft,
@@ -64,12 +66,40 @@ const archiveQuery = vi.hoisted(() => ({
   fetchNextPage: vi.fn(async () => undefined),
 }));
 const archiveEnabled = vi.hoisted(() => vi.fn());
+const projectArchiveQuery = vi.hoisted(() => ({
+  data: undefined as { pages: ThreadListEntry[][] } | undefined,
+  isLoadingError: false,
+  hasNextPage: false,
+  isFetchingNextPage: false,
+  isFetchNextPageError: false,
+  fetchNextPage: vi.fn(async () => undefined),
+}));
+const projectArchiveIds = vi.hoisted(() => vi.fn());
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useArchivedThreads: (_filters: object, options: { enabled: boolean }) => {
     archiveEnabled(options.enabled);
     return archiveQuery;
   },
+  useProjectsArchivedThreads: (projectIds: readonly string[]) => {
+    projectArchiveIds(projectIds);
+    return projectArchiveQuery;
+  },
 }));
+
+const queryClientRef = vi.hoisted(() => ({
+  current: null as QueryClient | null,
+}));
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...original,
+    useQueryClient: () => {
+      queryClientRef.current ??= new original.QueryClient();
+      return queryClientRef.current;
+    },
+  };
+});
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () => ({ data: state.data, isError: false }),
@@ -164,6 +194,11 @@ afterEach(() => {
   archiveQuery.data = undefined;
   archiveQuery.isLoadingError = false;
   archiveQuery.hasNextPage = false;
+  projectArchiveQuery.data = undefined;
+  projectArchiveQuery.isLoadingError = false;
+  projectArchiveQuery.hasNextPage = false;
+  queryClientRef.current?.clear();
+  queryClientRef.current = null;
   drafts.threadIds.clear();
   clearPluginThreadRowStatuses("plugin-a");
   environmentProviders.providers = undefined;
@@ -270,10 +305,124 @@ describe("sidebar lifecycle selection", () => {
       id: "thr_archived",
       archivedAt: 42,
     });
+    const projectArchived = makeThreadListEntry({
+      id: "thr_project_archived",
+      projectId: "proj_app",
+      archivedAt: 43,
+    });
     state.data = payload([]);
-    archiveQuery.data = { pages: [[archived]] };
-    const { result } = renderHook(() => useSidebarThreadEntry(archived.id));
+    queryClientRef.current = new QueryClient();
+    queryClientRef.current.setQueryData(archivedThreadsListQueryKey({}), {
+      pages: [[archived]],
+      pageParams: [0],
+    });
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId: string }) => useSidebarThreadEntry(threadId),
+      { initialProps: { threadId: archived.id } },
+    );
     expect(result.current).toBe(archived);
+    rerender({ threadId: projectArchived.id });
+    expect(result.current).toBeNull();
+    act(() => {
+      queryClientRef.current?.setQueryData(
+        archivedThreadsListQueryKey({ projectIds: ["proj_app"] }),
+        { pages: [[projectArchived]], pageParams: [{ proj_app: 0 }] },
+      );
+    });
+    expect(result.current).toBe(projectArchived);
+  });
+});
+
+describe("per-project lifecycle selection", () => {
+  const appActive = makeThreadListEntry({
+    id: "thr_app_active",
+    projectId: "proj_app",
+    archivedAt: null,
+  });
+  const appArchived = makeThreadListEntry({
+    id: "thr_app_archived",
+    projectId: "proj_app",
+    archivedAt: 42,
+  });
+  const otherActive = makeThreadListEntry({
+    id: "thr_other_active",
+    projectId: "proj_other",
+    archivedAt: null,
+  });
+  const otherArchived = makeThreadListEntry({
+    id: "thr_other_archived",
+    projectId: "proj_other",
+    archivedAt: 43,
+  });
+  function twoProjects() {
+    return {
+      sections: [],
+      projects: [
+        { id: "proj_app", name: "App", threads: [appActive] },
+        { id: "proj_other", name: "Other", threads: [otherActive] },
+      ],
+      personalProject: {
+        id: PERSONAL_PROJECT_ID,
+        name: "Personal",
+        threads: [],
+      },
+    };
+  }
+
+  it("loads archived threads only for the project that opts in", async () => {
+    state.data = twoProjects();
+    projectArchiveQuery.data = { pages: [[appArchived]] };
+    projectArchiveQuery.hasNextPage = true;
+    const projectLifecycles = { proj_app: ["active", "archived"] as const };
+    const { result } = renderHook(() =>
+      useSidebarThreads({
+        experimental_lifecycles: ["active"],
+        experimental_projectLifecycles: projectLifecycles,
+      }),
+    );
+    expect(archiveEnabled).toHaveBeenLastCalledWith(false);
+    expect(projectArchiveIds).toHaveBeenLastCalledWith(["proj_app"]);
+    expect(result.current.threads.map((thread) => thread.id).sort()).toEqual(
+      [appActive.id, appArchived.id, otherActive.id].sort(),
+    );
+    expect(result.current.status).toBe("ready");
+    expect(result.current.experimental_archived?.status).toBe("ready");
+    expect(result.current.experimental_archived?.hasNextPage).toBe(true);
+    await result.current.experimental_archived?.fetchNextPage();
+    expect(projectArchiveQuery.fetchNextPage).toHaveBeenCalledOnce();
+    expect(archiveQuery.fetchNextPage).not.toHaveBeenCalled();
+  });
+
+  it("lets a project hide archived threads the whole list shows", () => {
+    state.data = twoProjects();
+    archiveQuery.data = { pages: [[appArchived, otherArchived]] };
+    const projectLifecycles = { proj_other: ["active"] as const };
+    const { result } = renderHook(() =>
+      useSidebarThreads({
+        experimental_lifecycles: ["active", "archived"],
+        experimental_projectLifecycles: projectLifecycles,
+      }),
+    );
+    expect(archiveEnabled).toHaveBeenLastCalledWith(true);
+    expect(projectArchiveIds).toHaveBeenLastCalledWith([]);
+    expect(result.current.threads.map((thread) => thread.id).sort()).toEqual(
+      [appActive.id, appArchived.id, otherActive.id].sort(),
+    );
+  });
+
+  it("shows only archived threads for a project that unselects active", () => {
+    state.data = twoProjects();
+    projectArchiveQuery.data = { pages: [[appArchived]] };
+    const projectLifecycles = { proj_app: ["archived"] as const };
+    const { result } = renderHook(() =>
+      useSidebarThreads({
+        experimental_lifecycles: ["active"],
+        experimental_projectLifecycles: projectLifecycles,
+      }),
+    );
+    expect(result.current.threads.map((thread) => thread.id).sort()).toEqual(
+      [appArchived.id, otherActive.id].sort(),
+    );
   });
 });
 

@@ -6,7 +6,7 @@ description: "Inspect or change the sidebar thread list's layout preferences: or
 # Thread list preferences
 
 The Thread list plugin owns the sidebar's layout state. Read it with
-`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `organizationMode`,
+`bb thread-list prefs list --json`; keys are `showProviderIcons`, `threadLifecycles`, `projectThreadLifecycles`, `organizationMode`,
 `environmentGrouping`, `groupByReadStatus`, `chronologicalSort`, `sortDirection`, `sectionOrder`,
 `manualSectionOrder`, `machineSectionOrder`, `hiddenGroups` (including the
 built-in `threads` group), `rowActions`,
@@ -36,6 +36,13 @@ remain selected. `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both. The default
 is `'["active"]'`. Archived results load in pages; use Show more at the end
 of the list. The same preference is available through `setPreference` RPC.
+
+A project row's Filter menu applies to that project only, storing an override
+in `projectThreadLifecycles` keyed by project id (for example
+`bb thread-list prefs set projectThreadLifecycles '{"proj_abc":["active","archived"]}'`).
+Projects without an entry follow `threadLifecycles`, and picking the list-wide
+selection again removes the entry. Overrides apply when organized by project.
+Changing a Filter option closes the menu.
 
 `rowActions` picks up to three quick-action buttons a thread row shows on
 hover, left to right before its actions menu, as thread action keys: bb's

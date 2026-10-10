@@ -16,6 +16,7 @@ import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/ui/sidebar-row-classes";
 import {
   sidebarThreadLifecyclesAtom,
+  sidebarProjectThreadLifecyclesAtom,
   sidebarChronologicalSortAtom,
   sidebarOrganizationModeAtom,
   sidebarEnvironmentGroupingAtom,
@@ -40,6 +41,7 @@ function setup(
   section = false,
   organization: OrganizationMode = "project",
   compact = false,
+  filterProjectId?: string,
 ) {
   const store = createStore();
   store.set(sidebarThreadLifecyclesAtom, ["active"]);
@@ -55,7 +57,11 @@ function setup(
       <CompactViewportOverrideProvider isCompactViewport={compact}>
         <TooltipProvider>
           <SidebarHeaderActionsProvider value={{ onNewSection: newSection }}>
-            <SidebarHeaderControls label={label} onNewThread={newThread}>
+            <SidebarHeaderControls
+              label={label}
+              filterProjectId={filterProjectId}
+              onNewThread={newThread}
+            >
               {section && (
                 <SidebarSectionMenuItems
                   onRename={vi.fn()}
@@ -171,7 +177,14 @@ describe("sidebar header controls", () => {
     await openMenu("Review");
     expect(
       screen.getAllByRole("menuitem").map((item) => item.textContent),
-    ).toEqual(["New section", "Organize", "Sort by", "Filter", "Rename", "Remove"]);
+    ).toEqual([
+      "New section",
+      "Organize",
+      "Sort by",
+      "Filter",
+      "Rename",
+      "Remove",
+    ]);
     expect(screen.getAllByRole("separator")).toHaveLength(3);
     fireEvent.click(screen.getByRole("menuitem", { name: "New section" }));
     expect(newSection).toHaveBeenCalledOnce();
@@ -348,30 +361,88 @@ describe("sidebar header controls", () => {
   });
 });
 
+async function openFilter(label: string, compact: boolean) {
+  if (compact) {
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: new RegExp(`^${label} actions(?:;|$)`),
+      }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Filter" }));
+  } else {
+    await openMenu(label);
+    await openSubmenu("Filter");
+  }
+}
+
+async function selectLifecycle(
+  label: string,
+  compact: boolean,
+  name: "Active" | "Archived",
+) {
+  await openFilter(label, compact);
+  fireEvent.click(await screen.findByRole("menuitemcheckbox", { name }));
+}
+
 it.each([false, true])(
   "keeps at least one lifecycle selected in the filter (compact=%s)",
   async (compact) => {
     const { store } = setup("Pinned", false, "project", compact);
-    if (compact) {
-      fireEvent.click(screen.getByRole("button", { name: /^Pinned actions(?:;|$)/ }));
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Filter" }));
-    } else {
-      await openMenu();
-      await openSubmenu("Filter");
-    }
-    const active = await screen.findByRole("menuitemcheckbox", {
-      name: "Active",
-    });
-    fireEvent.click(active);
+    await selectLifecycle("Pinned", compact, "Active");
     expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Active" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitemcheckbox")).toBeNull(),
+    );
+    await selectLifecycle("Pinned", compact, "Archived");
     expect(store.get(sidebarThreadLifecyclesAtom)).toEqual([
       "active",
       "archived",
     ]);
-    fireEvent.click(active);
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitemcheckbox")).toBeNull(),
+    );
+    await selectLifecycle("Pinned", compact, "Active");
     expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitemcheckbox")).toBeNull(),
+    );
+    await selectLifecycle("Pinned", compact, "Archived");
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+  },
+);
+
+it.each([false, true])(
+  "scopes a project's filter to that project (compact=%s)",
+  async (compact) => {
+    const { store } = setup("bb", false, "project", compact, "proj_bb");
+    store.set(sidebarProjectThreadLifecyclesAtom, {
+      proj_other: ["archived"],
+    });
+    await selectLifecycle("bb", compact, "Archived");
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
+    expect(store.get(sidebarProjectThreadLifecyclesAtom)).toEqual({
+      proj_other: ["archived"],
+      proj_bb: ["active", "archived"],
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitemcheckbox")).toBeNull(),
+    );
+    await openFilter("bb", compact);
+    expect(
+      (
+        await screen.findByRole("menuitemcheckbox", { name: "Archived" })
+      ).getAttribute("aria-checked"),
+    ).toBe("true");
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Archived" }));
-    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["archived"]);
+    expect(store.get(sidebarThreadLifecyclesAtom)).toEqual(["active"]);
+    expect(store.get(sidebarProjectThreadLifecyclesAtom)).toEqual({
+      proj_other: ["archived"],
+    });
   },
 );

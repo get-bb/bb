@@ -2101,6 +2101,10 @@ The Thread list plugin's `threadLifecycles` preference selects `["active"]`
 (the default), `["archived"]`, or `["active","archived"]`. Set it with
 `bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
 Filter menu. It syncs to every window and rejects empty or duplicate values.
+`projectThreadLifecycles` maps project ids to the same values and replaces
+`threadLifecycles` for that project when the list is organized by project; a
+project row's Filter menu writes it, and choosing the list-wide selection again
+removes the project's entry.
 
 ## Desktop browser cookie discovery
 

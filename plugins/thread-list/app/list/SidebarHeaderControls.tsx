@@ -30,6 +30,7 @@ export const SidebarHeaderActionsProvider = HeaderCreationContext.Provider;
 export function SidebarHeaderControls({
   label,
   sectionId,
+  filterProjectId,
   onNewThread,
   showNewThread = true,
   children,
@@ -39,6 +40,7 @@ export function SidebarHeaderControls({
 }: {
   label: string;
   sectionId?: SidebarSectionId;
+  filterProjectId?: string;
   onNewThread?: () => void;
   showNewThread?: boolean;
   children?: ReactNode;
@@ -100,6 +102,7 @@ export function SidebarHeaderControls({
           <SidebarHeaderMenuContents
             creation={creation}
             anchorSectionId={sectionId}
+            filterProjectId={filterProjectId}
             compact={compact}
             page={page}
             onPageChange={setPage}

@@ -3572,7 +3572,11 @@ export interface PluginSdkApp {
    *
    * Active threads are uncapped. Opting into archived threads uses the host
    * archive query; request more pages through `experimental_archived`.
-   * `threads` contains the selected lifecycles across loaded pages. Thread
+   * `threads` contains the selected lifecycles across loaded pages.
+   * `experimental_projectLifecycles` overrides the selection for individual
+   * projects; archived threads of a project that opts in while the list-wide
+   * selection excludes them load through a project-scoped archive query that
+   * shares `experimental_archived`'s pagination. Thread
    * objects keep their identity across updates while the underlying entry is
    * unchanged, so a memoized row re-renders only when its own thread changed;
    * the array itself is new on every update. Window your rows (render only
@@ -3583,6 +3587,13 @@ export interface PluginSdkApp {
   experimental_useSidebarThreads(options?: {
     /** Defaults to active threads only. An empty selection also means active. */
     experimental_lifecycles: readonly ("active" | "archived")[];
+    /**
+     * Per-project selections keyed by project id, replacing
+     * `experimental_lifecycles` for that project's threads.
+     */
+    experimental_projectLifecycles?: Readonly<
+      Record<string, readonly ("active" | "archived")[]>
+    >;
   }): PluginSidebarThreadsState;
   /**
    * Thread actions bound to the host's mutations (see

@@ -108,6 +108,8 @@ read ones, keeping the selected sort within each group.
 The `threadLifecycles` preference defaults
 to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
 shows archived threads, and `'["active","archived"]'` shows both.
+A project row's Filter menu overrides it for that project only through
+`projectThreadLifecycles`, a project id → lifecycles map.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible

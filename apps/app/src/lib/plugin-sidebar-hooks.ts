@@ -1,6 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useStore } from "jotai";
-import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import {
+  useQueryClient,
+  type InfiniteData,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   PERSONAL_PROJECT_ID,
   type Host,
@@ -41,13 +45,17 @@ import {
   useEnvironmentPullRequest,
 } from "@/hooks/queries/environment-queries";
 import { useHosts } from "@/hooks/queries/host-queries";
-import { useArchivedThreads } from "@/hooks/queries/thread-queries";
+import {
+  useArchivedThreads,
+  useProjectsArchivedThreads,
+} from "@/hooks/queries/thread-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import {
-  archivedThreadsListQueryKey,
+  archivedThreadsListQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadQueryKey,
 } from "@/hooks/queries/query-keys";
+import { isArchivedThreadListQueryKey } from "@/hooks/cache-owners/query-cache";
 import {
   usePinThread,
   useUnpinThread,
@@ -117,45 +125,105 @@ function toPluginSidebarThreadCached(
   return thread;
 }
 
+type SidebarThreadLifecycle = "active" | "archived";
+type SidebarThreadLifecycles = readonly SidebarThreadLifecycle[];
+
+const EMPTY_PROJECT_LIFECYCLES: Readonly<
+  Record<string, SidebarThreadLifecycles>
+> = {};
+
+function includesLifecycle(
+  lifecycles: SidebarThreadLifecycles | undefined,
+  lifecycle: SidebarThreadLifecycle,
+): boolean {
+  if (lifecycle === "active" && !lifecycles?.length) return true;
+  return lifecycles?.includes(lifecycle) ?? false;
+}
+
 export function useSidebarThreads(
   options?: Parameters<PluginSdkApp["experimental_useSidebarThreads"]>[0],
 ): PluginSidebarThreadsState {
   const lifecycles = options?.experimental_lifecycles;
-  const active = !lifecycles?.length || lifecycles.includes("active");
-  const includeArchived = lifecycles?.includes("archived") ?? false;
+  const projectLifecycles =
+    options?.experimental_projectLifecycles ?? EMPTY_PROJECT_LIFECYCLES;
+  const active = includesLifecycle(lifecycles, "active");
+  const includeArchived = includesLifecycle(lifecycles, "archived");
   const archived = useArchivedThreads({}, { enabled: includeArchived });
+  const projectArchiveIdsKey = includeArchived
+    ? ""
+    : Object.keys(projectLifecycles)
+        .filter((projectId) =>
+          includesLifecycle(projectLifecycles[projectId], "archived"),
+        )
+        .sort()
+        .join("\n");
+  const projectArchiveIds = useMemo(
+    () => (projectArchiveIdsKey === "" ? [] : projectArchiveIdsKey.split("\n")),
+    [projectArchiveIdsKey],
+  );
+  const projectArchived = useProjectsArchivedThreads(projectArchiveIds);
+  const includeProjectArchived = projectArchiveIds.length > 0;
   const fetchArchivedPage = archived.fetchNextPage;
+  const fetchProjectArchivedPage = projectArchived.fetchNextPage;
+  const archivedHasNextPage = includeArchived && archived.hasNextPage;
+  const projectArchivedHasNextPage =
+    includeProjectArchived && projectArchived.hasNextPage;
   const fetchNextPage = useCallback(async () => {
-    await fetchArchivedPage();
-  }, [fetchArchivedPage]);
+    await Promise.all([
+      archivedHasNextPage ? fetchArchivedPage() : null,
+      projectArchivedHasNextPage ? fetchProjectArchivedPage() : null,
+    ]);
+  }, [
+    archivedHasNextPage,
+    fetchArchivedPage,
+    projectArchivedHasNextPage,
+    fetchProjectArchivedPage,
+  ]);
+  const archivedStatus = !includeArchived
+    ? null
+    : archived.data !== undefined
+      ? "ready"
+      : archived.isLoadingError
+        ? "error"
+        : "loading";
+  const projectArchivedStatus = !includeProjectArchived
+    ? null
+    : projectArchived.data !== undefined
+      ? "ready"
+      : projectArchived.isLoadingError
+        ? "error"
+        : "loading";
+  const isFetchingNextArchivedPage =
+    (includeArchived && archived.isFetchingNextPage) ||
+    (includeProjectArchived && projectArchived.isFetchingNextPage);
+  const isFetchNextArchivedPageError =
+    (includeArchived && archived.isFetchNextPageError) ||
+    (includeProjectArchived && projectArchived.isFetchNextPageError);
   const archiveState = useMemo<
     PluginSidebarThreadsState["experimental_archived"]
-  >(
-    () =>
-      includeArchived
-        ? {
-            status:
-              archived.data !== undefined
-                ? "ready"
-                : archived.isLoadingError
-                  ? "error"
-                  : "loading",
-            hasNextPage: archived.hasNextPage,
-            isFetchingNextPage: archived.isFetchingNextPage,
-            isFetchNextPageError: archived.isFetchNextPageError,
-            fetchNextPage,
-          }
-        : null,
-    [
-      includeArchived,
-      archived.data,
-      archived.isLoadingError,
-      archived.hasNextPage,
-      archived.isFetchingNextPage,
-      archived.isFetchNextPageError,
+  >(() => {
+    if (archivedStatus === null && projectArchivedStatus === null) return null;
+    return {
+      status:
+        archivedStatus === "error" || projectArchivedStatus === "error"
+          ? "error"
+          : archivedStatus === "loading" || projectArchivedStatus === "loading"
+            ? "loading"
+            : "ready",
+      hasNextPage: archivedHasNextPage || projectArchivedHasNextPage,
+      isFetchingNextPage: isFetchingNextArchivedPage,
+      isFetchNextPageError: isFetchNextArchivedPageError,
       fetchNextPage,
-    ],
-  );
+    };
+  }, [
+    archivedStatus,
+    projectArchivedStatus,
+    archivedHasNextPage,
+    projectArchivedHasNextPage,
+    isFetchingNextArchivedPage,
+    isFetchNextArchivedPageError,
+    fetchNextPage,
+  ]);
   const query = useSidebarNavigation();
   const data = query.data;
   const { data: hosts } = useHosts();
@@ -174,22 +242,32 @@ export function useSidebarThreads(
       };
     }
     const allProjects = [...data.projects, data.personalProject];
+    const shows = (thread: ThreadListEntry): boolean =>
+      includesLifecycle(
+        projectLifecycles[thread.projectId] ?? lifecycles,
+        thread.archivedAt === null ? "active" : "archived",
+      );
     const selected = new Map<string, ThreadListEntry>();
-    if (includeArchived) {
-      for (const thread of archived.data?.pages.flat() ?? []) {
-        if (thread.archivedAt !== null) selected.set(thread.id, thread);
+    for (const thread of [
+      ...(includeArchived ? (archived.data?.pages.flat() ?? []) : []),
+      ...(includeProjectArchived
+        ? (projectArchived.data?.pages.flat() ?? [])
+        : []),
+    ]) {
+      if (thread.archivedAt !== null && shows(thread)) {
+        selected.set(thread.id, thread);
       }
     }
-    if (active) {
-      for (const project of allProjects) {
-        for (const thread of project.threads) {
-          if (thread.archivedAt === null) selected.set(thread.id, thread);
+    for (const project of allProjects) {
+      for (const thread of project.threads) {
+        if (thread.archivedAt === null && shows(thread)) {
+          selected.set(thread.id, thread);
         }
       }
     }
     return {
       experimental_archived: archiveState,
-      status: !active && archiveState !== null ? archiveState.status : "ready",
+      status: !active && archivedStatus !== null ? archivedStatus : "ready",
       threads: [...selected.values()].map((thread) =>
         toPluginSidebarThreadCached(thread, hostNamesById, titleResources),
       ),
@@ -210,8 +288,13 @@ export function useSidebarThreads(
     query.isError,
     titleResources,
     active,
+    lifecycles,
+    projectLifecycles,
     includeArchived,
     archived.data,
+    archivedStatus,
+    includeProjectArchived,
+    projectArchived.data,
     archiveState,
   ]);
 }
@@ -235,8 +318,94 @@ function threadEntryMapFor(
   return entries;
 }
 
+type ArchivedThreadPages = InfiniteData<readonly ThreadListEntry[]>;
+
+const EMPTY_ARCHIVED_THREAD_LISTS: readonly ArchivedThreadPages[] = [];
+
+function cachedArchivedThreadLists(
+  queryClient: QueryClient,
+): readonly ArchivedThreadPages[] {
+  const lists = queryClient
+    .getQueriesData<ArchivedThreadPages>({
+      queryKey: archivedThreadsListQueryKeyPrefix(),
+    })
+    .flatMap(([queryKey, data]) =>
+      data !== undefined && isArchivedThreadListQueryKey(queryKey)
+        ? [data]
+        : [],
+    );
+  return lists.length === 0 ? EMPTY_ARCHIVED_THREAD_LISTS : lists;
+}
+
+function sameArchivedThreadLists(
+  left: readonly ArchivedThreadPages[],
+  right: readonly ArchivedThreadPages[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((list, index) => list === right[index])
+  );
+}
+
+interface ArchivedThreadListsStore {
+  subscribe(onChange: () => void): () => void;
+  getSnapshot(): readonly ArchivedThreadPages[];
+}
+
+const archivedThreadListsStores = new WeakMap<
+  QueryClient,
+  ArchivedThreadListsStore
+>();
+
+function archivedThreadListsStoreFor(
+  queryClient: QueryClient,
+): ArchivedThreadListsStore {
+  const existing = archivedThreadListsStores.get(queryClient);
+  if (existing !== undefined) return existing;
+  let snapshot = cachedArchivedThreadLists(queryClient);
+  let stopWatching: (() => void) | null = null;
+  const listeners = new Set<() => void>();
+  const refresh = (): boolean => {
+    const next = cachedArchivedThreadLists(queryClient);
+    if (sameArchivedThreadLists(next, snapshot)) return false;
+    snapshot = next;
+    return true;
+  };
+  const store: ArchivedThreadListsStore = {
+    subscribe(onChange) {
+      listeners.add(onChange);
+      if (stopWatching === null) {
+        refresh();
+        stopWatching = queryClient.getQueryCache().subscribe((event) => {
+          if (isArchivedThreadListQueryKey(event.query.queryKey) && refresh()) {
+            for (const listener of listeners) listener();
+          }
+        });
+      }
+      return () => {
+        listeners.delete(onChange);
+        if (listeners.size === 0 && stopWatching !== null) {
+          stopWatching();
+          stopWatching = null;
+        }
+      };
+    },
+    getSnapshot() {
+      if (stopWatching === null) refresh();
+      return snapshot;
+    },
+  };
+  archivedThreadListsStores.set(queryClient, store);
+  return store;
+}
+
+function useCachedArchivedThreadLists(): readonly ArchivedThreadPages[] {
+  const store = archivedThreadListsStoreFor(useQueryClient());
+  return useSyncExternalStore(store.subscribe, store.getSnapshot);
+}
+
 const archivedEntryMaps = new WeakMap<
-  NonNullable<ReturnType<typeof useArchivedThreads>["data"]>,
+  readonly ArchivedThreadPages[],
   WeakMap<
     ReadonlyMap<string, ThreadListEntry>,
     ReadonlyMap<string, ThreadListEntry>
@@ -245,26 +414,26 @@ const archivedEntryMaps = new WeakMap<
 
 function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
   const { data } = useSidebarNavigation();
-  const archived = useArchivedThreads({}, { enabled: false });
+  const archivedLists = useCachedArchivedThreadLists();
   return useMemo(() => {
     const active = threadEntryMapFor(data);
-    if (archived.data === undefined) return active;
-    let maps = archivedEntryMaps.get(archived.data);
+    if (archivedLists.length === 0) return active;
+    let maps = archivedEntryMaps.get(archivedLists);
     if (maps === undefined) {
       maps = new WeakMap();
-      archivedEntryMaps.set(archived.data, maps);
+      archivedEntryMaps.set(archivedLists, maps);
     }
     const cached = maps.get(active);
     if (cached !== undefined) return cached;
     const entries = new Map([
-      ...archived.data.pages
-        .flat()
+      ...archivedLists
+        .flatMap((list) => list.pages.flat())
         .map((thread) => [thread.id, thread] as const),
       ...active,
     ]);
     maps.set(active, entries);
     return entries;
-  }, [data, archived.data]);
+  }, [data, archivedLists]);
 }
 
 export function lookupCachedThread(
@@ -279,12 +448,13 @@ export function lookupCachedThread(
     ),
   ).get(threadId);
   if (active !== undefined) return active;
-  const archived = queryClient.getQueryData<
-    InfiniteData<readonly ThreadListEntry[]>
-  >(archivedThreadsListQueryKey({}));
-  return (
-    archived?.pages.flat().find((thread) => thread.id === threadId) ?? null
-  );
+  for (const list of cachedArchivedThreadLists(queryClient)) {
+    for (const page of list.pages) {
+      const thread = page.find((candidate) => candidate.id === threadId);
+      if (thread !== undefined) return thread;
+    }
+  }
+  return null;
 }
 
 export async function resolveThread(

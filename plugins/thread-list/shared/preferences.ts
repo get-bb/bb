@@ -68,6 +68,12 @@ export const threadRowActionKeySchema = z
     }),
   );
 
+const threadLifecyclesSchema = z
+  .array(z.enum(["active", "archived"]))
+  .min(1)
+  .max(2)
+  .refine((value) => new Set(value).size === value.length);
+
 const collapsibleSectionIdSchema = z.enum(["pinned", "threads"]);
 
 const hiddenGroupsSchema = z
@@ -97,13 +103,15 @@ export const preferenceDefinitions = {
     null,
   ),
   threadLifecycles: definePreference(
-    z
-      .array(z.enum(["active", "archived"]))
-      .min(1)
-      .max(2)
-      .refine((value) => new Set(value).size === value.length),
+    threadLifecyclesSchema,
     ["active"],
     "Thread lifecycles shown in the list: active, archived, or both. At least one is required.",
+    null,
+  ),
+  projectThreadLifecycles: definePreference(
+    z.record(listItemSchema, threadLifecyclesSchema),
+    {},
+    "Per-project thread lifecycles keyed by project id, replacing threadLifecycles for that project's threads when organized by project. Set from a project's Filter menu; projects without an entry follow threadLifecycles.",
     null,
   ),
   organizationMode: definePreference(

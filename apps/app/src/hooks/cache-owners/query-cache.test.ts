@@ -95,4 +95,31 @@ describe("query cache thread list invalidation keys", () => {
     expect(queryKeys).toContainEqual(projectThreadListKey);
     expect(queryKeys).not.toContainEqual(otherProjectArchivedKey);
   });
+
+  it("scopes multi-project archived lists to the projects they cover", () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const projectsArchivedKey = archivedThreadsListQueryKey({
+      projectIds: ["proj_1", "proj_3"],
+    });
+    queryClient.setQueryData(projectsArchivedKey, {
+      pages: [],
+      pageParams: [],
+    });
+
+    expect(
+      getCachedProjectThreadListInvalidationQueryKeys({
+        projectId: "proj_3",
+        queryClient,
+      }),
+    ).toContainEqual(projectsArchivedKey);
+    expect(
+      getCachedProjectThreadListInvalidationQueryKeys({
+        projectId: "proj_2",
+        queryClient,
+      }),
+    ).not.toContainEqual(projectsArchivedKey);
+    expect(
+      getCachedGlobalThreadListInvalidationQueryKeys({ queryClient }),
+    ).not.toContainEqual(projectsArchivedKey);
+  });
 });

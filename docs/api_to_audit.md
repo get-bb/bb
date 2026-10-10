@@ -2957,6 +2957,16 @@ otherwise it exposes archive loading/error state, pagination flags, and
 archive-only loading/errors, combined views, pagination retries, and archived
 row actions before stabilizing these additions.
 
+**Per-project archive selection (Oct 2026).** `experimental_useSidebarThreads`
+also accepts `experimental_projectLifecycles`, a project id → lifecycles map
+that replaces `experimental_lifecycles` for that project's threads. When the
+list-wide selection excludes archived threads, projects that opt in load them
+through one project-scoped archive query whose loading, error, and pagination
+state merge into `experimental_archived`. The thread-list plugin's project
+Filter menu is the core caller. Audit the merged pagination (one "load more"
+for every opted-in project), override cleanup for deleted projects, and
+whether overrides should also scope sort before stabilizing.
+
 **Machine list (Sep 2026).** `PluginSidebarThreadsState.experimental_hosts`
 contains the current machines in host query order, including those with no
 threads. Older hosts may omit the field; consumers can fall back to hosts

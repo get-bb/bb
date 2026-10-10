@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { useAtomValue } from "jotai";
-import { sidebarThreadLifecyclesAtom } from "../preferences/atoms.js";
+import {
+  sidebarOrganizationModeAtom,
+  sidebarProjectThreadLifecyclesAtom,
+  sidebarThreadLifecyclesAtom,
+} from "../preferences/atoms.js";
 import {
   experimental_useSidebarThreads,
   type PluginSidebarProject,
@@ -189,8 +193,13 @@ export function useSidebarProjectName(
 
 export function useSidebarData() {
   const lifecycles = useAtomValue(sidebarThreadLifecyclesAtom);
+  const projectLifecycles = useAtomValue(sidebarProjectThreadLifecyclesAtom);
+  const organizationMode = useAtomValue(sidebarOrganizationModeAtom);
   const state = experimental_useSidebarThreads({
     experimental_lifecycles: lifecycles,
+    ...(organizationMode === "project"
+      ? { experimental_projectLifecycles: projectLifecycles }
+      : {}),
   });
   return useMemo(
     () => ({ ...getSidebarData(state), archived: state.experimental_archived }),

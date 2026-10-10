@@ -378,6 +378,66 @@ export function useArchivedThreads(
   });
 }
 
+type ProjectArchivedThreadOffsets = Readonly<Record<string, number>>;
+
+function countProjectThreads(
+  pages: readonly ThreadListResponse[],
+  projectId: string,
+): number {
+  let count = 0;
+  for (const page of pages) {
+    for (const thread of page) {
+      if (thread.projectId === projectId) count += 1;
+    }
+  }
+  return count;
+}
+
+export function useProjectsArchivedThreads(
+  projectIds: readonly string[],
+  options?: QueryOptions,
+) {
+  const enabled = (options?.enabled ?? true) && projectIds.length > 0;
+  useThreadListRealtimeSubscription({ enabled });
+
+  return useInfiniteQuery<
+    ThreadListResponse,
+    Error,
+    { pageParams: ProjectArchivedThreadOffsets[]; pages: ThreadListResponse[] },
+    ReturnType<typeof archivedThreadsListQueryKey>,
+    ProjectArchivedThreadOffsets
+  >({
+    queryKey: archivedThreadsListQueryKey({ projectIds }),
+    queryFn: async ({ pageParam, signal }) => {
+      const pages = await Promise.all(
+        Object.entries(pageParam).map(([projectId, offset]) =>
+          sdk.threads.list({
+            projectId,
+            archived: true,
+            limit: ARCHIVED_THREADS_PAGE_SIZE,
+            offset,
+            signal,
+          }),
+        ),
+      );
+      return pages.flat();
+    },
+    initialPageParam: Object.fromEntries(
+      projectIds.map((projectId) => [projectId, 0]),
+    ),
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      const next = Object.keys(lastPageParam).flatMap((projectId) =>
+        countProjectThreads([lastPage], projectId) < ARCHIVED_THREADS_PAGE_SIZE
+          ? []
+          : [[projectId, countProjectThreads(allPages, projectId)] as const],
+      );
+      return next.length > 0 ? Object.fromEntries(next) : undefined;
+    },
+    enabled,
+    staleTime: THREAD_LIST_STALE_TIME_MS,
+  });
+}
+
 export function useThreads(filters: UseThreadsFilters, options?: QueryOptions) {
   const { projectId, ...rest } = filters;
   const enabled = (options?.enabled ?? true) && Boolean(projectId);

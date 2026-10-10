@@ -2198,6 +2198,7 @@ function ProjectRowComponent({
     <SidebarHeaderControls
       label={project.name}
       sectionId={buildSidebarEntitySectionId("project", project.id)}
+      filterProjectId={project.id}
       onNewThread={onCreateProjectThread ? handleCreateThread : undefined}
       onOpenChange={setIsDropdownActionsOpen}
       onCloseAutoFocus={rename.onCloseAutoFocus}
