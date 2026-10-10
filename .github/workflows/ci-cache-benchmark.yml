@@ -1,0 +1,36 @@
+name: CI cache benchmark
+on:
+  push:
+    branches: [bb/ci-cache-benchmark-5324]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [old-first, new-first]
+    runs-on: blacksmith-4vcpu-windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.x'
+          package-manager-cache: false
+      - run: npm install --global pnpm@9.15.0 --ignore-scripts
+      - name: Install dependencies
+        shell: bash
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/server...' --filter '@bb/host-daemon...' --filter '@bb/app...' --filter 'bb-plugin-*...'
+      - name: Measure cold and cross-shard reuse
+        shell: cmd
+        env:
+          BENCH_ORDER: ${{ matrix.order }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+        run: node scripts/benchmark-ci-cache.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: cache-benchmark-${{ matrix.order }}
+          path: .cache-benchmark/
