@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { delimiter, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
+import { npmNodeShim } from "./npm-shim.test-support.js";
 import {
   type FakePiBridgeHarness,
   fakePiPath,
@@ -45,6 +48,47 @@ it("reports ready with the installed version after the get_state probe", async (
     },
   });
 }, 30_000);
+
+it.skipIf(process.platform !== "win32").each(["global", "local"])(
+  "lists models through the real injected extension with a default %s npm shim",
+  async (layout) => {
+    const root = harness.workspaceDir;
+    const nodeModules = join(root, "node_modules");
+    const pkg = join(nodeModules, "@earendil-works", "pi-coding-agent");
+    const bin = layout === "local" ? join(nodeModules, ".bin") : root;
+    await mkdir(pkg, { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await writeFile(
+      join(pkg, "package.json"),
+      JSON.stringify({ bin: { pi: "cli.mjs" } }),
+    );
+    await writeFile(
+      join(pkg, "cli.mjs"),
+      `import ${JSON.stringify(pathToFileURL(fakePiPath).href)};`,
+    );
+    await copyFile(process.execPath, join(bin, "node.exe"));
+    await writeFile(
+      join(bin, "pi.cmd"),
+      npmNodeShim(
+        layout === "local"
+          ? "..\\@earendil-works\\pi-coding-agent\\cli.mjs"
+          : "node_modules\\@earendil-works\\pi-coding-agent\\cli.mjs",
+      ),
+    );
+    vi.stubEnv(
+      "PATH",
+      `${bin}${delimiter}${process.env.PATH ?? process.env.Path ?? ""}`,
+    );
+    vi.stubEnv(PI_BRIDGE_COMMAND_ENV, undefined);
+    vi.stubEnv(PI_BRIDGE_ARGS_ENV, undefined);
+    const models = await harness.request(nextRequestId(), "model/list", {
+      cwd: root,
+    });
+    expect(models.error).toBeUndefined();
+    expect(models.result).toMatchObject({ models: expect.any(Array) });
+  },
+  30_000,
+);
 
 it("refuses a pi older than the supported minimum before spawning it", async () => {
   vi.stubEnv("FAKE_PI_VERSION", "0.83.2");

@@ -4726,6 +4726,9 @@ importers:
       '@get-bb/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      which-command:
+        specifier: 0.1.0
+        version: 0.1.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
