@@ -102,6 +102,13 @@ delegation children recursively by ID while preserving order. Do not flatten
 responses by concatenation or replace an entire summary solely because its ID
 was already seen. `bb thread log --all --format verbose` uses this merge.
 
+Scrollback behaviour is pinned by
+`apps/server/test/public/public-thread-timeline-scrollback.test.ts`, which runs the client
+merges over real pages and compares the result with a fresh walk, and by the Ladle story
+`thread/timeline/Scrollback` with `apps/app/.ladle/tests/timeline-scrollback.mjs` (run it
+with dev-browser against the open story), which checks that the scrolled-back row stays put
+while the latest window changes and that a full walk shows every row once, in order.
+
 Client merges retain summary objects when merging children leaves their row
 references unchanged. Rows already shared with the loaded state, including
 unchanged rows from a delta, bypass serialization for identity comparison.
