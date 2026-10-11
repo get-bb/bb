@@ -201,31 +201,18 @@ function RailItem({
 
 function RailMoreMenu({
   buttonRef,
-  topItemRef,
   hidden,
   onCustomize,
   onMenuCloseAutoFocus,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
-  topItemRef: RefObject<HTMLButtonElement | null>;
   hidden: readonly SidebarNavigationItem[];
   onCustomize: () => void;
   onMenuCloseAutoFocus: (event: Event) => void;
 }) {
   const { actions } = useSidebarNavigation();
-  const [topItemOffset, setTopItemOffset] = useState(0);
   return (
-    <DropdownMenu
-      onOpenChange={(isOpen) => {
-        const button = buttonRef.current;
-        const topItem = topItemRef.current;
-        if (!isOpen || button === null || topItem === null) return;
-        setTopItemOffset(
-          topItem.getBoundingClientRect().top -
-            button.getBoundingClientRect().top,
-        );
-      }}
-    >
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <RailButton ref={buttonRef} label="More">
           <Icon name="MoreHorizontal" aria-hidden="true" />
@@ -234,8 +221,6 @@ function RailMoreMenu({
       <DropdownMenuContent
         side="right"
         align="start"
-        alignOffset={topItemOffset}
-        sticky="always"
         sideOffset={RAIL_MENU_SIDE_OFFSET}
         data-testid="nav-rail-more-menu"
         onCloseAutoFocus={onMenuCloseAutoFocus}
@@ -269,7 +254,6 @@ export function AppNavRail({
 }) {
   const { items, activeItemId } = useSidebarNavigation();
   const moreButtonRef = useRef<HTMLButtonElement>(null);
-  const homeButtonRef = useRef<HTMLButtonElement>(null);
   const customizeAfterMenuCloseRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -338,7 +322,6 @@ export function AppNavRail({
           >
             <PopoverAnchor asChild>
               <RailButton
-                ref={homeButtonRef}
                 label="Home"
                 active={isHomeActive}
                 onClick={() => {
@@ -358,7 +341,6 @@ export function AppNavRail({
             ))}
             <RailMoreMenu
               buttonRef={moreButtonRef}
-              topItemRef={homeButtonRef}
               hidden={hidden}
               onCustomize={
                 isCompactViewport

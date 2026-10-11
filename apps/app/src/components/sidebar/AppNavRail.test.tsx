@@ -584,7 +584,7 @@ describe("AppNavRail", () => {
     expect(wrapper.style.transform).toBe(openedAt);
   });
 
-  it("opens the More menu at the top of the rail instead of beside the More button", async () => {
+  it("opens the More menu beside the More button instead of at the top of the rail", async () => {
     renderRail(THREAD_PATH);
     vi.spyOn(railButton("Home"), "getBoundingClientRect").mockImplementation(
       () => new DOMRect(12, 40, 28, 28),
@@ -611,7 +611,7 @@ describe("AppNavRail", () => {
       if (!wrapper) throw new Error("Expected the menu position wrapper");
 
       await waitFor(() =>
-        expect(wrapper.style.transform).toBe("translate(52px, 40px)"),
+        expect(wrapper.style.transform).toBe("translate(52px, 200px)"),
       );
     } finally {
       for (const spy of viewport) spy.mockRestore();
