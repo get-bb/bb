@@ -126,6 +126,20 @@ function modelIds(result: { models: { id: string }[] }): string[] {
 }
 
 describe("pi catalog freshness", () => {
+  it("lists models after an earlier session's tool manifest is deleted", async () => {
+    const paths = setUpFakeCatalog({});
+    const toolsPath = join(paths.workspace, "previous-session-tools.json");
+    writeFileSync(toolsPath, "[]");
+    rmSync(toolsPath);
+    process.env.PI_BB_TOOLS_FILE = toolsPath;
+
+    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+
+    expect(modelIds(await catalog.listModels())).toEqual([
+      "fake-provider/fake-model",
+    ]);
+  }, 60_000);
+
   it("serves models added after the child started without respawning it", async () => {
     const paths = setUpFakeCatalog({});
 
