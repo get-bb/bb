@@ -10,7 +10,6 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   findWorktreeForBranch,
-  getCurrentBranch,
   getGitCommonDir,
   hasRef,
   readDefaultBranch,
@@ -116,24 +115,63 @@ function classifyConcurrentRemoteRefUpdateError(
 }
 
 async function ensureExistingWorkspaceMatches(
-  targetPath: string,
-  branchName: string,
-  signal: AbortSignal | undefined,
+  args: CreateWorktreeArgs,
+  completedBranch: string | null,
 ): Promise<boolean> {
   try {
-    await fs.access(targetPath);
+    await fs.access(args.targetPath);
   } catch {
     return false;
   }
 
+  let targetCommonDir: string;
   try {
-    const currentBranch = await getCurrentBranch(targetPath);
-    throwIfProvisionAborted(signal);
-    return currentBranch === branchName;
+    targetCommonDir = await getGitCommonDir(
+      args.targetPath,
+      signalOptions(args.signal),
+    );
   } catch (error) {
-    if (signal?.aborted) throw error;
+    if (args.signal?.aborted) throw error;
+    if (completedBranch === args.branchName) {
+      throw new WorkspaceError(
+        "existing_worktree_mismatch",
+        `Cannot verify the Git repository of completed worktree ${args.targetPath}, so it was left alone.`,
+      );
+    }
     return false;
   }
+
+  const sourceCommonDir = await getGitCommonDir(
+    args.sourcePath,
+    signalOptions(args.signal),
+  );
+  const entries = await listGitWorktrees({
+    sourcePath: args.sourcePath,
+    maxEntries: Infinity,
+    ...(args.signal !== undefined ? { signal: args.signal } : {}),
+  });
+  const entry = findWorktreeEntry(
+    entries,
+    await realpathOrResolved(args.targetPath),
+  );
+  throwIfProvisionAborted(args.signal);
+  if (
+    (await realpathOrResolved(targetCommonDir)) !==
+      (await realpathOrResolved(sourceCommonDir)) ||
+    entry === null ||
+    entry.isMain ||
+    entry.isBare ||
+    entry.prunable
+  ) {
+    throw new WorkspaceError(
+      "existing_worktree_mismatch",
+      `${args.targetPath} is not a worktree of ${args.sourcePath} that bb can reuse, so it was left alone.`,
+    );
+  }
+  return (
+    entry.branch === args.branchName ||
+    (entry.branch === null && completedBranch === args.branchName)
+  );
 }
 
 async function realpathOrResolved(target: string): Promise<string> {
@@ -479,13 +517,13 @@ export async function createWorktree(
   args: CreateWorktreeArgs,
 ): Promise<{ path: string }> {
   throwIfProvisionAborted(args.signal);
+  const completedBranch = await readCompletedBranch(args.completionPath);
   const existingWorkspaceMatches = await ensureExistingWorkspaceMatches(
-    args.targetPath,
-    args.branchName,
-    args.signal,
+    args,
+    completedBranch,
   );
   if (existingWorkspaceMatches) {
-    if ((await readCompletedBranch(args.completionPath)) === args.branchName) {
+    if (completedBranch === args.branchName) {
       return { path: args.targetPath };
     }
     try {
@@ -682,12 +720,13 @@ export async function removeWorktree(args: RemoveWorktreeArgs): Promise<void> {
 export async function listGitWorktrees(args: {
   sourcePath: string;
   signal?: AbortSignal;
+  maxEntries?: number;
 }): Promise<GitWorktreeEntry[]> {
   const result = await runGit(["worktree", "list", "--porcelain", "-z"], {
     cwd: args.sourcePath,
     ...(args.signal !== undefined ? { signal: args.signal } : {}),
   });
-  return parseWorktreeListPorcelain(result.stdout);
+  return parseWorktreeListPorcelain(result.stdout, args.maxEntries);
 }
 
 export async function listAdoptableWorktrees(args: {

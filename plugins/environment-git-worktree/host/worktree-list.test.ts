@@ -1,6 +1,7 @@
 import { sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  findWorktreeEntry,
   parseWorktreeListPorcelain,
   selectAdoptableWorktrees,
 } from "./worktree-list.js";
@@ -90,6 +91,30 @@ describe("parseWorktreeListPorcelain", () => {
     expect(parseWorktreeListPorcelain(stdout)[0]?.path).toBe(
       nativePath("/Users/a/My Code/repo wt"),
     );
+  });
+  it("finds a registered worktree beyond the default listing limit", () => {
+    const targetPath = nativePath("/target");
+    const stdout = [
+      ...Array.from({ length: 500 }, (_, index) =>
+        record([
+          `worktree /repo-${index}`,
+          `branch refs/heads/branch-${index}`,
+        ]),
+      ),
+      record(["worktree /target", "branch refs/heads/bb/target"]),
+    ].join("");
+
+    const limitedEntries = parseWorktreeListPorcelain(stdout);
+    expect(limitedEntries).toHaveLength(500);
+    expect(findWorktreeEntry(limitedEntries, targetPath)).toBeNull();
+
+    const allEntries = parseWorktreeListPorcelain(stdout, Infinity);
+    expect(allEntries).toHaveLength(501);
+    expect(findWorktreeEntry(allEntries, targetPath)).toMatchObject({
+      path: targetPath,
+      branch: "bb/target",
+      isMain: false,
+    });
   });
 });
 

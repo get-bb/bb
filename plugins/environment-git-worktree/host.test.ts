@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   readdir,
   realpath,
   rm,
@@ -395,6 +396,301 @@ describe("worktree host entry", () => {
     expect(resumed).toEqual(first);
     expect(existsSync(join(first.path, "survives.txt"))).toBe(true);
     await restartedHarness.experimental_dispose();
+  });
+
+  it("preserves a completed detached worktree and its staged changes after restart", async () => {
+    const { sourcePath, dataDir } = await createSourceRepository();
+    await writeFile(join(sourcePath, "deleted.txt"), "delete me\n");
+    await writeFile(join(sourcePath, "staged.txt"), "original\n");
+    await git(sourcePath, "add", ".");
+    await git(sourcePath, "commit", "-m", "add tracked files");
+    const input = createInput({
+      operationId: "first",
+      sourcePath,
+      pathKey: "detached-retry",
+      branchName: "bb/detached-retry",
+    });
+    const firstHarness = createHarness(dataDir);
+    const first = await firstHarness.experimental_call("create", input);
+    if (first.status !== "created") throw new Error(first.message);
+    await git(first.path, "checkout", "--detach");
+    await writeFile(join(first.path, "README.md"), "edited\n");
+    await rm(join(first.path, "deleted.txt"));
+    await writeFile(join(first.path, "new.txt"), "untracked\n");
+    await writeFile(join(first.path, "staged.txt"), "staged\n");
+    await git(first.path, "add", "staged.txt");
+    await writeFile(join(first.path, "staged.txt"), "edited after staging\n");
+    await mkdir(join(first.path, ".jj"));
+    await writeFile(join(first.path, ".jj", "sentinel"), "workspace state\n");
+    const status = await git(first.path, "status", "--porcelain");
+    const staged = await git(first.path, "diff", "--cached");
+    const indexPath = (
+      await git(
+        first.path,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-path",
+        "index",
+      )
+    ).trim();
+    const index = await readFile(indexPath);
+    const completion = await readFile(`${first.path}.completed`, "utf8");
+    await firstHarness.experimental_dispose();
+
+    const restartedHarness = createHarness(dataDir);
+    const resumed = await restartedHarness.experimental_call("create", {
+      ...input,
+      operationId: "resumed",
+    });
+
+    expect(resumed).toEqual(first);
+    expect(await readFile(indexPath)).toEqual(index);
+    expect(await git(first.path, "status", "--porcelain")).toBe(status);
+    expect(await git(first.path, "diff", "--cached")).toBe(staged);
+    expect(await readFile(join(first.path, "README.md"), "utf8")).toBe(
+      "edited\n",
+    );
+    expect(existsSync(join(first.path, "deleted.txt"))).toBe(false);
+    expect(await readFile(join(first.path, "new.txt"), "utf8")).toBe(
+      "untracked\n",
+    );
+    expect(await readFile(join(first.path, "staged.txt"), "utf8")).toBe(
+      "edited after staging\n",
+    );
+    expect(await readFile(join(first.path, ".jj", "sentinel"), "utf8")).toBe(
+      "workspace state\n",
+    );
+    expect(await readFile(`${first.path}.completed`, "utf8")).toBe(completion);
+    expect(
+      (await git(first.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("HEAD");
+    expect(progressText(restartedHarness)).not.toContain("Creating worktree");
+    await restartedHarness.experimental_dispose();
+  });
+
+  it("recognizes a completed detached worktree through an equivalent source alias", async () => {
+    const { root, sourcePath, dataDir } = await createSourceRepository();
+    const input = createInput({
+      operationId: "first",
+      sourcePath,
+      pathKey: "source-alias",
+      branchName: "bb/source-alias",
+    });
+    const harness = createHarness(dataDir);
+    const first = await harness.experimental_call("create", input);
+    if (first.status !== "created") throw new Error(first.message);
+    await git(first.path, "checkout", "--detach");
+    await writeFile(join(first.path, "README.md"), "kept through alias\n");
+    const aliasParent = join(root, "source-alias");
+    await mkdir(aliasParent);
+    const aliasPath = join(aliasParent, basename(sourcePath));
+    await symlink(sourcePath, aliasPath, "junction");
+
+    expect(
+      await harness.experimental_call("create", {
+        ...input,
+        operationId: "retry",
+        sourcePath: aliasPath,
+      }),
+    ).toEqual(first);
+    expect(await readFile(join(first.path, "README.md"), "utf8")).toBe(
+      "kept through alias\n",
+    );
+    expect(
+      (await git(first.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("HEAD");
+    await harness.experimental_dispose();
+  });
+
+  it.each(["attached", "detached"])(
+    "preserves a foreign %s worktree despite a matching completion marker",
+    async (headState) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      const { sourcePath: foreignSource } = await createSourceRepository();
+      const input = createInput({
+        operationId: "retry-foreign",
+        sourcePath,
+        pathKey: "foreign-target",
+        branchName: "bb/foreign-target",
+      });
+      const targetPath = join(dataDir, "worktrees", input.pathKey, "repo");
+      await mkdir(join(dataDir, "worktrees", input.pathKey), {
+        recursive: true,
+      });
+      await git(
+        foreignSource,
+        "worktree",
+        "add",
+        "-b",
+        input.branchName,
+        targetPath,
+      );
+      if (headState === "detached")
+        await git(targetPath, "checkout", "--detach");
+      await writeFile(join(targetPath, "README.md"), "foreign edit\n");
+      await writeFile(join(targetPath, "notes.txt"), "foreign work\n");
+      const completion = `${input.branchName}\n`;
+      await writeFile(`${targetPath}.completed`, completion);
+      const registrations = await git(
+        foreignSource,
+        "worktree",
+        "list",
+        "--porcelain",
+      );
+      const harness = createHarness(dataDir);
+
+      expect(await harness.experimental_call("create", input)).toMatchObject({
+        status: "failed",
+        message: expect.stringContaining("not a worktree of"),
+      });
+      expect(await readFile(join(targetPath, "README.md"), "utf8")).toBe(
+        "foreign edit\n",
+      );
+      expect(await readFile(join(targetPath, "notes.txt"), "utf8")).toBe(
+        "foreign work\n",
+      );
+      expect(await readFile(`${targetPath}.completed`, "utf8")).toBe(
+        completion,
+      );
+      expect(await git(foreignSource, "worktree", "list", "--porcelain")).toBe(
+        registrations,
+      );
+      await harness.experimental_dispose();
+    },
+  );
+
+  it.each(["main checkout", "nested worktree directory"])(
+    "preserves an alias of a %s despite a matching completion marker",
+    async (targetKind) => {
+      const { root, sourcePath, dataDir } = await createSourceRepository();
+      const input = createInput({
+        operationId: "retry-unregistered",
+        sourcePath,
+        pathKey: "unregistered-target",
+        branchName:
+          targetKind === "main checkout" ? "main" : "bb/nested-target",
+      });
+      let aliasedPath = sourcePath;
+      if (targetKind === "nested worktree directory") {
+        const registeredPath = join(root, "registered-worktree");
+        await git(
+          sourcePath,
+          "worktree",
+          "add",
+          "-b",
+          input.branchName,
+          registeredPath,
+        );
+        aliasedPath = join(registeredPath, "nested");
+        await mkdir(aliasedPath);
+      }
+      await writeFile(join(aliasedPath, "notes.txt"), "existing work\n");
+      const targetPath = join(dataDir, "worktrees", input.pathKey, "repo");
+      await mkdir(join(dataDir, "worktrees", input.pathKey), {
+        recursive: true,
+      });
+      await symlink(aliasedPath, targetPath, "junction");
+      const completion = `${input.branchName}\n`;
+      await writeFile(`${targetPath}.completed`, completion);
+      const registrations = await git(
+        sourcePath,
+        "worktree",
+        "list",
+        "--porcelain",
+      );
+      const harness = createHarness(dataDir);
+
+      expect(await harness.experimental_call("create", input)).toMatchObject({
+        status: "failed",
+        message: expect.stringContaining("not a worktree of"),
+      });
+      expect(await realpath(targetPath)).toBe(await realpath(aliasedPath));
+      expect(await readFile(join(targetPath, "notes.txt"), "utf8")).toBe(
+        "existing work\n",
+      );
+      expect(await readFile(`${targetPath}.completed`, "utf8")).toBe(
+        completion,
+      );
+      expect(await git(sourcePath, "worktree", "list", "--porcelain")).toBe(
+        registrations,
+      );
+      await harness.experimental_dispose();
+    },
+  );
+
+  it.each(["missing", "mismatched"])(
+    "recreates a detached target with a %s completion marker",
+    async (markerState) => {
+      const { sourcePath, dataDir } = await createSourceRepository();
+      const input = createInput({
+        operationId: "first",
+        sourcePath,
+        pathKey: "incomplete-detached",
+        branchName: "bb/incomplete-detached",
+      });
+      const harness = createHarness(dataDir);
+      const first = await harness.experimental_call("create", input);
+      if (first.status !== "created") throw new Error(first.message);
+      await git(first.path, "checkout", "--detach");
+      await writeFile(join(first.path, "incomplete.txt"), "old attempt\n");
+      if (markerState === "missing") {
+        await rm(`${first.path}.completed`);
+      } else {
+        await writeFile(`${first.path}.completed`, "bb/different-request\n");
+      }
+
+      expect(
+        await harness.experimental_call("create", {
+          ...input,
+          operationId: "retry",
+        }),
+      ).toEqual(first);
+      expect(existsSync(join(first.path, "incomplete.txt"))).toBe(false);
+      expect(
+        (await git(first.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+      ).toBe(input.branchName);
+      expect(await readFile(`${first.path}.completed`, "utf8")).toBe(
+        `${input.branchName}\n`,
+      );
+      await harness.experimental_dispose();
+    },
+  );
+
+  it("preserves a completed worktree when its Git metadata cannot be read", async () => {
+    const { sourcePath, dataDir } = await createSourceRepository();
+    const input = createInput({
+      operationId: "first",
+      sourcePath,
+      pathKey: "corrupt-metadata",
+      branchName: "bb/corrupt-metadata",
+    });
+    const harness = createHarness(dataDir);
+    const first = await harness.experimental_call("create", input);
+    if (first.status !== "created") throw new Error(first.message);
+    await writeFile(join(first.path, "README.md"), "edited\n");
+    await writeFile(join(first.path, "new.txt"), "untracked\n");
+    const gitFile = `gitdir: ${join(dataDir, "missing-git-dir")}\n`;
+    await writeFile(join(first.path, ".git"), gitFile);
+    const completion = await readFile(`${first.path}.completed`, "utf8");
+
+    expect(
+      await harness.experimental_call("create", {
+        ...input,
+        operationId: "retry",
+      }),
+    ).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("left alone"),
+    });
+    expect(await readFile(join(first.path, "README.md"), "utf8")).toBe(
+      "edited\n",
+    );
+    expect(await readFile(join(first.path, "new.txt"), "utf8")).toBe(
+      "untracked\n",
+    );
+    expect(await readFile(join(first.path, ".git"), "utf8")).toBe(gitFile);
+    expect(await readFile(`${first.path}.completed`, "utf8")).toBe(completion);
+    await harness.experimental_dispose();
   });
 
   it("completes a recovered worktree without running core setup", async () => {

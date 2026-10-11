@@ -11,7 +11,10 @@ export interface GitWorktreeEntry {
 
 const MAX_ENTRIES = 500;
 
-export function parseWorktreeListPorcelain(stdout: string): GitWorktreeEntry[] {
+export function parseWorktreeListPorcelain(
+  stdout: string,
+  maxEntries = MAX_ENTRIES,
+): GitWorktreeEntry[] {
   const entries: GitWorktreeEntry[] = [];
   let current: GitWorktreeEntry | null = null;
 
@@ -25,7 +28,7 @@ export function parseWorktreeListPorcelain(stdout: string): GitWorktreeEntry[] {
       flush();
       continue;
     }
-    if (entries.length >= MAX_ENTRIES) break;
+    if (entries.length >= maxEntries) break;
     const separator = field.indexOf(" ");
     const key = separator === -1 ? field : field.slice(0, separator);
     const value = separator === -1 ? "" : field.slice(separator + 1);
@@ -55,7 +58,7 @@ export function parseWorktreeListPorcelain(stdout: string): GitWorktreeEntry[] {
     }
   }
   flush();
-  return entries.slice(0, MAX_ENTRIES);
+  return entries.slice(0, maxEntries);
 }
 
 export function selectAdoptableWorktrees(args: {
