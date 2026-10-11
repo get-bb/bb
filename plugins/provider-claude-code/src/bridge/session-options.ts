@@ -49,7 +49,11 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
-const WORKSPACE_SANDBOX_EXCLUDED_COMMANDS = ["git commit *", "git push *"];
+const WORKSPACE_SANDBOX_EXCLUDED_COMMANDS = [
+  "git commit *",
+  "git push *",
+  "awsx.py *",
+];
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,

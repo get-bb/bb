@@ -1197,7 +1197,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
-      excludedCommands: ["git commit *", "git push *"],
+      excludedCommands: ["git commit *", "git push *", "awsx.py *"],
       network: { allowLocalBinding: true },
     });
     expect(autoOptions.permissionMode).toBe("auto");
@@ -1206,7 +1206,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
-      excludedCommands: ["git commit *", "git push *"],
+      excludedCommands: ["git commit *", "git push *", "awsx.py *"],
       network: { allowLocalBinding: true },
     });
   });
@@ -1258,7 +1258,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
-      excludedCommands: ["git commit *", "git push *"],
+      excludedCommands: ["git commit *", "git push *", "awsx.py *"],
       network: { allowLocalBinding: true },
       filesystem: {
         allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
@@ -2812,7 +2812,7 @@ describe("bridge", () => {
           enabled: true,
           autoAllowBashIfSandboxed: true,
           allowUnsandboxedCommands: true,
-          excludedCommands: ["git commit *", "git push *"],
+          excludedCommands: ["git commit *", "git push *", "awsx.py *"],
         },
       });
 
@@ -2843,7 +2843,7 @@ describe("bridge", () => {
           enabled: true,
           autoAllowBashIfSandboxed: true,
           allowUnsandboxedCommands: true,
-          excludedCommands: ["git commit *", "git push *"],
+          excludedCommands: ["git commit *", "git push *", "awsx.py *"],
         },
       });
 
