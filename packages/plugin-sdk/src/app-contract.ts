@@ -629,6 +629,18 @@ export interface PluginNavPanelRegistration {
    */
   experimental_sidebarAccessory?: ComponentType;
   /**
+   * How the page is framed. `"fullscreen"` hands the page the whole window
+   * while it is the only pane on a wide layout: the sidebar collapses to its
+   * icon rail without changing the user's saved sidebar preference, and the
+   * page's title bar is not rendered, so `headerContent` is not shown. The
+   * sidebar toggle still expands the sidebar until the user navigates away.
+   * In a split or on a compact layout, the pane keeps its title bar. Omitted
+   * means the default framing.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_displayMode?: "fullscreen";
+  /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.

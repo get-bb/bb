@@ -4,7 +4,7 @@ import {
   PANE_DIRECTION_APP_COMMAND_IDS,
   PANE_FOCUS_APP_COMMAND_IDS,
 } from "@bb/domain";
-import { useAtom, useAtomValue, useStore } from "jotai";
+import { useAtom, useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   Fragment,
   memo,
@@ -87,11 +87,16 @@ import {
 } from "@/components/layout/AppPageHeader";
 import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
+import { fullscreenPaneActiveAtom } from "@/components/layout/fullscreenPaneAtom";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigation";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
-import { usePluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
+import {
+  usePluginNavPanelChrome,
+  type PluginNavPanelChrome,
+} from "@/lib/plugin-nav-panel-chrome";
 import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
@@ -1128,6 +1133,27 @@ const WorkspacePaneContent = memo(function WorkspacePaneContent({
   );
 });
 
+function isFullscreenPanel(
+  chrome: PluginNavPanelChrome | undefined,
+  {
+    isBoundedPane,
+    isCompactViewport,
+  }: { isBoundedPane: boolean; isCompactViewport: boolean },
+): boolean {
+  return (
+    !isBoundedPane && !isCompactViewport && chrome?.displayMode === "fullscreen"
+  );
+}
+
+function FullscreenPaneSignal() {
+  const setFullscreenPaneActive = useSetAtom(fullscreenPaneActiveAtom);
+  useLayoutEffect(() => {
+    setFullscreenPaneActive(true);
+    return () => setFullscreenPaneActive(false);
+  }, [setFullscreenPaneActive]);
+  return null;
+}
+
 function StandalonePaneContent({
   content,
   paneId,
@@ -1140,6 +1166,7 @@ function StandalonePaneContent({
   onNavigateInPane: NavigateInPane;
 }) {
   const navPanelChrome = usePluginNavPanelChrome();
+  const isCompactViewport = useIsCompactViewport();
   const navigateInPane = useCallback(
     (thread: ThreadRoutePathArgs) => onNavigateInPane(paneId, content, thread),
     [content, onNavigateInPane, paneId],
@@ -1168,6 +1195,10 @@ function StandalonePaneContent({
   );
   const panel = panelEntry?.panel ?? undefined;
   const panelChrome = panelEntry?.chrome;
+  const isFullscreen = isFullscreenPanel(panelChrome, {
+    isBoundedPane: false,
+    isCompactViewport,
+  });
   const body = (
     <PluginPanelView
       pluginId={content.pluginId}
@@ -1198,7 +1229,12 @@ function StandalonePaneContent({
       paneId={paneId}
       subPath={content.subPath}
     >
-      {panelChrome ? (
+      {isFullscreen ? (
+        <div className="flex h-full min-h-0 flex-col p-4 md:p-5">
+          <FullscreenPaneSignal />
+          {body}
+        </div>
+      ) : panelChrome ? (
         <div className="flex h-full min-h-0 flex-col">
           <AppPageHeader
             center={<PluginPanelHeaderCenter chrome={panelChrome} />}
@@ -1240,6 +1276,7 @@ function NonThreadPaneContent({
   ownsWindowTopLeft: boolean;
 }) {
   const navPanelChrome = usePluginNavPanelChrome();
+  const isCompactViewport = useIsCompactViewport();
   const resourceRouteLabel = useAtomValue(resourceRouteLabelAtom);
   const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
@@ -1260,6 +1297,10 @@ function NonThreadPaneContent({
       : undefined;
   const panel = panelEntry?.panel ?? undefined;
   const panelChrome = panelEntry?.chrome;
+  const isFullscreen = isFullscreenPanel(panelChrome, {
+    isBoundedPane,
+    isCompactViewport,
+  });
   const automationBreadcrumbs =
     content.kind === "plugin-panel"
       ? resolveAutomationBreadcrumbs(
@@ -1329,7 +1370,8 @@ function NonThreadPaneContent({
         !isBoundedPane && content.kind === "new-thread" && "-m-4 md:-m-5",
       )}
     >
-      {isBoundedPane || panel ? (
+      {isFullscreen ? <FullscreenPaneSignal /> : null}
+      {(isBoundedPane || panel) && !isFullscreen ? (
         <AppPageHeader
           isWindowDragRegion={isTopRow}
           ownsWindowTopLeft={ownsWindowTopLeft}

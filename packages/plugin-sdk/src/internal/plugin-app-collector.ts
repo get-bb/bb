@@ -255,6 +255,7 @@ const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
     component: true,
     fixedTabs: true,
     experimental_sidebarAccessory: true,
+    experimental_displayMode: true,
     headerContent: true,
   } satisfies Record<keyof PluginNavPanelRegistration, true>),
 );
@@ -620,8 +621,8 @@ export function collectPluginAppRegistrations(
       navPanel(registration) {
         const kind = "slots.navPanel";
         const id = requireSlotId(kind, registration?.id);
-        requireUniqueId(kind, seenIds.navPanel, id);
         rejectStaleNavPanelKeys(kind, registration);
+        requireUniqueId(kind, seenIds.navPanel, id);
         const panelId = id;
         const path = requireNonEmptyString(kind, "path", registration.path);
         if (!PLUGIN_SLOT_ID_PATTERN.test(path)) {
@@ -643,6 +644,12 @@ export function collectPluginAppRegistrations(
         ) {
           throw new Error(
             `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
+          );
+        }
+        const displayMode = registration.experimental_displayMode;
+        if (displayMode !== undefined && displayMode !== "fullscreen") {
+          throw new Error(
+            `${kind}: "experimental_displayMode" must be "fullscreen" when set, got ${JSON.stringify(displayMode)}`,
           );
         }
         const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
@@ -722,6 +729,9 @@ export function collectPluginAppRegistrations(
                 experimental_sidebarAccessory:
                   registration.experimental_sidebarAccessory,
               }
+            : {}),
+          ...(displayMode !== undefined
+            ? { experimental_displayMode: displayMode }
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }

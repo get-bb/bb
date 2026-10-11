@@ -35,6 +35,7 @@ import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import { resourceRouteLabelAtom } from "@/components/layout/resourceRouteLabelAtom";
+import { fullscreenPaneActiveAtom } from "@/components/layout/fullscreenPaneAtom";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
@@ -2590,6 +2591,90 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(screen.queryByTestId("pane-thr-h")).toBeNull());
     expect(owners()).toHaveLength(1);
     expect(owners()[0]?.getAttribute("data-testid")).toBe("pane-thr-a");
+  });
+
+  it("drops a fullscreen panel's title bar only while it is the only pane", async () => {
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs panel</div>,
+            experimental_displayMode: "fullscreen",
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+
+    const single = renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: {
+        root: { type: "pane", paneId: "pane-1", content: docsContent },
+        focusedPaneId: "pane-1",
+      },
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByText("Docs panel")).toBeTruthy();
+    expect(screen.queryByTestId("app-page-header-content-row")).toBeNull();
+    expect(single.get(fullscreenPaneActiveAtom)).toBe(true);
+
+    cleanup();
+    expect(single.get(fullscreenPaneActiveAtom)).toBe(false);
+
+    const split = renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByText("Docs panel")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close pane" })).toBeTruthy();
+    expect(split.get(fullscreenPaneActiveAtom)).toBe(false);
+  });
+
+  it("keeps a fullscreen panel's title bar on compact viewports", async () => {
+    viewportState.compact = true;
+    setPluginSlotRegistrations(
+      "docs",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "docs",
+            title: "Docs",
+            icon: "FileText",
+            path: "docs",
+            component: () => <div>Docs panel</div>,
+            experimental_displayMode: "fullscreen",
+          },
+        ],
+        threadPanelActions: [],
+        pendingInteractions: [],
+        sidebarFooterActions: [],
+        fileOpeners: [],
+      }),
+    );
+
+    const store = renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: {
+        root: { type: "pane", paneId: "pane-1", content: docsContent },
+        focusedPaneId: "pane-1",
+      },
+      routeContent: docsContent,
+    });
+
+    expect(await screen.findByText("Docs panel")).toBeTruthy();
+    expect(screen.getByText("Docs")).toBeTruthy();
+    expect(store.get(fullscreenPaneActiveAtom)).toBe(false);
   });
 
   it("places plugin header actions before the pane close button", async () => {

@@ -19,6 +19,9 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { useLayoutEffect } from "react";
+import { useSetAtom } from "jotai";
+import { fullscreenPaneActiveAtom } from "./fullscreenPaneAtom";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
@@ -440,6 +443,46 @@ describe("AppLayout sidebar state is scoped to this tab", () => {
 
     dispatchCrossTabWrite(SIDEBAR_OPEN_STORAGE_KEY, "false");
 
+    expect(sidebarRoot().getAttribute("data-state")).toBe("expanded");
+  });
+
+  it("collapses to the rail for a fullscreen pane without changing the saved preference", () => {
+    function FullscreenPane() {
+      const setActive = useSetAtom(fullscreenPaneActiveAtom);
+      useLayoutEffect(() => {
+        setActive(true);
+        return () => setActive(false);
+      }, [setActive]);
+      return null;
+    }
+    function Harness({ fullscreen }: { fullscreen: boolean }) {
+      return fullscreen ? <FullscreenPane /> : null;
+    }
+    const view = renderLayout("/", <Harness fullscreen />);
+    expect(sidebarRoot().getAttribute("data-state")).toBe("collapsed");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Toggle sidebar/ })[0]!,
+    );
+    expect(sidebarRoot().getAttribute("data-state")).toBe("expanded");
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Toggle sidebar/ })[0]!,
+    );
+    expect(sidebarRoot().getAttribute("data-state")).toBe("collapsed");
+    expect(window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)).not.toBe(
+      "false",
+    );
+
+    view.rerender(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppCommandProvider>
+          <AppLayout>
+            <RouteContent />
+            <Harness fullscreen={false} />
+          </AppLayout>
+        </AppCommandProvider>
+      </MemoryRouter>,
+    );
     expect(sidebarRoot().getAttribute("data-state")).toBe("expanded");
   });
 

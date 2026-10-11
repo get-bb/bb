@@ -2,6 +2,7 @@ import { type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { atom, useAtom, useAtomValue, useStore } from "jotai";
+import { fullscreenPaneActiveAtom } from "./fullscreenPaneAtom";
 import { atomWithStorage } from "jotai/utils";
 import {
   Link,
@@ -186,16 +187,31 @@ type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
 function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
-  const [open, setOpen] = useAtom(sidebarOpenAtom);
+  const [preferredOpen, setPreferredOpen] = useAtom(sidebarOpenAtom);
+  const fullscreenPaneActive = useAtomValue(fullscreenPaneActiveAtom);
+  const { pathname } = useLocation();
+  const [fullscreenExpandedPath, setFullscreenExpandedPath] = useState<
+    string | null
+  >(null);
+  const open = fullscreenPaneActive
+    ? fullscreenExpandedPath === pathname
+    : preferredOpen;
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
     (nextOpen) => {
-      setOpen(nextOpen);
+      if (fullscreenPaneActive) {
+        setFullscreenExpandedPath(nextOpen ? pathname : null);
+      } else {
+        setPreferredOpen(nextOpen);
+      }
       window.requestAnimationFrame(dispatchBrowserViewBoundsSync);
     },
-    [setOpen],
+    [fullscreenPaneActive, pathname, setPreferredOpen],
   );
+  useEffect(() => {
+    window.requestAnimationFrame(dispatchBrowserViewBoundsSync);
+  }, [fullscreenPaneActive]);
   useAppCommandHandler("sidebar.toggle", () => {
     handleOpenChange(!open);
     return true;

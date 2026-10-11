@@ -13,6 +13,7 @@ const pluginNavPanelChromeSchema = z.object({
   path: z.string().min(1),
   title: z.string(),
   icon: z.string(),
+  displayMode: z.literal("fullscreen").optional(),
 });
 
 export type PluginNavPanelChrome = z.infer<typeof pluginNavPanelChromeSchema>;
@@ -38,6 +39,9 @@ function pluginNavPanelChromeOf(
     path: panel.path,
     title: panel.title,
     icon: panel.icon,
+    ...(panel.experimental_displayMode === undefined
+      ? {}
+      : { displayMode: panel.experimental_displayMode }),
   };
 }
 

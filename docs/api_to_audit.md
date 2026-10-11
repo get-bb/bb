@@ -1764,6 +1764,46 @@ the `experimental_fixedTabOpenCalls` inspection list.
 10. Keep core and plugin destinations on the same resolver and verify the
     controller never learns Changes, file, task, or document target shapes.
 
+## `PluginNavPanelRegistration.experimental_displayMode`
+
+**Experimental (2026-10-10).** One consumer (the Diffui plugin, which embeds a
+full canvas editor); the value set and split behavior below are still open.
+
+**What it does.** `experimental_displayMode: "fullscreen"` lets a nav panel
+take the whole window while it is the only pane. `SplitThreadArea` skips the
+pane's `AppPageHeader` (so `headerContent` is not shown) and raises
+`fullscreenPaneActiveAtom`; `AppLayout`'s `SidebarStateBridge` then renders
+the sidebar collapsed to its icon rail without writing the persisted
+`sidebarOpenAtom`. `sidebar.toggle` expands it for the current route only. A
+bounded split pane keeps its header and the sidebar follows the saved
+preference. The display mode is part of the cached nav panel chrome, so a
+reload does not flash the sidebar before plugin frontends boot. The name and
+`"fullscreen"` value follow the MCP Apps display modes (`inline`,
+`fullscreen`, `pip`), which ChatGPT and Codex use for sidebar apps.
+
+**Core callers.** None. No core page needs to hide its own chrome; core
+fullscreen is the split pane maximize, which is a user action rather than a
+page declaration.
+
+**Audit before stabilizing.**
+
+1. **Value set.** Decide whether `"inline"` (today's default) should be
+   spelled out, and whether `"pip"` has a bb meaning, before the union
+   stabilizes.
+2. **Split behavior.** Confirm that keeping the title bar in a split is right,
+   versus a slimmer drag-only header, once more than one fullscreen consumer
+   exists.
+3. **Escape hatch.** The only way back to the full sidebar is the toggle or
+   navigation. Confirm users find it from the rail, and decide whether the
+   page title belongs somewhere (rail tooltip, window title) when the header
+   is hidden.
+4. **Compact viewports.** Compact layouts keep the title bar, because the
+   drawer trigger is fixed over the page's top-left corner. Decide whether a
+   compact fullscreen needs its own treatment.
+5. **Runtime switching.** Decide whether a page needs to enter and leave
+   fullscreen at runtime (MCP Apps' `ui/request-display-mode`) rather than
+   only at registration.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **Kept experimental (2026-08-22).** one consumer (the tasks plugin); item 1 below (a narrower value/badge contract) would change the API shape.

@@ -721,7 +721,9 @@ remainder arrives as the component's subPath prop for panel-internal deep
 links; the host always renders the shared plugin title bar and the component
 owns a zero-padding full-bleed body, including its scrolling; the optional
 experimental_sidebarAccessory field is accepted, but no host surface mounts it
-because the rail is icon-only),
+because the rail is icon-only; experimental_displayMode: "fullscreen" drops the
+title bar and collapses the sidebar to its rail while the page is the only
+pane, without changing the saved sidebar preference),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

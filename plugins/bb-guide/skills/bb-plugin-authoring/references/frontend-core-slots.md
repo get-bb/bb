@@ -93,7 +93,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, experimental_displayMode?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -150,6 +150,18 @@ target? })`. Inside the fixed-tab component,
   a live count or short status beside the panel's navigation entry. The SDK
   accepts it, but no host surface mounts it, because the navigation rail is
   icon-only. Experimental: see `docs/api_to_audit.md`.
+
+  `experimental_displayMode: "fullscreen"` is for a page that is its own
+  workspace, such as an embedded editor. While the page is the only pane on
+  a wide layout, the
+  sidebar collapses to its icon rail and the host title bar is not rendered,
+  so `headerContent` is not shown and the page owns the whole window below
+  the desktop window frame. The user's saved sidebar preference is unchanged;
+  the sidebar toggle expands it until the next navigation. In a split the
+  pane keeps its title bar so it can still be closed and moved. Older bb
+  releases reject the field after reserving the panel `id`, so a fallback
+  registration there needs a different `id`. Experimental: see
+  `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT

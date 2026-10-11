@@ -52,6 +52,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
+          "Take the whole window for an editor or canvas, with the sidebar collapsed to its icons and no title bar",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
         ],
         apiSymbols: [

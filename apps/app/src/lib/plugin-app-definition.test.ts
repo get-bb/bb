@@ -1055,6 +1055,21 @@ describe("collectPluginAppRegistrations", () => {
       /"experimental_sidebarAccessory" must be a React component/,
     ],
     [
+      "nav panel with an unsupported display mode",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_displayMode: "pip" as never,
+          });
+        }),
+      /"experimental_displayMode" must be "fullscreen" when set, got "pip"/,
+    ],
+    [
       "message directive with uppercase id",
       () =>
         definePluginApp((app) => {
@@ -1157,5 +1172,44 @@ describe("collectPluginAppRegistrations", () => {
     ).toMatchObject({
       experimental_sidebarAccessory: SidebarAccessory,
     });
+  });
+
+  it("keeps an experimental_displayMode registration", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        experimental_displayMode: "fullscreen",
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).navPanels[0],
+    ).toMatchObject({
+      experimental_displayMode: "fullscreen",
+    });
+  });
+
+  it("lets a nav panel rejected for an unknown field register again under its id", () => {
+    const definition = definePluginApp((app) => {
+      const panel = {
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+      };
+      try {
+        app.slots.navPanel({
+          ...panel,
+          experimental_badge: Component,
+        } as never);
+      } catch {
+        app.slots.navPanel(panel);
+      }
+    });
+    expect(collectPluginAppRegistrations(definition).navPanels).toHaveLength(1);
   });
 });
