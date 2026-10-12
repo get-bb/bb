@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
   ExperimentalAppOverlayRegistration,
+  ExperimentalSidebarFooterSectionRegistration,
   PluginDiffRendererRegistration,
   PluginEnvironmentProviderInputsRegistration,
   PluginMachineProviderInputsRegistration,
@@ -45,6 +46,7 @@ export interface PluginRegistrationSet {
   pendingInteractions?: readonly PluginPendingInteractionRegistration[];
   sidebarFooterActions: readonly PluginSidebarFooterActionRegistration[];
   experimentalSidebarFooterItems?: readonly CollectedExperimentalSidebarFooterItem[];
+  sidebarFooterSections?: readonly ExperimentalSidebarFooterSectionRegistration[];
   threadLists?: readonly PluginThreadListRegistration[];
   threadHeaderActions?: readonly PluginThreadHeaderActionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
@@ -85,6 +87,8 @@ export interface PluginPendingInteractionSlot
   extends PluginPendingInteractionRegistration, PluginSlotBase {}
 export type PluginSidebarFooterItemSlot = CollectedSidebarFooterItem &
   PluginSlotBase;
+export interface ExperimentalSidebarFooterSectionSlot
+  extends ExperimentalSidebarFooterSectionRegistration, PluginSlotBase {}
 export interface PluginThreadListSlot
   extends PluginThreadListRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
@@ -125,6 +129,7 @@ export interface PluginSlotSnapshot {
   composerCustomizations: readonly PluginComposerCustomizationSlot[];
   pendingInteractions: readonly PluginPendingInteractionSlot[];
   sidebarFooterItems: readonly PluginSidebarFooterItemSlot[];
+  sidebarFooterSections: readonly ExperimentalSidebarFooterSectionSlot[];
   threadLists: readonly PluginThreadListSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
@@ -152,6 +157,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   composerCustomizations: [],
   pendingInteractions: [],
   sidebarFooterItems: [],
+  sidebarFooterSections: [],
   threadLists: [],
   threadHeaderActions: [],
   threadActions: [],
@@ -186,6 +192,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "composerCustomizations",
   "pendingInteractions",
   "sidebarFooterItems",
+  "sidebarFooterSections",
   "threadLists",
   "threadHeaderActions",
   "threadActions",
@@ -244,6 +251,7 @@ function flattenRegistrations(
     composerCustomizations: stamp(set.composerCustomizations),
     pendingInteractions: stamp(set.pendingInteractions),
     sidebarFooterItems: stamp<CollectedSidebarFooterItem>(sidebarFooterItems),
+    sidebarFooterSections: stamp(set.sidebarFooterSections),
     threadLists: stamp(set.threadLists),
     threadHeaderActions: stamp(set.threadHeaderActions),
     threadActions: stamp(set.threadActions),

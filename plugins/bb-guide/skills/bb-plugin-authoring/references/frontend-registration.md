@@ -49,6 +49,10 @@ export default definePluginApp((app) => {
     id: "floating-status",
     component: FloatingStatus,
   });
+  app.slots.experimental_sidebarFooterSection({
+    id: "announcement",
+    component: AnnouncementCard,
+  });
   app.slots.navPanel({
     id: "board",
     title: "Board",

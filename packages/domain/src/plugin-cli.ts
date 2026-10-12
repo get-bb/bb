@@ -20,6 +20,7 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "thread",
   "updates",
   "voice",
+  "whats-new",
 ];
 
 export function pluginCliCall(pluginId: string, name: string): string {

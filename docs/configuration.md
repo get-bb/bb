@@ -1496,13 +1496,31 @@ history; if the thread is running, submission stops the current turn and waits
 for it to settle before atomically replacing that message and every later turn
 while keeping workspace changes.
 
+## What's new
+
+What's new is a built-in plugin (`bb--whats-new`), on by default. After an
+update, until this client sees the installed release, it shows a card above
+the sidebar footer; opening the card goes to its What's new section in
+Settings → Updates, below the update rows: a one-line summary of the installed
+release with its full notes behind Show all changes, releases skipped since
+this client last saw What's new, and the notes for an available update.
+Opening the card, dismissing it with ×, or visiting the section hides it until
+the next release. A client with no seen record (a new install or a new
+browser) records its installed release as seen and shows no card until the
+next update. The card is hidden while the sidebar is collapsed. Turn off
+What's new from the confirmation shown after dismissing the card (with Undo),
+with the Show What's new switch in Settings → Plugins → What's new, with
+`bb plugin config bb--whats-new set enabled false`, or by disabling the
+plugin (`bb plugin disable bb--whats-new`; `bb plugin enable bb--whats-new`
+turns it back on). `bb whats-new` prints the same release notes in the
+terminal (`--version <v>`, `--since <v>`, `--json`), works with the plugin
+off, and never marks a release seen.
+
 ## Experiments
 
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
 bb stores only the experiments you set; the others follow the shipped default.
-The default-off `changelogPreview` experiment shows the latest release notes
-as a compact, dismissible card on Settings → Updates.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,

@@ -359,16 +359,16 @@ describe("bb settings commands", () => {
     });
   });
 
-  it("enables the changelog preview experiment", async () => {
+  it("enables the server move experiment", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({ "v1.settings.experiments.$put": put });
 
     await runCommand(
-      ["settings", "experiment", "changelogPreview", "true"],
+      ["settings", "experiment", "serverMove", "true"],
       register,
     );
 
-    expect(put).toHaveBeenCalledWith({ json: { changelogPreview: true } });
+    expect(put).toHaveBeenCalledWith({ json: { serverMove: true } });
   });
 
   it("reads usage from a selected machine", async () => {

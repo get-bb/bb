@@ -59,6 +59,69 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_sidebarFooterSection", () => {
+  it("collects sections and rejects duplicate ids and malformed components", () => {
+    const valid = definePluginApp((app) => {
+      app.slots.experimental_sidebarFooterSection({
+        id: "card",
+        component: Component,
+      });
+    });
+    const duplicate = definePluginApp((app) => {
+      app.slots.experimental_sidebarFooterSection({
+        id: "card",
+        component: Component,
+      });
+      app.slots.experimental_sidebarFooterSection({
+        id: "card",
+        component: Component,
+      });
+    });
+    const malformed = definePluginApp((app) => {
+      app.slots.experimental_sidebarFooterSection({
+        id: "card",
+        component: null as never,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(valid).sidebarFooterSections).toEqual([
+      { id: "card", component: Component },
+    ]);
+    expect(() => collectPluginAppRegistrations(duplicate)).toThrow(
+      'duplicate id "card"',
+    );
+    expect(() => collectPluginAppRegistrations(malformed)).toThrow(
+      '"component" must be a React component function',
+    );
+  });
+});
+
+describe("collectPluginAppRegistrations — settingsSection pages", () => {
+  it("accepts the Updates page and rejects unknown pages", () => {
+    const updates = definePluginApp((app) => {
+      app.slots.settingsSection({
+        id: "notes",
+        experimental_page: "updates",
+        component: Component,
+      });
+    });
+    const unknown = definePluginApp((app) => {
+      app.slots.settingsSection({
+        id: "notes",
+        experimental_page: "general" as never,
+        component: Component,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(updates).settingsSections).toEqual([
+      { id: "notes", experimental_page: "updates", component: Component },
+    ]);
+    expect(() => collectPluginAppRegistrations(unknown)).toThrow(
+      'experimental_page must be "mobile" or "updates"',
+    );
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   const item = () => null;
   const useData = () => 1;

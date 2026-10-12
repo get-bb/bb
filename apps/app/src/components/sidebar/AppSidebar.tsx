@@ -23,6 +23,7 @@ import {
 import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
+import { PluginSidebarFooterSections } from "@/components/plugin/PluginSidebarFooterSections";
 import {
   PluginSidebarFooterDisclosure,
   PluginSidebarFooterItems,
@@ -223,9 +224,9 @@ export function AppSidebar({
       </SidebarContent>
       <div
         className={cn(
-          "relative flex flex-col gap-2",
+          "relative flex flex-col gap-2 px-2",
           (isFooterCustomizing || pluginSidebarFooter.activeItem !== null) &&
-            "px-2 pt-2",
+            "pt-2",
         )}
       >
         <OverflowFade placement="above" tone="sidebar" size="sm" />
@@ -243,6 +244,10 @@ export function AppSidebar({
             item={pluginSidebarFooter.activeItem}
             onDismiss={pluginSidebarFooter.dismiss}
           />
+        )}
+        {isFooterCustomizing ||
+        pluginSidebarFooter.activeItem !== null ? null : (
+          <PluginSidebarFooterSections onNavigate={closeOnMobile} />
         )}
       </div>
       <SidebarResizeHandle

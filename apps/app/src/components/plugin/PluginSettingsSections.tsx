@@ -28,6 +28,15 @@ export function PluginMobileSettingsSections({
   return <PluginSettingsSectionList sections={sections} />;
 }
 
+export function PluginUpdatesSettingsSections() {
+  const { settingsSections } = usePluginSlots();
+  const sections = settingsSections.filter(
+    (section) => section.experimental_page === "updates",
+  );
+  if (sections.length === 0) return null;
+  return <PluginSettingsSectionList sections={sections} />;
+}
+
 function PluginSettingsSectionList({
   sections,
 }: {

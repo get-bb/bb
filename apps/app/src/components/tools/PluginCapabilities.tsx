@@ -273,6 +273,21 @@ function pluginAppSurfaceItems(
       ),
     ...namedSlotItems(
       pluginId,
+      slots.sidebarFooterSections,
+      "sidebar-footer-section",
+      "Adds content to the app sidebar above the footer.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      settingsSections.filter(
+        (section) => section.experimental_page === "updates",
+      ),
+      "updates-section",
+      "Adds a section to Settings → Updates.",
+      () => getSettingsRoutePath("updates"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.messageActions,
       "message-action",
       "Adds an action to messages in threads.",

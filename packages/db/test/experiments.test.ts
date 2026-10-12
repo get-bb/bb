@@ -9,9 +9,10 @@ import {
 
 function storedExperimentRows(db: ReturnType<typeof createConnection>) {
   return db.$client
-    .prepare<[], { key: string; value: number }>(
-      "SELECT key, value FROM system_experiments ORDER BY key",
-    )
+    .prepare<
+      [],
+      { key: string; value: number }
+    >("SELECT key, value FROM system_experiments ORDER BY key")
     .all();
 }
 
@@ -23,7 +24,7 @@ describe("experiments", () => {
       migrate(db);
       expect(getExperiments(db)).toEqual(defaultExperiments);
 
-      setExperiments(db, { changelogPreview: true });
+      setExperiments(db, { serverMove: true });
       db.$client
         .prepare(
           "INSERT INTO system_experiments (key, value, updated_at) VALUES ('futureExperiment', true, 1)",
@@ -32,7 +33,7 @@ describe("experiments", () => {
 
       expect(getExperiments(db)).toEqual({
         ...defaultExperiments,
-        changelogPreview: true,
+        serverMove: true,
       });
     } finally {
       db.$client.close();

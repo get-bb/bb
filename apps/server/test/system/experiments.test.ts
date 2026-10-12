@@ -20,7 +20,6 @@ describe("experiments settings", () => {
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
-        changelogPreview: false,
         serverMove: false,
         performanceDiagnostics: false,
       });
@@ -47,19 +46,16 @@ describe("experiments settings", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          changelogPreview: true,
           serverMove: true,
           performanceDiagnostics: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
       });
       expect(getExperiments(harness.db)).toEqual({
-        changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
       });
@@ -68,7 +64,6 @@ describe("experiments settings", () => {
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
-        changelogPreview: true,
         serverMove: true,
         performanceDiagnostics: true,
       });
@@ -78,12 +73,13 @@ describe("experiments settings", () => {
   it("changes only the experiments a PUT names", async () => {
     await withTestHarness(async (harness) => {
       await putExperiments(harness, { serverMove: true });
-      const put = await putExperiments(harness, { changelogPreview: true });
+      const put = await putExperiments(harness, {
+        performanceDiagnostics: true,
+      });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
-        changelogPreview: true,
         serverMove: true,
-        performanceDiagnostics: false,
+        performanceDiagnostics: true,
       });
       expect(
         harness.db.$client
@@ -92,7 +88,7 @@ describe("experiments settings", () => {
           )
           .all()
           .map((row) => row.key),
-      ).toEqual(["changelogPreview", "serverMove"]);
+      ).toEqual(["performanceDiagnostics", "serverMove"]);
     });
   });
 

@@ -6,13 +6,13 @@ import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import { RELEASE_META } from "../../../../changelog-metadata";
 import { useInitAnalytics } from "../landing/analytics";
 import {
   parseChangelog,
+  RELEASE_META,
   type ChangelogBlock,
   type ChangelogEntry,
-} from "../../../../changelog-parser";
+} from "@bb/domain/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
 import {
   focusSubscribeEmail,

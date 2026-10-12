@@ -32,6 +32,7 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemProviderStatesResponse,
   SystemProvidersQuery,
+  SystemReleaseNotesResponse,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -72,6 +73,14 @@ export interface SystemVersionArgs {
   force?: boolean;
   signal?: AbortSignal;
 }
+
+export interface SystemReleaseNotesArgs {
+  version?: string;
+  since?: string;
+  signal?: AbortSignal;
+}
+
+export type SystemReleaseNotesResult = SystemReleaseNotesResponse;
 
 export interface SystemAppUpdateArgs {
   force?: boolean;
@@ -195,6 +204,9 @@ export interface SystemArea {
   ): Promise<SystemProviderStatesResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
+  experimental_releaseNotes(
+    args?: SystemReleaseNotesArgs,
+  ): Promise<SystemReleaseNotesResult>;
   appUpdate(args?: SystemAppUpdateArgs): Promise<SystemAppUpdateStatusResult>;
   applyAppUpdate(
     args: SystemApplyAppUpdateArgs,
@@ -410,6 +422,21 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.system.version.$get(
           { query: versionQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_releaseNotes(input) {
+      return transport.readJson(
+        transport.api.v1.system["release-notes"].$get(
+          {
+            query: {
+              ...(input?.version === undefined
+                ? {}
+                : { version: input.version }),
+              ...(input?.since === undefined ? {} : { since: input.since }),
+            },
+          },
           ...signalRequestArgs(input?.signal),
         ),
       );

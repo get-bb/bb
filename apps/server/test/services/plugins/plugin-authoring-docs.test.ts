@@ -7,6 +7,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalAppOverlayProps,
+  type ExperimentalSidebarFooterSectionProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -271,6 +272,7 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_sidebarFooterSection: ExperimentalSidebarFooterSectionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   experimental_threadAction: PluginThreadActionItemInput<unknown>;
@@ -348,6 +350,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_sidebarFooterSection: ["isCompactViewport", "onNavigate"],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",

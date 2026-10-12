@@ -135,6 +135,17 @@ move and downloads the new server's bb-app package for its service.
 - `bb updates app apply`
 - `bb updates app dismiss`
 
+## whats-new
+
+- `bb whats-new`
+
+`bb whats-new` prints the installed release's notes: headline, date, summary,
+highlights, and other sections. `--version <v>` shows one release; `--since <v>`
+shows every release after `<v>` up to the installed one, newest first; `--json`
+prints the structured notes. It is read-only and never marks a release seen,
+so the user's sidebar What's new card stays. It reads bb's release data and
+works with the What's new plugin (`bb--whats-new`) turned off.
+
 ## terminal
 
 - `bb terminal`
