@@ -193,6 +193,101 @@ export const testAiServiceResponseSchema = z.discriminatedUnion("ok", [
 ]);
 export type TestAiServiceResponse = z.infer<typeof testAiServiceResponseSchema>;
 
+const onboardingStepTelemetrySchema = z.enum([
+  "agent",
+  "projects",
+  "plugins",
+  "devices",
+]);
+const onboardingEntryTelemetrySchema = z.enum(["first_run", "replay"]);
+const onboardingStepTelemetryPropertiesSchema = z
+  .object({
+    step: onboardingStepTelemetrySchema,
+    entry: onboardingEntryTelemetrySchema,
+  })
+  .strict();
+
+export const recordTelemetryEventRequestSchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      name: z.literal("onboarding_agent_state"),
+      properties: z
+        .object({
+          entry: onboardingEntryTelemetrySchema,
+          agent_installed: z.boolean().nullable(),
+          agent_ready: z.boolean().nullable(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_sign_in"),
+      properties: z
+        .object({
+          entry: onboardingEntryTelemetrySchema,
+          outcome: z.enum([
+            "started",
+            "ready",
+            "exited",
+            "failed",
+            "cancelled",
+          ]),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("new_thread_submit"),
+      properties: z
+        .object({ outcome: z.enum(["started", "accepted", "failed"]) })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_started"),
+      properties: z
+        .object({ agent_installed: z.boolean(), agent_ready: z.boolean() })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_reached"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_completed"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_step_skipped"),
+      properties: onboardingStepTelemetryPropertiesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      name: z.literal("onboarding_finished"),
+      properties: z
+        .object({
+          outcome: z.enum(["completed", "skipped"]),
+          entry: onboardingEntryTelemetrySchema,
+          last_step: onboardingStepTelemetrySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+export type RecordTelemetryEventRequest = z.infer<
+  typeof recordTelemetryEventRequestSchema
+>;
+
 export const serverAccessStatusSchema = z.object({
   providers: z.array(
     z.object({
