@@ -4100,7 +4100,7 @@ same request, or use `threads.experimental_resume({threadId})`, to load the
 saved session without a user prompt. `resumeError` explains failed loading.
 The corresponding CLI commands are `bb thread handover-state`, `handover`
 (with `--request-file`) and `resume`. Host command `thread.resume` requires
-host-daemon protocol 234.
+host-daemon protocol 235.
 
 Audit concurrent sends and interactions, foreign session ownership, crashes,
 source release failures, thread cache updates and cross-provider permission

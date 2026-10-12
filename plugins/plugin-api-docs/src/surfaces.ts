@@ -737,6 +737,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "machine-providers",
           "server-access",
           "host-workers",
+          "provider-handover",
           "provider-bridges",
         ],
       },
@@ -1155,7 +1156,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         title: "Existing-thread provider handover",
         tagline: "Connect the same chat to a prepared agent session",
         summary:
-          "Switch an idle thread without replacing its timeline. With this, a plugin can:",
+          "Use a prepared agent session in the same idle thread. With this, a plugin can:",
         bullets: [
           "Read the current provider session and history boundary before preparing a transfer",
           "Adopt a prepared target session while retaining the thread ID and organization",
