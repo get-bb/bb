@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Thread } from "@bb/domain";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
@@ -398,11 +404,9 @@ describe("ThreadActionsProvider archive confirmation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
-    expect(
-      await screen.findByText(
-        /4 child threads will be archived with this thread\./,
-      ),
-    ).not.toBeNull();
+    expect((await screen.findByRole("dialog")).textContent).toContain(
+      "Its 4 child threads will be archived too.",
+    );
     expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
   });
 
@@ -469,7 +473,9 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive 2 threads" }),
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Archive",
+      }),
     );
 
     await vi.waitFor(() => {
@@ -514,7 +520,9 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive 2 threads" }),
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Archive",
+      }),
     );
 
     await vi.waitFor(() => {
@@ -551,7 +559,9 @@ describe("ThreadActionsProvider archive feedback", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Archive 2 threads" }),
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Archive",
+      }),
     );
 
     await vi.waitFor(() => {

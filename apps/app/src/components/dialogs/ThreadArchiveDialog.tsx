@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
 
 export interface ThreadArchiveDialogTarget {
   thread: Thread;
@@ -68,16 +69,10 @@ export function ThreadArchiveDialogContent({
   onArchive,
 }: ThreadArchiveDialogContentProps) {
   const { childThreadCount } = target;
-  const archivedThreadCount = childThreadCount + 1;
   const active =
     target.thread.status === "starting" ||
     target.thread.status === "active" ||
     target.thread.status === "stopping";
-  const sentences = [
-    active ? "This will stop current work." : null,
-    `${childThreadCount} child ${childThreadCount === 1 ? "thread" : "threads"} will be archived with this thread.`,
-    "Archived threads stay available and can be unarchived.",
-  ].filter((sentence): sentence is string => sentence !== null);
 
   return (
     <form
@@ -90,8 +85,16 @@ export function ThreadArchiveDialogContent({
       }}
     >
       <DialogHeader>
-        <DialogTitle>Archive {archivedThreadCount} threads?</DialogTitle>
-        <DialogDescription>{sentences.join(" ")}</DialogDescription>
+        <DialogTitle>Archive thread?</DialogTitle>
+        <DialogDescription>
+          {active ? "This will stop current work. " : null}
+          Its{" "}
+          <span className="font-semibold">
+            {formatChildThreadCount(childThreadCount)}
+          </span>{" "}
+          will be archived too. Archived threads stay available and can be
+          unarchived.
+        </DialogDescription>
       </DialogHeader>
       <DialogFooter>
         <Button
@@ -103,7 +106,7 @@ export function ThreadArchiveDialogContent({
           Cancel
         </Button>
         <Button type="submit" disabled={pending}>
-          Archive {archivedThreadCount} threads
+          Archive
         </Button>
       </DialogFooter>
     </form>

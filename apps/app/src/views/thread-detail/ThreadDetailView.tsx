@@ -2357,7 +2357,6 @@ function ThreadDetailViewInternal(
           onCloseAutoFocus={onCloseAutoFocus}
         />
       )}
-      childPillLabel={parentThreadId ? "child" : null}
       isSecondaryPanelOpen={isSecondaryPanelOpen}
       onClosePane={onRequestClose ?? undefined}
       onOpenThreadGitAction={gitActions.threadGitActionDialog.onOpen}

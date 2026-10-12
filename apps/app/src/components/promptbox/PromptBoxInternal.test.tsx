@@ -4751,6 +4751,15 @@ describe("PromptBoxInternal mention triggers", () => {
         title: "Shared context",
         relation: null,
       },
+      {
+        kind: "thread",
+        path: "thread:thr_child",
+        replacement: "thread:thr_child",
+        projectId: "proj_app",
+        threadId: "thr_child",
+        title: "Shared context",
+        relation: "child",
+      },
     ];
     const { promptBoxRef } = renderPromptBox("@shared", {
       mentionSuggestions: suggestions,
@@ -4771,7 +4780,10 @@ describe("PromptBoxInternal mention triggers", () => {
       "Shared context · parent",
       "Shared context · same environment",
       "Shared context",
+      "Shared context · child thread",
     ]);
+    expect(within(menu).getByText("parent")).toBeTruthy();
+    expect(within(menu).getByText("child thread")).toBeTruthy();
     expect(within(menu).getByText("same environment")).toBeTruthy();
     expect(within(menu).getByText("same env").className).toContain("hidden");
   });
