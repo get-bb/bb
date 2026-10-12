@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "inline-confirmation",
+  "type": "registry:ui",
+  "title": "inline-confirmation",
+  "description": "BB ui \"inline-confirmation\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/inline-confirmation.tsx",
+      "content": "import type { ReactNode } from \"react\";\nimport { cn } from \"../../lib/utils\";\nimport { Icon } from \"./icon\";\n\nexport function InlineConfirmation({\n  children,\n  className,\n}: {\n  children: ReactNode;\n  className?: string;\n}) {\n  return (\n    <span\n      role=\"status\"\n      className={cn(\n        \"inline-flex items-center gap-1.5 text-xs font-medium text-diff-added\",\n        className,\n      )}\n    >\n      <Icon aria-hidden name=\"CircleCheck\" className=\"size-3.5 shrink-0\" />\n      {children}\n    </span>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/inline-confirmation.tsx"
+    }
+  ]
+}
