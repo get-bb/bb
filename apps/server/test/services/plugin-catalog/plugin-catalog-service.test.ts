@@ -30,6 +30,7 @@ import {
   CURATED_MARKETPLACE_V2_URL,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
 import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
+import { loadBundledMarketplace } from "../../../src/services/plugin-catalog/bundled-marketplace.js";
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
@@ -45,6 +46,9 @@ const V2_MANIFEST_URL = CURATED_MARKETPLACE_V2_URL;
 const CUSTOM_V1_MANIFEST_URL =
   "https://marketplace.test/marketplace/v1/marketplace.json";
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
+const OFFICIAL_ORDER =
+  loadBundledMarketplace(listBundledPluginRegistrations()).catalog
+    .collections[0]?.pluginIds ?? [];
 
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
@@ -214,7 +218,9 @@ describe("plugin catalog service", () => {
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
         "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png",
       ],
-      collections: [{ id: "bb-official", rank: expect.any(Number) }],
+      collections: [
+        { id: "bb-official", rank: OFFICIAL_ORDER.indexOf("simple-notes") },
+      ],
       source: "builtin:docs",
       marketplace: "bb-official",
       marketplaceDisplayName: "BB Official",
@@ -237,19 +243,13 @@ describe("plugin catalog service", () => {
         BUNDLED_CURATED_MARKETPLACE.plugins.map((entry) => [entry.id, false]),
       ),
     });
-    const collections = catalog.collections();
-    const officialOrder = collections[0]?.pluginIds ?? [];
-    expect(collections[0]?.id).toBe("bb-official");
-    expect([...officialOrder].sort()).toEqual(
-      BUNDLED_PLUGINS.map((plugin) => plugin.pluginId).sort(),
-    );
-    for (const entry of results.filter(
-      (result) => result.marketplace === "bb-official",
-    )) {
-      expect(entry.collections).toEqual([
-        { id: "bb-official", rank: officialOrder.indexOf(entry.pluginId) },
-      ]);
-    }
+    expect(catalog.collections()).toEqual([
+      {
+        id: "bb-official",
+        displayName: "BB Official",
+        pluginIds: OFFICIAL_ORDER,
+      },
+    ]);
     for (const category of PLUGIN_CATALOG_CATEGORIES) {
       const categoryNames = results
         .filter((entry) => entry.category === category.displayName)
@@ -583,7 +583,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: expect.any(Array),
+          pluginIds: OFFICIAL_ORDER,
         },
         {
           id: "new-and-notable",
@@ -631,7 +631,7 @@ describe("plugin catalog service", () => {
         {
           id: "bb-official",
           displayName: "BB Official",
-          pluginIds: expect.any(Array),
+          pluginIds: OFFICIAL_ORDER,
         },
       ]);
     });
