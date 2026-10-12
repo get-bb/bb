@@ -378,6 +378,8 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: false,
     },
   ],
+  pendingInteractions: [],
+  waitingQuestion: null,
 };
 
 const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
@@ -389,12 +391,131 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: true,
     },
   ],
+  pendingInteractions: [],
+  waitingQuestion: "Which color should the QA badge use?",
 };
 
-const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
-  items: childThreadsFixture.items.map((item, index) =>
-    index === 1 ? { ...item, hasPendingInteraction: true } : item,
-  ),
+function withPending(
+  pendingIds: readonly string[],
+): ThreadPromptChildThreadsSection {
+  const items = childThreadsFixture.items.map((item) => ({
+    ...item,
+    hasPendingInteraction: pendingIds.includes(item.id),
+  }));
+  return {
+    items: [
+      ...items.filter((item) => item.hasPendingInteraction),
+      ...items.filter((item) => !item.hasPendingInteraction),
+    ],
+    pendingInteractions: [],
+    waitingQuestion: "Approve running the migration on staging?",
+  };
+}
+
+const childThreadsMixedFixture = withPending(["thr_b"]);
+
+function childQuestionFixture(
+  childThreadId: string,
+  childTitle: string,
+  prompt: string,
+  options: readonly { label: string; description: string }[],
+  createdAt: number,
+) {
+  return {
+    childThreadId,
+    childTitle,
+    href: `/projects/proj-1/threads/${childThreadId}`,
+    interaction: {
+      id: `pint_${childThreadId}`,
+      threadId: childThreadId,
+      turnId: "turn_story",
+      providerId: "claude-code",
+      providerThreadId: "provider-thread-story",
+      providerRequestId: `request-${childThreadId}`,
+      status: "pending" as const,
+      statusReason: null,
+      createdAt,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "user_question" as const,
+        questions: [
+          {
+            id: "choice",
+            prompt,
+            multiSelect: false,
+            allowFreeText: true,
+            options: options.map((option) => ({
+              value: option.label.toLowerCase(),
+              ...option,
+            })),
+          },
+        ],
+      },
+    },
+  };
+}
+
+const childThreadsQuestionsFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_size",
+      title: "Pick a size",
+      href: "/projects/proj-1/threads/thr_size",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_shape",
+      title: "Pick a shape",
+      href: "/projects/proj-1/threads/thr_shape",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_color",
+      title: "Pick a color",
+      href: "/projects/proj-1/threads/thr_color",
+      hasPendingInteraction: true,
+    },
+    {
+      id: "thr_working",
+      title: "Investigate failing checks",
+      href: "/projects/proj-1/threads/thr_working",
+      hasPendingInteraction: false,
+    },
+  ],
+  pendingInteractions: [
+    childQuestionFixture(
+      "thr_size",
+      "Pick a size",
+      "Which size?",
+      [
+        { label: "Small", description: "Proceed with a small-scale change." },
+        { label: "Large", description: "Proceed with a large-scale change." },
+      ],
+      3,
+    ),
+    childQuestionFixture(
+      "thr_shape",
+      "Pick a shape",
+      "Which shape?",
+      [
+        { label: "Circle", description: "Select the circle shape." },
+        { label: "Square", description: "Select the square shape." },
+      ],
+      2,
+    ),
+    childQuestionFixture(
+      "thr_color",
+      "Pick a color",
+      "Which color?",
+      [
+        { label: "Red", description: "Choose red." },
+        { label: "Blue", description: "Choose blue." },
+      ],
+      1,
+    ),
+  ],
+  waitingQuestion: "Which size?",
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -402,8 +523,10 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
-    hasPendingInteraction: i === 1,
+    hasPendingInteraction: i === 0,
   })),
+  pendingInteractions: [],
+  waitingQuestion: "Which branch should I rebase onto?",
 };
 
 function buildPullRequestFixture(
@@ -784,16 +907,28 @@ export function Overview() {
         <Row parentThread={forkedFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with a child waiting for approval"
-        hint="the parent banner names the blocked child and drops the active shimmer"
+        label="thread with a child thread waiting for approval"
+        hint="the banner expands on its own to show it"
       >
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="parent thread with active children (collapsed)"
-        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
+        label="answer child questions in the banner"
+        hint="rows read child: question; open one from a row or the collapsed header, ‹ Child threads or Esc returns, ‹ › steps through waiting questions"
+      >
+        <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="thread with active child threads (collapsed)"
+        hint="icon, label, and total count; click to list every child thread"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="a child thread needs input"
+        hint="the banner expands on its own; child threads that need input rank first"
+      >
+        <Row childThreads={childThreadsMixedFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="active child + pull request + uncommitted"
@@ -807,8 +942,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="parent thread with active children (expanded)"
-        hint="list of children with status + pending-approval marker on item 2"
+        label="thread with active child threads (expanded)"
+        hint="needs-input child threads first, then working ones"
       >
         <Row
           childThreads={childThreadsMixedFixture}
