@@ -6,11 +6,13 @@ export interface QuestionShortcut {
 }
 
 export interface QuestionFormHost {
+  density: "default" | "compact";
   shortcuts: ReadonlyMap<string, QuestionShortcut>;
   registerChoiceHandler: (handler: (index: number) => boolean) => () => void;
 }
 
 const QuestionFormHostContext = createContext<QuestionFormHost>({
+  density: "default",
   shortcuts: new Map(),
   registerChoiceHandler: () => () => {},
 });

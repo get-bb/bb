@@ -53,7 +53,6 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
@@ -526,7 +525,16 @@ vi.mock("@/components/promptbox/banner/ThreadGoalCard", () => ({
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptContextBanner", () => ({
-  ThreadPromptContextBanner: () => null,
+  ThreadPromptContextBanner: ({
+    childThreadsSection,
+  }: {
+    childThreadsSection: { items: readonly unknown[] } | null;
+  }) =>
+    childThreadsSection ? (
+      <div data-testid="child-threads-banner">
+        {childThreadsSection.items.length} child threads
+      </div>
+    ) : null,
 }));
 
 vi.mock("@/components/promptbox/banner/ThreadPromptModeCard", () => ({
@@ -865,10 +873,12 @@ function makePendingInteraction(): PendingInteraction {
 interface RenderPromptAreaOptions {
   activePromptMode?: ThreadTimelineActivePromptMode | null;
   activeWorkflows?: TimelineWorkflowWorkRow[];
+  childThreadsSection?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["childThreadsSection"];
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
-  childPendingInteractions?: readonly ChildThreadPendingAttention[];
   environmentGoneStatus?: ComponentProps<
     typeof ThreadDetailPromptArea
   >["environmentGoneStatus"];
@@ -883,10 +893,10 @@ let testQueryClient: QueryClient;
 function buildPromptAreaElement({
   activePromptMode = null,
   activeWorkflows = [],
+  childThreadsSection = null,
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
-  childPendingInteractions = [],
   environmentGoneStatus = null,
   queuedMessageCount = 0,
   sentMessageEdit,
@@ -902,8 +912,7 @@ function buildPromptAreaElement({
         activePromptMode={activePromptMode}
         activeWorkflows={activeWorkflows}
         canUseGitUi={false}
-        childPendingInteractions={childPendingInteractions}
-        childThreadsSection={null}
+        childThreadsSection={childThreadsSection}
         composerFocusRequestNonce={0}
         contextBannerMergeBase={null}
         canRestoreEnvironment={false}
@@ -2039,18 +2048,26 @@ describe("ThreadDetailPromptArea", () => {
     ).toBeNull();
   });
 
-  it("shows a child permission prompt on the parent composer", () => {
+  it("keeps the child threads banner while the parent has its own pending interaction", () => {
     renderPromptArea({
-      childPendingInteractions: [
-        {
-          childThreadId: "thr_child",
-          childTitle: "Install workspace tools",
-          href: "/threads/thr_child",
-          interactions: [makePendingInteraction()],
-        },
-      ],
+      childThreadsSection: {
+        items: [
+          {
+            id: "thr_child",
+            title: "Install workspace tools",
+            href: "/threads/thr_child",
+            hasPendingInteraction: true,
+          },
+        ],
+        pendingInteractions: [],
+        waitingQuestion: null,
+      },
+      pendingInteractions: [makePendingInteraction()],
     });
 
+    expect(screen.getByTestId("child-threads-banner").textContent).toBe(
+      "1 child threads",
+    );
     expect(screen.getByText("Pending interaction")).toBeTruthy();
   });
 

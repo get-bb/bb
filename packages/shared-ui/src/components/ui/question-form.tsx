@@ -5,6 +5,7 @@ import type {
 } from "./question-form-state";
 import {
   useQuestionFormHost,
+  type QuestionFormHost,
   type QuestionShortcut,
 } from "./question-form-host";
 import {
@@ -37,8 +38,11 @@ const FREE_TEXT_MIN_HEIGHT = 84;
 const FREE_TEXT_MAX_HEIGHT = 158;
 const PREVIEW_MAX_HEIGHT = 220;
 
+export type QuestionFormDensity = QuestionFormHost["density"];
+
 interface QuestionOptionRowProps {
   checked: boolean;
+  density: QuestionFormDensity;
   label: string;
   description?: string;
   multiSelect: boolean;
@@ -66,6 +70,7 @@ function useAutoGrow(
 
 function QuestionOptionRow({
   checked,
+  density,
   label,
   description,
   multiSelect,
@@ -79,13 +84,15 @@ function QuestionOptionRow({
       aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
+        "flex w-full gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
+        density === "compact" ? "items-center" : "items-start",
         checked ? "bg-surface-selected" : "hover:bg-state-hover",
       )}
     >
       <span
         className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center border",
+          "flex size-4 shrink-0 items-center justify-center border",
+          density === "compact" ? undefined : "mt-0.5",
           multiSelect ? "rounded" : "rounded-full",
           checked
             ? "border-primary bg-primary text-primary-foreground"
@@ -94,20 +101,34 @@ function QuestionOptionRow({
       >
         {checked ? <Icon name="Check" className="size-3" aria-hidden /> : null}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">
-          {label}
+      {density === "compact" ? (
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="shrink-0 text-sm text-foreground">{label}</span>
+          {description ? (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {description}
+            </span>
+          ) : null}
         </span>
-        {description ? (
-          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-            {description}
+      ) : (
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-foreground">
+            {label}
           </span>
-        ) : null}
-      </span>
+          {description ? (
+            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+              {description}
+            </span>
+          ) : null}
+        </span>
+      )}
       {shortcut ? (
         <kbd
           aria-hidden="true"
-          className="mt-0.5 shrink-0 text-xs font-normal text-subtle-foreground"
+          className={cn(
+            "shrink-0 text-xs font-normal text-subtle-foreground",
+            density === "compact" ? undefined : "mt-0.5",
+          )}
         >
           {shortcut.label}
         </kbd>
@@ -191,6 +212,8 @@ function QuestionTabs({
 }
 
 interface QuestionInputBlockProps {
+  density: QuestionFormDensity;
+  showPrompt: boolean;
   disabled: boolean;
   question: Question;
   state: QuestionAnswerState;
@@ -203,6 +226,8 @@ interface QuestionInputBlockProps {
 }
 
 function QuestionInputBlock({
+  density,
+  showPrompt,
   disabled,
   question,
   state,
@@ -244,18 +269,26 @@ function QuestionInputBlock({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="sr-only">{question.prompt}</legend>
-      {question.prompt ? (
+      {!showPrompt ? null : density === "compact" ? (
+        <div className="text-sm text-foreground">{question.prompt}</div>
+      ) : question.prompt ? (
         <div className="text-sm font-semibold text-foreground">
           {question.prompt}
         </div>
       ) : null}
-      <div className="mt-2 space-y-0.5">
+      <div
+        className={cn(
+          "space-y-0.5",
+          !showPrompt ? undefined : density === "compact" ? "mt-1" : "mt-2",
+        )}
+      >
         {options.map((option: QuestionOption, index) => {
           const checked = state.selected.includes(option.value);
           return (
             <div key={option.value}>
               <QuestionOptionRow
                 checked={checked}
+                density={density}
                 label={option.label}
                 description={option.description}
                 multiSelect={question.multiSelect}
@@ -271,6 +304,7 @@ function QuestionInputBlock({
         {question.allowFreeText && options.length > 0 ? (
           <QuestionOptionRow
             checked={state.otherSelected}
+            density={density}
             label={OTHER_OPTION_LABEL}
             multiSelect={question.multiSelect}
             onSelect={onSelectOther}
@@ -326,7 +360,7 @@ export function QuestionForm({
   const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
-  const { shortcuts, registerChoiceHandler } = useQuestionFormHost();
+  const { density, shortcuts, registerChoiceHandler } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -425,6 +459,51 @@ export function QuestionForm({
   if (!currentQuestion) return null;
 
   const currentState = answerStateFor(formState, currentQuestion);
+  const compactButtonClass = density === "compact" ? "font-normal" : undefined;
+  const cancelButton = (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      className={compactButtonClass}
+      disabled={cancelDisabled || settledAction !== null}
+      onClick={async () => {
+        try {
+          await onCancel();
+          setSettledAction("cancel");
+          clearDraft();
+        } catch {}
+      }}
+    >
+      {density === "compact" ? "Decline" : "Cancel"}
+    </Button>
+  );
+  const backButton = !isFirst ? (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className={compactButtonClass}
+      disabled={disabled || voiceBusy}
+      onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
+    >
+      Back
+    </Button>
+  ) : null;
+  const advanceButton = (
+    <Button
+      type="button"
+      size="sm"
+      className={compactButtonClass}
+      disabled={disabled || voiceBusy || (isLast && !allAnswered)}
+      onClick={handleAdvance}
+    >
+      {inputDisabled || settledAction === "submit" ? (
+        <Icon name="Spinner" className="size-3 animate-spin" />
+      ) : null}
+      {isLast ? (density === "compact" ? "Submit" : "Submit answer") : "Next"}
+    </Button>
+  );
 
   return (
     <div
@@ -460,6 +539,8 @@ export function QuestionForm({
       <div>
         <QuestionInputBlock
           key={currentQuestion.id}
+          density={density}
+          showPrompt={density !== "compact" || totalQuestions > 1}
           disabled={disabled}
           question={currentQuestion}
           state={currentState}
@@ -475,45 +556,16 @@ export function QuestionForm({
           shortcuts={shortcuts}
         />
       </div>
-      <div className="mt-3 flex shrink-0 items-center justify-between gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={cancelDisabled || settledAction !== null}
-          onClick={async () => {
-            try {
-              await onCancel();
-              setSettledAction("cancel");
-              clearDraft();
-            } catch {}
-          }}
-        >
-          Cancel
-        </Button>
+      <div
+        className={cn(
+          "flex shrink-0 items-center justify-between gap-2",
+          density === "compact" ? "mt-1.5" : "mt-3",
+        )}
+      >
+        {cancelButton}
         <div className="flex items-center gap-2">
-          {!isFirst ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled || voiceBusy}
-              onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
-            >
-              Back
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            disabled={disabled || voiceBusy || (isLast && !allAnswered)}
-            onClick={handleAdvance}
-          >
-            {inputDisabled || settledAction === "submit" ? (
-              <Icon name="Spinner" className="size-3 animate-spin" />
-            ) : null}
-            {isLast ? "Submit answer" : "Next"}
-          </Button>
+          {backButton}
+          {advanceButton}
         </div>
       </div>
     </div>

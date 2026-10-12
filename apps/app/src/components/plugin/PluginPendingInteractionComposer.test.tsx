@@ -33,6 +33,7 @@ import {
 } from "@/lib/plugin-logos";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
+import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { sdk } from "@/lib/sdk";
@@ -536,6 +537,22 @@ describe("PluginPendingInteractionComposer", () => {
     );
     expect(screen.getByText("Requested by Secrets")).toBeDefined();
     expect(screen.queryByText(/\bsecret-request\b/)).toBeNull();
+  });
+
+  it("drops the attribution line inside the child threads banner", () => {
+    registerSecretsBranding("Secrets");
+    markPluginFrontendsSettled();
+    renderComposer(
+      <PendingInteractionPresentationContext.Provider value="inline">
+        <PluginPendingInteractionComposer
+          collapsedByDefault={false}
+          interaction={interaction}
+          request={secretsRequest}
+          origin="plugin"
+        />
+      </PendingInteractionPresentationContext.Provider>,
+    );
+    expect(screen.queryByText("Requested by Secrets")).toBeNull();
   });
 
   it("falls back to the plugin id when no display name is registered", () => {

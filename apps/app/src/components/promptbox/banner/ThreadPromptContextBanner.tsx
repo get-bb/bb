@@ -8,6 +8,7 @@ import {
   forwardRef,
   useEffect,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type ReactNode,
   type RefObject,
@@ -40,6 +41,8 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
+import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   formatChangeSummary,
   renderChangeSummary,
@@ -455,12 +458,17 @@ function ParentThreadSectionBody({
 const CHILD_THREAD_ROW_CLASS =
   "flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-foreground/90 underline-offset-2 hover:underline";
 
+const CHILD_QUESTION_STEP_BUTTON_CLASS =
+  "flex size-6 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
 function ChildThreadsBody({
   items,
   pendingInteractions,
+  onOpenQuestion,
 }: {
   items: readonly ThreadPromptChildThreadItem[];
   pendingInteractions: readonly ChildThreadQuestion[];
+  onOpenQuestion: (interactionId: string) => void;
 }) {
   return (
     <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
@@ -470,36 +478,52 @@ function ChildThreadsBody({
               (candidate) => candidate.childThreadId === item.id,
             )
           : undefined;
+        const content = (
+          <>
+            {item.hasPendingInteraction ? (
+              <Icon
+                name="CircleQuestion"
+                className="size-3.5 shrink-0 text-muted-foreground/75 no-underline"
+                aria-label="Needs input"
+              />
+            ) : (
+              <Icon
+                name="Loading"
+                className={cn(
+                  "size-3.5 shrink-0 animate-spin no-underline motion-reduce:animate-none",
+                  SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+                )}
+                aria-label="Working"
+              />
+            )}
+            {pending ? (
+              <ChildQuestionSummary
+                childTitle={<ThreadTitle title={item.title} tooltip />}
+                question={formatPendingInteractionSummary({
+                  interaction: pending.interaction,
+                })}
+              />
+            ) : (
+              <ThreadTitle title={item.title} tooltip className="flex-1" />
+            )}
+          </>
+        );
         return (
           <li key={item.id} className="text-xs">
-            <NavLink to={item.href} className={CHILD_THREAD_ROW_CLASS}>
-              {item.hasPendingInteraction ? (
-                <Icon
-                  name="CircleQuestion"
-                  className="size-3.5 shrink-0 text-muted-foreground/75 no-underline"
-                  aria-label="Needs input"
-                />
-              ) : (
-                <Icon
-                  name="Loading"
-                  className={cn(
-                    "size-3.5 shrink-0 animate-spin no-underline motion-reduce:animate-none",
-                    SIDEBAR_WORKING_STATUS_COLOR_CLASS,
-                  )}
-                  aria-label="Working"
-                />
-              )}
-              {pending ? (
-                <ChildQuestionSummary
-                  childTitle={<ThreadTitle title={item.title} tooltip />}
-                  question={formatPendingInteractionSummary({
-                    interaction: pending.interaction,
-                  })}
-                />
-              ) : (
-                <ThreadTitle title={item.title} tooltip className="flex-1" />
-              )}
-            </NavLink>
+            {pending ? (
+              <button
+                type="button"
+                data-child-question-row={item.id}
+                onClick={() => onOpenQuestion(pending.interaction.id)}
+                className={CHILD_THREAD_ROW_CLASS}
+              >
+                {content}
+              </button>
+            ) : (
+              <NavLink to={item.href} className={CHILD_THREAD_ROW_CLASS}>
+                {content}
+              </NavLink>
+            )}
           </li>
         );
       })}
@@ -552,6 +576,127 @@ function ChildThreadsHeaderIcon({ needsInput }: { needsInput: boolean }) {
       className={activityIconClass("active", "size-3.5 shrink-0")}
       aria-hidden="true"
     />
+  );
+}
+
+function ChildQuestionBackHeader({
+  backButtonRef,
+  needsInput,
+  onBack,
+}: {
+  backButtonRef: RefObject<HTMLButtonElement | null>;
+  needsInput: boolean;
+  onBack: () => void;
+}) {
+  return (
+    <button
+      ref={backButtonRef}
+      type="button"
+      id={SECTION_IDS.childThreads.toggle}
+      aria-label="Back to active child threads"
+      onClick={onBack}
+      className={activityRowClass(
+        "active",
+        cn(
+          PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+          PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+        ),
+      )}
+    >
+      <Icon
+        name="ChevronLeft"
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <ChildThreadsHeaderIcon needsInput={needsInput} />
+      <span
+        className={activityTextClass(
+          "active",
+          "min-w-0 flex-1 truncate text-left font-normal",
+        )}
+      >
+        Active child threads
+      </span>
+    </button>
+  );
+}
+
+function ChildQuestionBody({
+  titleLinkRef,
+  current,
+  index,
+  total,
+  onStep,
+}: {
+  titleLinkRef: RefObject<HTMLAnchorElement | null>;
+  current: ChildThreadQuestion;
+  index: number;
+  total: number;
+  onStep: (offset: 1 | -1) => void;
+}) {
+  const position = `${index + 1} of ${total}`;
+  return (
+    <div className="px-3 pb-2 pt-2">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <p className="min-w-0 flex-1 px-2.5 pt-0.5 text-sm text-foreground">
+          <NavLink
+            ref={titleLinkRef}
+            to={current.href}
+            className="underline underline-offset-2"
+          >
+            {current.childTitle}
+          </NavLink>
+          :{" "}
+          <span className="text-muted-foreground">
+            {formatPendingInteractionSummary({
+              interaction: current.interaction,
+            })}
+          </span>
+        </p>
+        {total > 1 ? (
+          <div className="-mr-1.5 flex shrink-0 items-center text-xs">
+            <button
+              type="button"
+              aria-label="Previous question"
+              onClick={() => onStep(-1)}
+              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+            >
+              <Icon
+                name="ChevronLeft"
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </button>
+            <span className="whitespace-nowrap tabular-nums text-subtle-foreground">
+              {position}
+            </span>
+            <button
+              type="button"
+              aria-label="Next question"
+              onClick={() => onStep(1)}
+              className={CHILD_QUESTION_STEP_BUTTON_CLASS}
+            >
+              <Icon
+                name="ChevronRight"
+                className="size-3.5"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {total > 1 ? `Question ${position}` : ""}
+      </span>
+      <div className="mt-1.5">
+        <PendingInteractionPresentationContext.Provider value="inline">
+          <ThreadPendingInteractionBanners
+            interactions={[current.interaction]}
+            threadId={current.childThreadId}
+          />
+        </PendingInteractionPresentationContext.Provider>
+      </div>
+    </div>
   );
 }
 
@@ -775,11 +920,94 @@ function ActiveChildThreadsCard({
   onToggle: () => void;
 }) {
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
+  const [openQuestion, setOpenQuestion] = useState<{
+    interactionId: string;
+    index: number;
+  } | null>(null);
+  const returnFocusChildId = useRef<string | null>(null);
+  useEffect(() => {
+    const childId = returnFocusChildId.current;
+    if (openQuestion !== null || childId === null) {
+      return;
+    }
+    returnFocusChildId.current = null;
+    document
+      .querySelector<HTMLElement>(`[data-child-question-row="${childId}"]`)
+      ?.focus();
+  }, [openQuestion]);
   const items = childThreadsSection.items;
   const pendingInteractions = childThreadsSection.pendingInteractions;
+  const matchedIndex = openQuestion
+    ? pendingInteractions.findIndex(
+        (item) => item.interaction.id === openQuestion.interactionId,
+      )
+    : -1;
+  const questionIndex =
+    matchedIndex >= 0
+      ? matchedIndex
+      : Math.min(openQuestion?.index ?? 0, pendingInteractions.length - 1);
+  const currentQuestion =
+    openQuestion && isExpanded ? pendingInteractions[questionIndex] : undefined;
+  if (openQuestion && !currentQuestion) {
+    setOpenQuestion(null);
+  } else if (
+    currentQuestion &&
+    (openQuestion?.interactionId !== currentQuestion.interaction.id ||
+      openQuestion.index !== questionIndex)
+  ) {
+    setOpenQuestion({
+      interactionId: currentQuestion.interaction.id,
+      index: questionIndex,
+    });
+  }
+  const cardRef = useRef<HTMLElement>(null);
+  const backButtonRef = useRef<HTMLButtonElement>(null);
+  const titleLinkRef = useRef<HTMLAnchorElement>(null);
+  const focusBackOnOpen = useRef(false);
+  const openChildThreadId = currentQuestion?.childThreadId ?? null;
+  useEffect(() => {
+    if (openChildThreadId !== null && focusBackOnOpen.current) {
+      focusBackOnOpen.current = false;
+      (backButtonRef.current ?? titleLinkRef.current)?.focus();
+    }
+  }, [openChildThreadId]);
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || openChildThreadId === null) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      returnFocusChildId.current = openChildThreadId;
+      setOpenQuestion(null);
+    };
+    card.addEventListener("keydown", handleKeyDown);
+    return () => card.removeEventListener("keydown", handleKeyDown);
+  }, [openChildThreadId]);
   if (items.length === 0) {
     return null;
   }
+  const openQuestionById = (interactionId: string) => {
+    const index = pendingInteractions.findIndex(
+      (item) => item.interaction.id === interactionId,
+    );
+    if (index >= 0) {
+      focusBackOnOpen.current = true;
+      setOpenQuestion({ interactionId, index });
+    }
+  };
+  const stepQuestion = (offset: 1 | -1) => {
+    const total = pendingInteractions.length;
+    const nextIndex = (questionIndex + offset + total) % total;
+    const next = pendingInteractions[nextIndex];
+    if (next) {
+      setOpenQuestion({ interactionId: next.interaction.id, index: nextIndex });
+    }
+  };
   const collapsedQuestion = isExpanded
     ? null
     : childThreadsSection.waitingQuestion;
@@ -790,77 +1018,113 @@ function ActiveChildThreadsCard({
     collapsedQuestion && collapsedQuestionChildTitle
       ? `${collapsedQuestionChildTitle}: ${collapsedQuestion}`
       : collapsedQuestion;
+  const backToChildThreads = () => {
+    returnFocusChildId.current = currentQuestion?.childThreadId ?? null;
+    setOpenQuestion(null);
+  };
+  const showBackHeader = currentQuestion !== undefined && items.length > 1;
   const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
+      rootRef={cardRef}
       ariaLabel="Child threads"
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
-      <button
-        ref={focus.triggerRef}
-        type="button"
-        id={SECTION_IDS.childThreads.toggle}
-        aria-expanded={isExpanded}
-        aria-controls={SECTION_IDS.childThreads.body}
-        aria-label={
-          collapsedQuestion
-            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestionLabel}`
-            : `${items.length} active ${childThreadNoun(items.length)}`
-        }
-        onClick={focus.onTriggerClick}
-        className={activityRowClass(
-          "active",
-          cn(
-            PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-          ),
-        )}
-      >
-        <ChildThreadsHeaderIcon needsInput={needsInput} />
-        {collapsedQuestion && collapsedQuestionChildTitle ? (
-          <span className="flex min-w-0 flex-1 text-left">
-            <ChildQuestionSummary
-              childTitle={collapsedQuestionChildTitle}
-              question={collapsedQuestion}
-            />
-          </span>
-        ) : collapsedQuestion ? (
-          <span
-            className="min-w-0 flex-1 truncate text-left text-foreground"
-            title={collapsedQuestion}
-          >
-            {collapsedQuestion}
-          </span>
-        ) : (
-          <span
-            className={activityTextClass(
-              "active",
-              "min-w-0 flex-1 truncate text-left font-normal",
-            )}
-          >
-            Active child threads
-          </span>
-        )}
-        <PromptStackCountSlot count={items.length} prefix="" />
-      </button>
+      {showBackHeader ? (
+        <ChildQuestionBackHeader
+          backButtonRef={backButtonRef}
+          needsInput={needsInput}
+          onBack={backToChildThreads}
+        />
+      ) : (
+        <button
+          ref={focus.triggerRef}
+          type="button"
+          id={SECTION_IDS.childThreads.toggle}
+          aria-expanded={isExpanded}
+          aria-controls={SECTION_IDS.childThreads.body}
+          aria-label={
+            collapsedQuestion
+              ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestionLabel}`
+              : `${items.length} active ${childThreadNoun(items.length)}`
+          }
+          onClick={() => {
+            const newest = pendingInteractions[0];
+            if (collapsedQuestion && newest) {
+              setOpenQuestion({
+                interactionId: newest.interaction.id,
+                index: 0,
+              });
+            }
+            focus.onTriggerClick();
+          }}
+          className={activityRowClass(
+            "active",
+            cn(
+              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+            ),
+          )}
+        >
+          <ChildThreadsHeaderIcon needsInput={needsInput} />
+          {collapsedQuestion && collapsedQuestionChildTitle ? (
+            <span className="flex min-w-0 flex-1 text-left">
+              <ChildQuestionSummary
+                childTitle={collapsedQuestionChildTitle}
+                question={collapsedQuestion}
+              />
+            </span>
+          ) : collapsedQuestion ? (
+            <span
+              className="min-w-0 flex-1 truncate text-left text-foreground"
+              title={collapsedQuestion}
+            >
+              {collapsedQuestion}
+            </span>
+          ) : (
+            <span
+              className={activityTextClass(
+                "active",
+                "min-w-0 flex-1 truncate text-left font-normal",
+              )}
+            >
+              Active child threads
+            </span>
+          )}
+          <PromptStackCountSlot count={items.length} prefix="" />
+        </button>
+      )}
       <AnimatedBody
         collapsedBorder="reserve"
         id={SECTION_IDS.childThreads.body}
         labelledBy={SECTION_IDS.childThreads.toggle}
         isExpanded={isExpanded}
       >
-        <ChildThreadsBody
-          items={items}
-          pendingInteractions={pendingInteractions}
-        />
-        <PromptStackCollapseRow
-          buttonRef={focus.collapseRef}
-          className="rounded-none"
-          controlsId={SECTION_IDS.childThreads.body}
-          label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
-          onCollapse={focus.onCollapseClick}
-        />
+        {currentQuestion ? (
+          <ChildQuestionBody
+            titleLinkRef={titleLinkRef}
+            current={currentQuestion}
+            index={questionIndex}
+            total={pendingInteractions.length}
+            onStep={stepQuestion}
+          />
+        ) : (
+          <ChildThreadsBody
+            items={items}
+            pendingInteractions={pendingInteractions}
+            onOpenQuestion={openQuestionById}
+          />
+        )}
+        {currentQuestion ? null : (
+          <PromptStackCollapseRow
+            buttonRef={focus.collapseRef}
+            className="rounded-none"
+            controlsId={SECTION_IDS.childThreads.body}
+            label={`Collapse ${items.length} ${childThreadNoun(items.length)}`}
+            onCollapse={focus.onCollapseClick}
+          />
+        )}
       </AnimatedBody>
     </PromptStackCard>
   );

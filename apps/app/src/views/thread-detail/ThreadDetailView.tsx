@@ -2475,7 +2475,6 @@ function ThreadDetailViewInternal(
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
-      childPendingInteractions={childPendingInteractions}
       childThreadsSection={childThreadsBannerSection}
       pullRequest={pullRequest}
       thread={thread}
