@@ -225,6 +225,7 @@ export interface ServerClient {
 }
 
 const INTERACTIVE_REQUEST_REGISTRATION_RETRIES = 5;
+const EVENT_POST_TIMEOUT_MS = 30_000;
 
 export function usesSecureInternalFetchTransport(serverUrl: string): boolean {
   let parsed: URL;
@@ -565,22 +566,32 @@ export function createServerClient(
         sessionId: requireSessionId(),
         eventGroups: groupHostDaemonEvents(events),
       };
-      const response = await fetchFn(buildInternalUrl("/session/events"), {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify(payload),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => {
+        controller.abort(new Error("Daemon event upload timed out"));
+      }, EVENT_POST_TIMEOUT_MS);
+      timeout.unref?.();
+      try {
+        const response = await fetchFn(buildInternalUrl("/session/events"), {
+          signal: controller.signal,
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(payload),
+        });
 
-      if (!response.ok) {
-        throw await createResponseError("post events", response);
+        if (!response.ok) {
+          throw await createResponseError("post events", response);
+        }
+
+        const json = await response.json();
+        const parsed = hostDaemonEventBatchResponseSchema.parse(json);
+        return {
+          acceptedEvents: parsed.acceptedEvents,
+          rejectedEvents: parsed.rejectedEvents,
+        };
+      } finally {
+        clearTimeout(timeout);
       }
-
-      const json = await response.json();
-      const parsed = hostDaemonEventBatchResponseSchema.parse(json);
-      return {
-        acceptedEvents: parsed.acceptedEvents,
-        rejectedEvents: parsed.rejectedEvents,
-      };
     },
 
     async callTool(
