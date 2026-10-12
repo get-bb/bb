@@ -25,6 +25,9 @@ import type {
   EditMessageResponse,
   ForkThreadRequest,
   DeleteThreadRequest,
+  ExperimentalThreadProviderHandoverRequest,
+  ExperimentalThreadProviderHandoverResponse,
+  ExperimentalThreadProviderHandoverState,
   PromptHistoryResponse,
   QueuedMessageEditHoldResponse,
   SendQueuedMessageResponse,
@@ -222,8 +225,7 @@ export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
 export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
 export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
-export type ThreadDefaultExecutionOptionsResult =
-  ResolvedThreadExecutionOptions | null;
+export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions | null;
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
@@ -594,6 +596,15 @@ export interface ThreadQueueArea {
 }
 
 export interface ThreadsArea {
+  experimental_providerHandover(
+    args: ThreadActionArgs,
+  ): Promise<ExperimentalThreadProviderHandoverState>;
+  experimental_handoffProvider(
+    args: ThreadActionArgs & ExperimentalThreadProviderHandoverRequest,
+  ): Promise<ExperimentalThreadProviderHandoverResponse>;
+  experimental_resume(
+    args: ThreadActionArgs,
+  ): Promise<{ ok: true; providerThreadId: string }>;
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
@@ -1515,6 +1526,28 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         }),
       );
       return { ok: true };
+    },
+    async experimental_providerHandover(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].provider.handover.$get({
+          param: { id: input.threadId },
+        }),
+      );
+    },
+    async experimental_handoffProvider({ threadId, ...request }) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].provider.handover.$post({
+          param: { id: threadId },
+          json: request,
+        }),
+      );
+    },
+    async experimental_resume(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].provider.resume.$post({
+          param: { id: input.threadId },
+        }),
+      );
     },
     async cancelPlan(input) {
       await transport.readVoid(

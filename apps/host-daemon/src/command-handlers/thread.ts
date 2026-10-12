@@ -30,6 +30,7 @@ import {
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 type ExistingThreadRuntimeCommand =
   | TurnSubmitCommand
+  | CommandOf<"thread.resume">
   | CommandOf<"thread.goal.clear">;
 
 const TURN_SUBMIT_ACTIVE_TURN_WAIT_MS = 5_000;
@@ -333,6 +334,14 @@ export async function ensureThreadRuntime(
   await resumeThreadRuntimeIfMissing({ command, entry, options });
   markTurnSubmitTraceSpan("runtime.ready");
   return entry;
+}
+
+export async function resumeThread(
+  command: CommandOf<"thread.resume">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.resume">> {
+  await ensureThreadRuntime(command, options);
+  return { providerThreadId: command.resumeContext.providerThreadId };
 }
 
 async function runSubmittedTurn(

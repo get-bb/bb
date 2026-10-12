@@ -61,6 +61,11 @@ import { acceptThreadSendRequest } from "../../services/threads/thread-send-requ
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import { clearThreadContext } from "../../services/threads/thread-context-clear.js";
 import {
+  handoffThreadProvider,
+  providerHandoverState,
+  resumeProviderRuntime,
+} from "../../services/threads/thread-provider-handover.js";
+import {
   buildExecutionOptions,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
@@ -235,7 +240,7 @@ function assertPinnedThreadOrderResult(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -427,6 +432,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     await clearThreadContext(deps, { environment, thread });
     return context.json({ ok: true });
   });
+  get(routes.experimental_providerHandover, (context) =>
+    context.json(providerHandoverState(deps, context.req.param("id"))),
+  );
+  post(routes.experimental_handoffProvider, async (context, payload) =>
+    context.json(
+      await handoffThreadProvider(deps, context.req.param("id"), payload),
+    ),
+  );
+  post(routes.experimental_resume, async (context) =>
+    context.json(await resumeProviderRuntime(deps, context.req.param("id"))),
+  );
 
   post(routes.cancelPlan, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));

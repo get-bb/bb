@@ -1232,6 +1232,38 @@ describe("createAgentRuntime process lifecycle", () => {
       await runtime.shutdown();
     }
   });
+  it("keeps subscribed restorable sessions idle but honors explicit release", async () => {
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: () => {} },
+      launch: {
+        scripted: {
+          sessionRestorable: true,
+          experimental_keepSessionLoaded: true,
+        },
+      },
+    });
+    try {
+      await runtime.resumeThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerThreadId: "cloud-subscription",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+      });
+      await expect(
+        runtime.reapIdleProviderSessions({
+          idleForMs: 0,
+          nowMs: Date.now() + 60 * 60 * 1000,
+        }),
+      ).resolves.toEqual({ reapedSessions: [] });
+      expect(runtime.hasThread("t1")).toBe(true);
+      await runtime.stopThread({ threadId: "t1" });
+      expect(runtime.hasThread("t1")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
 
   it("keeps releasing later sessions after one release fails", async () => {
     const events: ThreadEvent[] = [];

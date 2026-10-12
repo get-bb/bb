@@ -74,6 +74,7 @@ import {
   ensureThreadRuntime,
   prepareThreadRewind,
   startThread,
+  resumeThread,
   submitTurn,
 } from "./command-handlers/thread.js";
 import { WorkspaceError, type HostWorkspace } from "@bb/host-workspace";
@@ -349,6 +350,7 @@ async function withRetainedThreadEnvironment<TResult>(
     | "thread.rewind.discard"
     | "thread.rewind.prepare"
     | "thread.start"
+    | "thread.resume"
     | "turn.submit"
   >,
   options: CommandDispatchOptions,
@@ -454,6 +456,10 @@ const commandHandlers: CommandHandlerMap = {
   "thread.start": (command, options) =>
     withRetainedThreadEnvironment(command, options, () =>
       startThread(command, options),
+    ),
+  "thread.resume": (command, options) =>
+    withRetainedThreadEnvironment(command, options, () =>
+      resumeThread(command, options),
     ),
   "turn.submit": (command, options) =>
     withRetainedThreadEnvironment(command, options, async () => {

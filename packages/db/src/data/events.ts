@@ -40,6 +40,7 @@ import {
   LOCAL_SUBAGENT_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   THREAD_CONTEXT_CLEAR_OPERATION,
+  THREAD_PROVIDER_HANDOVER_OPERATION,
   clientTurnRequestIdSchema,
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
@@ -4069,6 +4070,20 @@ export function getLastStoredTurnRequestEvent(
       .limit(1)
       .get() ?? null
   );
+}
+
+export function getStoredProviderHandoverEvent(
+  db: DbQueryConnection,
+  threadId: string,
+  operationId?: string,
+): StoredEventRow | null {
+  return db.select(storedEventRowFields).from(events).where(and(
+    eq(events.threadId, threadId),
+    eq(events.type, "system/operation"),
+    sql`json_extract(${events.data}, '$.operation') = ${THREAD_PROVIDER_HANDOVER_OPERATION}`,
+    sql`json_extract(${events.data}, '$.status') = 'completed'`,
+    operationId === undefined ? undefined : sql`json_extract(${events.data}, '$.operationId') = ${operationId}`,
+  )).orderBy(desc(events.sequence)).limit(1).get() ?? null;
 }
 
 function pruneUsageSnapshots(

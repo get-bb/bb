@@ -93,6 +93,7 @@ export const scriptedEchoOptionsSchema = z
     goalClearReportsCleared: z.boolean().optional(),
     swallowTurnStart: z.boolean().optional(),
     sessionRestorable: z.boolean().optional(),
+    experimental_keepSessionLoaded: z.boolean().optional(),
     toolCallThreadIdHint: z.string().min(1).optional(),
     recoveryThreadIdHint: z.string().min(1).optional(),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).optional(),
@@ -841,6 +842,12 @@ function identityResult(session: Session): Record<string, unknown> {
   }
   return {
     providerThreadId: session.providerThreadId,
+    ...(session.options.experimental_keepSessionLoaded === undefined
+      ? {}
+      : {
+          experimental_keepSessionLoaded:
+            session.options.experimental_keepSessionLoaded,
+        }),
     ...(session.options.sessionRestorable === undefined
       ? {}
       : { sessionRestorable: session.options.sessionRestorable }),

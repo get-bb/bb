@@ -578,6 +578,13 @@ carries the whole item, so refusing it would lose real content.
 
 ## Sessions
 
+A start, resume or fork result may set `experimental_keepSessionLoaded:true`
+to keep that session loaded during idle time, for example to receive peer
+turns from a shared service. The idle sweep skips it. Explicit release,
+archive, discard and host shutdown retain their usual cleanup behavior.
+Omission or false allows normal idle eviction. Older runtimes ignore this
+additive field; a bridge must tolerate unloading and catch up after resume.
+
 1. `thread/start`, `thread/resume`, and `thread/fork` return
    `{providerThreadId, sessionRestorable?}`. The per-session
    `sessionRestorable` refines the handshake default and is re-reported by a

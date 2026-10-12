@@ -136,5 +136,6 @@ export const threadIdentityResultSchema = z
   .object({
     providerThreadId: z.string().min(1),
     sessionRestorable: z.boolean().optional(),
+    experimental_keepSessionLoaded: z.boolean().optional(),
   })
   .passthrough();

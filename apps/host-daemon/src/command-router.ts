@@ -419,6 +419,7 @@ export class CommandRouter {
   private resolveThreadLaneKey(command: HostDaemonCommand): string | null {
     switch (command.type) {
       case "thread.start":
+      case "thread.resume":
       case "turn.submit":
       case "thread.archive":
       case "interactive.resolve":

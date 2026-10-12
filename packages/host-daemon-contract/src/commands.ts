@@ -352,6 +352,15 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
 
 const threadStopIntentSchema = z.enum(["interrupt", "release"]);
 
+const threadResumeCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.resume"),
+    options: runtimeThreadExecutionOptionsSchema,
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    resumeContext: turnResumeContextSchema,
+  })
+  .strict();
+
 export type ThreadStopIntent = z.infer<typeof threadStopIntentSchema>;
 
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
@@ -1542,6 +1551,15 @@ export const hostDaemonCommandRegistry = {
   "thread.start": defineHostDaemonCommandDescriptor({
     type: "thread.start",
     schema: threadStartCommandSchema,
+    resultSchema: threadStartResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "thread.resume": defineHostDaemonCommandDescriptor({
+    type: "thread.resume",
+    schema: threadResumeCommandSchema,
     resultSchema: threadStartResultSchema,
     transport: "settled",
     retryable: false,

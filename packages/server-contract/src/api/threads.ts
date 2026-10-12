@@ -741,6 +741,41 @@ export const updateThreadRequestSchema = z
   );
 export type UpdateThreadRequest = z.infer<typeof updateThreadRequestSchema>;
 
+export const experimentalThreadProviderHandoverRequestSchema = z
+  .object({
+    operationId: z.string().min(8).max(120),
+    expectedProviderId: z.string().min(1).max(100),
+    expectedProviderThreadId: z.string().min(1).max(500).nullable(),
+    expectedLatestSeq: z.number().int().nonnegative(),
+    providerId: z.string().min(1).max(100),
+    providerThreadId: z.string().min(1).max(500),
+    model: z.string().min(1).max(500),
+    reasoningLevel: reasoningLevelSchema,
+    permissionMode: permissionModeInputSchema,
+    serviceTier: serviceTierSchema,
+  })
+  .strict();
+export type ExperimentalThreadProviderHandoverRequest = z.infer<
+  typeof experimentalThreadProviderHandoverRequestSchema
+>;
+export interface ExperimentalThreadProviderHandoverState {
+  version: 1;
+  threadId: string;
+  providerId: string;
+  providerThreadId: string | null;
+  latestSeq: number;
+  blockedReason: string | null;
+}
+export interface ExperimentalThreadProviderHandoverResponse {
+  threadId: string;
+  providerId: string;
+  providerThreadId: string;
+  operationId: string;
+  reused: boolean;
+  runtimeLoaded: boolean;
+  resumeError: string | null;
+}
+
 export const reorderPinnedThreadRequestSchema = z.object({
   previousThreadId: z.string().min(1).nullable(),
   nextThreadId: z.string().min(1).nullable(),

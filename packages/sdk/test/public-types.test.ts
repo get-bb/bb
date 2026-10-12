@@ -402,6 +402,9 @@ type ExpectedThemeKey = "catalog" | "get" | "resolve" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "experimental_providerHandover"
+  | "experimental_handoffProvider"
+  | "experimental_resume"
   | "experimental_listAncestors"
   | "experimental_listDescendants"
   | "experimental_listPluginMetadata"

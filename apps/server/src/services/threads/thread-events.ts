@@ -4,6 +4,7 @@ import {
   getActiveStoredTurnId,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
+  getStoredProviderHandoverEvent,
   getStoredProviderSession,
   getStoredTurnRequestEventForTurn,
   getThread,
@@ -22,6 +23,7 @@ import {
   systemErrorEventDataSchema,
   threadScope,
   turnRequestEventDataSchema,
+  recordedThreadExecutionOptionsSchema,
   WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
@@ -914,6 +916,24 @@ export function getLastExecutionOptions(
   threadId: string,
 ): RecordedThreadExecutionOptions | null {
   const row = getLastStoredTurnRequestEvent(deps.db, threadId);
+
+  const handover = getStoredProviderHandoverEvent(deps.db, threadId);
+  if (handover && (!row || handover.sequence > row.sequence)) {
+    const payload = parseStoredEventPayload(handover);
+    const metadata = payload.metadata;
+    const execution = recordedThreadExecutionOptionsSchema.safeParse(
+      typeof metadata === "object" && metadata !== null
+        ? { ...metadata, source: "system/provider-handover" }
+        : null,
+    );
+    if (!execution.success)
+      throw new ApiError(
+        500,
+        "internal_error",
+        "Stored provider handover execution settings are malformed",
+      );
+    return execution.data;
+  }
 
   return row ? parseStoredTurnRequestEvent(row).execution : null;
 }

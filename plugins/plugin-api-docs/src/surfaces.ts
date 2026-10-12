@@ -737,6 +737,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "machine-providers",
           "server-access",
           "host-workers",
+          "provider-handover",
           "provider-bridges",
         ],
       },
@@ -1151,6 +1152,25 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "provider-handover",
+        title: "Existing-thread provider handover",
+        tagline: "Connect the same chat to a prepared agent session",
+        summary:
+          "Use a prepared agent session in the same idle thread. With this, a plugin can:",
+        bullets: [
+          "Read the current provider session and history boundary before preparing a transfer",
+          "Adopt a prepared target session while retaining the thread ID and organization",
+          "Retry a lost handover response and resume a saved session without sending input",
+        ],
+        apiSymbols: [
+          "threads.experimental_providerHandover",
+          "threads.experimental_handoffProvider",
+          "threads.experimental_resume",
+        ],
+        firstParty: [],
+        experimental: true,
+      },
+      {
         id: "provider-bridges",
         title: "Provider bridges",
         tagline: "Bring any agent's runtime into bb",
@@ -1171,6 +1191,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PROVIDER_BRIDGE_PROTOCOL_VERSION",
           "ThreadDelta",
           "threadDeltaSchema",
+          "threadIdentityResultSchema",
           "BridgeCapabilities",
           "experimental_BridgeRecoveryError",
           "experimental_toolPresentation",

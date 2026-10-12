@@ -220,3 +220,17 @@ For review or fix pipelines, get the environment ID from
   same scope, size, and title. It does not replay the original launch command.
 
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.
+
+## Switch an existing thread to a prepared provider session
+
+Read `bb thread handover-state <id> --json` first. Prepare the target session
+and history in the owning provider. Write a JSON request with operationId,
+expectedProviderId, expectedProviderThreadId, expectedLatestSeq, providerId,
+providerThreadId, model, reasoningLevel, permissionMode and serviceTier.
+Then run `bb thread handover <id> --request-file <path> --json`.
+The source must be idle, with no queued input or open turn-bound interaction.
+Thread identity, organization and timeline stay intact. Core does not transfer
+history or grant access. Retry uncertain results with the same operation ID
+and request; `runtimeLoaded:false` means the saved handover needs connection
+recovery, not a second transfer. `bb thread resume <id> --json` loads the
+saved session without creating a turn. These commands are experimental.

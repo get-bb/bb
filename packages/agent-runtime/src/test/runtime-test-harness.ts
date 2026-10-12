@@ -71,6 +71,7 @@ export interface ScriptedEchoLaunchScript {
   goalClearReportsCleared?: boolean;
   swallowTurnStart?: boolean;
   sessionRestorable?: boolean;
+  experimental_keepSessionLoaded?: boolean;
   toolCallThreadIdHint?: string;
   recoveryThreadIdHint?: string;
   approvalEnforcedBy?: "runtime" | "provider";

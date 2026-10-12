@@ -1807,6 +1807,7 @@ export function reorderPinnedThread({
 }
 
 export interface UpdateThreadInput {
+  providerId?: string;
   environmentId?: string | null;
   sectionId?: string | null;
   lastReadAt?: number | null;
@@ -1846,6 +1847,10 @@ export function updateThread(
   }
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
+  if (input.providerId !== undefined) {
+    set.providerId = input.providerId;
+    changes.push("status-changed");
+  }
   if ("title" in input) set.title = input.title;
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;

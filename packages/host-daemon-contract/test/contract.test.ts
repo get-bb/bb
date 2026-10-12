@@ -571,6 +571,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.start": {
     providerThreadId: "provider-thread-123",
   },
+  "thread.resume": { providerThreadId: "provider-thread-123" },
   "turn.submit": {
     trace: { spans: [{ name: "bridge.turnStarted", atMs: 4.2 }] },
   },
@@ -1228,7 +1229,7 @@ const CONTRIBUTED_ENV = [
 
 describe("host-daemon command schemas", () => {
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(234);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(235);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
