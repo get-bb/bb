@@ -1,3 +1,4 @@
+import type { DatabaseReadService } from "../database/database-read-service.js";
 import { and, eq, isNull } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
@@ -26,7 +27,6 @@ import {
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
   threads,
-  truncateCompletedEventItemOutputs,
 } from "@bb/db";
 import type {
   AppDeps,
@@ -64,6 +64,7 @@ interface PluginScheduleSweeper {
 }
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
+  databaseMaintenance: DatabaseReadService;
   pluginSchedules: PluginScheduleSweeper;
 };
 
@@ -492,11 +493,11 @@ async function runMachineAuthPruneSweep(
   await deps.machineAuth.pruneExpiredKeys();
 }
 
-function runCompletedEventOutputTruncationSweep(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+async function runCompletedEventOutputTruncationSweep(
+  deps: PeriodicSweepDeps,
   now: number,
-): void {
-  truncateCompletedEventItemOutputs(deps.db, {
+): Promise<void> {
+  await deps.databaseMaintenance.truncateOutputs({
     createdBefore: now - COMPLETED_EVENT_OUTPUT_RETENTION_MS,
     limit: DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
     truncatedAt: now,

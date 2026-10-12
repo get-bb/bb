@@ -1,3 +1,4 @@
+import { DatabaseReadService } from "./services/database/database-read-service.js";
 import { serve } from "@hono/node-server";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -55,6 +56,17 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const db = initDb(serverConfig.databasePath, {
     dataDir: serverConfig.BB_DATA_DIR,
     logger,
+  });
+  const databaseReads = new DatabaseReadService({
+    databasePath: serverConfig.databasePath,
+    logger,
+  });
+  const databaseMaintenance = new DatabaseReadService({
+    databasePath: serverConfig.databasePath,
+    logger,
+    mode: "maintenance",
+    executionTimeoutMs: 100,
+    maxQueue: 0,
   });
   const hub = new NotificationHub();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
@@ -174,6 +186,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     {
       appVersion,
       bbAppManagedConfig,
+      databaseReads,
+      databaseMaintenance,
       config: runtimeConfig,
       db,
       hub,
@@ -197,6 +211,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const eventLoopStallMonitor = startEventLoopStallMonitor({ logger });
 
   const sweepDeps = {
+    databaseMaintenance,
     config: runtimeConfig,
     db,
     hub,
@@ -275,6 +290,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     shutdownPromise = (async () => {
       eventLoopStallMonitor.stop();
       clearInterval(sweepInterval);
+      await Promise.all([databaseReads.close(), databaseMaintenance.close()]);
       pluginCatalogService.stopPeriodicRefresh();
       await pluginService.stopPeriodicUpdateChecks();
       await pluginService.stop().catch((error: unknown) => {

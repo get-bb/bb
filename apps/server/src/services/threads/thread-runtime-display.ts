@@ -16,6 +16,7 @@ import {
 import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
 import type {
   Thread,
+  ProviderComposerCommand,
   ThreadActivityState,
   ThreadChangeMetadata,
   ThreadListEntry,
@@ -52,8 +53,19 @@ interface ThreadRuntimeDisplayDeps {
  * so the plain runtime-state callers (plugin DTOs, thread-send) are not forced
  * to carry a registry they never read.
  */
-interface ThreadPromptBannerDeps extends ThreadRuntimeDisplayDeps {
-  providerRegistry: ProviderRegistryService;
+type ThreadPromptBannerDeps = ThreadRuntimeDisplayDeps &
+  (
+    | { providerRegistry: ProviderRegistryService }
+    | { planCommands: ReadonlyMap<string, ProviderComposerCommand | null> }
+  );
+
+function planCommandForProvider(
+  deps: ThreadPromptBannerDeps,
+  providerId: string,
+): ProviderComposerCommand | null {
+  return "providerRegistry" in deps
+    ? resolveProviderPlanCommand(deps.providerRegistry, providerId)
+    : (deps.planCommands.get(providerId) ?? null);
 }
 
 interface ResolveThreadRuntimeStateArgs {
@@ -380,10 +392,7 @@ function getThreadPromptBannerActivityState(
 ): PromptBannerActivityState {
   const activePlanTurn = extractThreadTimelineActivePlanTurn({
     events,
-    planCommand: resolveProviderPlanCommand(
-      deps.providerRegistry,
-      thread.providerId,
-    ),
+    planCommand: planCommandForProvider(deps, thread.providerId),
     providerId: thread.providerId,
     threadStatus: thread.status,
   });
@@ -404,8 +413,7 @@ function canThreadShowActivePlanMode(
 ): boolean {
   return (
     thread.status === "active" &&
-    resolveProviderPlanCommand(deps.providerRegistry, thread.providerId) !==
-      null
+    planCommandForProvider(deps, thread.providerId) !== null
   );
 }
 

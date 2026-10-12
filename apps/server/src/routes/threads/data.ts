@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import path from "node:path";
 import {
   getAppSettings,
@@ -43,7 +44,6 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
-  buildThreadConversationOutline,
   buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -408,7 +408,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.conversationOutline, (context) => {
+  get(routes.conversationOutline, async (context) => {
+    const started = performance.now();
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const outlineSequence = getLatestStoredConversationOutlineSequence(
@@ -429,14 +430,17 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       conversationOutlineCache.set(cacheKey, cached);
       return context.json({ items: cached, maxSeq });
     }
-    const response = buildThreadConversationOutline(deps.db, thread, {
-      maxSeq,
-      providerDisplayName: resolveThreadProviderDisplayName(
-        deps,
-        thread.providerId,
-      ),
-    });
-    conversationOutlineCache.set(cacheKey, response.items);
+    const {
+      response,
+      cacheKey: snapshotCacheKey,
+      requestId,
+      mainResultProcessingMs,
+    } = await deps.databaseReads.outline(
+      thread.id,
+      resolveThreadProviderDisplayName(deps, thread.providerId) ?? null,
+      context.req.raw.signal,
+    );
+    conversationOutlineCache.set(snapshotCacheKey, response.items);
     while (
       conversationOutlineCache.size > CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES
     ) {
@@ -446,7 +450,19 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       }
       conversationOutlineCache.delete(oldest);
     }
-    return context.json(response);
+    const serializing = performance.now();
+    const result = context.json(response);
+    deps.logger.info(
+      {
+        operation: "outline",
+        requestId,
+        mainResultProcessingMs,
+        mainSerializationMs: performance.now() - serializing,
+        totalMs: performance.now() - started,
+      },
+      "Database reader response",
+    );
+    return result;
   });
 
   get(routes.timelineTurnSummaryDetails, (context, query) => {

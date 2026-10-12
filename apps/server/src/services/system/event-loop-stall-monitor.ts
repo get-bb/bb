@@ -13,6 +13,21 @@ export interface EventLoopStallMonitor {
   stop: () => void;
 }
 
+let lastMaxDelayMs: number | null = null;
+let lastDaemonHeartbeatAckAt: number | null = null;
+export function recordDaemonHeartbeatAck(): void {
+  lastDaemonHeartbeatAckAt = Date.now();
+}
+export function getEventLoopHealth() {
+  return {
+    eventLoopMaxDelayMs: lastMaxDelayMs,
+    daemonHeartbeatAckAgeMs:
+      lastDaemonHeartbeatAckAt === null
+        ? null
+        : Date.now() - lastDaemonHeartbeatAckAt,
+  };
+}
+
 const DEFAULT_EVENT_LOOP_STALL_LOG_THRESHOLD_MS = 500;
 const DEFAULT_EVENT_LOOP_STALL_MONITOR_INTERVAL_MS = 5_000;
 const DEFAULT_EVENT_LOOP_STALL_MONITOR_RESOLUTION_MS = 20;
@@ -38,6 +53,7 @@ export function startEventLoopStallMonitor(
     const sampleGapMs = sampledAt - lastSampleAt;
     lastSampleAt = sampledAt;
     const maxDelayMs = nanosecondsToMilliseconds(histogram.max);
+    lastMaxDelayMs = maxDelayMs;
     const work = takeEventLoopWorkWindowSnapshot();
     const resumedAfterLikelySystemSuspension =
       sampleGapMs - DEFAULT_EVENT_LOOP_STALL_MONITOR_INTERVAL_MS >=

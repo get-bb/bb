@@ -97,6 +97,7 @@ export type {
   ThreadSearchMatch,
   ThreadSearchResult,
   ThreadSearchResultGroup,
+  SearchThreadsWithPendingInteractionStateArgs,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,
   UpdateThreadInput,
@@ -417,3 +418,5 @@ export {
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
 } from "./maintenance.js";
+
+export type { TruncateCompletedEventItemOutputsArgs } from "./sweeps.js";

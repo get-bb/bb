@@ -672,16 +672,10 @@ describe("public thread data routes", () => {
         scope: threadScope(),
         data: { text: "Visible response" },
       });
-      const prepareSpy = vi.spyOn(harness.db.$client, "prepare");
-      const countFullOutlineQueries = () =>
-        prepareSpy.mock.calls.filter(([source]) => {
-          return (
-            typeof source === "string" &&
-            source.includes('"created_at"') &&
-            source.includes('"data"') &&
-            source.includes("union all")
-          );
-        }).length;
+      // Observe actual worker reads. Its connection is independent of the
+      // main connection, so a main-client statement spy cannot count them.
+      const outlineReadSpy = vi.spyOn(harness.deps.databaseReads, "outline");
+      const countFullOutlineQueries = () => outlineReadSpy.mock.calls.length;
 
       const firstResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/conversation-outline`,

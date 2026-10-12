@@ -17,6 +17,7 @@ import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import {
   archiveThread,
+  markThreadDeleted,
   createThread,
   deleteThread,
   searchThreadsWithPendingInteractionState,
@@ -684,5 +685,41 @@ describe("thread search data", () => {
     } finally {
       closeConnection(db);
     }
+  });
+});
+
+
+describe("thread search ranking optimization", () => {
+  it("preserves the reference SQL rows for common tokens, split segments, and large bodies", () => {
+    const { db, project } = setup();
+    try {
+      db.$client.transaction(() => {
+        for (let index = 0; index < 60; index++) {
+          const thread = createThread(db, noopNotifier, { projectId: project.id, providerId: "codex", title: index % 3 === 0 ? "alpha beta gamma" : "Other title", titleFallback: "alpha fallback" });
+          if (index % 5 === 0) archiveThread(db, noopNotifier, thread.id);
+          if (index % 7 === 0) updateThread(db, noopNotifier, thread.id, { visibility: "hidden" });
+          if (index % 11 === 0) markThreadDeleted(db, noopNotifier, { threadId: thread.id });
+          upsertThreadSearchSegments(db, { segments: [
+            { threadId: thread.id, sourceKind: "user_message", sourceKey: "one", sourceSeq: 1, text: "alpha " + "large ".repeat(2000) },
+            { threadId: thread.id, sourceKind: "assistant_message", sourceKey: "two", sourceSeq: 2, text: index % 2 === 0 ? "beta gamma" : "beta only" },
+          ] });
+        }
+      })();
+      const reference = readFileSync(resolve(__dirname, "../fixtures/thread-search-reference.sql"), "utf8");
+      const prepare = db.$client.prepare.bind(db.$client);
+      let optimizedSql = "";
+      db.$client.prepare = (source) => { if (source.includes("WITH token_matches")) optimizedSql = source; return prepare(source); };
+      for (const [query, tokens] of [["alpha beta gamma", ["alpha", "beta", "gamma"]], ["al be ga", ["al", "be", "ga"]]] as const) {
+        for (const limit of [1, 5, 50]) {
+          searchThreadsWithPendingInteractionState(db, { query, limitPerGroup: limit });
+          const match = tokens.map((token) => `"${token}"*`);
+          const bindings = [0, match[0], 1, match[1], 2, match[2], 3, limit, match.join(" OR "), 1];
+          expect(prepare(optimizedSql).all(...bindings)).toEqual(prepare(reference).all(...bindings));
+          const plan = prepare("EXPLAIN QUERY PLAN " + optimizedSql).all(...bindings);
+          expect(plan).toEqual(expect.arrayContaining([expect.objectContaining({ detail: "MATERIALIZE limited_threads" })]));
+          expect(plan).toEqual(expect.arrayContaining([expect.objectContaining({ detail: expect.stringContaining("SEARCH matched USING INTEGER PRIMARY KEY") })]));
+        }
+      }
+    } finally { closeConnection(db); }
   });
 });

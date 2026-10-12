@@ -1,3 +1,4 @@
+import { recordDaemonHeartbeatAck } from "../services/system/event-loop-stall-monitor.js";
 import { heartbeatSession } from "@bb/db";
 import {
   hasHostDaemonWebSocketProtocol,
@@ -189,6 +190,7 @@ export function onDaemonSocketMessage(
       }
       if (result.data.type === "heartbeat") {
         args.socket.send(JSON.stringify({ type: "heartbeat-ack" }));
+        recordDaemonHeartbeatAck();
         return;
       }
       deps.terminalSessions.handleDaemonTerminalMessage({

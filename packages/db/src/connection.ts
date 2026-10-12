@@ -195,3 +195,34 @@ export function createConnection(
 
   return db;
 }
+
+/** Open an existing reader without journal changes, schema setup, or migrations. */
+export function createReadConnection(
+  source: string,
+  options: CreateConnectionOptions = {},
+) {
+  const sqlite = new Database(source, {
+    readonly: true,
+    fileMustExist: true,
+    timeout: 100,
+  });
+  sqlite.pragma("query_only = ON");
+  sqlite.pragma("cache_size = -32768");
+  sqlite.pragma("mmap_size = 0");
+  instrumentSqliteClient(sqlite, options);
+  return drizzle({ client: sqlite, schema });
+}
+
+/** Existing maintenance connection. Startup does not change the journal or schema. */
+export function createMaintenanceConnection(
+  source: string,
+  options: CreateConnectionOptions = {},
+) {
+  const sqlite = new Database(source, { fileMustExist: true, timeout: 10 });
+  sqlite.pragma("foreign_keys = ON");
+  sqlite.pragma("synchronous = NORMAL");
+  sqlite.pragma("cache_size = -8192");
+  sqlite.pragma("mmap_size = 0");
+  instrumentSqliteClient(sqlite, options);
+  return drizzle({ client: sqlite, schema });
+}

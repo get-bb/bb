@@ -1,6 +1,19 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "@bb/db#build:deadline": {
+      "cache": false,
+      "inputs": [
+        "native/**",
+        "scripts/build-query-deadline.mjs",
+        "package.json",
+        "$TURBO_ROOT$/pnpm-lock.yaml"
+      ],
+      "outputs": ["dist/sqlite-query-deadline.so"]
+    },
+    "@bb/db#topo": {
+      "dependsOn": ["^topo", "@bb/db#build:deadline"]
+    },
     "@bb/web#build": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -412,6 +425,7 @@
     // bundling step — so the SDK dist must exist before the suite runs.
     "@bb/server#test": {
       "dependsOn": [
+        "@bb/server#build",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
         "topo"
@@ -710,10 +724,7 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-monaco-editor#typecheck": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-pdf-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import {
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
@@ -7,9 +8,7 @@ import {
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
-  searchThreadsWithPendingInteractionState,
   updateThread,
-  type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
 import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
@@ -70,17 +69,6 @@ function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
 interface BuildThreadResponseArgs {
   includes: Set<ThreadIncludeOption>;
   thread: Thread;
-}
-
-type ThreadSearchResultGroupResponse = ThreadSearchResponse["active"];
-
-interface BuildThreadSearchGroupResponseArgs {
-  group: DbThreadSearchResultGroup;
-}
-
-interface BuildThreadSearchResponseArgs {
-  active: DbThreadSearchResultGroup;
-  archived: DbThreadSearchResultGroup;
 }
 
 function resolveIncludedThreadEnvironment(
@@ -172,39 +160,6 @@ function requireThreadSection(
   }
 }
 
-function buildThreadSearchGroupResponse(
-  deps: AppDeps,
-  args: BuildThreadSearchGroupResponseArgs,
-): ThreadSearchResultGroupResponse {
-  const threadEntries = toThreadListEntryResponses(deps, {
-    threads: args.group.results.map((result) => result.thread),
-  });
-  const threadEntriesById = new Map(
-    threadEntries.map((thread) => [thread.id, thread]),
-  );
-
-  return {
-    total: args.group.total,
-    results: args.group.results.flatMap((result) => {
-      const thread = threadEntriesById.get(result.thread.id);
-      if (thread === undefined) {
-        return [];
-      }
-      return [{ thread, matches: result.matches }];
-    }),
-  };
-}
-
-function buildThreadSearchResponse(
-  deps: AppDeps,
-  args: BuildThreadSearchResponseArgs,
-): ThreadSearchResponse {
-  return {
-    active: buildThreadSearchGroupResponse(deps, { group: args.active }),
-    archived: buildThreadSearchGroupResponse(deps, { group: args.archived }),
-  };
-}
-
 export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -254,7 +209,8 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.search, (context, query) => {
+  get(routes.search, async (context, query) => {
+    const started = performance.now();
     const searchQuery = query.query.trim();
     if (countNonWhitespaceChars(searchQuery) < 2) {
       throw new ApiError(
@@ -264,14 +220,26 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     const limitPerGroup = parseSearchLimitPerGroup(query.limitPerGroup);
-    return context.json(
-      buildThreadSearchResponse(deps, {
-        ...searchThreadsWithPendingInteractionState(deps.db, {
-          query: searchQuery,
-          limitPerGroup,
-        }),
-      }) satisfies ThreadSearchResponse,
+    const result = await deps.databaseReads.search(
+      deps,
+      { query: searchQuery, limitPerGroup },
+      context.req.raw.signal,
     );
+    const serializing = performance.now();
+    const response = context.json(
+      result.response satisfies ThreadSearchResponse,
+    );
+    deps.logger.info(
+      {
+        operation: "search",
+        requestId: result.requestId,
+        mainResultProcessingMs: result.mainResultProcessingMs,
+        mainSerializationMs: performance.now() - serializing,
+        totalMs: performance.now() - started,
+      },
+      "Database reader response",
+    );
+    return response;
   });
 
   post(routes.resolveMentions, (context, payload) => {

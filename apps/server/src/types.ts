@@ -1,3 +1,4 @@
+import type { DatabaseReadService } from "./services/database/database-read-service.js";
 import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
@@ -58,6 +59,8 @@ export interface ServerRuntimeConfig {
 export interface AppDeps {
   config: ServerRuntimeConfig;
   db: DbConnection;
+  databaseReads: DatabaseReadService;
+  databaseMaintenance: DatabaseReadService;
   hub: NotificationHub;
   lifecycleDedupers: LifecycleDedupers;
   logger: ServerLogger;

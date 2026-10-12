@@ -147,6 +147,7 @@ export class TunnelSession {
   private readonly httpStreams = new Map<number, HttpStream>();
   private readonly wsStreams = new Map<number, WsStream>();
   private lastAck = Date.now();
+  private lastHeartbeatTickAt = Date.now();
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private remoteClientCount = 0;
   lastRemoteActivityAt: number | null = null;
@@ -159,7 +160,13 @@ export class TunnelSession {
 
   start(): void {
     const { tunnel } = this.options;
+    this.lastHeartbeatTickAt = Date.now();
     this.heartbeat = setInterval(() => {
+      const now = Date.now();
+      this.options.log.info?.(
+        `tunnel heartbeat ackAgeMs=${now - this.lastAck} timerDelayMs=${Math.max(0, now - this.lastHeartbeatTickAt - HEARTBEAT_INTERVAL_MS)}`,
+      );
+      this.lastHeartbeatTickAt = now;
       if (Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
         this.options.log.warn("tunnel heartbeat missed; reconnecting");
         tunnel.terminate();

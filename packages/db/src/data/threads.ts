@@ -992,11 +992,13 @@ function buildThreadSearchSnippet(args: {
 }
 
 /**
- * One FTS pass for both result groups: rank threads that contain every query
+ * Both result groups share token passes: rank threads that contain every query
  * token, keep the top `limitPerGroup` per archive partition, then pull the
  * matching title segments plus the single best message segment for each kept
  * thread. Rows come back ordered by group, thread rank, then title before
- * message.
+ * message. Sort row identifiers before loading message text. Large bodies must
+ * never enter the temporary segment-ranking tables. Each token contributes one
+ * grouped row per thread, so COUNT(*) preserves the all-token requirement.
  */
 function listThreadSearchMatchRows(
   db: DbConnection,
@@ -1017,7 +1019,7 @@ function listThreadSearchMatchRows(
   const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
 
   return db.all<ThreadSearchMatchRow>(sql`
-    WITH token_matches AS (
+    WITH token_matches AS MATERIALIZED (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
     ),
     ranked_threads AS (
@@ -1031,7 +1033,7 @@ function listThreadSearchMatchRows(
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
       GROUP BY threadId
-      HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
+      HAVING COUNT(*) = ${args.tokenMatchQueries.length}
     ),
     ordered_threads AS (
       SELECT
@@ -1044,7 +1046,7 @@ function listThreadSearchMatchRows(
         COUNT(*) OVER (PARTITION BY archived) AS total
       FROM ranked_threads
     ),
-    limited_threads AS (
+    limited_threads AS MATERIALIZED (
       SELECT threadId, archived, threadOrder, total
       FROM ordered_threads
       WHERE threadOrder <= ${args.limitPerGroup}
@@ -1064,7 +1066,7 @@ function listThreadSearchMatchRows(
         ${isTitleSegment} AS isTitle,
         thread_search_segments.source_kind AS sourceKind,
         thread_search_segments.source_seq AS sourceSeq,
-        thread_search_segments.text AS text,
+        thread_search_segments.rowid AS segmentRowid,
         thread_search_segments.thread_id AS threadId
       FROM thread_search_segments_fts
       JOIN thread_search_segments
@@ -1074,18 +1076,20 @@ function listThreadSearchMatchRows(
       WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
     )
     SELECT
-      archived,
-      threadOrder,
-      total,
-      segmentOrder,
-      sourceKind,
-      sourceSeq,
-      text,
-      threadId
+      ranked_segments.archived,
+      ranked_segments.threadOrder,
+      ranked_segments.total,
+      ranked_segments.segmentOrder,
+      ranked_segments.sourceKind,
+      ranked_segments.sourceSeq,
+      matched.text,
+      ranked_segments.threadId
     FROM ranked_segments
-    WHERE isTitle = 1
-      OR segmentOrder <= ${THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD}
-    ORDER BY archived ASC, threadOrder ASC, isTitle DESC, segmentOrder ASC
+    JOIN thread_search_segments AS matched ON matched.rowid = ranked_segments.segmentRowid
+    WHERE ranked_segments.isTitle = 1
+      OR ranked_segments.segmentOrder <= ${THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD}
+    ORDER BY ranked_segments.archived ASC, ranked_segments.threadOrder ASC,
+      ranked_segments.isTitle DESC, ranked_segments.segmentOrder ASC
   `);
 }
 

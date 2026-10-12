@@ -573,6 +573,12 @@ export class NotificationHub implements DbNotifier {
     return this.daemonSessions.get(sessionId)?.platform ?? null;
   }
 
+  snapshotDaemonSessionIdsByHost(): [string, string][] {
+    return [...this.daemonSessionIdsByHost.entries()].filter(([, sessionId]) =>
+      this.daemonSessions.has(sessionId),
+    );
+  }
+
   listDaemonLocalApiPorts(): number[] {
     const ports = new Set<number>();
     for (const session of this.daemonSessions.values()) {

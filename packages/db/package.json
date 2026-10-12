@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "build:deadline": "node scripts/build-query-deadline.mjs"
   },
   "dependencies": {
     "@bb/config": "workspace:*",

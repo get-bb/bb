@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { DatabaseReadService } from "../../src/services/database/database-read-service.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
@@ -161,7 +162,32 @@ export async function createTestAppHarness(
     ...configOverrides
   } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = createTestDb();
+  const template = createTestDb();
+  const databasePath = join(dataDir, "bb.db");
+  await writeFile(databasePath, template.$client.serialize());
+  template.$client.close();
+  const db = createConnection(databasePath);
+  const databaseReads = new DatabaseReadService({
+    databasePath,
+    logger: testLogger,
+    workerEntry: new URL("../../dist/database-read-worker.js", import.meta.url),
+    extensionPath: new URL(
+      "../../dist/database-native/sqlite-query-deadline.so",
+      import.meta.url,
+    ).pathname,
+  });
+  const databaseMaintenance = new DatabaseReadService({
+    databasePath,
+    logger: testLogger,
+    mode: "maintenance",
+    executionTimeoutMs: 100,
+    maxQueue: 0,
+    workerEntry: new URL("../../dist/database-read-worker.js", import.meta.url),
+    extensionPath: new URL(
+      "../../dist/database-native/sqlite-query-deadline.so",
+      import.meta.url,
+    ).pathname,
+  });
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -269,6 +295,8 @@ export async function createTestAppHarness(
       logger: testLogger,
     });
   const deps: ServerAppDeps = {
+    databaseReads,
+    databaseMaintenance,
     appVersion,
     bbAppManagedConfig,
     config,
@@ -301,6 +329,11 @@ export async function createTestAppHarness(
     pluginCatalogService,
     async cleanup(): Promise<void> {
       await pluginService.stop();
+      await Promise.all([
+        deps.databaseReads.close(),
+        deps.databaseMaintenance.close(),
+      ]);
+      db.$client.close();
       await rm(dataDir, { recursive: true, force: true });
     },
   };
