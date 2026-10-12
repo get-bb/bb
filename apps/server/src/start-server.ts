@@ -209,6 +209,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     dataDir: serverConfig.BB_DATA_DIR,
     enabled:
       serverConfig.BB_TELEMETRY && isProduction && pendingServerMove === null,
+    installCampaign: serverConfig.BB_INSTALL_CAMPAIGN ?? null,
     telemetryEnabled: getAppSettings(db).telemetryEnabled,
     logger,
   });

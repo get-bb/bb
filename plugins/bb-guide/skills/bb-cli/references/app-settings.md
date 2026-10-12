@@ -311,6 +311,8 @@ Use `bb settings ui reset sidebar.hiddenFooterItems` to restore the default foot
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
 or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference
 applies immediately and persists across restarts. `BB_TELEMETRY=false` overrides it.
+`BB_INSTALL_CAMPAIGN=<slug>` adds an ad campaign slug to the first `app_started`
+event of a new data dir; invalid slugs are ignored.
 
 Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
 **Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.

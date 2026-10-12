@@ -23,6 +23,7 @@ import {
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
+  BB_INSTALL_CAMPAIGN_ENV,
   BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
@@ -58,6 +59,7 @@ export interface ServerConfig
   BB_EXTERNAL_URL: string;
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
+  BB_INSTALL_CAMPAIGN?: string;
   BB_POSTHOG_API_KEY: string;
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
@@ -216,6 +218,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_APP_SOURCE_COMMIT_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_INSTALL_CAMPAIGN",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_INSTALL_CAMPAIGN_ENV,
       env: loader.env,
     }),
   });

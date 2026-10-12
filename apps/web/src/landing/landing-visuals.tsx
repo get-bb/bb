@@ -15,6 +15,7 @@ import { trackLandingEvent } from "./analytics";
 import { CommandButton } from "./command-button";
 import { DesktopDownloadButton, DownloadLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
+import { useInstallCommand } from "./install-command";
 import { SendToComputerButton } from "./send-to-computer-button";
 import {
   ClaudeIcon,
@@ -27,10 +28,11 @@ import {
   PiIcon,
 } from "./icons";
 import type { CtaPlacement, DesktopPlatform } from "./site";
-import { CLI_COMMAND, DESKTOP_DOWNLOADS } from "./site";
+import { DESKTOP_DOWNLOADS } from "./site";
 
 export function InstallOptions({ placement }: { placement: CtaPlacement }) {
   const platform = useDesktopPlatform();
+  const installCommand = useInstallCommand();
   const download = DESKTOP_DOWNLOADS[platform];
   const otherPlatform: DesktopPlatform =
     platform === "macos" ? "linux" : "macos";
@@ -61,13 +63,13 @@ export function InstallOptions({ placement }: { placement: CtaPlacement }) {
         </span>
         <span className="install-choice">
           <CommandButton
-            command={CLI_COMMAND}
-            label={`Copy browser install command: ${CLI_COMMAND}`}
+            command={installCommand}
+            label={`Copy browser install command: ${installCommand}`}
             size="hero"
             onCopy={() =>
               trackLandingEvent({
                 name: "landing_cli_command_copied",
-                properties: { placement, command: CLI_COMMAND },
+                properties: { placement, command: installCommand },
               })
             }
           />

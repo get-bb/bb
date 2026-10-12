@@ -10,6 +10,7 @@ import {
 import { defaultAppSettings } from "@bb/domain";
 import { withTestHarness } from "../helpers/test-app.js";
 import { DEFAULTS } from "@bb/config/defaults";
+import { loadServerConfig } from "@bb/config/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appInstallFromServerConfig,
@@ -48,6 +49,7 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion: "1.2.3",
       dataDir,
+      installCampaign: null,
       telemetryEnabled: true,
       enabled: true,
       logger: createTestLogger(),
@@ -142,6 +144,7 @@ describe("telemetry service", () => {
         appSurface: "web",
         appVersion: "1.2.3",
         dataDir,
+        installCampaign: null,
         telemetryEnabled: true,
         enabled: true,
         logger: createTestLogger(),
@@ -181,6 +184,7 @@ describe("telemetry service", () => {
       appSurface: "web" as const,
       appVersion: "1.2.3",
       dataDir,
+      installCampaign: null,
       telemetryEnabled: true,
       enabled: true,
       logger: createTestLogger(),
@@ -223,6 +227,7 @@ describe("telemetry service", () => {
       appSurface: "web",
       appVersion,
       dataDir,
+      installCampaign: null,
       telemetryEnabled: true,
       enabled,
       logger: createTestLogger(),
@@ -246,6 +251,7 @@ describe("telemetry service", () => {
         appVersion: "1.2.3",
         dataDir,
         enabled: true,
+        installCampaign: null,
         telemetryEnabled: getAppSettings(db).telemetryEnabled,
         logger: createTestLogger(),
       };
@@ -279,6 +285,7 @@ describe("telemetry service", () => {
         appVersion: "1.2.3",
         dataDir,
         enabled: true,
+        installCampaign: null,
         telemetryEnabled: getAppSettings(harness.db).telemetryEnabled,
         logger: createTestLogger(),
       });
@@ -334,6 +341,100 @@ describe("telemetry service", () => {
     });
   });
 
+  it("tags only the first app_started of a new install with its campaign", async () => {
+    const args = {
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web" as const,
+      appVersion: "1.2.3",
+      dataDir,
+      enabled: true,
+      installCampaign: "claude-code-alt",
+      telemetryEnabled: true,
+      logger: createTestLogger(),
+    };
+    const first = await createTelemetryService(args);
+    first.capture({ name: "app_started" });
+    first.capture({ name: "app_started" });
+    first.capture({
+      name: "thread_created",
+      properties: { is_child_thread: false, provider: "codex" },
+    });
+    const restarted = await createTelemetryService(args);
+    restarted.capture({ name: "app_started" });
+
+    const payloads = fetchMock.mock.calls.map((call) => {
+      const [, init] = call as [string, { body: string }];
+      return JSON.parse(init.body) as {
+        event: string;
+        properties: Record<string, unknown>;
+      };
+    });
+    expect(payloads).toHaveLength(4);
+    expect(payloads[0]).toMatchObject({
+      event: "app_started",
+      properties: { install_campaign: "claude-code-alt" },
+    });
+    for (const payload of payloads.slice(1)) {
+      expect(payload.properties).not.toHaveProperty("install_campaign");
+    }
+  });
+
+  it("never sends a campaign when the first app_started is opted out", async () => {
+    const telemetry = await createTelemetryService({
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      enabled: true,
+      installCampaign: "claude-code-alt",
+      telemetryEnabled: false,
+      logger: createTestLogger(),
+    });
+    telemetry.capture({ name: "app_started" });
+    telemetry.setEnabled(true);
+    telemetry.capture({ name: "app_started" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(
+      (JSON.parse(init.body) as { properties: Record<string, unknown> })
+        .properties,
+    ).not.toHaveProperty("install_campaign");
+  });
+
+  it("ignores an invalid campaign from the environment", async () => {
+    const config = loadServerConfig({
+      env: {
+        BB_DATA_DIR: dataDir,
+        BB_HOST_DAEMON_PORT: "5555",
+        BB_INSTALL_CAMPAIGN: "Not A Slug",
+        BB_SERVER_PORT: "4444",
+        NODE_ENV: "development",
+      },
+    });
+    const telemetry = await createTelemetryService({
+      apiKey: "phc_test",
+      appInstall: null,
+      appSurface: "web",
+      appVersion: "1.2.3",
+      dataDir,
+      enabled: true,
+      installCampaign: config.BB_INSTALL_CAMPAIGN ?? null,
+      telemetryEnabled: true,
+      logger: createTestLogger(),
+    });
+    telemetry.capture({ name: "app_started" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(
+      (JSON.parse(init.body) as { properties: Record<string, unknown> })
+        .properties,
+    ).not.toHaveProperty("install_campaign");
+  });
+
   it("logs and swallows send failures", async () => {
     const logger = createTestLogger();
     fetchMock.mockRejectedValue(new Error("offline"));
@@ -343,6 +444,7 @@ describe("telemetry service", () => {
       appSurface: "desktop",
       appVersion: "1.2.3",
       dataDir,
+      installCampaign: null,
       telemetryEnabled: true,
       enabled: true,
       logger,

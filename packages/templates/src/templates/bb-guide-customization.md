@@ -535,6 +535,9 @@ or with `bb settings general telemetryEnabled false`. The saved server-wide pref
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
+`BB_INSTALL_CAMPAIGN=<slug>` (1-40 lowercase letters, digits, or dashes; other
+values are ignored) adds that ad campaign slug to the first `app_started` event
+of a new data dir. getbb.app ad pages prefix their install command with it.
 
 
 Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).

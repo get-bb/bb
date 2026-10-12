@@ -94,7 +94,9 @@ Telemetry never includes Git commit hashes or remote URLs. Identification is a r
 id stored in your data dir — no user, host, project, workspace, or message
 content is ever attached. Plugin install events name only public plugins
 (bundled plugins and `bb-community` marketplace entries); installs from a local
-path, a private git or npm source, or a third-party marketplace report no name. Development runs (`pnpm dev`, `pnpm start:worktree`) never send. Opt out any run with
+path, a private git or npm source, or a third-party marketplace report no name.
+Install commands copied from getbb.app ad pages set `BB_INSTALL_CAMPAIGN=<slug>`;
+the first app start of a new data dir reports that campaign slug once. Development runs (`pnpm dev`, `pnpm start:worktree`) never send. Opt out any run with
 `BB_TELEMETRY=false`. See
 [`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
 

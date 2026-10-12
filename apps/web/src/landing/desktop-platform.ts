@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { DEFAULT_DESKTOP_PLATFORM } from "./site";
 import type { DesktopPlatform } from "./site";
 
-type PlatformSource = {
+export type PlatformSource = {
   platform?: string;
   userAgent?: string;
   userAgentData?: { platform?: string } | null;

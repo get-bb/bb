@@ -346,6 +346,28 @@ describe("consumer-specific config", () => {
     ).toBe("launch-123");
   });
 
+  it("keeps only a valid install campaign slug and ignores anything else", () => {
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_INSTALL_CAMPAIGN: "claude-code-alt" }),
+      }).BB_INSTALL_CAMPAIGN,
+    ).toBe("claude-code-alt");
+    for (const value of [
+      "",
+      "-leading-dash",
+      "Upper",
+      "has space",
+      "a".repeat(41),
+      "drop;table",
+    ]) {
+      expect(
+        loadServerConfig({
+          env: createServerRuntimeEnv({ BB_INSTALL_CAMPAIGN: value }),
+        }),
+      ).not.toHaveProperty("BB_INSTALL_CAMPAIGN");
+    }
+  });
+
   it("carries the launcher's in-app update mode and rejects unknown modes", () => {
     expect(
       loadServerConfig({ env: createServerRuntimeEnv({}) }),

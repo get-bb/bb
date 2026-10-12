@@ -108,6 +108,14 @@ function parseOptionalTrimmedStringEnvValue(
   return toOptionalString(args.value);
 }
 
+const INSTALL_CAMPAIGN_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/u;
+
+function parseInstallCampaignEnvValue(
+  args: EnvVarParseArgs,
+): string | undefined {
+  return INSTALL_CAMPAIGN_PATTERN.test(args.value) ? args.value : undefined;
+}
+
 function parseStringEnvValue(args: EnvVarParseArgs): string {
   return args.value;
 }
@@ -286,6 +294,13 @@ export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
     "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs, tagged with app version, install kind, and OS and Node versions). Set to false to opt out.",
   name: "BB_TELEMETRY",
   parse: parseBooleanEnvValue,
+});
+
+export const BB_INSTALL_CAMPAIGN_ENV = defineEnvVar<string | undefined>({
+  description:
+    "Ad campaign slug copied with the install command from a getbb.app ad page. Sent once on the first app_started telemetry event of a new data dir; values that are not 1-40 lowercase letters, digits, or dashes are ignored.",
+  name: "BB_INSTALL_CAMPAIGN",
+  parse: parseInstallCampaignEnvValue,
 });
 
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({

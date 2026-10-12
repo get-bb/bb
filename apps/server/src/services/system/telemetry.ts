@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { existsSync } from "node:fs";
 import { release } from "node:os";
+import { join } from "node:path";
 import type { AppInstall } from "@bb/config/app-install";
 import { DEFAULTS } from "@bb/config/defaults";
 import type { ServerConfig } from "@bb/config/server";
@@ -13,7 +15,12 @@ const TELEMETRY_ID_FILE_NAME = "telemetry-id";
 const telemetryAppSurfaceStorage = new AsyncLocalStorage<RequestAppSurface>();
 
 export type TelemetryEvent =
-  | { name: "app_started" }
+  | {
+      name: "app_started";
+      properties?: {
+        install_campaign?: string;
+      };
+    }
   | { name: "telemetry_disabled" }
   | {
       name: "thread_created";
@@ -52,6 +59,7 @@ interface CreateTelemetryServiceArgs {
   appVersion: string;
   dataDir: string;
   enabled: boolean;
+  installCampaign: string | null;
   telemetryEnabled: boolean;
   logger: ServerLogger;
 }
@@ -118,6 +126,7 @@ export async function createTelemetryService(
   ) {
     return noopTelemetryService;
   }
+  const isFirstRun = !existsSync(join(args.dataDir, TELEMETRY_ID_FILE_NAME));
   const distinctId = await readOrCreateSecretFile({
     bytes: 16,
     dataDir: args.dataDir,
@@ -125,6 +134,7 @@ export async function createTelemetryService(
     fileName: TELEMETRY_ID_FILE_NAME,
   });
   let telemetryEnabled = args.telemetryEnabled;
+  let pendingInstallCampaign = isFirstRun ? args.installCampaign : null;
   const osRelease = release();
   const commonProperties = {
     ...appInstallProperties(args.appInstall),
@@ -142,10 +152,18 @@ export async function createTelemetryService(
       telemetryEnabled = enabled;
     },
     capture(event: TelemetryEvent): void {
+      const installCampaign =
+        event.name === "app_started" ? pendingInstallCampaign : null;
+      if (event.name === "app_started") pendingInstallCampaign = null;
       if (!telemetryEnabled) return;
       const appSurface =
         telemetryAppSurfaceStorage.getStore() ?? args.appSurface;
-      const eventProperties = "properties" in event ? event.properties : {};
+      const eventProperties = {
+        ...("properties" in event ? event.properties : {}),
+        ...(installCampaign === null
+          ? {}
+          : { install_campaign: installCampaign }),
+      };
       const body = JSON.stringify({
         api_key: args.apiKey,
         distinct_id: distinctId,
