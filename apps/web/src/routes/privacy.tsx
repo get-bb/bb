@@ -72,7 +72,8 @@ function PrivacyRoute() {
           <p>
             Unless you turn it off, the bb app sends us anonymous usage events
             through PostHog, such as when bb starts, when you create a thread or
-            send a message, and when you install a plugin. Each event carries a
+            send a message, and when you install a plugin. We use them to see
+            how bb is used and to decide what to improve. Each event carries a
             random install ID, the app version, and basic system details such as
             your operating system, processor type, and Node.js version. PostHog
             also records the IP address each event comes from and the
