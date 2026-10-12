@@ -2,6 +2,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -75,6 +76,37 @@ describe("BottomAnchoredScrollBody scroll-anchor exclusion", () => {
 });
 
 describe("BottomAnchoredScrollBody grid", () => {
+  it("keeps the mobile composer outside the conversation scroller as its queue resizes", () => {
+    const body = (expanded: boolean) => (
+      <CompactViewportOverrideProvider isCompactViewport={true}>
+        <BottomAnchoredScrollBody
+          footer={
+            <div>
+              {expanded ? <div>Queued message</div> : null}
+              <textarea aria-label="Follow-up" />
+            </div>
+          }
+          maxWidthClassName="max-w-none"
+        >
+          <div data-timeline-row-id="row-a">Conversation</div>
+        </BottomAnchoredScrollBody>
+      </CompactViewportOverrideProvider>
+    );
+    const view = render(body(true));
+    const composer = view.getByRole("textbox", { name: "Follow-up" });
+    const scrollPort = view.container.querySelector(
+      "[data-page-scroll-viewport]",
+    );
+    const footer = view.container.querySelector("[data-scroll-footer]");
+    expect(scrollPort?.contains(composer)).toBe(false);
+    expect(footer?.parentElement).toBe(scrollPort?.parentElement);
+
+    view.rerender(body(false));
+    expect(view.getByRole("textbox", { name: "Follow-up" })).toBe(composer);
+    expect(view.queryByText("Queued message")).toBeNull();
+    expect(scrollPort?.contains(composer)).toBe(false);
+  });
+
   it("stacks the scroll port and overlay in one explicit minmax(auto,1fr) row", () => {
     vi.stubGlobal("CSS", { supports: () => false });
     const { container } = renderBody(<nav>Overlay</nav>);

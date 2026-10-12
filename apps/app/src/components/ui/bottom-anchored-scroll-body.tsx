@@ -13,6 +13,7 @@ import { flushSync } from "react-dom";
 import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
 import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import { PAGE_SCROLL_TO_TOP_EVENT } from "@/lib/page-scroll-to-top";
@@ -231,6 +232,7 @@ export function BottomAnchoredScrollBody({
 }: BottomAnchoredScrollBodyProps) {
   const store = useStore();
   const isPointerCoarse = usePointerCoarse();
+  const isCompactViewport = useIsCompactViewport();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -1015,7 +1017,14 @@ export function BottomAnchoredScrollBody({
       <TimelineScrollRestoreRowIdContext.Provider
         value={initialScrollRestoreRowId}
       >
-        <div className="grid min-h-0 flex-1 grid-rows-[minmax(auto,1fr)] overflow-hidden">
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 overflow-hidden",
+            isCompactViewport
+              ? "grid-rows-[minmax(0,1fr)_auto]"
+              : "grid-rows-[minmax(auto,1fr)]",
+          )}
+        >
           <div
             ref={scrollAreaRef}
             data-page-scroll-viewport=""
@@ -1043,7 +1052,7 @@ export function BottomAnchoredScrollBody({
                 {children}
               </div>
               <div className="scroll-bottom-anchor" aria-hidden />
-              {footer ? (
+              {footer && !isCompactViewport ? (
                 <div
                   data-scroll-footer=""
                   className="sticky bottom-0 z-20 shrink-0 [overflow-anchor:none]"
@@ -1053,6 +1062,14 @@ export function BottomAnchoredScrollBody({
               ) : null}
             </div>
           </div>
+          {footer && isCompactViewport ? (
+            <div
+              data-scroll-footer=""
+              className="relative z-20 col-start-1 row-start-2 min-h-0 [overflow-anchor:none]"
+            >
+              {footer}
+            </div>
+          ) : null}
           {scrollOverlay ? (
             <div
               data-scroll-overlay=""

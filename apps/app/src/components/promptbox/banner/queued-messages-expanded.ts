@@ -1,10 +1,15 @@
 import { useCallback, useEffect } from "react";
 import { atom, useAtom } from "jotai";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 
 export const queuedMessagesCollapsedQueuesAtom = atom<
   ReadonlyMap<string, ReadonlySet<string>>
 >(new Map<string, ReadonlySet<string>>());
+
+const mobileExpandedQueuesAtom = atom<ReadonlyMap<string, ReadonlySet<string>>>(
+  new Map<string, ReadonlySet<string>>(),
+);
 
 function sharesQueuedMessage(
   queuedMessages: readonly ThreadQueuedMessage[],
@@ -20,15 +25,20 @@ export function useQueuedMessagesExpanded({
   threadId: string;
   queuedMessages: readonly ThreadQueuedMessage[] | null;
 }): readonly [boolean, (expanded: boolean) => void] {
-  const [collapsedQueues, setCollapsedQueues] = useAtom(
-    queuedMessagesCollapsedQueuesAtom,
+  const defaultExpanded = !useIsCompactViewport();
+  const [toggledQueues, setToggledQueues] = useAtom(
+    defaultExpanded
+      ? queuedMessagesCollapsedQueuesAtom
+      : mobileExpandedQueuesAtom,
   );
   const setExpanded = useCallback(
     (expanded: boolean) => {
-      setCollapsedQueues((current) => {
-        if (expanded === !current.has(threadId)) return current;
+      setToggledQueues((current) => {
+        if (expanded === (defaultExpanded !== current.has(threadId))) {
+          return current;
+        }
         const next = new Map(current);
-        if (expanded) {
+        if (expanded === defaultExpanded) {
           next.delete(threadId);
         } else {
           next.set(
@@ -41,11 +51,11 @@ export function useQueuedMessagesExpanded({
         return next;
       });
     },
-    [queuedMessages, setCollapsedQueues, threadId],
+    [defaultExpanded, queuedMessages, setToggledQueues, threadId],
   );
   useEffect(() => {
     if (queuedMessages === null) return;
-    setCollapsedQueues((current) => {
+    setToggledQueues((current) => {
       const seenIds = current.get(threadId);
       if (seenIds === undefined) return current;
       if (!sharesQueuedMessage(queuedMessages, seenIds)) {
@@ -68,10 +78,10 @@ export function useQueuedMessagesExpanded({
       );
       return next;
     });
-  }, [queuedMessages, setCollapsedQueues, threadId]);
-  const seenIds = collapsedQueues.get(threadId);
-  const expanded =
+  }, [queuedMessages, setToggledQueues, threadId]);
+  const seenIds = toggledQueues.get(threadId);
+  const usesDefault =
     seenIds === undefined ||
     (queuedMessages !== null && !sharesQueuedMessage(queuedMessages, seenIds));
-  return [expanded, setExpanded];
+  return [usesDefault ? defaultExpanded : !defaultExpanded, setExpanded];
 }
