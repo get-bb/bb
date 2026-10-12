@@ -745,8 +745,8 @@ const NO_CHILD_THREAD_ITEMS: readonly ThreadPromptChildThreadItem[] = [];
 
 function useExpandForNewNeedsInput(
   items: readonly ThreadPromptChildThreadItem[],
-  isExpanded: boolean,
-  onToggle: () => void,
+  expandedSection: ThreadPromptContextBannerExpandedSection | null,
+  onExpand: () => void,
 ) {
   const needsInputKey = items
     .filter((item) => item.hasPendingInteraction)
@@ -759,10 +759,10 @@ function useExpandForNewNeedsInput(
     const hasNewNeedsInput =
       needsInputKey !== "" &&
       needsInputKey.split(" ").some((id) => !seen.has(id));
-    if (hasNewNeedsInput && !isExpanded) {
-      onToggle();
+    if (hasNewNeedsInput && expandedSection === null) {
+      onExpand();
     }
-  }, [needsInputKey, isExpanded, onToggle]);
+  }, [needsInputKey, expandedSection, onExpand]);
 }
 
 function ActiveChildThreadsCard({
@@ -996,18 +996,35 @@ export function ThreadPromptContextBanner({
     () => onToggleSection("parentThread"),
   );
   useExpandForNewNeedsInput(
-    archivedSection || environmentGoneSection
-      ? NO_CHILD_THREAD_ITEMS
-      : (childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS),
-    expandedSection === "childThreads",
+    childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS,
+    expandedSection,
     () => onToggleSection("childThreads"),
   );
+  const showChildThreads =
+    childThreadsSection !== null && childThreadsSection.items.length > 0;
+  const activeChildThreadsCard =
+    showChildThreads && childThreadsSection ? (
+      <ActiveChildThreadsCard
+        childThreadsSection={childThreadsSection}
+        isExpanded={expandedSection === "childThreads"}
+        onToggle={() => onToggleSection("childThreads")}
+      />
+    ) : null;
+  const withActiveChildThreads = (contextBanner: ReactNode) =>
+    activeChildThreadsCard ? (
+      <div className="min-w-0 space-y-2">
+        {activeChildThreadsCard}
+        {contextBanner}
+      </div>
+    ) : (
+      contextBanner
+    );
   if (archivedSection || environmentGoneSection) {
     const environmentGone = environmentGoneSection !== null;
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
       : null;
-    return (
+    return withActiveChildThreads(
       <ReadOnlyContextBanner
         iconName={environmentGone ? "CircleX" : "Archive"}
         statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
@@ -1032,16 +1049,14 @@ export function ThreadPromptContextBanner({
         parentThreadSection={parentThreadSection}
         expandedSection={expandedSection}
         onToggleSection={onToggleSection}
-      />
+      />,
     );
   }
   if (gitSectionPending) {
-    return null;
+    return withActiveChildThreads(null);
   }
   const showGit = gitSection !== null;
   const showParentThread = parentThreadSection !== null;
-  const showChildThreads =
-    childThreadsSection !== null && childThreadsSection.items.length > 0;
   const showPullRequest = pullRequestSection !== null;
   if (!showGit && !showParentThread && !showChildThreads && !showPullRequest) {
     return null;
@@ -1054,16 +1069,6 @@ export function ThreadPromptContextBanner({
   const isGitExpanded = expandedSection === "git" && showGit;
   const isParentThreadExpanded =
     expandedSection === "parentThread" && showParentThread;
-  const isChildThreadsExpanded =
-    expandedSection === "childThreads" && showChildThreads;
-  const activeChildThreadsCard =
-    showChildThreads && childThreadsSection ? (
-      <ActiveChildThreadsCard
-        childThreadsSection={childThreadsSection}
-        isExpanded={isChildThreadsExpanded}
-        onToggle={() => onToggleSection("childThreads")}
-      />
-    ) : null;
   const gitTally = showGit
     ? toChangeTally(gitSection.changedFiles.stats)
     : null;
@@ -1233,14 +1238,5 @@ export function ThreadPromptContextBanner({
       </PromptStackCard>
     ) : null;
 
-  if (activeChildThreadsCard && compactContextBanner) {
-    return (
-      <div className="min-w-0 space-y-2">
-        {activeChildThreadsCard}
-        {compactContextBanner}
-      </div>
-    );
-  }
-
-  return activeChildThreadsCard ?? compactContextBanner;
+  return withActiveChildThreads(compactContextBanner);
 }
