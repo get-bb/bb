@@ -109,6 +109,78 @@ it("keeps an auto-reviewed session when only escalation intent changes", async (
   ).toEqual([]);
 }, 30_000);
 
+it("applies model and reasoning changes before steering with unchanged permissions", async () => {
+  const before = {
+    ...FULL_ACCESS_SESSION_OPTIONS,
+    model: "gpt-5",
+    reasoningLevel: "low",
+  } as const;
+  const after = {
+    ...FULL_ACCESS_SESSION_OPTIONS,
+    model: "gpt-6",
+    reasoningLevel: "high",
+  } as const;
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: before,
+  });
+  const started = await harness.waitForResponse(1);
+  expect(started.error).toBeUndefined();
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_23456789ab",
+    input: [{ type: "text", text: "/wait-for-interrupt", mentions: [] }],
+    options: before,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  await vi.waitFor(() =>
+    expect(harness.messages).toContainEqual(
+      expect.objectContaining({
+        method: "thread/delta",
+        params: expect.objectContaining({
+          deltas: expect.arrayContaining([
+            expect.objectContaining({ kind: "turn.open" }),
+          ]),
+        }),
+      }),
+    ),
+  );
+
+  harness.sendRequest(3, "turn/steer", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    expectedTurnId: "turn-fx-1",
+    clientRequestId: "creq_23456789ac",
+    input: [{ type: "text", text: "continue", mentions: [] }],
+    options: after,
+  });
+  expect((await harness.waitForResponse(3)).error).toBeUndefined();
+
+  const requests = recordedRequests();
+  expect(requests.filter((entry) => entry.method === "turn/steer")).toEqual([]);
+  expect(
+    requests.filter((entry) => entry.method === "turn/interrupt"),
+  ).toHaveLength(1);
+  expect(
+    requests.filter((entry) => entry.method === "thread/resume").at(-1)?.params,
+  ).toMatchObject({
+    model: "gpt-6",
+    config: { model_reasoning_effort: "high" },
+  });
+  expect(
+    requests.filter((entry) => entry.method === "turn/start").at(-1)?.params,
+  ).toMatchObject({
+    model: "gpt-6",
+  });
+}, 30_000);
+
 function recordedRequests() {
   const schema = z.object({
     method: z.string(),

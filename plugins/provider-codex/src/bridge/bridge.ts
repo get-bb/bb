@@ -485,6 +485,7 @@ interface CodexBridgeSession {
   daybreakEnabled: boolean | null;
   modelCatalog: Promise<CodexModelCatalog | null> | null;
   publishedSessionOptions: string | null;
+  turnExecutionSignature: string | null;
   closing: boolean;
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
@@ -595,6 +596,14 @@ function constructionSignature(
             baseUrl: poolBaseUrl,
             tokenHash: createHash("sha256").update(poolToken).digest("hex"),
           },
+  });
+}
+
+function turnExecutionSignature(options: CodexSessionOptions): string {
+  return JSON.stringify({
+    model: options.model ?? null,
+    serviceTier: options.serviceTier ?? null,
+    reasoningLevel: options.reasoningLevel ?? null,
   });
 }
 
@@ -1237,6 +1246,7 @@ async function constructThreadSession(
     daybreakEnabled: null,
     modelCatalog: null,
     publishedSessionOptions: existing?.publishedSessionOptions ?? null,
+    turnExecutionSignature: existing?.turnExecutionSignature ?? null,
     closing: false,
     previousChildExit: null,
     releasePromise: null,
@@ -1443,6 +1453,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     daybreakEnabled: session.daybreakEnabled,
     modelCatalog: null,
     publishedSessionOptions: session.publishedSessionOptions,
+    turnExecutionSignature: session.turnExecutionSignature,
     closing: false,
     previousChildExit: null,
     releasePromise: null,
@@ -2047,6 +2058,9 @@ async function handleTurnStart(
           }
           throw error;
         });
+      session.turnExecutionSignature = turnExecutionSignature(
+        decoded.sessionOptions,
+      );
     }
     sendResult(id, { threadId: params.threadId });
     settleAcceptedDispatch({
@@ -2098,7 +2112,11 @@ async function handleTurnSteer(
       ),
       options: decoded.sessionOptions,
     });
+    const executionChanged =
+      session.turnExecutionSignature !==
+      turnExecutionSignature(decoded.sessionOptions);
     if (
+      executionChanged ||
       !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)
     ) {
       if (!session.openCodexTurnIds.has(params.expectedTurnId)) {

@@ -42,11 +42,12 @@ describe("threadDetailPromptSubmission", () => {
           permissionMode: "full",
           reasoningLevel: "low",
           serviceTier: "fast",
-          supportsServiceTier: false,
+          supportsServiceTier: true,
           executionInputSources: {
             model: "explicit",
             reasoningLevel: "explicit",
             permissionMode: "explicit",
+            serviceTier: "explicit",
           },
         },
         input: textInput,
@@ -62,10 +63,12 @@ describe("threadDetailPromptSubmission", () => {
         model: "gpt-5.6-luna",
         permissionMode: "full",
         reasoningLevel: "low",
+        serviceTier: "fast",
         executionInputSources: {
           model: "explicit",
           reasoningLevel: "explicit",
           permissionMode: "explicit",
+          serviceTier: "explicit",
         },
       },
     });
