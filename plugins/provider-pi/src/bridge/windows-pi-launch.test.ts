@@ -256,6 +256,31 @@ describe("Windows Pi npm launch", () => {
     },
   );
 
+  it.skipIf(process.platform !== "win32")(
+    "ignores a workspace node.js when resolving fallback Node",
+    async () => {
+      const { root, cli } = await fixture();
+      const nodeDirectory = path.join(root, "nodejs");
+      const workspace = path.join(root, "workspace");
+      await mkdir(nodeDirectory);
+      await mkdir(workspace);
+      await writeFile(path.join(nodeDirectory, "node.exe"), "");
+      await writeFile(path.join(workspace, "node.js"), "");
+      const launch = resolvePiProcessLaunch(
+        {},
+        {
+          Path: [root, nodeDirectory].join(path.delimiter),
+          PATHEXT: ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC",
+        },
+        workspace,
+      );
+      expect(launch.command.toLowerCase()).toBe(
+        path.join(nodeDirectory, "node.exe").toLowerCase(),
+      );
+      expect(launch.args).toEqual([cli]);
+    },
+  );
+
   it.skipIf(process.platform !== "win32").each(["global", "local"] as const)(
     "round-trips RPC and extra pipes through the default real launcher with a %s shim",
     async (layout) => {

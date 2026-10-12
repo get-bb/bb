@@ -116,7 +116,13 @@ export function resolveWindowsPiProcessLaunch(
   if (executable === undefined) return launch;
   const unwrapped = resolvePiNpmShim(
     executable,
-    whichCommandSync("node", options) ?? "node",
+    whichCommandSync("node", {
+      ...options,
+      pathExt: options.pathExt
+        .split(path.delimiter)
+        .filter((extension) => extension.toLowerCase() !== ".js")
+        .join(path.delimiter),
+    }) ?? "node",
   );
   return unwrapped === null
     ? launch
