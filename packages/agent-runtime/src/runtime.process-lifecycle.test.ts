@@ -1258,7 +1258,7 @@ describe("createAgentRuntime process lifecycle", () => {
         }),
       ).resolves.toEqual({ reapedSessions: [] });
       expect(runtime.hasThread("t1")).toBe(true);
-      await runtime.stopThread({ threadId: "t1", intent: "release" });
+      await runtime.stopThread({ threadId: "t1" });
       expect(runtime.hasThread("t1")).toBe(false);
     } finally {
       await runtime.shutdown();
