@@ -12,6 +12,8 @@ import { createDesktopBrowserBroker } from "../src/desktop-browser-broker.js";
 import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
 import type { BrowserImportService } from "../src/browser-import/browser-import.js";
 
+const SERVER_ORIGIN = "http://127.0.0.1:38886";
+
 function createFakeManager(
   session: DesktopBrowserViewManager["session"],
   listTabs: DesktopBrowserViewManager["listTabs"] = () => [],
@@ -68,10 +70,10 @@ describe("desktop browser broker cookie import commands", () => {
       browserImport,
     });
     const window = createFakeWindow();
-    broker.registerWindow(window as never);
-    const [instance] = broker.listInstances();
+    broker.registerWindow(window as never, SERVER_ORIGIN);
+    const [instance] = broker.listInstances(SERVER_ORIGIN);
     await expect(
-      broker.execute({
+      broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.list_import_sources",
         instanceId: instance.instanceId,
         generation: instance.generation,
@@ -80,7 +82,7 @@ describe("desktop browser broker cookie import commands", () => {
       sources: [{ id: "firefox", name: "Firefox", profiles: [] }],
     });
     await expect(
-      broker.execute({
+      broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.import_cookies",
         instanceId: instance.instanceId,
         generation: instance.generation,
@@ -98,7 +100,7 @@ describe("desktop browser broker cookie import commands", () => {
       browserSession,
     );
     await expect(
-      broker.execute({
+      broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.import_cookies",
         instanceId: instance.instanceId,
         generation: "stale",
@@ -116,10 +118,10 @@ describe("desktop browser broker cookie import commands", () => {
       }),
       product: "Chrome/1",
     });
-    broker.registerWindow(createFakeWindow() as never);
-    const [instance] = broker.listInstances();
+    broker.registerWindow(createFakeWindow() as never, SERVER_ORIGIN);
+    const [instance] = broker.listInstances(SERVER_ORIGIN);
     await expect(
-      broker.execute({
+      broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.list_import_sources",
         instanceId: instance.instanceId,
         generation: instance.generation,
@@ -161,11 +163,11 @@ describe("desktop browser reveal", () => {
       focus: vi.fn(),
     };
     const send = vi.spyOn(window.webContents, "send");
-    broker.registerWindow(window as never);
-    broker.setHostId("host-a");
-    const [instance] = broker.listInstances();
+    broker.registerWindow(window as never, SERVER_ORIGIN);
+    broker.setHostId(SERVER_ORIGIN, "host-a");
+    const [instance] = broker.listInstances(SERVER_ORIGIN);
     try {
-      await broker.execute({
+      await broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.reveal_tab",
         instanceId: instance.instanceId,
         generation: instance.generation,

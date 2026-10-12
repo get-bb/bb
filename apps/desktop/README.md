@@ -429,33 +429,55 @@ recovery path for those cases.
 
 ### Saved servers
 
-Use **bb → Desktop Settings → Server → Add Server…** to save and switch to
-another machine's HTTP(S) bb server URL. **Window → Server** opens the same
-menu. Saved URLs remain in the menu across restarts; adding an existing URL
-selects it without creating a duplicate. **This Mac** on macOS or **This
-Computer** on Linux switches back to the built-in server without removing
-saved entries.
+Each window shows one bb server. **bb → Desktop Settings → Server** and
+**Window → Server** switch the focused window; other windows stay where they
+are. The menu checks the focused window's server. **Add Server…** saves
+another machine's HTTP(S) bb server URL and switches the focused window to it.
+Saved URLs remain in the menu across restarts; adding an existing URL selects it
+without creating a duplicate. **This Mac** on macOS or **This Computer** on
+Linux switches the window back to the built-in server without removing saved
+entries.
 
-**Set Server URL…** edits the last selected custom server. Clearing its URL removes
-that entry and switches an active custom target to the built-in server. Other
-saved servers and Connect discovery remain available. Existing single-server preferences are
-loaded automatically into the saved list in `<userData>/server-target.json`.
+**File → New Window** opens the focused window's server; switch the new window
+with the Server menu to show another server. With no window open, a new window
+opens the server of the window that was focused last, and the Server menu picks
+or adds the server for the next window instead of switching one. After a
+restart, each window reopens on its own server.
 
-The app command palette lists **Switch to <server>** for each inactive choice
-from this same Server menu, including Connect discovery. Palette list requests
-use the menu's discovery refresh policy (at most once per minute, with the
-existing ten-minute background refresh). The optional `window.bbDesktop`
-`getServerChoices`, `onServerChoicesChange`, and `selectServer` methods expose
-only `{id, name, active}`; custom server IDs are opaque hashes. Selection is
+**Set Server URL…** edits the focused window's custom server and reloads every
+window that shows it. If the focused window is not on a custom server, it adds a
+server instead. Clearing the URL removes that entry and moves its windows to the
+built-in server. Other saved servers and Connect discovery remain available.
+
+While windows show two or more different servers, each window title ends with
+` — <server name>`. Menu shortcuts and the light or dark appearance follow the
+focused window's server. The built-in server keeps running while no window shows
+it. Desktop browser tabs belong to their window's server: switching a window
+closes its browser tabs, and agents reach only windows on their own server.
+
+`<userData>/server-target.json` stores the saved list, the server for new
+windows in the fields older builds read (`target`, `connectServer`,
+`customServerUrl`), and each window's server under `windowTargets`, keyed by the
+window-state key. A file from an older build loads its single server as the
+server for new windows.
+
+The app command palette lists **Switch to <server>** for each server the
+window is not on, from this same Server menu, including Connect discovery.
+Palette list requests use the menu's discovery refresh policy (at most once per
+minute, with the existing ten-minute background refresh). The optional
+`window.bbDesktop` `getServerChoices`, `onServerChoicesChange`, and
+`selectServer` methods expose only `{id, name, active}`, where `active` marks
+the calling window's server; custom server IDs are opaque hashes. Selection is
 validated against native choices and runs the menu's existing authentication,
-window navigation, and runtime lifecycle. Older desktop shells omit these actions.
+window navigation, and runtime lifecycle for the calling window. Older desktop
+shells omit these actions.
 
 ### Server moves
 
 After `bb server move`, the old computer's data dir (`~/.bb` or
 `$BB_DATA_DIR`) contains `server-moved.json`. The desktop app reads it at
-startup, whenever the built-in server target loads, and while that target is active.
-While the target is active, the app watches the data dir. If `fs.watch` fails,
+startup, whenever a window loads the built-in server, and while any window shows
+it. While such a window is open, the app watches the data dir. If `fs.watch` fails,
 for example with `ENOSPC`, the app checks the file every 2 seconds instead
 (`src/server-moved.ts`). The server writes the lock before the new machine
 takes over and removes it if the move is rolled back, so the app acts only on a
@@ -463,13 +485,17 @@ committed move. A move is committed when the local server address answers
 `/health` with 410 `code: "server_moved"`, or when nothing listens there and no
 launcher process is alive. The app checks once when it starts or loads the
 built-in server. When a move finishes while the app is open, the app checks every
-second for up to 120 seconds. It stops if the lock disappears. The first time the app
-sees a committed lock for a `moveId`, it switches the server target once:
+second for up to 120 seconds. It stops if the lock disappears. When the app sees a
+committed lock, it switches every window on the built-in server, and the server
+for new windows if that is the built-in server:
 
 - `mode: "connect"` selects `connectHandle` with `serverUrl`.
-- `mode: "direct"` sets the custom server URL. When a move finishes while
-  the app is open, the app waits up to 60 seconds for the new `/health`
-  endpoint before it switches the window.
+- `mode: "direct"` saves and selects the custom server URL. When a move finishes
+  while the app is open, the app waits up to 60 seconds for the new `/health`
+  endpoint before it switches those windows.
+
+Windows on other servers stay on them, even the first time the app sees the
+move.
 
 The app shows "Your bb server moved to <toHostName>" once for each `moveId`
 (`<userData>/server-move-notice.json`). It still starts its own `bb-app`
@@ -479,21 +505,21 @@ app has no stored bb Connect credential, it signs in to a connect target with
 the `x-bb-connect-machine` header that the move wrote to the data dir's
 `config.json`. The app logs a warning and ignores an invalid lock.
 
-On startup, a saved built-in server choice also switches to the moved server;
-it never starts the old copy automatically. A different saved remote server
-choice remains selected. Explicitly picking the built-in server while the move
-lock exists shows "bb moved to <toHostName>" with **Open <toHostName>** and
-**Choose server…**. The screen explains whether the old copy is locked or was
+On startup, windows saved on the built-in server also switch to the moved
+server; the app never starts the old copy automatically. Windows saved on other
+servers stay on them. Picking the built-in server for a window after the move
+shows "bb moved to <toHostName>" with **Open <toHostName>** and **Choose
+server…**, which act on that window only. The screen explains whether the old copy is locked or was
 deleted. Selecting the built-in server does not unlock the old copy or remove
 its background machine service.
 
 Startup error screens list their actions as buttons. Any screen where
-retrying can help shows **Try again**. **Choose server…** opens the Server menu,
-where the user can select the built-in server if needed. A bb Connect
+retrying can help shows **Try again**. **Choose server…** opens the Server menu
+for that window, where the user can select the built-in server if needed. A bb Connect
 `unauthorized` error has no **Try again**, because the same credential fails
 the same way. **Reconnect** opens account sign-in in a desktop
 window. The app clears its old account sign-in, waits for a new session, then
-retries the selected server. A valid account session can mint and renew the
+retries every window that was waiting for that account. A valid account session can mint and renew the
 desktop session when a machine credential is rejected. Closing the sign-in
 window leaves the error screen available. Fatal errors have no buttons. The renderer sends the chosen
 action on `bb-desktop:startup-action`. The main process accepts only actions

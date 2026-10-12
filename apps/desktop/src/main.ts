@@ -14,7 +14,7 @@ import {
   nativeTheme,
   net,
   safeStorage,
-  session,
+  session as electronSession,
   shell,
   webContents as electronWebContents,
   type Event,
@@ -41,6 +41,7 @@ import {
   bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopTheme,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -89,6 +90,7 @@ import {
 import {
   DEFAULT_APPLICATION_MENU_ACCELERATORS,
   resolveApplicationMenuAccelerators,
+  type ApplicationMenuAccelerators,
 } from "./desktop-menu-shortcuts.js";
 import {
   clearOwnedRuntimePidFile,
@@ -108,7 +110,6 @@ import {
   createServerMoveNoticeStore,
   ensureServerMovedRuntime,
   hasLiveBbAppLauncher,
-  openServerMoveTarget,
   probeLocalServerMove,
   readServerMovedConnectCredential,
   readServerMovedLock,
@@ -129,11 +130,22 @@ import {
 import {
   BUILTIN_SERVER_NAME,
   createServerTargetStore,
+  isSameServerTarget,
   SERVER_TARGET_FILE_NAME,
   type ConnectServerRef,
+  type DesktopServerTarget,
   type ServerTargetStore,
 } from "./server-target.js";
-import { buildDesktopServerChoices, customServerId } from "./server-list.js";
+import {
+  buildDesktopServerChoices,
+  listDesktopServerTargets,
+  serverTargetId,
+  serverTargetName,
+} from "./server-list.js";
+import {
+  formatApplicationWindowTitle,
+  shouldShowServerInWindowTitles,
+} from "./window-title.js";
 import { openServerUrlDialog } from "./server-url-dialog.js";
 import {
   createConnectServerSync,
@@ -160,6 +172,7 @@ import {
 import { registerDesktopShutdownSignalHandlers } from "./desktop-shutdown.js";
 import {
   createDesktopWindowFactory,
+  type CreatedDesktopWindow,
   type DesktopBrowserWindow,
   type DesktopBrowserWindowCreator,
   type DesktopWindowFactory,
@@ -310,14 +323,47 @@ interface StartupErrorPage {
   url: string;
 }
 
-interface LoadWindowUrlArgs {
-  url: string;
+interface ApplicationWindowSession {
+  actionPage: StartupErrorPage | null;
+  actionPending: boolean;
+  appLoaded: boolean;
+  awaitingConnectSignIn: boolean;
+  browserWindow: BrowserWindow;
+  generation: number;
+  pageTitle: string;
+  stateKey: WindowStateKey;
+  target: DesktopServerTarget;
+  themePreference: BbDesktopTheme | null;
+  webContentsId: number;
 }
 
-interface CreateApplicationWindowArgs {
-  initialUrl: string | null;
+interface OpenApplicationWindowArgs {
   stateKey: WindowStateKey | null;
+  target: DesktopServerTarget;
 }
+
+interface OpenSetServerUrlDialogArgs {
+  edit: boolean;
+  session: ApplicationWindowSession | null;
+}
+
+interface EnsureBuiltinRuntimeArgs {
+  startup: boolean;
+}
+
+type BuiltinRuntimeResult =
+  | { error: LoadStartupErrorArgs; kind: "failed" }
+  | { kind: "moved" }
+  | { kind: "quitting" }
+  | { kind: "ready"; serverUrl: string };
+
+type OwnedRuntimeStartResult =
+  | { error: LoadStartupErrorArgs; kind: "failed" }
+  | { kind: "ready"; runtime: DesktopRuntime };
+
+type DesktopBrowserBrokerClient = ReturnType<
+  typeof createDesktopBrowserBrokerClient
+>;
 
 interface StartOwnedRuntimeArgs {
   bridgePath: string;
@@ -380,6 +426,7 @@ interface SystemConfigRequestArgs {
 }
 
 interface SystemConfigSync {
+  refresh(): void;
   stop(): void;
 }
 
@@ -393,31 +440,28 @@ let desktopWindowFactory: DesktopWindowFactory | null = null;
 let desktopBrowserViewManager: DesktopBrowserViewManager | null = null;
 let desktopFindViewManager: DesktopFindViewManager | null = null;
 let desktopBrowserBroker: DesktopBrowserBroker | null = null;
-let desktopBrowserBrokerClient: ReturnType<
-  typeof createDesktopBrowserBrokerClient
-> | null = null;
-let currentAppKeybindings: AppKeybindings = [];
-let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
+const desktopBrowserBrokerClients = new Map<
+  string,
+  DesktopBrowserBrokerClient
+>();
+const keybindingsByServerUrl = new Map<string, AppKeybindings>();
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
 let currentRuntime: DesktopRuntime | null = null;
-let currentWindowUrl: string | null = null;
+let builtinRuntimeRequest: Promise<BuiltinRuntimeResult> | null = null;
 let logViewerLineBuffer: LogLineBuffer | null = null;
 let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
-let systemConfigSync: SystemConfigSync | null = null;
-let systemConfigRefreshToken = 0;
-let refreshRemoteSystemConfig: (() => void) | null = null;
+const systemConfigSyncs = new Map<string, SystemConfigSync>();
 const applicationWindowWebContentsIds = new Set<number>();
+const windowSessions = new Map<number, ApplicationWindowSession>();
+let lastFocusedWebContentsId: number | null = null;
 const splitNavigationEnabledWebContentsIds = new Set<number>();
 const splitNavigationCommandsByWebContentsId = new Map<
   number,
   readonly AppCommandId[]
 >();
-let bbAppLoaded = false;
-let startupErrorPage: StartupErrorPage | null = null;
-let startupActionPending = false;
 let connectSignInWindow: BrowserWindow | null = null;
 let stoppingForQuit = false;
 let quitting = false;
@@ -426,8 +470,11 @@ let connectServerSync: ConnectServerSync | null = null;
 let connectCredentialCache: ConnectCredentialCache | null = null;
 let cachedConnectCredential: ConnectCredential | null = null;
 let enrollingDesktopMachine: Promise<void> | null = null;
-let connectSessionRenewal: ConnectSessionRenewal | null = null;
-let serverTargetGeneration = 0;
+const connectSessionRenewals = new Map<string, ConnectSessionRenewal>();
+const connectAuthentications = new Map<
+  string,
+  Promise<ConnectDesktopSessionResult>
+>();
 let connectAccountServers: ConnectAccountServer[] = [];
 let connectServerSyncSkipReason: ConnectServerSyncSkipReason | null = null;
 let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
@@ -757,77 +804,209 @@ function getFocusedApplicationWindow(): BrowserWindow | null {
   return null;
 }
 
+function liveSession(
+  session: ApplicationWindowSession,
+): ApplicationWindowSession | null {
+  return windowSessions.get(session.webContentsId) === session &&
+    !session.browserWindow.isDestroyed()
+    ? session
+    : null;
+}
+
+function targetSession(): ApplicationWindowSession | null {
+  const focused = BrowserWindow.getFocusedWindow();
+  const focusedSession =
+    focused === null || focused.isDestroyed()
+      ? undefined
+      : windowSessions.get(focused.webContents.id);
+  if (focusedSession !== undefined) {
+    return focusedSession;
+  }
+  const lastFocused =
+    lastFocusedWebContentsId === null
+      ? undefined
+      : windowSessions.get(lastFocusedWebContentsId);
+  if (lastFocused !== undefined && liveSession(lastFocused) !== null) {
+    return lastFocused;
+  }
+  for (const session of windowSessions.values()) {
+    if (liveSession(session) !== null) {
+      return session;
+    }
+  }
+  return null;
+}
+
+function defaultServerTarget(): DesktopServerTarget {
+  return serverTargetStore?.getDefaultTarget() ?? { kind: "builtin" };
+}
+
+function serverUrlForTarget(target: DesktopServerTarget): string {
+  if (target.kind === "connect") {
+    return target.server.url;
+  }
+  if (target.kind === "custom") {
+    return target.url;
+  }
+  return currentRuntime?.serverUrl ?? builtinServerUrl;
+}
+
+function serverOriginForTarget(target: DesktopServerTarget): string {
+  return new URL(serverUrlForTarget(target)).origin;
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function persistServerTargets(write: Promise<unknown> | undefined): void {
+  write?.catch((error: unknown) => {
+    desktopLogger.warn(
+      `[desktop] could not save which server each window opens: ${describeError(error)}`,
+    );
+  });
+}
+
+function logServerSwitchError(error: unknown): void {
+  desktopLogger.error(`Could not switch server: ${describeError(error)}`);
+}
+
+function logWindowOpenError(error: unknown): void {
+  desktopLogger.error(`Could not open a window: ${describeError(error)}`);
+}
+
 function listMenuConnectServers(): ConnectServerRef[] {
   const servers: ConnectServerRef[] = connectAccountServers.map((server) => ({
     handle: server.handle,
     name: server.name,
     url: server.url,
   }));
-  const selected = serverTargetStore?.getConnectServer() ?? null;
-  if (
-    selected !== null &&
-    !servers.some((server) => server.handle === selected.handle)
-  ) {
-    servers.push(selected);
+  for (const referenced of serverTargetStore?.listReferencedConnectServers() ??
+    []) {
+    if (!servers.some((server) => server.handle === referenced.handle)) {
+      servers.push(referenced);
+    }
   }
   return servers;
 }
 
-function listServerChoices() {
-  return buildDesktopServerChoices(serverTargetStore, listMenuConnectServers());
+function listServerChoices(activeTarget: DesktopServerTarget | null) {
+  return buildDesktopServerChoices({
+    activeTarget,
+    connectServers: listMenuConnectServers(),
+    customServerUrls: serverTargetStore?.getCustomServerUrls() ?? [],
+  });
 }
 
-function buildMenuServerItems(connectServers: ConnectServerRef[]) {
-  return buildDesktopServerChoices(serverTargetStore, connectServers).map(
-    ({ active, id, name }) => ({ checked: active, id, name }),
+function resolveServerChoice(serverId: string): DesktopServerTarget | null {
+  return (
+    listDesktopServerTargets({
+      connectServers: listMenuConnectServers(),
+      customServerUrls: serverTargetStore?.getCustomServerUrls() ?? [],
+    }).find((target) => serverTargetId(target) === serverId) ?? null
   );
 }
 
-function buildServerMenuArgs(): ServerMenuArgs {
+function buildServerMenuArgs(
+  resolveSession: () => ApplicationWindowSession | null,
+): ServerMenuArgs {
   const connectServers = listMenuConnectServers();
   return {
     addServer() {
-      void openSetServerUrlDialog(true);
+      void openSetServerUrlDialog({
+        edit: false,
+        session: resolveSession(),
+      }).catch(logServerSwitchError);
     },
     connectServersSkipReason:
       connectServers.length === 0 ? connectServerSyncSkipReason : null,
     selectServer(serverId) {
-      void setActiveServerTarget(serverId);
+      const session = resolveSession();
+      if (session === null) {
+        selectDefaultServer(serverId);
+        return;
+      }
+      void selectServerForWindow(session, serverId).catch(logServerSwitchError);
     },
-    servers: buildMenuServerItems(connectServers),
+    servers: buildDesktopServerChoices({
+      activeTarget: resolveSession()?.target ?? defaultServerTarget(),
+      connectServers,
+      customServerUrls: serverTargetStore?.getCustomServerUrls() ?? [],
+    }).map(({ active, id, name }) => ({ checked: active, id, name })),
     setServerUrl() {
-      void openSetServerUrlDialog();
+      void openSetServerUrlDialog({
+        edit: true,
+        session: resolveSession(),
+      }).catch(logServerSwitchError);
     },
   };
 }
 
-function popupServerMenu(browserWindow: BrowserWindow | null): void {
+function popupServerMenu(session: ApplicationWindowSession): void {
   connectServerSync?.onListRequested();
-  Menu.buildFromTemplate(createServerMenuItems(buildServerMenuArgs())).popup(
-    browserWindow === null ? {} : { window: browserWindow },
-  );
+  Menu.buildFromTemplate(
+    createServerMenuItems(buildServerMenuArgs(() => liveSession(session))),
+  ).popup({ window: session.browserWindow });
 }
 
-function refreshApplicationMenu(): void {
-  const choices = listServerChoices();
-  for (const browserWindow of BrowserWindow.getAllWindows()) {
-    if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
-      sendToApplicationRenderer(
-        browserWindow,
-        BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
-        choices,
+function keybindingsForSession(
+  session: ApplicationWindowSession | null | undefined,
+): AppKeybindings | undefined {
+  return session === null || session === undefined
+    ? undefined
+    : keybindingsByServerUrl.get(serverUrlForTarget(session.target));
+}
+
+function applicationMenuAccelerators(
+  session: ApplicationWindowSession | null,
+): ApplicationMenuAccelerators {
+  const keybindings = keybindingsForSession(session);
+  return keybindings === undefined
+    ? DEFAULT_APPLICATION_MENU_ACCELERATORS
+    : resolveApplicationMenuAccelerators(keybindings);
+}
+
+function applyWindowTitles(): void {
+  const sessions = [...windowSessions.values()];
+  const showServer = shouldShowServerInWindowTitles(
+    sessions.map((session) => serverTargetId(session.target)),
+  );
+  for (const session of sessions) {
+    if (!session.browserWindow.isDestroyed()) {
+      session.browserWindow.setTitle(
+        formatApplicationWindowTitle({
+          pageTitle: session.pageTitle,
+          serverName: showServer ? serverTargetName(session.target) : null,
+        }),
       );
     }
   }
+}
+
+function refreshServerChoices(): void {
+  for (const session of windowSessions.values()) {
+    if (!session.browserWindow.isDestroyed()) {
+      sendToApplicationRenderer(
+        session.browserWindow,
+        BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
+        listServerChoices(session.target),
+      );
+    }
+  }
+  applyWindowTitles();
+  rebuildApplicationMenu();
+}
+
+function rebuildApplicationMenu(): void {
   installApplicationMenu({
-    ...buildServerMenuArgs(),
-    accelerators: currentApplicationMenuAccelerators,
+    ...buildServerMenuArgs(targetSession),
+    accelerators: applicationMenuAccelerators(targetSession()),
     isMac: process.platform === "darwin",
     createNewWindow() {
-      void createApplicationWindow({
-        initialUrl: currentWindowUrl,
+      void openApplicationWindow({
         stateKey: null,
-      });
+        target: targetSession()?.target ?? defaultServerTarget(),
+      }).catch(logWindowOpenError);
     },
     openAbout() {
       void showAboutDialog();
@@ -912,12 +1091,14 @@ function refreshApplicationMenu(): void {
 
 function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   currentRuntime = runtime;
-  if (runtime === null) {
-    stopSystemConfigSync();
-  } else {
+  if (runtime !== null) {
     connectServerSync?.onRuntimeReady();
+    desktopBrowserBrokerClients
+      .get(new URL(runtime.serverUrl).origin)
+      ?.reconnect();
   }
-  refreshApplicationMenu();
+  reconcileServerServices();
+  refreshServerChoices();
   if (runtime?.ownership !== "spawned") {
     closeServerDaemonLogsWindow();
   }
@@ -952,8 +1133,42 @@ async function fetchSystemConfig(args: SystemConfigRequestArgs) {
   return parseDesktopSystemConfig(payload);
 }
 
+function createSystemConfigRefresh(
+  args: SystemConfigRequestArgs,
+): SystemConfigSync {
+  let token = 0;
+  let stopped = false;
+  return {
+    refresh(): void {
+      token += 1;
+      const requestToken = token;
+      const isCurrent = (): boolean => !stopped && requestToken === token;
+      fetchSystemConfig(args).then(
+        (config) => {
+          if (!isCurrent()) {
+            return;
+          }
+          keybindingsByServerUrl.set(args.serverUrl, config.keybindings);
+          rebuildApplicationMenu();
+        },
+        (error: unknown) => {
+          if (isCurrent()) {
+            process.stderr.write(
+              `Could not refresh system config: ${describeError(error)}\n`,
+            );
+          }
+        },
+      );
+    },
+    stop(): void {
+      stopped = true;
+    },
+  };
+}
+
 function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   const realtimeUrl = formatRealtimeUrl(serverUrl);
+  const config = createSystemConfigRefresh({ fetchImpl: fetch, serverUrl });
   const subscribeMessage: ClientMessage = {
     type: "subscribe",
     target: { kind: "system" },
@@ -995,7 +1210,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+        config.refresh();
       }
     } catch {
       return;
@@ -1009,7 +1224,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     socket = new WebSocket(realtimeUrl);
     socket.addEventListener("open", () => {
       socket?.send(JSON.stringify(subscribeMessage));
-      void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+      config.refresh();
     });
     socket.addEventListener("message", handleMessage);
     socket.addEventListener("close", scheduleReconnect);
@@ -1019,10 +1234,13 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   }
 
   connect();
+  config.refresh();
 
   return {
+    refresh: config.refresh,
     stop(): void {
       stopped = true;
+      config.stop();
       clearReconnectTimer();
       socket?.close();
       socket = null;
@@ -1030,97 +1248,182 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
   };
 }
 
-async function refreshSystemConfig(
-  args: SystemConfigRequestArgs,
-): Promise<void> {
-  const token = systemConfigRefreshToken + 1;
-  systemConfigRefreshToken = token;
-  try {
-    const config = await fetchSystemConfig(args);
-    if (token !== systemConfigRefreshToken) {
-      return;
-    }
-    currentAppKeybindings = config.keybindings;
-    currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
-      currentAppKeybindings,
-    );
-    refreshApplicationMenu();
-  } catch (error) {
-    if (token !== systemConfigRefreshToken) {
-      return;
-    }
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`Could not refresh system config: ${message}\n`);
-  }
-}
-
 function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
-  function refresh(): void {
-    void refreshSystemConfig({
-      fetchImpl: (input, init) =>
-        net.fetch(input as string | Request, {
-          ...init,
-          credentials: "include",
-        }),
-      serverUrl,
-    });
-  }
-
-  const timer = setInterval(refresh, REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS);
+  const config = createSystemConfigRefresh({
+    fetchImpl: (input, init) =>
+      net.fetch(input as string | Request, {
+        ...init,
+        credentials: "include",
+      }),
+    serverUrl,
+  });
+  const timer = setInterval(
+    config.refresh,
+    REMOTE_SYSTEM_CONFIG_POLL_INTERVAL_MS,
+  );
   timer.unref();
-  refreshRemoteSystemConfig = refresh;
-  refresh();
+  config.refresh();
 
   return {
+    refresh: config.refresh,
     stop(): void {
       clearInterval(timer);
-      refreshRemoteSystemConfig = null;
+      config.stop();
     },
   };
 }
 
-function stopSystemConfigSync(): void {
-  systemConfigSync?.stop();
-  systemConfigSync = null;
-}
-
-function startSystemConfigSync(serverUrl: string): void {
-  systemConfigSync?.stop();
-  systemConfigSync = createSystemConfigSync(serverUrl);
-  void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
-}
-
-function startRemoteSystemConfigSync(serverUrl: string): void {
-  systemConfigSync?.stop();
-  systemConfigSync = createRemoteSystemConfigSync(serverUrl);
-}
-
-function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
-  const webContentsId = browserWindow.webContents.id;
-  applicationWindowWebContentsIds.add(webContentsId);
-  const nativeWindow = BrowserWindow.fromId(browserWindow.id);
-  if (nativeWindow !== null) {
-    desktopBrowserBroker?.registerWindow(nativeWindow);
-    nativeWindow.webContents.on(
-      "did-start-navigation",
-      (_event, _url, isInPlace, isMainFrame) => {
-        if (isMainFrame && !isInPlace) {
-          splitNavigationEnabledWebContentsIds.delete(webContentsId);
-          splitNavigationCommandsByWebContentsId.delete(webContentsId);
-          desktopFindViewManager?.close(nativeWindow);
-        }
-      },
-    );
-    const layoutFindView = () => {
-      desktopFindViewManager?.layout(nativeWindow);
-    };
-    nativeWindow.on("resize", layoutFindView);
-    nativeWindow.on("enter-full-screen", layoutFindView);
-    nativeWindow.on("leave-full-screen", layoutFindView);
+function systemConfigServerUrl(
+  session: ApplicationWindowSession,
+): string | null {
+  if (!session.appLoaded) {
+    return null;
   }
-  registerApplicationRendererReloadShortcut(
-    (browserWindow as BrowserWindow).webContents,
+  if (session.target.kind === "builtin") {
+    return localServerMove === null && currentRuntime !== null
+      ? currentRuntime.serverUrl
+      : null;
+  }
+  return serverUrlForTarget(session.target);
+}
+
+function connectHandleForUrl(serverUrl: string): string | null {
+  for (const session of windowSessions.values()) {
+    if (
+      session.target.kind === "connect" &&
+      session.target.server.url === serverUrl
+    ) {
+      return session.target.server.handle;
+    }
+  }
+  return null;
+}
+
+function reconcileServerServices(): void {
+  if (quitting) {
+    return;
+  }
+  const sessions = [...windowSessions.values()];
+  if (
+    localServerMove === null &&
+    sessions.some((session) => session.target.kind === "builtin")
+  ) {
+    startServerMovedWatcher();
+  } else {
+    stopServerMovedWatcher();
+  }
+
+  const configServerUrls = new Set<string>();
+  for (const session of sessions) {
+    const serverUrl = systemConfigServerUrl(session);
+    if (serverUrl !== null) {
+      configServerUrls.add(serverUrl);
+    }
+  }
+  for (const [serverUrl, sync] of systemConfigSyncs) {
+    if (!configServerUrls.has(serverUrl)) {
+      sync.stop();
+      systemConfigSyncs.delete(serverUrl);
+      keybindingsByServerUrl.delete(serverUrl);
+    }
+  }
+  for (const serverUrl of configServerUrls) {
+    if (!systemConfigSyncs.has(serverUrl)) {
+      systemConfigSyncs.set(
+        serverUrl,
+        serverUrl === currentRuntime?.serverUrl
+          ? createSystemConfigSync(serverUrl)
+          : createRemoteSystemConfigSync(serverUrl),
+      );
+    }
+  }
+
+  for (const [serverUrl, renewal] of connectSessionRenewals) {
+    if (connectHandleForUrl(serverUrl) === null) {
+      renewal.stop();
+      connectSessionRenewals.delete(serverUrl);
+    }
+  }
+
+  const serverOrigins = new Set(
+    sessions.map((session) => serverOriginForTarget(session.target)),
   );
+  for (const [serverOrigin, client] of desktopBrowserBrokerClients) {
+    if (!serverOrigins.has(serverOrigin)) {
+      client.stop();
+      desktopBrowserBrokerClients.delete(serverOrigin);
+    }
+  }
+  const broker = desktopBrowserBroker;
+  const dataDir = builtinDataDir;
+  if (broker === null || dataDir === null) {
+    return;
+  }
+  for (const serverOrigin of serverOrigins) {
+    if (!desktopBrowserBrokerClients.has(serverOrigin)) {
+      desktopBrowserBrokerClients.set(
+        serverOrigin,
+        createDesktopBrowserBrokerClient({
+          broker,
+          dataDir,
+          homeDir: homedir(),
+          serverOrigin,
+        }),
+      );
+    }
+  }
+}
+
+function registerApplicationWindow(
+  created: CreatedDesktopWindow,
+  target: DesktopServerTarget,
+): ApplicationWindowSession | null {
+  const browserWindow = BrowserWindow.fromId(created.browserWindow.id);
+  if (browserWindow === null) {
+    return null;
+  }
+  const webContentsId = browserWindow.webContents.id;
+  const session: ApplicationWindowSession = {
+    actionPage: null,
+    actionPending: false,
+    appLoaded: false,
+    awaitingConnectSignIn: false,
+    browserWindow,
+    generation: 0,
+    pageTitle: browserWindow.getTitle(),
+    stateKey: created.stateKey,
+    target,
+    themePreference: null,
+    webContentsId,
+  };
+  windowSessions.set(webContentsId, session);
+  applicationWindowWebContentsIds.add(webContentsId);
+  desktopBrowserBroker?.registerWindow(
+    browserWindow,
+    serverOriginForTarget(target),
+  );
+  browserWindow.webContents.on(
+    "did-start-navigation",
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (isMainFrame && !isInPlace) {
+        splitNavigationEnabledWebContentsIds.delete(webContentsId);
+        splitNavigationCommandsByWebContentsId.delete(webContentsId);
+        desktopFindViewManager?.close(browserWindow);
+      }
+    },
+  );
+  const layoutFindView = () => {
+    desktopFindViewManager?.layout(browserWindow);
+  };
+  browserWindow.on("resize", layoutFindView);
+  browserWindow.on("enter-full-screen", layoutFindView);
+  browserWindow.on("leave-full-screen", layoutFindView);
+  browserWindow.on("page-title-updated", (event, title) => {
+    event.preventDefault();
+    session.pageTitle = title;
+    applyWindowTitles();
+  });
+  registerApplicationRendererReloadShortcut(browserWindow.webContents);
   registerDesktopContextMenu({ webContents: browserWindow.webContents });
   browserWindow.on("enter-full-screen", () => {
     sendDesktopWindowStateChanged(browserWindow);
@@ -1134,45 +1437,105 @@ function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
     applicationWindowWebContentsIds.delete(webContentsId);
     splitNavigationEnabledWebContentsIds.delete(webContentsId);
     splitNavigationCommandsByWebContentsId.delete(webContentsId);
+    windowSessions.delete(webContentsId);
+    if (lastFocusedWebContentsId === webContentsId) {
+      lastFocusedWebContentsId = null;
+    }
+    if (quitting) {
+      return;
+    }
+    persistServerTargets(
+      serverTargetStore?.removeWindowTarget(session.stateKey),
+    );
+    reconcileServerServices();
+    refreshServerChoices();
   });
+  return session;
 }
 
-async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
+const BUILTIN_RUNTIME_UNAVAILABLE_ERROR: LoadStartupErrorArgs = {
+  actions: [
+    { id: "retry", label: "Try again" },
+    { id: "choose-server", label: "Choose server…" },
+  ],
+  details:
+    `Could not connect to the local bb server on ${process.platform === "darwin" ? "this Mac" : "this computer"}. ` +
+    "Check that the port is free or that a compatible bb server is running.",
+  logs: "",
+  title: "Could not connect to bb server",
+};
+
+function ensureBuiltinRuntime(
+  args: EnsureBuiltinRuntimeArgs,
+): Promise<BuiltinRuntimeResult> {
+  builtinRuntimeRequest ??= resolveBuiltinRuntime(args.startup).finally(() => {
+    builtinRuntimeRequest = null;
+  });
+  return builtinRuntimeRequest;
+}
+
+async function resolveBuiltinRuntime(
+  startup: boolean,
+): Promise<BuiltinRuntimeResult> {
+  if (localServerMove === null) {
+    const move = await readCommittedLocalServerMove();
+    if (move !== null) {
+      for (const session of await activateLocalServerMove(move)) {
+        void applyWindowTarget(session);
+      }
+    }
+  }
   if (localServerMove !== null) {
-    return false;
+    return { kind: "moved" };
   }
   if (currentRuntime !== null) {
-    return true;
+    return { kind: "ready", serverUrl: currentRuntime.serverUrl };
   }
+  const failed = (error: LoadStartupErrorArgs): BuiltinRuntimeResult => ({
+    error: startup ? error : BUILTIN_RUNTIME_UNAVAILABLE_ERROR,
+    kind: "failed",
+  });
   if (desktopBridgePath === null || desktopUserDataPath === null) {
-    return false;
+    return { error: BUILTIN_RUNTIME_UNAVAILABLE_ERROR, kind: "failed" };
   }
-
   const existingProbe = await probeBbServer({
     serverUrl: builtinServerUrl,
     timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
   });
-
-  if (existingProbe.kind === "compatible") {
-    setCurrentRuntime({
-      bbProcess: null,
-      ownership: "attached",
-      serverUrl: existingProbe.serverUrl,
-      userDataPath: null,
-    });
-    return true;
-  }
-
   if (existingProbe.kind === "incompatible") {
-    return false;
+    return failed({
+      details: `Port ${builtinServerUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
+      logs: "",
+      actions: [],
+      title: "Port conflict",
+    });
   }
-
-  const runtime = await startOwnedRuntime({
+  if (existingProbe.kind === "compatible") {
+    const decision = startup
+      ? await decideOnExistingServer(existingProbe)
+      : "attach";
+    if (decision === "quit") {
+      app.quit();
+      return { kind: "quitting" };
+    }
+    if (decision === "attach") {
+      setCurrentRuntime({
+        bbProcess: null,
+        ownership: "attached",
+        serverUrl: existingProbe.serverUrl,
+        userDataPath: null,
+      });
+      return { kind: "ready", serverUrl: existingProbe.serverUrl };
+    }
+  }
+  const started = await startOwnedRuntime({
     bridgePath: desktopBridgePath,
     serverUrl: builtinServerUrl,
     userDataPath: desktopUserDataPath,
   });
-  return runtime !== null;
+  return started.kind === "ready"
+    ? { kind: "ready", serverUrl: started.runtime.serverUrl }
+    : failed(started.error);
 }
 
 async function authenticateConnectTarget(
@@ -1180,7 +1543,7 @@ async function authenticateConnectTarget(
   targetHandle: string,
   isCurrent: () => boolean,
 ): Promise<ConnectDesktopSessionResult> {
-  const cookieStore = session.defaultSession.cookies;
+  const cookieStore = electronSession.defaultSession.cookies;
   let cachedFailure: ConnectDesktopSessionResult | null = null;
   if (cachedConnectCredential !== null) {
     const cachedResult = await installConnectDesktopSession({
@@ -1263,8 +1626,8 @@ async function authenticateConnectTarget(
       }
     );
   }
-  const localRuntimeReady = await ensureBuiltinRuntimeAttached();
-  if (!localRuntimeReady || currentRuntime === null) {
+  const localRuntime = await ensureBuiltinRuntime({ startup: false });
+  if (localRuntime.kind !== "ready") {
     return (
       cachedFailure ?? {
         code: "network",
@@ -1277,7 +1640,7 @@ async function authenticateConnectTarget(
   const localResult = await installConnectDesktopSession({
     cookieStore,
     mintCookie: createLocalServerCookieSource({
-      localServerUrl: currentRuntime.serverUrl,
+      localServerUrl: localRuntime.serverUrl,
     }),
     remoteServerUrl,
   });
@@ -1285,6 +1648,54 @@ async function authenticateConnectTarget(
     void ensureDesktopMachineEnrolled();
   }
   return localResult;
+}
+
+function authenticateConnectServer(
+  server: ConnectServerRef,
+): Promise<ConnectDesktopSessionResult> {
+  const pending = connectAuthentications.get(server.url);
+  if (pending !== undefined) {
+    return pending;
+  }
+  const authentication = authenticateConnectTarget(
+    server.url,
+    server.handle,
+    () => connectHandleForUrl(server.url) !== null,
+  ).finally(() => {
+    connectAuthentications.delete(server.url);
+  });
+  connectAuthentications.set(server.url, authentication);
+  return authentication;
+}
+
+function startConnectSessionRenewal(
+  serverUrl: string,
+  expiresAt: number,
+): void {
+  let renewal = connectSessionRenewals.get(serverUrl);
+  if (renewal === undefined) {
+    renewal = createConnectSessionRenewal({
+      async authenticate(remoteServerUrl, isCurrent) {
+        const handle = connectHandleForUrl(remoteServerUrl);
+        if (handle === null) {
+          return { detail: "no window shows this server", ok: false };
+        }
+        const result = await authenticateConnectTarget(
+          remoteServerUrl,
+          handle,
+          () => isCurrent() && connectHandleForUrl(remoteServerUrl) !== null,
+        );
+        return result.ok
+          ? result
+          : { detail: `${result.code}: ${result.detail}`, ok: false };
+      },
+      log: (message) => {
+        desktopLogger.warn(`[desktop] ${message}`);
+      },
+    });
+    connectSessionRenewals.set(serverUrl, renewal);
+  }
+  renewal.start({ expiresAt, remoteServerUrl: serverUrl });
 }
 
 async function clearCachedConnectCredential(): Promise<void> {
@@ -1327,7 +1738,25 @@ function showServerMovedNotice(notice: ServerMovedNotice): void {
   });
 }
 
-async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
+function adoptStoredTargets(
+  stateKeys: readonly WindowStateKey[],
+): ApplicationWindowSession[] {
+  const adopted: ApplicationWindowSession[] = [];
+  for (const session of windowSessions.values()) {
+    const stored = stateKeys.includes(session.stateKey)
+      ? (serverTargetStore?.getWindowTarget(session.stateKey) ?? null)
+      : null;
+    if (stored !== null) {
+      session.target = stored;
+      adopted.push(session);
+    }
+  }
+  return adopted;
+}
+
+async function activateLocalServerMove(
+  move: DesktopServerMove,
+): Promise<ApplicationWindowSession[]> {
   if (
     serverTargetStore === null ||
     serverMoveNoticeStore === null ||
@@ -1336,22 +1765,23 @@ async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
     desktopUserDataPath === null ||
     builtinDataDir === null
   ) {
-    return;
+    return [];
   }
   const bridgePath = desktopBridgePath;
   const userDataPath = desktopUserDataPath;
   localServerMove = move;
   stopServerMovedWatcher();
   desktopLogger.info(
-    `[desktop] this computer's bb server moved to ${move.toHostName}; the app now opens that server and runs this computer as a regular machine`,
+    `[desktop] this computer's bb server moved to ${move.toHostName}; windows on ${BUILTIN_SERVER_NAME} now open that server and this computer runs as a regular machine`,
   );
-  await applyServerMove({
+  const { retargeted } = await applyServerMove({
     move,
     noticeStore: serverMoveNoticeStore,
     showNotice: showServerMovedNotice,
     targetStore: serverTargetStore,
   });
-  refreshApplicationMenu();
+  const moved = adoptStoredTargets(retargeted);
+  refreshServerChoices();
   connectMovedMachine({
     bridgePath,
     dataDir: builtinDataDir,
@@ -1359,6 +1789,7 @@ async function activateLocalServerMove(move: DesktopServerMove): Promise<void> {
     noticeStore: machineServiceNoticeStore,
     userDataPath,
   });
+  return moved;
 }
 
 function connectMovedMachine(args: {
@@ -1424,7 +1855,7 @@ function connectMovedMachine(args: {
         });
       },
     });
-    refreshApplicationMenu();
+    refreshServerChoices();
   })()
     .catch((error: unknown) => {
       desktopLogger.warn(
@@ -1533,35 +1964,42 @@ function stopServerMovedWatcher(): void {
 }
 
 async function handleWatchedServerMove(move: DesktopServerMove): Promise<void> {
-  if (
-    localServerMove !== null ||
-    serverTargetStore?.getTarget().kind !== "builtin"
-  ) {
+  if (localServerMove !== null) {
     stopServerMovedWatcher();
     return;
   }
+  let moved: ApplicationWindowSession[];
   try {
-    await activateLocalServerMove(move);
+    moved = await activateLocalServerMove(move);
   } catch (error) {
     desktopLogger.warn(
-      `[desktop] could not switch to the moved bb server: ${error instanceof Error ? error.message : String(error)}`,
+      `[desktop] could not switch to the moved bb server: ${describeError(error)}`,
     );
     return;
   }
-  const generation = serverTargetGeneration;
+  const generations = new Map(
+    moved.map((session) => [session, session.generation]),
+  );
+  const isWaiting = (session: ApplicationWindowSession): boolean =>
+    liveSession(session) !== null &&
+    session.generation === generations.get(session);
   if (move.target.kind === "custom") {
     await waitForServerMoveDestination({
       fetchImpl: (input, init) => net.fetch(input, init),
       intervalMs: SERVER_MOVE_DESTINATION_INTERVAL_MS,
-      isCancelled: () => quitting || serverTargetGeneration !== generation,
+      isCancelled: () => quitting || !moved.some(isWaiting),
       serverUrl: move.target.url,
       timeoutMs: SERVER_MOVE_DESTINATION_TIMEOUT_MS,
     });
   }
-  if (quitting || serverTargetGeneration !== generation) {
+  if (quitting) {
     return;
   }
-  await applyServerTarget();
+  for (const session of moved) {
+    if (isWaiting(session)) {
+      void applyWindowTarget(session);
+    }
+  }
   connectServerSync?.syncNow().catch(() => {});
 }
 
@@ -1599,50 +2037,43 @@ function ensureDesktopMachineEnrolled(): void {
 }
 
 async function runStartupAction(
+  session: ApplicationWindowSession,
   action: StartupActionId,
-  browserWindow: BrowserWindow | null,
 ): Promise<void> {
   if (action === "choose-server") {
-    popupServerMenu(browserWindow);
+    popupServerMenu(session);
     return;
   }
   if (action === "reconnect-connect") {
-    openConnectSignIn(browserWindow);
+    openConnectSignIn(session);
     return;
   }
-  if (startupActionPending) {
+  if (session.actionPending) {
     return;
   }
-  startupActionPending = true;
+  session.actionPending = true;
   try {
-    startupErrorPage = null;
-    await loadLoadingView();
-    if (
-      action === "open-moved-server" &&
-      localServerMove !== null &&
-      serverTargetStore !== null
-    ) {
-      await openServerMoveTarget({
-        move: localServerMove,
-        targetStore: serverTargetStore,
-      });
+    await loadLoadingView(session);
+    if (action === "open-moved-server" && localServerMove !== null) {
+      await switchWindowTarget(session, localServerMove.target);
+      return;
     }
-    await applyServerTarget();
+    await applyWindowTarget(session);
   } catch (error) {
-    await loadStartupError({
+    await loadStartupError(session, {
       actions: [],
-      details: error instanceof Error ? error.message : String(error),
+      details: describeError(error),
       logs: "",
       title: "Could not open bb",
     });
   } finally {
-    startupActionPending = false;
+    session.actionPending = false;
   }
 }
 
-function openConnectSignIn(parentWindow: BrowserWindow | null): void {
-  const target = serverTargetStore?.getTarget();
-  if (target?.kind !== "connect") return;
+function openConnectSignIn(session: ApplicationWindowSession): void {
+  const target = session.target;
+  if (target.kind !== "connect") return;
   const targetUrl = target.server.url;
   if (connectSignInWindow !== null && !connectSignInWindow.isDestroyed()) {
     connectSignInWindow.focus();
@@ -1658,7 +2089,7 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
   signInUrl.searchParams.set("returnTo", targetUrl);
   const signInWindow = new BrowserWindow({
     height: 720,
-    parent: parentWindow ?? undefined,
+    parent: liveSession(session)?.browserWindow,
     title: "Reconnect bb Connect",
     webPreferences: {
       contextIsolation: true,
@@ -1683,26 +2114,34 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
     )
       return;
     completed = true;
-    session.defaultSession.cookies.removeListener("changed", onCookieChanged);
+    electronSession.defaultSession.cookies.removeListener(
+      "changed",
+      onCookieChanged,
+    );
     if (!signInWindow.isDestroyed()) signInWindow.close();
-    const currentTarget = serverTargetStore?.getTarget();
-    if (
-      currentTarget?.kind === "connect" &&
-      currentTarget.server.url === targetUrl
-    ) {
-      void applyServerTarget();
+    for (const waiting of windowSessions.values()) {
+      if (
+        waiting.awaitingConnectSignIn &&
+        waiting.target.kind === "connect" &&
+        deriveConnectBaseUrl(waiting.target.server.url) === accountUrl
+      ) {
+        void applyWindowTarget(waiting);
+      }
     }
   };
-  session.defaultSession.cookies.on("changed", onCookieChanged);
+  electronSession.defaultSession.cookies.on("changed", onCookieChanged);
   signInWindow.on("closed", () => {
-    session.defaultSession.cookies.removeListener("changed", onCookieChanged);
+    electronSession.defaultSession.cookies.removeListener(
+      "changed",
+      onCookieChanged,
+    );
     if (connectSignInWindow === signInWindow) connectSignInWindow = null;
   });
-  void session.defaultSession.cookies
+  void electronSession.defaultSession.cookies
     .remove(accountUrl, cookieName)
     .catch((error: unknown) => {
       desktopLogger.warn(
-        `[desktop] could not clear bb Connect sign-in: ${error instanceof Error ? error.message : String(error)}`,
+        `[desktop] could not clear bb Connect sign-in: ${describeError(error)}`,
       );
     })
     .then(async () => {
@@ -1712,33 +2151,17 @@ function openConnectSignIn(parentWindow: BrowserWindow | null): void {
     })
     .catch((error: unknown) => {
       desktopLogger.warn(
-        `[desktop] could not open bb Connect sign-in: ${error instanceof Error ? error.message : String(error)}`,
+        `[desktop] could not open bb Connect sign-in: ${describeError(error)}`,
       );
       if (!signInWindow.isDestroyed()) signInWindow.close();
     });
 }
 
-async function selectBuiltinServer(): Promise<void> {
-  if (serverTargetStore === null) {
-    return;
-  }
-  const move = await readCommittedLocalServerMove();
-  if (move !== null) {
-    localServerMove = move;
-    await loadServerMovedView(move);
-    refreshApplicationMenu();
-    return;
-  }
-  const switched = await serverTargetStore.setTarget("builtin");
-  if (!switched) {
-    refreshApplicationMenu();
-    return;
-  }
-  await applyServerTarget();
-}
-
-async function loadServerMovedView(move: DesktopServerMove): Promise<void> {
-  await loadActionView({
+async function loadServerMovedView(
+  session: ApplicationWindowSession,
+  move: DesktopServerMove,
+): Promise<void> {
+  await loadActionView(session, {
     actions: [
       { id: "open-moved-server", label: `Open ${move.toHostName}` },
       { id: "choose-server", label: "Choose server…" },
@@ -1751,195 +2174,227 @@ async function loadServerMovedView(move: DesktopServerMove): Promise<void> {
   });
 }
 
-async function applyServerTarget(): Promise<void> {
-  startupErrorPage = null;
-  desktopBrowserBrokerClient?.reconnect();
-  if (serverTargetStore === null) {
-    return;
-  }
-  connectSessionRenewal?.stop();
-  serverTargetGeneration += 1;
-  const generation = serverTargetGeneration;
-  const isCurrent = (): boolean => serverTargetGeneration === generation;
-  if (serverTargetStore.getTarget().kind === "builtin") {
-    await activateLocalServerMoveIfLocked();
-    if (!isCurrent()) {
-      return;
-    }
-  }
-  const target = serverTargetStore.getTarget();
+function beginWindowLoad(session: ApplicationWindowSession): () => boolean {
+  session.generation += 1;
+  const generation = session.generation;
+  session.actionPage = null;
+  session.appLoaded = false;
+  session.awaitingConnectSignIn = false;
+  desktopBrowserBroker?.setWindowServer(
+    session.webContentsId,
+    serverOriginForTarget(session.target),
+  );
+  reconcileServerServices();
+  return () =>
+    liveSession(session) !== null && session.generation === generation;
+}
 
-  if (target.kind === "builtin") {
-    startServerMovedWatcher();
-    const attached = await ensureBuiltinRuntimeAttached();
-    if (!isCurrent()) {
-      return;
-    }
-    if (!attached) {
-      await loadStartupError({
-        actions: [
-          { id: "retry", label: "Try again" },
-          { id: "choose-server", label: "Choose server…" },
-        ],
-        details:
-          `Could not connect to the local bb server on ${process.platform === "darwin" ? "this Mac" : "this computer"}. ` +
-          "Check that the port is free or that a compatible bb server is running.",
+async function applyWindowTarget(
+  session: ApplicationWindowSession,
+): Promise<void> {
+  const isCurrent = beginWindowLoad(session);
+  try {
+    await loadWindowTarget(session, isCurrent);
+  } catch (error) {
+    if (isCurrent()) {
+      await loadStartupError(session, {
+        actions: [],
+        details: describeError(error),
         logs: "",
-        title: "Could not connect to bb server",
+        title: "Could not open bb",
       });
-      refreshApplicationMenu();
+    }
+  }
+  if (isCurrent()) {
+    reconcileServerServices();
+    refreshServerChoices();
+  }
+}
+
+async function loadWindowTarget(
+  session: ApplicationWindowSession,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const target = session.target;
+  if (target.kind === "builtin") {
+    const runtime = await ensureBuiltinRuntime({ startup: false });
+    if (!isCurrent() || runtime.kind === "quitting") {
       return;
     }
-    const localServerUrl = currentRuntime?.serverUrl ?? builtinServerUrl;
-    startSystemConfigSync(localServerUrl);
+    if (runtime.kind === "moved") {
+      if (localServerMove !== null) {
+        await loadServerMovedView(session, localServerMove);
+      }
+      return;
+    }
+    if (runtime.kind === "failed") {
+      await loadStartupError(session, runtime.error);
+      return;
+    }
     await loadBbApp(
+      session,
       resolveDesktopWindowUrl({
         env: process.env,
-        serverUrl: localServerUrl,
+        serverUrl: runtime.serverUrl,
       }),
     );
-  } else if (target.kind === "connect") {
-    stopServerMovedWatcher();
-    const result = await authenticateConnectTarget(
-      target.server.url,
-      target.server.handle,
-      isCurrent,
-    );
-    if (!isCurrent()) {
-      return;
-    }
-    if (!result.ok) {
-      desktopLogger.warn(
-        `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
-      );
-      const unauthorized = result.code === "unauthorized";
-      await loadStartupError({
-        actions: [
-          ...(unauthorized
-            ? [
-                {
-                  id: "reconnect-connect" as const,
-                  label: "Reconnect",
-                },
-              ]
-            : [{ id: "retry" as const, label: "Try again" }]),
-          { id: "choose-server", label: "Choose server…" },
-        ],
-        details: unauthorized
-          ? "The desktop app could not establish a session for this Connect server. " +
-            (result.detail === "this account does not own the selected server"
-              ? `(unauthorized: This account does not own ${target.server.name}.)`
-              : "(unauthorized: The app was rejected.)")
-          : "The desktop app could not establish a session for this Connect server. " +
-            `(${result.code}: ${result.detail})`,
-        logs: "",
-        title: "Could not authenticate with bb Connect",
-      });
-      refreshApplicationMenu();
-      return;
-    }
-    connectSessionRenewal?.start({
-      expiresAt: result.expiresAt,
-      remoteServerUrl: target.server.url,
-    });
-    const loaded = await loadRemoteServerTarget(target.server.url, isCurrent);
-    if (!isCurrent()) {
-      return;
-    }
-    if (!loaded) {
-      connectSessionRenewal?.stop();
-    }
-  } else {
-    stopServerMovedWatcher();
-    await loadRemoteServerTarget(target.url, isCurrent);
-    if (!isCurrent()) {
-      return;
-    }
+    return;
   }
-  refreshApplicationMenu();
+  if (target.kind === "custom") {
+    await loadRemoteServerTarget(session, target.url, isCurrent);
+    return;
+  }
+  const result = await authenticateConnectServer(target.server);
+  if (!isCurrent()) {
+    return;
+  }
+  if (!result.ok) {
+    desktopLogger.warn(
+      `[desktop] Connect authentication failed (${result.code}): ${result.detail}`,
+    );
+    const unauthorized = result.code === "unauthorized";
+    await loadStartupError(session, {
+      actions: [
+        ...(unauthorized
+          ? [
+              {
+                id: "reconnect-connect" as const,
+                label: "Reconnect",
+              },
+            ]
+          : [{ id: "retry" as const, label: "Try again" }]),
+        { id: "choose-server", label: "Choose server…" },
+      ],
+      details: unauthorized
+        ? "The desktop app could not establish a session for this Connect server. " +
+          (result.detail === "this account does not own the selected server"
+            ? `(unauthorized: This account does not own ${target.server.name}.)`
+            : "(unauthorized: The app was rejected.)")
+        : "The desktop app could not establish a session for this Connect server. " +
+          `(${result.code}: ${result.detail})`,
+      logs: "",
+      title: "Could not authenticate with bb Connect",
+    });
+    session.awaitingConnectSignIn = unauthorized;
+    return;
+  }
+  startConnectSessionRenewal(target.server.url, result.expiresAt);
+  await loadRemoteServerTarget(session, target.server.url, isCurrent);
 }
 
 async function loadRemoteServerTarget(
+  session: ApplicationWindowSession,
   serverUrl: string,
   isCurrent: () => boolean,
-): Promise<boolean> {
+): Promise<void> {
   const loaded = await loadRemoteServerPage({
     isCurrent,
-    loadStartupError,
-    loadUrl: loadWindowUrl,
+    loadStartupError: (args) => loadStartupError(session, args),
+    loadUrl: (args) => loadWindowUrl(session, args.url),
     logWarning: (message) => {
       desktopLogger.warn(message);
     },
     serverUrl,
   });
-  if (!loaded || !isCurrent()) {
-    return loaded;
+  if (loaded && isCurrent()) {
+    session.appLoaded = true;
   }
-  bbAppLoaded = true;
-  startRemoteSystemConfigSync(serverUrl);
-  return true;
 }
 
-async function setActiveServerTarget(serverId: string): Promise<void> {
-  if (
-    serverTargetStore === null ||
-    !listServerChoices().some(
-      (choice) => choice.id === serverId && !choice.active,
-    )
-  ) {
-    return;
+async function switchWindowTarget(
+  session: ApplicationWindowSession,
+  target: DesktopServerTarget,
+): Promise<void> {
+  session.target = target;
+  persistServerTargets(
+    serverTargetStore?.setWindowTarget(session.stateKey, target),
+  );
+  if (targetSession() === session) {
+    persistServerTargets(serverTargetStore?.setDefaultTarget(target));
   }
-  if (serverId.startsWith("connect:")) {
-    const handle = serverId.slice("connect:".length);
-    const server = listMenuConnectServers().find(
-      (candidate) => candidate.handle === handle,
-    );
-    if (server === undefined) {
-      refreshApplicationMenu();
-      return;
-    }
-    await serverTargetStore.setConnectServer(server);
-    await applyServerTarget();
-    return;
-  }
-  if (serverId.startsWith("custom:")) {
-    const url = serverTargetStore
-      .getCustomServerUrls()
-      .find((url) => customServerId(url) === serverId);
-    if (url === undefined) {
-      return;
-    }
-    await serverTargetStore.setCustomServerUrl(url);
-    await applyServerTarget();
-    return;
-  }
-  if (serverId === "builtin") await selectBuiltinServer();
+  refreshServerChoices();
+  await applyWindowTarget(session);
 }
 
-async function openSetServerUrlDialog(add = false): Promise<void> {
-  if (serverTargetStore === null || serverUrlDialogPreloadPath === null) {
+async function selectServerForWindow(
+  session: ApplicationWindowSession,
+  serverId: string,
+): Promise<void> {
+  const target = resolveServerChoice(serverId);
+  if (target === null) {
+    refreshServerChoices();
     return;
   }
-  const previousUrl = add ? null : serverTargetStore.getCustomServerUrl();
+  if (serverTargetId(target) === serverTargetId(session.target)) {
+    return;
+  }
+  await switchWindowTarget(session, target);
+}
+
+async function selectServerForSender(
+  webContentsId: number,
+  serverId: string,
+): Promise<void> {
+  const session = windowSessions.get(webContentsId);
+  if (session !== undefined) {
+    await selectServerForWindow(session, serverId);
+  }
+}
+
+function selectDefaultServer(serverId: string): void {
+  const target = resolveServerChoice(serverId);
+  if (target !== null) {
+    persistServerTargets(serverTargetStore?.setDefaultTarget(target));
+  }
+  refreshServerChoices();
+}
+
+async function openSetServerUrlDialog(
+  args: OpenSetServerUrlDialogArgs,
+): Promise<void> {
+  const store = serverTargetStore;
+  if (store === null || serverUrlDialogPreloadPath === null) {
+    return;
+  }
+  const previousUrl =
+    args.edit && args.session?.target.kind === "custom"
+      ? args.session.target.url
+      : null;
   const result = await openServerUrlDialog({
     initialUrl: previousUrl,
-    parentWindow: getFocusedApplicationWindow(),
+    parentWindow:
+      args.session === null
+        ? null
+        : (liveSession(args.session)?.browserWindow ?? null),
     preloadPath: serverUrlDialogPreloadPath,
   });
   if (result.kind === "cancelled") {
     return;
   }
-  if (
-    result.kind === "clear" &&
-    serverTargetStore.getCustomServerUrl() === null
-  ) {
+  if (previousUrl === null) {
+    if (result.kind === "clear") {
+      return;
+    }
+    const target: DesktopServerTarget = {
+      kind: "custom",
+      url: await store.addCustomServerUrl(result.url),
+    };
+    const session = args.session === null ? null : liveSession(args.session);
+    if (session === null) {
+      persistServerTargets(store.setDefaultTarget(target));
+      refreshServerChoices();
+    } else {
+      await switchWindowTarget(session, target);
+    }
     return;
   }
-  await serverTargetStore.setCustomServerUrl(
-    result.kind === "set" ? result.url : null,
-    previousUrl ?? undefined,
-  );
-  await applyServerTarget();
+  const moved =
+    result.kind === "clear"
+      ? await store.removeCustomServerUrl(previousUrl)
+      : await store.replaceCustomServerUrl(previousUrl, result.url);
+  const adopted = adoptStoredTargets(moved);
+  refreshServerChoices();
+  await Promise.all(adopted.map((session) => applyWindowTarget(session)));
 }
 
 function sendLogViewerSnapshot(args: SendLogViewerSnapshotArgs): void {
@@ -2091,31 +2546,41 @@ async function openDataDirectory(): Promise<void> {
   }
 }
 
-async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
-  startupErrorPage = null;
-  currentWindowUrl = args.url;
-  if (desktopWindowFactory === null) {
+async function loadWindowUrl(
+  session: ApplicationWindowSession,
+  url: string,
+): Promise<void> {
+  session.actionPage = null;
+  if (desktopWindowFactory === null || session.browserWindow.isDestroyed()) {
     return;
   }
-
-  await desktopWindowFactory.loadUrl({ url: args.url });
+  await desktopWindowFactory.loadUrl({
+    browserWindow: session.browserWindow,
+    url,
+  });
 }
 
-async function loadLoadingView(): Promise<void> {
-  bbAppLoaded = false;
-  await loadWindowUrl({
-    url: createLocalViewUrl({
+async function loadLoadingView(
+  session: ApplicationWindowSession,
+): Promise<void> {
+  session.appLoaded = false;
+  await loadWindowUrl(
+    session,
+    createLocalViewUrl({
       viewModel: {
         kind: "loading",
         message: "Starting local services and opening the bb workspace.",
         title: "Opening bb",
       },
     }),
-  });
+  );
 }
 
-async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
-  await loadActionView({
+async function loadStartupError(
+  session: ApplicationWindowSession,
+  args: LoadStartupErrorArgs,
+): Promise<void> {
+  await loadActionView(session, {
     ...args,
     details:
       args.actions.length === 0
@@ -2124,8 +2589,21 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   });
 }
 
-async function loadActionView(args: LoadStartupErrorArgs): Promise<void> {
-  bbAppLoaded = false;
+async function loadStartupErrorInAllWindows(
+  args: LoadStartupErrorArgs,
+): Promise<void> {
+  await Promise.all(
+    [...windowSessions.values()].map((session) =>
+      loadStartupError(session, args),
+    ),
+  );
+}
+
+async function loadActionView(
+  session: ApplicationWindowSession,
+  args: LoadStartupErrorArgs,
+): Promise<void> {
+  session.appLoaded = false;
   const url = createLocalViewUrl({
     viewModel: {
       actions: args.actions,
@@ -2135,19 +2613,22 @@ async function loadActionView(args: LoadStartupErrorArgs): Promise<void> {
       title: args.title,
     },
   });
-  const loading = loadWindowUrl({ url });
-  startupErrorPage =
+  const loading = loadWindowUrl(session, url);
+  session.actionPage =
     args.actions.length === 0
       ? null
       : { actions: args.actions.map((action) => action.id), url };
   await loading;
 }
 
-async function loadBbApp(serverUrl: string): Promise<void> {
-  bbAppLoaded = true;
-  await loadWindowUrl({ url: serverUrl });
-  if (shouldOpenDevTools()) {
-    desktopWindowFactory?.openDevTools();
+async function loadBbApp(
+  session: ApplicationWindowSession,
+  url: string,
+): Promise<void> {
+  session.appLoaded = true;
+  await loadWindowUrl(session, url);
+  if (shouldOpenDevTools() && !session.browserWindow.isDestroyed()) {
+    session.browserWindow.webContents.openDevTools({ mode: "detach" });
   }
 }
 
@@ -2155,22 +2636,25 @@ function shouldOpenDevTools(): boolean {
   return process.env.BB_DESKTOP_OPEN_DEVTOOLS === "1";
 }
 
-async function createApplicationWindow(
-  args: CreateApplicationWindowArgs,
-): Promise<DesktopBrowserWindow | null> {
+async function openApplicationWindow(
+  args: OpenApplicationWindowArgs,
+): Promise<void> {
   if (desktopWindowFactory === null) {
-    return null;
+    return;
   }
-
-  const browserWindow = await desktopWindowFactory.createWindow({
-    initialUrl: args.initialUrl,
-    stateKey: args.stateKey,
-  });
-  registerApplicationWindow(browserWindow);
-  if (bbAppLoaded && shouldOpenDevTools()) {
-    browserWindow.webContents.openDevTools({ mode: "detach" });
+  const session = registerApplicationWindow(
+    await desktopWindowFactory.createWindow({ stateKey: args.stateKey }),
+    args.target,
+  );
+  if (session === null) {
+    return;
   }
-  return browserWindow;
+  persistServerTargets(
+    serverTargetStore?.setWindowTarget(session.stateKey, session.target),
+  );
+  refreshServerChoices();
+  await loadLoadingView(session);
+  await applyWindowTarget(session);
 }
 
 async function stopOwnedRuntime(): Promise<void> {
@@ -2210,10 +2694,19 @@ function handleBeforeQuit(event: Event): void {
 
 async function finishQuit(): Promise<void> {
   stopServerMovedWatcher();
-  desktopBrowserBrokerClient?.stop();
+  for (const client of desktopBrowserBrokerClients.values()) {
+    client.stop();
+  }
+  desktopBrowserBrokerClients.clear();
   desktopBrowserBroker?.dispose();
-  stopSystemConfigSync();
-  connectSessionRenewal?.stop();
+  for (const sync of systemConfigSyncs.values()) {
+    sync.stop();
+  }
+  systemConfigSyncs.clear();
+  for (const renewal of connectSessionRenewals.values()) {
+    renewal.stop();
+  }
+  connectSessionRenewals.clear();
   desktopUpdateService?.stop();
   desktopAutoUpdateService?.stop();
   desktopBrowserViewManager?.destroyAll();
@@ -2226,10 +2719,10 @@ function registerDesktopUpdateIpc(): void {
   registerServerChoiceIpc({
     applicationWindowWebContentsIds,
     onListRequested: () => connectServerSync?.onListRequested(),
-    list: listServerChoices,
-    select: setActiveServerTarget,
-    onError: (error) =>
-      desktopLogger.error(`Could not switch server: ${String(error)}`),
+    list: (webContentsId) =>
+      listServerChoices(windowSessions.get(webContentsId)?.target ?? null),
+    select: selectServerForSender,
+    onError: logServerSwitchError,
   });
   registerDesktopWindowFocusIpc(applicationWindowWebContentsIds);
   registerDesktopClipboardIpc(applicationWindowWebContentsIds);
@@ -2312,19 +2805,25 @@ function registerDesktopUpdateIpc(): void {
       }
     },
   );
-  ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (_event, payload: unknown) => {
+  ipcMain.on(BB_DESKTOP_SET_THEME_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopThemeSchema.safeParse(payload);
-    if (!parsed.success) {
+    const session = windowSessions.get(event.sender.id);
+    if (!parsed.success || session === undefined) {
       return;
     }
-    nativeTheme.themeSource = parsed.data;
+    session.themePreference = parsed.data;
+    if (targetSession() === session) {
+      nativeTheme.themeSource = parsed.data;
+    }
   });
   ipcMain.on(STARTUP_ACTION_CHANNEL, (event, ...payload: unknown[]) => {
     const action = startupActionIdSchema.safeParse(payload[0]);
-    const page = startupErrorPage;
+    const session = windowSessions.get(event.sender.id);
+    const page = session?.actionPage ?? null;
     if (
       payload.length !== 1 ||
       !action.success ||
+      session === undefined ||
       page === null ||
       !page.actions.includes(action.data) ||
       !applicationWindowWebContentsIds.has(event.sender.id) ||
@@ -2333,7 +2832,7 @@ function registerDesktopUpdateIpc(): void {
     ) {
       return;
     }
-    void runStartupAction(action.data, resolveApplicationWindow(event.sender));
+    void runStartupAction(session, action.data);
   });
 
   ipcMain.on(BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL, (event, payload) => {
@@ -2440,21 +2939,25 @@ async function spawnOwnedRuntime(
       );
       return;
     }
-    void loadStartupError({
-      details: `The Electron-owned bb-app process stopped with ${formatExitResult(
-        exit,
-      )}.`,
-      logs: bbProcess.logs.text(),
-      actions: [],
-      title: "bb stopped",
-    });
+    for (const session of windowSessions.values()) {
+      if (session.target.kind === "builtin") {
+        void loadStartupError(session, {
+          details: `The Electron-owned bb-app process stopped with ${formatExitResult(
+            exit,
+          )}.`,
+          logs: bbProcess.logs.text(),
+          actions: [],
+          title: "bb stopped",
+        });
+      }
+    }
   });
   return { bbProcess, runtime };
 }
 
 async function startOwnedRuntime(
   args: StartOwnedRuntimeArgs,
-): Promise<DesktopRuntime | null> {
+): Promise<OwnedRuntimeStartResult> {
   const { bbProcess, runtime } = await spawnOwnedRuntime(args);
 
   const raceResult = await Promise.race<StartupRaceResult>([
@@ -2473,23 +2976,25 @@ async function startOwnedRuntime(
   ]);
 
   if (raceResult.kind === "process-exited") {
-    await loadStartupError({
-      details: `bb-app exited before the server was ready with ${formatExitResult(
-        raceResult.exit,
-      )}.`,
-      logs: bbProcess.logs.text(),
-      actions: [],
-      title: "Could not start bb",
-    });
     setCurrentRuntime(null);
-    return null;
+    return {
+      error: {
+        details: `bb-app exited before the server was ready with ${formatExitResult(
+          raceResult.exit,
+        )}.`,
+        logs: bbProcess.logs.text(),
+        actions: [],
+        title: "Could not start bb",
+      },
+      kind: "failed",
+    };
   }
 
   if (raceResult.result.kind === "compatible") {
-    return runtime;
+    return { kind: "ready", runtime };
   }
 
-  await loadStartupError({
+  const error: LoadStartupErrorArgs = {
     details:
       raceResult.result.kind === "incompatible"
         ? `Port ${args.serverUrl} is responding, but it does not look like bb: ${raceResult.result.reason}.`
@@ -2497,15 +3002,9 @@ async function startOwnedRuntime(
     logs: bbProcess.logs.text(),
     actions: [],
     title: "Could not start bb",
-  });
+  };
   await stopOwnedRuntime();
-  return null;
-}
-
-interface InitializeRuntimeArgs {
-  bridgePath: string;
-  serverUrl: string;
-  userDataPath: string;
+  return { error, kind: "failed" };
 }
 
 function shouldAskBeforeAttaching(): boolean {
@@ -2573,7 +3072,7 @@ async function decideOnExistingServer(
     timeoutMs: FOREIGN_RUNTIME_STOP_TIMEOUT_MS,
   });
   if (stopResult.kind === "unverified") {
-    await loadStartupError({
+    await loadStartupErrorInAllWindows({
       details:
         `The bb at ${probe.serverUrl} records process ${String(stopResult.pid)}, but that ` +
         "process no longer matches the record. bb did not stop it. Stop it yourself, then open bb again.",
@@ -2584,7 +3083,7 @@ async function decideOnExistingServer(
     return "quit";
   }
   if (stopResult.kind === "still-running") {
-    await loadStartupError({
+    await loadStartupErrorInAllWindows({
       details: `bb could not stop process ${String(stopResult.pid)}, even after SIGKILL.`,
       logs: "",
       actions: [],
@@ -2593,7 +3092,7 @@ async function decideOnExistingServer(
     return "quit";
   }
   if (stopResult.kind === "replaced") {
-    await loadStartupError({
+    await loadStartupErrorInAllWindows({
       details:
         `Another bb started at ${probe.serverUrl} while the question was open, so bb stopped nothing. ` +
         "Open bb again to see the copy that runs now.",
@@ -2604,7 +3103,7 @@ async function decideOnExistingServer(
     return "quit";
   }
   if (!(await waitForServerToStop(probe.serverUrl))) {
-    await loadStartupError({
+    await loadStartupErrorInAllWindows({
       details: `The bb at ${probe.serverUrl} stopped, but the address is still in use.`,
       logs: "",
       actions: [],
@@ -2615,69 +3114,46 @@ async function decideOnExistingServer(
   return "start-fresh";
 }
 
-async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
-  const existingProbe = await probeBbServer({
-    serverUrl: args.serverUrl,
-    timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
-  });
-
-  if (existingProbe.kind === "compatible") {
-    const decision = await decideOnExistingServer(existingProbe);
-    if (decision === "quit") {
-      app.quit();
-      return;
-    }
-    if (decision === "start-fresh") {
-      await loadLoadingView();
-      const freshRuntime = await startOwnedRuntime({
-        bridgePath: args.bridgePath,
-        serverUrl: args.serverUrl,
-        userDataPath: args.userDataPath,
-      });
-      if (freshRuntime !== null) {
-        await loadBbApp(freshRuntime.serverUrl);
-        startSystemConfigSync(freshRuntime.serverUrl);
-        refreshApplicationMenu();
+async function refreshConnectServerNames(
+  servers: readonly ConnectAccountServer[],
+): Promise<void> {
+  const store = serverTargetStore;
+  if (store === null) {
+    return;
+  }
+  const referenced = new Set(
+    store.listReferencedConnectServers().map((server) => server.handle),
+  );
+  try {
+    for (const server of servers) {
+      if (referenced.has(server.handle)) {
+        await store.refreshConnectServer({
+          handle: server.handle,
+          name: server.name,
+          url: server.url,
+        });
       }
-      return;
     }
-
-    setCurrentRuntime({
-      bbProcess: null,
-      ownership: "attached",
-      serverUrl: existingProbe.serverUrl,
-      userDataPath: null,
-    });
-    await loadBbApp(
-      resolveDesktopWindowUrl({
-        env: process.env,
-        serverUrl: existingProbe.serverUrl,
-      }),
+  } catch (error) {
+    desktopLogger.warn(
+      `[desktop] could not save renamed Connect servers: ${describeError(error)}`,
     );
-    startSystemConfigSync(existingProbe.serverUrl);
-    refreshApplicationMenu();
-    return;
   }
-
-  if (existingProbe.kind === "incompatible") {
-    await loadStartupError({
-      details: `Port ${args.serverUrl} is already in use, but it is not a compatible bb server: ${existingProbe.reason}.`,
-      logs: "",
-      actions: [],
-      title: "Port conflict",
-    });
-    return;
+  let renamed = false;
+  for (const session of windowSessions.values()) {
+    const stored = store.getWindowTarget(session.stateKey);
+    if (
+      session.target.kind === "connect" &&
+      stored?.kind === "connect" &&
+      !isSameServerTarget(session.target, stored)
+    ) {
+      session.target = stored;
+      renamed = true;
+    }
   }
-
-  const runtime = await startOwnedRuntime({
-    bridgePath: args.bridgePath,
-    serverUrl: args.serverUrl,
-    userDataPath: args.userDataPath,
-  });
-  if (runtime !== null) {
-    await loadBbApp(runtime.serverUrl);
-    startSystemConfigSync(runtime.serverUrl);
-    refreshApplicationMenu();
+  if (renamed) {
+    reconcileServerServices();
+    refreshServerChoices();
   }
 }
 
@@ -2704,10 +3180,10 @@ async function runDesktopApp(): Promise<void> {
     if (desktopWindowFactory?.focusFirstWindow() === true) {
       return;
     }
-    void createApplicationWindow({
-      initialUrl: currentWindowUrl,
+    void openApplicationWindow({
       stateKey: null,
-    });
+      target: defaultServerTarget(),
+    }).catch(logWindowOpenError);
   });
   app.on("before-quit", handleBeforeQuit);
   app.on("window-all-closed", () => {
@@ -2717,17 +3193,33 @@ async function runDesktopApp(): Promise<void> {
   });
   app.on("activate", () => {
     if (desktopWindowFactory?.hasOpenWindows() === false) {
-      void createApplicationWindow({
-        initialUrl: currentWindowUrl,
+      void openApplicationWindow({
         stateKey: null,
-      });
+        target: defaultServerTarget(),
+      }).catch(logWindowOpenError);
     }
   });
   app.on("did-become-active", () => {
     void desktopUpdateService?.checkAfterActive();
     void desktopAutoUpdateService?.checkAfterActive();
-    refreshRemoteSystemConfig?.();
-    connectSessionRenewal?.renewIfDue();
+    for (const sync of systemConfigSyncs.values()) {
+      sync.refresh();
+    }
+    for (const renewal of connectSessionRenewals.values()) {
+      renewal.renewIfDue();
+    }
+  });
+  app.on("browser-window-focus", (_event, browserWindow) => {
+    const session = windowSessions.get(browserWindow.webContents.id);
+    if (session === undefined) {
+      return;
+    }
+    lastFocusedWebContentsId = session.webContentsId;
+    persistServerTargets(serverTargetStore?.setDefaultTarget(session.target));
+    if (session.themePreference !== null) {
+      nativeTheme.themeSource = session.themePreference;
+    }
+    rebuildApplicationMenu();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     if (desktopBrowserViewManager === null) {
@@ -2754,7 +3246,7 @@ async function runDesktopApp(): Promise<void> {
 
   await app.whenReady();
   if (app.isPackaged) {
-    await session.defaultSession.clearCache();
+    await electronSession.defaultSession.clearCache();
   }
 
   const paths = createDesktopPathContext();
@@ -2867,48 +3359,19 @@ async function runDesktopApp(): Promise<void> {
     },
     onSkipped(reason) {
       connectServerSyncSkipReason = reason;
-      refreshApplicationMenu();
+      refreshServerChoices();
     },
     onServers(servers) {
       connectAccountServers = servers;
       connectServerSyncSkipReason = null;
-      const selected = serverTargetStore?.getConnectServer() ?? null;
-      const synced = servers.find(
-        (server) => server.handle === selected?.handle,
-      );
-      if (synced !== undefined) {
-        void serverTargetStore?.refreshConnectServer({
-          handle: synced.handle,
-          name: synced.name,
-          url: synced.url,
-        });
-      }
-      refreshApplicationMenu();
+      refreshServerChoices();
+      void refreshConnectServerNames(servers);
     },
     log: (message) => {
       desktopLogger.info(`[desktop] ${message}`);
     },
   });
   connectServerSync.start();
-  connectSessionRenewal = createConnectSessionRenewal({
-    async authenticate(remoteServerUrl, isCurrent) {
-      const target = serverTargetStore?.getTarget();
-      if (target?.kind !== "connect" || target.server.url !== remoteServerUrl) {
-        return { detail: "the app no longer targets this server", ok: false };
-      }
-      const result = await authenticateConnectTarget(
-        remoteServerUrl,
-        target.server.handle,
-        isCurrent,
-      );
-      return result.ok
-        ? result
-        : { detail: `${result.code}: ${result.detail}`, ok: false };
-    },
-    log: (message) => {
-      desktopLogger.warn(`[desktop] ${message}`);
-    },
-  });
 
   const desktopUpdateSupport = resolveDesktopUpdateSupport({
     canReplaceAppImage,
@@ -3003,7 +3466,8 @@ async function runDesktopApp(): Promise<void> {
       return resolveDesktopBrowserAppCommand({
         input,
         platform: process.platform,
-        keybindings: currentAppKeybindings,
+        keybindings:
+          keybindingsForSession(windowSessions.get(hostWebContentsId)) ?? [],
         splitNavigationEnabled:
           splitNavigationEnabledWebContentsIds.has(hostWebContentsId),
         splitNavigationCommands:
@@ -3101,17 +3565,6 @@ async function runDesktopApp(): Promise<void> {
         desktopBrowserBroker?.takeOver(event.sender.id, parsed.data.tabId);
     },
   );
-  desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
-    broker: desktopBrowserBroker,
-    dataDir,
-    homeDir: homedir(),
-    getServerUrl() {
-      const target = serverTargetStore?.getTarget();
-      if (target?.kind === "connect") return target.server.url;
-      if (target?.kind === "custom") return target.url;
-      return currentRuntime?.serverUrl ?? builtinServerUrl;
-    },
-  });
   if (desktopUpdateSupport.versionCheck) {
     desktopUpdateService.start();
   }
@@ -3163,23 +3616,40 @@ async function runDesktopApp(): Promise<void> {
   });
   installLogViewerIpcHandlers();
 
-  refreshApplicationMenu();
-  await loadLoadingView();
-  const restoredWindows = await desktopWindowFactory.restoreSavedWindows({
-    initialUrl: currentWindowUrl,
-  });
-  for (const browserWindow of restoredWindows) {
-    registerApplicationWindow(browserWindow);
+  rebuildApplicationMenu();
+  const targetStore = serverTargetStore;
+  const sessions: ApplicationWindowSession[] = [];
+  for (const created of await desktopWindowFactory.restoreSavedWindows()) {
+    const session = registerApplicationWindow(
+      created,
+      targetStore.getWindowTarget(created.stateKey) ??
+        targetStore.getDefaultTarget(),
+    );
+    if (session !== null) {
+      sessions.push(session);
+    }
   }
+  persistServerTargets(
+    targetStore.pruneWindowTargets(
+      new Set(sessions.map((session) => session.stateKey)),
+    ),
+  );
+  for (const session of sessions) {
+    persistServerTargets(
+      targetStore.setWindowTarget(session.stateKey, session.target),
+    );
+  }
+  refreshServerChoices();
+  await Promise.all(sessions.map((session) => loadLoadingView(session)));
   await activateLocalServerMoveIfLocked();
   if (
-    serverTargetStore.getTarget().kind === "builtin" &&
-    localServerMove === null
+    localServerMove === null &&
+    sessions.some((session) => session.target.kind === "builtin")
   ) {
-    startServerMovedWatcher();
-    await initializeRuntime({ bridgePath, serverUrl, userDataPath });
-  } else {
-    await applyServerTarget();
+    void ensureBuiltinRuntime({ startup: true });
+  }
+  await Promise.all(sessions.map((session) => applyWindowTarget(session)));
+  if (sessions.some((session) => session.target.kind !== "builtin")) {
     connectServerSync.syncNow().catch(() => {});
   }
 }
@@ -3188,7 +3658,7 @@ void runDesktopApp().catch((error) => {
   const message =
     error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`${message}\n`);
-  void loadStartupError({
+  void loadStartupErrorInAllWindows({
     details: message,
     logs: "",
     actions: [],

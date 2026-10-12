@@ -22,6 +22,7 @@ import {
   type ServerTargetFs,
   type ServerTargetStore,
 } from "./server-target.js";
+import type { WindowStateKey } from "./types.js";
 
 export const SERVER_MOVE_NOTICE_FILE_NAME = "server-move-notice.json";
 export const SERVER_MOVED_WATCH_DEBOUNCE_MS = 500;
@@ -74,15 +75,12 @@ interface ApplyServerMoveArgs {
   move: DesktopServerMove;
   noticeStore: ServerMoveNoticeStore;
   showNotice(notice: ServerMovedNotice): void;
-  targetStore: Pick<
-    ServerTargetStore,
-    "getTarget" | "setConnectServer" | "setCustomServerUrl"
-  >;
+  targetStore: Pick<ServerTargetStore, "retargetBuiltin">;
 }
 
 interface ApplyServerMoveResult {
   noticeShown: boolean;
-  switched: boolean;
+  retargeted: WindowStateKey[];
 }
 
 interface EnsureServerMovedRuntimeArgs {
@@ -342,38 +340,16 @@ export function createServerMoveNoticeStore(
   };
 }
 
-export async function openServerMoveTarget(args: {
-  move: DesktopServerMove;
-  targetStore: Pick<
-    ServerTargetStore,
-    "setConnectServer" | "setCustomServerUrl"
-  >;
-}): Promise<void> {
-  if (args.move.target.kind === "connect") {
-    await args.targetStore.setConnectServer(args.move.target.server);
-  } else {
-    await args.targetStore.setCustomServerUrl(args.move.target.url);
-  }
-}
-
 export async function applyServerMove(
   args: ApplyServerMoveArgs,
 ): Promise<ApplyServerMoveResult> {
-  const alreadyNoticed = await args.noticeStore.hasShown(args.move.moveId);
-  const switched =
-    !alreadyNoticed || args.targetStore.getTarget().kind === "builtin";
-  if (switched) {
-    await openServerMoveTarget({
-      move: args.move,
-      targetStore: args.targetStore,
-    });
-  }
-  if (alreadyNoticed) {
-    return { noticeShown: false, switched };
+  const retargeted = await args.targetStore.retargetBuiltin(args.move.target);
+  if (await args.noticeStore.hasShown(args.move.moveId)) {
+    return { noticeShown: false, retargeted };
   }
   await args.noticeStore.markShown(args.move.moveId);
   args.showNotice(formatServerMovedNotice(args.move));
-  return { noticeShown: true, switched };
+  return { noticeShown: true, retargeted };
 }
 
 export async function ensureServerMovedRuntime(

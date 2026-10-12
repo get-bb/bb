@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import type { WindowStateKey } from "./types.js";
 
 export const SERVER_TARGET_FILE_NAME = "server-target.json";
 export function builtinServerName(platform: NodeJS.Platform): string {
@@ -15,10 +16,15 @@ export interface ConnectServerRef {
   url: string;
 }
 
-type DesktopServerTarget =
+export type DesktopServerTarget =
   | { kind: "builtin" }
   | { kind: "connect"; server: ConnectServerRef }
   | { kind: "custom"; url: string };
+
+export type RemoteServerTarget = Exclude<
+  DesktopServerTarget,
+  { kind: "builtin" }
+>;
 
 export interface ServerTargetFs {
   mkdir(
@@ -35,15 +41,26 @@ interface CreateServerTargetStoreArgs {
 }
 
 export interface ServerTargetStore {
-  getConnectServer(): ConnectServerRef | null;
-  getCustomServerUrl(): string | null;
+  addCustomServerUrl(url: string): Promise<string>;
   getCustomServerUrls(): string[];
-  getTarget(): DesktopServerTarget;
+  getDefaultTarget(): DesktopServerTarget;
+  getWindowTarget(stateKey: WindowStateKey): DesktopServerTarget | null;
+  listReferencedConnectServers(): ConnectServerRef[];
   load(): Promise<void>;
+  pruneWindowTargets(keep: ReadonlySet<WindowStateKey>): Promise<void>;
   refreshConnectServer(server: ConnectServerRef): Promise<boolean>;
-  setConnectServer(server: ConnectServerRef): Promise<void>;
-  setCustomServerUrl(url: string | null, replacedUrl?: string): Promise<void>;
-  setTarget(kind: "builtin" | "connect" | "custom"): Promise<boolean>;
+  removeCustomServerUrl(url: string): Promise<WindowStateKey[]>;
+  removeWindowTarget(stateKey: WindowStateKey): Promise<void>;
+  replaceCustomServerUrl(
+    previousUrl: string,
+    url: string,
+  ): Promise<WindowStateKey[]>;
+  retargetBuiltin(target: RemoteServerTarget): Promise<WindowStateKey[]>;
+  setDefaultTarget(target: DesktopServerTarget): Promise<void>;
+  setWindowTarget(
+    stateKey: WindowStateKey,
+    target: DesktopServerTarget,
+  ): Promise<void>;
 }
 
 const persistedConnectServerSchema = z.object({
@@ -52,14 +69,32 @@ const persistedConnectServerSchema = z.object({
   url: z.string().min(1),
 });
 
+const persistedWindowTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("builtin") }),
+  z.object({
+    kind: z.literal("connect"),
+    server: persistedConnectServerSchema,
+  }),
+  z.object({ kind: z.literal("custom"), url: z.string().min(1) }),
+]);
+
 const persistedServerTargetSchema = z.object({
   connectServer: persistedConnectServerSchema.nullable().optional(),
   customServerUrl: z.string().min(1).nullable(),
   customServerUrls: z.array(z.string().min(1)).default([]),
   target: z.enum(["builtin", "connect", "custom"]),
+  windowTargets: z.record(z.string(), z.unknown()).catch({}),
 });
 
 type PersistedServerTarget = z.infer<typeof persistedServerTargetSchema>;
+
+interface PersistedServerTargetFile {
+  connectServer: ConnectServerRef | null;
+  customServerUrl: string | null;
+  customServerUrls: string[];
+  target: DesktopServerTarget["kind"];
+  windowTargets: Record<WindowStateKey, DesktopServerTarget>;
+}
 
 const defaultFs: ServerTargetFs = {
   mkdir,
@@ -85,6 +120,29 @@ export function normalizeCustomServerUrl(rawUrl: string): string | null {
   return parsed.toString().replace(/\/$/u, "");
 }
 
+export function isSameServerTarget(
+  first: DesktopServerTarget,
+  second: DesktopServerTarget,
+): boolean {
+  if (first.kind === "connect" && second.kind === "connect") {
+    return (
+      first.server.handle === second.server.handle &&
+      first.server.name === second.server.name &&
+      first.server.url === second.server.url
+    );
+  }
+  if (first.kind === "custom" && second.kind === "custom") {
+    return first.url === second.url;
+  }
+  return first.kind === second.kind;
+}
+
+function cloneServerTarget(target: DesktopServerTarget): DesktopServerTarget {
+  return target.kind === "connect"
+    ? { kind: "connect", server: { ...target.server } }
+    : { ...target };
+}
+
 function parsePersistedServerTarget(raw: string): PersistedServerTarget | null {
   try {
     const parsedJson: unknown = JSON.parse(raw);
@@ -95,22 +153,42 @@ function parsePersistedServerTarget(raw: string): PersistedServerTarget | null {
   }
 }
 
+function parsePersistedWindowTarget(raw: unknown): DesktopServerTarget | null {
+  const parsed = persistedWindowTargetSchema.safeParse(raw);
+  if (!parsed.success) {
+    return null;
+  }
+  if (parsed.data.kind === "custom") {
+    const url = normalizeCustomServerUrl(parsed.data.url);
+    return url === null ? null : { kind: "custom", url };
+  }
+  if (parsed.data.kind === "connect") {
+    return { kind: "connect", server: { ...parsed.data.server } };
+  }
+  return { kind: "builtin" };
+}
+
 export function createServerTargetStore(
   args: CreateServerTargetStoreArgs,
 ): ServerTargetStore {
   const fsImpl = args.fs ?? defaultFs;
-  let connectServer: ConnectServerRef | null = null;
-  let customServerUrl: string | null = null;
   let customServerUrls: string[] = [];
-  let target: "builtin" | "connect" | "custom" = "builtin";
+  let defaultTarget: DesktopServerTarget = { kind: "builtin" };
+  let lastConnectServer: ConnectServerRef | null = null;
+  let windowTargets = new Map<WindowStateKey, DesktopServerTarget>();
   let pendingPersist: Promise<void> = Promise.resolve();
 
   function persist(): Promise<void> {
-    const payload: PersistedServerTarget = {
-      connectServer,
-      customServerUrl,
+    const payload: PersistedServerTargetFile = {
+      connectServer:
+        defaultTarget.kind === "connect"
+          ? { ...defaultTarget.server }
+          : lastConnectServer,
+      customServerUrl:
+        defaultTarget.kind === "custom" ? defaultTarget.url : null,
       customServerUrls,
-      target,
+      target: defaultTarget.kind,
+      windowTargets: Object.fromEntries(windowTargets),
     };
     const data = `${JSON.stringify(payload, null, 2)}\n`;
     const write = pendingPersist.then(async () => {
@@ -121,24 +199,73 @@ export function createServerTargetStore(
     return write;
   }
 
+  function rememberServer(target: DesktopServerTarget): void {
+    if (target.kind === "connect") {
+      lastConnectServer = { ...target.server };
+    } else if (
+      target.kind === "custom" &&
+      !customServerUrls.includes(target.url)
+    ) {
+      customServerUrls.push(target.url);
+    }
+  }
+
+  function rewriteTargets(
+    rewrite: (target: DesktopServerTarget) => DesktopServerTarget | null,
+  ): WindowStateKey[] {
+    defaultTarget = rewrite(defaultTarget) ?? defaultTarget;
+    const rewritten: WindowStateKey[] = [];
+    for (const [stateKey, target] of windowTargets) {
+      const next = rewrite(target);
+      if (next !== null) {
+        windowTargets.set(stateKey, next);
+        rewritten.push(stateKey);
+      }
+    }
+    return rewritten;
+  }
+
+  function requireCustomServerUrl(url: string): string {
+    const normalized = normalizeCustomServerUrl(url);
+    if (normalized === null) {
+      throw new Error("Enter a valid http(s) URL.");
+    }
+    return normalized;
+  }
+
   return {
-    getConnectServer() {
-      return connectServer === null ? null : { ...connectServer };
-    },
-    getCustomServerUrl() {
-      return customServerUrl;
+    async addCustomServerUrl(url) {
+      const normalized = requireCustomServerUrl(url);
+      if (!customServerUrls.includes(normalized)) {
+        customServerUrls.push(normalized);
+        await persist();
+      }
+      return normalized;
     },
     getCustomServerUrls() {
       return [...customServerUrls];
     },
-    getTarget() {
-      if (target === "custom" && customServerUrl !== null) {
-        return { kind: "custom", url: customServerUrl };
+    getDefaultTarget() {
+      return cloneServerTarget(defaultTarget);
+    },
+    getWindowTarget(stateKey) {
+      const target = windowTargets.get(stateKey);
+      return target === undefined ? null : cloneServerTarget(target);
+    },
+    listReferencedConnectServers() {
+      const servers = new Map<string, ConnectServerRef>();
+      for (const target of [defaultTarget, ...windowTargets.values()]) {
+        if (target.kind === "connect" && !servers.has(target.server.handle)) {
+          servers.set(target.server.handle, { ...target.server });
+        }
       }
-      if (target === "connect" && connectServer !== null) {
-        return { kind: "connect", server: { ...connectServer } };
+      if (
+        lastConnectServer !== null &&
+        !servers.has(lastConnectServer.handle)
+      ) {
+        servers.set(lastConnectServer.handle, { ...lastConnectServer });
       }
-      return { kind: "builtin" };
+      return [...servers.values()];
     },
     async load() {
       let persisted: PersistedServerTarget | null = null;
@@ -149,15 +276,15 @@ export function createServerTargetStore(
       } catch {
         persisted = null;
       }
+      customServerUrls = [];
+      defaultTarget = { kind: "builtin" };
+      lastConnectServer = null;
+      windowTargets = new Map();
       if (persisted === null) {
-        connectServer = null;
-        customServerUrl = null;
-        customServerUrls = [];
-        target = "builtin";
         return;
       }
-      connectServer = persisted.connectServer ?? null;
-      customServerUrl =
+      lastConnectServer = persisted.connectServer ?? null;
+      const customServerUrl =
         persisted.customServerUrl === null
           ? null
           : normalizeCustomServerUrl(persisted.customServerUrl);
@@ -172,66 +299,117 @@ export function createServerTargetStore(
         ),
       ];
       if (persisted.target === "custom" && customServerUrl !== null) {
-        target = "custom";
-      } else if (persisted.target === "connect" && connectServer !== null) {
-        target = "connect";
-      } else {
-        target = "builtin";
+        defaultTarget = { kind: "custom", url: customServerUrl };
+      } else if (persisted.target === "connect" && lastConnectServer !== null) {
+        defaultTarget = { kind: "connect", server: { ...lastConnectServer } };
+      }
+      for (const [stateKey, raw] of Object.entries(persisted.windowTargets)) {
+        const target = parsePersistedWindowTarget(raw);
+        if (stateKey.length === 0 || target === null) {
+          continue;
+        }
+        if (
+          target.kind === "custom" &&
+          !customServerUrls.includes(target.url)
+        ) {
+          customServerUrls.push(target.url);
+        }
+        windowTargets.set(stateKey, target);
+      }
+    },
+    async pruneWindowTargets(keep) {
+      let pruned = false;
+      for (const stateKey of [...windowTargets.keys()]) {
+        if (!keep.has(stateKey)) {
+          windowTargets.delete(stateKey);
+          pruned = true;
+        }
+      }
+      if (pruned) {
+        await persist();
       }
     },
     async refreshConnectServer(server) {
-      if (
-        connectServer === null ||
-        connectServer.handle !== server.handle ||
-        (connectServer.name === server.name && connectServer.url === server.url)
-      ) {
-        return false;
+      const isStale = (current: ConnectServerRef): boolean =>
+        current.handle === server.handle &&
+        (current.name !== server.name || current.url !== server.url);
+      const lastStale =
+        lastConnectServer !== null && isStale(lastConnectServer);
+      const defaultStale =
+        defaultTarget.kind === "connect" && isStale(defaultTarget.server);
+      if (lastStale) {
+        lastConnectServer = { ...server };
       }
-      connectServer = { ...server };
-      await persist();
-      return true;
-    },
-    async setConnectServer(server) {
-      connectServer = { ...server };
-      target = "connect";
-      await persist();
-    },
-    async setCustomServerUrl(url, replacedUrl) {
-      const normalized = url === null ? null : normalizeCustomServerUrl(url);
-      if (url !== null && normalized === null) {
-        throw new Error("Enter a valid http(s) URL.");
-      }
-      const removedUrl = replacedUrl ?? (url === null ? customServerUrl : null);
-      customServerUrls = customServerUrls.filter(
-        (saved) => saved !== removedUrl,
+      const refreshedWindows = rewriteTargets((target) =>
+        target.kind === "connect" && isStale(target.server)
+          ? { kind: "connect", server: { ...server } }
+          : null,
       );
-      if (normalized === null) {
-        customServerUrl = customServerUrls[0] ?? null;
-        if (target === "custom") {
-          target = "builtin";
-        }
-      } else {
-        customServerUrl = normalized;
-        if (!customServerUrls.includes(normalized)) {
-          customServerUrls.push(normalized);
-        }
-        target = "custom";
-      }
-      await persist();
-    },
-    async setTarget(kind) {
-      if (kind === "custom" && customServerUrl === null) {
+      if (!lastStale && !defaultStale && refreshedWindows.length === 0) {
         return false;
       }
-      if (kind === "connect" && connectServer === null) {
-        return false;
-      }
-      if (target === kind) {
-        return true;
-      }
-      target = kind;
       await persist();
       return true;
+    },
+    async removeCustomServerUrl(url) {
+      customServerUrls = customServerUrls.filter((saved) => saved !== url);
+      const moved = rewriteTargets((target) =>
+        target.kind === "custom" && target.url === url
+          ? { kind: "builtin" }
+          : null,
+      );
+      await persist();
+      return moved;
+    },
+    async removeWindowTarget(stateKey) {
+      if (windowTargets.delete(stateKey)) {
+        await persist();
+      }
+    },
+    async replaceCustomServerUrl(previousUrl, url) {
+      const normalized = requireCustomServerUrl(url);
+      customServerUrls = [
+        ...new Set(
+          customServerUrls.map((saved) =>
+            saved === previousUrl ? normalized : saved,
+          ),
+        ),
+      ];
+      if (!customServerUrls.includes(normalized)) {
+        customServerUrls.push(normalized);
+      }
+      const moved = rewriteTargets((target) =>
+        target.kind === "custom" && target.url === previousUrl
+          ? { kind: "custom", url: normalized }
+          : null,
+      );
+      await persist();
+      return moved;
+    },
+    async retargetBuiltin(target) {
+      rememberServer(target);
+      const moved = rewriteTargets((current) =>
+        current.kind === "builtin" ? cloneServerTarget(target) : null,
+      );
+      await persist();
+      return moved;
+    },
+    async setDefaultTarget(target) {
+      if (isSameServerTarget(defaultTarget, target)) {
+        return;
+      }
+      defaultTarget = cloneServerTarget(target);
+      rememberServer(target);
+      await persist();
+    },
+    async setWindowTarget(stateKey, target) {
+      const current = windowTargets.get(stateKey);
+      if (current !== undefined && isSameServerTarget(current, target)) {
+        return;
+      }
+      windowTargets.set(stateKey, cloneServerTarget(target));
+      rememberServer(target);
+      await persist();
     },
   };
 }

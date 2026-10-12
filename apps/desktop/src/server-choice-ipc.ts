@@ -17,8 +17,8 @@ export function registerServerChoiceIpc({
 }: {
   applicationWindowWebContentsIds: ReadonlySet<number>;
   onListRequested(): void;
-  list(): BbDesktopServerChoice[];
-  select(id: string): Promise<void>;
+  list(webContentsId: number): BbDesktopServerChoice[];
+  select(webContentsId: number, id: string): Promise<void>;
   onError(error: unknown): void;
 }): void {
   ipcMain.handle(BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL, (event) => {
@@ -29,7 +29,7 @@ export function registerServerChoiceIpc({
       throw new Error("Server choices are limited to bb windows");
     }
     onListRequested();
-    return list();
+    return list(event.sender.id);
   });
   ipcMain.on(BB_DESKTOP_SELECT_SERVER_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopServerChoiceSchema.shape.id.safeParse(payload);
@@ -39,8 +39,12 @@ export function registerServerChoiceIpc({
       !parsed.success
     )
       return;
-    if (!list().some((choice) => choice.id === parsed.data && !choice.active))
+    if (
+      !list(event.sender.id).some(
+        (choice) => choice.id === parsed.data && !choice.active,
+      )
+    )
       return;
-    void select(parsed.data).catch(onError);
+    void select(event.sender.id, parsed.data).catch(onError);
   });
 }

@@ -727,9 +727,10 @@ async function main() {
     passed(
       "revocation disconnects controller and preserves both threads' tabs",
     );
-    broker.registerWindow(window);
-    broker.setHostId("smoke-host");
-    const instance = broker.listInstances()[0];
+    const smokeServerOrigin = "http://127.0.0.1:38886";
+    broker.registerWindow(window, smokeServerOrigin);
+    broker.setHostId(smokeServerOrigin, "smoke-host");
+    const instance = broker.listInstances(smokeServerOrigin)[0];
     assert(instance);
     const target = {
       instanceId: instance.instanceId,
@@ -740,7 +741,7 @@ async function main() {
     const { tab: brokerTab } = desktopBrowserResultSchemas[
       "desktop.browser.create_tab"
     ].parse(
-      await broker.execute({
+      await broker.execute(smokeServerOrigin, {
         type: "desktop.browser.create_tab",
         ...target,
         tabId: brokerTabId,
@@ -782,7 +783,7 @@ async function main() {
       const capture = desktopBrowserResultSchemas[
         "desktop.browser.capture_tab"
       ].parse(
-        await broker.execute({
+        await broker.execute(smokeServerOrigin, {
           type: "desktop.browser.capture_tab",
           ...target,
           tabId: brokerTabId,
@@ -806,7 +807,7 @@ async function main() {
       console.error(hiddenCaptureError.message);
     }
     await assert.rejects(
-      broker.execute({
+      broker.execute(smokeServerOrigin, {
         type: "desktop.browser.capture_tab",
         ...target,
         threadId: scopeA.threadId,
@@ -814,7 +815,7 @@ async function main() {
       }),
     );
     await assert.rejects(
-      broker.execute({
+      broker.execute(smokeServerOrigin, {
         type: "desktop.browser.list_tabs",
         ...target,
         generation: "stale-generation",
@@ -824,7 +825,7 @@ async function main() {
       "broker creates hidden automation tab in the browser session; rejects wrong thread and stale instance",
     );
     async function acquireBroker(leaseId: string) {
-      await broker.execute({
+      await broker.execute(smokeServerOrigin, {
         type: "desktop.browser.acquire_control",
         ...target,
         leaseId,
@@ -835,7 +836,7 @@ async function main() {
       const connection = desktopBrowserResultSchemas[
         "desktop.browser.open_connection"
       ].parse(
-        await broker.execute({
+        await broker.execute(smokeServerOrigin, {
           type: "desktop.browser.open_connection",
           ...target,
           leaseId,
@@ -889,7 +890,7 @@ async function main() {
     );
     assert(!brokerPage.webContents.debugger.isAttached());
     await assert.rejects(
-      broker.execute({
+      broker.execute(smokeServerOrigin, {
         type: "desktop.browser.open_connection",
         ...target,
         leaseId: firstLease,
@@ -914,7 +915,7 @@ async function main() {
       /Hello Broker/,
     );
     await run(config.devBrowser, ["stop"]);
-    await broker.execute({
+    await broker.execute(smokeServerOrigin, {
       type: "desktop.browser.release_control",
       ...target,
       leaseId: secondLease,
@@ -924,7 +925,7 @@ async function main() {
       null,
     );
     assert.equal(manager.getAutomationTabs(brokerScope).length, 1);
-    await broker.execute({
+    await broker.execute(smokeServerOrigin, {
       type: "desktop.browser.close_tab",
       ...target,
       tabId: brokerTabId,

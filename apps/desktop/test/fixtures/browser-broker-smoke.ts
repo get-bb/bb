@@ -35,12 +35,13 @@ async function main() {
     resolveAppCommand: () => null,
   });
   const broker = createDesktopBrowserBroker({ manager, product: "BB smoke" });
-  broker.registerWindow(window);
+  const serverOrigin = new URL(config.serverUrl).origin;
+  broker.registerWindow(window, serverOrigin);
   const client = createDesktopBrowserBrokerClient({
     broker,
     dataDir: config.dataDir,
     homeDir: config.artifacts,
-    getServerUrl: () => config.serverUrl,
+    serverOrigin,
   });
   writeFileSync(
     join(config.artifacts, "electron-ready.json"),

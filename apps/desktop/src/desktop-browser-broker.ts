@@ -32,6 +32,7 @@ interface InstanceEntry {
   webContentsId: number;
   window: DesktopBrowserHostWindow;
   descriptor: DesktopBrowserInstance;
+  serverOrigin: string;
   threads: Set<string>;
 }
 
@@ -52,15 +53,41 @@ export function createDesktopBrowserBroker(args: {
 }) {
   const instances = new Map<string, InstanceEntry>();
   const leases = new Map<string, ControlLease>();
-  const listeners = new Set<(event: DesktopBrowserChanged) => void>();
+  const listeners = new Map<
+    string,
+    Set<(event: DesktopBrowserChanged) => void>
+  >();
   const registryListeners = new Set<() => void>();
   const snapshots = new Map<string, string>();
-  let hostId: string | null = null;
+  const hostIds = new Map<string, string>();
 
   function instanceForWindow(webContentsId: number): InstanceEntry | undefined {
     return [...instances.values()].find(
       (entry) => entry.webContentsId === webContentsId,
     );
+  }
+
+  function instancesFor(serverOrigin: string): InstanceEntry[] {
+    return [...instances.values()].filter(
+      (entry) => entry.serverOrigin === serverOrigin,
+    );
+  }
+
+  function listInstances(serverOrigin: string): DesktopBrowserInstance[] {
+    return instancesFor(serverOrigin).map((entry) => ({
+      ...entry.descriptor,
+    }));
+  }
+
+  function clearSnapshots(instance: InstanceEntry): void {
+    const prefix = `${instance.descriptor.instanceId}:`;
+    for (const key of [...snapshots.keys()]) {
+      if (key.startsWith(prefix)) snapshots.delete(key);
+    }
+  }
+
+  function notifyRegistry(): void {
+    for (const listener of registryListeners) listener();
   }
 
   function controlFor(
@@ -118,7 +145,8 @@ export function createDesktopBrowserBroker(args: {
     if (snapshots.get(key) === serialized) return;
     snapshots.set(key, serialized);
     if (isRawThreadId(threadId))
-      for (const listener of listeners) listener(event);
+      for (const listener of listeners.get(instance.serverOrigin) ?? [])
+        listener(event);
     for (const tab of tabs) {
       instance.window.webContents.send(BB_DESKTOP_BROWSER_CONTROL_CHANNEL, {
         tabId: tab.tabId,
@@ -159,13 +187,17 @@ export function createDesktopBrowserBroker(args: {
   }
   const unsubscribeManager = args.manager.subscribeAutomationTabs(changed);
 
-  function requireInstance(target: {
-    instanceId: string;
-    generation: string;
-  }): InstanceEntry {
+  function requireInstance(
+    serverOrigin: string,
+    target: {
+      instanceId: string;
+      generation: string;
+    },
+  ): InstanceEntry {
     const instance = instances.get(target.instanceId);
     if (
       !instance ||
+      instance.serverOrigin !== serverOrigin ||
       instance.descriptor.generation !== target.generation ||
       instance.window.isDestroyed()
     )
@@ -189,7 +221,8 @@ export function createDesktopBrowserBroker(args: {
     tabId: string,
   ): void {
     requireTab(instance, threadId, tabId);
-    if (hostId === null)
+    const hostId = hostIds.get(instance.serverOrigin);
+    if (hostId === undefined)
       throw new Error("Desktop is not connected to its host daemon");
     instance.window.webContents.send(BB_DESKTOP_BROWSER_REVEAL_CHANNEL, {
       tabId,
@@ -280,7 +313,7 @@ export function createDesktopBrowserBroker(args: {
   }
 
   return {
-    registerWindow(window: DesktopBrowserHostWindow) {
+    registerWindow(window: DesktopBrowserHostWindow, serverOrigin: string) {
       if (instanceForWindow(window.webContents.id)) return;
       const descriptor = {
         instanceId: randomUUID(),
@@ -291,9 +324,10 @@ export function createDesktopBrowserBroker(args: {
         window,
         webContentsId: window.webContents.id,
         descriptor,
+        serverOrigin,
         threads: new Set(),
       });
-      for (const listener of registryListeners) listener();
+      notifyRegistry();
       changed();
     },
     releaseWindow(webContentsId: number) {
@@ -302,33 +336,40 @@ export function createDesktopBrowserBroker(args: {
       for (const lease of [...leases.values()])
         if (lease.instance === instance) revoke(lease);
       instances.delete(instance.descriptor.instanceId);
-      for (const listener of registryListeners) listener();
+      notifyRegistry();
     },
-    listInstances(): DesktopBrowserInstance[] {
-      return [...instances.values()].map((entry) => ({ ...entry.descriptor }));
+    setWindowServer(webContentsId: number, serverOrigin: string) {
+      const instance = instanceForWindow(webContentsId);
+      if (!instance || instance.serverOrigin === serverOrigin) return;
+      for (const lease of [...leases.values()])
+        if (lease.instance === instance) revoke(lease);
+      args.manager.releaseWindow(webContentsId);
+      instance.serverOrigin = serverOrigin;
+      instance.threads.clear();
+      instance.descriptor.generation = randomUUID();
+      clearSnapshots(instance);
+      notifyRegistry();
     },
-    setHostId(value: string | null) {
-      hostId = value;
-      snapshots.clear();
+    listInstances,
+    setHostId(serverOrigin: string, value: string | null) {
+      const scoped = instancesFor(serverOrigin);
+      for (const instance of scoped) clearSnapshots(instance);
       if (value === null) {
-        for (const lease of [...leases.values()]) revoke(lease);
-        for (const instance of instances.values())
+        hostIds.delete(serverOrigin);
+        for (const lease of [...leases.values()])
+          if (lease.instance.serverOrigin === serverOrigin) revoke(lease);
+        for (const instance of scoped)
           instance.descriptor.generation = randomUUID();
-      } else changed();
-    },
-    resetServer() {
-      hostId = null;
-      for (const lease of [...leases.values()]) revoke(lease);
-      args.manager.destroyAll();
-      for (const instance of instances.values()) {
-        instance.threads.clear();
-        instance.descriptor.generation = randomUUID();
+      } else {
+        hostIds.set(serverOrigin, value);
+        changed();
       }
-      snapshots.clear();
     },
     getTarget(webContentsId: number): BbDesktopBrowserTarget | null {
       const instance = instanceForWindow(webContentsId);
-      return instance && hostId !== null
+      const hostId =
+        instance === undefined ? undefined : hostIds.get(instance.serverOrigin);
+      return instance && hostId !== undefined
         ? {
             hostId,
             instanceId: instance.descriptor.instanceId,
@@ -359,10 +400,20 @@ export function createDesktopBrowserBroker(args: {
       const lease = instance && controlFor(instance, tabId);
       if (lease) revoke(lease);
     },
-    subscribe(listener: (event: DesktopBrowserChanged) => void) {
-      listeners.add(listener);
+    subscribe(
+      serverOrigin: string,
+      listener: (event: DesktopBrowserChanged) => void,
+    ) {
+      const originListeners = listeners.get(serverOrigin) ?? new Set();
+      originListeners.add(listener);
+      listeners.set(serverOrigin, originListeners);
       return () => {
-        listeners.delete(listener);
+        originListeners.delete(listener);
+        if (
+          originListeners.size === 0 &&
+          listeners.get(serverOrigin) === originListeners
+        )
+          listeners.delete(serverOrigin);
       };
     },
     subscribeInstances(listener: () => void) {
@@ -372,11 +423,12 @@ export function createDesktopBrowserBroker(args: {
       };
     },
     async execute(
+      serverOrigin: string,
       command: DesktopBrowserCommand,
     ): Promise<DesktopBrowserResult> {
       if (command.type === "desktop.browser.list_instances")
-        return { instances: this.listInstances() };
-      const instance = requireInstance(command);
+        return { instances: listInstances(serverOrigin) };
+      const instance = requireInstance(serverOrigin, command);
       if (command.type === "desktop.browser.list_import_sources") {
         if (!args.browserImport)
           throw new Error("Browser cookie import is unavailable");
@@ -508,6 +560,7 @@ export function createDesktopBrowserBroker(args: {
       listeners.clear();
       registryListeners.clear();
       instances.clear();
+      hostIds.clear();
     },
   };
 }

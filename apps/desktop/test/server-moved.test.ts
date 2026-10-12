@@ -229,19 +229,30 @@ describe("readServerMovedLock", () => {
 });
 
 describe("applyServerMove", () => {
-  it("switches a builtin target to the connect server and shows the notice once", async () => {
+  it("moves windows on this computer to the Connect server and shows the notice once", async () => {
     const stores = await createStores();
+    await stores.targetStore.setWindowTarget("main", { kind: "builtin" });
+    await stores.targetStore.setWindowTarget("window-work", {
+      kind: "custom",
+      url: "https://work.example.com",
+    });
 
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: true, switched: true });
-    expect(stores.targetStore.getTarget()).toEqual({
+    ).resolves.toEqual({ noticeShown: true, retargeted: ["main"] });
+    const moved = {
       kind: "connect",
       server: {
         handle: "laptop",
         name: "Studio desktop",
         url: "https://laptop.getbb.app",
       },
+    };
+    expect(stores.targetStore.getDefaultTarget()).toEqual(moved);
+    expect(stores.targetStore.getWindowTarget("main")).toEqual(moved);
+    expect(stores.targetStore.getWindowTarget("window-work")).toEqual({
+      kind: "custom",
+      url: "https://work.example.com",
     });
     expect(stores.notices).toEqual([
       {
@@ -250,23 +261,29 @@ describe("applyServerMove", () => {
       },
     ]);
 
-    await stores.targetStore.setTarget("builtin");
+    await stores.targetStore.setWindowTarget("main", { kind: "builtin" });
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: true });
-    expect(stores.targetStore.getTarget()).toMatchObject({ kind: "connect" });
+    ).resolves.toEqual({ noticeShown: false, retargeted: ["main"] });
+    expect(stores.targetStore.getWindowTarget("main")).toEqual(moved);
     expect(stores.notices).toHaveLength(1);
   });
 
-  it("switches to a custom URL for a direct move", async () => {
+  it("switches windows on this computer to a custom URL for a direct move", async () => {
     const stores = await createStores();
+    await stores.targetStore.setWindowTarget("main", { kind: "builtin" });
 
     await applyServerMove({ move: DIRECT_MOVE, ...stores });
 
-    expect(stores.targetStore.getTarget()).toEqual({
+    const moved = {
       kind: "custom",
       url: "https://studio.tailnet.ts.net:38886",
-    });
+    };
+    expect(stores.targetStore.getDefaultTarget()).toEqual(moved);
+    expect(stores.targetStore.getWindowTarget("main")).toEqual(moved);
+    expect(stores.targetStore.getCustomServerUrls()).toEqual([
+      "https://studio.tailnet.ts.net:38886",
+    ]);
   });
 
   it("remembers the shown move across app restarts", async () => {
@@ -292,32 +309,32 @@ describe("applyServerMove", () => {
     });
 
     expect(restartedNotices).toEqual([]);
-    expect(restartedTargetStore.getTarget().kind).toBe("connect");
+    expect(restartedTargetStore.getDefaultTarget().kind).toBe("connect");
   });
 
-  it("keeps a target the user chose after the notice", async () => {
+  it("leaves windows on other servers in place the first time it notices a move", async () => {
     const stores = await createStores();
-    await applyServerMove({ move: CONNECT_MOVE, ...stores });
-    await stores.targetStore.setCustomServerUrl("https://work.example.com");
+    const work = { kind: "custom", url: "https://work.example.com" } as const;
+    await stores.targetStore.setDefaultTarget(work);
+    await stores.targetStore.setWindowTarget("main", work);
 
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: false, switched: false });
-    expect(stores.targetStore.getTarget()).toEqual({
-      kind: "custom",
-      url: "https://work.example.com",
-    });
+    ).resolves.toEqual({ noticeShown: true, retargeted: [] });
+    expect(stores.targetStore.getDefaultTarget()).toEqual(work);
+    expect(stores.targetStore.getWindowTarget("main")).toEqual(work);
+    expect(stores.notices).toHaveLength(1);
   });
 
-  it("switches and notifies again for a later move", async () => {
+  it("moves windows and notifies again for a later move", async () => {
     const stores = await createStores();
     await applyServerMove({ move: CONNECT_MOVE, ...stores });
-    await stores.targetStore.setCustomServerUrl("https://work.example.com");
+    await stores.targetStore.setWindowTarget("main", { kind: "builtin" });
 
     await expect(
       applyServerMove({ move: DIRECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: true, switched: true });
-    expect(stores.targetStore.getTarget()).toEqual({
+    ).resolves.toEqual({ noticeShown: true, retargeted: ["main"] });
+    expect(stores.targetStore.getWindowTarget("main")).toEqual({
       kind: "custom",
       url: "https://studio.tailnet.ts.net:38886",
     });
@@ -330,7 +347,7 @@ describe("applyServerMove", () => {
 
     await expect(
       applyServerMove({ move: CONNECT_MOVE, ...stores }),
-    ).resolves.toEqual({ noticeShown: true, switched: true });
+    ).resolves.toEqual({ noticeShown: true, retargeted: [] });
     expect(
       JSON.parse(stores.files.get("/user-data/server-move-notice.json") ?? ""),
     ).toEqual({ moveId: "move-1" });

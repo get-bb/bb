@@ -15,6 +15,8 @@ import type {
   DesktopBrowserViewManager,
 } from "../src/desktop-browser-view.js";
 
+const SERVER_ORIGIN = "http://127.0.0.1:38886";
+
 const THREAD_ID = "thr_23456789ab";
 const PLUGIN_PANEL_ID = "plugin-panel:cloud-sandbox:cloud-machines:pane-1";
 
@@ -74,12 +76,12 @@ describe("desktop browser broker snapshots", () => {
       product: "Chrome/1",
     });
     const events: DesktopBrowserChanged[] = [];
-    broker.subscribe((event) => events.push(event));
+    broker.subscribe(SERVER_ORIGIN, (event) => events.push(event));
     const window = createFakeWindow();
     let destroyed = false;
     window.isDestroyed = () => destroyed;
-    broker.registerWindow(window);
-    broker.setHostId("host_local");
+    broker.registerWindow(window, SERVER_ORIGIN);
+    broker.setHostId(SERVER_ORIGIN, "host_local");
     tabs = [];
     notifyTabsChanged();
     expect(events.at(-1)?.tabs).toEqual([]);
@@ -91,7 +93,7 @@ describe("desktop browser broker snapshots", () => {
     notifyTabsChanged();
     expect(events).toHaveLength(beforeTeardown);
     broker.releaseWindow(window.webContents.id);
-    expect(broker.listInstances()).toEqual([]);
+    expect(broker.listInstances(SERVER_ORIGIN)).toEqual([]);
     broker.dispose();
   });
 
@@ -119,11 +121,11 @@ describe("desktop browser broker snapshots", () => {
       product: "Chrome/1",
     });
     const events: DesktopBrowserChanged[] = [];
-    broker.subscribe((event) => events.push(event));
+    broker.subscribe(SERVER_ORIGIN, (event) => events.push(event));
     const window = createFakeWindow();
 
-    broker.registerWindow(window as never);
-    broker.setHostId("host_local");
+    broker.registerWindow(window as never, SERVER_ORIGIN);
+    broker.setHostId(SERVER_ORIGIN, "host_local");
     tabs = [
       { ...tabs[0]!, title: "Navigated" },
       { ...tabs[1]!, title: "Navigated" },
@@ -166,11 +168,11 @@ describe("desktop browser broker window cleanup", () => {
           return webContents;
         },
       });
-      broker.registerWindow(window);
-      broker.setHostId("host_local");
+      broker.registerWindow(window, SERVER_ORIGIN);
+      broker.setHostId(SERVER_ORIGIN, "host_local");
       const target = broker.getTarget(webContents.id)!;
       if (withLease) {
-        await broker.execute({
+        await broker.execute(SERVER_ORIGIN, {
           type: "desktop.browser.acquire_control",
           ...target,
           threadId: THREAD_ID,
@@ -184,7 +186,7 @@ describe("desktop browser broker window cleanup", () => {
       broker.subscribeInstances(registryChanged);
       destroyed = true;
       expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
-      expect(broker.listInstances()).toEqual([]);
+      expect(broker.listInstances(SERVER_ORIGIN)).toEqual([]);
       expect(registryChanged).toHaveBeenCalledTimes(1);
       expect(() => broker.releaseWindow(webContents.id)).not.toThrow();
       broker.dispose();

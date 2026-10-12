@@ -1364,7 +1364,7 @@ export function createDesktopBrowserViewManager(
         if (!key.startsWith(prefix)) {
           continue;
         }
-        disposeEntry(key, entry);
+        destroyEntry(entry.hostWindow, key);
       }
     },
     destroyAll() {

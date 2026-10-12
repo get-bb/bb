@@ -36,6 +36,8 @@ import {
   BB_DESKTOP_BROWSER_PAGE_WORLD_ID,
 } from "../src/desktop-browser-ipc.js";
 
+const SERVER_ORIGIN = "http://127.0.0.1:38886";
+
 function createDesktopBrowserViewManager(
   args: Partial<CreateDesktopBrowserViewManagerArgs> = {},
 ): DesktopBrowserViewManager {
@@ -1885,10 +1887,12 @@ describe("DesktopBrowserViewManager", () => {
   );
 
   it.each(["local", "enrolled"])(
-    "preserves same-server reconnect tabs but clears them before a different server registration (%s daemon)",
+    "keeps tabs across a same-server reconnect and clears them when the window switches server (%s daemon)",
     async (daemon) => {
       const threadId = "thr_23456789ab";
       const newServerThreadId = "thr_3456789abc";
+      const firstOrigin = "https://first.example";
+      const secondOrigin = "https://second.example";
       const { manager, hostWindow } = createRendererRecoveryFixture(
         91,
         threadId,
@@ -1904,6 +1908,7 @@ describe("DesktopBrowserViewManager", () => {
           restore() {},
           isMinimized: () => false,
         }),
+        firstOrigin,
       );
       const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
       await once(server, "listening");
@@ -1929,31 +1934,17 @@ describe("DesktopBrowserViewManager", () => {
           }),
         );
       });
-      let serverUrl = "https://first.example";
-      if (daemon === "enrolled") {
-        await writeFile(
-          join(dataDir, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
-          JSON.stringify({
-            version: 1,
-            hostId: "local-host",
-            serverUrl: "http://127.0.0.1:38886",
-            url: `ws://127.0.0.1:${address.port}/desktop-browser`,
-            token: "b".repeat(64),
-          }),
-          { mode: 0o600 },
-        );
-      }
-      const writeDescriptor = async () => {
-        const directory =
-          daemon === "local"
-            ? dataDir
-            : join(dataDir, ".bb-machines", new URL(serverUrl).host);
+      const writeDescriptor = async (
+        directory: string,
+        serverUrl: string,
+        hostId: string,
+      ) => {
         await mkdir(directory, { recursive: true });
         await writeFile(
           join(directory, DESKTOP_BROWSER_BROKER_DESCRIPTOR_FILE),
           JSON.stringify({
             version: 1,
-            hostId: "host-1",
+            hostId,
             serverUrl,
             url: `ws://127.0.0.1:${address.port}/desktop-browser`,
             token: "a".repeat(64),
@@ -1961,13 +1952,24 @@ describe("DesktopBrowserViewManager", () => {
           { mode: 0o600 },
         );
       };
-      await writeDescriptor();
-      const client = createDesktopBrowserBrokerClient({
+      const machineDir = (origin: string) =>
+        join(dataDir, ".bb-machines", new URL(origin).host);
+      if (daemon === "local") {
+        await writeDescriptor(dataDir, firstOrigin, "host-1");
+      } else {
+        await writeDescriptor(dataDir, "http://127.0.0.1:38886", "local-host");
+        await writeDescriptor(machineDir(firstOrigin), firstOrigin, "host-1");
+      }
+      await writeDescriptor(machineDir(secondOrigin), secondOrigin, "host-2");
+      const firstClient = createDesktopBrowserBrokerClient({
         broker,
         dataDir,
         homeDir: dataDir,
-        getServerUrl: () => serverUrl,
+        serverOrigin: firstOrigin,
       });
+      let secondClient: ReturnType<
+        typeof createDesktopBrowserBrokerClient
+      > | null = null;
       const hasOriginalTab = (peer: number) =>
         messages.some(
           (message) =>
@@ -1977,40 +1979,62 @@ describe("DesktopBrowserViewManager", () => {
         );
       try {
         await vi.waitFor(() => expect(hasOriginalTab(1)).toBe(true));
-        client.reconnect();
+        firstClient.reconnect();
         await vi.waitFor(() => expect(hasOriginalTab(2)).toBe(true));
         expect(
           manager.listTabs({ hostWebContentsId: 91, threadId }),
         ).toHaveLength(1);
-        const target = broker.getTarget(91);
-        if (!target) throw new Error("Expected connected desktop");
-        await broker.execute({
+        const firstTarget = broker.getTarget(91);
+        if (!firstTarget) throw new Error("Expected connected desktop");
+        expect(firstTarget.hostId).toBe("host-1");
+        await broker.execute(firstOrigin, {
           type: "desktop.browser.acquire_control",
-          instanceId: target.instanceId,
-          generation: target.generation,
+          instanceId: firstTarget.instanceId,
+          generation: firstTarget.generation,
           threadId,
           leaseId: "origin-lease",
           tabIds: ["browser:a"],
           controllerLabel: "Test",
           expiresAt: Date.now() + 60_000,
         });
-        serverUrl = "https://second.example";
-        await writeDescriptor();
-        client.reconnect();
+
+        broker.setWindowServer(91, secondOrigin);
+
         expect(
           manager.listTabs({ hostWebContentsId: 91, threadId: null }),
         ).toEqual([]);
         expect(broker.getControl(91, "browser:a")).toBeNull();
+        expect(broker.getTarget(91)).toBeNull();
         await vi.waitFor(() =>
           expect(
             messages.some(
               ({ peer, frame }) =>
-                peer === 3 &&
+                peer === 2 &&
                 frame.type === "register" &&
-                frame.serverUrl === serverUrl,
+                frame.instances.length === 0,
             ),
           ).toBe(true),
         );
+        secondClient = createDesktopBrowserBrokerClient({
+          broker,
+          dataDir,
+          homeDir: dataDir,
+          serverOrigin: secondOrigin,
+        });
+        await vi.waitFor(() =>
+          expect(broker.getTarget(91)?.hostId).toBe("host-2"),
+        );
+        const secondTarget = broker.getTarget(91);
+        if (!secondTarget) throw new Error("Expected the second server");
+        expect(secondTarget.generation).not.toBe(firstTarget.generation);
+        await expect(
+          broker.execute(firstOrigin, {
+            type: "desktop.browser.list_tabs",
+            instanceId: secondTarget.instanceId,
+            generation: secondTarget.generation,
+            threadId: newServerThreadId,
+          }),
+        ).rejects.toThrow("unavailable");
         manager.attach({
           hostWindow,
           request: {
@@ -2032,17 +2056,17 @@ describe("DesktopBrowserViewManager", () => {
           ).toBe(true),
         );
         expect(
-          messages
-            .filter(({ peer }) => peer === 3)
-            .every(
-              ({ frame }) =>
-                frame.type === "register" ||
-                frame.threadId === newServerThreadId,
-            ),
-        ).toBe(true);
+          messages.some(
+            ({ peer, frame }) =>
+              peer !== 3 &&
+              frame.type === "desktop-browser.changed" &&
+              frame.threadId === newServerThreadId,
+          ),
+        ).toBe(false);
         expect(hasOriginalTab(3)).toBe(false);
       } finally {
-        client.stop();
+        firstClient.stop();
+        secondClient?.stop();
         broker.dispose();
         manager.destroyAll();
         for (const socket of server.clients) socket.terminate();
@@ -2104,9 +2128,10 @@ describe("DesktopBrowserViewManager", () => {
         restore,
         isMinimized: () => true,
       }),
+      SERVER_ORIGIN,
     );
-    broker.setHostId("host-1");
-    const instance = broker.listInstances()[0]!;
+    broker.setHostId(SERVER_ORIGIN, "host-1");
+    const instance = broker.listInstances(SERVER_ORIGIN)[0]!;
     const scope = {
       instanceId: instance.instanceId,
       generation: instance.generation,
@@ -2114,14 +2139,14 @@ describe("DesktopBrowserViewManager", () => {
     };
     let socket: WebSocket | null = null;
     try {
-      await broker.execute({
+      await broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.create_tab",
         ...scope,
         tabId: "automation",
         url: "about:blank",
         presentation: "hidden",
       });
-      await broker.execute({
+      await broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.acquire_control",
         ...scope,
         leaseId: "lease",
@@ -2129,7 +2154,7 @@ describe("DesktopBrowserViewManager", () => {
         controllerLabel: "Agent",
         expiresAt: Date.now() + 60000,
       });
-      const connection = await broker.execute({
+      const connection = await broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.open_connection",
         ...scope,
         leaseId: "lease",
@@ -2196,9 +2221,10 @@ describe("DesktopBrowserViewManager", () => {
         restore() {},
         isMinimized: () => false,
       }),
+      SERVER_ORIGIN,
     );
-    broker.setHostId("host-1");
-    const instance = broker.listInstances()[0];
+    broker.setHostId(SERVER_ORIGIN, "host-1");
+    const instance = broker.listInstances(SERVER_ORIGIN)[0];
     if (!instance) throw new Error("Expected registered instance");
     const scope = {
       instanceId: instance.instanceId,
@@ -2206,7 +2232,7 @@ describe("DesktopBrowserViewManager", () => {
       threadId: "thread-1",
     };
     const acquire = (leaseId: string) =>
-      broker.execute({
+      broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.acquire_control",
         ...scope,
         leaseId,
@@ -2220,7 +2246,7 @@ describe("DesktopBrowserViewManager", () => {
       await expect(acquire("conflict")).rejects.toThrow(
         "already has a controller",
       );
-      const connection = await broker.execute({
+      const connection = await broker.execute(SERVER_ORIGIN, {
         type: "desktop.browser.open_connection",
         ...scope,
         leaseId: "first",
@@ -2252,11 +2278,14 @@ describe("DesktopBrowserViewManager", () => {
         "replacement",
       );
       await closed;
-      broker.setHostId(null);
+      broker.setHostId(SERVER_ORIGIN, null);
       expect(broker.getControl(91, "browser:a")?.control).toBeNull();
-      broker.setHostId("host-1");
+      broker.setHostId(SERVER_ORIGIN, "host-1");
       await expect(
-        broker.execute({ type: "desktop.browser.list_tabs", ...scope }),
+        broker.execute(SERVER_ORIGIN, {
+          type: "desktop.browser.list_tabs",
+          ...scope,
+        }),
       ).rejects.toThrow("reconnected");
       expect(
         manager.listTabs({ hostWebContentsId: 91, threadId: "thread-1" }),
@@ -2649,6 +2678,18 @@ describe("DesktopBrowserViewManager", () => {
       expect(onTabsChanged).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("detaches the tabs of a window that stays open when it releases them", () => {
+    const { manager, hostWindow, view } = createRendererRecoveryFixture(91);
+
+    manager.releaseWindow(91);
+
+    expect(hostWindow.contentView.removedViews).toEqual([view]);
+    expect(view.webContents.isDestroyed()).toBe(true);
+    expect(manager.listTabs({ hostWebContentsId: 91, threadId: null })).toEqual(
+      [],
+    );
+  });
 
   it.each(["detach", "releaseWindow", "destroyAll", "destroyed"] as const)(
     "notifies once after removing a native target through %s",

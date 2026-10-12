@@ -16,6 +16,8 @@ Native actions need OS/Electron automation and inspected screenshots.
 
 - `apps/desktop/src/main.ts`
 - `apps/desktop/src/menu.ts`
+- `apps/desktop/src/server-target.ts`
+- `apps/desktop/src/desktop-browser-broker.ts`
 - `apps/desktop/src/desktop-browser-view.ts`
 - `apps/desktop/src/server-url-dialog.ts`
 - `apps/desktop/src/desktop-auto-update.ts`
@@ -24,10 +26,11 @@ Native actions need OS/Electron automation and inspected screenshots.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Application menus | Exercise About, Settings, New thread, New tab, Reopen closed tab and New window from the actual menu. | Each action reaches the intended focused window and corresponding app state. |
+| Application menus | Exercise About, Settings, New thread, New tab, Reopen closed tab and New window from the actual menu. | Each action reaches the intended focused window and corresponding app state; New window opens the focused window's server. |
 | Window lifecycle | Open two windows, resize/move one, close/reopen, minimize and use platform window actions. | Window bounds/focus restore according to platform policy without losing the surviving window’s thread. |
 | Close routing | Close an active side tab then close the window through keyboard/menu controls. | The intended tab/window closes; the command does not destroy another pane’s session. |
-| Server URL and switching | Set a disposable local/remote server URL, cancel another edit, and switch among known test servers from both the native menu and command palette. Reopen the palette after discovery updates; try an unknown ID through the bridge. | Palette omits the active server, follows throttled native discovery, and accepts only native IDs. Selected server is marked and loaded; bad URLs and unavailable servers have an actionable error. |
+| Server URL and switching | Set a disposable local/remote server URL, cancel another edit, and switch the focused window among known test servers from both the native menu and command palette. Reopen the palette after discovery updates; try an unknown ID through the bridge. | Palette omits the window's own server, follows throttled native discovery, and accepts only native IDs. Only the focused window loads the selected server and the Server menu marks it; bad URLs and unavailable servers have an actionable error. |
+| Per-window servers | With two disposable test servers, open a second window with File → New window and switch it to the other server from Window → Server; switch back from the palette's Switch to. Close every window, pick a server from the Server menu, then open a window. Switch one window, edit then clear a custom URL that two windows share, stop one server, then quit and relaunch. Run `bb browser instances` against each server. | Each window keeps its own server: New window opens the focused window's server, the window opened after closing every window shows the server picked meanwhile, switching or an unreachable server affects only that window, and Try again recovers it. Titles end with ` — <server>` only while windows show different servers. The Server menu, menu shortcuts and appearance follow focus. Editing reloads every window on the old URL; clearing moves them to This Mac. Relaunch restores each window's server. Each server lists only its own windows. |
 | Connect server discovery | Pair only with the local cloud test account; refresh the native Server menu and renew a test session. | Authorized machines are listed, selection follows identity, and unavailable/expired credentials show their reason. |
 | Owned and existing runtimes | Start with a test runtime absent, already running, and occupying an incompatible endpoint. | Desktop launches/reuses/prompts as appropriate and does not stop a runtime it does not own. |
 | Embedded browser | Open a local fixture URL in a browser tab; navigate/back/forward/reload, focus address, find, and use supported link actions. | Native browser view matches the active pane bounds and location; app shortcuts route to the focused view. |

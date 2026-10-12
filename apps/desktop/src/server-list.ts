@@ -3,34 +3,65 @@ import type { BbDesktopServerChoice } from "@bb/desktop-contract";
 import {
   BUILTIN_SERVER_NAME,
   type ConnectServerRef,
-  type ServerTargetStore,
+  type DesktopServerTarget,
 } from "./server-target.js";
+
+interface ListDesktopServerTargetsArgs {
+  connectServers: readonly ConnectServerRef[];
+  customServerUrls: readonly string[];
+}
+
+interface BuildDesktopServerChoicesArgs extends ListDesktopServerTargetsArgs {
+  activeTarget: DesktopServerTarget | null;
+}
 
 export function customServerId(url: string): string {
   return `custom:${createHash("sha256").update(url).digest("hex")}`;
 }
 
-export function buildDesktopServerChoices(
-  store: ServerTargetStore | null,
-  connectServers: readonly ConnectServerRef[],
-): BbDesktopServerChoice[] {
-  const target = store?.getTarget() ?? { kind: "builtin" };
+export function serverTargetId(target: DesktopServerTarget): string {
+  if (target.kind === "connect") {
+    return `connect:${target.server.handle}`;
+  }
+  if (target.kind === "custom") {
+    return customServerId(target.url);
+  }
+  return "builtin";
+}
+
+export function serverTargetName(target: DesktopServerTarget): string {
+  if (target.kind === "connect") {
+    return target.server.name;
+  }
+  if (target.kind === "custom") {
+    return new URL(target.url).host;
+  }
+  return BUILTIN_SERVER_NAME;
+}
+
+export function listDesktopServerTargets(
+  args: ListDesktopServerTargetsArgs,
+): DesktopServerTarget[] {
   return [
-    {
-      id: "builtin",
-      name: BUILTIN_SERVER_NAME,
-      active: target.kind === "builtin",
-    },
-    ...connectServers.map((server) => ({
-      id: `connect:${server.handle}`,
-      name: server.name,
-      active:
-        target.kind === "connect" && target.server.handle === server.handle,
+    { kind: "builtin" },
+    ...args.connectServers.map((server): DesktopServerTarget => ({
+      kind: "connect",
+      server: { ...server },
     })),
-    ...(store?.getCustomServerUrls() ?? []).map((url) => ({
-      id: customServerId(url),
-      name: new URL(url).host,
-      active: target.kind === "custom" && target.url === url,
+    ...args.customServerUrls.map((url): DesktopServerTarget => ({
+      kind: "custom",
+      url,
     })),
   ];
+}
+
+export function buildDesktopServerChoices(
+  args: BuildDesktopServerChoicesArgs,
+): BbDesktopServerChoice[] {
+  const activeId =
+    args.activeTarget === null ? null : serverTargetId(args.activeTarget);
+  return listDesktopServerTargets(args).map((target) => {
+    const id = serverTargetId(target);
+    return { id, name: serverTargetName(target), active: id === activeId };
+  });
 }

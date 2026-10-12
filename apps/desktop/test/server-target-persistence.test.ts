@@ -68,22 +68,31 @@ it.each([
     await writeFile(storagePath, JSON.stringify(settings), "utf8");
     const store = createServerTargetStore({ storagePath });
     await store.load();
-    expect(store.getTarget()).toEqual(
+    expect(store.getDefaultTarget()).toEqual(
       connect === null
         ? { kind: "custom", url: firstUrl }
         : { kind: "connect", server: connect },
     );
-    await store.setCustomServerUrl(thirdUrl);
+    await store.setWindowTarget("main", { kind: "custom", url: thirdUrl });
+    await store.setDefaultTarget({ kind: "custom", url: thirdUrl });
     expect(JSON.parse(await readFile(storagePath, "utf8"))).toEqual({
       connectServer: connect,
       customServerUrl: thirdUrl,
       customServerUrls: urls,
       target: "custom",
+      windowTargets: { main: { kind: "custom", url: thirdUrl } },
     });
     const reloaded = createServerTargetStore({ storagePath });
     await reloaded.load();
     expect(reloaded.getCustomServerUrls()).toEqual(urls);
-    expect(reloaded.getTarget()).toEqual({ kind: "custom", url: thirdUrl });
+    expect(reloaded.getDefaultTarget()).toEqual({
+      kind: "custom",
+      url: thirdUrl,
+    });
+    expect(reloaded.getWindowTarget("main")).toEqual({
+      kind: "custom",
+      url: thirdUrl,
+    });
   },
 );
 
@@ -106,7 +115,7 @@ it.each([
   const store = createServerTargetStore({ storagePath });
   await store.load();
   expect(store.getCustomServerUrls()).toEqual([]);
-  expect(store.getTarget()).toEqual({ kind: "builtin" });
+  expect(store.getDefaultTarget()).toEqual({ kind: "builtin" });
 });
 
 it.each(["none", "mkdir", "writeFile"] as const)(
@@ -152,11 +161,14 @@ it.each(["none", "mkdir", "writeFile"] as const)(
     };
     const store = createServerTargetStore({ storagePath, fs });
     await store.load();
-    const first = store.setCustomServerUrl(firstUrl);
+    const first = store.setDefaultTarget({ kind: "custom", url: firstUrl });
     const firstResult = Promise.allSettled([first]);
     await entered.promise;
-    const second = store.setCustomServerUrl(secondUrl);
-    const third = store.setTarget("builtin");
+    const second = store.setWindowTarget("main", {
+      kind: "custom",
+      url: secondUrl,
+    });
+    const third = store.setDefaultTarget({ kind: "builtin" });
     const laterResults = Promise.allSettled([second, third]);
     try {
       await Promise.all(directoryOperations);
@@ -171,13 +183,16 @@ it.each(["none", "mkdir", "writeFile"] as const)(
     ]);
     expect(await laterResults).toEqual([
       { status: "fulfilled", value: undefined },
-      { status: "fulfilled", value: true },
+      { status: "fulfilled", value: undefined },
     ]);
     expect(maximumActiveWrites).toBe(1);
     const reloaded = createServerTargetStore({ storagePath });
     await reloaded.load();
     expect(reloaded.getCustomServerUrls()).toEqual([firstUrl, secondUrl]);
-    expect(reloaded.getCustomServerUrl()).toBe(secondUrl);
-    expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+    expect(reloaded.getWindowTarget("main")).toEqual({
+      kind: "custom",
+      url: secondUrl,
+    });
+    expect(reloaded.getDefaultTarget()).toEqual({ kind: "builtin" });
   },
 );
