@@ -167,7 +167,14 @@ vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
 }));
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
+  sdk: {
+    projects: { attachments: { copy: mocks.copyAttachments } },
+    system: {
+      experimental_recordTelemetryEvent: vi
+        .fn()
+        .mockRejectedValue(new Error("Telemetry unavailable")),
+    },
+  },
 }));
 
 const PROJECT = makeProjectWithThreadsResponse({

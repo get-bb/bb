@@ -3,6 +3,7 @@ import { usePendingAttachmentUploads } from "./usePendingAttachmentUploads";
 import { useInitialPromptDraft } from "./mentions/initial-prompt-draft";
 import { ProviderRequirementBanner } from "./banner/ProviderRequirementBanner";
 import { Button } from "@bb/shared-ui/button";
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   getPluginConfigurationRoutePath,
   getSettingsRoutePath,
@@ -1696,10 +1697,22 @@ export function NewThreadComposer({
       setAttachmentError(null);
       const clearedSubmittedDraft =
         promptDraft.clearIfCurrentMatches(submittedDraft);
+      recordTelemetryEvent({
+        name: "new_thread_submit",
+        properties: { outcome: "started" },
+      });
       try {
         await onSubmit(request);
+        recordTelemetryEvent({
+          name: "new_thread_submit",
+          properties: { outcome: "accepted" },
+        });
         clearReuseEnvironment();
       } catch (submitError) {
+        recordTelemetryEvent({
+          name: "new_thread_submit",
+          properties: { outcome: "failed" },
+        });
         if (clearedSubmittedDraft) {
           promptDraft.restoreIfEmpty(submittedDraft);
         }

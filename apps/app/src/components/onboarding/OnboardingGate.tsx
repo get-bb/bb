@@ -58,6 +58,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         <Suspense fallback={null}>
           <OnboardingFlow
             initialStep="agent"
+            entry={seenBefore ? "replay" : "first_run"}
             onClose={() => {
               setFirstRunClosed(true);
               updateSettings.mutate({
