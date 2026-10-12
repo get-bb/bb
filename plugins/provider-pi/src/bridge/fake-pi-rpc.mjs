@@ -533,6 +533,21 @@ async function runPrompt(text) {
       .map((block) => block.text)
       .join("\n");
   }
+  if (text === "/failed-then-queued") {
+    const messages = [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "scripted unrecovered failure",
+      },
+    ];
+    await emitExtensionEvent("agent_end", { messages });
+    event({ type: "agent_end", messages, willRetry: false });
+    queueUpdate();
+    await emitExtensionEvent("agent_start");
+    event({ type: "agent_start" });
+  }
   if (text === "/native-retry" || text === "/native-overflow") {
     const messages = [
       {

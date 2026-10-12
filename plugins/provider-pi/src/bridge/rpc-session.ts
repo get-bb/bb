@@ -166,7 +166,12 @@ export class PiRpcSession {
   private agentRunsSettled = 0;
   private readonly runs = new Map<
     number,
-    { end?: PiRpcEvent; leafId?: string | null; recoveryError?: string }
+    {
+      end?: PiRpcEvent;
+      leafId?: string | null;
+      recoveryError?: string;
+      overflowRecovered?: boolean;
+    }
   >();
   private deliveredRunActive = false;
   private isCompacting = false;
@@ -615,7 +620,8 @@ export class PiRpcSession {
         if (report.previousSettlement)
           this.deliverSettlement(report.previousSettlement);
         if (this.closed) return;
-        if (!this.deliveredRunActive) this.onEvent(event);
+        if (this.deliveredRunActive) this.reportSupersededRunFailure(runId - 1);
+        else this.onEvent(event);
         this.deliveredRunActive = true;
       });
       return;
@@ -656,6 +662,14 @@ export class PiRpcSession {
               message.role === "assistant",
           )
       : undefined;
+    if (
+      run?.end &&
+      event.type === "compaction_end" &&
+      event.reason === "overflow" &&
+      event.willRetry === true
+    ) {
+      run.overflowRecovered = true;
+    }
     if (
       run &&
       event.type === "compaction_end" &&
@@ -730,6 +744,9 @@ export class PiRpcSession {
       messages,
       settlementOnly: true,
       ...(error ? { settlementError: error } : {}),
+      ...(run.recoveryError === undefined
+        ? {}
+        : { settlementErrorReported: true }),
       ...(checkpoint ? { providerCheckpointId: checkpoint } : {}),
     };
     if (this.agentRunsStarted === runId) this.isProcessing = false;
@@ -740,6 +757,27 @@ export class PiRpcSession {
     this.onEvent({ ...event, type: "agent_settled" });
     this.settleRun(finalEvent);
     if (this.agentRunsStarted === runId) this.scheduleTerminalSteerSettlement();
+  }
+
+  private reportSupersededRunFailure(runId: number): void {
+    const run = this.runs.get(runId);
+    if (
+      !run?.end ||
+      run.end.willRetry === true ||
+      run.overflowRecovered === true ||
+      run.recoveryError !== undefined
+    ) {
+      return;
+    }
+    const error = runSettlementError(run.end, run.end.messages);
+    if (!error) return;
+    this.onEvent({
+      type: "agent_end",
+      messages: [],
+      deferSettlement: true,
+      settlementSuperseded: true,
+      settlementError: error,
+    });
   }
 
   private retireRunsThrough(runId: number): void {

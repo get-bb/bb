@@ -192,6 +192,19 @@ it.each(["retry", "overflow", "followUp"])(
     await h.control.deliveryChain;
     expect(h.events.filter((e) => e.settlementOnly)).toHaveLength(1);
     expect(h.events.filter((e) => e.type === "agent_start")).toHaveLength(1);
+    expect(h.events.filter((e) => e.settlementSuperseded)).toEqual(
+      kind === "followUp"
+        ? [
+            {
+              type: "agent_end",
+              messages: [],
+              deferSettlement: true,
+              settlementSuperseded: true,
+              settlementError: "failure-attempt",
+            },
+          ]
+        : [],
+    );
     expect(h.control.runs.size).toBe(0);
     expect(h.requestOk).toHaveBeenCalledTimes(kind === "overflow" ? 2 : 1);
   },
@@ -240,10 +253,48 @@ it.each([false, true])(
       ),
     });
     expect(h.events.filter((e) => e.settlementOnly)).toEqual([
-      expect.objectContaining({ settlementError: expect.any(String) }),
+      expect.objectContaining({
+        settlementError: expect.any(String),
+        settlementErrorReported: true,
+      }),
     ]);
   },
 );
+
+it("surfaces a failed run's error when queued work continues the same settlement", async () => {
+  const h = harness();
+  const translator = createPiDeltaTranslator({
+    resolveModelContextWindow: () => null,
+  });
+  const dispatch = h.session.prompt("original prompt");
+  await dispatch.consumed;
+  h.event({ type: "agent_start" });
+  h.end("original", "error");
+  h.event({ type: "queue_update", steering: [], followUp: [] });
+  h.event({ type: "agent_start" });
+  h.end("queued");
+  h.settle("final");
+  expect(await dispatch.settled).toEqual({ boundaryDelivered: true });
+  await h.control.deliveryChain;
+  const deltas = h.events.flatMap((event) =>
+    translator.translate({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: { threadId: "thread", message: event },
+    }),
+  );
+  expect(deltas.filter((delta) => delta.kind === "provider.error")).toEqual([
+    {
+      kind: "provider.error",
+      message: "Provider error",
+      detail: "failure-original",
+    },
+  ]);
+  expect(deltas.filter((delta) => delta.kind === "turn.boundary")).toEqual([
+    expect.objectContaining({ status: "completed" }),
+  ]);
+  expect(h.onDone).not.toHaveBeenCalled();
+});
 
 it("clears an earlier overflow failure only when native work continues", async () => {
   const h = harness();
@@ -262,6 +313,7 @@ it("clears an earlier overflow failure only when native work continues", async (
   h.settle("final");
   expect(await dispatch.settled).toEqual({ boundaryDelivered: true });
   expect(h.control.runs.size).toBe(0);
+  expect(h.events.filter((e) => e.settlementSuperseded)).toEqual([]);
 });
 
 it.each([undefined, false, true, "false", null, 0])(
@@ -293,6 +345,8 @@ it("ignores duplicate authoritative settlement without duplicate delivery", asyn
   await dispatch.settled;
   await h.control.deliveryChain;
   expect(h.events.filter((e) => e.settlementOnly)).toHaveLength(1);
+  expect(h.onDone).not.toHaveBeenCalled();
+  expect(h.kill).not.toHaveBeenCalled();
 });
 
 it.each(["bb-first", "bb-last"])(

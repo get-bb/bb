@@ -147,6 +147,28 @@ it.each(["/native-retry", "/native-overflow"])(
   },
 );
 
+it("shows a failed run's error when queued work continues to a completed turn", async () => {
+  const t = await start();
+  const deltas = await t.run("/failed-then-queued");
+  expect(deltas.filter((d) => d.kind === "provider.error")).toEqual([
+    {
+      kind: "provider.error",
+      message: "Provider error",
+      detail: "scripted unrecovered failure",
+    },
+  ]);
+  expect(deltas.filter((d) => d.kind === "turn.boundary")).toEqual([
+    expect.objectContaining({ status: "completed" }),
+  ]);
+  expect(
+    deltas.filter(
+      (d) =>
+        d.kind === "item.textClose" && String(d.text).includes("Response to:"),
+    ),
+  ).toHaveLength(1);
+  expect(deltas.filter((d) => d.kind === "turn.open")).toHaveLength(1);
+});
+
 it.each([
   "/unexpected-abort",
   "/retry-exhausted",
@@ -159,6 +181,7 @@ it.each([
   expect(deltas.filter((d) => d.kind === "turn.boundary")).toEqual([
     expect.objectContaining({ status: "failed" }),
   ]);
+  expect(deltas.filter((d) => d.kind === "provider.error")).toHaveLength(1);
   expect(t.commands().filter((c) => c === "prompt")).toHaveLength(1);
   expect(t.wireEvents().filter((e) => e.type === "agent_start")).toHaveLength(
     1,

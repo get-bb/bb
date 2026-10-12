@@ -124,6 +124,8 @@ const piAgentEndEventSchema = z
     deferSettlement: z.boolean().optional(),
     settlementOnly: z.boolean().optional(),
     settlementError: z.string().optional(),
+    settlementErrorReported: z.boolean().optional(),
+    settlementSuperseded: z.boolean().optional(),
   })
   .passthrough();
 
@@ -774,33 +776,35 @@ export function createPiDeltaTranslator(
           runSettlementError(piEvent.data, piEvent.data.messages);
         if (settlementError && !piEvent.data.deferSettlement) {
           clearThreadToolShapes(context);
-          return [
-            {
+          const failure: ThreadDelta[] = [];
+          if (!piEvent.data.settlementErrorReported) {
+            failure.push({
               kind: "provider.error",
               message: "Provider error",
               detail: settlementError,
-            },
-            {
-              kind: "turn.boundary",
-              status: "failed",
-              ...(piEvent.data.providerCheckpointId !== undefined
-                ? { providerCheckpointId: piEvent.data.providerCheckpointId }
-                : {}),
-            },
-          ];
+            });
+          }
+          failure.push({
+            kind: "turn.boundary",
+            status: "failed",
+            ...(piEvent.data.providerCheckpointId !== undefined
+              ? { providerCheckpointId: piEvent.data.providerCheckpointId }
+              : {}),
+          });
+          return failure;
         }
         if (!piEvent.data.deferSettlement) clearThreadToolShapes(context);
         const deltas: ThreadDelta[] = [];
         if (
           settlementError &&
           piEvent.data.deferSettlement &&
-          piEvent.data.willRetry
+          (piEvent.data.willRetry || piEvent.data.settlementSuperseded)
         ) {
           deltas.push({
             kind: "provider.error",
             message: "Provider error",
             detail: settlementError,
-            willRetry: true,
+            ...(piEvent.data.willRetry ? { willRetry: true } : {}),
           });
         }
         if (lastAssistant && !piEvent.data.settlementOnly && !settlementError) {
@@ -817,7 +821,7 @@ export function createPiDeltaTranslator(
         const usage = piEvent.data.settlementOnly
           ? undefined
           : toAssistantUsageBreakdown(lastAssistant);
-        if (usage) {
+        if (usage && !(settlementError && usage.totalTokens === 0)) {
           const threadKey = context?.threadId ?? "";
           const total = addTokenUsage(
             cumulativeTokensByThreadId.get(threadKey) ?? ZERO_TOKEN_USAGE,

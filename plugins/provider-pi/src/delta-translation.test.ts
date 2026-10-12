@@ -1935,6 +1935,83 @@ describe("pi delta translation equivalence", () => {
     ]);
   });
 
+  it("reports a failed run that queued work superseded without ending the turn", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const failedAttempt = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        deferSettlement: true,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "error",
+            errorMessage: "original prompt failed",
+            content: [],
+            usage: { input: 0, output: 0 },
+          },
+        ],
+      }),
+    );
+    expect(failedAttempt).toEqual([]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          deferSettlement: true,
+          settlementSuperseded: true,
+          settlementError: "original prompt failed",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: "original prompt failed",
+      },
+    ]);
+  });
+
+  it("does not repeat a recovery failure that compaction already reported", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const compaction = translator.translate(
+      sdkMessage({
+        type: "compaction_end",
+        reason: "overflow",
+        aborted: false,
+        willRetry: false,
+        errorMessage: "overflow recovery exhausted",
+      }),
+    );
+    expect(
+      compaction.filter((delta) => delta.kind === "provider.error"),
+    ).toEqual([
+      expect.objectContaining({ detail: "overflow recovery exhausted" }),
+    ]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          settlementOnly: true,
+          settlementError: "overflow recovery exhausted",
+          settlementErrorReported: true,
+          providerCheckpointId: "settled-checkpoint",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "turn.boundary",
+        status: "failed",
+        providerCheckpointId: "settled-checkpoint",
+      },
+    ]);
+  });
+
   it.each([true, "false", null, 0])(
     "reports explicit or malformed settlement abort %s as failed",
     (aborted) => {
