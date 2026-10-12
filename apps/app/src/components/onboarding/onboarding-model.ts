@@ -32,6 +32,7 @@ export const ONBOARDING_PLUGINS: readonly {
 ];
 
 export const CONNECT_PLUGIN_ID = "connect";
+export const PUSH_NOTIFICATIONS_PLUGIN_ID = "push-notifications";
 
 export type AgentSetupState =
   | { status: "checking" }

@@ -2103,6 +2103,10 @@ Accepted means the creation callback succeeded, not that the provider produced
 an answer. Disabled send controls and later turn failures are not measured.
 Attempts without a delivered outcome remain unknown, not inferred failures.
 
+The sidebar notification card also reports `notification_prompt_shown`,
+`notification_prompt_accepted`, `notification_prompt_dismissed`, and
+`notification_prompt_denied`.
+
 The route accepts only these events and their fixed enums, booleans, and unknown
 markers. These additions include no provider IDs, account details, prompts,
 project or file names, terminal output, error messages, or session identifiers.
