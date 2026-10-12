@@ -2949,46 +2949,58 @@ digits, `-`, `_`); `languages` is non-empty, each lowercase
 `/^[a-z0-9][a-z0-9+#._-]*$/`, and a language may be claimed once per plugin
 (duplicates across that plugin's registrations are rejected at load).
 
-The component receives `{ code, language, index, complete, message, Original }`.
-`code` is the fence body so far and grows while the reply streams; the
-component keeps its React identity while an open fence grows. After the fence
-closes it may remount once (when the streaming reply's settled region moves
-past it, or when the reply finishes), so state that must survive belongs under
-the key below. Inside the component `useBbNavigate().openThreadPanel` works
-as it does for `messageDirective`. `complete` is true
-once the closing fence delimiter is present in the message source, derived per
-block. `index` is the zero-based ordinal among fences of the same language in
-the message, stable while streaming; plugins key persistent state on
-`${message.id}#${language}#${index}`. `Original` renders BB's code block
-(syntax highlighting, copy button, mermaid diagram for `mermaid`).
+The component receives `{ code, language, status, index, message, Original }`.
+`code` is the fence body so far and grows while the reply streams. `status` is
+`"streaming"` (no closing delimiter yet, reply still being written),
+`"closed"` (closing delimiter present, `code` final), or `"unclosed"` (the
+reply ended without one). `index` is the zero-based ordinal among fences of
+the same language in the message. `Original` renders BB's code block (syntax
+highlighting, copy button, mermaid diagram for `mermaid`). Inside the
+component `useBbNavigate().openThreadPanel` works as it does for
+`messageDirective`.
 
-Fallbacks: two plugins claiming one language resolve to the first in slot
-order (plugin ids sorted) and BB logs a console warning naming the claimants;
-a missing or disabled plugin renders BB's code block; a crash disables that
-renderer for the session, so all its fences render `Original`, through the
-same crash boundary as `messageDirective`.
+BB mounts the component once per fence and keeps that instance for as long as
+the message stays on screen. The Markdown tree renders an empty placeholder
+where the fence sits; a host around the message's Markdown owns the component
+and portals it into a container that follows the placeholder, so the instance
+survives the placeholder moving from the streaming tail to the settled region
+and the reply finishing. A fence is identified by the source offset of its
+opening delimiter, which does not move while a reply is appended to. Where
+the browser supports `Element.moveBefore`, an iframe inside the component
+also survives those moves without reloading; elsewhere component state
+survives and the iframe reloads. State that must outlive the mounted
+component belongs under `${message.id}#${language}#${index}`.
+
+Fallbacks: BB's code block renders when two plugins claim one language (BB
+logs a console warning naming them), when the plugin is missing or disabled,
+and for a fence whose component throws. A throw affects that fence only, and
+BB tries the component again when that fence's `code` or `status` changes.
 
 **Core callers on the same path.** Assistant and nested-agent message Markdown
 rendering — `MarkdownPreview`'s code renderer, the pipeline that also resolves
-`messageDirective` and the built-in `mermaid` special case. The SDK testing
-harness exposes registrations as `loadPluginApp(...).codeFenceRenderers`,
-renderable with `renderSlot`.
+`messageDirective`. The built-in `inline-vis` plugin renders its
+` ```inline-vis ` pages through this slot. BB's `mermaid` diagram stays
+a core special case inside `Original`, because it renders on every Markdown
+surface and this slot is scoped to messages. The SDK testing harness exposes
+registrations as `loadPluginApp(...).codeFenceRenderers`, renderable with
+`renderSlot`.
 
 **Audit before stabilizing.**
 
-1. **Collision model.** Confirm first-in-plugin-id-order plus a console
-   warning is enough, or whether users need a per-language picker like the
-   source/diff renderer pin.
-2. **Streaming contract.** Confirm `code`/`complete`/`index` cover real
-   generative-UI renderers (partial JSON/DSL parsing, re-keying when an edit
-   inserts an earlier fence of the same language).
+1. **Collision model.** Confirm that a contested language falling back to
+   BB's code block is enough, or whether users need a per-language picker
+   like the source/diff renderer pin.
+2. **Streaming contract.** Confirm `code`/`status`/`index` cover real
+   generative-UI renderers (partial JSON/DSL parsing), and whether the rest
+   of the info string should be exposed as `meta`.
 3. **Scope.** Confirm the slot should stay limited to assistant and
-   nested-agent Markdown, and whether `mermaid` should be claimable or stay
-   reserved for BB.
-4. **Remount after close.** Confirm the one remount after a fence closes is
-   acceptable, or keep identity across the streaming split.
-5. **Crash behavior.** Confirm a session-long fallback to `Original` after one
-   crash is the right granularity versus per-block recovery.
+   nested-agent Markdown, whether common languages (`json`, `ts`) should be
+   claimable, and whether `mermaid` should be claimable or reserved for BB.
+4. **Identity.** Confirm keying a fence by source offset holds for every
+   path that rewrites a message's text, and decide whether iframes must
+   survive the tail-to-settled move in browsers without `moveBefore`.
+5. **Source visibility.** Decide whether BB should offer its own "view
+   source" control for claimed fences instead of leaving it to each plugin.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 

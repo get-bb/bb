@@ -495,10 +495,25 @@ export interface PluginMessageDirectiveProps {
 }
 
 /**
+ * Where a fenced code block stands while its message is written.
+ *
+ * - `"streaming"`: the closing delimiter has not arrived and the message is
+ *   still being written; `code` is a prefix of the final body.
+ * - `"closed"`: the closing delimiter is present; `code` is final.
+ * - `"unclosed"`: the message ended without a closing delimiter (for example
+ *   an interrupted reply); `code` will not grow.
+ *
+ * @experimental Audit before relying on this as a stable contract.
+ */
+export type ExperimentalCodeFenceStatus = "streaming" | "closed" | "unclosed";
+
+/**
  * Props passed to an `experimental_codeFenceRenderer` component — one fenced
  * code block whose info-string language the plugin claimed, inside assistant
- * (or nested agent) message Markdown. The component stays mounted while the
- * reply streams, so it can keep local state as `code` grows.
+ * (or nested agent) message Markdown. BB mounts the component once per fence
+ * and keeps that instance for as long as the message stays on screen, so
+ * component state survives the whole stream, including the moment the fence
+ * closes and the moment the reply finishes.
  *
  * @experimental Audit before relying on this as a stable contract.
  */
@@ -507,22 +522,19 @@ export interface ExperimentalCodeFenceRendererProps {
   code: string;
   /** The matched lowercase info-string language (e.g. `"ui"`). */
   language: string;
+  status: ExperimentalCodeFenceStatus;
   /**
    * Zero-based ordinal of this fence among the fences of the same language in
-   * the same message. Stable while the message streams, so
-   * `${message.id}#${language}#${index}` keys persistent per-block state.
+   * the same message. It does not change while the message streams, so
+   * `${message.id}#${language}#${index}` keys state that must outlive the
+   * mounted component (a reload, or the message scrolling out of the rendered
+   * window).
    */
   index: number;
-  /**
-   * True once the message source contains this fence's closing delimiter.
-   * False while the fence is still streaming, and for a reply that ended
-   * without closing it.
-   */
-  complete: boolean;
   message: PluginMessageDirectiveMessage;
   /**
    * BB's own code block for this fence. Render it to show the source, for
-   * example while `complete` is false or when `code` does not parse.
+   * example while `status` is `"streaming"` or when `code` does not parse.
    */
   Original: ComponentType;
 }
@@ -1822,9 +1834,12 @@ export interface PluginMessageDirectiveRegistration {
  * Render fenced code blocks of chosen languages inside assistant (and nested
  * agent) message Markdown. ` ```ui ` matches a registration whose `languages`
  * include `"ui"`. Fences elsewhere (user messages, file previews, plugin
- * Markdown) keep BB's code block. When several plugins claim one language the
- * first in deterministic slot order wins and BB logs a warning. A disabled
- * plugin or a crashing component falls back to BB's code block.
+ * Markdown) keep BB's code block.
+ *
+ * BB's code block also renders when two plugins claim the same language (BB
+ * logs a warning naming them), when the plugin is disabled, and for a fence
+ * whose component throws. A throw affects that fence only, and BB tries the
+ * component again when the fence's `code` or `status` changes.
  *
  * @experimental Audit before relying on this as a stable contract.
  */

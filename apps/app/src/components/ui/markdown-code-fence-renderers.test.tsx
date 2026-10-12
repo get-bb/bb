@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
-import { useEffect, type ComponentType } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { useEffect, useState, type ComponentType } from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalCodeFenceRendererProps } from "@get-bb/plugin-sdk";
 import { MemoryRouter } from "react-router-dom";
@@ -18,6 +24,7 @@ import {
 } from "@/lib/plugin-slots";
 import {
   buildCodeFenceRendererRegistry,
+  CodeFenceRendererHost,
   CodeFenceRendererRegistryProvider,
   type CodeFenceRendererRegistry,
 } from "./markdown-code-fence-renderers";
@@ -37,7 +44,7 @@ function UiFence(props: ExperimentalCodeFenceRendererProps) {
       data-code={props.code}
       data-language={props.language}
       data-index={String(props.index)}
-      data-complete={String(props.complete)}
+      data-status={props.status}
       data-message-id={props.message.id}
       data-thread-id={props.message.threadId}
       data-turn-id={props.message.turnId ?? ""}
@@ -60,14 +67,10 @@ function slot(
   };
 }
 
-function fenceRenderers(registry: CodeFenceRendererRegistry) {
-  return { registry, message: MESSAGE, openThreadPanel: null };
-}
-
 function renderedFences() {
   return screen.getAllByTestId("ui-fence").map((node) => ({
     code: node.getAttribute("data-code"),
-    complete: node.getAttribute("data-complete"),
+    status: node.getAttribute("data-status"),
     index: node.getAttribute("data-index"),
   }));
 }
@@ -100,6 +103,23 @@ function assistantMessage(
   );
 }
 
+function hostedMarkdown(
+  registry: CodeFenceRendererRegistry,
+  content: string,
+  streaming = false,
+) {
+  return (
+    <CodeFenceRendererHost
+      registry={registry}
+      message={MESSAGE}
+      openThreadPanel={null}
+      streaming={streaming}
+    >
+      <MarkdownPreview content={content} />
+    </CodeFenceRendererHost>
+  );
+}
+
 afterEach(() => {
   cleanup();
   resetAllCrashedPluginSlotsForTest();
@@ -113,7 +133,7 @@ beforeEach(() => {
 });
 
 describe("code fence renderers in assistant messages", () => {
-  it("renders claimed fences with code, language, per-language index, completion, and message", () => {
+  it("renders claimed fences with code, language, per-language index, status, and message", () => {
     const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
     const view = render(
       assistantMessage(
@@ -137,59 +157,39 @@ describe("code fence renderers in assistant messages", () => {
     );
 
     expect(renderedFences()).toEqual([
-      { code: "{ first }", complete: "true", index: "0" },
-      { code: "{ second }", complete: "true", index: "1" },
+      { code: "{ first }", status: "closed", index: "0" },
+      { code: "{ second }", status: "closed", index: "1" },
     ]);
-    const first = screen.getAllByTestId("ui-fence")[0]!;
-    expect(first.getAttribute("data-language")).toBe("ui");
-    expect(first.getAttribute("data-message-id")).toBe("msg_a");
-    expect(first.getAttribute("data-thread-id")).toBe("thr_a");
-    expect(first.getAttribute("data-turn-id")).toBe("turn_a");
-    expect(first.getAttribute("data-project-id")).toBe("proj_a");
+    const first = screen.getAllByTestId("ui-fence")[0];
+    expect(first?.getAttribute("data-language")).toBe("ui");
+    expect(first?.getAttribute("data-message-id")).toBe("msg_a");
+    expect(first?.getAttribute("data-thread-id")).toBe("thr_a");
+    expect(first?.getAttribute("data-turn-id")).toBe("turn_a");
+    expect(first?.getAttribute("data-project-id")).toBe("proj_a");
     expect(view.container.textContent).toContain("const between = 1;");
-    expect(view.container.textContent).not.toContain("{ first }");
-  });
-
-  it("delivers claims through the sanitized HTML pipeline when the message contains HTML", async () => {
-    const registry = buildCodeFenceRendererRegistry([
-      slot(UiFence, { languages: ["ui", "app"] }),
-    ]);
-    const view = render(
-      assistantMessage(
-        registry,
-        [
-          "Intro with <b>inline HTML</b>.",
-          "",
-          "```app",
-          "<!doctype html><html><body><h1>Demo</h1></body></html>",
-          "```",
-          "",
-          "```app",
-          "<div>open",
-        ].join("\n"),
-      ),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByLabelText("Loading embedded HTML")).toBeNull(),
-    );
-    expect(view.container.querySelector("b")?.textContent).toBe("inline HTML");
-    expect(renderedFences()).toEqual([
-      {
-        code: "<!doctype html><html><body><h1>Demo</h1></body></html>",
-        complete: "true",
-        index: "0",
-      },
-      { code: "<div>open", complete: "false", index: "1" },
-    ]);
     expect(
-      screen
-        .getAllByTestId("ui-fence")
-        .map((node) => node.getAttribute("data-language")),
-    ).toEqual(["app", "app"]);
+      view.container.querySelectorAll('button[aria-label="Wrap long lines"]'),
+    ).toHaveLength(1);
   });
 
-  it("renders the same fence as BB's code block in a user message", () => {
+  it("renders claimed fences in document order between the surrounding prose", () => {
+    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const view = render(
+      assistantMessage(registry, "Before\n\n```ui\n{ a }\n```\n\nAfter"),
+    );
+    const fence = screen.getByTestId("ui-fence");
+    const before = screen.getByText("Before");
+    const after = screen.getByText("After");
+    expect(view.container.contains(fence)).toBe(true);
+    expect(
+      before.compareDocumentPosition(fence) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      fence.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps BB's code block in user messages", () => {
     const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
     const view = render(
       <MemoryRouter>
@@ -205,50 +205,181 @@ describe("code fence renderers in assistant messages", () => {
               senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
-              text={"```ui\n{ user }\n```"}
+              text={"```ui\n{ mine }\n```"}
               timestamp={0}
+              threadId="thr_a"
               turnRequest={{
                 isGrouped: false,
                 kind: "message",
                 status: "accepted",
               }}
-              projectId="proj_a"
             />
           </CodeFenceRendererRegistryProvider>
         </RouteNavigationProvider>
       </MemoryRouter>,
     );
-
     expect(screen.queryByTestId("ui-fence")).toBeNull();
-    expect(view.container.textContent).toContain("{ user }");
+    expect(view.container.textContent).toContain("{ mine }");
   });
 
-  it("keeps fence indexes message-wide across the streaming settled and tail split", () => {
+  it("keeps one component instance and its state from the first streamed line until the reply has finished", () => {
+    let mounts = 0;
+    function StatefulFence(props: ExperimentalCodeFenceRendererProps) {
+      const [clicks, setClicks] = useState(0);
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return (
+        <button
+          type="button"
+          data-testid="stateful-fence"
+          data-code={props.code}
+          data-status={props.status}
+          data-index={String(props.index)}
+          onClick={() => setClicks((value) => value + 1)}
+        >
+          clicks {clicks}
+        </button>
+      );
+    }
+    const registry = buildCodeFenceRendererRegistry([slot(StatefulFence)]);
+    const steps: ReadonlyArray<readonly [string, string, string]> = [
+      ["Intro\n\n```ui\n{ par", "{ par", "streaming"],
+      ["Intro\n\n```ui\n{ partial }\n", "{ partial }", "streaming"],
+      ["Intro\n\n```ui\n{ partial }\n```\n", "{ partial }", "closed"],
+      [
+        "Intro\n\n```ui\n{ partial }\n```\n\nLater prose.\n\nMore pro",
+        "{ partial }",
+        "closed",
+      ],
+    ];
+    const view = render(assistantMessage(registry, steps[0]![0], true));
+    fireEvent.click(screen.getByTestId("stateful-fence"));
+    for (const [text, code, status] of steps) {
+      view.rerender(assistantMessage(registry, text, true));
+      const fence = screen.getByTestId("stateful-fence");
+      expect(fence.getAttribute("data-code")).toBe(code);
+      expect(fence.getAttribute("data-status")).toBe(status);
+      expect(fence.getAttribute("data-index")).toBe("0");
+      expect(fence.textContent).toBe("clicks 1");
+    }
+    expect(
+      view.container.querySelectorAll("[data-markdown-preview]"),
+    ).toHaveLength(2);
+    expect(
+      view.container
+        .querySelectorAll("[data-markdown-preview]")[0]
+        ?.contains(screen.getByTestId("stateful-fence")),
+    ).toBe(true);
+
+    view.rerender(
+      assistantMessage(
+        registry,
+        "Intro\n\n```ui\n{ partial }\n```\n\nLater prose.\n\nMore prose.",
+        false,
+      ),
+    );
+    const settled = screen.getByTestId("stateful-fence");
+    expect(settled.textContent).toBe("clicks 1");
+    expect(settled.getAttribute("data-status")).toBe("closed");
+    expect(screen.getByText("More prose.")).toBeTruthy();
+    expect(mounts).toBe(1);
+  });
+
+  it("numbers fences across the settled and streaming regions of one reply", () => {
+    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const view = render(
+      assistantMessage(
+        registry,
+        "```ui\n{ settled }\n```\n\nMiddle prose.\n\n```ui\n{ tail",
+        true,
+      ),
+    );
+    expect(
+      view.container.querySelectorAll("[data-markdown-preview]"),
+    ).toHaveLength(2);
+    expect(renderedFences()).toEqual([
+      { code: "{ settled }", status: "closed", index: "0" },
+      { code: "{ tail", status: "streaming", index: "1" },
+    ]);
+  });
+
+  it("reports a fence the reply never closed as unclosed once streaming stops", () => {
+    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const view = render(assistantMessage(registry, "```ui\n{ cut", true));
+    expect(renderedFences()).toEqual([
+      { code: "{ cut", status: "streaming", index: "0" },
+    ]);
+    view.rerender(assistantMessage(registry, "```ui\n{ cut", false));
+    expect(renderedFences()).toEqual([
+      { code: "{ cut", status: "unclosed", index: "0" },
+    ]);
+  });
+
+  it("removes a fence's component when the fence leaves the message", async () => {
+    const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
+    const view = render(assistantMessage(registry, "```ui\n{ gone }\n```"));
+    expect(screen.getAllByTestId("ui-fence")).toHaveLength(1);
+    view.rerender(assistantMessage(registry, "Plain prose only."));
+    await waitFor(() => {
+      expect(screen.queryByTestId("ui-fence")).toBeNull();
+    });
+    expect(
+      view.container.querySelector("[data-code-fence-parking]"),
+    ).toBeNull();
+  });
+
+  it("keeps claimed fences through the sanitized HTML pipeline", () => {
     const registry = buildCodeFenceRendererRegistry([slot(UiFence)]);
     render(
       assistantMessage(
         registry,
-        [
-          "```ui",
-          "{ settled }",
-          "```",
-          "",
-          "Between.",
-          "",
-          "```ui",
-          "{ tail",
-        ].join("\n"),
+        "<details><summary>More</summary>hidden</details>\n\n```ui\n<div>page</div>\n```",
+      ),
+    );
+    return screen.findByTestId("ui-fence").then((fence) => {
+      expect(fence.getAttribute("data-code")).toBe("<div>page</div>");
+      expect(fence.getAttribute("data-status")).toBe("closed");
+    });
+  });
+
+  it("isolates a crash to one fence and tries that fence again when its code changes", () => {
+    function FragileFence(props: ExperimentalCodeFenceRendererProps) {
+      if (props.code.includes("{ bad")) {
+        throw new Error("fence boom");
+      }
+      return <UiFence {...props} />;
+    }
+    const registry = buildCodeFenceRendererRegistry([slot(FragileFence)]);
+    const view = render(
+      assistantMessage(registry, "```ui\n{ good }\n```\n\n```ui\n{ bad", true),
+    );
+    expect(renderedFences()).toEqual([
+      { code: "{ good }", status: "closed", index: "0" },
+    ]);
+    expect(view.container.textContent).toContain("{ bad");
+    expect(view.container.textContent).not.toContain("crashed");
+    expect(
+      view.container.querySelectorAll('button[aria-label="Wrap long lines"]'),
+    ).toHaveLength(1);
+
+    view.rerender(
+      assistantMessage(
+        registry,
+        "```ui\n{ good }\n```\n\n```ui\n{ fixed }\n```",
         true,
       ),
     );
-
     expect(renderedFences()).toEqual([
-      { code: "{ settled }", complete: "true", index: "0" },
-      { code: "{ tail", complete: "false", index: "1" },
+      { code: "{ good }", status: "closed", index: "0" },
+      { code: "{ fixed }", status: "closed", index: "1" },
     ]);
+    expect(
+      view.container.querySelectorAll('button[aria-label="Wrap long lines"]'),
+    ).toHaveLength(0);
   });
 
-  it("mounts claimed fences in assistant rows from the slot store and lets the first plugin win a collision", () => {
+  it("renders BB's code block for a language two plugins claim, from the slot store", () => {
     function ZetaFence() {
       return <div data-testid="zeta-fence" />;
     }
@@ -256,7 +387,7 @@ describe("code fence renderers in assistant messages", () => {
       "zeta",
       makePluginRegistrationSet({
         codeFenceRenderers: [
-          { id: "zeta-ui", languages: ["ui"], component: ZetaFence },
+          { id: "zeta-ui", languages: ["ui", "app"], component: ZetaFence },
         ],
       }),
     );
@@ -269,7 +400,7 @@ describe("code fence renderers in assistant messages", () => {
       }),
     );
 
-    render(
+    const view = render(
       <MemoryRouter>
         <ThreadTimelineRows
           threadId="thr_main"
@@ -278,7 +409,7 @@ describe("code fence renderers in assistant messages", () => {
             conversationRow({
               id: "asst_1",
               role: "assistant",
-              text: "```ui\n{ row }\n```",
+              text: "```ui\n{ contested }\n```\n\n```app\n{ sole }\n```",
               threadId: "thr_main",
               turnId: "turn_top",
             }),
@@ -289,97 +420,44 @@ describe("code fence renderers in assistant messages", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.queryByTestId("zeta-fence")).toBeNull();
-    expect(screen.getByTestId("ui-fence").getAttribute("data-code")).toBe(
-      "{ row }",
-    );
+    expect(screen.queryByTestId("ui-fence")).toBeNull();
+    expect(screen.getAllByTestId("zeta-fence")).toHaveLength(1);
+    expect(view.container.textContent).toContain("{ contested }");
     expect(console.warn).toHaveBeenCalledWith(
-      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering with alpha',
+      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering BB\'s code block',
     );
   });
 });
 
-describe("MarkdownPreview code fence renderers", () => {
-  it("reports an unclosed fence as incomplete and keeps the same mount when it closes", () => {
-    let mounts = 0;
-    function StatefulFence(props: ExperimentalCodeFenceRendererProps) {
-      useEffect(() => {
-        mounts += 1;
-      }, []);
-      return <UiFence {...props} />;
-    }
-    const renderers = fenceRenderers(
-      buildCodeFenceRendererRegistry([slot(StatefulFence)]),
-    );
-    const view = render(
-      <MarkdownPreview
-        content={"Intro\n\n```ui\n{ partial"}
-        incrementalBlocks
-        codeFenceRenderers={renderers}
-      />,
-    );
-    expect(renderedFences()).toEqual([
-      { code: "{ partial", complete: "false", index: "0" },
-    ]);
-
-    view.rerender(
-      <MarkdownPreview
-        content={"Intro\n\n```ui\n{ partial }\n```"}
-        incrementalBlocks
-        codeFenceRenderers={renderers}
-      />,
-    );
-    expect(renderedFences()).toEqual([
-      { code: "{ partial }", complete: "true", index: "0" },
-    ]);
-
-    view.rerender(
-      <MarkdownPreview
-        content={"Intro\n\n```ui\n{ partial }\n```\n\nLater prose."}
-        incrementalBlocks
-        codeFenceRenderers={renderers}
-      />,
-    );
-    expect(screen.getByText("Later prose.")).toBeTruthy();
-    expect(mounts).toBe(1);
-  });
-
+describe("MarkdownPreview inside a code fence host", () => {
   it.each([
-    ["an empty closed fence", "```ui\n```", "true"],
-    ["a closed fence with a blank body", "```ui\n\n```", "true"],
-    ["a longer closing fence", "```ui\na\n`````", "true"],
-    ["a shorter closing run", "````ui\na\n```", "false"],
-    ["an over-indented closing run", "```ui\na\n    ```", "false"],
-    ["a trailing newline without a closing fence", "```ui\na\n", "false"],
+    ["an empty closed fence", "```ui\n```", "closed"],
+    ["a closed fence with a blank body", "```ui\n\n```", "closed"],
+    ["a longer closing fence", "```ui\na\n`````", "closed"],
+    ["a shorter closing run", "````ui\na\n```", "unclosed"],
+    ["an over-indented closing run", "```ui\na\n    ```", "unclosed"],
+    ["a trailing newline without a closing fence", "```ui\na\n", "unclosed"],
     [
       "a closed fence in a nested list",
       "- x\n\n  - y\n\n    ```ui\n    a\n    ```",
-      "true",
+      "closed",
     ],
     [
       "an open fence in a nested list",
       "- x\n\n  - y\n\n    ```ui\n    a\n",
-      "false",
+      "unclosed",
     ],
-    ["a closed fence in a blockquote", "> ```ui\n> a\n> ```", "true"],
-    ["an open fence in a blockquote", "> ```ui\n> a\n\nafter", "false"],
-    ["a closed tilde fence", "~~~ui\na\n~~~", "true"],
-  ])(
-    "derives completion from the source for %s",
-    (_label, content, complete) => {
-      render(
-        <MarkdownPreview
-          content={content}
-          codeFenceRenderers={fenceRenderers(
-            buildCodeFenceRendererRegistry([slot(UiFence)]),
-          )}
-        />,
-      );
-      expect(screen.getByTestId("ui-fence").getAttribute("data-complete")).toBe(
-        complete,
-      );
-    },
-  );
+    ["a closed fence in a blockquote", "> ```ui\n> a\n> ```", "closed"],
+    ["an open fence in a blockquote", "> ```ui\n> a\n\nafter", "unclosed"],
+    ["a closed tilde fence", "~~~ui\na\n~~~", "closed"],
+  ])("derives the status from the source for %s", (_label, content, status) => {
+    render(
+      hostedMarkdown(buildCodeFenceRendererRegistry([slot(UiFence)]), content),
+    );
+    expect(screen.getByTestId("ui-fence").getAttribute("data-status")).toBe(
+      status,
+    );
+  });
 
   it("renders BB's original code block through Original", () => {
     function DelegatingFence({ Original }: ExperimentalCodeFenceRendererProps) {
@@ -390,12 +468,10 @@ describe("MarkdownPreview code fence renderers", () => {
       );
     }
     render(
-      <MarkdownPreview
-        content={"```ui\n{ delegated }\n```"}
-        codeFenceRenderers={fenceRenderers(
-          buildCodeFenceRendererRegistry([slot(DelegatingFence)]),
-        )}
-      />,
+      hostedMarkdown(
+        buildCodeFenceRendererRegistry([slot(DelegatingFence)]),
+        "```ui\n{ delegated }\n```",
+      ),
     );
     const wrapper = screen.getByTestId("delegating-fence");
     expect(wrapper.textContent).toContain("{ delegated }");
@@ -404,26 +480,7 @@ describe("MarkdownPreview code fence renderers", () => {
     ).not.toBeNull();
   });
 
-  it("falls back to BB's code block when the renderer crashes", () => {
-    function CrashingFence(): never {
-      throw new Error("fence boom");
-    }
-    const view = render(
-      <MarkdownPreview
-        content={"```ui\n{ crash }\n```"}
-        codeFenceRenderers={fenceRenderers(
-          buildCodeFenceRendererRegistry([slot(CrashingFence)]),
-        )}
-      />,
-    );
-    expect(view.container.textContent).toContain("{ crash }");
-    expect(
-      view.container.querySelector('button[aria-label="Wrap long lines"]'),
-    ).not.toBeNull();
-    expect(view.container.textContent).not.toContain("crashed");
-  });
-
-  it("leaves fences on BB's code block without the codeFenceRenderers prop", () => {
+  it("leaves fences on BB's code block outside a host", () => {
     const view = render(<MarkdownPreview content={"```ui\n{ plain }\n```"} />);
     expect(screen.queryByTestId("ui-fence")).toBeNull();
     expect(view.container.textContent).toContain("{ plain }");
@@ -431,20 +488,20 @@ describe("MarkdownPreview code fence renderers", () => {
 });
 
 describe("buildCodeFenceRendererRegistry", () => {
-  it("keeps the first claimant per language and warns about the collision", () => {
+  it("drops a language two plugins claim, keeps the rest, and warns once", () => {
     const warn = vi.fn();
     const alpha = slot(UiFence, {
       pluginId: "alpha",
       languages: ["ui", "app"],
     });
     const zeta = slot(UiFence, { pluginId: "zeta", languages: ["ui"] });
-    const registry = buildCodeFenceRendererRegistry([alpha, zeta], { warn });
+    const registry = buildCodeFenceRendererRegistry([zeta, alpha], { warn });
 
-    expect(registry.get("ui")).toBe(alpha);
+    expect(registry.has("ui")).toBe(false);
     expect(registry.get("app")).toBe(alpha);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
-      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering with alpha',
+      '[plugin] code fence language "ui" claimed by multiple plugins (alpha, zeta); rendering BB\'s code block',
     );
   });
 });

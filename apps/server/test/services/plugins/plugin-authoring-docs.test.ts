@@ -391,8 +391,8 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_codeFenceRenderer: [
     "code",
     "language",
+    "status",
     "index",
-    "complete",
     "message",
     "Original",
   ],

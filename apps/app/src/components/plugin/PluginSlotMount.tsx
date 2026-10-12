@@ -8,7 +8,17 @@ import {
   type PluginSlotOwnershipRegistry,
 } from "./plugin-context";
 
-const crashedSlotInstances = new Set<string>();
+const crashedSlotInstances = new Map<string, string | undefined>();
+
+function isSlotInstanceCrashed(
+  instanceKey: string,
+  resetKey: string | undefined,
+): boolean {
+  return (
+    crashedSlotInstances.has(instanceKey) &&
+    crashedSlotInstances.get(instanceKey) === resetKey
+  );
+}
 const ownedStateReleasesBySlotInstance = new Map<
   string,
   Map<symbol, () => void>
@@ -55,7 +65,7 @@ function pluginSlotInstanceKey(
 
 export function resetCrashedPluginSlots(pluginId: string): void {
   const prefix = `${pluginId}/`;
-  for (const key of [...crashedSlotInstances]) {
+  for (const key of [...crashedSlotInstances.keys()]) {
     if (key.startsWith(prefix)) crashedSlotInstances.delete(key);
   }
 }
@@ -77,11 +87,13 @@ interface PluginSlotBoundaryProps {
   instanceKey: string;
   children: ReactNode;
   fallback?: ReactNode;
+  resetKey?: string;
   onCrash?: (pluginId: string) => void;
 }
 
 interface PluginSlotBoundaryState {
   crashed: boolean;
+  resetKey: string | undefined;
 }
 
 class PluginSlotBoundary extends Component<
@@ -103,19 +115,37 @@ class PluginSlotBoundary extends Component<
 
   constructor(props: PluginSlotBoundaryProps) {
     super(props);
-    this.state = { crashed: crashedSlotInstances.has(props.instanceKey) };
+    this.state = {
+      crashed: isSlotInstanceCrashed(props.instanceKey, props.resetKey),
+      resetKey: props.resetKey,
+    };
   }
 
-  static getDerivedStateFromError(): PluginSlotBoundaryState {
+  static getDerivedStateFromError(): Pick<PluginSlotBoundaryState, "crashed"> {
     return { crashed: true };
+  }
+
+  static getDerivedStateFromProps(
+    props: PluginSlotBoundaryProps,
+    state: PluginSlotBoundaryState,
+  ): PluginSlotBoundaryState | null {
+    if (props.resetKey === state.resetKey) {
+      return null;
+    }
+    return {
+      crashed: isSlotInstanceCrashed(props.instanceKey, props.resetKey),
+      resetKey: props.resetKey,
+    };
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     releaseSlotInstanceOwnedState(this.props.instanceKey);
     this.ownedStateReleases.clear();
-    crashedSlotInstances.add(this.props.instanceKey);
+    crashedSlotInstances.set(this.props.instanceKey, this.props.resetKey);
     console.warn(
-      `[plugin:${this.props.pluginId}] slot "${this.props.instanceKey}" crashed and is disabled for this session: ${error.message}`,
+      this.props.resetKey === undefined
+        ? `[plugin:${this.props.pluginId}] slot "${this.props.instanceKey}" crashed and is disabled for this session: ${error.message}`
+        : `[plugin:${this.props.pluginId}] slot "${this.props.instanceKey}" crashed and is disabled until its input changes: ${error.message}`,
       info.componentStack,
     );
     try {
@@ -144,7 +174,7 @@ class PluginSlotBoundary extends Component<
   override render(): ReactNode {
     if (
       this.state.crashed ||
-      crashedSlotInstances.has(this.props.instanceKey)
+      isSlotInstanceCrashed(this.props.instanceKey, this.props.resetKey)
     ) {
       return this.props.fallback === undefined ? (
         <CrashedPluginChip pluginId={this.props.pluginId} />
@@ -166,6 +196,7 @@ interface PluginSlotMountProps {
   slotId: string;
   children: ReactNode;
   crashFallback?: ReactNode;
+  crashResetKey?: string;
   instanceId?: string;
   onCrash?: (pluginId: string) => void;
 }
@@ -176,6 +207,7 @@ export function PluginSlotMount({
   slotId,
   children,
   crashFallback,
+  crashResetKey,
   instanceId,
   onCrash,
 }: PluginSlotMountProps) {
@@ -192,6 +224,7 @@ export function PluginSlotMount({
           instanceId,
         )}
         fallback={crashFallback}
+        {...(crashResetKey === undefined ? {} : { resetKey: crashResetKey })}
         {...(onCrash ? { onCrash } : {})}
       >
         <div

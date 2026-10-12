@@ -274,30 +274,39 @@ export function resolveMessageDirectiveRegistry(
   return resolved;
 }
 
-export interface ResolvedCodeFenceRenderer {
-  slot: PluginCodeFenceRendererSlot;
-  pluginIds: readonly string[];
-}
+export type ResolvedCodeFenceRenderer =
+  | { status: "ok"; slot: PluginCodeFenceRendererSlot }
+  | { status: "collision"; pluginIds: readonly string[] };
 
 export function resolveCodeFenceRendererRegistry(
   registrations: readonly PluginCodeFenceRendererSlot[],
 ): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
-  const resolved = new Map<
-    string,
-    { slot: PluginCodeFenceRendererSlot; pluginIds: string[] }
-  >();
+  const claimantsByLanguage = new Map<string, PluginCodeFenceRendererSlot[]>();
   for (const registration of registrations) {
     for (const language of registration.languages) {
-      const existing = resolved.get(language);
-      if (existing === undefined) {
-        resolved.set(language, {
-          slot: registration,
-          pluginIds: [registration.pluginId],
-        });
+      const claimants = claimantsByLanguage.get(language);
+      if (claimants === undefined) {
+        claimantsByLanguage.set(language, [registration]);
       } else {
-        existing.pluginIds.push(registration.pluginId);
+        claimants.push(registration);
       }
     }
+  }
+  const resolved = new Map<string, ResolvedCodeFenceRenderer>();
+  for (const [language, claimants] of claimantsByLanguage) {
+    const [first] = claimants;
+    if (first === undefined) continue;
+    resolved.set(
+      language,
+      claimants.length === 1
+        ? { status: "ok", slot: first }
+        : {
+            status: "collision",
+            pluginIds: [
+              ...new Set(claimants.map((claimant) => claimant.pluginId)),
+            ].sort(),
+          },
+    );
   }
   return resolved;
 }

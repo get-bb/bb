@@ -258,12 +258,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Replace fenced code blocks in an agent's reply with live UI. With this, a plugin can:",
         bullets: [
           "Let an agent write a fenced ```ui block that your component renders live as the reply streams",
-          "Claim the languages you handle and keep state per block across streaming",
-          "Fall back to BB's code block when the plugin is off or crashes",
+          "Keep one component, with its state, per block for the whole reply",
+          "Tell a block that is still streaming from one that closed or was cut off",
+          "Fall back to BB's code block when the plugin is off or a block's component throws",
         ],
         apiSymbols: [
           "ExperimentalCodeFenceRendererRegistration",
           "ExperimentalCodeFenceRendererProps",
+          "ExperimentalCodeFenceStatus",
         ],
         experimental: true,
       },

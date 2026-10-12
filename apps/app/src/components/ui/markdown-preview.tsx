@@ -37,8 +37,6 @@ import { LazyMarkdownHtml } from "./lazy-markdown-html";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
 import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
 import { InlineImageGalleryContext } from "./inline-image-gallery-context.js";
 import { normalizeMathFences } from "./markdown-math-fences.js";
@@ -96,13 +94,10 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import {
-  CodeFenceRendererMount,
-  CodeFenceRenderersContext,
-  countClaimedCodeFences,
-  EMPTY_CODE_FENCE_COUNTS,
+  CodeFencePlaceholder,
   remarkCodeFenceRenderers,
+  useCodeFenceLanguages,
   type CodeFenceElementProps,
-  type MarkdownCodeFenceRenderers,
 } from "./markdown-code-fence-renderers.js";
 import {
   createMarkdownPieceCache,
@@ -138,7 +133,6 @@ interface MarkdownPreviewProps {
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: MarkdownPromptMentions;
   messageDirectives?: MarkdownMessageDirectives;
-  codeFenceRenderers?: MarkdownCodeFenceRenderers;
   urlTransform?: UrlTransform;
 }
 
@@ -267,6 +261,7 @@ type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> &
   ExtraProps &
   CodeFenceElementProps;
 interface MarkdownCodeRendererProps extends MarkdownCodeProps {
+  codeFenceSourceOffset: number;
   imagePolicy: MarkdownImagePolicy;
   linkRouting?: MarkdownLinkRouting;
   preferredTheme: Theme;
@@ -296,7 +291,6 @@ type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 type MarkdownRemarkPlugins = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
-const MARKDOWN_FENCE_MARKER_PATTERN = /`{3}|~{3}/u;
 const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
@@ -459,7 +453,6 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
     next: next.messageDirectives,
     previous: previous.messageDirectives,
   }) &&
-  previous.codeFenceRenderers === next.codeFenceRenderers &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
     previous: previous.linkRouting,
@@ -851,13 +844,14 @@ function MarkdownCodeBlock({
 function MarkdownCode({
   className: codeClassName,
   children,
+  codeFenceSourceOffset,
   imagePolicy,
   linkRouting,
   node: _node,
   preferredTheme,
   rewriteLocalhostLinks,
-  "data-code-fence-index": codeFenceIndex,
-  "data-code-fence-complete": codeFenceComplete,
+  "data-code-fence-offset": codeFenceOffset,
+  "data-code-fence-closed": codeFenceClosed,
   ...props
 }: MarkdownCodeRendererProps) {
   const codeText =
@@ -874,14 +868,14 @@ function MarkdownCode({
         preferredTheme={preferredTheme}
       />
     );
-    return codeFenceIndex === undefined || language === null ? (
+    return codeFenceOffset === undefined || language === null ? (
       original
     ) : (
-      <CodeFenceRendererMount
+      <CodeFencePlaceholder
+        closed={codeFenceClosed === "true"}
         code={codeText}
-        complete={codeFenceComplete === "true"}
-        index={Number(codeFenceIndex)}
         language={language}
+        offset={codeFenceSourceOffset + Number(codeFenceOffset)}
         original={original}
       />
     );
@@ -1359,6 +1353,7 @@ function buildMarkdownComponents({
     return (
       <MarkdownCode
         {...props}
+        codeFenceSourceOffset={imageSourceOffset}
         imagePolicy={imagePolicy}
         linkRouting={linkRouting}
         preferredTheme={preferredTheme}
@@ -1771,7 +1766,6 @@ function MarkdownPreviewComponent({
   threadMentions,
   promptMentions,
   messageDirectives,
-  codeFenceRenderers,
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -1786,13 +1780,12 @@ function MarkdownPreviewComponent({
   const localImageRouting = linkRouting?.localImage;
   const normalizeLocalFileLinks =
     localFileRouting !== undefined || localImageRouting !== undefined;
-  const prefixBody = useMemo(() => {
+  const imageSourceOffset = useMemo(() => {
     const prefix = normalizeLocalFileLinks
       ? normalizeLocalFileMarkdownLinks(sourcePrefix)
       : sourcePrefix;
-    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body);
+    return normalizeMathFences(splitMarkdownFrontmatter(prefix).body).length;
   }, [sourcePrefix, normalizeLocalFileLinks]);
-  const imageSourceOffset = prefixBody.length;
   const promptMentionSubstitution = useMemo(
     () =>
       promptMentions
@@ -1892,18 +1885,7 @@ function MarkdownPreviewComponent({
     }
     return plugins;
   }, [threadMentions, promptMentions, hasMessageDirectives]);
-  const codeFenceRegistry = codeFenceRenderers?.registry ?? null;
-  const codeFenceIndexBase = useMemo(
-    () =>
-      codeFenceRegistry === null ||
-      !MARKDOWN_FENCE_MARKER_PATTERN.test(prefixBody)
-        ? EMPTY_CODE_FENCE_COUNTS
-        : countClaimedCodeFences(
-            unified().use(remarkParse).use(baseRemarkPlugins).parse(prefixBody),
-            codeFenceRegistry,
-          ),
-    [codeFenceRegistry, prefixBody, baseRemarkPlugins],
-  );
+  const codeFenceRegistry = useCodeFenceLanguages();
   const remarkPlugins = useMemo((): MarkdownRemarkPlugins => {
     const plugins: MarkdownRemarkPlugins = [...baseRemarkPlugins];
     if (messageDirectiveMounts !== null) {
@@ -1920,20 +1902,11 @@ function MarkdownPreviewComponent({
     if (codeFenceRegistry !== null) {
       plugins.push([
         remarkCodeFenceRenderers,
-        {
-          counts: new Map<string, number>(),
-          indexBase: codeFenceIndexBase,
-          registry: codeFenceRegistry,
-        },
+        { registry: codeFenceRegistry, sourceOffset: 0 },
       ]);
     }
     return plugins;
-  }, [
-    baseRemarkPlugins,
-    messageDirectiveMounts,
-    codeFenceRegistry,
-    codeFenceIndexBase,
-  ]);
+  }, [baseRemarkPlugins, messageDirectiveMounts, codeFenceRegistry]);
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1954,7 +1927,6 @@ function MarkdownPreviewComponent({
 
   const markdownPieceRenderConfig = useMemo(
     (): MarkdownPieceRenderConfig => ({
-      codeFenceIndexBase,
       codeFenceRendererRegistry: codeFenceRegistry,
       components: markdownComponents,
       messageDirectiveRegistry: messageDirectiveMounts?.registry ?? null,
@@ -1963,7 +1935,6 @@ function MarkdownPreviewComponent({
       urlTransform: resolvedUrlTransform,
     }),
     [
-      codeFenceIndexBase,
       codeFenceRegistry,
       markdownComponents,
       messageDirectiveMounts,
@@ -2031,17 +2002,13 @@ function MarkdownPreviewComponent({
             render: messageDirectiveMounts,
           }}
         >
-          <CodeFenceRenderersContext.Provider
-            value={codeFenceRenderers ?? null}
-          >
-            {threadMentions === undefined ? (
-              renderedMarkdown
-            ) : (
-              <RawThreadMentionBatchProvider>
-                {renderedMarkdown}
-              </RawThreadMentionBatchProvider>
-            )}
-          </CodeFenceRenderersContext.Provider>
+          {threadMentions === undefined ? (
+            renderedMarkdown
+          ) : (
+            <RawThreadMentionBatchProvider>
+              {renderedMarkdown}
+            </RawThreadMentionBatchProvider>
+          )}
         </MessageDirectiveMountsContext.Provider>
       </div>
 

@@ -48,8 +48,8 @@ const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
         ],
         code: [
           ...(defaultSchema.attributes?.code ?? []),
-          "dataCodeFenceIndex",
-          "dataCodeFenceComplete",
+          "dataCodeFenceOffset",
+          "dataCodeFenceClosed",
         ],
         "bb-thread-mention": [
           "dataThreadId",
