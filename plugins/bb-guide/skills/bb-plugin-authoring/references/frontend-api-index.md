@@ -55,6 +55,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_ThreadActionsMenu` — bb's thread menu behind your trigger
 - `experimental_ThreadActionsContextMenu` — bb's thread menu on right-click
   or long-press
+- `experimental_ProjectActionMenuItems` — bb's project menu contributions in
+  a replacement project's dropdown or context menu
 - `experimental_THREAD_ACTION_GROUPS` — bb's thread menu group names
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
@@ -198,6 +200,12 @@ Read the installed SDK declarations for the exact current signatures.
   spread onto its button
 - `PluginThreadActionsMenuProps`
 - `PluginThreadActionsContextMenuProps`
+- `experimental_ProjectActionTarget`
+- `experimental_ProjectActionItemInput`
+- `experimental_ProjectAction`
+- `experimental_ProjectActionRegistration` — the registration accepted by
+  `app.slots.experimental_projectAction`
+- `experimental_ProjectActionMenuItemsProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
 - `PluginSidebarSplitLayout`

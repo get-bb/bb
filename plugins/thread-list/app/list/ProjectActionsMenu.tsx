@@ -1,3 +1,4 @@
+import { experimental_ProjectActionMenuItems as ProjectActionMenuItems } from "@get-bb/plugin-sdk/app";
 import type { MouseEvent, ReactNode } from "react";
 import {
   ContextMenu,
@@ -5,7 +6,10 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
-import { ActionMenuItem, ActionMenuSeparator } from "@/components/ui/action-menu-items";
+import {
+  ActionMenuItem,
+  ActionMenuSeparator,
+} from "@/components/ui/action-menu-items";
 import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
 import type { SidebarProject } from "../model/use-sidebar-data.js";
 
@@ -42,12 +46,17 @@ export function ProjectActionsMenuItems({
 }: ProjectActionsMenuItemsProps) {
   return (
     <>
-      <ActionMenuItem surface={surface} icon="Settings" href={project.settingsHref}>
+      <ActionMenuItem
+        surface={surface}
+        icon="Settings"
+        href={project.settingsHref}
+      >
         Project settings
       </ActionMenuItem>
       <ActionMenuItem surface={surface} icon="Edit" onSelect={onRename}>
         Rename
       </ActionMenuItem>
+      <ProjectActionMenuItems project={project} surface={surface} />
       {extraActions?.(surface)}
       <ActionMenuSeparator surface={surface} />
       <ActionMenuItem

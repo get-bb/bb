@@ -1,0 +1,39 @@
+{
+  "name": "bb-plugin-project-handoff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Export a project handoff brief with its sources and active threads.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.6.40"
+  },
+  "bb": {
+    "name": "Project handoff",
+    "description": "Export a Markdown brief for the project whose menu you open.",
+    "branding": {
+      "icon": "FileText"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist ."
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "sonner": "^1.7.4",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

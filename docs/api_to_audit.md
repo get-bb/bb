@@ -1,5 +1,37 @@
 # APIs To Audit
 
+## Project menu actions
+
+`app.slots.experimental_projectAction({ id, order?, item })` contributes a
+host-rendered menu item. `item({ project: { id, name }, sdk, navigate })` is a
+pure synchronous factory returning `{ label, icon, disabled?, variant?, run }`
+or `null` to hide the entry. SDK and navigation are bound to the registering
+plugin; the target is always the menu's project, independent of the open route.
+The host contains and logs factory failures and synchronous/asynchronous action
+failures. Labels use the same string rendering as core menu items. Registration
+validates IDs, duplicate IDs, the factory, and finite ordering. Contributions
+sort by order (unset last), plugin ID, then registration order; normal plugin
+reload/disable/uninstall replaces or removes them.
+
+`experimental_ProjectActionMenuItems({ project, surface })` renders these rows
+through the shared action-menu primitives for dropdown/context surfaces. Core
+`ProjectActionsMenuItems` and Thread List's project dropdown, context menu, and
+compact long-press menu all use it after the built-in project actions and before
+list-specific `extraActions`, within the project-actions group. Remove stays
+separated at the bottom. Replacement lists should use the same component.
+The public contract types carry the same experimental prefix.
+
+This is a frontend contribution, so the CLI does not register or invoke menu
+callbacks. Plugin operations remain available through backend SDK/RPC and
+`bb.cli.register`; the project-handoff example exposes the same report generator
+through its menu item and `bb project-handoff export <project-id>`.
+
+Before stabilization, audit target fields, ordering, conditional availability,
+localization, disabled/destructive presentation, plugin binding, reload/disable,
+and failure isolation across desktop dropdown/context and compact Safari menus.
+Review whether reactive hook data is needed. Stabilization requires that audit,
+a project-wide rename, and removal of this entry.
+
 ## Environment removal notification
 
 `experimental_environment.removed` announces successful provider removal after

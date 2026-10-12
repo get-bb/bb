@@ -71,6 +71,9 @@ import {
   type PluginThreadHeaderActionRegistration,
   type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
+  type experimental_ProjectActionRegistration,
+  type experimental_ProjectAction,
+  type experimental_ProjectActionMenuItemsProps,
   type PluginThreadActionRegistrationInfo,
   type PluginThreadActionsContextMenuProps,
   type PluginThreadActionsMenuProps,
@@ -285,6 +288,7 @@ interface SlotEnv {
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   environmentArchiveCalls: string[];
+  projectActions: readonly experimental_ProjectActionRegistration[];
   threadActions: TestThreadActionsResolver;
   threadActionRegistrations: readonly PluginThreadActionRegistrationInfo[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
@@ -482,6 +486,48 @@ function useTestThreadActions(
     const entry = entries.find((candidate) => candidate.key === key);
     return entry === undefined ? [] : [entry];
   });
+}
+
+function TestProjectActionMenuItems({
+  project,
+}: experimental_ProjectActionMenuItemsProps) {
+  const env = useSlotEnv("experimental_ProjectActionMenuItems");
+  return [...env.projectActions]
+    .sort((left, right) => {
+      const leftOrder = left.order ?? Infinity;
+      const rightOrder = right.order ?? Infinity;
+      return leftOrder === rightOrder ? 0 : leftOrder < rightOrder ? -1 : 1;
+    })
+    .map((registration) => {
+      let action: experimental_ProjectAction | null;
+      try {
+        action = registration.item({
+          project: { id: project.id, name: project.name },
+          sdk: env.sdk,
+          navigate: env.navigate,
+        });
+      } catch (error) {
+        console.error(error);
+        return null;
+      }
+      if (action === null) return null;
+      return (
+        <button
+          key={registration.id}
+          role="menuitem"
+          disabled={action.disabled}
+          onClick={() => {
+            try {
+              void Promise.resolve(action.run()).catch(console.error);
+            } catch (error) {
+              console.error(error);
+            }
+          }}
+        >
+          {action.label}
+        </button>
+      );
+    });
 }
 
 function TestThreadActionsMenuItems({
@@ -1375,6 +1421,7 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useThreadActionRegistrations")
       .threadActionRegistrations;
   },
+  experimental_ProjectActionMenuItems: TestProjectActionMenuItems,
   experimental_ThreadActionsMenu: TestThreadActionsMenu,
   experimental_ThreadActionsContextMenu: TestThreadActionsContextMenu,
   experimental_THREAD_ACTION_GROUPS,
@@ -1502,6 +1549,7 @@ export interface CapturedPluginApp {
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
+  projectActions: experimental_ProjectActionRegistration[];
   browserToolbarActions: ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
@@ -1792,6 +1840,8 @@ export interface RenderSlotOptions<
   sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
   /** The split layout `useSidebarSplitLayout()` reports. Omitted → null. */
   sidebarSplitLayout?: PluginSidebarSplitLayout;
+  /** Project contributions rendered by experimental_ProjectActionMenuItems. */
+  projectActions?: readonly experimental_ProjectActionRegistration[];
   /**
    * What `experimental_useThreadActions()` reports for a thread, in menu
    * order. Omitted → an empty list.
@@ -2473,6 +2523,7 @@ export function renderSlot<
     sidebarActions,
     sidebarActionCalls,
     environmentArchiveCalls,
+    projectActions: options.projectActions ?? [],
     threadActions: options.threadActions ?? NO_THREAD_ACTIONS,
     threadActionRegistrations:
       options.threadActionRegistrations ?? NO_THREAD_ACTION_REGISTRATIONS,

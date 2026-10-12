@@ -578,6 +578,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       {["acme-app", "dotfiles"].map((project) => (
         <span
           key={project}
+          data-guide-region="project-actions"
           className="flex h-6.5 items-center gap-1.5 rounded-md px-2"
         >
           <span className="min-w-0 truncate">{project}</span>
@@ -970,6 +971,12 @@ export function AppShellWireframe({
             id="nav-panel"
             label="Plugin nav panels, in the navigation rail"
             anchor='[data-guide-region="nav-panel"]'
+            at="start"
+          />
+          <MeasuredBadge
+            id="project-actions"
+            label="Plugin project actions, in every project menu"
+            anchor='[data-guide-region="project-actions"]'
             at="start"
           />
           <MeasuredBadge

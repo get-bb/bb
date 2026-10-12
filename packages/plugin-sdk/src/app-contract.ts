@@ -1496,6 +1496,49 @@ export interface PluginThreadActionItemInput<Data> {
   navigate: BbNavigate;
 }
 
+/** The project whose menu is open, independent of the current route. */
+export interface experimental_ProjectActionTarget {
+  id: string;
+  name: string;
+}
+
+/** A host-rendered project menu item. Errors from run are contained and logged. */
+export interface experimental_ProjectAction {
+  label: string;
+  icon: BbIconName;
+  disabled?: boolean;
+  variant?: "default" | "destructive";
+  run(): void | Promise<void>;
+}
+
+export interface experimental_ProjectActionItemInput {
+  project: experimental_ProjectActionTarget;
+  sdk: PluginBrowserBbSdk;
+  navigate: BbNavigate;
+}
+
+/**
+ * Contribute to all project menus. item is pure and synchronous; return null
+ * to hide the entry for a project. Hooks belong in plugin components, not item.
+ * Items appear after built-in project actions and before list-specific entries,
+ * sorted by order (unset last), then plugin id and registration order. Reload
+ * and disable use the normal slot lifecycle.
+ */
+export interface experimental_ProjectActionRegistration {
+  /** Unique within this plugin's project actions; letters, digits, -, _. */
+  id: string;
+  order?: number;
+  item(
+    input: experimental_ProjectActionItemInput,
+  ): experimental_ProjectAction | null;
+}
+
+/** Contribution rows for a replacement project's existing extraActions seam. */
+export interface experimental_ProjectActionMenuItemsProps {
+  project: experimental_ProjectActionTarget;
+  surface: "context" | "dropdown";
+}
+
 /**
  * Add an action to every thread actions menu: the thread header's menu, the
  * sidebar row's menu and right-click menu, the compact long-press drawer, and,
@@ -2180,6 +2223,10 @@ export interface PluginAppSlots {
    */
   experimental_threadHeaderAction(
     registration: PluginThreadHeaderActionRegistration,
+  ): void;
+  /** Add host-rendered entries to every project actions menu. */
+  experimental_projectAction(
+    registration: experimental_ProjectActionRegistration,
   ): void;
   /**
    * Add an action to every thread actions menu (see
@@ -3622,6 +3669,8 @@ export interface PluginSdkApp {
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActionRegistrations(): readonly PluginThreadActionRegistrationInfo[];
+  /** Host-rendered plugin contribution rows for any project menu. */
+  experimental_ProjectActionMenuItems: ComponentType<experimental_ProjectActionMenuItemsProps>;
   /**
    * bb's thread menu behind a trigger (see
    * {@link PluginThreadActionsMenuProps}): the same items, order, choice

@@ -187,6 +187,10 @@ export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
 export const experimental_useThreadActionRegistrations = runtimeFunction(
   "experimental_useThreadActionRegistrations",
 );
+export const experimental_ProjectActionMenuItems = runtimeComponent(
+  "experimental_ProjectActionMenuItems",
+);
+
 export const experimental_ThreadActionsMenu = runtimeComponent(
   "experimental_ThreadActionsMenu",
 );

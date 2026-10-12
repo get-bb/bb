@@ -58,6 +58,21 @@ route/project/thread snapshot yet; use stable SDK hooks inside React slots
 rather than polling or installing global navigation observers. Complete
 cleanup-safe example: `examples/plugins/content-script`.
 
+### Project menu actions
+
+Register `app.slots.experimental_projectAction({ id, order?, item })` to add a
+host-rendered action to project dropdowns and context menus. `item` runs
+synchronously for the project whose menu is open and receives `{ project, sdk,
+navigate }`; return `null` to hide the action for that project, or return
+`{ label, icon, disabled?, variant?, run }`. The item factory should stay pure;
+put asynchronous work in `run`. Items appear after built-in project actions
+and before list-specific entries, sorted by `order` (unset last), plugin id,
+and registration order. Disable and reload use the regular slot lifecycle.
+
+Use `experimental_ProjectActionMenuItems` with a replacement project list to
+render the same plugin contributions in its dropdown or context menu. It
+receives `{ project, surface }`. Experimental: see `docs/api_to_audit.md`.
+
 Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on

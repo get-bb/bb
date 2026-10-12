@@ -18,6 +18,7 @@ import {
 import { usePathPickerHost } from "@/hooks/useLocalPathPicker";
 import { getSettingsProjectRoutePath } from "@/lib/route-paths";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ProjectActionMenuItems } from "./ProjectActionMenuItems";
 import { useProjectActions } from "./ProjectActionsProvider";
 
 interface ProjectActionsMenuBaseProps {
@@ -87,6 +88,7 @@ export function ProjectActionsMenuItems({
           Add local path
         </ActionMenuItem>
       ) : null}
+      <ProjectActionMenuItems project={project} surface={surface} />
       {extraActions?.(surface)}
       <ActionMenuSeparator surface={surface} />
       <ActionMenuItem

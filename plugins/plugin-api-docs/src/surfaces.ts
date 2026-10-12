@@ -185,6 +185,29 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "project-actions",
+        title: "Project menu actions",
+        summary:
+          "Add an action to every project menu. With this, a plugin can:",
+        bullets: [
+          "Act on the menu's project, even when another project is open",
+          "Appear in dropdowns, right-click menus, and compact long-press menus",
+          "Hide or disable an item for a project and use the plugin's SDK and navigation",
+          "Render the same contribution rows in a replacement project list",
+        ],
+        apiSymbols: [
+          "experimental_projectAction",
+          "experimental_ProjectActionRegistration",
+          "experimental_ProjectActionTarget",
+          "experimental_ProjectActionItemInput",
+          "experimental_ProjectAction",
+          "experimental_ProjectActionMenuItems",
+          "experimental_ProjectActionMenuItemsProps",
+        ],
+        firstParty: ["Thread list"],
+        experimental: true,
+      },
+      {
         id: "thread-actions",
         title: "Thread menu actions",
         summary:

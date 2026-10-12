@@ -59,6 +59,41 @@ describe("collectPluginAppRegistrations — experimental_appOverlay", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_projectAction", () => {
+  const item = () => null;
+
+  it("captures project actions in the public frontend testing harness", async () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_projectAction({ id: "handoff", order: 5, item });
+    });
+    expect((await loadPluginApp(definition)).projectActions).toEqual([
+      { id: "handoff", order: 5, item },
+    ]);
+  });
+
+  it.each([
+    [{ id: "bad/id", item }, /must match/],
+    [{ id: "handoff", item: null }, /item.*function/],
+    [{ id: "handoff", order: NaN, item }, /finite number/],
+    [{ id: "handoff", order: Infinity, item }, /finite number/],
+  ])("rejects malformed project action %j", (registration, error) => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_projectAction(registration as never);
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(error);
+  });
+
+  it("rejects duplicate project action ids", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_projectAction({ id: "handoff", item });
+      app.slots.experimental_projectAction({ id: "handoff", item });
+    });
+    expect(() => collectPluginAppRegistrations(definition)).toThrow(
+      'duplicate id "handoff"',
+    );
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadAction", () => {
   const item = () => null;
   const useData = () => 1;

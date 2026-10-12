@@ -20,6 +20,7 @@ describe("product-map surfaces", () => {
       "thread-list",
       "sidebar-footer",
       "thread-header",
+      "project-actions",
       "thread-actions",
       "timeline-renderers",
       "message-directives",

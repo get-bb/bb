@@ -1,3 +1,4 @@
+import { ProjectActionMenuItems } from "@/components/project/ProjectActionMenuItems";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { Icon } from "@bb/shared-ui/icon";
 import { useCallback, useMemo } from "react";
@@ -112,6 +113,7 @@ export const pluginSdkAppImplementation = {
   experimental_useThreadActions: useThreadActionEntries,
   experimental_useArchiveEnvironmentThreads: useArchiveEnvironmentThreads,
   experimental_useThreadActionRegistrations: useThreadActionRegistrationInfos,
+  experimental_ProjectActionMenuItems: ProjectActionMenuItems,
   experimental_ThreadActionsMenu: ThreadActionsMenu,
   experimental_ThreadActionsContextMenu: ThreadActionsContextMenu,
   experimental_THREAD_ACTION_GROUPS,
