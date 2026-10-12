@@ -596,6 +596,89 @@ describe("ThreadPromptContextBanner", () => {
     ).not.toBeNull();
   });
 
+  it("keeps child threads visible while git status loads or the environment is gone", () => {
+    const renderBanner = ({
+      environmentGone = false,
+      gitSectionPending = false,
+    }: { environmentGone?: boolean; gitSectionPending?: boolean } = {}) => (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={gitSectionPending}
+          archivedSection={null}
+          environmentGoneSection={
+            environmentGone ? { status: "destroyed" } : null
+          }
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              childThreadItem("thr_blocked", "Install workspace tools", {
+                pending: true,
+              }),
+            ],
+            pendingInteractions: [],
+            waitingQuestion: "Which color should the badge use?",
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(renderBanner());
+    const childCard = screen.getByRole("region", { name: "Child threads" });
+
+    rerender(renderBanner({ gitSectionPending: true }));
+    expect(screen.getByRole("region", { name: "Child threads" })).toBe(
+      childCard,
+    );
+    expect(
+      screen.queryByRole("region", { name: "Thread context before sending" }),
+    ).toBeNull();
+
+    rerender(renderBanner({ environmentGone: true }));
+    expect(screen.getByRole("region", { name: "Child threads" })).toBe(
+      childCard,
+    );
+    expect(
+      screen.getByRole("button", { name: "Environment unavailable" }),
+    ).toBeTruthy();
+  });
+
+  it("leaves another open section alone when a child thread newly needs input", () => {
+    const onToggleSection = vi.fn();
+    const renderBanner = (
+      items: ReturnType<typeof childThreadItem>[],
+      expandedSection: "git" | null,
+    ) => (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items,
+            pendingInteractions: [],
+            waitingQuestion: null,
+          }}
+          pullRequestSection={null}
+          expandedSection={expandedSection}
+          onToggleSection={onToggleSection}
+        />
+      </MemoryRouter>
+    );
+    const working = childThreadItem("thr_working", "Investigate failing checks");
+    const blocked = childThreadItem("thr_blocked", "Install workspace tools", {
+      pending: true,
+    });
+    const { rerender } = render(renderBanner([working], "git"));
+    rerender(renderBanner([blocked, working], "git"));
+    rerender(renderBanner([blocked, working], null));
+    expect(onToggleSection).not.toHaveBeenCalled();
+  });
+
   it("keeps failed-check detail accessible without a redundant label", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner
