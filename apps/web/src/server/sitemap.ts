@@ -39,6 +39,7 @@ export function sitemapXml(
     { path: "/changelog" },
     { path: "/plugin-guide" },
     { path: "/privacy" },
+    { path: "/brand" },
     ...contentPaths.map((path) => ({ path })),
     ...posts.map((post) => ({
       path: `/blog/${encodeURIComponent(post.slug)}`,
