@@ -48,7 +48,7 @@ const CUSTOM_V1_MANIFEST_URL =
 const SEED_ENTRY_COUNT = BUNDLED_CURATED_MARKETPLACE.plugins.length;
 const OFFICIAL_ORDER =
   loadBundledMarketplace(listBundledPluginRegistrations()).catalog
-    .collections[0]?.pluginIds ?? [];
+    .collections?.[0]?.pluginIds ?? [];
 
 const VALID_SVG = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>',
