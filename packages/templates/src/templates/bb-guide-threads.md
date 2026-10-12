@@ -92,6 +92,22 @@ Spawning:
   unavailable and why. The first-party providers are Project checkout,
   Worktree, and Personal workspace.
 
+Existing-thread provider handover (experimental):
+
+  bb thread handover-state [id] [--self] --json
+  bb thread handover <id> --request-file <path> --json
+  bb thread resume [id] [--self] --json
+
+  Handover-state reads the exact provider, owned session and latestSeq.
+  Handover accepts JSON with operationId, expectedProviderId,
+  expectedProviderThreadId, expectedLatestSeq, providerId, providerThreadId,
+  model, reasoningLevel, permissionMode and serviceTier. Prepare the target
+  session and its history first. Core does not copy history or change access.
+  The thread must be idle, without queued input or open turn-bound questions.
+  The same operationId and request safely retry a lost response. A failed
+  runtime load leaves the handover saved; resume retries loading that session
+  without sending a prompt. Earlier messages and the thread ID stay intact.
+
 Handoff:
   In the follow-up model picker, Handoff to new thread starts a new-thread
   draft with a reference to the source thread. Choose any model, including

@@ -1634,12 +1634,12 @@ batches. Confirm the platform coverage (Linux
 `/proc`, macOS `lsof`) and whether the grace should be per call.
 
 0b. **Process identity.** `experimental_readProcessIdentity(pid)` from
-   `@get-bb/plugin-sdk/host` returns `{ command, startedAt }` (`ps` on POSIX,
-   CIM on Windows) or null. bb's launcher uses the same probe to confirm a
-   recorded PID before stopping it. Storage & retention checks a development
-   instance's recorded launcher entry path and start time before signalling
-   it, so a reused PID is never killed. Confirm start-time precision per
-   platform and whether a combined verified-stop helper should replace it.
+`@get-bb/plugin-sdk/host` returns `{ command, startedAt }` (`ps` on POSIX,
+CIM on Windows) or null. bb's launcher uses the same probe to confirm a
+recorded PID before stopping it. Storage & retention checks a development
+instance's recorded launcher entry path and start time before signalling
+it, so a reused PID is never killed. Confirm start-time precision per
+platform and whether a combined verified-stop helper should replace it.
 
 0. **Call timeout.** `ExperimentalHostCallOptions.timeoutMs` (default 30s,
    capped at 30 minutes) lets a plugin run a long host call — a setup
@@ -4083,3 +4083,34 @@ Stabilization requires exercising reconnect/reload, concurrent deduplication, ro
 `hosts.experimental_discoverRepos({ hostId })` asks the machine for git repositories under the user's home directory with local activity in the last 30 days, newest first, capped at 10. Each entry has `path`, `name`, `lastActivityAt`, `originUrl`, and `projectId` (the bb project already bound to that path on that machine, or null). `truncated` is true when the three-second walk budget ran out. The walk stops at each repository root, skips dot-directories, common build directories, scratch directories (`tmp`, `temp`, `tmp-*`, `Downloads`), linked worktrees, and submodules. The first-run setup guide and `bb project discover` use it. Host-daemon wire change: the `host.discover_repos` command (protocol 230).
 
 Stabilize after deciding whether depth, recency window, and limit should be caller options, and after exercising slow or network-mounted home directories and Windows hosts.
+
+## Existing-thread provider handover
+
+`threads.experimental_providerHandover({threadId})` reads the current provider,
+owned session, event boundary and blocker. `experimental_handoffProvider`
+changes an idle thread to an already prepared target session. Its request must
+include the exact source provider/session and `expectedLatestSeq`, target
+execution settings and a stable `operationId`. Core validates the target model,
+releases the old idle runtime, then records the new provider and session in one
+transaction. It preserves the thread ID, history and organization. It does not
+copy history or grant access; those are the caller's responsibility.
+
+A committed handover with `runtimeLoaded:false` remains committed. Retry the
+same request, or use `threads.experimental_resume({threadId})`, to load the
+saved session without a user prompt. `resumeError` explains failed loading.
+The corresponding CLI commands are `bb thread handover-state`, `handover`
+(with `--request-file`) and `resume`. Host command `thread.resume` requires
+host-daemon protocol 234.
+
+Audit concurrent sends and interactions, foreign session ownership, crashes,
+source release failures, thread cache updates and cross-provider permission
+semantics before stabilizing these calls.
+
+## Provider session retention
+
+`threadIdentityResultSchema.experimental_keepSessionLoaded` is an optional
+boolean returned by a provider bridge on start, resume or fork. True exempts
+that session from idle eviction so the bridge can follow peer activity.
+Explicit release, archive and host shutdown still unload it. Older runtimes
+ignore the additive result field. Audit resource use and provider cleanup
+before stabilizing; it is neither an automatic restart nor a polling service.

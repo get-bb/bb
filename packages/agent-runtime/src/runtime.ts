@@ -212,6 +212,7 @@ interface ThreadRuntimeConfig {
   projectId?: string;
   providerId: string;
   sessionRestorable: boolean;
+  keepSessionLoaded: boolean;
 }
 
 interface RuntimeParsedMessageArgs {
@@ -712,13 +713,18 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   function updateSessionRestoreCapability(
     threadId: string,
     sessionRestorable: boolean | undefined,
+    keepSessionLoaded?: boolean,
   ): void {
-    if (sessionRestorable === undefined) {
+    if (sessionRestorable === undefined && keepSessionLoaded === undefined) {
       return;
     }
     const current = threadRuntimeConfigs.get(threadId);
     if (current) {
-      threadRuntimeConfigs.set(threadId, { ...current, sessionRestorable });
+      threadRuntimeConfigs.set(threadId, {
+        ...current,
+        sessionRestorable: sessionRestorable ?? current.sessionRestorable,
+        keepSessionLoaded: keepSessionLoaded ?? current.keepSessionLoaded,
+      });
     }
   }
 
@@ -867,7 +873,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
 
     const runtimeConfig = threadRuntimeConfigs.get(args.threadId);
-    if (!runtimeConfig?.sessionRestorable) {
+    if (!runtimeConfig?.sessionRestorable || runtimeConfig.keepSessionLoaded) {
       return null;
     }
 
@@ -1563,6 +1569,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             projectId,
             providerId,
             sessionRestorable: false,
+            keepSessionLoaded: false,
           });
 
           const providerExecutionContext = toProviderExecutionContext({
@@ -1616,7 +1623,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
                   }
                 : {}),
             });
-            updateSessionRestoreCapability(threadId, result.sessionRestorable);
+            updateSessionRestoreCapability(
+              threadId,
+              result.sessionRestorable,
+              result.experimental_keepSessionLoaded,
+            );
             recordProviderThreadIdentity(
               proc,
               threadId,
@@ -1902,6 +1913,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             projectId,
             providerId,
             sessionRestorable: false,
+            keepSessionLoaded: false,
           });
 
           if (providerThreadId) {
@@ -1951,7 +1963,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
               threadId,
               result.providerThreadId,
             );
-            updateSessionRestoreCapability(threadId, result.sessionRestorable);
+            updateSessionRestoreCapability(
+              threadId,
+              result.sessionRestorable,
+              result.experimental_keepSessionLoaded,
+            );
             resolved = result.providerThreadId;
             emitResolvedProviderEnvironment({
               droppedContributions: resolvedEnvironment.droppedContributions,

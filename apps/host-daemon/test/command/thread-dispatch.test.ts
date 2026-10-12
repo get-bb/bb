@@ -54,6 +54,46 @@ function nextClientRequestId(): ClientTurnRequestId {
 }
 
 describe("thread command dispatch", () => {
+  it("loads a saved session for thread.resume without creating a turn", async () => {
+    const harness = createHarness({
+      workspacePath: "/tmp/resume-without-input",
+    });
+    const command: Extract<HostDaemonCommand, { type: "thread.resume" }> = {
+      type: "thread.resume",
+      environmentId: "env-resume",
+      threadId: "thread-resume",
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        providerOptions: {},
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      resumeContext: {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        workspaceContext: { workspacePath: "/tmp/resume-without-input" },
+        projectId: "project-resume",
+        providerId: "fake",
+        providerThreadId: "saved-session",
+        instructions: "Keep the saved session",
+        dynamicTools: [],
+        contributedEnv: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+    };
+    await expect(
+      dispatchCommand(command, harness.dispatchOptions()),
+    ).resolves.toEqual({ providerThreadId: "saved-session" });
+    expect(harness.runtimeState.resumedThreadId).toBe("thread-resume");
+    expect(harness.runtimeState.resumedProviderThreadId).toBe("saved-session");
+    expect(harness.runtimeState.startedThreadId).toBeUndefined();
+    expect(harness.runtimeState.ranTurnInput).toBeUndefined();
+  });
   it("evicts stale runtime and rejects thread.start when the loaded runtime path differs from workspaceContext", async () => {
     const harness = createHarness({ workspacePath: "/tmp/env-loaded" });
     await harness.manager.ensureEnvironment({

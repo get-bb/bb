@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   threadVisibilitySchema,
   type PermissionMode,
@@ -8,6 +9,7 @@ import {
   type ThreadVisibility,
 } from "@bb/domain";
 import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
+import { experimentalThreadProviderHandoverRequestSchema } from "@bb/server-contract";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
@@ -153,6 +155,54 @@ export function registerActionsCommands(
   parent: Command,
   getUrl: () => string,
 ): void {
+  parent
+    .command("handover-state [id]")
+    .description(
+      "Inspect provider handover eligibility and the current history boundary",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const result = await createCliBbSdk(
+          getUrl(),
+        ).threads.experimental_providerHandover({ threadId });
+        if (outputJson(opts, result)) return;
+        console.log(
+          `${threadId}: ${result.providerId}, session ${result.providerThreadId ?? "none"}, sequence ${result.latestSeq}. ${result.blockedReason ?? "Ready for handover."}`,
+        );
+      }),
+    );
+  parent
+    .command("handover <id>")
+    .description(
+      "Connect this idle thread to a prepared provider session without replacing its history",
+    )
+    .requiredOption(
+      "--request-file <path>",
+      "JSON handover request, including the expected source and history boundary",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          threadId: string,
+          opts: { requestFile: string; json?: boolean },
+        ) => {
+          const request = experimentalThreadProviderHandoverRequestSchema.parse(
+            JSON.parse(await readFile(opts.requestFile, "utf8")),
+          );
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).threads.experimental_handoffProvider({ threadId, ...request });
+          if (outputJson(opts, result)) return;
+          console.log(
+            `${threadId}: connected to ${result.providerId}. ${result.runtimeLoaded ? "Provider session loaded." : result.resumeError}`,
+          );
+        },
+      ),
+    );
   parent
     .command("update [id]")
     .description("Update a thread")
@@ -583,6 +633,12 @@ export function registerActionsCommands(
     );
 
   for (const { name, description, method, done } of [
+    {
+      name: "resume",
+      description: "Load the saved provider session without sending a message",
+      method: "experimental_resume",
+      done: "provider session resumed",
+    },
     {
       name: "stop",
       description: "Stop work and release the loaded agent runtime",

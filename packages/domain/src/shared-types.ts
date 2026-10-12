@@ -473,6 +473,7 @@ export function removeCommandMentionsFromPromptInput(
 }
 
 const threadExecutionSourceSchema = z.enum([
+  "system/provider-handover",
   "client/thread/start",
   "client/turn/requested",
   "client/turn/start",

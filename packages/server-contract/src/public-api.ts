@@ -111,6 +111,9 @@ import type {
   RestartTerminalRequest,
   DeleteThreadSectionRequest,
   DeleteThreadRequest,
+  ExperimentalThreadProviderHandoverRequest,
+  ExperimentalThreadProviderHandoverResponse,
+  ExperimentalThreadProviderHandoverState,
   EnvironmentActionApiError,
   EnvironmentActionRequest,
   EnvironmentActionResponse,
@@ -410,6 +413,7 @@ import {
   updateProjectRequestSchema,
   updateProjectSourceRequestSchema,
   updateThreadRequestSchema,
+  experimentalThreadProviderHandoverRequestSchema,
 } from "./api-types.js";
 import {
   serverMoveCheckRequestSchema,
@@ -1588,6 +1592,26 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    experimental_providerHandover: defineRoute({
+      path: "/threads/:id/provider/handover",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ExperimentalThreadProviderHandoverState>(),
+    }),
+    experimental_handoffProvider: defineRoute({
+      path: "/threads/:id/provider/handover",
+      method: "post",
+      request: jsonRequest<PathId, ExperimentalThreadProviderHandoverRequest>(
+        experimentalThreadProviderHandoverRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalThreadProviderHandoverResponse>(),
+    }),
+    experimental_resume: defineRoute({
+      path: "/threads/:id/provider/resume",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<{ ok: true; providerThreadId: string }>(),
     }),
     cancelPlan: defineRoute({
       path: "/threads/:id/plan/cancel",

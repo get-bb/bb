@@ -211,6 +211,9 @@ move and downloads the new server's bb-app package for its service.
 - `bb thread context`
 - `bb thread commands`
 - `bb thread options`
+- `bb thread handover-state`
+- `bb thread handover`
+- `bb thread resume`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`
