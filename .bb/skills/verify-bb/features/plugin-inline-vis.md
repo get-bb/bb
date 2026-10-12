@@ -22,9 +22,10 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| Render and open | Emit the directive with a relative .html/.htm path, open its header file action, and reload the thread. | The file renders inline and opens from the correct thread workspace. |
+| Render and open | Emit the directive with a relative .html/.htm path, open the action that appears over the page on hover, and reload the thread. | The file renders inline with no card or border, follows the theme, and opens from the correct thread workspace. |
+| Fenced block | Have the reply contain an `inline-vis` fenced code block whose body is an HTML page; watch it stream, then use the hover action. | A status line shows while the block is written; the page appears when the fence closes and is not reloaded as the reply continues; the action reveals the source; an unclosed block stays a code block. |
 | Relative assets | Reference a fixture stylesheet, script, and image beside the HTML. | Assets resolve from the authorized workspace location and render without unrelated filesystem access. |
-| Height | Try omitted height and values around the declared 120–1200 bounds. | Omitted height is 224px; whole numbers from 120 to 1200 are accepted. Invalid and out-of-range values show an explicit error instead of clamping. |
+| Height | Try omitted height and values around the declared 80–2000 bounds. | With no height an HTML frame fits its page and a Markdown card previews 256px, expanding in place with "Show more"; whole numbers from 80 to 2000 are accepted (a cap for HTML, the preview height for Markdown). Invalid and out-of-range values show an explicit error instead of clamping. |
 | Sandbox | Have the fixture attempt to read parent DOM, cookies, and origin storage; report only success/failure. | The sandbox blocks parent-origin access while allowing the intended visualization interaction. |
 | Invalid artifacts | Try missing, non-HTML, invalid UTF-8, and greater-than-5MiB fixtures. | Clear artifact errors replace the frame; no silent blank success or unrestricted fallback occurs. |
 
@@ -39,4 +40,5 @@ External account changes use authorized disposable targets.
 
 ## Maintenance notes
 
-- Omitted height uses 224px. Whole-number heights from 120 through 1200 are accepted; out-of-range or invalid values show an explicit height error rather than clamping. Source: `plugins/inline-vis/app.tsx:17`, `plugins/inline-vis/app.tsx:30`.
+- An HTML frame fits its page (80–2000px) and `height` caps it; a Markdown card previews 256px and expands in place. Out-of-range or invalid values show an explicit height error rather than clamping. Source: `plugins/inline-vis/frame.ts` (`FRAME_MIN_HEIGHT`, `FRAME_MAX_HEIGHT`, `frameHeight`), `plugins/inline-vis/app.tsx` (`parseRequestedHeight`).
+- The borderless frame, the 80–2000 bounds, the fenced-block recipe, and the expanding Markdown card date from 2026-10-12 and are not covered by the 2026-09-05 validation run.

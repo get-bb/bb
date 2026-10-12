@@ -21,6 +21,9 @@
     "server.test.ts",
     "app.tsx",
     "app.test.tsx",
+    "frame.ts",
+    "frame.test.ts",
+    "theme.ts",
     "vitest.config.ts"
   ]
 }
