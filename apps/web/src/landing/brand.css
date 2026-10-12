@@ -38,28 +38,33 @@
   margin: 0;
 }
 
-.article .post-body .brand-card h2 {
-  margin-top: 14px;
-  font-size: 15px;
+.brand-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  white-space: nowrap;
 }
 
-.post-body .brand-card p {
-  margin-top: 4px;
-  color: var(--dim);
-  font-size: 14px;
+.article .post-body .brand-meta h2 {
+  margin-top: 0;
+  font-size: 15px;
 }
 
 .brand-downloads {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
+  gap: 12px;
+  font-size: 13.5px;
 }
 
 .post-body .brand-downloads a {
-  color: var(--ink);
+  color: var(--dim);
   text-decoration: none;
+}
+
+.post-body .brand-downloads a:hover {
+  color: var(--ink);
 }
 
 @media (max-width: 720px) {
