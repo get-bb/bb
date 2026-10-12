@@ -1,4 +1,4 @@
-.brand-grid {
+.post-body .brand-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
@@ -7,10 +7,14 @@
   list-style: none;
 }
 
-.brand-card {
+.post-body .brand-card {
   display: flex;
   flex-direction: column;
-  margin: 0;
+  padding: 0;
+}
+
+.post-body .brand-card::before {
+  content: none;
 }
 
 .brand-tile {
@@ -41,7 +45,7 @@
   font-size: 15px;
 }
 
-.brand-card p {
+.post-body .brand-card p {
   margin-top: 4px;
   color: var(--dim);
   font-size: 14px;
@@ -61,7 +65,7 @@
 }
 
 @media (max-width: 720px) {
-  .brand-grid {
+  .post-body .brand-grid {
     grid-template-columns: 1fr;
   }
 }
