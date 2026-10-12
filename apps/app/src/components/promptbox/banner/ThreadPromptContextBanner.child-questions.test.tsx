@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -210,6 +216,9 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -218,6 +227,7 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     press("Next question");
     expect(shownSource()).toBe("Child thr_c");
+    expect(openForm()?.closest("[inert]")).toBe(null);
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Next question" }),
     );
@@ -306,5 +316,35 @@ describe("ThreadPromptContextBanner child questions", () => {
     rerender(bannerElement(section([])));
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+  });
+
+  it("holds the next question briefly and keeps focus in the banner after an answer", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(bannerElement(section([newest, middle])));
+      fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+      screen.getByRole("button", { name: /^Alpha/ }).focus();
+
+      rerender(bannerElement(section([middle])));
+      expect(shownSource()).toBe("Child thr_c");
+      expect(openForm()?.closest("[inert]")).not.toBe(null);
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Back to active child threads" }),
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(openForm()?.closest("[inert]")).toBe(null);
+
+      screen.getByRole("button", { name: /^Alpha/ }).focus();
+      rerender(bannerElement(section([])));
+      expect(openForm()).toBe(null);
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "1 active child thread" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
