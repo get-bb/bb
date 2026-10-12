@@ -144,6 +144,7 @@ export interface PluginCatalogInstallPlanArgs {
 
 export interface PluginMarketplaceAddArgs {
   source: string;
+  subdirectory?: string;
 }
 
 export interface PluginMarketplaceListArgs {

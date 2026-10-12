@@ -1590,7 +1590,10 @@ not on disk. `bb marketplace add|list|refresh|remove` and Settings → Plugin
 marketplaces manage them; the reserved `bb-community` marketplace comes from
 `BB_MARKETPLACE_URL` and cannot be added or removed. Adding a marketplace
 installs nothing, and removing one keeps its installed plugins as direct
-installs.
+installs. A `git:` marketplace reads `marketplace.json` from the repository
+root, or from the relative directory given with
+`bb marketplace add --subdirectory <relative-path>` (the Subdirectory field in
+Settings); bb stores that directory and reuses it on every refresh.
 
 ### Multi-plugin repositories
 

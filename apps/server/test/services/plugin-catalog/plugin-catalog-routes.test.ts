@@ -281,6 +281,23 @@ describe("plugin catalog routes", () => {
       const badBody = await postJson(app, "/marketplaces", { url: ACME_URL });
       expect(badBody.status).toBe(422);
 
+      const emptySubdirectory = await postJson(app, "/marketplaces", {
+        source: ACME_URL,
+        subdirectory: "",
+      });
+      expect(emptySubdirectory.status).toBe(422);
+
+      const misplacedSubdirectory = await postJson(app, "/marketplaces", {
+        source: ACME_URL,
+        subdirectory: "bb",
+      });
+      expect(misplacedSubdirectory.status).toBe(422);
+      await expect(misplacedSubdirectory.json()).resolves.toMatchObject({
+        error: expect.stringContaining(
+          "a subdirectory applies to git: sources only",
+        ),
+      });
+
       const badName = await app.request("/marketplaces/Not%20A%20Name", {
         method: "DELETE",
       });

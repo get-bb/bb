@@ -1,0 +1,1 @@
+ALTER TABLE `plugin_marketplaces` ADD `source_git_subdirectory` text;

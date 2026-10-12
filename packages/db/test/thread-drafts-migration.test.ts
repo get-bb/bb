@@ -13,6 +13,7 @@ import {
   dropPluginEnabledFollowsDefaultColumn,
   dropIdleLifecycleIndexes,
   rewindThreadPruningWork,
+  dropMarketplaceSourceGitSubdirectoryColumn,
   dropQueuedMessageEditHeldUntilColumn,
 } from "./helpers/rewind.js";
 
@@ -114,6 +115,7 @@ it.each([false, true])(
       rewindThreadPruningWork(db);
       dropPluginEnabledFollowsDefaultColumn(db);
       dropQueuedMessageEditHeldUntilColumn(db);
+      dropMarketplaceSourceGitSubdirectoryColumn(db);
       migrate(db);
       migrate(db);
 

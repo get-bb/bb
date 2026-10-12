@@ -280,7 +280,10 @@ export function parsePluginSource(source: string): ParsedPluginSource {
   return { kind: "path", path };
 }
 
-export function normalizePluginSubdirectory(value: string): string {
+export function normalizePluginSubdirectory(
+  value: string,
+  label = "plugin subdirectory",
+): string {
   const trimmed = value.startsWith("./") ? value.slice(2) : value;
   if (
     trimmed.length === 0 ||
@@ -288,11 +291,11 @@ export function normalizePluginSubdirectory(value: string): string {
     trimmed.includes("\\") ||
     /^[a-zA-Z]:/.test(trimmed)
   ) {
-    throw new Error(`invalid plugin subdirectory "${value}"`);
+    throw new Error(`invalid ${label} "${value}"`);
   }
-  assertSafeSegments(trimmed, "plugin subdirectory");
+  assertSafeSegments(trimmed, label);
   if (trimmed.split("/").includes(".git")) {
-    throw new Error(`invalid plugin subdirectory "${value}"`);
+    throw new Error(`invalid ${label} "${value}"`);
   }
   return trimmed;
 }

@@ -101,6 +101,82 @@ describe("MarketplacesSettingsSection", () => {
     });
   });
 
+  it("offers a subdirectory for a git source and sends it with the source", async () => {
+    const requests = stubFetch([OFFICIAL]);
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesSettingsSection />, { wrapper });
+
+    expect(screen.queryByLabelText("Marketplace subdirectory")).toBe(null);
+    fireEvent.change(screen.getByLabelText("Marketplace source"), {
+      target: { value: "git:https://github.com/acme/agent-plugins.git@main" },
+    });
+    fireEvent.change(screen.getByLabelText("Marketplace subdirectory"), {
+      target: { value: " bb " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) =>
+          request.url === "/api/v1/marketplaces" &&
+          request.init?.method === "POST",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        source: "git:https://github.com/acme/agent-plugins.git@main",
+        subdirectory: "bb",
+      });
+    });
+  });
+
+  it("drops a typed subdirectory when the source is no longer a git source", async () => {
+    const requests = stubFetch([OFFICIAL]);
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesSettingsSection />, { wrapper });
+
+    fireEvent.change(screen.getByLabelText("Marketplace source"), {
+      target: { value: "git:https://github.com/acme/agent-plugins.git" },
+    });
+    fireEvent.change(screen.getByLabelText("Marketplace subdirectory"), {
+      target: { value: "bb" },
+    });
+    fireEvent.change(screen.getByLabelText("Marketplace source"), {
+      target: { value: "https://acme.test/marketplace.json" },
+    });
+    expect(screen.queryByLabelText("Marketplace subdirectory")).toBe(null);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) =>
+          request.url === "/api/v1/marketplaces" &&
+          request.init?.method === "POST",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        source: "https://acme.test/marketplace.json",
+      });
+    });
+  });
+
+  it("shows the subdirectory a git marketplace is read from", async () => {
+    stubFetch([
+      OFFICIAL,
+      {
+        ...ACME,
+        sourceKind: "git",
+        source: "git:https://acme.test/repo.git@main",
+        subdirectory: "bb",
+      },
+    ]);
+    const { wrapper } = createQueryClientTestHarness();
+    render(<MarketplacesSettingsSection />, { wrapper });
+
+    expect(
+      await screen.findByText(
+        "git:https://acme.test/repo.git@main · subdirectory bb",
+      ),
+    ).toBeTruthy();
+  });
+
   it("retains one alert when adding a marketplace fails", async () => {
     stubFetch(
       [OFFICIAL],

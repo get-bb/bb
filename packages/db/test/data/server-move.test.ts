@@ -128,6 +128,7 @@ function seedPluginPaths(db: DbConnection): void {
       sourceKind,
       manifestUrl,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       manifestJson: "{}",
       statsJson: null,

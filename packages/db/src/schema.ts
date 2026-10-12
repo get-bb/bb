@@ -368,6 +368,7 @@ export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
     .default("https"),
   manifestUrl: text("manifest_url").notNull(),
   sourceGitRef: text("source_git_ref"),
+  sourceGitSubdirectory: text("source_git_subdirectory"),
   sourceGitCommit: text("source_git_commit"),
   manifestJson: text("manifest_json").notNull(),
   statsJson: text("stats_json"),

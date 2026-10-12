@@ -42,3 +42,16 @@ export function dropQueuedMessageEditHeldUntilColumn(db: DbConnection): void {
     );
   }
 }
+
+export function dropMarketplaceSourceGitSubdirectoryColumn(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "source_git_subdirectory")) {
+    db.$client.exec(
+      "ALTER TABLE plugin_marketplaces DROP COLUMN source_git_subdirectory",
+    );
+  }
+}

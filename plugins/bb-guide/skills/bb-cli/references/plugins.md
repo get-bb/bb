@@ -37,7 +37,10 @@
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),
     or `path:<directory>`. The CLI resolves a relative path from its current
-    directory before it sends the request. BB validates the
+    directory before it sends the request. For a `git:` source,
+    `--subdirectory <relative-path>` reads `marketplace.json` and relative
+    icons from that directory of the repository instead of its root; bb stores
+    the subdirectory and reuses it on every refresh. BB validates the
     manifest, caches the catalog, and fetches its icons. **Adding a
     marketplace installs nothing.** The manifest's own `name` is the
     marketplace's identity, so a name collision is refused. The `bb-official`

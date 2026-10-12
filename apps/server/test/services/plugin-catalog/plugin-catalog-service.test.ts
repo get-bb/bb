@@ -376,6 +376,7 @@ describe("plugin catalog service", () => {
         sourceKind: "https",
         manifestUrl: V1_MANIFEST_URL,
         sourceGitRef: null,
+        sourceGitSubdirectory: null,
         sourceGitCommit: null,
         manifestJson: JSON.stringify(savedManifest),
         statsJson: null,
@@ -604,6 +605,7 @@ describe("plugin catalog service", () => {
         sourceKind: "path",
         manifestUrl: dataDir,
         sourceGitRef: null,
+        sourceGitSubdirectory: null,
         sourceGitCommit: null,
         manifestJson: JSON.stringify(
           manifestV2([remoteEntry({ icon: "Zap" })], {
@@ -642,6 +644,7 @@ describe("plugin catalog service", () => {
         sourceKind: "https",
         manifestUrl: MANIFEST_URL,
         sourceGitRef: null,
+        sourceGitSubdirectory: null,
         sourceGitCommit: null,
         manifestJson: JSON.stringify(
           manifestV2([], {
@@ -1114,7 +1117,10 @@ describe("plugin catalog service", () => {
         },
       });
 
-      await catalog.addMarketplace(thirdPartyManifest);
+      await catalog.addMarketplace({
+        source: thirdPartyManifest,
+        subdirectory: null,
+      });
       await catalog.refreshMarketplaces({ attemptedAt: 2_000 });
       expect((await catalog.search("widgets"))[0]?.installs).toBeNull();
       expect(statsRequests).toEqual([STATS_URL]);

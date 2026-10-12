@@ -441,7 +441,10 @@ added/updated/unchanged counts.
                                  git:<url>[@<ref>], or path:<directory>. bb
                                  validates the manifest, caches the catalog,
                                  and fetches the entry icons. Adding a
-                                 marketplace installs nothing
+                                 marketplace installs nothing. For a git:
+                                 source, --subdirectory <path> reads
+                                 marketplace.json from that directory of the
+                                 repository instead of its root
   bb marketplace list            Name, source, entry count, and last refresh of
                                  every marketplace (--json for raw rows)
   bb marketplace refresh [name]  Re-read one catalog, or every one of them.
@@ -548,7 +551,14 @@ path:<directory> on the bb server's machine:
 
   bb marketplace add https://plugins.acme.dev/marketplace.json
   bb marketplace add git:github.com/acme/bb-marketplace@main
+  bb marketplace add git:github.com/acme/agent-plugins@main --subdirectory bb
   bb marketplace add path:/work/acme-marketplace
+
+A git repository can keep its catalog in a subdirectory. --subdirectory names
+a relative path inside the checkout, with the same rules as
+`bb plugin install --subdirectory`. bb reads marketplace.json and relative
+icons from that directory on every refresh. `source.git.subdir` in a catalog
+entry stays relative to the repository root.
 
 The manifest `name` is the marketplace identity. bb refuses a duplicate name.
 The `bb-official` and `bb-community` names are reserved. You cannot add or

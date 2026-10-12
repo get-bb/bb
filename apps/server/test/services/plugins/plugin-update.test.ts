@@ -676,6 +676,7 @@ describe("plugin update service and routes", () => {
       sourceKind: "path",
       manifestUrl: workDir,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       statsJson: null,
       manifestJson: JSON.stringify({

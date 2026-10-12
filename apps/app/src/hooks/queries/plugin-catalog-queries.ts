@@ -101,9 +101,12 @@ async function listPluginMarketplaces(
 
 export async function addPluginMarketplace(
   fetchImpl: FetchLike,
-  source: string,
+  args: { source: string; subdirectory: string | null },
 ): Promise<PluginMarketplace> {
-  return createPluginsClient(fetchImpl).marketplaces.add({ source });
+  return createPluginsClient(fetchImpl).marketplaces.add({
+    source: args.source,
+    ...(args.subdirectory === null ? {} : { subdirectory: args.subdirectory }),
+  });
 }
 
 export async function removePluginMarketplace(
