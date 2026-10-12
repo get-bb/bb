@@ -26,6 +26,8 @@ export type PendingInteractionPresentation = "card" | "inline";
 export const PendingInteractionPresentationContext =
   createContext<PendingInteractionPresentation>("card");
 
+export const InlineQuestionPromptContext = createContext<string | null>(null);
+
 interface PendingInteractionShellProps {
   label: string;
   title?: string;
@@ -48,6 +50,7 @@ export function PendingInteractionShell({
   testId,
 }: PendingInteractionShellProps) {
   const presentation = useContext(PendingInteractionPresentationContext);
+  const promptShownAbove = useContext(InlineQuestionPromptContext);
   const [isExpanded, setIsExpanded] = useState(expandedByDefault);
   const [previousExpandedByDefault, setPreviousExpandedByDefault] =
     useState(expandedByDefault);
@@ -109,7 +112,10 @@ export function PendingInteractionShell({
         data-presentation="inline"
         className="flex min-w-0 flex-col text-xs text-muted-foreground"
       >
-        <ThreadQuestionFormHost density="compact">
+        <ThreadQuestionFormHost
+          density="compact"
+          promptShownAbove={promptShownAbove}
+        >
           <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
             {title ? (
               <h3
@@ -200,7 +206,7 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <ThreadQuestionFormHost density="default">
+        <ThreadQuestionFormHost density="default" promptShownAbove={null}>
           <div
             id={contentId}
             hidden={!isExpanded}

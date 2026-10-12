@@ -41,7 +41,10 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
-import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
+import {
+  InlineQuestionPromptContext,
+  PendingInteractionPresentationContext,
+} from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   formatChangeSummary,
@@ -635,6 +638,9 @@ function ChildQuestionBody({
   onStep: (offset: 1 | -1) => void;
 }) {
   const position = `${index + 1} of ${total}`;
+  const question = formatPendingInteractionSummary({
+    interaction: current.interaction,
+  });
   return (
     <div className="px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-start justify-between gap-2">
@@ -647,11 +653,7 @@ function ChildQuestionBody({
             {current.childTitle}
           </NavLink>
           :{" "}
-          <span className="text-muted-foreground">
-            {formatPendingInteractionSummary({
-              interaction: current.interaction,
-            })}
-          </span>
+          <span className="text-muted-foreground">{question}</span>
         </p>
         {total > 1 ? (
           <div className="-mr-1.5 flex shrink-0 items-center text-xs">
@@ -690,10 +692,12 @@ function ChildQuestionBody({
       </span>
       <div className="mt-1.5">
         <PendingInteractionPresentationContext.Provider value="inline">
-          <ThreadPendingInteractionBanners
-            interactions={[current.interaction]}
-            threadId={current.childThreadId}
-          />
+          <InlineQuestionPromptContext.Provider value={question}>
+            <ThreadPendingInteractionBanners
+              interactions={[current.interaction]}
+              threadId={current.childThreadId}
+            />
+          </InlineQuestionPromptContext.Provider>
         </PendingInteractionPresentationContext.Provider>
       </div>
     </div>

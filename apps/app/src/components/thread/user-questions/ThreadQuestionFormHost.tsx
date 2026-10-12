@@ -17,9 +17,11 @@ import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 export function ThreadQuestionFormHost({
   children,
   density,
+  promptShownAbove,
 }: {
   children: ReactNode;
   density: QuestionFormHost["density"];
+  promptShownAbove: string | null;
 }) {
   const handlerRef = useRef<((index: number) => boolean) | null>(null);
   const [hasHandler, setHasHandler] = useState(false);
@@ -39,6 +41,7 @@ export function ThreadQuestionFormHost({
   const value = useMemo(
     () => ({
       density,
+      promptShownAbove,
       shortcuts: new Map(
         QUESTION_SELECT_APP_COMMAND_IDS.flatMap((command, index) => {
           const binding = bindings.get(command);
@@ -47,7 +50,7 @@ export function ThreadQuestionFormHost({
       ),
       registerChoiceHandler,
     }),
-    [bindings, density, registerChoiceHandler],
+    [bindings, density, promptShownAbove, registerChoiceHandler],
   );
   const enabled = isFocusedPane && hasHandler;
   useAppCommandContext("questionOpen", enabled);

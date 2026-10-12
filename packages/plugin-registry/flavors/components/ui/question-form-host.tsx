@@ -6,8 +6,13 @@ import {
 
 export type QuestionFormHost = ExperimentalQuestionFormHost & {
   density: "default" | "compact";
+  promptShownAbove: string | null;
 };
 export type QuestionShortcut = ExperimentalQuestionShortcut;
 export function useQuestionFormHost(): QuestionFormHost {
-  return { ...experimental_useQuestionFormHost(), density: "default" };
+  return {
+    ...experimental_useQuestionFormHost(),
+    density: "default",
+    promptShownAbove: null,
+  };
 }

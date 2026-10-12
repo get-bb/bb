@@ -360,7 +360,8 @@ export function QuestionForm({
   const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
-  const { density, shortcuts, registerChoiceHandler } = useQuestionFormHost();
+  const { density, promptShownAbove, shortcuts, registerChoiceHandler } =
+    useQuestionFormHost();
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -540,7 +541,11 @@ export function QuestionForm({
         <QuestionInputBlock
           key={currentQuestion.id}
           density={density}
-          showPrompt={density !== "compact" || totalQuestions > 1}
+          showPrompt={
+            density !== "compact" ||
+            totalQuestions > 1 ||
+            currentQuestion.prompt !== promptShownAbove
+          }
           disabled={disabled}
           question={currentQuestion}
           state={currentState}
