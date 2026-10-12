@@ -45,6 +45,7 @@ Hooks:
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
 openThreadPanel({ actionId, title?, params? }), openUrl(url),
 experimental_openFilePreview(options), experimental_openFileExternally(options),
+experimental_openAppRoute(path), experimental_runAppCommand(commandId),
 experimental_openTerminal({ terminalId }) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
@@ -55,6 +56,11 @@ experimental_openTerminal({ terminalId }) }`.
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target.
+  `experimental_openAppRoute` opens a same-origin in-app route such as
+  `/settings/mobile` or `/settings/plugins/<pluginId>#section` and returns
+  false for anything else. `experimental_runAppCommand` runs a built-in app
+  command such as `palette.open` or `thread.search` and returns false for
+  unknown ids or when no handler on screen ran it.
   `experimental_openTerminal` shows a terminal the plugin created with
   `useSdk().terminals.create` in the current surface's terminal panel; the
   create scope (thread, environment, or host path) picks its directory. It
@@ -102,6 +108,9 @@ experimental_openTerminal({ terminalId }) }`.
   - `focus()` focuses the caret. `setTextEffect({ className })` paints the
     draft (`null` clears); `setInputLock(locked)` makes the editor read-only
     and auto-releases when the slot unmounts or changes scope.
+    `experimental_setPlaceholderPreview(text)` shows `text` as the empty
+    composer's placeholder (`null` restores bb's) without touching the draft,
+    for example to preview a prompt on hover; it clears on unmount.
   - Save `composer.draft`, then restore it with `composer.replace(saved)`.
     For an LLM rewrite, map preserved mention placeholders to explicit ranges
     in the resulting text and replace text and mentions together.
@@ -136,8 +145,8 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   queued-message editors), oldest first. Use it from a panel or page that
   writes into a composer the user picks: label each by `scope`, then call
   `insert`, `focus` or `submit` on the chosen one. Handles are the same
-  `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
-  `setInputLock` have no effect here. Re-renders when the list or a listed
+  `PluginComposerApi` with the same lifetime rule; `setTextEffect`,
+  `setInputLock` and `experimental_setPlaceholderPreview` have no effect here. Re-renders when the list or a listed
   draft or selection changes.
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the

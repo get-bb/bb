@@ -44,6 +44,7 @@ interface RootComposeSecondaryContentProps {
   compactScrollContent: ReactNode;
   isCompactHomeLayout: boolean;
   contentClassName?: string;
+  setupComplete: boolean;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
   secondaryPanel: RootSecondaryPanelProps;
@@ -67,6 +68,7 @@ export function RootComposeSecondaryContent({
   compactScrollContent,
   isCompactHomeLayout,
   contentClassName,
+  setupComplete,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
   secondaryPanel,
@@ -112,7 +114,7 @@ export function RootComposeSecondaryContent({
         >
           <RootComposeCompactHome composer={children}>
             {compactScrollContent}
-            <PluginHomepageSections />
+            <PluginHomepageSections setupComplete={setupComplete} />
           </RootComposeCompactHome>
         </div>
       ) : (
@@ -127,7 +129,7 @@ export function RootComposeSecondaryContent({
           >
             {children}
             {compactScrollContent}
-            <PluginHomepageSections />
+            <PluginHomepageSections setupComplete={setupComplete} />
           </div>
         </div>
       )}

@@ -1,3 +1,4 @@
+import { useSetupComplete } from "@/components/onboarding/useSetupComplete";
 import { getPanelTabHistoryKey } from "@/components/secondary-panel/recentlyClosedPanelTabs";
 import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
 import type { ComposerAttachment } from "@get-bb/plugin-sdk";
@@ -705,6 +706,7 @@ function RootComposeSurface({
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const isCompactViewport = useIsCompactViewport();
+  const setupComplete = useSetupComplete();
   const secondaryPanelDrawerVisibility =
     useThreadSecondaryPanelDrawerVisibility({
       isCompactViewport,
@@ -1520,6 +1522,7 @@ function RootComposeSurface({
                     ROOT_COMPOSE_SIDEBAR_ACTION_ALIGNED_TOP_PADDING_CLASS
                   }
                   isCompactHomeLayout={isCompactViewport}
+                  setupComplete={setupComplete}
                   compactScrollContent={
                     <RootComposeMobileRecents
                       highlightedThreadId={lastCreatedThreadId}

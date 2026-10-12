@@ -995,6 +995,18 @@ describe("collectPluginAppRegistrations", () => {
       /"component" must be/,
     ],
     [
+      "homepage section with an empty title",
+      () =>
+        definePluginApp((app) => {
+          app.slots.homepageSection({
+            id: "x",
+            title: "",
+            component: Component,
+          });
+        }),
+      /slots\.homepageSection: "title" must be a non-empty string/,
+    ],
+    [
       "nav panel with a non-component headerContent",
       () =>
         definePluginApp((app) => {
@@ -1115,6 +1127,16 @@ describe("collectPluginAppRegistrations", () => {
     ],
   ])("rejects %s", (_name, build, message) => {
     expect(() => collectPluginAppRegistrations(build())).toThrow(message);
+  });
+
+  it("collects an untitled homepage section without a title key", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.homepageSection({ id: "tips", component: Component });
+    });
+    const [section] =
+      collectPluginAppRegistrations(definition).homepageSections;
+    expect(section).toEqual({ id: "tips", component: Component });
+    expect(section !== undefined && "title" in section).toBe(false);
   });
 
   it("keeps a headerContent registration", () => {

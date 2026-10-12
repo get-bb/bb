@@ -30,7 +30,9 @@ import type {
   ExperimentalPluginFixedTabReference,
   JsonValue,
 } from "@get-bb/plugin-sdk";
-import { jsonValueSchema } from "@bb/domain";
+import { appCommandIdSchema, jsonValueSchema } from "@bb/domain";
+import { useAppCommandRunner } from "@/components/commands/AppCommandProvider";
+import { normalizePluginAppRoute } from "@/lib/plugin-app-route";
 import {
   PluginSlotOwnershipContext,
   usePluginId,
@@ -59,6 +61,7 @@ import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
+import { setComposerPlaceholderPreview } from "@/lib/composer-placeholder-previews";
 import { createKeyedListeners } from "@/lib/keyed-listeners";
 import {
   usePromptDraftController,
@@ -336,12 +339,18 @@ export function useBbContext(): BbContext {
   );
 }
 
+const PLUGIN_RUNNABLE_APP_COMMAND_IDS: ReadonlySet<string> = new Set([
+  "palette.open",
+  "thread.search",
+  "settings.open",
+]);
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
   const appNavigation = useAppNavigationHost();
+  const appCommands = useAppCommandRunner();
   const store = useStore();
   const queryClient = useQueryClient();
   const isCompact = useIsCompactViewport();
@@ -448,6 +457,27 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
+  const experimental_openAppRoute = useCallback<
+    BbNavigate["experimental_openAppRoute"]
+  >(
+    (path) => {
+      const route = normalizePluginAppRoute(path, window.location.origin);
+      if (route === null) return false;
+      void navigate(route);
+      return true;
+    },
+    [navigate],
+  );
+  const experimental_runAppCommand = useCallback<
+    BbNavigate["experimental_runAppCommand"]
+  >(
+    (commandId) => {
+      if (!PLUGIN_RUNNABLE_APP_COMMAND_IDS.has(commandId)) return false;
+      const command = appCommandIdSchema.safeParse(commandId);
+      return command.success && appCommands.dispatch(command.data, null);
+    },
+    [appCommands],
+  );
   const experimental_openTerminal = useCallback<
     BbNavigate["experimental_openTerminal"]
   >(
@@ -471,6 +501,8 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openAppRoute,
+      experimental_runAppCommand,
       experimental_openTerminal,
       openUrl,
     }),
@@ -482,6 +514,8 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openAppRoute,
+      experimental_runAppCommand,
       experimental_openTerminal,
       openUrl,
     ],
@@ -742,6 +776,7 @@ export function useComposer(): PluginComposerApi {
     scopeOwnership.invalidate();
     setComposerTextEffect(textEffectKey, pluginId, null, visualStateOwner);
     setComposerInputLock(textEffectKey, pluginId, false, visualStateOwner);
+    setComposerPlaceholderPreview(textEffectKey, visualStateOwner, null);
   }, [pluginId, scopeOwnership, textEffectKey, visualStateOwner]);
   const registerVisualStateOwner = useCallback(() => {
     slotOwnershipRegistry?.register(visualStateOwner, releaseVisualState);
@@ -780,6 +815,14 @@ export function useComposer(): PluginComposerApi {
       textEffectKey,
       visualStateOwner,
     ],
+  );
+  const setPlaceholderPreview = useCallback(
+    (text: string | null) => {
+      if (!scopeOwnership.isActive()) return;
+      if (text !== null) registerVisualStateOwner();
+      setComposerPlaceholderPreview(textEffectKey, visualStateOwner, text);
+    },
+    [registerVisualStateOwner, scopeOwnership, textEffectKey, visualStateOwner],
   );
   useEffect(() => {
     scopeOwnership.activate();
@@ -836,9 +879,17 @@ export function useComposer(): PluginComposerApi {
       composerHandleController(pluginId, source, {
         setTextEffect,
         setInputLock,
+        setPlaceholderPreview,
         onSubmitted,
       }),
-    [onSubmitted, pluginId, setInputLock, setTextEffect, source],
+    [
+      onSubmitted,
+      pluginId,
+      setInputLock,
+      setPlaceholderPreview,
+      setTextEffect,
+      source,
+    ],
   );
   const [binding, setBinding] = useState(() =>
     createComposerHandleBinding(textEffectKey, controller),

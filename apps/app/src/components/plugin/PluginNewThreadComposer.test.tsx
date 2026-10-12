@@ -246,6 +246,9 @@ vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
         },
 }));
 
+vi.mock("@/components/onboarding/useSetupComplete", () => ({
+  useSetupComplete: () => true,
+}));
 vi.mock("@/hooks/queries/host-queries", () => ({
   useHosts: () => ({
     data: [

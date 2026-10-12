@@ -173,6 +173,8 @@ const slot = renderSlot(
     context: { projectId: "p1", threadId: null }, // useBbContext()
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
     openUrl: (url) => url.startsWith("https://"),
+    openAppRoute: (path) => path.startsWith("/settings/"),
+    runAppCommand: (commandId) => commandId === "palette.open",
   },
 );
 await slot.findByText("…"); // Testing Library queries

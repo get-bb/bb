@@ -49,6 +49,14 @@ the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
 
+`experimental_openAppRoute(path)` opens an in-app bb route such as
+`/settings/mobile` or `/settings/plugins/<pluginId>` (query and hash kept) and
+returns false for anything that is not a same-origin app path.
+`experimental_runAppCommand(commandId)` runs a built-in app command such as
+`palette.open` or `thread.search` as its shortcut would, returning false for
+unknown ids or when nothing handled it. The frontend harness records both and
+accepts `openAppRoute` and `runAppCommand` behavior options.
+
 To show a terminal beside your UI, create it with `useSdk().terminals.create`
 in the thread, environment, or host directory you want, then call
 `useBbNavigate().experimental_openTerminal({ terminalId })`. It resolves

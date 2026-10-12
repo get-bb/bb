@@ -48,4 +48,58 @@ describe("client telemetry events", () => {
       expect(capture).not.toHaveBeenCalled();
     });
   });
+
+  it("accepts anonymous tip events and rejects tip ids, positions, or properties outside the allow-list", async () => {
+    await withTestHarness(async (harness) => {
+      const capture = vi.fn<TelemetryService["capture"]>();
+      harness.deps.telemetry = { ...harness.deps.telemetry, capture };
+      const shown = {
+        name: "tip_shown",
+        properties: { tip_id: "child-threads", position: 1, action: "prompt" },
+      };
+      const used = {
+        name: "tip_used",
+        properties: {
+          tip_id: "account-pool",
+          position: 3,
+          action: "open-plugin",
+        },
+      };
+
+      const accepted = [await post(harness, shown), await post(harness, used)];
+      const rejected = [
+        await post(harness, {
+          name: "tip_shown",
+          properties: { tip_id: "my-tip", position: 1, action: "prompt" },
+        }),
+        await post(harness, {
+          name: "tip_used",
+          properties: {
+            tip_id: "child-threads",
+            position: 4,
+            action: "prompt",
+          },
+        }),
+        await post(harness, {
+          name: "tip_used",
+          properties: { tip_id: "child-threads", position: 1, action: "share" },
+        }),
+        await post(harness, {
+          name: "tip_shown",
+          properties: {
+            tip_id: "child-threads",
+            position: 1,
+            action: "prompt",
+            projectId: "proj_123",
+          },
+        }),
+      ];
+
+      expect(accepted.map((response) => response.status)).toEqual([200, 200]);
+      expect(rejected.map((response) => response.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
+      expect(capture.mock.calls).toEqual([[shown], [used]]);
+    });
+  });
 });

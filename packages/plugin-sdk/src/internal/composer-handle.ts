@@ -60,6 +60,7 @@ export interface ComposerHandleController {
   mentionText(mention: ComposerMention): string;
   setTextEffect(effect: PluginComposerTextEffect | null): void;
   setInputLock(locked: boolean): void;
+  setPlaceholderPreview(text: string | null): void;
   onSubmitted(listener: () => void): () => void;
 }
 
@@ -431,6 +432,8 @@ export function createComposerHandleBinding(
     insert,
     setTextEffect: (effect) => controller.setTextEffect(effect),
     setInputLock: (locked) => controller.setInputLock(locked),
+    experimental_setPlaceholderPreview: (text) =>
+      controller.setPlaceholderPreview(text),
     addQuote: (text) => {
       warnDeprecatedComposerMember("addQuote", "replace");
       if (!legacyAvailable("addQuote")) return;

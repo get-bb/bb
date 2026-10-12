@@ -331,6 +331,29 @@ function FileNavigationProbe() {
   );
 }
 
+function AppRouteAndCommandProbe() {
+  const navigate = useBbNavigate();
+  const [results, setResults] = useState<string>("");
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          setResults(
+            String([
+              navigate.experimental_openAppRoute("/settings/mobile"),
+              navigate.experimental_runAppCommand("palette.open"),
+            ]),
+          )
+        }
+      >
+        Open route and command
+      </button>
+      <output>{results}</output>
+    </div>
+  );
+}
+
 function MalformedFileLinkProbe() {
   return (
     <FileLink
@@ -375,7 +398,7 @@ function SchemeLikeFileLinkProbe() {
 
 let capturedComposerVisualSetters: Pick<
   PluginComposerApi,
-  "setTextEffect" | "setInputLock"
+  "setTextEffect" | "setInputLock" | "experimental_setPlaceholderPreview"
 > | null = null;
 let capturedComposerSetSelection: PluginComposerApi["setSelection"] | null =
   null;
@@ -401,6 +424,8 @@ function ComposerProbe() {
   capturedComposerVisualSetters = {
     setTextEffect: composer.setTextEffect,
     setInputLock: composer.setInputLock,
+    experimental_setPlaceholderPreview:
+      composer.experimental_setPlaceholderPreview,
   };
   capturedComposerSetSelection = composer.setSelection;
   return (
@@ -685,9 +710,9 @@ describe("loadPluginApp", () => {
     expect(mounted.inspection.experimental_clipboardWrites).toEqual([
       { text: "plain", html: "<b>rich</b>" },
     ]);
-    await expect(
-      experimental_copyToClipboard({ text: "later" }),
-    ).resolves.toBe(false);
+    await expect(experimental_copyToClipboard({ text: "later" })).resolves.toBe(
+      false,
+    );
 
     const slot = renderSlot(captured.navPanels[0]!, { subPath: "" });
     await expect(
@@ -1620,6 +1645,25 @@ describe("renderSlot", () => {
     ]);
   });
 
+  it("records app-route and app-command intents with host acceptance", () => {
+    const slot = renderSlot(
+      { component: AppRouteAndCommandProbe },
+      {},
+      {
+        openAppRoute: (path) => path === "/settings/mobile",
+        runAppCommand: () => false,
+      },
+    );
+    fireEvent.click(
+      slot.getByRole("button", { name: "Open route and command" }),
+    );
+    expect(slot.getByRole("status").textContent).toBe("true,false");
+    expect(slot.inspection.navigateCalls).toEqual([
+      { method: "experimental_openAppRoute", path: "/settings/mobile" },
+      { method: "experimental_runAppCommand", commandId: "palette.open" },
+    ]);
+  });
+
   it("records fixed-tab opens and retains target state until the owner clears it", () => {
     const slot = renderSlot(
       { component: FixedTabProbe },
@@ -1960,6 +2004,33 @@ describe("renderSlot", () => {
       ]);
       expect(slot.composer.inputLockCalls).toEqual([true]);
     }
+  });
+
+  it("records placeholder previews and clears them on unmount", () => {
+    const slot = renderSlot(
+      app.composerCustomizations[0]!.actions![0]!,
+      {},
+      { context: { projectId: "proj_1", threadId: "thr_1" } },
+    );
+    const setters = capturedComposerVisualSetters;
+    if (setters === null) throw new Error("composer setters were not captured");
+
+    setters.experimental_setPlaceholderPreview("Spin up three child threads");
+    expect(slot.composer.placeholderPreview).toBe(
+      "Spin up three child threads",
+    );
+    setters.experimental_setPlaceholderPreview(null);
+    expect(slot.composer.placeholderPreview).toBeNull();
+    setters.experimental_setPlaceholderPreview("Build me a bb plugin");
+
+    slot.unmount();
+    expect(slot.composer.placeholderPreview).toBeNull();
+    setters.experimental_setPlaceholderPreview("late preview");
+    expect(slot.composer.placeholderPreviewCalls).toEqual([
+      "Spin up three child threads",
+      null,
+      "Build me a bb plugin",
+    ]);
   });
 
   it("invalidates visual-state setters when Testing Library cleans up the root", () => {

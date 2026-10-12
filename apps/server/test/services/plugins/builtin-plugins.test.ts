@@ -613,6 +613,7 @@ describe("builtin plugin reconciliation", () => {
       drafts: true,
       "provider-retry": true,
       "push-notifications": true,
+      tips: true,
     });
   });
 

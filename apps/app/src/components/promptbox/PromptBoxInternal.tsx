@@ -94,6 +94,7 @@ import {
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import { useComposerInputLock } from "@/lib/plugin-sdk-hooks";
+import { useComposerPlaceholderPreview } from "@/lib/composer-placeholder-previews";
 import {
   COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
   COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
@@ -1590,10 +1591,14 @@ export function PromptBoxInternal({
       (value.trim().length === 0 &&
         attachments.length === 0 &&
         !pendingUploads?.length));
-  const effectivePlaceholder = showCompactLayout
+  const pluginComposerHost = usePluginComposerHost();
+  const placeholderPreview = useComposerPlaceholderPreview(
+    pluginComposerHost?.textEffectKey ?? null,
+  );
+  const hostPlaceholder = showCompactLayout
     ? (compact.placeholder ?? placeholder)
     : placeholder;
-  const pluginComposerHost = usePluginComposerHost();
+  const effectivePlaceholder = placeholderPreview ?? hostPlaceholder;
   const composerInputLocked = useComposerInputLock(
     pluginComposerHost?.textEffectKey ?? null,
   );
@@ -2028,7 +2033,7 @@ export function PromptBoxInternal({
       immediatelyRender: false,
       editorProps: {
         attributes: {
-          "aria-label": effectivePlaceholder,
+          "aria-label": hostPlaceholder,
           "data-placeholder": effectivePlaceholder,
           ...(onModifierSubmit
             ? { "aria-keyshortcuts": modifierSubmitShortcutAria() }
@@ -2403,11 +2408,11 @@ export function PromptBoxInternal({
     placeholderRef.current = effectivePlaceholder;
     if (!editor) return;
 
-    editor.view.dom.setAttribute("aria-label", effectivePlaceholder);
+    editor.view.dom.setAttribute("aria-label", hostPlaceholder);
     editor.view.dom.setAttribute("data-placeholder", effectivePlaceholder);
     editor.view.dom.setAttribute("enterkeyhint", editorEnterKeyHint);
     editor.view.dispatch(editor.state.tr);
-  }, [editor, editorEnterKeyHint, effectivePlaceholder]);
+  }, [editor, editorEnterKeyHint, effectivePlaceholder, hostPlaceholder]);
 
   useEffect(() => {
     if (!editor) return;

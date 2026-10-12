@@ -157,6 +157,22 @@ bb concurrency-limit global [unlimited|<limit>] [--json]
 bb concurrency-limit host <host-id> [auto|<limit>] [--json]
 ```
 
+The builtin Tips plugin shows three contextual tips as a small feed under the
+composer on the desktop and web New thread page (never on phones or compact
+layouts). Each new visit adds one tip at the top and drops the oldest, cycling through every eligible tip before repeating; a clicked tip stays out of the next visit. A tip retires once its feature is in use or it is dismissed. Tips are on by default for new installs (no
+threads, or none older than two weeks, when Tips first runs) and off for
+existing ones; that decision is made once and saved to the plugin's "Show
+tips" switch, and an explicit choice always wins. "Hide tips" on the page
+turns them off. Turn them on or off with the switch or
+`bb plugin config bb--tips set enabled true|false`. The CLI equivalents are:
+
+```
+bb tips [--all] [--json]
+bb tips hide [--undo] [--json]
+bb tips dismiss <id> [--json]
+bb tips reset [--json]
+```
+
 The builtin Provider retry plugin is enabled on fresh installations. It retries
 Codex and Claude Code turns after structured provider overloads and subscription
 window limits. A pending retry is a queued row on the thread, so a server
@@ -747,9 +763,11 @@ useBbNavigate (including openUrl(url), which applies the current
 client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
-workspace/host/thread-storage files, and experimental_openTerminal({
-terminalId }), which shows a terminal created with useSdk().terminals.create
-in the current surface's terminal panel), and useComposer (one stable handle for
+workspace/host/thread-storage files, experimental_openAppRoute(path) for an
+in-app route such as /settings/mobile, experimental_runAppCommand(id) for a
+built-in app command such as palette.open or thread.search, and
+experimental_openTerminal({ terminalId }), which shows a terminal created with
+useSdk().terminals.create in the current surface's terminal panel), and useComposer (one stable handle for
 the bound composer: read its text, mentions, reactive picker selection, scope, layout, run and submit
 state, and why submitting is blocked; replace/update/clear text; insert text
 and mentions at the cursor or end; apply a class-based text effect, lock input,
