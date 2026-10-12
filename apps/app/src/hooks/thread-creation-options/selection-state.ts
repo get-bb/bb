@@ -208,10 +208,6 @@ export function updateThreadPromptSelections({
   field,
   value,
 }: UpdateThreadPromptSelectionsArgs): ThreadPromptSelections {
-  if (currentSelections[field] === value) {
-    return currentSelections;
-  }
-
   return {
     ...currentSelections,
     [field]: value,
@@ -227,14 +223,6 @@ export function buildExecutionInputSources({
   touchedFields,
 }: BuildExecutionInputSourcesArgs): ScopedExecutionInputSources {
   const usesStoredValues = scope === "new-thread";
-  const hasTouchedExecutionField =
-    touchedFields.has("selectedProviderId") ||
-    touchedFields.has("selectedModel") ||
-    touchedFields.has("serviceTier") ||
-    touchedFields.has("reasoningLevel") ||
-    touchedFields.has("permissionMode");
-  const forcesExplicitExecutionFields =
-    scope === "component-local" && hasTouchedExecutionField;
 
   if (!usesStoredValues && scope !== "component-local") {
     return {};
@@ -255,10 +243,7 @@ export function buildExecutionInputSources({
       hasValue(storedValues.selectedModel) &&
       storedValues.selectedModel === effectiveValues.selectedModel,
     hasValue: hasValue(effectiveValues.selectedModel),
-    touched:
-      forceExplicitModel ||
-      forcesExplicitExecutionFields ||
-      touchedFields.has("selectedModel"),
+    touched: forceExplicitModel || touchedFields.has("selectedModel"),
   });
   const serviceTierSource = resolveCreateExecutionInputSource({
     hasStoredValue:
@@ -266,19 +251,17 @@ export function buildExecutionInputSources({
       storedValues.serviceTier !== "" &&
       storedValues.serviceTier === effectiveValues.serviceTier,
     hasValue: effectiveValues.serviceTier !== undefined,
-    touched: forcesExplicitExecutionFields || touchedFields.has("serviceTier"),
+    touched: touchedFields.has("serviceTier"),
   });
   const reasoningLevelSource = resolveCreateExecutionInputSource({
     hasStoredValue: usesStoredValues && storedValues.reasoningLevel !== "",
     hasValue: hasValue(effectiveValues.reasoningLevel),
-    touched:
-      forcesExplicitExecutionFields || touchedFields.has("reasoningLevel"),
+    touched: touchedFields.has("reasoningLevel"),
   });
   const permissionModeSource = resolveCreateExecutionInputSource({
     hasStoredValue: usesStoredValues && storedValues.permissionMode !== "",
     hasValue: hasValue(effectiveValues.permissionMode),
-    touched:
-      forcesExplicitExecutionFields || touchedFields.has("permissionMode"),
+    touched: touchedFields.has("permissionMode"),
   });
 
   if (scope === "component-local") {

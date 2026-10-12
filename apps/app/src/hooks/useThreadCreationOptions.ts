@@ -691,49 +691,29 @@ export function useThreadCreationOptions(
     effectiveProviderId === readyProviderId
       ? "client-preference"
       : undefined;
-  const executionInputSources = useMemo(
-    () =>
-      buildExecutionInputSources({
-        effectiveValues: {
-          selectedProviderId: effectiveProviderId,
-          selectedModel,
-          serviceTier,
-          reasoningLevel,
-          permissionMode,
-        },
-        forceExplicitModel:
-          isUnavailableModelRecovery || isSessionOptionModelSwitch,
-        initialProviderSource: effectiveInitialProviderSource,
-        scope,
-        storedValues: {
-          selectedProviderId: storedProviderId,
-          selectedModel: storedSelectedModel,
-          serviceTier: storedServiceTier,
-          reasoningLevel: storedReasoningLevel,
-          permissionMode: storedPermissionMode,
-        },
-        touchedFields: touchedFieldsPendingReset
-          ? new Set<ThreadPromptField>()
-          : touchedThreadFieldsRef.current,
-      }),
-    [
-      effectiveProviderId,
-      effectiveInitialProviderSource,
-      isSessionOptionModelSwitch,
-      isUnavailableModelRecovery,
-      permissionMode,
-      reasoningLevel,
-      scope,
+  const executionInputSources = buildExecutionInputSources({
+    effectiveValues: {
+      selectedProviderId: effectiveProviderId,
       selectedModel,
       serviceTier,
-      storedPermissionMode,
-      storedProviderId,
-      storedReasoningLevel,
-      storedSelectedModel,
-      storedServiceTier,
-      touchedFieldsPendingReset,
-    ],
-  );
+      reasoningLevel,
+      permissionMode,
+    },
+    forceExplicitModel:
+      isUnavailableModelRecovery || isSessionOptionModelSwitch,
+    initialProviderSource: effectiveInitialProviderSource,
+    scope,
+    storedValues: {
+      selectedProviderId: storedProviderId,
+      selectedModel: storedSelectedModel,
+      serviceTier: storedServiceTier,
+      reasoningLevel: storedReasoningLevel,
+      permissionMode: storedPermissionMode,
+    },
+    touchedFields: touchedFieldsPendingReset
+      ? new Set<ThreadPromptField>()
+      : touchedThreadFieldsRef.current,
+  });
 
   useLayoutEffect(() => {
     if (!usesLocalThreadSelections) return;

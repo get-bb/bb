@@ -743,6 +743,68 @@ describe("useThreadCreationOptions", () => {
     expect(result.current.serviceTier).toBe("default");
   });
 
+  it.each(["revoked", "failed"] as const)(
+    "keeps saved Fast inherited after %s discovery when only reasoning changes",
+    async (discovery) => {
+      const base = executionOptionsResponse();
+      vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+        ...base,
+        models: base.models.map((model) => ({
+          ...model,
+          supportedServiceTiers: [],
+        })),
+        modelLoadError:
+          discovery === "failed"
+            ? {
+                providerId: GLOBAL_PROVIDER_ID,
+                code: "provider_unavailable",
+                detail: null,
+              }
+            : null,
+      });
+      const { wrapper } = createQueryClientTestHarness();
+      const { result, rerender } = renderHook(
+        ({ resetKey }) =>
+          useThreadCreationOptions({
+            scope: "component-local",
+            resetKey,
+            initialProviderId: GLOBAL_PROVIDER_ID,
+            initialModel: "global-model",
+            initialServiceTier: "fast",
+            initialReasoningLevel: "medium",
+          }),
+        { wrapper, initialProps: { resetKey: "thr_one" } },
+      );
+      await waitFor(() =>
+        expect(result.current.modelOptions.length).toBeGreaterThan(0),
+      );
+      expect(result.current.serviceTierOptions).toEqual([]);
+      expect(result.current.serviceTier).toBe("default");
+
+      act(() => result.current.setReasoningLevel("high"));
+      expect(result.current.executionInputSources).toEqual({
+        reasoningLevel: "explicit",
+      });
+
+      act(() => result.current.setServiceTier("default"));
+      expect(result.current.executionInputSources).toEqual({
+        reasoningLevel: "explicit",
+        serviceTier: "explicit",
+      });
+      act(() => result.current.setSelectedModel("project-model"));
+      expect(result.current.executionInputSources).toEqual({
+        model: "explicit",
+        reasoningLevel: "explicit",
+        serviceTier: "explicit",
+      });
+      rerender({ resetKey: "thr_two" });
+      await waitFor(() =>
+        expect(result.current.executionInputSources).toEqual({}),
+      );
+      expect(result.current.reasoningLevel).toBe("medium");
+    },
+  );
+
   it("offers each model's own tiers and keeps the chosen tier for the models that have it", async () => {
     const base = executionOptionsResponse();
     const [tiered, untiered] = base.models;

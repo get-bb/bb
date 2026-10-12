@@ -18,6 +18,10 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 
 const mocks = vi.hoisted(() => ({
+  executionSources: {} as Record<string, "explicit">,
+  selectedServiceTier: undefined as "default" | undefined,
+  savedServiceTier: undefined as "fast" | undefined,
+  steerOnEnter: false,
   createQueuedMessageMutateAsync: vi.fn(),
   onOpenLink: vi.fn(),
   onOpenLocalFileLink: vi.fn(),
@@ -76,7 +80,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
     }: {
       composer: Pick<
         FollowUpComposerProps,
-        "message" | "onChangeMessage" | "onSubmit" | "submitMode"
+        | "message"
+        | "onChangeMessage"
+        | "onSubmit"
+        | "onModifierSubmit"
+        | "submitMode"
       >;
       pendingInteraction?: ReactNode;
       stack: ReactNode;
@@ -99,6 +107,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
           value={composer.message}
           onChange={(event) => composer.onChangeMessage(event.target.value, [])}
         />
+        <button type="button" onClick={composer.onModifierSubmit}>
+          Steer
+        </button>
         <button type="button" onClick={composer.onSubmit}>
           Send
         </button>
@@ -188,6 +199,7 @@ vi.mock("@/components/ui/app-toast", () => ({
 vi.mock("@/hooks/useThreadCreationOptions", () => ({
   useThreadCreationOptions: () => ({
     executionOptionsRouting: undefined,
+    executionInputSources: mocks.executionSources,
     selectedProviderId: "provider-1",
     providerOptions: [],
     hasMultipleProviders: false,
@@ -195,7 +207,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     selectedProviderComposerActions: [],
     selectedModel: "gpt-5",
     setSelectedModel: vi.fn(),
-    serviceTier: undefined,
+    serviceTier: mocks.selectedServiceTier,
     setServiceTier: vi.fn(),
     reasoningLevel: "medium",
     setReasoningLevel: vi.fn(),
@@ -209,7 +221,7 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
     reasoningOptions: [],
     permissionModeOptions: [],
     supportsPermissionModeSelection: true,
-    supportsServiceTier: false,
+    supportsServiceTier: mocks.selectedServiceTier !== undefined,
     serviceTierSupportByProvider: {},
     isLoadingModels: false,
   }),
@@ -277,7 +289,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
       model: "gpt-5",
       permissionMode: "auto",
       reasoningLevel: "medium",
-      serviceTier: undefined,
+      serviceTier: mocks.savedServiceTier,
     },
     isLoading: false,
   }),
@@ -287,7 +299,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       generalSettings: {
-        steerActiveThreadOnEnter: false,
+        steerActiveThreadOnEnter: mocks.steerOnEnter,
       },
     },
   }),
@@ -394,6 +406,10 @@ describe("EmbeddedThreadChat", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    mocks.executionSources = {};
+    mocks.selectedServiceTier = undefined;
+    mocks.savedServiceTier = undefined;
+    mocks.steerOnEnter = false;
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.onOpenLink.mockReset();
@@ -413,6 +429,77 @@ describe("EmbeddedThreadChat", () => {
     hostDraftMocks.latestHost = null;
     hostDraftMocks.textAtNotify = [];
     hostDraftMocks.subscribed = false;
+  });
+
+  it.each(["send", "queue", "steer", "programmatic"] as const)(
+    "forwards reasoning-only intent with display-only Default through %s",
+    async (route) => {
+      mocks.savedServiceTier = "fast";
+      mocks.selectedServiceTier = "default";
+      mocks.executionSources = { reasoningLevel: "explicit" };
+      mocks.threadRuntimeDisplayStatus =
+        route === "queue" || route === "steer" ? "active" : "idle";
+      mocks.steerOnEnter = route === "steer";
+      renderEmbeddedChat({
+        pluginComposerBottomScope: { kind: "thread", threadId: "thr_child" },
+      });
+      fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+        target: { value: "Keep saved Fast" },
+      });
+      if (route === "programmatic") {
+        await hostDraftMocks.latestHost?.submit?.(
+          { experimental_data: null },
+          undefined,
+        );
+      } else {
+        fireEvent.click(screen.getByText(route === "steer" ? "Steer" : "Send"));
+      }
+      const mutation =
+        route === "queue"
+          ? mocks.createQueuedMessageMutateAsync
+          : mocks.sendThreadMessageMutateAsync;
+      await vi.waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+      expect(mutation.mock.calls[0]?.[0]).toMatchObject({
+        serviceTier: "default",
+        permissionMode: "auto",
+        executionInputSources: {
+          reasoningLevel: "explicit",
+          permissionMode: "explicit",
+        },
+      });
+      expect(
+        mutation.mock.calls[0]?.[0].executionInputSources.serviceTier,
+      ).toBeUndefined();
+    },
+  );
+
+  it("forwards an explicit Default with combined model and reasoning intent", async () => {
+    mocks.savedServiceTier = "fast";
+    mocks.selectedServiceTier = "default";
+    mocks.executionSources = {
+      model: "explicit",
+      reasoningLevel: "explicit",
+      serviceTier: "explicit",
+    };
+    renderEmbeddedChat();
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "Use Default" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+    await vi.waitFor(() =>
+      expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.sendThreadMessageMutateAsync.mock.calls[0]?.[0]).toMatchObject(
+      {
+        serviceTier: "default",
+        executionInputSources: {
+          model: "explicit",
+          reasoningLevel: "explicit",
+          serviceTier: "explicit",
+          permissionMode: "explicit",
+        },
+      },
+    );
   });
 
   it("applies the requested surface tone to the timeline and footer", () => {

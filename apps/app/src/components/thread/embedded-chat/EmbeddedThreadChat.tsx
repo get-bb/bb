@@ -259,6 +259,7 @@ function EmbeddedThreadChatWithComposer({
   });
   const {
     executionOptionsRouting,
+    executionInputSources,
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
@@ -297,6 +298,13 @@ function EmbeddedThreadChatWithComposer({
   const displayStatus = threadQuery.data?.runtime.displayStatus ?? "idle";
   const executionRequestFields = useMemo(
     () => ({
+      executionInputSources: {
+        ...executionInputSources,
+        ...(composer.permissionPolicy === "snapshot" &&
+        effectivePermissionMode !== undefined
+          ? { permissionMode: "explicit" as const }
+          : {}),
+      },
       ...(selectedExecutionModel.length > 0
         ? {
             model: selectedExecutionModel,
@@ -311,6 +319,8 @@ function EmbeddedThreadChatWithComposer({
         : {}),
     }),
     [
+      composer.permissionPolicy,
+      executionInputSources,
       effectivePermissionMode,
       reasoningLevel,
       selectedExecutionModel,

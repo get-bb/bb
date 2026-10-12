@@ -78,6 +78,57 @@ describe("thread execution plan input sources", () => {
     });
   });
 
+  it("inherits saved Fast when only reasoning is explicit and accepts an intentional Default", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "codex",
+      });
+      upsertProjectExecutionDefaults(harness.db, {
+        projectId: project.id,
+        providerId: "codex",
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "fast",
+      });
+      const resolve = (explicitSpeed: boolean) =>
+        resolveExistingThreadExecutionPlan(harness.deps, {
+          threadId: thread.id,
+          executionSource: "client/turn/requested",
+          input: buildExistingThreadExecutionInput({
+            model: "gpt-5",
+            serviceTier: "default",
+            reasoningLevel: "high",
+            executionInputSources: {
+              reasoningLevel: "explicit",
+              ...(explicitSpeed
+                ? {
+                    model: "explicit" as const,
+                    serviceTier: "explicit" as const,
+                  }
+                : {}),
+            },
+          }),
+        });
+      const inherited = (await resolve(false)).resolvedExecution;
+      expect(inherited.serviceTier).toBe("fast");
+      expect(inherited.reasoningLevel).toBe("high");
+      expect((await resolve(true)).resolvedExecution.serviceTier).toBe(
+        "default",
+      );
+    });
+  });
+
   it("accepts the tiers a provider lists and rejects an explicit tier it does not", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
