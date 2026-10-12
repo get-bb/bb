@@ -44,7 +44,7 @@ const sessionFile = args.includes("--no-session")
 const extensionPath = flag("--extension");
 const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
 const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
-const supportsSettlement = process.env.FAKE_PI_SETTLEMENT === "1";
+const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
 const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
 if (process.env.FAKE_PI_ENV_LOG) {
   appendFileSync(
