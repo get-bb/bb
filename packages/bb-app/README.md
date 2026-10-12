@@ -91,6 +91,11 @@ local host daemon, and serves the web app. It stores bb-managed state under
 launcher restarts that child without stopping the other one. Press `Ctrl+C` in
 the terminal to stop both processes and exit with status `0`.
 
+If another live bb owns the runtime record for the same data directory and a
+healthy server answers on the configured local address, startup exits with
+status `1` without starting either child process. The existing instance keeps
+running. A runtime record without a healthy server does not prevent startup.
+
 Server and host-daemon output goes directly to `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log` under the data directory, including startup errors
 and console output. These files append across restarts; they are separate from
