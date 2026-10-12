@@ -53,7 +53,7 @@ function BrandRoute() {
         <div className="post-body">
           <h1>Brand assets</h1>
           <p className="lede">
-            The bb logo for slides, posts, and docs. Every file has a
+            Download the bb logo for slides, posts, and docs. Every file has a
             transparent background.
           </p>
 
