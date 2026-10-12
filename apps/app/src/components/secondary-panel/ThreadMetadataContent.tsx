@@ -9,7 +9,7 @@ import {
 } from "react";
 import { UncommittedChangesSection } from "./info/ChangesSection";
 import { CommitsSection } from "./info/CommitsSection";
-import { ForksSection } from "./info/RelatedThreadsSection";
+import { ForksSection, ChildThreadsSection } from "./info/RelatedThreadsSection";
 import {
   ThreadStorageSection,
   type ThreadStorageSectionProps,
@@ -979,6 +979,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
           <PullRequestRow pullRequest={pullRequest} />
           <ArchivedRow thread={thread} />
         </div>
+        <ChildThreadsSection thread={thread} />
         <ForksSection thread={thread} />
         {isHostActive ? (
           <>

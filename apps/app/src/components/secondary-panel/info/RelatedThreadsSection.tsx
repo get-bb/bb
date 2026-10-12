@@ -3,9 +3,10 @@ import {
   resolveThreadListIndicator,
   threadListIndicatorStateForThread,
 } from "@bb/client-core";
+import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
-import { useThreads } from "@/hooks/queries/thread-queries";
+import { useChildThreads, useThreads } from "@/hooks/queries/thread-queries";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { InfoList, InfoListRow, InfoRowTime, InfoSection } from "./info-list";
@@ -15,12 +16,14 @@ interface RelatedThreadsSectionProps {
   sectionId: string;
   label: string;
   threads: readonly ThreadListEntry[];
+  idleIcon?: IconName;
 }
 
 export function RelatedThreadsSection({
   sectionId,
   label,
   threads,
+  idleIcon,
 }: RelatedThreadsSectionProps) {
   const collapse = useInfoSectionCollapse(sectionId);
   if (threads.length === 0) return null;
@@ -31,16 +34,18 @@ export function RelatedThreadsSection({
         getKey={(relatedThread) => relatedThread.id}
         renderItem={(relatedThread) => {
           const title = getThreadDisplayTitle(relatedThread);
+          const indicator = resolveThreadListIndicator(
+            threadListIndicatorStateForThread(relatedThread, false),
+          );
           return (
             <InfoListRow
               leading={
                 <span className="flex items-center text-subtle-foreground [&_[data-icon-root]]:size-3">
-                  <ThreadStatusGlyph
-                    indicator={resolveThreadListIndicator(
-                      threadListIndicatorStateForThread(relatedThread, false),
-                    )}
-                    size="compact"
-                  />
+                  {idleIcon !== undefined && indicator === "none" ? (
+                    <Icon name={idleIcon} aria-hidden="true" />
+                  ) : (
+                    <ThreadStatusGlyph indicator={indicator} size="compact" />
+                  )}
                 </span>
               }
               name={<ThreadTitle title={title} />}
@@ -58,6 +63,23 @@ export function RelatedThreadsSection({
         }}
       />
     </InfoSection>
+  );
+}
+
+export function ChildThreadsSection({ thread }: { thread: Thread }) {
+  const childThreadsQuery = useChildThreads({
+    enabled: true,
+    parentThreadId: thread.id,
+  });
+  return (
+    <RelatedThreadsSection
+      sectionId="childThreads"
+      label="Child threads"
+      threads={(childThreadsQuery.data ?? []).filter(
+        (childThread) => childThread.originKind === null,
+      )}
+      idleIcon="ChildThread"
+    />
   );
 }
 
