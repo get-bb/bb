@@ -70,14 +70,17 @@ function scopeStatements(css: string, scope: string): string {
       }
 
       const nestedSibling = hasNestedSiblingRule(statement.body);
-      const selectors = splitSelectorList(prelude)
-        .flatMap((selector) =>
-          nestedSibling || hasSiblingCombinator(selector)
-            ? [`${scope} ${selector}`]
-            : [`${scope} ${selector}`, `${scope}${selector}`],
-        )
-        .join(",");
-      return `${selectors}{${statement.body}}`;
+      const originalSelectors = splitSelectorList(prelude);
+      const selectors = originalSelectors.flatMap((selector) =>
+        nestedSibling || hasSiblingCombinator(selector)
+          ? [`${scope} ${selector}`]
+          : [`${scope} ${selector}`, `${scope}${selector}`],
+      );
+      return (
+        originalSelectors.length === 1 ? selectors : [selectors.join(",")]
+      )
+        .map((selector) => `${selector}{${statement.body}}`)
+        .join("");
     })
     .join("");
 }

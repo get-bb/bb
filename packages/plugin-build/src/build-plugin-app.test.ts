@@ -286,7 +286,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.ts"),
       'import "./app.css";\n' +
-        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50";\n' +
+        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
         'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
@@ -310,7 +310,10 @@ describe("plugin app runtime shim", () => {
     expect(css).toContain(`${scope} ${sibling}`);
     expect(css).not.toContain(`${scope}${sibling}`);
     expect(css).not.toContain("@scope");
-    expect(css).not.toContain(":is(:where([data-bb-plugin");
+    expect(css).not.toContain(String.raw`:is(${scope} .hover\:underline`);
+    expect(css).toContain(`${scope}.space-y-3`);
+    expect(css).toContain(`[data-scope-host] ${scope}`);
+    expect(css).toContain(`[data-scope-host]~${scope}`);
     expect(css).toContain(String.raw`${scope} .hover\:underline:hover`);
     expect(css).toContain(String.raw`${scope}.has-\[\:focus\]\:opacity-50:has(:focus)`);
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
