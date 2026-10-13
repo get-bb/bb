@@ -38,7 +38,9 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
 }
 
-const shutdowns = ["SIGTERM", "SIGINT", "stdin"] as const;
+const shutdowns = (["SIGTERM", "SIGINT", "stdin"] as const).filter(
+  (shutdown) => shutdown === "stdin" || process.platform !== "win32",
+);
 const connections = ["session", "discovery"] as const;
 
 it.each(
