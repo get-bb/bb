@@ -118,13 +118,16 @@ function normalizeHtml(root: HTMLElement): HTMLElement {
   return root;
 }
 
-function isLossless(
+function losslessHtml(
   source: string,
   editor: Editor,
   markdown: MarkdownIt,
-): boolean {
+): string | false {
   const original = parseHtml(source);
   if (!original.textContent?.trim()) return false;
+  const probe = parseHtml(`${source}<p data-docs-end></p>`);
+  if (!probe.lastElementChild?.matches("p[data-docs-end]:empty")) return false;
+  const html = original.innerHTML;
   const loaded = parseHtml(
     source.replace(/\n<\/code><\/pre>/g, "</code></pre>"),
   );
@@ -146,10 +149,10 @@ function isLossless(
   const reloaded = parseHtml(
     renderer.render(markdown.parse(saved, {}), markdown.options, {}),
   );
-  return normalizeHtml(reloaded).isEqualNode(normalizeHtml(original));
+  return normalizeHtml(reloaded).isEqualNode(normalizeHtml(original)) && html;
 }
 
-const losslessByEditor = new WeakMap<Editor, Map<string, boolean>>();
+const losslessByEditor = new WeakMap<Editor, Map<string, string | false>>();
 
 export const RawHtmlBlock = Node.create({
   name: "rawHtmlBlock",
@@ -181,13 +184,13 @@ export const RawHtmlBlock = Node.create({
           setup(markdown) {
             const { editor } = this;
             const previous = losslessByEditor.get(editor);
-            const lossless = new Map<string, boolean>();
+            const lossless = new Map<string, string | false>();
             losslessByEditor.set(editor, lossless);
-            const isRich = (source: string) => {
+            const richHtml = (source: string) => {
               const rich =
                 lossless.get(source) ??
                 previous?.get(source) ??
-                isLossless(source, editor, markdown);
+                losslessHtml(source, editor, markdown);
               lossless.set(source, rich);
               return rich;
             };
@@ -196,11 +199,11 @@ export const RawHtmlBlock = Node.create({
               if (
                 /^<div data-simple-html-embed="true" data-src="[^"]*" data-height="\d+"><\/div>\s*$/.test(
                   source,
-                ) ||
-                isRich(source)
-              ) {
+                )
+              )
                 return source;
-              }
+              const rich = richHtml(source);
+              if (rich !== false) return rich;
               if (tokens[index - 1]?.type === "list_item_open")
                 return `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source.replace(/\n$/, ""))}"></span>`;
               return `<pre data-docs-raw-html="${MARKER}"><code>${markdown.utils.escapeHtml(source.replace(/\n$/, ""))}</code></pre>`;

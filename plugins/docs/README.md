@@ -42,9 +42,9 @@ provider, and directive are all Docs.
   portable relative Markdown image links.
 - **Raw HTML:** HTML is never dropped. HTML blocks the editor can show without
   losing anything, such as paragraphs, lists, and tables, display as normal
-  content. Other HTML blocks appear as editable source and are saved exactly as
-  typed. Inline HTML tags appear as protected text. HTML is not executed in the
-  editor.
+  content and are saved as the equivalent Markdown or table HTML. Other HTML
+  blocks appear as editable source and are saved exactly as typed. Inline HTML
+  tags appear as protected text. HTML is not executed in the editor.
 - **Embedded HTML:** a Markdown block directive renders a sibling HTML file in
   an opaque-origin iframe:
 

@@ -88,6 +88,11 @@ describe("raw HTML blocks", () => {
     '<p>See <a href="https://example.com">the docs</a>\nfor details.</p>',
     "<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody><tfoot><tr><td>F</td></tr></tfoot></table>",
     '<table style="min-width: 600px"><tr><th>A</th></tr><tr><td>B</td></tr></table>',
+    "<p>Intro</p><style",
+    "<p>Intro</p><textarea",
+    "<blockquote><p>Quoted</p>",
+    "<ul>\n<li>one</li>",
+    '<p>Intro</p><a href="',
   ])("keeps HTML the Markdown save would change as source: %s", (html) => {
     const content = `Before.\n\n${html}\n\nAfter.`;
     const editor = createEditor(content);
