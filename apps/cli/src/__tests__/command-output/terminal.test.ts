@@ -1,4 +1,7 @@
 import { Buffer } from "node:buffer";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
@@ -360,6 +363,147 @@ describe("bb terminal command output", () => {
     expect(
       JSON.parse(collectLogPayloads(vi.mocked(console.log)).at(-1) ?? "{}"),
     ).toMatchObject({ id: "term-new" });
+  });
+
+  function makeCommandBlockScrollback(): string {
+    const encode = (command: string) =>
+      Buffer.from(command, "utf8").toString("base64");
+    return [
+      "\u001b]7;file://host/tmp/workspace\u0007",
+      "\u001b]133;A\u0007prompt$ ls\r\n",
+      `\u001b]133;P;cmdline_b64=${encode("ls")}\u0007`,
+      "\u001b]133;C\u0007",
+      "AGENTS.md\r\napps\r\n",
+      "\u001b]133;D;0\u0007",
+      "\u001b]133;A\u0007prompt$ false\r\n",
+      `\u001b]133;P;cmdline_b64=${encode("false")}\u0007`,
+      "\u001b]133;C\u0007",
+      "\u001b]133;D;1\u0007",
+    ].join("");
+  }
+
+  function stubCommandBlockOutput() {
+    const output = vi.fn(async () => ({
+      chunks: [
+        {
+          seq: 0,
+          dataBase64: Buffer.from(
+            makeCommandBlockScrollback(),
+            "utf8",
+          ).toString("base64"),
+        },
+      ],
+      nextSeq: 1,
+      truncated: false,
+    }));
+    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
+    return output;
+  }
+
+  it("lists captured command blocks from scrollback", async () => {
+    stubCommandBlockOutput();
+
+    await runCommand(["terminal", "blocks", "term-1"], register);
+
+    const output = collectLogLines(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("ls");
+    expect(output).toContain("false");
+    expect(output).toContain("/tmp/workspace");
+  });
+
+  it("reports captured command blocks as JSON", async () => {
+    stubCommandBlockOutput();
+
+    await runCommand(["terminal", "blocks", "term-1", "--json"], register);
+
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log)).at(-1) ?? "[]"),
+    ).toEqual([
+      {
+        command: "ls",
+        cwd: "/tmp/workspace",
+        exitCode: 0,
+        index: 0,
+        output: "AGENTS.md\r\napps\r\n",
+        outputTruncated: false,
+        running: false,
+      },
+      {
+        command: "false",
+        cwd: "/tmp/workspace",
+        exitCode: 1,
+        index: 1,
+        output: "",
+        outputTruncated: false,
+        running: false,
+      },
+    ]);
+  });
+
+  it("says nothing was captured when shell integration found no commands", async () => {
+    const output = vi.fn(async () => ({
+      chunks: [
+        {
+          seq: 0,
+          dataBase64: Buffer.from("plain output\r\n", "utf8").toString(
+            "base64",
+          ),
+        },
+      ],
+      nextSeq: 1,
+      truncated: false,
+    }));
+    stubServerApi({ "v1.terminals.:terminalId.output.$get": output });
+
+    await runCommand(["terminal", "blocks", "term-1"], register);
+
+    expect(collectLogLines(vi.mocked(console.log)).join("\n")).toContain(
+      "No commands captured",
+    );
+  });
+
+  it("exports the latest captured command to a Markdown file", async () => {
+    stubCommandBlockOutput();
+    const outPath = join(await mkdtemp(join(tmpdir(), "bb-export-")), "out.md");
+
+    await runCommand(
+      ["terminal", "export", "term-1", "--out", outPath],
+      register,
+    );
+
+    const markdown = await readFile(outPath, "utf8");
+    expect(markdown).toContain("# Terminal command");
+    expect(markdown).toContain("- Directory: /tmp/workspace");
+    expect(markdown).toContain("- Exit code: 1");
+    expect(markdown).toContain("```sh\nfalse\n```");
+    expect(collectLogLines(vi.mocked(console.log)).join("\n")).toContain(
+      outPath,
+    );
+  });
+
+  it("exports a chosen command index with its output", async () => {
+    stubCommandBlockOutput();
+    const outPath = join(await mkdtemp(join(tmpdir(), "bb-export-")), "out.md");
+
+    await runCommand(
+      ["terminal", "export", "term-1", "--block", "0", "--out", outPath],
+      register,
+    );
+
+    const markdown = await readFile(outPath, "utf8");
+    expect(markdown).toContain("```sh\nls\n```");
+    expect(markdown).toContain("AGENTS.md\napps");
+  });
+
+  it("fails when the requested command index was not captured", async () => {
+    stubCommandBlockOutput();
+
+    await expect(
+      runCommand(["terminal", "export", "term-1", "--block", "9"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "No captured command with index 9",
+    );
   });
 
   it("prints terminal output without a thread selector", async () => {

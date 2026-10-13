@@ -17,6 +17,10 @@ import { RuntimeManager } from "../runtime-manager.js";
 import { runtimeErrorLogFields } from "../error-utils.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
+import {
+  createTerminalShellIntegration,
+  type TerminalShellIntegration,
+} from "./shell-integration.js";
 
 const DEFAULT_SCROLLBACK_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_SCROLLBACK_MAX_CHUNKS = 10_000;
@@ -111,6 +115,7 @@ interface TerminalSession {
   rows: number;
   scrollback: ScrollbackEntry[];
   scrollbackBytes: number;
+  shellIntegration: TerminalShellIntegration | null;
   terminalId: string;
 }
 
@@ -144,6 +149,7 @@ interface ShutdownTerminalArgs {
 }
 
 interface BuildTerminalEnvArgs {
+  shellIntegrationEnv: NodeJS.ProcessEnv;
   shellEnv: NodeJS.ProcessEnv;
   terminalId: string;
 }
@@ -343,6 +349,7 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
   return {
     ...sanitizeInheritedChildProcessEnv({ env: process.env }),
     ...args.shellEnv,
+    ...args.shellIntegrationEnv,
     BB_TERMINAL_SESSION_ID: args.terminalId,
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
@@ -529,17 +536,30 @@ export class TerminalManager {
     }
 
     this.openingTerminalIds.add(message.terminalId);
+    let shellIntegration: TerminalShellIntegration | null = null;
     try {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
+      shellIntegration =
+        message.start.mode === "shell"
+          ? await createTerminalShellIntegration({
+              logger: this.options.logger,
+              shell,
+              userZdotdir: process.env.ZDOTDIR,
+            })
+          : null;
       const pty = this.ptyAdapter.spawn({
-        args: terminalSpawnArgsForStart(message),
+        args: [
+          ...(shellIntegration?.args ?? []),
+          ...terminalSpawnArgsForStart(message),
+        ],
         cols: message.cols,
         cwd: target.cwd,
         env: operationEnvironment(
           message.contributedEnv,
           buildTerminalEnv({
             shellEnv: this.options.runtimeManager.getShellEnv(),
+            shellIntegrationEnv: shellIntegration?.env ?? {},
             terminalId: message.terminalId,
           }),
         ),
@@ -562,6 +582,7 @@ export class TerminalManager {
         rows: message.rows,
         scrollback: [],
         scrollbackBytes: 0,
+        shellIntegration,
         terminalId: message.terminalId,
       };
       this.sessions.set(message.terminalId, session);
@@ -604,6 +625,12 @@ export class TerminalManager {
         rows: message.rows,
       });
     } catch (error) {
+      if (!this.sessions.has(message.terminalId)) {
+        await this.disposeShellIntegration(
+          message.terminalId,
+          shellIntegration,
+        );
+      }
       const code =
         error instanceof ExpectedCommandDispatchError &&
         error.code === "workspace_type_mismatch"
@@ -907,6 +934,11 @@ export class TerminalManager {
       args.session.closeTimeout = null;
     }
     this.sessions.delete(args.session.terminalId);
+    void this.disposeShellIntegration(
+      args.session.terminalId,
+      args.session.shellIntegration,
+    );
+    args.session.shellIntegration = null;
     if (args.session.environmentId !== null) {
       this.options.runtimeManager.markTerminalInactive(
         args.session.environmentId,
@@ -933,6 +965,26 @@ export class TerminalManager {
       exitCode: args.exitCode,
       closeReason: args.closeReason,
     });
+  }
+
+  private async disposeShellIntegration(
+    terminalId: string,
+    shellIntegration: TerminalShellIntegration | null,
+  ): Promise<void> {
+    if (shellIntegration === null) {
+      return;
+    }
+    try {
+      await shellIntegration.cleanup();
+    } catch (error) {
+      this.options.logger.warn(
+        {
+          terminalId,
+          ...runtimeErrorLogFields(error),
+        },
+        "Failed to clean up terminal shell integration",
+      );
+    }
   }
 
   private sendTerminalError(args: SendTerminalErrorArgs): void {

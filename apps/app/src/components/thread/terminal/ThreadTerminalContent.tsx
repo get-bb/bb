@@ -2,13 +2,17 @@ import type { TerminalSession } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import { ThreadTerminalView } from "./ThreadTerminalView";
+import {
+  ThreadTerminalView,
+  type TerminalCommandBlockAddToChatHandler,
+} from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalContentProps {
   autoFocus?: boolean;
   controller: ThreadTerminalController;
   onAutoFocusHandled?: () => void;
+  onCommandBlockAddToChat?: TerminalCommandBlockAddToChatHandler;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
 }
@@ -55,6 +59,7 @@ export function ThreadTerminalContent({
   autoFocus = false,
   controller,
   onAutoFocusHandled,
+  onCommandBlockAddToChat,
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
@@ -121,6 +126,7 @@ export function ThreadTerminalContent({
       autoFocus={autoFocus}
       isPanelOpen={controller.isPanelOpen}
       onAutoFocusHandled={onAutoFocusHandled}
+      onCommandBlockAddToChat={onCommandBlockAddToChat}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}
       onSessionChange={controller.handleActiveTerminalSessionChange}

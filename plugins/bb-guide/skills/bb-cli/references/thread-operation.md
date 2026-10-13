@@ -179,6 +179,11 @@ For review or fix pipelines, get the environment ID from
   `bb terminal send <terminal-id> --text "..." --enter` for interactive input,
   `bb terminal rename <terminal-id> <title>` to rename, and
   `bb terminal close <terminal-id>` when the process is no longer needed.
+- Use `bb terminal blocks <terminal-id>` to see the commands the user ran in a
+  bb-started zsh or bash terminal, with their working directory and exit code,
+  and `bb terminal export <terminal-id> [--block <index>]` to write one command
+  and its output to a Markdown file. Prefer these over scanning raw `output`
+  when the user refers to something they ran themselves.
 - `bb terminal restart <terminal-id>` replaces the session with a shell in the
   same scope, size, and title. It does not replay the original launch command.
 

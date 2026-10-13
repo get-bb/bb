@@ -192,6 +192,7 @@ import {
   LazyWorkspaceFilePreviewTabContent,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import type { BrowserAddressFocusRequest } from "@/components/secondary-panel/BrowserTabContent";
+import { useTerminalCommandBlockAddToChat } from "@/components/thread/terminal/useTerminalCommandBlockAddToChat";
 import {
   SIDE_CHAT_PLUGIN_ID,
   SIDE_CHAT_PLUGIN_PANEL_ACTION_ID,
@@ -1197,6 +1198,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     },
     [addQuoteToComposer, dismissCompactKeyboard],
   );
+  const handleTerminalCommandBlockAddToChat = useTerminalCommandBlockAddToChat({
+    onAddToChat: handleSelectionAddToChat,
+    projectId: selectionPromptDraftProjectId,
+  });
   const sendSideChatMessageToMain = useSendSideChatMessageToMain({
     createQueuedMessage,
     isSideChatThread,
@@ -2631,6 +2636,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
             isPanelOpen={isSecondaryPanelOpen}
             isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
             onAutoFocusHandled={handleTerminalAutoFocusHandled}
+            onCommandBlockAddToChat={handleTerminalCommandBlockAddToChat}
             onOpenLink={handleOpenTimelineLink}
             onSelectionAddToChat={handleSelectionAddToChat}
             syncThreadId={thread.id}

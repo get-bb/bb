@@ -47,6 +47,17 @@ All other operations need only the terminal ID:
     --limit-chunks <n>                    Bound output to latest N chunks
     --json                                Print chunks, nextSeq, and truncated
 
+  bb terminal blocks <terminal-id>
+    --since-seq <n>                       Read output chunks from a sequence
+    --tail-bytes <n>                      Bound the read to latest N bytes
+    --limit-chunks <n>                    Bound the read to latest N chunks
+    --json                                Print index, command, cwd, exit code, output
+
+  bb terminal export <terminal-id>
+    --block <index>                       Index from blocks; defaults to the latest
+    --out <path>                           File to write; defaults to the command slug
+    --json                                Print the block and the written path
+
   bb terminal wait <terminal-id>
     --contains <text>                     Wait for new output containing text
     --regex <pattern>                     Wait for new output matching regex
@@ -62,3 +73,18 @@ For a dev server, prefer:
 
 Do not run long-lived servers as one-off foreground commands when the user will
 need to inspect logs, refresh the page, or stop the process later.
+
+Captured commands
+
+bb installs shell integration in zsh and bash terminals it starts, so each
+command the user runs is recorded with its working directory, exit code, and
+output. Use blocks to find a command and export to write it as Markdown:
+
+  bb terminal blocks <terminal-id>
+  bb terminal export <terminal-id> --block 2 --out /tmp/failing-build.md
+
+Only commands run after the terminal started are captured, and only while the
+output remains in daemon scrollback. Other shells, `bb terminal create
+--command`, and terminals opened in an external terminal app are not captured.
+In the UI, the Add to chat button on a command's prompt line attaches the same
+Markdown to the composer.

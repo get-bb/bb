@@ -21,7 +21,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
-import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import { TERMINAL_DATA_MAX_BYTES, type TerminalCommandBlock } from "@bb/domain";
 import type {
   TerminalServerMessage,
   TerminalSession,
@@ -49,6 +49,12 @@ import {
   requestTerminalLinkOpen,
   type TerminalLinkTarget,
 } from "./terminal-links";
+import {
+  createTerminalCommandBlockTracker,
+  toTerminalCommandBlock,
+  type TrackedTerminalCommandBlock,
+} from "./terminal-command-block-tracker";
+import { registerTerminalCommandBlockAction } from "./terminal-command-block-decoration";
 
 export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
@@ -356,10 +362,15 @@ export function observeTerminalFontLoading(
   };
 }
 
+export type TerminalCommandBlockAddToChatHandler = (
+  block: TerminalCommandBlock,
+) => void;
+
 interface ThreadTerminalViewProps {
   autoFocus: boolean;
   isPanelOpen: boolean;
   onAutoFocusHandled?: () => void;
+  onCommandBlockAddToChat?: TerminalCommandBlockAddToChatHandler;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   onSessionChange?: (session: TerminalSession) => void;
@@ -641,6 +652,7 @@ export function ThreadTerminalView({
   autoFocus,
   isPanelOpen,
   onAutoFocusHandled,
+  onCommandBlockAddToChat,
   onOpenLink,
   onSelectionAddToChat,
   onSessionChange,
@@ -673,6 +685,9 @@ export function ThreadTerminalView({
     onTitleChange,
   );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
+  const onCommandBlockAddToChatRef = useRef<
+    TerminalCommandBlockAddToChatHandler | undefined
+  >(onCommandBlockAddToChat);
   const onAutoFocusHandledRef = useRef<(() => void) | undefined>(
     onAutoFocusHandled,
   );
@@ -694,6 +709,7 @@ export function ThreadTerminalView({
 
   autoFocusRef.current = autoFocus;
   isPanelOpenRef.current = isPanelOpen;
+  onCommandBlockAddToChatRef.current = onCommandBlockAddToChat;
   sessionStatusRef.current = session.status;
   sessionRef.current = session;
   onAutoFocusHandledRef.current = onAutoFocusHandled;
@@ -887,6 +903,10 @@ export function ThreadTerminalView({
     let resizeObserver: ResizeObserver | null = null;
     let selectionChangeDisposable: { dispose: () => void } | null = null;
     let stopObservingFonts: (() => void) | null = null;
+    let commandBlockTracker: ReturnType<
+      typeof createTerminalCommandBlockTracker
+    > | null = null;
+    const commandBlockDecorations: IDisposable[] = [];
 
     async function mountTerminal(
       containerElement: HTMLDivElement,
@@ -960,6 +980,39 @@ export function ThreadTerminalView({
         );
       }
       terminal.open(containerElement);
+      const trackedTerminal = terminal;
+      const addCommandBlockDecoration = (
+        block: TrackedTerminalCommandBlock,
+      ): void => {
+        if (disposed || onCommandBlockAddToChatRef.current === undefined) {
+          return;
+        }
+        const decoration = registerTerminalCommandBlockAction({
+          block,
+          label: "Add to chat",
+          onActivate: (activated: TrackedTerminalCommandBlock) => {
+            onCommandBlockAddToChatRef.current?.(
+              toTerminalCommandBlock(trackedTerminal, activated),
+            );
+          },
+          terminal: trackedTerminal,
+        });
+        if (decoration !== null) {
+          commandBlockDecorations.push(decoration);
+        }
+      };
+      commandBlockTracker = createTerminalCommandBlockTracker({
+        onBlockFinished: addCommandBlockDecoration,
+        terminal: trackedTerminal,
+      });
+      trackedTerminal.onResize(() => {
+        for (const decoration of commandBlockDecorations.splice(0)) {
+          decoration.dispose();
+        }
+        for (const block of commandBlockTracker?.blocks() ?? []) {
+          addCommandBlockDecoration(block);
+        }
+      });
       writeTerminalSessionStatusNotice({
         lastNotice: lastStatusNoticeRef,
         session: sessionRef.current,
@@ -1065,6 +1118,10 @@ export function ThreadTerminalView({
         },
         onSequenceGap: () => {
           activeTerminal.reset();
+          for (const decoration of commandBlockDecorations.splice(0)) {
+            decoration.dispose();
+          }
+          commandBlockTracker?.reset();
           writeTerminalStatus({
             terminal: activeTerminal,
             text: "Some terminal output was unavailable after reconnect",
@@ -1137,6 +1194,11 @@ export function ThreadTerminalView({
       }
       resizeObserver?.disconnect();
       selectionChangeDisposable?.dispose();
+      for (const decoration of commandBlockDecorations.splice(0)) {
+        decoration.dispose();
+      }
+      commandBlockTracker?.dispose();
+      commandBlockTracker = null;
       transport?.dispose();
       terminal?.dispose();
       terminalRef.current = null;

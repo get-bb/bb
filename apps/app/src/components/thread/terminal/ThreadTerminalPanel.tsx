@@ -1,5 +1,6 @@
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { ThreadTerminalContent } from "./ThreadTerminalContent";
+import type { TerminalCommandBlockAddToChatHandler } from "./ThreadTerminalView";
 import {
   useThreadTerminalController,
   type ThreadTerminalTarget,
@@ -14,6 +15,7 @@ interface ThreadTerminalPanelProps {
   fixedPanelTarget?: TerminalCreateTarget;
   fixedTerminalId?: string;
   onAutoFocusHandled?: () => void;
+  onCommandBlockAddToChat?: TerminalCommandBlockAddToChatHandler;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
@@ -30,6 +32,7 @@ export function ThreadTerminalPanel({
   fixedPanelTarget,
   fixedTerminalId,
   onAutoFocusHandled,
+  onCommandBlockAddToChat,
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
@@ -60,6 +63,7 @@ export function ThreadTerminalPanel({
           autoFocus={autoFocus}
           controller={terminalController}
           onAutoFocusHandled={onAutoFocusHandled}
+          onCommandBlockAddToChat={onCommandBlockAddToChat}
           onOpenLink={onOpenLink}
           onSelectionAddToChat={onSelectionAddToChat}
         />

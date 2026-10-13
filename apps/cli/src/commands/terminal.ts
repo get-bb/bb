@@ -1,6 +1,14 @@
 import { Buffer } from "node:buffer";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { Command } from "commander";
-import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
+import {
+  TERMINAL_DATA_MAX_BYTES,
+  createTerminalCommandBlockReader,
+  formatTerminalCommandBlockMarkdown,
+  terminalCommandBlockFileName,
+  type TerminalCommandBlock,
+} from "@bb/domain";
 import {
   BbHttpError,
   type BbSdk,
@@ -61,6 +69,13 @@ interface TerminalOutputOptions extends TerminalJsonOptions {
   limitChunks?: string;
   sinceSeq?: string;
   tailBytes?: string;
+}
+
+type TerminalBlocksOptions = TerminalOutputOptions;
+
+interface TerminalExportOptions extends TerminalOutputOptions {
+  block?: string;
+  out?: string;
 }
 
 interface TerminalWaitOptions extends TerminalOutputOptions {
@@ -245,6 +260,62 @@ export function registerTerminalCommands(
         });
         if (outputJson(opts, output)) return;
         writeOutputChunks(output.chunks);
+      }),
+    );
+
+  terminal
+    .command("blocks <terminalId>")
+    .description(
+      "List commands captured by shell integration in daemon scrollback",
+    )
+    .option("--since-seq <n>", "Only read chunks from this sequence")
+    .option("--tail-bytes <n>", "Bound the read to the latest N bytes")
+    .option("--limit-chunks <n>", "Bound the read to the latest N chunks")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (terminalId: string, opts: TerminalBlocksOptions) => {
+        const blocks = await readTerminalCommandBlocksFromScrollback({
+          baseUrl: getUrl(),
+          opts,
+          terminalId,
+        });
+        if (outputJson(opts, blocks)) return;
+        printTerminalCommandBlockTable(blocks);
+      }),
+    );
+
+  terminal
+    .command("export <terminalId>")
+    .description(
+      "Write a captured command and its output to a Markdown file for an agent",
+    )
+    .option(
+      "--block <index>",
+      "Index from `bb terminal blocks` (defaults to the latest)",
+    )
+    .option("--out <path>", "File to write (defaults to the command slug)")
+    .option("--since-seq <n>", "Only read chunks from this sequence")
+    .option("--tail-bytes <n>", "Bound the read to the latest N bytes")
+    .option("--limit-chunks <n>", "Bound the read to the latest N chunks")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (terminalId: string, opts: TerminalExportOptions) => {
+        const blocks = await readTerminalCommandBlocksFromScrollback({
+          baseUrl: getUrl(),
+          opts,
+          terminalId,
+        });
+        const block = selectTerminalCommandBlock(blocks, opts.block);
+        const markdown = formatTerminalCommandBlockMarkdown({
+          block,
+          capturedAt: new Date().toISOString(),
+        });
+        const outputPath = path.resolve(
+          opts.out ?? terminalCommandBlockFileName(block),
+        );
+        await writeFile(outputPath, markdown, "utf8");
+        if (outputJson(opts, { block, path: outputPath })) return;
+        console.log(outputPath);
       }),
     );
 
@@ -517,6 +588,77 @@ function printTerminalTable(sessions: TerminalSession[]): void {
     {
       head: ["ID", "Title", "Status", "Size"],
       colWidths: columnWidths(rows, [12, 24, 14, 10]),
+    },
+    rows,
+  );
+}
+
+interface ReadTerminalCommandBlocksArgs {
+  baseUrl: string;
+  opts: TerminalOutputOptions;
+  terminalId: string;
+}
+
+async function readTerminalCommandBlocksFromScrollback(
+  args: ReadTerminalCommandBlocksArgs,
+): Promise<TerminalCommandBlock[]> {
+  const sdk = createCliBbSdk(args.baseUrl);
+  const output = await sdk.terminals.output({
+    terminalId: args.terminalId,
+    ...terminalOutputQuery(args.opts),
+  });
+  const reader = createTerminalCommandBlockReader();
+  for (const chunk of output.chunks) {
+    reader.push(Buffer.from(chunk.dataBase64, "base64").toString("utf8"));
+  }
+  return reader.blocks();
+}
+
+function selectTerminalCommandBlock(
+  blocks: readonly TerminalCommandBlock[],
+  requestedIndex: string | undefined,
+): TerminalCommandBlock {
+  if (blocks.length === 0) {
+    throw new CliExitError(
+      "No commands were captured. Terminal shell integration needs zsh or bash, and only commands run after the terminal started are captured.",
+      1,
+    );
+  }
+  if (requestedIndex === undefined) {
+    const latest = blocks.at(-1);
+    if (latest === undefined) {
+      throw new CliExitError("No commands were captured", 1);
+    }
+    return latest;
+  }
+  const index = parseNonNegativeInteger(requestedIndex, "--block");
+  const block = blocks.find((entry) => entry.index === index);
+  if (block === undefined) {
+    throw new CliExitError(
+      `No captured command with index ${index}. Run \`bb terminal blocks\` to list them.`,
+      1,
+    );
+  }
+  return block;
+}
+
+function printTerminalCommandBlockTable(
+  blocks: readonly TerminalCommandBlock[],
+): void {
+  if (blocks.length === 0) {
+    console.log("No commands captured");
+    return;
+  }
+  const rows = blocks.map((block) => [
+    String(block.index),
+    block.running ? "running" : String(block.exitCode ?? "?"),
+    block.cwd ?? "-",
+    block.command.replace(/\s+/gu, " "),
+  ]);
+  printBorderlessTable(
+    {
+      head: ["Index", "Exit", "Directory", "Command"],
+      colWidths: columnWidths(rows, [6, 8, 24, 32]),
     },
     rows,
   );

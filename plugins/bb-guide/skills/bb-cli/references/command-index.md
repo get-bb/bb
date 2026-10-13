@@ -114,6 +114,8 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb terminal send`
 - `bb terminal resize`
 - `bb terminal output`
+- `bb terminal blocks`
+- `bb terminal export`
 - `bb terminal wait`
 - `bb terminal rename`
 - `bb terminal restart`
