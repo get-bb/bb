@@ -1576,9 +1576,7 @@ describe("Docs nav panel", () => {
     const baselines = parse.mock.calls
       .map(([root]) => root)
       .filter((root) =>
-        root.textContent?.includes(
-          "Original <strong>formatted baseline</strong>",
-        ),
+        root.textContent?.includes("Original formatted baseline"),
       );
     expect(baselines.length).toBeGreaterThan(0);
     for (const root of baselines)
