@@ -295,6 +295,19 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
   });
 
+  it("returns to the row list on Cancel and leaves the question waiting", () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(openForm()).toBe(null);
+    expect(
+      screen.getByRole("button", { name: /Child thr_c/ }).textContent,
+    ).toBe("Child thr_c: Which shape?");
+    expect(mocks.resolve).not.toHaveBeenCalled();
+  });
+
   it("keeps the question open for an Escape that ends text composition", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));

@@ -6,6 +6,7 @@ import {
 } from "@/lib/machine-removal-display";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -623,11 +624,13 @@ function ChildQuestionBody({
   index,
   total,
   onStep,
+  onClose,
 }: {
   current: ChildThreadQuestion;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
+  onClose: (childThreadId: string) => void;
 }) {
   const position = `${index + 1} of ${total}`;
   const childTitle = useThreadTitleDisplayText(current.childTitle);
@@ -637,7 +640,10 @@ function ChildQuestionBody({
   const form = useMemo(
     () => (
       <InlinePendingInteractionContext.Provider
-        value={{ promptShownAbove: question }}
+        value={{
+          promptShownAbove: question,
+          close: () => onClose(current.childThreadId),
+        }}
       >
         <ThreadPendingInteractionBanners
           interactions={[current.interaction]}
@@ -645,7 +651,7 @@ function ChildQuestionBody({
         />
       </InlinePendingInteractionContext.Provider>
     ),
-    [current.interaction, current.childThreadId, question],
+    [current.interaction, current.childThreadId, question, onClose],
   );
   return (
     <div className="px-3 pb-2 pt-2">
@@ -920,6 +926,7 @@ function ActiveChildThreadsCard({
     interactionId: string;
     index: number;
   } | null>(null);
+  const closeQuestion = useCallback(() => setOpenQuestion(null), []);
   const items = childThreadsSection.items;
   const pendingInteractions = childThreadsSection.pendingInteractions;
   const matchedIndex = openQuestion
@@ -1054,6 +1061,7 @@ function ActiveChildThreadsCard({
                   pendingInteractions.length,
               )
             }
+            onClose={closeQuestion}
           />
         ) : (
           <ChildThreadsBody
