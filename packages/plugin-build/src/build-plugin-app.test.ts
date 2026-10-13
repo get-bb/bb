@@ -286,7 +286,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.ts"),
       'import "./app.css";\n' +
-        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
+        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 group-has-[input:checked]/host:opacity-50 space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
         'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
@@ -302,8 +302,7 @@ describe("plugin app runtime shim", () => {
     );
     const css = await readFile(result.cssPath, "utf8");
 
-    const scope =
-      ":where([data-bb-plugin=css-fixture])";
+    const scope = ":where([data-bb-plugin=css-fixture])";
     expect(css).toContain(`${scope} .flex-col`);
     expect(css).toContain(`${scope}.flex-col`);
     const sibling = String.raw`.\[\&\~\*\]\:hidden`;
@@ -312,10 +311,16 @@ describe("plugin app runtime shim", () => {
     expect(css).not.toContain("@scope");
     expect(css).not.toContain(String.raw`:is(${scope} .hover\:underline`);
     expect(css).toContain(`${scope}.space-y-3`);
+    expect(css).not.toContain(String.raw`:is(:where(.group\/host):has(`);
+    expect(css).toContain(
+      String.raw`:where(.group\/host):has(:is(input:checked)) ${scope}.group-has`,
+    );
     expect(css).toContain(`[data-scope-host] ${scope}`);
     expect(css).toContain(`[data-scope-host]~${scope}`);
     expect(css).toContain(String.raw`${scope} .hover\:underline:hover`);
-    expect(css).toContain(String.raw`${scope}.has-\[\:focus\]\:opacity-50:has(:focus)`);
+    expect(css).toContain(
+      String.raw`${scope}.has-\[\:focus\]\:opacity-50:has(:focus)`,
+    );
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).not.toContain(`${scope}.bb71-authored-decoration`);
     expect(css.indexOf(".bb71-authored-decoration{")).toBeGreaterThan(
