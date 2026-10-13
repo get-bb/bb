@@ -535,7 +535,7 @@ export function QuestionForm({
             } catch {}
           }}
         >
-          {density === "compact" ? "Decline" : "Cancel"}
+          Cancel
         </Button>
         <div className="flex items-center gap-2">
           {!isFirst ? (

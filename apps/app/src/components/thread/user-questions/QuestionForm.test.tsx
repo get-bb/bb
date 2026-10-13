@@ -266,7 +266,6 @@ describe("answering a single-select question", () => {
 
   it("uses the compact labels when the host is compact", () => {
     const slot = render(singleSelect, { density: "compact" });
-    expect(getButtonByText(slot, "Decline")).toBeTruthy();
     expect(getButtonByText(slot, "Submit")).toBeTruthy();
     expect(slot.queryByText("Submit answer")).toBeNull();
   });

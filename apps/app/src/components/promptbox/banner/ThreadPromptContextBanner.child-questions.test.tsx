@@ -193,9 +193,8 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(shownSource()).toBe("Child thr_c");
     expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getAllByText("Which shape?").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Close question" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Submit answer" })).toBe(null);
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
