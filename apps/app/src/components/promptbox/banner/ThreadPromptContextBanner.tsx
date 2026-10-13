@@ -7,9 +7,11 @@ import {
 import {
   forwardRef,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -632,10 +634,23 @@ function ChildQuestionBody({
   const question = formatPendingInteractionSummary({
     interaction: current.interaction,
   });
+  const form = useMemo(
+    () => (
+      <InlinePendingInteractionContext.Provider
+        value={{ promptShownAbove: question }}
+      >
+        <ThreadPendingInteractionBanners
+          interactions={[current.interaction]}
+          threadId={current.childThreadId}
+        />
+      </InlinePendingInteractionContext.Provider>
+    ),
+    [current.interaction, current.childThreadId, question],
+  );
   return (
     <div className="px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 px-2.5 pt-0.5 text-sm text-foreground">
+        <p className="max-h-[5lh] min-w-0 flex-1 overflow-y-auto overscroll-contain break-words px-2.5 pt-0.5 text-sm text-foreground">
           <NavLink to={current.href} className="underline underline-offset-2">
             {childTitle}
           </NavLink>
@@ -676,16 +691,7 @@ function ChildQuestionBody({
       <span aria-live="polite" className="sr-only">
         {total > 1 ? `Question ${position}` : ""}
       </span>
-      <div className="mt-1.5">
-        <InlinePendingInteractionContext.Provider
-          value={{ promptShownAbove: question }}
-        >
-          <ThreadPendingInteractionBanners
-            interactions={[current.interaction]}
-            threadId={current.childThreadId}
-          />
-        </InlinePendingInteractionContext.Provider>
-      </div>
+      <div className="mt-1.5">{form}</div>
     </div>
   );
 }
@@ -910,7 +916,6 @@ function ActiveChildThreadsCard({
   onToggle: () => void;
 }) {
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
-  const cardRef = useRef<HTMLElement>(null);
   const [openQuestion, setOpenQuestion] = useState<{
     interactionId: string;
     index: number;
@@ -940,29 +945,25 @@ function ActiveChildThreadsCard({
       index: questionIndex,
     });
   }
-  const openChildThreadId = currentQuestion?.childThreadId ?? null;
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card || openChildThreadId === null) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setOpenQuestion(null);
-    };
-    card.addEventListener("keydown", handleKeyDown);
-    return () => card.removeEventListener("keydown", handleKeyDown);
-  }, [openChildThreadId]);
   const newestQuestionTitle = useThreadTitleDisplayText(
     pendingInteractions[0]?.childTitle ?? "",
   );
   if (items.length === 0) {
     return null;
   }
+  const closeQuestionOnEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (
+      event.key !== "Escape" ||
+      event.defaultPrevented ||
+      event.nativeEvent.isComposing ||
+      !currentQuestion
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenQuestion(null);
+  };
   const openQuestionAt = (index: number) => {
     const next = pendingInteractions[index];
     if (next) {
@@ -982,8 +983,8 @@ function ActiveChildThreadsCard({
   const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
-      rootRef={cardRef}
       ariaLabel="Child threads"
+      onKeyDown={closeQuestionOnEscape}
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
