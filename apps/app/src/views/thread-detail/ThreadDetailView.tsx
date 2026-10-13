@@ -99,7 +99,6 @@ import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeade
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
   formatEnvironmentDisplay,
-  formatPendingInteractionSummary,
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
@@ -167,7 +166,6 @@ import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
   type ThreadPromptParentThreadSection,
-  type ChildThreadQuestion,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
@@ -289,7 +287,10 @@ import { usePaneContext } from "./PaneContext";
 import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const EMPTY_CHILD_THREAD_QUESTIONS: readonly ChildThreadQuestion[] = [];
+type ChildThreadsSectionItemsOnly = Pick<
+  ThreadPromptChildThreadsSection,
+  "items"
+>;
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
   [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -1788,7 +1789,7 @@ function ThreadDetailViewInternal(
       threadOriginKind,
       threadSourceThreadId,
     ]);
-  const childThreadsSection: ThreadPromptChildThreadsSection | null =
+  const childThreadsSection: ChildThreadsSectionItemsOnly | null =
     useMemo(() => {
       const list = childThreadSubsetQuery.data ?? [];
       const activeItems = list
@@ -1815,11 +1816,7 @@ function ThreadDetailViewInternal(
           hasPendingInteraction: entry.hasPendingInteraction,
         }));
       if (activeItems.length === 0) return null;
-      return {
-        items: activeItems,
-        pendingInteractions: EMPTY_CHILD_THREAD_QUESTIONS,
-        waitingQuestion: null,
-      };
+      return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
   const childPendingInteractions = useChildThreadPendingAttention(
     childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
@@ -1840,14 +1837,7 @@ function ThreadDetailViewInternal(
           (left, right) =>
             right.interaction.createdAt - left.interaction.createdAt,
         );
-      const latest = pendingInteractions[0];
-      return {
-        ...childThreadsSection,
-        pendingInteractions,
-        waitingQuestion: latest
-          ? formatPendingInteractionSummary({ interaction: latest.interaction })
-          : null,
-      };
+      return { ...childThreadsSection, pendingInteractions };
     }, [childThreadsSection, childPendingInteractions]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({

@@ -100,7 +100,6 @@ function section(
       },
     ],
     pendingInteractions,
-    waitingQuestion: pendingInteractions[0] ? "Which size?" : null,
   };
 }
 

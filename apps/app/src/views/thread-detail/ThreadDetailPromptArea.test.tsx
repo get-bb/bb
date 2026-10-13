@@ -2060,7 +2060,6 @@ describe("ThreadDetailPromptArea", () => {
           },
         ],
         pendingInteractions: [],
-        waitingQuestion: null,
       },
       pendingInteractions: [makePendingInteraction()],
     });

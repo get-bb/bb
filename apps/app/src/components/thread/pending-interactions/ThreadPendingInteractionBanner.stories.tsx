@@ -204,7 +204,6 @@ export function Overview() {
                 },
               ],
               pendingInteractions: [],
-              waitingQuestion: "Install workspace tools?",
             }}
             pullRequestSection={null}
             expandedSection={null}
