@@ -203,7 +203,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
 
-  it("opens the newest question from the collapsed header", () => {
+  it("expands to the row list from the collapsed header without opening a question", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(
       screen.getByRole("button", { name: "4 active child threads" }),
@@ -216,8 +216,8 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(header.textContent).toContain("Child thr_b: Which size?");
     fireEvent.click(header);
 
-    expect(shownSource()).toBe("Child thr_b");
-    expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect(openForm()).toBe(null);
+    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {

@@ -1005,12 +1005,7 @@ function ActiveChildThreadsCard({
               ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${newestQuestionTitle}: ${collapsedQuestion.text}`
               : `${items.length} active ${childThreadNoun(items.length)}`
           }
-          onClick={() => {
-            if (newestQuestion) {
-              openQuestionAt(0);
-            }
-            focus.onTriggerClick();
-          }}
+          onClick={focus.onTriggerClick}
           className={activityRowClass(
             "active",
             cn(
