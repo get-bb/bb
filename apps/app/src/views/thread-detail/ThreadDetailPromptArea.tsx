@@ -2158,6 +2158,7 @@ export function ThreadDetailPromptArea({
     thread.id,
     inlineTypeaheadConfig,
   ]);
+  const contextBannerKey = `thread-prompt-context-banner:${thread.id}`;
   const promptStack = useMemo(
     () => (
       <>
@@ -2194,7 +2195,7 @@ export function ThreadDetailPromptArea({
           <ThreadMachineStatus hostId={environmentHostId} />
         ) : null}
         <ThreadPromptContextBanner
-          key={`thread-prompt-context-banner:${thread.id}`}
+          key={contextBannerKey}
           archivedSection={
             thread.archivedAt !== null
               ? {
@@ -2278,6 +2279,7 @@ export function ThreadDetailPromptArea({
       queueExpanded,
       setQueueExpanded,
       canUseGitUi,
+      contextBannerKey,
       contextBannerMergeBase,
       environmentHostId,
       expandedBannerSection,
@@ -2348,7 +2350,7 @@ export function ThreadDetailPromptArea({
     () => (
       <>
         <ThreadPromptContextBanner
-          key={`thread-prompt-context-banner:${thread.id}`}
+          key={contextBannerKey}
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
@@ -2371,7 +2373,7 @@ export function ThreadDetailPromptArea({
       expandedBannerSection,
       goal,
       handleToggleBannerSection,
-      thread.id,
+      contextBannerKey,
     ],
   );
 

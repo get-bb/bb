@@ -1,7 +1,6 @@
 import {
   PendingInteractionPresentationContext,
   PendingInteractionShell,
-  type PendingInteractionSourceThread,
 } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { useCallback, useContext, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
@@ -29,7 +28,6 @@ interface PluginPendingInteractionComposerProps {
   >;
   request: PluginPendingInteractionRequest;
   origin: "plugin" | "provider";
-  sourceThread?: PendingInteractionSourceThread;
   collapsedByDefault: boolean;
 }
 
@@ -37,7 +35,6 @@ export function PluginPendingInteractionComposer({
   interaction,
   request,
   origin,
-  sourceThread,
   collapsedByDefault,
 }: PluginPendingInteractionComposerProps) {
   const { pendingInteractions } = usePluginSlots();
@@ -101,7 +98,6 @@ export function PluginPendingInteractionComposer({
       label={request.title}
       expandedByDefault={!collapsedByDefault}
       errorMessage={error}
-      sourceThread={sourceThread}
       testId="plugin-interaction-shell"
     >
       {() => (

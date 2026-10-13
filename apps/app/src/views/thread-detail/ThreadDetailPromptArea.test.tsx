@@ -2048,26 +2048,33 @@ describe("ThreadDetailPromptArea", () => {
     ).toBeNull();
   });
 
-  it("keeps the child threads banner while the parent has its own pending interaction", () => {
-    renderPromptArea({
-      childThreadsSection: {
-        items: [
-          {
-            id: "thr_child",
-            title: "Install workspace tools",
-            href: "/threads/thr_child",
-            hasPendingInteraction: true,
-          },
-        ],
-        pendingInteractions: [],
-      },
-      pendingInteractions: [makePendingInteraction()],
-    });
+  it("keeps the same child threads banner while the parent asks and answers its own question", () => {
+    const childThreadsSection = {
+      items: [
+        {
+          id: "thr_child",
+          title: "Install workspace tools",
+          href: "/threads/thr_child",
+          hasPendingInteraction: true,
+        },
+      ],
+      pendingInteractions: [],
+    };
+    const { rerender } = renderPromptArea({ childThreadsSection });
+    const banner = screen.getByTestId("child-threads-banner");
 
-    expect(screen.getByTestId("child-threads-banner").textContent).toBe(
-      "1 child threads",
+    rerender(
+      buildPromptAreaElement({
+        childThreadsSection,
+        pendingInteractions: [makePendingInteraction()],
+      }),
     );
     expect(screen.getByText("Pending interaction")).toBeTruthy();
+    expect(screen.getByTestId("child-threads-banner")).toBe(banner);
+
+    rerender(buildPromptAreaElement({ childThreadsSection }));
+    expect(screen.queryByText("Pending interaction")).toBeNull();
+    expect(screen.getByTestId("child-threads-banner")).toBe(banner);
   });
 
   it("keeps Goal above a pending interaction", () => {

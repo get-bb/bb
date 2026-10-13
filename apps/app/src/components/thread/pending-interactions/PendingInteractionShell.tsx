@@ -11,15 +11,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { NavLink } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
-
-export interface PendingInteractionSourceThread {
-  href: string;
-  title: string;
-}
 
 export type PendingInteractionPresentation = "card" | "inline";
 
@@ -35,7 +29,6 @@ interface PendingInteractionShellProps {
   errorMessage?: string | null;
   footer?: ReactNode;
   children?: (isExpanded: boolean) => ReactNode;
-  sourceThread?: PendingInteractionSourceThread;
   testId: string;
 }
 
@@ -46,7 +39,6 @@ export function PendingInteractionShell({
   errorMessage,
   footer,
   children,
-  sourceThread,
   testId,
 }: PendingInteractionShellProps) {
   const presentation = useContext(PendingInteractionPresentationContext);
@@ -105,6 +97,7 @@ export function PendingInteractionShell({
     </div>
   ) : null;
   if (presentation === "inline") {
+    const inlineTitle = title === promptShownAbove ? undefined : title;
     return (
       <section
         aria-label={label}
@@ -117,16 +110,18 @@ export function PendingInteractionShell({
           promptShownAbove={promptShownAbove}
         >
           <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
-            {title ? (
+            {inlineTitle ? (
               <h3
-                title={title}
+                title={inlineTitle}
                 className="min-w-0 truncate text-sm font-medium text-foreground"
               >
-                {title}
+                {inlineTitle}
               </h3>
             ) : null}
             {children ? (
-              <div className={title ? "mt-1" : undefined}>{children(true)}</div>
+              <div className={inlineTitle ? "mt-1" : undefined}>
+                {children(true)}
+              </div>
             ) : null}
             {footer ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -146,16 +141,6 @@ export function PendingInteractionShell({
       </section>
     );
   }
-  const sourceThreadLink = sourceThread ? (
-    <NavLink
-      to={sourceThread.href}
-      title={sourceThread.title}
-      className="min-w-0 max-w-[40%] shrink-[3] truncate text-xs text-subtle-foreground no-underline hover:underline"
-    >
-      From {sourceThread.title}
-    </NavLink>
-  ) : null;
-
   return (
     <section
       ref={rootRef}
@@ -202,7 +187,6 @@ export function PendingInteractionShell({
             </span>
           </span>
         </button>
-        {isExpanded ? sourceThreadLink : null}
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>

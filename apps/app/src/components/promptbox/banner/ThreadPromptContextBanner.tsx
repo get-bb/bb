@@ -641,6 +641,7 @@ function ChildQuestionBody({
   onStep: (offset: 1 | -1) => void;
 }) {
   const position = `${index + 1} of ${total}`;
+  const childTitle = useThreadTitleDisplayText(current.childTitle);
   const question = formatPendingInteractionSummary({
     interaction: current.interaction,
   });
@@ -653,7 +654,7 @@ function ChildQuestionBody({
             to={current.href}
             className="underline underline-offset-2"
           >
-            {current.childTitle}
+            {childTitle}
           </NavLink>
           : <span className="text-muted-foreground">{question}</span>
         </p>
@@ -926,6 +927,7 @@ function ActiveChildThreadsCard({
   onToggle: () => void;
 }) {
   const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
+  const cardRef = useRef<HTMLElement>(null);
   const [openQuestion, setOpenQuestion] = useState<{
     interactionId: string;
     index: number;
@@ -938,8 +940,8 @@ function ActiveChildThreadsCard({
       return;
     }
     returnFocusChildId.current = null;
-    document
-      .querySelector<HTMLElement>(`[data-child-question-row="${childId}"]`)
+    cardRef.current
+      ?.querySelector<HTMLElement>(`[data-child-question-row="${childId}"]`)
       ?.focus();
   }, [openQuestion]);
   const items = childThreadsSection.items;
@@ -984,7 +986,6 @@ function ActiveChildThreadsCard({
     }, CHILD_QUESTION_SETTLE_MS);
     return () => window.clearTimeout(timer);
   }, [settlingInteractionId]);
-  const cardRef = useRef<HTMLElement>(null);
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const titleLinkRef = useRef<HTMLAnchorElement>(null);
   const focusBackOnOpen = useRef(false);
@@ -1012,12 +1013,45 @@ function ActiveChildThreadsCard({
     card.addEventListener("keydown", handleKeyDown);
     return () => card.removeEventListener("keydown", handleKeyDown);
   }, [openChildThreadId]);
+  const focusWasInCard = useRef(false);
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) {
+      return;
+    }
+    const handleFocusIn = () => {
+      focusWasInCard.current = true;
+    };
+    const handleFocusOut = (event: FocusEvent) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        !card.contains(event.relatedTarget)
+      ) {
+        focusWasInCard.current = false;
+      }
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !card.contains(event.target)) {
+        focusWasInCard.current = false;
+      }
+    };
+    card.addEventListener("focusin", handleFocusIn);
+    card.addEventListener("focusout", handleFocusOut);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      card.removeEventListener("focusin", handleFocusIn);
+      card.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [hasItems]);
   const currentInteractionId = currentQuestion?.interaction.id ?? null;
   const shownInteractionId = useRef<string | null>(null);
   useEffect(() => {
     const previous = shownInteractionId.current;
     shownInteractionId.current = currentInteractionId;
     if (
+      !focusWasInCard.current ||
       previous === null ||
       previous === currentInteractionId ||
       pendingInteractions.some((item) => item.interaction.id === previous)

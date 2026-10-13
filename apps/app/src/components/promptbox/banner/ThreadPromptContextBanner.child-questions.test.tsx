@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
@@ -293,6 +294,29 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
+  it("returns focus to the row in its own banner when another banner lists the same child", () => {
+    render(
+      <>
+        {bannerElement(section([newest, middle, oldest]))}
+        {bannerElement(section([newest, middle, oldest]))}
+      </>,
+    );
+    const [, second] = screen.getAllByRole("region", { name: "Child threads" });
+    if (!second) throw new Error("expected two banners");
+    fireEvent.click(
+      within(second).getByRole("button", { name: /Child thr_c/ }),
+    );
+    fireEvent.click(
+      within(second).getByRole("button", {
+        name: "Back to active child threads",
+      }),
+    );
+
+    expect(document.activeElement).toBe(
+      within(second).getByRole("button", { name: /Child thr_c/ }),
+    );
+  });
+
   it("returns to the row list on Escape", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
@@ -303,6 +327,25 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+  });
+
+  it("leaves focus outside the banner alone when the open question is answered elsewhere", () => {
+    const withOutside = (
+      childThreads: ThreadPromptChildThreadsSection,
+      showOutside: boolean,
+    ) => (
+      <>
+        {bannerElement(childThreads)}
+        {showOutside ? <button type="button">Elsewhere</button> : null}
+      </>
+    );
+    const { rerender } = render(withOutside(section([newest, middle]), true));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+    screen.getByRole("button", { name: "Elsewhere" }).focus();
+
+    rerender(withOutside(section([middle]), false));
+    expect(shownSource()).toBe("Child thr_c");
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("moves to the next question after an answer, holding it briefly and keeping focus, then closes when none remain", () => {

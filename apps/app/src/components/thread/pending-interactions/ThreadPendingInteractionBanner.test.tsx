@@ -26,6 +26,10 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
+import {
+  InlineQuestionPromptContext,
+  PendingInteractionPresentationContext,
+} from "./PendingInteractionShell";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -615,30 +619,30 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     ).toBe(true);
   });
 
-  it("links to the source thread while open", () => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <ThreadPendingInteractionBanners
-            interactions={[commandApproval]}
-            sourceThread={{
-              href: "/threads/thr_child",
-              title: "Install tools",
-            }}
-            threadId="thr_child"
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+  it("shows an inline approval's title only when the banner line differs", () => {
+    const renderInline = (promptShownAbove: string) =>
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <PendingInteractionPresentationContext.Provider value="inline">
+              <InlineQuestionPromptContext.Provider value={promptShownAbove}>
+                {bannerElement(commandApproval)}
+              </InlineQuestionPromptContext.Provider>
+            </PendingInteractionPresentationContext.Provider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+    renderInline("Not in allowlist: bash");
     expect(
-      screen
-        .getByRole("link", { name: "From Install tools" })
-        .getAttribute("href"),
-    ).toBe("/threads/thr_child");
-    fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
-    expect(
-      screen.queryByRole("link", { name: "From Install tools" }),
+      screen.queryByRole("heading", { name: "Not in allowlist: bash" }),
     ).toBeNull();
+    cleanup();
+
+    renderInline("Run the test suite?");
+    expect(
+      screen.getByRole("heading", { name: "Not in allowlist: bash" }),
+    ).toBeTruthy();
   });
 
   it("renders a user question open by default and keeps draft answers across collapse", () => {
