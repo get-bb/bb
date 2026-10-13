@@ -93,6 +93,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: false,
   },
   {
+    name: "notes",
+    pluginId: "notes",
+    defaultEnabled: true,
+  },
+  {
     name: "pdf-preview",
     pluginId: "pdf-preview",
     defaultEnabled: true,

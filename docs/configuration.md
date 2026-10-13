@@ -1171,6 +1171,27 @@ composer — the one surface that narrates the wait. Inspect them with
 that do not reset on a clock — credit and spend-control exhaustion — schedule
 nothing, because waiting does not fix them.
 
+### Notes plugin
+
+The builtin Notes plugin adds a Markdown-only source editor over one folder. It
+has one setting, edited under Plugins → Installed plugins or with
+`bb plugin config notes set <key> <value>`:
+
+| Key             | Default   | Behavior                                                                      |
+| --------------- | --------- | ----------------------------------------------------------------------------- |
+| `rootDirectory` | `~/Notes` | Folder whose Markdown files the Notes panel lists, opens, and writes.         |
+
+The value must be absolute or start with `~/`; a relative path is refused. It
+resolves on the primary machine, so `~` expands to the home directory of the
+account running the bb server. The folder is created if it does not exist, and
+changing the setting takes effect without restarting the plugin.
+
+Editor behavior is configured per folder rather than through bb settings: a
+`.vscode/settings.json` inside `rootDirectory` overrides the plugin's built-in
+VS Code defaults key by key. `bb notes settings` prints what is in effect. See
+the [notes skill](../plugins/notes/skills/notes/SKILL.md) for the understood
+keys and the `highlight.regexes` format.
+
 ### Trees plugin
 
 The Trees plugin is an opt-in official plugin: `bb plugin install trees`. It has
