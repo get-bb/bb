@@ -12,8 +12,10 @@ function scopeUtilities(utilities: string): string {
 }
 
 describe("scopePluginUtilities", () => {
-  it("confines utilities to their owning plugin, including portaled roots", () => {
-    expect(pluginScopeRoots("demo")).toBe('[data-bb-plugin="demo"]');
+  it("preserves owned and anonymous portal roots", () => {
+    expect(pluginScopeRoots("demo")).toBe(
+      '[data-bb-plugin="demo"], [data-bb-plugin-root]:not([data-bb-plugin])',
+    );
   });
 
   it("emits separate descendant and self rules per selector", () => {
