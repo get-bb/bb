@@ -241,6 +241,46 @@ afterEach(() => {
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
+  it("mounts compact scroll content only while the compact home layout is active", () => {
+    const compactContent = (
+      <ul data-testid="compact-recents">
+        {Array.from({ length: 1000 }, (_, index) => (
+          <li key={index}>Thread {index}</li>
+        ))}
+      </ul>
+    );
+    const content = (isCompactViewport: boolean) => (
+      <CompactViewportOverrideProvider isCompactViewport={isCompactViewport}>
+        <RootComposeSecondaryContent
+          compactScrollContent={compactContent}
+          isCompactHomeLayout={isCompactViewport}
+          isSecondaryPanelOpen={false}
+          onToggleSecondaryPanel={noop}
+          secondaryPanel={createSecondaryPanel(false)}
+        >
+          <div data-testid="root-compose-content" />
+        </RootComposeSecondaryContent>
+      </CompactViewportOverrideProvider>
+    );
+    const view = render(content(false));
+
+    expect(screen.queryByTestId("compact-recents")).toBeNull();
+    expect(screen.getByTestId("root-compose-content")).not.toBeNull();
+    expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
+
+    view.rerender(content(true));
+
+    expect(screen.getByTestId("compact-recents").children).toHaveLength(1000);
+    expect(screen.getByTestId("root-compose-content")).not.toBeNull();
+    expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
+
+    view.rerender(content(false));
+
+    expect(screen.queryByTestId("compact-recents")).toBeNull();
+    expect(screen.getByTestId("root-compose-content")).not.toBeNull();
+    expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
+  });
+
   it("always offers a new tab from the new-thread right panel", async () => {
     renderRootCompose({
       isCompactViewport: false,
