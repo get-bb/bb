@@ -1,3 +1,4 @@
+import { coreFeatureTelemetry } from "./services/system/feature-telemetry.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
@@ -855,6 +856,10 @@ export function createApp(
     app.use(path, serverMoveWriteFreezeMiddleware(daemonWriteFreezeState));
   }
   const publicApi = new Hono();
+  publicApi.use(
+    "*",
+    coreFeatureTelemetry(() => deps.telemetry),
+  );
   publicApi.use("*", async (context, next) => {
     if (PLUGIN_WIRE_HTTP_PATH.test(context.req.path)) {
       return next();

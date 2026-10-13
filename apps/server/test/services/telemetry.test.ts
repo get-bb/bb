@@ -330,7 +330,7 @@ describe("telemetry service", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect((await put(defaultAppSettings)).status).toBe(200);
       telemetry.capture({ name: "app_started" });
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
     });
   });
 

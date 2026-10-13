@@ -1,3 +1,4 @@
+import { recordTelemetryEvent } from "@/components/onboarding/onboarding-telemetry";
 import {
   useCallback,
   useEffect,
@@ -421,6 +422,15 @@ export function useSetFixedSecondaryPanelTab(
   const updateState = useUpdateFixedPanelTabsState(panelStateId, syncThreadId);
   return useCallback(
     (panel: ThreadSecondaryPanel) => {
+      recordTelemetryEvent({
+        name: "feature_used",
+        properties: {
+          feature: panel === "git-diff" ? "git" : "thread",
+          feature_scope: "core",
+          interaction: "opened",
+          trigger: "unknown",
+        },
+      });
       updateState((current) => {
         const tabs = ensureSecondaryPanelTab(current.secondary.tabs, panel);
         const activeTabId = getSecondaryPanelTabId(panel);

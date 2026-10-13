@@ -2108,6 +2108,21 @@ markers. These additions include no provider IDs, account details, prompts,
 project or file names, terminal output, error messages, or session identifiers.
 They do not measure foreground time, app exit, or install/update error reasons.
 
+`feature_used` uses a finite capability registry:
+threads, child threads, providers, remote access, automations, browser,
+terminals, files, git, settings, projects, environments, split view, search,
+voice and plugin management. Core actions carry only `feature`,
+`feature_scope=core`, `interaction=opened/invoked/ran`, and
+`trigger=person/agent/schedule/system/unknown`. Triggers are a breakdown of
+engagement, including automated work. Unobserved provenance stays unknown.
+
+Successful explicit core API actions are captured at their shared route
+boundary for UI, SDK and CLI callers. File previews, side-panel opens and
+split additions cover local UI actions. Background queries, resize/persistence
+writes and layout restoration are excluded. The telemetry endpoint rejects
+unknown fields, feature codes and caller-supplied plugin provenance. Legacy
+client event variants remain accepted for compatibility.
+
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
