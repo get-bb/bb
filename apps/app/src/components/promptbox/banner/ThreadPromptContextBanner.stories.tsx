@@ -926,8 +926,8 @@ export function Overview() {
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="child threads waiting on questions"
-        hint="rows read child: question, newest first"
+        label="answer child questions in the banner"
+        hint="rows read child: question; open one from a row or the collapsed header, ‹ Active child threads or Esc returns, ‹ › steps through waiting questions"
       >
         <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
