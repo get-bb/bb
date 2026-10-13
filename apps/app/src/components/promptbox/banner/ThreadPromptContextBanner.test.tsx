@@ -574,7 +574,7 @@ describe("ThreadPromptContextBanner", () => {
 
     const expanded = renderToStaticMarkup(renderBanner("childThreads"));
     expect(expanded).toContain("Active child threads");
-    expect(expanded).not.toContain(">Which color should the badge use?<");
+    expect(expanded).toContain('aria-label="2 active child threads"');
   });
 
   it("expands once when a child thread newly needs input, even across remounts", () => {
