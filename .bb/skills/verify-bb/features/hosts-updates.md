@@ -25,14 +25,14 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Feature | Drive | Observable success |
 | --- | --- | --- |
 | List, inspect, rename | Compare Machines with machine list/show; rename a disposable host and reload. | Stable host ID is preserved; name and connection state agree. |
-| Pair and enroll | Create machine join-code and redeem on the disposable host; attempt expired/reused code. | Exactly one intended host enrolls; invalid or consumed codes do not enroll another. |
+| Pair and enroll | Run `bb machine create --provider manual`, redeem its enrollment command on the disposable host, then retry the expired or consumed command. | Exactly one intended host enrolls; expired or consumed commands do not enroll another. |
 | Permission ceiling | Change the disposable machine ceiling and request a more permissive thread. | Host ceiling is enforced across UI, CLI, and runtime rather than merely hidden in the picker. |
 | Disconnect and reconnect | Stop only the disposable daemon, observe unavailable host, restart it, and retry a targeted read. | Status and routing recover to the same host; offline operations do not route to a different machine. |
 | Suspend and resume | Suspend a disposable provider-managed machine, send a thread follow-up to wake it, then repeat with the prompt banner's Resume action. | Every wake exposes a durable `resuming` lifecycle phase; the prompt banner says “Machine is resuming…” until the machine becomes active, and queued work dispatches once. |
 | Protocol mismatch and automatic update | Use the documented QA setup with a deliberately older disposable daemon; inspect rejected protocol and retry-update. | Mismatch initiates the expected update or actionable failure; incompatible payloads are not accepted in a reconnect loop. |
 | Provider CLI installation | Inspect machine provider-cli status; install/update a chosen provider on the disposable host. | Version and health refresh on that host; failure does not claim installation. |
 | Updates status and apply | Compare updates status and Settings → Updates; apply only available fixture-host updates. | Per-host/per-provider outcomes are reported; absent updates produce a truthful no-op. |
-| Remove host | Revoke the disposable host with machine remove; try reconnecting it with its old enrollment. | Revoked host cannot reconnect; unrelated hosts and projects are unaffected. |
+| Remove host | Remove a disposable fixture machine with running and idle threads through the UI or `machine remove`, then try reconnecting with its old enrollment. | Work stops and threads remain as read-only history showing Machine removed and the old machine name. Revoked hosts cannot reconnect; unrelated hosts and projects are unaffected. |
 
 ## Evidence and cleanup
 

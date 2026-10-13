@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { THREAD_CONTEXT_CLEAR_OPERATION } from "@bb/domain";
 import {
-  THREAD_CONTEXT_CLEAR_OPERATION,
-  type ThreadEventType,
-} from "@bb/domain";
-import {
+  advanceThreadPruning,
   deleteThreadEventSuffixInTransaction,
   getLatestCompletedThreadContextClearSequence,
   getLatestThreadSequence,
-  pruneThreadEventsBeforeSequence,
 } from "@bb/db";
 import {
   clearTimelineOrderingContextCache,
@@ -129,6 +126,155 @@ function reasoningDelta(turnId: string): RowSpec {
 }
 
 describe("timeline grouping context cache", () => {
+  it.each([
+    {
+      name: "user text",
+      initiator: "user",
+      input: [{ type: "text", text: "hello" }],
+      boundary: 2,
+    },
+    {
+      name: "agent text",
+      initiator: "agent",
+      input: [{ type: "text", text: "hello" }],
+      boundary: null,
+    },
+    {
+      name: "system text",
+      initiator: "system",
+      input: [{ type: "text", text: "hello" }],
+      boundary: null,
+    },
+    {
+      name: "hidden user text",
+      initiator: "user",
+      input: [{ type: "text", text: "hello", visibility: "agent-only" }],
+      boundary: null,
+    },
+    {
+      name: "empty user text",
+      initiator: "user",
+      input: [{ type: "text", text: "" }],
+      boundary: null,
+    },
+    {
+      name: "user image",
+      initiator: "user",
+      input: [{ type: "image", url: "https://example.com/image.png" }],
+      boundary: 2,
+    },
+    {
+      name: "user local image",
+      initiator: "user",
+      input: [{ type: "localImage", path: "/tmp/image.png" }],
+      boundary: 2,
+    },
+    {
+      name: "user file after hidden text",
+      initiator: "user",
+      input: [
+        { type: "text", text: "hidden", visibility: "agent-only" },
+        { type: "localFile", path: "/tmp/input.txt" },
+      ],
+      boundary: 2,
+    },
+  ])(
+    "preserves request association and visibility for $name",
+    ({ initiator, input, boundary }) => {
+      withTestThread((testThread) => {
+        const maxSeq = appendRows(testThread, [
+          turnStarted("turn-1"),
+          {
+            type: "client/turn/requested",
+            data: {
+              requestId: "request-2",
+              initiator,
+              input,
+              target: { kind: "new-turn" },
+            },
+          },
+          accepted("request-2", "turn-2"),
+        ]);
+        const context = getTimelineGroupingContext(testThread.db, {
+          threadId: testThread.thread.id,
+          sequenceStart: 0,
+          maxSeq,
+        });
+        expect(context.orderingBoundarySequence).toBe(boundary);
+        expect([...context.acceptedTurnIds]).toEqual([["request-2", "turn-2"]]);
+      });
+    },
+  );
+
+  it("preserves the parented cutoff before a late accepted steer", () => {
+    withTestThread((testThread) => {
+      const steer = userRequest("steer");
+      const maxSeq = appendRows(testThread, [
+        turnStarted("turn-a"),
+        turnCompleted("turn-a"),
+        {
+          ...steer,
+          data: {
+            ...steer.data,
+            target: { kind: "steer", expectedTurnId: "turn-a" },
+          },
+        },
+        turnStarted("turn-b"),
+        userRequest("request-before-parent"),
+        turnCompleted("turn-b"),
+        rootToolCall("parent", "turn-a", "item/started"),
+        userRequest("request-inside-parent"),
+        child("parent", 1),
+        accepted("steer", "turn-a"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+      ).toBe(8);
+      expect(
+        expectCachedEqualsCold(
+          testThread,
+          appendRows(testThread, [child("parent", 2)]),
+        ).orderingBoundarySequence,
+      ).toBe(8);
+    });
+  });
+
+  it("updates parented boundaries without rereading unchanged request and turn history", () => {
+    withTestThread((testThread) => {
+      const beforeChildren = appendRows(testThread, [
+        turnStarted("turn-1"),
+        rootToolCall("call-1", "turn-1", "item/started"),
+        child("call-1", 1),
+        turnCompleted("turn-1"),
+        userRequest("request-1"),
+      ]);
+      expect(
+        expectCachedEqualsCold(testThread, beforeChildren)
+          .orderingBoundarySequence,
+      ).toBeNull();
+      const statements = captureStatementSql(testThread.db, () => {
+        for (let index = 0; index < 20; index += 1) {
+          const maxSeq = appendRows(testThread, [
+            {
+              ...delta("nested-call-1", "child text"),
+              parentToolCallId: "call-1",
+            },
+          ]);
+          expect(
+            expectCachedEqualsCold(testThread, maxSeq).orderingBoundarySequence,
+          ).toBe(5);
+        }
+        expect(
+          expectCachedEqualsCold(testThread, beforeChildren)
+            .orderingBoundarySequence,
+        ).toBeNull();
+      });
+      expect(
+        statements.filter((source) => source.includes("'$.clientRequestId'")),
+      ).toEqual([]);
+    });
+  });
+
   it("reuses the context across appended deltas and root tool-call rows without re-reading it", () => {
     withTestThread((testThread) => {
       appendRows(testThread, [
@@ -163,11 +309,11 @@ describe("timeline grouping context cache", () => {
 
   it.each([
     {
-      name: "turn/completed extends a turn past an external request",
-      seed: [turnStarted("turn-1"), userRequest("request-1")],
-      appended: [turnCompleted("turn-1")],
+      name: "a user request arrives while a turn is still running",
+      seed: [turnStarted("turn-1")],
+      appended: [userRequest("request-1")],
       before: null,
-      after: 2,
+      after: 3,
     },
     {
       name: "an accepted steer claims the request for its turn",
@@ -208,11 +354,12 @@ describe("timeline grouping context cache", () => {
         turnStarted("turn-1"),
         rootToolCall("call-1", "turn-1", "item/started"),
         child("call-1", 1),
+        turnCompleted("turn-1"),
         userRequest("request-1"),
       ],
       appended: [child("call-1", 2)],
       before: null,
-      after: 4,
+      after: 5,
     },
   ])("recomputes when $name", (testCase) => {
     withTestThread((testThread) => {
@@ -288,13 +435,14 @@ describe("timeline grouping context cache", () => {
         const warmMaxSeq = appendRows(testThread, [
           turnStarted("turn-1"),
           rootToolCall("call-1", "turn-1", "item/started"),
+          turnCompleted("turn-1"),
           userRequest("request-1"),
           child("call-1", 1),
         ]);
         expect(
           expectCachedEqualsCold(testThread, warmMaxSeq)
             .orderingBoundarySequence,
-        ).toBe(3);
+        ).toBe(4);
 
         remove(testThread, warmMaxSeq);
         const maxSeq = appendRows(testThread, [
@@ -321,27 +469,31 @@ describe("timeline grouping context cache", () => {
       );
       expect(expectCachedEqualsCold(testThread, olderMaxSeq)).toBe(latest);
 
-      const completedMaxSeq = appendRows(testThread, [turnCompleted("turn-1")]);
+      expect(latest.orderingBoundarySequence).toBe(2);
+      const acceptedMaxSeq = appendRows(testThread, [
+        accepted("request-1", "turn-1"),
+      ]);
       expect(
-        expectCachedEqualsCold(testThread, completedMaxSeq)
+        expectCachedEqualsCold(testThread, acceptedMaxSeq)
           .orderingBoundarySequence,
-      ).toBe(2);
+      ).toBeNull();
       expect(
         expectCachedEqualsCold(testThread, olderMaxSeq)
           .orderingBoundarySequence,
-      ).toBeNull();
+      ).toBe(2);
     });
   });
 
   it("matches a cold computation over randomized appends, rewrites and prunes", () => {
     let comparisons = 0;
     let changedContexts = 0;
+    let prunedRows = 0;
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const random = createRandom(seed);
       withTestThread((testThread) => {
         let previousBoundary: number | null = null;
         for (let step = 0; step < 40; step += 1) {
-          applyRandomStep(testThread, random, step);
+          prunedRows += applyRandomStep(testThread, random, step);
           const latest = getLatestThreadSequence(testThread.db, {
             threadId: testThread.thread.id,
           });
@@ -371,25 +523,19 @@ describe("timeline grouping context cache", () => {
     }
     expect(comparisons).toBeGreaterThan(SEEDS * 100);
     expect(changedContexts).toBeGreaterThan(SEEDS * 10);
+    expect(prunedRows).toBeGreaterThan(0);
   }, 60_000);
 });
 
 const RANDOM_TURN_IDS = ["turn-a", "turn-b", "turn-c"] as const;
 const RANDOM_CALL_IDS = ["call-a", "call-b"] as const;
 const RANDOM_REQUEST_IDS = ["request-a", "request-b", "request-c"] as const;
-const RANDOM_PRUNED_TYPES = [
-  "turn/started",
-  "turn/completed",
-  "client/turn/requested",
-  "turn/input/accepted",
-  "item/started",
-  "item/agentMessage/delta",
-] as const satisfies readonly ThreadEventType[];
 
 function randomRow(random: Random): RowSpec {
   const turnId = pick(random, RANDOM_TURN_IDS);
   const choice = random();
-  if (choice < 0.3) return delta(turnId, pick(random, ["x", "y\n"]));
+  if (choice < 0.26) return delta(turnId, pick(random, ["x", "y\n"]));
+  if (choice < 0.3) return { data: {}, turnId, type: "turn/diff/updated" };
   if (choice < 0.36) return reasoningDelta(turnId);
   if (choice < 0.46) {
     return rootToolCall(
@@ -430,7 +576,11 @@ function randomRow(random: Random): RowSpec {
   };
 }
 
-function applyRandomStep(testThread: TestThread, random: Random, step: number) {
+function applyRandomStep(
+  testThread: TestThread,
+  random: Random,
+  step: number,
+): number {
   const threadId = testThread.thread.id;
   const latest = getLatestThreadSequence(testThread.db, { threadId });
   const choice = random();
@@ -447,15 +597,10 @@ function applyRandomStep(testThread: TestThread, random: Random, step: number) {
         threadId,
       });
     });
-    return;
+    return 0;
   }
   if (step > 3 && choice < 0.14) {
-    pruneThreadEventsBeforeSequence(testThread.db, {
-      sequenceCutoff: randomInteger(random, 1, latest),
-      threadId,
-      types: [pick(random, RANDOM_PRUNED_TYPES)],
-    });
-    return;
+    return advanceThreadPruning(testThread.db, { threadId }).removed;
   }
   appendRows(
     testThread,
@@ -463,4 +608,5 @@ function applyRandomStep(testThread: TestThread, random: Random, step: number) {
       randomRow(random),
     ),
   );
+  return 0;
 }

@@ -10,7 +10,6 @@ import {
   accountSchema,
   accountSummarySchema,
   bypassInputSchema,
-  cacheMissReportListSchema,
   codexLoginCancelSchema,
   codexLoginPollInputSchema,
   codexLoginPollSchema,
@@ -23,7 +22,6 @@ import {
   tokenRotateInputSchema,
   routingSetInputSchema,
   type AccountPoolConfigController,
-  type CacheMissController,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
@@ -112,14 +110,6 @@ export const accountPoolRpcContract = defineRpcContract({
     input: bypassInputSchema,
     output: bypassInputSchema,
   },
-  "cacheMiss.list": {
-    input: z.null(),
-    output: cacheMissReportListSchema,
-  },
-  "cacheMiss.clear": {
-    input: z.null(),
-    output: z.object({ cleared: z.number().int().nonnegative() }).strict(),
-  },
 });
 
 export function createRpcHandlers(
@@ -127,7 +117,6 @@ export function createRpcHandlers(
   login: ClaudeOAuthLogin,
   codexLogin: CodexDeviceLogin,
   config: AccountPoolConfigController,
-  cacheMisses: CacheMissController,
 ): PluginRpcHandlers<typeof accountPoolRpcContract> {
   return {
     "account.add": (input) => operations.add(input),
@@ -169,7 +158,5 @@ export function createRpcHandlers(
     "token.rotate": ({ machine }) => operations.rotateToken(machine),
     "bypass.set": ({ threadId, bypassed }) =>
       operations.setBypass(threadId, bypassed),
-    "cacheMiss.list": () => cacheMisses.list(),
-    "cacheMiss.clear": async () => ({ cleared: await cacheMisses.clear() }),
   };
 }

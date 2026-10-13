@@ -9,6 +9,7 @@ import {
   renderNativeThemeSource,
 } from "../../scripts/generate-native-theme";
 import {
+  androidThemes,
   nativeRadii,
   nativeThemes,
   nativeTypography,
@@ -53,6 +54,28 @@ describe("generate-native-theme", () => {
     expect(generateNativeThemeSource()).toBe(
       readFileSync(NATIVE_THEME_OUTPUT_PATH, "utf8"),
     );
+  });
+
+  it("keeps Android colors aligned with the web palette in both modes", () => {
+    const model = buildNativeThemeModel({
+      themeCss: readFileSync(
+        new URL("../../../app/src/components/ui/theme.css", import.meta.url),
+        "utf8",
+      ),
+      mobileCss: readFileSync(
+        new URL("./android-overrides.css", import.meta.url),
+        "utf8",
+      ),
+      paletteCss: emptyPalettes(),
+    });
+    for (const mode of MODES) {
+      expect(androidThemes.default[mode]).toEqual(
+        model.themes.get("default")?.[mode],
+      );
+      expect(Object.keys(androidThemes.default[mode]).sort()).toEqual(
+        Object.keys(nativeThemes.default[mode]).sort(),
+      );
+    }
   });
 
   it("emits every built-in palette in both modes with the default key set", () => {

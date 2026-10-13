@@ -60,34 +60,38 @@ export function findPaneByThread(
   );
 }
 
+export function isSamePaneContent(
+  candidate: PaneContent,
+  content: PaneContent,
+): boolean {
+  if (content.kind === "new-thread") return candidate.kind === "new-thread";
+  if (content.kind === "thread") {
+    return (
+      candidate.kind === "thread" &&
+      candidate.projectId === content.projectId &&
+      candidate.threadId === content.threadId
+    );
+  }
+  if (content.kind === "plugin-detail") {
+    return (
+      candidate.kind === "plugin-detail" &&
+      candidate.pluginId === content.pluginId
+    );
+  }
+  return (
+    candidate.kind === "plugin-panel" &&
+    candidate.pluginId === content.pluginId &&
+    candidate.panelPath === content.panelPath
+  );
+}
+
 export function findPaneByContent(
   root: LayoutNode,
   content: PaneContent,
 ): PaneNode | null {
   return (
-    listPanes(root).find((pane) => {
-      const candidate = pane.content;
-      if (candidate.kind !== content.kind) return false;
-      if (content.kind === "new-thread") return true;
-      if (content.kind === "thread") {
-        return (
-          candidate.kind === "thread" &&
-          candidate.projectId === content.projectId &&
-          candidate.threadId === content.threadId
-        );
-      }
-      if (content.kind === "plugin-detail") {
-        return (
-          candidate.kind === "plugin-detail" &&
-          candidate.pluginId === content.pluginId
-        );
-      }
-      return (
-        candidate.kind === "plugin-panel" &&
-        candidate.pluginId === content.pluginId &&
-        candidate.panelPath === content.panelPath
-      );
-    }) ?? null
+    listPanes(root).find((pane) => isSamePaneContent(pane.content, content)) ??
+    null
   );
 }
 

@@ -50,7 +50,9 @@ describe("runtime output boundary", () => {
   it("does not inherit unrelated credentials or DevBrowser routing overrides", () => {
     const env = runtimeEnvironment("/tmp/session-one");
     expect(env.DEV_BROWSER_HOME).toBe("/tmp/session-one");
-    expect(env.DEV_BROWSER_SOCKET).toBe("/tmp/session-one/daemon.sock");
+    expect(env.DEV_BROWSER_SOCKET).toBe(
+      join("/tmp/session-one", "daemon.sock"),
+    );
     expect(
       Object.keys(env).every((key) =>
         [

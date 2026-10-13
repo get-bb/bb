@@ -5,6 +5,7 @@ import {
   createDesktopReleaseConfig,
   resolveDesktopReleaseChannel,
 } from "./desktop-release-channel.mjs";
+import { createPackagedAppLaunchArguments } from "./packaged-app-launch.mjs";
 import { resolvePackagedAppBinary } from "./packaged-app-paths.mjs";
 
 const packageRoot = process.cwd();
@@ -22,6 +23,17 @@ function createElectronAppEnv(env) {
   return childEnv;
 }
 
+function createLaunchArguments(env) {
+  const userDataDir = env.BB_DESKTOP_USER_DATA_DIR?.trim();
+  if (userDataDir === undefined || userDataDir.length === 0) {
+    return [];
+  }
+  return createPackagedAppLaunchArguments({
+    platform: process.platform,
+    userDataDir,
+  });
+}
+
 const child = spawn(
   await resolvePackagedAppBinary({
     executableName: releaseConfig.linuxExecutableName,
@@ -29,7 +41,7 @@ const child = spawn(
     productName: releaseConfig.applicationName,
     releaseDir,
   }),
-  [],
+  createLaunchArguments(process.env),
   {
     env: createElectronAppEnv(process.env),
     stdio: "inherit",

@@ -1,6 +1,6 @@
-import { Suspense, lazy, type ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
+import { defineSplit } from "@/lib/define-split";
+import { SourceLoadingSkeleton } from "./code-loading-skeletons";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -9,7 +9,12 @@ import {
 
 const SOURCE_CODE_RENDERER_SLOT_KIND = "sourceCodeRenderer";
 
-const BbSourceCode = lazy(() => import("./BbSourceCode"));
+export const BbSourceCodeSplit = defineSplit<BbSourceCodeProps>({
+  id: "bb-source-code",
+  load: () => import("./BbSourceCode").then((module) => module.default),
+  loading: () => <SourceLoadingSkeleton />,
+  tier: "intent",
+});
 
 interface SourceCodeHostProps extends Omit<
   BbSourceCodeProps,
@@ -17,7 +22,6 @@ interface SourceCodeHostProps extends Omit<
 > {
   overflow?: BbSourceCodeProps["overflow"];
   highlightedLines?: BbSourceCodeProps["highlightedLines"];
-  fallback?: ReactNode;
 }
 
 export function SourceCodeHost({
@@ -27,25 +31,22 @@ export function SourceCodeHost({
   overflow = DEFAULT_CODE_OVERFLOW,
   highlightedLines = null,
   className,
-  fallback = null,
   scrollToHighlightedLines,
   onSelectionAddToChat,
 }: SourceCodeHostProps) {
   const replacement = useSourceCodeRendererReplacement();
 
   const original = (
-    <Suspense fallback={fallback}>
-      <BbSourceCode
-        content={content}
-        path={path}
-        cacheKey={cacheKey}
-        overflow={overflow}
-        highlightedLines={highlightedLines}
-        className={className}
-        scrollToHighlightedLines={scrollToHighlightedLines}
-        onSelectionAddToChat={onSelectionAddToChat}
-      />
-    </Suspense>
+    <BbSourceCodeSplit
+      content={content}
+      path={path}
+      cacheKey={cacheKey}
+      overflow={overflow}
+      highlightedLines={highlightedLines}
+      className={className}
+      scrollToHighlightedLines={scrollToHighlightedLines}
+      onSelectionAddToChat={onSelectionAddToChat}
+    />
   );
 
   return (
@@ -62,7 +63,6 @@ export function SourceCodeHost({
             overflow={overflow}
             highlightedLines={highlightedLines}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

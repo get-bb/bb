@@ -11,15 +11,62 @@ every window and client sees the same value.
 - Unknown keys and values of the wrong shape are rejected; the error names the
   keys bb knows.
 
+## Setup guide
+
+- A new bb install opens a first-run setup guide: connect an agent, add
+  projects, pick plugins, and set up devices. Every step can be skipped.
+- `onboardingCompletedAt` is the ISO timestamp of when the guide was finished
+  or skipped; `null` means the guide is showing.
+- `bb settings replay-onboarding` clears it. Settings → General → Setup guide
+  has the same button.
+- `bb project discover [--machine <id-or-name>]` lists the git repositories the
+  guide offers to import; add one with `bb project create --name <name> --root <path>`.
+
 ## Sidebar preferences
 
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
+
+`sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show or
+hide the navigation rail's destinations (see Navigation rail below).
+
 - The server keeps a keyed, revisioned registry of sidebar layout preferences
-  (`sidebar.organizationMode`, `sidebar.chronologicalSort`, the section
-  orders, the collapsed-id lists, `sidebar.pluginPanelOrder`,
-  `sidebar.visiblePluginPanels`, `sidebar.navigationProvider`,
+  (`sidebar.organizationMode`, `sidebar.threadGrouping.environment`,
+  `sidebar.chronologicalSort`, the section
+  orders, the collapsed-id lists, `sidebar.hiddenGroups`,
+  `sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`,
   `sidebar.threadListProvider`).
-- `sidebar.organizationMode` defaults to Custom (`chronological`) when unset;
-  existing server and legacy browser choices are preserved.
+- The same registry stores `infoPanel.collapsedSections`, the thread Info panel
+  sections collapsed from their headings (`commits`, `uncommittedChanges`,
+  `childThreads`, `forks`, `threadStorage`). Read or change it with
+  `bb settings ui get` and `bb settings ui set`.
+- The built-in sidebar's Filter selects Active and Archived, defaulting to Active,
+  including threads with saved messages. This selection is browser-local, not
+  a server-backed preference or SDK/CLI setting. Selected archived rows
+  retain their hierarchy placement and offer a restore action. Archived pages load only while selected;
+  plugin sidebar replacements keep ownership of their rendering.
+- The palette's Filter selects Active and Archived independently of the
+  sidebar, defaulting to Active. This selection is browser-local, not configurable
+  through SDK/CLI. Active includes threads with saved messages; Search threads
+  retains existing title and conversation matching. Archived recents load only while selected and are
+  bounded at the server.
+- `sidebar.organizationMode` defaults to Custom (`chronological`) on new installs.
+  Migrated installs with existing projects, threads, or UI preferences fall back to
+  By project (`project`). Saved server choices win over legacy browser choices,
+  which win over the installation fallback. Reset saves that fallback explicitly.
+- `sidebar.threadGrouping.environment` decides whether sibling threads sharing
+  one worktree environment collapse into a single worktree row inside their
+  section: `true` groups them and `false` keeps every thread on its own row, in
+  every organization mode. The default `auto` groups them in By project and By
+  machine and leaves them flat in Custom. Set it through Organize → Groups →
+  By environment, settings, or the CLI. Each `sidebar.threadGrouping.*` key
+  toggles one grouping dimension independently.
 - `bb settings ui list [--json]` prints every key with its value, revision,
   and description; `bb settings ui get <key> [--json]` prints one.
 - `bb settings ui set <key> <value> [--json]` takes a plain string for enum
@@ -27,6 +74,38 @@ every window and client sees the same value.
   revision, writes with it, and retries once on a conflict.
 - `bb settings ui reset <key> [--json]` writes the default and advances the
   revision.
+
+### Thread-list visibility
+
+- The bundled Thread list plugin owns its layout preferences, including hidden
+  groups. Use `bb thread-list prefs list [--json]` to inspect them and
+  `bb thread-list prefs get/set/reset <key>` to change them.
+- Its installed `thread-list` skill documents accepted keys and values. Keep
+  plugin-specific settings out of `bb settings ui`; those legacy values are
+  read only during one-time migration.
+
+## Git controls
+
+- Settings → General → Show Git changes and Commit button defaults to on.
+- `bb settings general showGitChanges false` hides the untracked, uncommitted,
+  and committed summary and file list, pull-request status and actions above the
+  composer, and Commit in the header and overflow menu.
+- Set it to `true` to restore them across every thread and connected client.
+  The server saves the choice across reloads.
+- Thread relationships and workspace warnings remain visible.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `showGitChanges`. Older clients that omit it preserve the saved choice.
+
+## Cleared context history
+
+- Settings → General → Show messages from before a context clear defaults to off.
+- `bb settings general keepHistoryAfterContextClear true` keeps messages from
+  before the latest `Context cleared` boundary in the timeline, conversation
+  outline, and `bb thread log --message` lookups. The next prompt still starts a
+  fresh provider conversation, and the context meter still resets.
+- SDK callers use `sdk.system.updateGeneralSettings` with the current settings
+  and `keepHistoryAfterContextClear`. Older clients that omit it preserve the
+  saved choice.
 
 ## Keyboard shortcuts
 
@@ -66,6 +145,15 @@ every window and client sees the same value.
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
   Enter shortcuts for a connected Magic Keyboard.
 
+## Archive confirmation
+
+- `confirmThreadArchive` defaults to true. Set it with
+  `bb settings general confirmThreadArchive <true|false|on|off>`.
+- Turn it off to archive a parent and child threads without the confirmation
+  popup. Undo remains available in the archive toast. This server-wide setting
+  applies to all connected app clients. CLI and SDK archive calls remain
+  non-interactive.
+
 ## Streamer mode
 
 - `streamerMode` defaults to false. Set it with
@@ -80,6 +168,18 @@ every window and client sees the same value.
 - A composer whose stored selection is a hidden model falls back to the
   provider default, and the next send records that default. Select the custom
   model again after you turn streamer mode off.
+
+## Fast service tier
+
+- `allowFastServiceTier` defaults to true. Set it with
+  `bb settings general allowFastServiceTier <true|false|on|off>` or use the
+  switch in Settings → Providers.
+- When disabled, new turns use the default tier even if a request, project
+  default, automation, or queued message selected another tier (`fast`, Codex
+  `ultrafast`, or any other tier a provider lists). The app hides the service
+  tier control.
+  Turn it on to choose fast again; project defaults saved while it was off
+  retain the default tier.
 
 ## New branch prefix
 
@@ -131,10 +231,8 @@ every window and client sees the same value.
 
 ## Mobile app
 
-- The `mobileApp` experiment defaults to false while the bb mobile app is in
-  early access.
-- Enable it with `bb settings experiment mobileApp true`. It shows the
-  **Add mobile device** card under Settings → Remote access.
+- Downloads are available in Settings → Mobile without opting in.
+- Pair your phone under Settings → Mobile → **Add mobile device**.
 
 ## Changelog preview
 
@@ -142,29 +240,40 @@ every window and client sees the same value.
 - Enable it with `bb settings experiment changelogPreview true` to show the
   latest release notes on Settings → Updates.
 
-## Sidebar progressive disclosure
+## Navigation rail
 
-- The `sidebarProgressiveDisclosure` experiment defaults to false.
-- Enable it with `bb settings experiment sidebarProgressiveDisclosure true`.
-- In **By project** and **By machine**, it shows the first five groups in the
-  current sort order, keeps attention groups visible, and reveals ten more per
-  **Show more** click. Revealed groups stay visible through activity and
-  sort-order changes. **Manually** is unchanged.
+- A vertical rail of destinations sits on the left edge of the sidebar on
+  every screen size. Home is at the top and returns to the last thread; the
+  visible destinations (Plugins, Skills, and plugin panels) follow; More holds
+  hidden destinations and Customize rail; Settings is at the bottom.
+- New thread sits in the sidebar header and cannot be hidden. The list beside
+  the rail swaps between the thread list, Plugins, Skills, and Settings.
+- Collapsing the sidebar hides the list beside the rail and leaves the rail in
+  place.
+- `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels` order and show
+  or hide rail destinations.
+- In the macOS desktop app, wide windows add a title bar that holds the window
+  controls, Back and Forward, and the sidebar toggle. It shares the rail's
+  background, and the sidebar and page sit in a card below it.
+- On narrow windows and phones the rail sits inside the drawer. Home, Plugins,
+  Skills, and Settings swap the list beside it and leave the drawer open; a
+  plugin page closes it.
 
 ## Timeline windowing
 
-- The `timelineWindowing` experiment defaults to false.
-- Enable it with `bb settings experiment timelineWindowing true`.
-- It keeps stable timeline wrappers while mounting only rows near the active
-  main or nested detail scrollport.
+- Long timelines keep stable row wrappers while mounting only rows near the
+  active main or nested detail scrollport.
+- iPhone and iPad browsers, including the iOS app, keep every loaded row
+  mounted instead. Safari there cannot correct the scroll position during a
+  touch scroll's momentum, so rows measured above the viewport would move
+  the text being read.
 
-## Multi-machine picker
+## Server move
 
-- The `multiMachinePicker` experiment defaults to false.
-- Enable it with `bb settings experiment multiMachinePicker true`.
-- Projects with at least three machines use a searchable, target-first
-  environment picker. Machine-only pickers add search when they contain more
-  than five machines.
+- The `serverMove` experiment defaults to false.
+- Enable it with `bb settings experiment serverMove true`.
+- It shows Move server here in Settings → Machines and lets the server run
+  `bb server move`, `bb server export`, and old server copy deletion.
 
 Machine access: `bb settings general machineServerUrl https://bb.example.com`
 sets the server URL reachable by machines. Set `null` to use BB_EXTERNAL_URL.
@@ -185,13 +294,48 @@ This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
 
 Sidebar footer actions use `sidebar.footerOrder` and `sidebar.hiddenFooterItems`.
-Both are string lists shared across clients. Keys are `builtin:settings`,
+Both are string lists shared across clients. Keys are `builtin:mobile`,
 `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
-Right-click Hide moves an action into More; Settings → Appearance → Sidebar footer
-restores visibility and drag-reorders actions. CLI example:
-`bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'`.
-Use `bb settings ui reset sidebar.hiddenFooterItems` to show everything again.
+The footer shows as many icons as fit the sidebar's width. More is always
+available and holds hidden actions plus actions that don't fit; apart from
+Customize's minus, width overflow never changes saved visibility. More →
+Customize footer replaces the footer row with Footer and More menu zones: minus
+removes an icon and keeps current overflow hidden so its slot stays empty, plus
+adds a More item while the footer has room, and drag reorders within a zone. More → Hide footer
+hides every action, and Show footer shows them again.
+Right-click an action for Hide from footer or Customize footer.
+Settings → Appearance → Sidebar footer edits the same preferences. CLI example:
+`bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'`.
+Use `bb settings ui reset sidebar.hiddenFooterItems` to restore the default footer.
 
 Disable anonymous usage telemetry with `bb settings general telemetryEnabled false`
 or Settings → General → Privacy & diagnostics → Share anonymous usage data. This server-wide preference
 applies immediately and persists across restarts. `BB_TELEMETRY=false` overrides it.
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or its remote-access tunnel. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, this page compares the installed native build number
+with the published APK and shows whether an update is available. Older apps
+without build-number reporting cannot determine update status. Installed version
+and build are device-local; CLI and SDK release metadata report the published APK.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
+Right-clicking the composer microphone, pressing Shift+F10, or clicking the
+Microphone control in Settings → Voice Input opens client-local voice preferences: a desktop popover or mobile drawer. Opening it
+starts a local waveform preview; select an input directly from the list. Closing
+the picker stops the preview. The recording row has no microphone menu.
+Missing or unreadable inputs fall back automatically; a missing preference alone
+is informational. Sustained silence warns without switching devices or stopping
+capture. Device selection remains browser-local; server voice-service settings
+and file transcription commands are unchanged.

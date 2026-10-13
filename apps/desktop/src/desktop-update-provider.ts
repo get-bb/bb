@@ -88,6 +88,10 @@ export function resolveDesktopUpdateSupport(
     return { autoUpdate: false, versionCheck: true };
   }
 
+  if (args.platform === "windows") {
+    return { autoUpdate: true, versionCheck: true };
+  }
+
   const appImagePath = args.env.APPIMAGE?.trim() ?? "";
   if (appImagePath.length === 0) {
     return { autoUpdate: false, versionCheck: true };

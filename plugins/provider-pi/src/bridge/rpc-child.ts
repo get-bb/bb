@@ -1,12 +1,16 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { PassThrough, Writable, type Readable } from "node:stream";
 import {
   experimental_isProviderBridgeRecording,
+  experimental_killPortableProcess,
   experimental_readBoundedLines,
   experimental_recordProviderChildIo,
+  experimental_spawnPortableProcess,
   sanitizeInheritedChildProcessEnv,
   withoutBridgeRuntimeEnv,
 } from "@get-bb/plugin-sdk/provider-bridge";
+
+import { resolveWindowsPiProcessLaunch } from "./windows-pi-launch.js";
 
 export const PI_BRIDGE_COMMAND_ENV = "BB_PI_BRIDGE_COMMAND";
 export const PI_BRIDGE_ARGS_ENV = "BB_PI_BRIDGE_ARGS";
@@ -84,6 +88,15 @@ export function resolvePiLaunch(env: NodeJS.ProcessEnv): {
   return { command, args: parsed };
 }
 
+export function resolvePiProcessLaunch(
+  configEnv: NodeJS.ProcessEnv,
+  childEnv: NodeJS.ProcessEnv = configEnv,
+  cwd = process.cwd(),
+): { command: string; args: string[] } {
+  const launch = resolvePiLaunch(configEnv);
+  return resolveWindowsPiProcessLaunch(launch, childEnv, cwd);
+}
+
 export function buildPiChildEnv(
   overrides: Record<string, string>,
 ): NodeJS.ProcessEnv {
@@ -114,8 +127,10 @@ export class PiRpcChild {
     this.settledExit = new Promise((resolve) => {
       resolveSettledExit = resolve;
     });
-    const launch = resolvePiLaunch(process.env);
-    this.child = spawn(launch.command, [...launch.args, ...args.args], {
+    const launch = resolvePiProcessLaunch(process.env, args.env, args.cwd);
+    this.child = experimental_spawnPortableProcess({
+      command: launch.command,
+      args: [...launch.args, ...args.args],
       cwd: args.cwd,
       env: args.env,
       stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"],
@@ -263,12 +278,12 @@ export class PiRpcChild {
       this.killEscalation = setTimeout(() => {
         this.killEscalation = null;
         if (this.exitInfo === null) {
-          this.child.kill("SIGKILL");
+          experimental_killPortableProcess(this.child, "SIGKILL");
         }
       }, SIGKILL_ESCALATION_MS);
       this.killEscalation.unref?.();
     }
-    this.child.kill("SIGTERM");
+    experimental_killPortableProcess(this.child, "SIGTERM");
   }
 
   respondToExtensionUi(

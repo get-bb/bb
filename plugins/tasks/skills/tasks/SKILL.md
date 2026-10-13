@@ -74,6 +74,10 @@ For task dispatch and execution presets, read
    with `bb tasks update ABC-12 --no-parent`; the two parent flags cannot be
    combined.
 
+   Move a task and its sub-tasks to another tracker project with
+   `bb tasks move ABC-12 --project XYZ`. The task gets a new key in that
+   project; the old key keeps resolving, so use the new key from then on.
+
    If the work cannot proceed, leave the status accurate and comment with the
    specific blocker, what you tried, and what would unblock it. Do not mark a
    blocked task complete.
@@ -108,6 +112,21 @@ while the card loads and when the key no longer resolves. The rendered card
 shows the live status, title, and priority, opens the task in the thread
 side panel, and links to the full Tasks app. Emit one directive per line;
 each renders its own card.
+
+## CLI conventions
+
+- `bb tasks --help` lists every command, and `bb tasks <command> --help` prints
+  that command's arguments, accepted values, and limits. Both exit 0.
+- `--project` takes a tracker project prefix or id such as `ABC`, never a bb
+  project id (`proj_...`). `bb tasks project list` shows both columns.
+- `bb tasks status` reports the plugin's name and version. A task's workflow
+  status is `bb tasks list --status <status>` and
+  `bb tasks update ABC-12 --status <status>`.
+- Repeatable options (`--label`, `--status`, `--priority`, `--add-label`,
+  `--remove-label`) accept a repeated flag or one comma-separated list.
+- Unknown options and stray arguments are errors, never ignored, and every
+  missing required value is reported in one error. A failing command run with
+  `--json` prints `{"ok":false,"error":{"code","message","hint"?}}` on stdout.
 
 ## Invariants
 

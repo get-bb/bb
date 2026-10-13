@@ -5,4 +5,5 @@ export {
   isBareBbRealtimeWs,
   TunnelSession,
   type StreamOriginResult,
+  type TunnelSessionSnapshot,
 } from "./session.js";

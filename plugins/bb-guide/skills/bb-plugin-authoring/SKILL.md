@@ -18,6 +18,9 @@ Inspect the affected package and current SDK declarations to select backend,
 frontend, or both. Build the plugin and verify the affected contracts and user
 workflow. Install or reload when a live check is needed for the requested work.
 
+To find where a plugin can extend the app, open the Plugin Guide in bb or
+at https://getbb.app/plugin-guide.
+
 Use bb plugin new <name> for a new plugin. The scaffold includes frontend files.
 Remove `bb.app` and those files when the plugin is headless.
 
@@ -39,7 +42,8 @@ the same change.
 - Read references/backend-foundation.md for the factory, logging, settings,
   storage, server information, and host access.
 - Read references/backend-sdk.md for projects, environments, threads,
-  interactions, provider models, browser sessions, and event history.
+  interactions, provider models, browser sessions, event history, and calls to
+  another plugin's RPC.
 - Read references/backend-api-index.md to check every public backend, host,
   AI-service, and test export.
 - Read references/backend-events.md for lifecycle events, environment providers,

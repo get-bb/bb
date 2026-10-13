@@ -14,6 +14,7 @@ import {
   threadScope,
 } from "@bb/domain";
 import {
+  getLatestThreadSequence,
   getThread,
   type AppendStoredThreadEventArgs,
   type DbNotifier,
@@ -186,6 +187,9 @@ export function appendPendingInteractionTimelineEventInTransaction(
     appendThreadEventInTransaction(deps.db, write);
   }
   deps.hub.notifyThread(interaction.threadId, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, {
+      threadId: interaction.threadId,
+    }),
     eventTypes: writes.map((write) => write.type),
   });
 }

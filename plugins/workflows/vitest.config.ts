@@ -1,16 +1,12 @@
-import {
-  defineWorkspaceTestConfig,
-  sharedWorkerProjects,
-} from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
   test: {
+    name: "bb-plugin-workflows",
     environment: "node",
     testTimeout: 15_000,
-    projects: sharedWorkerProjects({
-      pkgDir: __dirname,
-      name: "bb-plugin-workflows",
-      include: ["src/**/*.test.{ts,tsx}"],
-    }),
+    include: ["src/**/*.test.{ts,tsx}"],
+    exclude: ["dist/**", "node_modules/**"],
   },
 });

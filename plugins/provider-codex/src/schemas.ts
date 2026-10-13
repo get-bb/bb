@@ -7,6 +7,7 @@ import {
   jsonRpcEnvelopeSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { codexAsyncQuestionSchema } from "./extension-kinds.js";
 import type { CodexErrorInfo as GeneratedCodexErrorInfo } from "./generated/codex-app-server/schema/v2/CodexErrorInfo.js";
 
 const codexTurnStatusSchema = z.enum([
@@ -323,6 +324,29 @@ export const codexPermissionsRequestApprovalParamsSchema = z.object({
   permissions: codexRequestPermissionsSchema,
 });
 
+const codexToolRequestUserInputOptionSchema = z.object({
+  label: z.string(),
+  description: z.string(),
+});
+
+const codexToolRequestUserInputQuestionSchema = z.object({
+  id: z.string(),
+  header: z.string(),
+  question: z.string(),
+  isSecret: z.boolean().default(false),
+  options: z
+    .array(codexToolRequestUserInputOptionSchema)
+    .nullable()
+    .default(null),
+});
+
+export const codexToolRequestUserInputParamsSchema = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  itemId: z.string(),
+  questions: z.array(codexToolRequestUserInputQuestionSchema),
+});
+
 const codexThreadItemEnvelopeSchema = z
   .object({
     type: z.string(),
@@ -342,6 +366,13 @@ export const codexSubAgentActivityItemSchema = z
 export type CodexSubAgentActivityItem = z.infer<
   typeof codexSubAgentActivityItemSchema
 >;
+
+export const codexAsyncQuestionItemSchema = z.object({
+  type: z.literal("agentMessage"),
+  id: z.string().min(1),
+  delivery: z.literal("async"),
+  questions: z.array(codexAsyncQuestionSchema).min(1),
+});
 
 export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
   z
@@ -539,13 +570,14 @@ const codexTurnErrorSchema = z
   })
   .passthrough();
 
-const codexTurnSchema = z
+export const codexTurnSchema = z
   .object({
     id: z.string(),
     status: codexTurnStatusSchema,
     error: codexTurnErrorSchema.nullable().optional(),
   })
   .passthrough();
+export type CodexTurn = z.infer<typeof codexTurnSchema>;
 
 const codexThreadSchema = z
   .object({

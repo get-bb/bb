@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { PromptStackCollapseRow } from "@bb/shared-ui/prompt-stack-disclosure";
 
 interface AnimatedBodyProps {
   id: string;
@@ -28,6 +29,7 @@ export function AnimatedBody({
       role="region"
       aria-labelledby={labelledBy}
       aria-hidden={!isExpanded}
+      inert={!isExpanded}
       className={cn(
         "grid overflow-hidden transition-[grid-template-rows,opacity,border-color] duration-200 ease-out",
         isExpanded
@@ -42,5 +44,33 @@ export function AnimatedBody({
         {isBodyRealized ? children : null}
       </div>
     </section>
+  );
+}
+
+interface AnimatedDisclosureBodyProps extends AnimatedBodyProps {
+  collapseLabel: string;
+  collapseRef: RefObject<HTMLButtonElement | null>;
+  onCollapse: () => void;
+}
+
+export function AnimatedDisclosureBody({
+  collapseLabel,
+  collapseRef,
+  onCollapse,
+  children,
+  ...bodyProps
+}: AnimatedDisclosureBodyProps) {
+  return (
+    <AnimatedBody {...bodyProps}>
+      {children}
+      <div className="px-1 pb-1">
+        <PromptStackCollapseRow
+          buttonRef={collapseRef}
+          controlsId={bodyProps.id}
+          label={collapseLabel}
+          onCollapse={onCollapse}
+        />
+      </div>
+    </AnimatedBody>
   );
 }

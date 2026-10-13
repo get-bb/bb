@@ -1,5 +1,6 @@
 import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
-import { sliceUtf16HeadAndTail } from "@bb/domain/utf16";
+import { sliceUtf16HeadAndTail } from "@bb/text-utils";
+import { mapTimelineResponseRows } from "./timeline-output-truncation.js";
 
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS = 4_000;
 export const TIMELINE_INLINE_OUTPUT_PREVIEW_HEAD_CHARS = 2_000;
@@ -20,8 +21,24 @@ function buildTimelineOutputPreview(output: string): string {
 }
 
 function previewRow(row: TimelineRow): TimelineRow {
+  if (row.kind === "turn") {
+    if (row.children === null) {
+      return row;
+    }
+    const children = previewTimelineRowOutputs(row.children);
+    return children === row.children ? row : { ...row, children };
+  }
+  if (row.kind !== "work") {
+    return row;
+  }
+  if (row.workKind === "delegation") {
+    if (row.childRows === null) {
+      return row;
+    }
+    const childRows = previewTimelineRowOutputs(row.childRows);
+    return childRows === row.childRows ? row : { ...row, childRows };
+  }
   if (
-    row.kind !== "work" ||
     (row.workKind !== "command" && row.workKind !== "tool") ||
     row.output.length <= TIMELINE_INLINE_OUTPUT_PREVIEW_THRESHOLD_CHARS
   ) {
@@ -37,16 +54,20 @@ function previewRow(row: TimelineRow): TimelineRow {
   };
 }
 
+export function previewTimelineRowOutputs(rows: TimelineRow[]): TimelineRow[] {
+  let changed = false;
+  const previewed = rows.map((row) => {
+    const next = previewRow(row);
+    if (next !== row) {
+      changed = true;
+    }
+    return next;
+  });
+  return changed ? previewed : rows;
+}
+
 export function previewTimelineResponseOutputs(
   response: ThreadTimelineResponse,
 ): ThreadTimelineResponse {
-  let changed = false;
-  const rows = response.rows.map((row) => {
-    const previewed = previewRow(row);
-    if (previewed !== row) {
-      changed = true;
-    }
-    return previewed;
-  });
-  return changed ? { ...response, rows } : response;
+  return mapTimelineResponseRows(response, previewTimelineRowOutputs);
 }

@@ -1,3 +1,4 @@
+import { rawThreadIdSchema } from "@bb/domain";
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
@@ -65,8 +66,20 @@ interface ShellToken {
   readonly quoted: boolean;
 }
 
-function tokenizeShellWords(command: string): ShellToken[] {
-  const tokens: ShellToken[] = [];
+function visitShellCommandSegments(
+  command: string,
+  visit: (segment: ShellToken[]) => boolean,
+): void {
+  let segment: ShellToken[] = [];
+  const appendToken = (token: ShellToken): boolean => {
+    if (!token.quoted && SHELL_SEGMENT_BREAK_TOKENS.has(token.value)) {
+      const completed = segment;
+      segment = [];
+      return completed.length === 0 || visit(completed);
+    }
+    segment.push(token);
+    return true;
+  };
   let current = "";
   let currentHasQuoted = false;
   let currentHasUnquoted = false;
@@ -80,18 +93,19 @@ function tokenizeShellWords(command: string): ShellToken[] {
     currentHasUnquoted = true;
   };
 
-  const flushCurrent = (): void => {
+  const flushCurrent = (): boolean => {
     const fullyQuoted = currentHasQuoted && !currentHasUnquoted;
     const hasContent = current.length > 0;
     if (!hasContent && !fullyQuoted) {
       currentHasQuoted = false;
       currentHasUnquoted = false;
-      return;
+      return true;
     }
-    tokens.push({ value: current, quoted: fullyQuoted });
+    const keepGoing = appendToken({ value: current, quoted: fullyQuoted });
     current = "";
     currentHasQuoted = false;
     currentHasUnquoted = false;
+    return keepGoing;
   };
 
   for (let index = 0; index < command.length; index += 1) {
@@ -141,30 +155,30 @@ function tokenizeShellWords(command: string): ShellToken[] {
     }
 
     if (character === "\n") {
-      flushCurrent();
-      tokens.push({ value: "\n", quoted: false });
+      if (!flushCurrent()) return;
+      if (!appendToken({ value: "\n", quoted: false })) return;
       continue;
     }
 
     if (/\s/u.test(character)) {
-      flushCurrent();
+      if (!flushCurrent()) return;
       continue;
     }
 
     if (character === "|" || character === "&" || character === ";") {
       if (character === "&" && command[index + 1] === ">") {
-        flushCurrent();
+        if (!flushCurrent()) return;
         if (command[index + 2] === ">") {
-          tokens.push({ value: "&>>", quoted: false });
+          if (!appendToken({ value: "&>>", quoted: false })) return;
           index += 2;
         } else {
-          tokens.push({ value: "&>", quoted: false });
+          if (!appendToken({ value: "&>", quoted: false })) return;
           index += 1;
         }
         continue;
       }
 
-      flushCurrent();
+      if (!flushCurrent()) return;
 
       const nextCharacter = command[index + 1];
       if (
@@ -172,12 +186,18 @@ function tokenizeShellWords(command: string): ShellToken[] {
         ((character === "|" && nextCharacter === "|") ||
           (character === "&" && nextCharacter === "&"))
       ) {
-        tokens.push({ value: `${character}${nextCharacter}`, quoted: false });
+        if (
+          !appendToken({
+            value: `${character}${nextCharacter}`,
+            quoted: false,
+          })
+        )
+          return;
         index += 1;
         continue;
       }
 
-      tokens.push({ value: character, quoted: false });
+      if (!appendToken({ value: character, quoted: false })) return;
       continue;
     }
 
@@ -189,7 +209,7 @@ function tokenizeShellWords(command: string): ShellToken[] {
         current = "";
         currentHasUnquoted = false;
       } else if (current.length > 0 || currentHasQuoted) {
-        flushCurrent();
+        if (!flushCurrent()) return;
       }
 
       const next1 = command[index + 1];
@@ -231,7 +251,7 @@ function tokenizeShellWords(command: string): ShellToken[] {
         }
       }
 
-      tokens.push({ value: `${prefix}${op}`, quoted: false });
+      if (!appendToken({ value: `${prefix}${op}`, quoted: false })) return;
       index += consumed - 1;
       continue;
     }
@@ -244,9 +264,9 @@ function tokenizeShellWords(command: string): ShellToken[] {
     current += "\\";
     recordUnquoted();
   }
-  flushCurrent();
+  if (!flushCurrent()) return;
 
-  return tokens;
+  if (segment.length > 0) visit(segment);
 }
 
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/u;
@@ -308,24 +328,6 @@ function isSedInPlaceFlag(token: string): boolean {
   if (token === "--in-place") return true;
   if (token.startsWith("--in-place=")) return true;
   return /^-i(?:$|[^-])/u.test(token);
-}
-
-function splitShellCommandSegments(command: string): ShellToken[][] {
-  const tokens = tokenizeShellWords(command);
-  const segments: ShellToken[][] = [];
-  let current: ShellToken[] = [];
-  for (const token of tokens) {
-    if (!token.quoted && SHELL_SEGMENT_BREAK_TOKENS.has(token.value)) {
-      if (current.length > 0) {
-        segments.push(current);
-        current = [];
-      }
-      continue;
-    }
-    current.push(token);
-  }
-  if (current.length > 0) segments.push(current);
-  return segments;
 }
 
 function scanRedirectAt(
@@ -546,15 +548,204 @@ export function parseShellCommandIntents(
 ): EventProjectionToolParsedIntent[] {
   if (!command) return [];
 
-  const segments = splitShellCommandSegments(command);
-  const classifications = segments.map((segment) =>
-    classifyShellSegment(segment, command),
-  );
+  let intents: EventProjectionToolParsedIntent[] = [];
+  visitShellCommandSegments(command, (segment) => {
+    const classification = classifyShellSegment(segment, command);
+    if (classification.kind === "write") {
+      intents = [];
+      return false;
+    }
+    if (classification.kind === "intent" && intents.length === 0) {
+      intents.push(classification.intent);
+    }
+    return true;
+  });
+  return intents;
+}
 
-  if (classifications.some((c) => c.kind === "write")) return [];
+const THREAD_TELL_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  "--message-file",
+  "--model",
+  "--service-tier",
+  "--reasoning-level",
+  "--permission-mode",
+  "--mode",
+]);
 
-  for (const classification of classifications) {
-    if (classification.kind === "intent") return [classification.intent];
+const THREAD_TELL_BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+  "--json",
+  "--plan",
+]);
+
+const THREAD_TELL_HINT = /\bthread\s+(?:tell|message)\b/u;
+const BB_CLI_TOKEN = /^\$\{?BB_CLI(?::-[^}]*)?\}?$/u;
+const SHELL_VARIABLE_TOKEN = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/u;
+const SHELL_EXPANSION = /[$`]/u;
+const HEREDOC_ASSIGNMENT =
+  /^([A-Za-z_][A-Za-z0-9_]*)=\$\(cat <<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4\n[ \t]*\)[ \t]*\n([^\n]*)$/u;
+const STDIN_HEREDOC =
+  /^([^\n]*?)<<(-?)[ \t]*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\3[ \t]*\n([\s\S]*?)\n(\t*)\4$/u;
+
+export interface ThreadTellCommand {
+  threadId: string;
+  message: string;
+}
+
+interface ThreadTellScript {
+  line: string;
+  stdin: string | null;
+  variable: { name: string; value: string } | null;
+}
+
+interface HeredocMatch {
+  body: string;
+  dash: string;
+  quote: string;
+  terminatorTabs: string;
+}
+
+function heredocBody({
+  body,
+  dash,
+  quote,
+  terminatorTabs,
+}: HeredocMatch): string | null {
+  if (terminatorTabs !== "" && dash !== "-") return null;
+  if (quote === "" && /[$`\\]/u.test(body)) return null;
+  return dash === "-" ? body.replace(/^\t+/gmu, "") : body;
+}
+
+function splitThreadTellScript(script: string): ThreadTellScript | null {
+  let line = script.trim();
+  let variable: ThreadTellScript["variable"] = null;
+  const assignment = HEREDOC_ASSIGNMENT.exec(line);
+  if (assignment) {
+    const [, name, dash, quote, , body, terminatorTabs, rest] = assignment;
+    const value = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
+    });
+    if (value === null) return null;
+    variable = { name: name!, value };
+    line = rest!.trim();
   }
-  return [];
+  let stdin: string | null = null;
+  const piped = STDIN_HEREDOC.exec(line);
+  if (piped) {
+    const [, head, dash, quote, , body, terminatorTabs] = piped;
+    stdin = heredocBody({
+      body: body!,
+      dash: dash!,
+      quote: quote!,
+      terminatorTabs: terminatorTabs!,
+    });
+    if (stdin === null) return null;
+    line = head!.trim();
+  }
+  return { line, stdin, variable };
+}
+
+function resolveThreadTellMessage(
+  value: string,
+  variable: ThreadTellScript["variable"],
+): string | null {
+  const name = SHELL_VARIABLE_TOKEN.exec(value)?.[1];
+  if (name !== undefined) {
+    return variable !== null && variable.name === name ? variable.value : null;
+  }
+  return SHELL_EXPANSION.test(value) ? null : value;
+}
+
+function parseThreadTellSegment(
+  tokens: readonly ShellToken[],
+  script: ThreadTellScript,
+): ThreadTellCommand | null {
+  const commandIndex = getCommandTokenIndex(tokens);
+  const [cli, group, verb, ...argTokens] = tokens.slice(commandIndex);
+  if (
+    cli === undefined ||
+    (baseExecutableName(cli.value) !== "bb" && !BB_CLI_TOKEN.test(cli.value)) ||
+    group?.value !== "thread" ||
+    (verb?.value !== "tell" && verb?.value !== "message")
+  ) {
+    return null;
+  }
+  const positionals: string[] = [];
+  let messageFile: string | null = null;
+  for (let index = 0; index < argTokens.length; index += 1) {
+    const token = argTokens[index]!;
+    const redirect = scanRedirectAt(argTokens, index);
+    if (redirect) {
+      index += redirect.consumedExtra;
+      continue;
+    }
+    if (!token.quoted && token.value.startsWith("-") && token.value !== "-") {
+      const equals = token.value.indexOf("=");
+      const flag = equals === -1 ? token.value : token.value.slice(0, equals);
+      if (THREAD_TELL_BOOLEAN_FLAGS.has(flag) && equals === -1) continue;
+      if (!THREAD_TELL_VALUE_FLAGS.has(flag)) return null;
+      let value: string | undefined = token.value.slice(equals + 1);
+      if (equals === -1) {
+        index += 1;
+        value = argTokens[index]?.value;
+      }
+      if (flag === "--message-file") messageFile = value ?? null;
+      continue;
+    }
+    positionals.push(token.value);
+  }
+  const [threadId, messageArg, ...extra] = positionals;
+  let message: string | null = null;
+  if (messageArg !== undefined && messageFile === null) {
+    message = resolveThreadTellMessage(messageArg, script.variable);
+  } else if (messageArg === undefined && messageFile === "-") {
+    message = script.stdin;
+  }
+  if (
+    extra.length > 0 ||
+    threadId === undefined ||
+    !rawThreadIdSchema.safeParse(threadId).success ||
+    message === null ||
+    message.trim().length === 0
+  ) {
+    return null;
+  }
+  return { threadId, message };
+}
+
+export function parseThreadTellCommand(
+  command: string,
+): ThreadTellCommand | null {
+  if (!THREAD_TELL_HINT.test(command)) return null;
+  const unwrapped = extractShellCommandFromString(command);
+  if (unwrapped === undefined) return null;
+  const script = splitThreadTellScript(unwrapped);
+  if (script === null) return null;
+  const segments: ShellToken[][] = [];
+  visitShellCommandSegments(script.line, (segment) => {
+    segments.push(segment);
+    return segments.length < 2;
+  });
+  return segments.length === 1
+    ? parseThreadTellSegment(segments[0]!, script)
+    : null;
+}
+
+interface CommandCall {
+  command: string;
+  exitCode: number | null;
+  status: string;
+}
+
+export function parseSentThreadMessage({
+  command,
+  exitCode,
+  status,
+}: CommandCall): ThreadTellCommand | null {
+  if (status !== "completed" || (exitCode !== null && exitCode !== 0)) {
+    return null;
+  }
+  return parseThreadTellCommand(command);
 }

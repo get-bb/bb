@@ -1,5 +1,6 @@
 import type {
   PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderRestoreContext,
   PluginEnvironmentProviderValidateContext,
 } from "@get-bb/plugin-sdk/environment-provider";
 import {
@@ -11,9 +12,8 @@ import { describe, expect, it, vi } from "vitest";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin from "./server.js";
 
-type Environment = NonNullable<
-  PluginEnvironmentProviderCreateContext["previous"]
->["environment"];
+type Environment =
+  PluginEnvironmentProviderRestoreContext["previous"]["environment"];
 type ThreadRow = { id: string; environmentId: string | null; status: string };
 
 const HOST = makeHostResponse({ id: "host-a", name: "Fake machine" });
@@ -306,9 +306,7 @@ it.each([false, true])(
         suggestedBranchName: "bb/test",
         attempt: 1,
         pathKey: "fixture",
-        rebuild: false,
         experimental_claimPath: async () => true,
-        previous: null,
         report: { step() {}, log() {} },
         signal: new AbortController().signal,
       });
@@ -355,9 +353,7 @@ it.each(["branch", "timeout", "abort"] as const)(
         suggestedBranchName: "bb/test",
         attempt: 1,
         pathKey: "blocked",
-        rebuild: false,
         experimental_claimPath: claim,
-        previous: null,
         report: { step() {}, log() {} },
         signal: controller.signal,
       });
@@ -383,3 +379,111 @@ it.each(["branch", "timeout", "abort"] as const)(
     }
   },
 );
+
+describe("checkout provider existing path", () => {
+  it.each([
+    [{ path: CHECKOUT_PATH }, CHECKOUT_PATH],
+    [{}, null],
+    [
+      { path: CHECKOUT_PATH, branch: { kind: "new", baseBranch: "main" } },
+      null,
+    ],
+    [{ path: CHECKOUT_PATH, branch: { kind: "existing", name: "main" } }, null],
+  ] as const)(
+    "reuses the recorded environment for %j: %s",
+    async (inputs, expected) => {
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "environment-project-checkout",
+      });
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      expect(provider?.experimental_existingPath?.(inputs)).toBe(expected);
+    },
+  );
+});
+
+describe("restoring a destroyed checkout environment", () => {
+  async function restoreWith(args: {
+    inputs: PluginEnvironmentProviderRestoreContext["inputs"];
+    branchName: string | null;
+  }) {
+    const attachCalls: unknown[] = [];
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "environment-project-checkout",
+      experimental_callHostRpc: (call) => {
+        if (call.method !== "attach") throw new Error("Unexpected host method");
+        attachCalls.push(call.input);
+        return { status: "attached", path: CHECKOUT_PATH, branchName: null };
+      },
+      sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
+    });
+    try {
+      await plugin(bb);
+      const provider = harness.registrations.environmentProviders.get(
+        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
+      );
+      const restore = provider?.restore;
+      if (!restore) throw new Error("Missing restore");
+      const result = await restore({
+        project: PROJECT,
+        host: HOST,
+        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
+        gitRemote: null,
+        inputs: args.inputs,
+        thread: makeThreadResponse(),
+        attempt: 2,
+        pathKey: "restored",
+        experimental_claimPath: async () => true,
+        previous: {
+          environment: {
+            ...environmentAt(CHECKOUT_PATH),
+            status: "destroyed",
+            branchName: args.branchName,
+          },
+          resource: null,
+        },
+        report: { step() {}, log() {} },
+        signal: new AbortController().signal,
+      });
+      return { attachCalls, result };
+    } finally {
+      await harness.lifecycle.dispose();
+    }
+  }
+
+  it("switches back to the thread's own branch instead of recreating it from its base", async () => {
+    const { attachCalls, result } = await restoreWith({
+      inputs: { branch: { kind: "new", baseBranch: "main" } },
+      branchName: "bb/thread-branch",
+    });
+    expect(result).toMatchObject({ status: "created", path: CHECKOUT_PATH });
+    expect(attachCalls).toEqual([
+      expect.objectContaining({
+        path: CHECKOUT_PATH,
+        branch: { kind: "existing", name: "bb/thread-branch" },
+      }),
+    ]);
+  });
+
+  it("re-attaches a checkout used as-is without switching branches", async () => {
+    const { attachCalls } = await restoreWith({
+      inputs: {},
+      branchName: "feature",
+    });
+    expect(attachCalls).toEqual([expect.objectContaining({ branch: null })]);
+  });
+
+  it("refuses when the thread's branch was never recorded", async () => {
+    const { attachCalls, result } = await restoreWith({
+      inputs: { branch: { kind: "new", baseBranch: "main" } },
+      branchName: null,
+    });
+    expect(result).toMatchObject({
+      status: "failed",
+      message: expect.stringContaining("no branch"),
+    });
+    expect(attachCalls).toHaveLength(0);
+  });
+});

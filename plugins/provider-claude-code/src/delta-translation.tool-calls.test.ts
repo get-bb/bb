@@ -38,6 +38,7 @@ describe("claude tool-use translation (delta path)", () => {
         item: expect.objectContaining({
           type: "commandExecution",
           id: harness.itemId("tool-1"),
+          command: "ls",
           status: "pending",
         }),
       }),
@@ -763,70 +764,6 @@ describe("claude tool-result translation (delta path)", () => {
           type: "commandExecution",
           id: harness.itemId("tool-1"),
           status: "completed",
-        }),
-      }),
-    );
-  });
-
-  it("closes a task-list call with its text result and folds the structured result into the plan", () => {
-    const harness = createClaudeDeltaHarness();
-
-    harness.translate({
-      type: "assistant",
-      message: {
-        role: "assistant",
-        content: [
-          {
-            type: "tool_use",
-            id: "task-create-1",
-            name: "TaskCreate",
-            input: {
-              subject: "Add task support",
-              description: "Track Claude Task tools",
-              activeForm: "Adding task support",
-            },
-          },
-        ],
-      },
-      session_id: "sess-1",
-    });
-
-    const events = harness.translate({
-      type: "user",
-      message: {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: "task-create-1",
-            content: "Task #task-1 created successfully: Add task support",
-          },
-        ],
-      },
-      session_id: "sess-1",
-      tool_use_result: {
-        task: { id: "task-1", subject: "Add task support" },
-      },
-    });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "toolCall",
-          id: harness.itemId("task-create-1"),
-          tool: "TaskCreate",
-          result: "Task #task-1 created successfully: Add task support",
-          status: "completed",
-        }),
-      }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "planSteps",
-          steps: [{ step: "Add task support", status: "pending" }],
         }),
       }),
     );

@@ -1,6 +1,6 @@
 import type { registerHandlers } from "../api";
 import { tasksRpcContract, type Task } from "../shared/contract";
-import { allocatePrefix } from "./args";
+import { allocatePrefix } from "./prefix";
 
 type TasksDomain = ReturnType<typeof registerHandlers>;
 

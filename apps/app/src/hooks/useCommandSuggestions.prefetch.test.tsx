@@ -36,7 +36,8 @@ const BASE_ARGS = {
   projectId: "project-1",
   providerId: "codex",
   commandScope: "thread" as const,
-  skillsTrigger: "/" as const,
+  skillsTriggers: ["/"] as const,
+  activeTrigger: null,
   environmentId: "env-1",
   query: null,
 };
@@ -93,12 +94,58 @@ describe("useCommandSuggestions catalog prefetch", () => {
     mockPointer(true);
     const { wrapper } = createQueryClientTestHarness();
 
-    renderHook(() => useCommandSuggestions({ ...BASE_ARGS, query: "" }), {
-      wrapper,
-    });
+    renderHook(
+      () =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          activeTrigger: "/",
+          query: "",
+        }),
+      { wrapper },
+    );
 
     await waitFor(() => {
       expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("offers only skills for the explicit dollar trigger", async () => {
+    mockPointer(false);
+    vi.mocked(sdk.projects.commands).mockResolvedValue({
+      commands: [
+        {
+          name: "writing-for-agents",
+          source: "skill",
+          origin: "user",
+          description: "Write agent instructions",
+          argumentHint: null,
+        },
+        {
+          name: "plan",
+          source: "command",
+          origin: "builtin",
+          description: "Plan work",
+          argumentHint: null,
+        },
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          activeTrigger: "$",
+          skillsTriggers: ["/", "$"] as const,
+          query: "",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(
+        result.current.suggestions.map((suggestion) => suggestion.name),
+      ).toEqual(["writing-for-agents"]);
     });
   });
 });

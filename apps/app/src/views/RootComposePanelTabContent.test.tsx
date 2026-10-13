@@ -70,8 +70,8 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
   }),
 }));
 
-vi.mock("@/components/secondary-panel/useThreadStorageViewer", () => ({
-  useThreadStorageViewer: () => ({ threadStorageRootPath: null }),
+vi.mock("@/hooks/queries/thread-queries", () => ({
+  useThreadStorageLocation: () => ({ data: undefined }),
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
@@ -115,7 +115,7 @@ const baseProps = {
   rootPanelThreadId: "thread-current",
   rootProjectHostId: "host-current",
   shouldAutoFocusNewTab: false,
-  shouldAutoFocusTerminal: false,
+  autoFocusTerminalId: null,
   terminalTarget: {
     kind: "environment",
     environmentId: "env-current",

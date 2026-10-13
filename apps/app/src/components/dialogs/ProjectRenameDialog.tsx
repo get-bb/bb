@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
-import { RenameDialog, RenameDialogContent } from "./RenameDialog";
+import { RenameDialog } from "@bb/shared-ui/rename-dialog";
+import { RenameDialogContent } from "./RenameDialogContent";
 
 export interface ProjectRenameDialogTarget {
   id: string;

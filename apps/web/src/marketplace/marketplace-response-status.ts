@@ -1,8 +1,9 @@
-const MARKETPLACE_HTML_CACHE_CONTROL = "public, max-age=300, must-revalidate";
+const MARKETPLACE_HTML_CACHE_CONTROL = "no-cache";
 
 function isMarketplaceHtmlPath(pathname: string): boolean {
   if (pathname.startsWith("/marketplace/v1/")) return false;
   if (pathname.startsWith("/marketplace/v2/")) return false;
+  if (pathname.startsWith("/marketplace/og/")) return false;
   return pathname === "/marketplace" || pathname.startsWith("/marketplace/");
 }
 

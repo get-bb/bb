@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { experimental_copyToClipboard } from "@get-bb/plugin-sdk/app";
 import type * as MonacoNs from "monaco-editor";
 
 type Editor = MonacoNs.editor.IStandaloneCodeEditor;
@@ -61,15 +62,12 @@ function monacoAction(
   };
 }
 
-export function copy(text: string, successMessage: string): Promise<void> {
-  return navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      toast.success(successMessage);
-    })
-    .catch(() => {
-      toast.error("Failed to copy");
-    });
+export async function copy(text: string, successMessage: string): Promise<void> {
+  if (await experimental_copyToClipboard({ text })) {
+    toast.success(successMessage);
+  } else {
+    toast.error("Failed to copy");
+  }
 }
 
 export const EDITOR_COMMANDS: readonly EditorCommand[] = [

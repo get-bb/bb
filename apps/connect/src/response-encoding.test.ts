@@ -40,6 +40,8 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
       new URL(frame.path, "http://origin.local").searchParams.get(
         "cacheable",
       ) === "1";
+    const cookieBoundary =
+      frame.path === "/cookie-boundary" || frame.path === "/install.sh";
     send({
       type: "resp-head",
       streamId: frame.streamId,
@@ -49,6 +51,20 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
         ["content-encoding", "gzip"],
         ["content-length", String(GZIP.byteLength)],
         ["cache-control", cacheable ? IMMUTABLE : "no-store"],
+        ...(cookieBoundary
+          ? ([
+              ["set-cookie", "tenant=kept; Path=/; HttpOnly"],
+              [
+                "set-cookie",
+                "__Secure-better-auth.session_token=stolen; Secure; Path=/",
+              ],
+              ["set-cookie", "parent=stolen; Domain=.relay.test; Path=/"],
+              [
+                "x-origin-cookie",
+                frame.headers.find(([name]) => name === "cookie")?.[1] ?? "",
+              ],
+            ] satisfies [string, string][])
+          : []),
       ],
     });
     send({
@@ -60,11 +76,15 @@ function serveOriginOverTunnel(ws: ClientWebSocket): void {
   });
 }
 
+const TRANSPORTS = ["object-held", "worker-held"] as const;
+type Transport = (typeof TRANSPORTS)[number];
+
 async function get(
   path: string,
+  transport: Transport = "object-held",
 ): Promise<{ status: number; encoding: string | null; body: Buffer }> {
   const res = await mf.dispatchFetch(`https://relay.test${path}`, {
-    headers: { "accept-encoding": "gzip" },
+    headers: { "accept-encoding": "gzip", "x-fixture-transport": transport },
   });
   return {
     status: res.status,
@@ -111,12 +131,15 @@ afterAll(async () => {
 });
 
 describe("relaying a gzip-encoded origin response", () => {
-  it("hands the visitor a body that decodes back to the origin's HTML", async () => {
-    const res = await get("/index.html");
+  it.each(TRANSPORTS)(
+    "hands the visitor a body that decodes back to the origin's HTML (%s response)",
+    async (transport) => {
+      const res = await get(`/${transport}/index.html`, transport);
 
-    expect(res.status).toBe(200);
-    expect(res.body.toString("utf8")).toBe(HTML);
-  });
+      expect(res.status).toBe(200);
+      expect(res.body.toString("utf8")).toBe(HTML);
+    },
+  );
 
   it("would corrupt the response if it were rebuilt with workerd's default encoding", async () => {
     const res = await get("/legacy-relay");
@@ -126,17 +149,63 @@ describe("relaying a gzip-encoded origin response", () => {
     expect(res.body.toString("utf8")).not.toBe(HTML);
     expect(gunzipSync(res.body).toString("utf8")).toBe(HTML);
   });
+
+  it.each(TRANSPORTS)(
+    "preserves compressed bodies when enforcing the cookie boundary (%s response)",
+    async (transport) => {
+      for (const path of ["/cookie-boundary", "/install.sh"]) {
+        const response = await mf.dispatchFetch(`https://relay.test${path}`, {
+          headers: {
+            "accept-encoding": "gzip",
+            "x-fixture-transport": transport,
+            cookie:
+              "tenant=kept; __Secure-better-auth.session_token=secret; __Secure-bb-connect.desktop_session=secret",
+          },
+        });
+        expect(response.status).toBe(200);
+        expect(response.headers.getSetCookie()).toEqual([
+          "tenant=kept; Path=/; HttpOnly",
+        ]);
+        expect(response.headers.get("x-origin-cookie")).toBe("tenant=kept");
+        expect(response.headers.get("content-type")).toBe(
+          path === "/install.sh"
+            ? "text/plain; charset=utf-8"
+            : "text/html; charset=utf-8",
+        );
+        if (path === "/install.sh") {
+          expect(response.headers.get("content-security-policy")).toBe(
+            "sandbox",
+          );
+          expect(response.headers.get("x-content-type-options")).toBe(
+            "nosniff",
+          );
+        }
+        expect(await response.text()).toBe(HTML);
+      }
+    },
+  );
 });
 
 describe("edge cache", () => {
-  it("keeps the body decodable on both the miss and the hit", async () => {
-    const miss = await get("/asset.js?cacheable=1");
-    expect(miss.body.toString("utf8")).toBe(HTML);
+  it.each(TRANSPORTS)(
+    "keeps the body decodable on both the miss and the hit (%s response)",
+    async (transport) => {
+      const path = `/${transport}/asset.js?cacheable=1`;
+      const miss = await get(path, transport);
+      expect(miss.body.toString("utf8")).toBe(HTML);
 
-    const hit = await get("/asset.js?cacheable=1");
-    expect(hit.status).toBe(200);
-    expect(hit.body.toString("utf8")).toBe(HTML);
-  });
+      for (const reader of TRANSPORTS) {
+        const hit = await get(path, reader);
+        expect(hit.status).toBe(200);
+        expect(hit.body.toString("utf8")).toBe(HTML);
+      }
+      const marker = await mf.dispatchFetch(`https://relay.test${path}`, {
+        headers: { "x-fixture-transport": transport },
+      });
+      expect(marker.headers.get("x-bb-cache")).toBe("hit");
+      await marker.arrayBuffer();
+    },
+  );
 
   it("content-decodes a relayed body as the gate reads it", async () => {
     const res = await mf.dispatchFetch("https://relay.test/subrequest-bytes");

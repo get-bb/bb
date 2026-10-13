@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fff17f7f-b6ad-4fc3-89c1-363790347638",
+  "id": "b397e64e-ad43-4c17-a389-538af608fb6e",
   "prevId": "9e929359-ef83-4092-a7f9-edf93437e28b",
   "tables": {
     "app_settings": {
@@ -4086,6 +4086,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "lifecycle_owner_thread_id": {
+          "name": "lifecycle_owner_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "source_thread_id": {
           "name": "source_thread_id",
           "type": "text",
@@ -4164,14 +4171,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "awaiting_user_reply": {
-          "name": "awaiting_user_reply",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -4221,6 +4220,13 @@
           "name": "threads_environment_idx",
           "columns": [
             "environment_id"
+          ],
+          "isUnique": false
+        },
+        "threads_lifecycle_owner_idx": {
+          "name": "threads_lifecycle_owner_idx",
+          "columns": [
+            "lifecycle_owner_thread_id"
           ],
           "isUnique": false
         },
@@ -4334,6 +4340,19 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "threads_lifecycle_owner_thread_id_threads_id_fk": {
+          "name": "threads_lifecycle_owner_thread_id_threads_id_fk",
+          "tableFrom": "threads",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "lifecycle_owner_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "threads_source_thread_id_threads_id_fk": {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { betterAuth } from "better-auth";
@@ -13,6 +14,8 @@ const AUTH_SECRET_FILE_NAME = "auth-secret";
 export const DAEMON_ENROLL_CONFIG_ID = "daemon-enroll";
 export const DAEMON_HOST_CONFIG_ID = "daemon-host";
 const ENROLL_KEY_TTL_SECONDS = 60 * 15;
+const DAEMON_KEY_CACHE_TTL_MS = 30_000;
+const DAEMON_KEY_CACHE_MAX_ENTRIES = 1024;
 const MACHINE_AUTH_SYSTEM_USER_ID = "bb-machine-auth-system-user";
 const MACHINE_AUTH_SYSTEM_USER_EMAIL = "machine-auth@bb.internal";
 const MACHINE_AUTH_SYSTEM_USER_NAME = "Machine Auth System";
@@ -25,7 +28,9 @@ const machineAuthSchema = {
 const currentMachineCredentialMetadataSchema = z
   .object({
     hostId: z.string().min(1),
-    enrollSource: z.enum(["loopback", "public-multi-machine"]).optional(),
+    enrollSource: z
+      .enum(["loopback", "public-multi-machine", "reconnect"])
+      .optional(),
   })
   .strict();
 
@@ -52,7 +57,7 @@ type MachineCredentialMetadata = z.infer<
 
 interface IssueHostEnrollKeyArgs {
   hostId: string;
-  enrollSource: "loopback" | "public-multi-machine";
+  enrollSource: "loopback" | "public-multi-machine" | "reconnect";
 }
 
 interface RevokeHostAuthKeysArgs {
@@ -115,6 +120,8 @@ interface ApiKeyVerificationArgs {
 interface ApiKeyVerificationResult {
   keyId: string;
   metadata: MachineCredentialMetadata;
+  expiresAtMs: number | null;
+  cacheable: boolean;
 }
 
 function parseCredentialMetadata(
@@ -169,6 +176,20 @@ export async function createMachineAuthService(
 
   let readyPromise: Promise<void> | null = null;
   const hostOperations = new Map<string, Promise<unknown>>();
+  const daemonKeyCache = new Map<
+    string,
+    { result: ApiKeyVerificationResult; validUntilMs: number }
+  >();
+  const pendingDaemonVerifications = new Set<Set<string>>();
+
+  function invalidateDaemonHostKeys(hostId: string): void {
+    for (const invalidatedHosts of pendingDaemonVerifications) {
+      invalidatedHosts.add(hostId);
+    }
+    for (const [key, entry] of daemonKeyCache) {
+      if (entry.result.metadata.hostId === hostId) daemonKeyCache.delete(key);
+    }
+  }
 
   async function ensureSystemUser(): Promise<void> {
     const now = new Date();
@@ -210,7 +231,7 @@ export async function createMachineAuthService(
       },
     });
 
-    if (!result.valid || !result.key) {
+    if (!result.valid || !result.key || !result.key.enabled) {
       return null;
     }
 
@@ -226,6 +247,12 @@ export async function createMachineAuthService(
     return {
       keyId: result.key.id,
       metadata,
+      expiresAtMs: result.key.expiresAt?.getTime() ?? null,
+      cacheable:
+        result.key.rateLimitEnabled === false &&
+        result.key.remaining === null &&
+        result.key.refillAmount === null &&
+        result.key.refillInterval === null,
     };
   }
 
@@ -255,6 +282,7 @@ export async function createMachineAuthService(
     preserveKeyId?: string,
   ): Promise<void> {
     await ensureReady();
+    if (configId === DAEMON_HOST_CONFIG_ID) invalidateDaemonHostKeys(hostId);
     await args.db
       .update(authApiKeys)
       .set({
@@ -384,10 +412,50 @@ export async function createMachineAuthService(
     async verifyDaemonHostKey(
       token: string,
     ): Promise<VerifyMachineKeyResult | null> {
-      return verifyKey({
-        configId: DAEMON_HOST_CONFIG_ID,
-        token,
-      });
+      const cacheKey = createHash("sha256").update(token).digest("hex");
+      const startedAt = Date.now();
+      const cached = daemonKeyCache.get(cacheKey);
+      if (cached && startedAt < cached.validUntilMs) {
+        daemonKeyCache.delete(cacheKey);
+        daemonKeyCache.set(cacheKey, cached);
+        return {
+          keyId: cached.result.keyId,
+          metadata: { ...cached.result.metadata },
+        };
+      }
+      daemonKeyCache.delete(cacheKey);
+
+      const invalidatedHosts = new Set<string>();
+      pendingDaemonVerifications.add(invalidatedHosts);
+      try {
+        const result = await verifyKey({
+          configId: DAEMON_HOST_CONFIG_ID,
+          token,
+        });
+        if (
+          !result ||
+          invalidatedHosts.has(result.metadata.hostId) ||
+          (result.expiresAtMs !== null && Date.now() >= result.expiresAtMs)
+        ) {
+          return null;
+        }
+
+        const validUntilMs = Math.min(
+          startedAt + DAEMON_KEY_CACHE_TTL_MS,
+          result.expiresAtMs ?? Infinity,
+        );
+        if (result.cacheable && Date.now() < validUntilMs) {
+          daemonKeyCache.delete(cacheKey);
+          daemonKeyCache.set(cacheKey, { result, validUntilMs });
+          while (daemonKeyCache.size > DAEMON_KEY_CACHE_MAX_ENTRIES) {
+            const oldest = daemonKeyCache.keys().next();
+            if (!oldest.done) daemonKeyCache.delete(oldest.value);
+          }
+        }
+        return { keyId: result.keyId, metadata: { ...result.metadata } };
+      } finally {
+        pendingDaemonVerifications.delete(invalidatedHosts);
+      }
     },
   };
 }

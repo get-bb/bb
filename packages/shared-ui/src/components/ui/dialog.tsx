@@ -200,11 +200,35 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+function useChildrenRetainedWhileClosing(
+  open: boolean,
+  children: React.ReactNode,
+) {
+  const [wasOpen, setWasOpen] = React.useState(open);
+  const [closing, setClosing] = React.useState(false);
+  const [lastOpenChildren, setLastOpenChildren] =
+    React.useState<React.ReactNode>(open ? children : null);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    setClosing(!open);
+  }
+  if (open && lastOpenChildren !== children) setLastOpenChildren(children);
+  const finishClosing = React.useCallback(() => {
+    setClosing(false);
+    setLastOpenChildren(null);
+  }, []);
+  return {
+    content: !open && closing ? lastOpenChildren : children,
+    finishClosing,
+  };
+}
+
 type DialogContentProps = React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
 > & {
   onAfterCloseAutoFocus?: () => void;
   hideCloseButton?: boolean;
+  compactContentClassName?: string;
 };
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
@@ -213,6 +237,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       className,
       children,
       hideCloseButton = false,
+      compactContentClassName,
       onAfterCloseAutoFocus,
       onCloseAutoFocus,
       ...props
@@ -223,27 +248,38 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       useResponsiveDialog();
     useBrowserDimmingModal(open);
     const scopeProps = usePortalScopeProps();
+    const { content, finishClosing } = useChildrenRetainedWhileClosing(
+      open,
+      children,
+    );
 
     if (isCompactViewport) {
       const domProps = stripRadixContentProps(props);
       return (
         <ResponsiveDrawerShell
           open={open}
+          contentClassName={compactContentClassName}
           onOpenChange={onOpenChange}
           onAfterCloseAutoFocus={onAfterCloseAutoFocus}
+          onContentAnimationEnd={(settledOpen) => {
+            if (!settledOpen) finishClosing();
+          }}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={props.onInteractOutside}
           labelledBy={titleId}
           describedBy={descriptionId}
         >
           <div
             ref={ref}
             className={cn(
-              "grid grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]",
+              "grid grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-4 pt-2 pb-4",
               className,
               "max-w-none",
             )}
             {...domProps}
           >
-            {children}
+            {content}
           </div>
         </ResponsiveDrawerShell>
       );
@@ -256,6 +292,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           ref={ref}
           {...scopeProps}
           onCloseAutoFocus={(event) => {
+            finishClosing();
             onCloseAutoFocus?.(event);
             queueMicrotask(() => onAfterCloseAutoFocus?.());
           }}
@@ -265,7 +302,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           )}
           {...props}
         >
-          {children}
+          {content}
           {hideCloseButton ? null : (
             <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-state-active data-[state=open]:text-foreground">
               <Icon name="X" className="h-4 w-4" />
@@ -296,7 +333,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
       className,
     )}
     {...props}

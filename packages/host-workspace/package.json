@@ -12,6 +12,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "lint": "oxlint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },

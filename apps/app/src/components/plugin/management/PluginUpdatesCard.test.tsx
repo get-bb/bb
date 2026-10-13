@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { pluginUpdateJobsQueryKey } from "@/hooks/queries/query-keys";
+import { MemoryRouter } from "react-router-dom";
 import {
   cleanup,
   fireEvent,
@@ -71,7 +73,11 @@ describe("PluginDetailReleaseControl", () => {
           },
         })}
       />,
-      { wrapper },
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
     );
 
     const update = screen.getByRole("button", {
@@ -94,7 +100,11 @@ describe("PluginDetailReleaseControl", () => {
           },
         })}
       />,
-      { wrapper },
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
     );
 
     const blockedStatus = screen.getByRole("status", {
@@ -123,7 +133,11 @@ describe("PluginDetailReleaseControl", () => {
           },
         })}
       />,
-      { wrapper },
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
     );
 
     const blockedStatus = screen.getByRole("status", {
@@ -142,13 +156,16 @@ describe("PluginDetailReleaseControl", () => {
             resolve(
               new Response(
                 JSON.stringify({
-                  applied: true,
-                  from: { version: "1.6.2", display: "1.6.2" },
-                  to: { version: "1.9.0", display: "1.9.0" },
-                  outcome: "updated",
+                  job: {
+                    id: "retry-1",
+                    pluginId: "linear",
+                    displayName: "Linear",
+                    state: "running",
+                    phase: "checking",
+                  },
                 }),
                 {
-                  status: 200,
+                  status: 202,
                   headers: { "content-type": "application/json" },
                 },
               ),
@@ -156,7 +173,7 @@ describe("PluginDetailReleaseControl", () => {
         }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { wrapper } = createQueryClientTestHarness();
+    const { wrapper, queryClient } = createQueryClientTestHarness();
     render(
       <>
         <PluginDetailReleaseControl
@@ -186,7 +203,11 @@ describe("PluginDetailReleaseControl", () => {
           })}
         />
       </>,
-      { wrapper },
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
     );
 
     const failedStatus = screen.getByRole("status", { name: "Update failed" });
@@ -206,6 +227,15 @@ describe("PluginDetailReleaseControl", () => {
     expect(retry).toHaveProperty("disabled", true);
     completeUpdate?.();
     await waitFor(() => expect(retry.getAttribute("aria-busy")).toBe("false"));
+    expect(queryClient.getQueryData(pluginUpdateJobsQueryKey())).toEqual([
+      {
+        id: "retry-1",
+        pluginId: "linear",
+        displayName: "Linear",
+        state: "running",
+        phase: "checking",
+      },
+    ]);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -218,7 +248,11 @@ describe("PluginDetailReleaseControl", () => {
           source: "builtin:linear",
         }}
       />,
-      { wrapper },
+      {
+        wrapper: ({ children }) => (
+          <MemoryRouter>{wrapper({ children })}</MemoryRouter>
+        ),
+      },
     );
     expect(container.textContent).toBe("");
   });

@@ -2,17 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent } from "@bb/domain";
-import { threadScope, turnScope } from "@bb/domain";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   getBuiltinModels,
   getBuiltinProviders,
 } from "@earendil-works/pi-ai/providers/all";
 import {
-  createDeltaAssembler,
+  experimental_createDeltaAssembler as createDeltaAssembler,
   type DeltaAssembler,
-} from "@bb/provider-bridge-protocol/assembler";
+  type ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   createPiDeltaTranslator,
   createPiModelContextWindowResolverFrom,
@@ -25,6 +24,14 @@ const builtinCatalogResolver = createPiModelContextWindowResolverFrom(
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "./__fixtures__/pi");
+
+function threadScope(): ThreadEvent["scope"] {
+  return { kind: "thread" };
+}
+
+function turnScope(turnId: string): ThreadEvent["scope"] {
+  return { kind: "turn", turnId };
+}
 
 const THREAD_ID = "bb-thread-1";
 const ENTROPY = "pi-test";
@@ -385,7 +392,7 @@ describe("pi delta translation equivalence", () => {
     ).toEqual([]);
   });
 
-  it("agent_end surfaces Pi assistant stop errors as failed turns", () => {
+  it("agent_end preserves the checkpoint when Pi assistant stop errors fail the turn", () => {
     const harness = createHarness();
     const quotaMessage =
       '400 {"type":"error","error":{"type":"invalid_request_error","message":"You\'re out of extra usage. Add more at claude.ai/settings/usage and keep going."},"request_id":"req_011CajgGfxCAhmznZJw7t6Br"}';
@@ -393,9 +400,10 @@ describe("pi delta translation equivalence", () => {
     harness.translate(loadFixture("agent-start.json"));
     const turnId = harness.openTurnId();
 
-    const events = harness.translate(
-      createPiAgentErrorEvent(quotaMessage, false),
-    );
+    const events = harness.translate({
+      ...createPiAgentErrorEvent(quotaMessage, false),
+      providerCheckpointId: "pi-failed-entry",
+    });
 
     expect(events).toEqual([
       {
@@ -412,6 +420,7 @@ describe("pi delta translation equivalence", () => {
         providerThreadId: "",
         scope: turnScope(turnId),
         status: "failed",
+        providerCheckpointId: "pi-failed-entry",
       },
     ]);
     expect(events.some((event) => event.type === "item/completed")).toBe(false);
@@ -844,30 +853,6 @@ describe("pi delta translation equivalence", () => {
     );
   });
 
-  it("gives a bash call without cwd args the session's working directory", () => {
-    const harness = createHarness();
-    harness.translate(loadFixture("agent-start.json"));
-    const events = harness.translate(
-      sdkMessage({
-        type: "tool_execution_start",
-        toolCallId: "tool-bash-cwd",
-        toolName: "bash",
-        args: { command: "ls" },
-      }),
-      { threadId: THREAD_ID, cwd: "/work/tree" },
-    );
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "item/started",
-        item: expect.objectContaining({
-          type: "commandExecution",
-          command: "ls",
-          cwd: "/work/tree",
-        }),
-      }),
-    ]);
-  });
-
   it("keeps the call's own cwd over the session's", () => {
     const harness = createHarness();
     harness.translate(loadFixture("agent-start.json"));
@@ -1114,7 +1099,44 @@ describe("pi delta translation equivalence", () => {
       toolName: "edit",
       args: {
         path: "src/app.ts",
-        edits: [{ oldText: "before", newText: "after" }],
+        edits: [
+          { oldText: "before", newText: "after" },
+          { oldText: "second before", newText: "second after" },
+        ],
+      },
+    } as AgentSessionEvent);
+
+    const started = events.find(
+      (event): event is Extract<ThreadEvent, { type: "item/started" }> =>
+        event.type === "item/started",
+    );
+    expect(started?.item).toMatchObject({
+      type: "fileChange",
+      status: "pending",
+    });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]).toMatchObject({
+      path: "src/app.ts",
+      kind: "update",
+    });
+    expect(started.item.changes).toHaveLength(2);
+    expect(started.item.changes[0]?.diff).toContain("+after");
+    expect(started.item.changes[0]?.diff).toContain("-before");
+    expect(started.item.changes[1]?.diff).toContain("+second after");
+    expect(started.item.changes[1]?.diff).toContain("-second before");
+  });
+
+  it("falls back to an update without a diff for unrecognized edit batches", () => {
+    const harness = createHarness();
+    harness.translate(loadFixture("agent-start.json"));
+
+    const events = harness.translate({
+      type: "tool_execution_start",
+      toolCallId: "tool-edit-unknown-batch",
+      toolName: "edit",
+      args: {
+        path: "src/app.ts",
+        edits: [{ old: "before", replacement: "after" }],
       },
     } as AgentSessionEvent);
 
@@ -1127,6 +1149,8 @@ describe("pi delta translation equivalence", () => {
       status: "pending",
       changes: [{ path: "src/app.ts", kind: "update" }],
     });
+    if (!started || started.item.type !== "fileChange") return;
+    expect(started.item.changes[0]?.diff).toBeUndefined();
   });
 
   it("tool_execution_start with content-only write args marks the change as an add", () => {
@@ -1835,30 +1859,179 @@ describe("pi delta translation equivalence", () => {
     ]);
   });
 
-  it("prompt-settled failure closes the open turn with the error", () => {
-    const harness = createHarness();
-    harness.translate(loadFixture("agent-start.json"));
-    const turnId = harness.openTurnId();
+  it.each(["aborted", "error"])(
+    "structured %s without errorMessage cannot complete successfully",
+    (stopReason) => {
+      const harness = createHarness();
+      harness.translate(loadFixture("agent-start.json"));
+      const events = harness.translate(
+        sdkMessage({
+          type: "agent_end",
+          messages: [
+            { role: "assistant", stopReason, content: [] },
+            { role: "toolResult", content: [] },
+          ],
+        }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: "turn/completed", status: "failed" }),
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "provider/error",
+          detail: expect.any(String),
+        }),
+      );
+      expect(
+        events.some(
+          (event) =>
+            event.type === "turn/completed" && event.status === "completed",
+        ),
+      ).toBe(false);
+    },
+  );
 
-    const events = harness.translate({
-      jsonrpc: "2.0",
-      method: "pi/prompt/settled",
-      params: {
-        threadId: THREAD_ID,
-        status: "failed" as const,
-        error: "Nothing to compact",
-      },
+  it("defers finality across native recovery and does not double-count text or usage at settlement", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
     });
-
-    expect(events).toEqual([
+    const initial = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        deferSettlement: true,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "length",
+            content: [{ type: "text", text: "partial" }],
+            usage: { input: 2, output: 3 },
+          },
+        ],
+      }),
+    );
+    expect(initial.some((delta) => delta.kind === "turn.boundary")).toBe(false);
+    expect(initial.filter((delta) => delta.kind === "usage")).toHaveLength(1);
+    const settled = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        settlementOnly: true,
+        providerCheckpointId: "settled-checkpoint",
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "stop",
+            content: [{ type: "text", text: "partial" }],
+            usage: { input: 2, output: 3 },
+          },
+        ],
+      }),
+    );
+    expect(settled).toEqual([
       expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope(turnId),
-        status: "failed",
-        error: { message: "Nothing to compact" },
+        kind: "turn.boundary",
+        status: "completed",
+        providerCheckpointId: "settled-checkpoint",
       }),
     ]);
   });
+
+  it("reports a failed run that queued work superseded without ending the turn", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const failedAttempt = translator.translate(
+      sdkMessage({
+        type: "agent_end",
+        deferSettlement: true,
+        messages: [
+          {
+            role: "assistant",
+            stopReason: "error",
+            errorMessage: "original prompt failed",
+            content: [],
+            usage: { input: 0, output: 0 },
+          },
+        ],
+      }),
+    );
+    expect(failedAttempt).toEqual([]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          deferSettlement: true,
+          settlementSuperseded: true,
+          settlementError: "original prompt failed",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: "original prompt failed",
+      },
+    ]);
+  });
+
+  it("does not repeat a recovery failure that compaction already reported", () => {
+    const translator = createPiDeltaTranslator({
+      resolveModelContextWindow: builtinCatalogResolver,
+    });
+    const compaction = translator.translate(
+      sdkMessage({
+        type: "compaction_end",
+        reason: "overflow",
+        aborted: false,
+        willRetry: false,
+        errorMessage: "overflow recovery exhausted",
+      }),
+    );
+    expect(
+      compaction.filter((delta) => delta.kind === "provider.error"),
+    ).toEqual([
+      expect.objectContaining({ detail: "overflow recovery exhausted" }),
+    ]);
+    expect(
+      translator.translate(
+        sdkMessage({
+          type: "agent_end",
+          settlementOnly: true,
+          settlementError: "overflow recovery exhausted",
+          settlementErrorReported: true,
+          providerCheckpointId: "settled-checkpoint",
+          messages: [],
+        }),
+      ),
+    ).toEqual([
+      {
+        kind: "turn.boundary",
+        status: "failed",
+        providerCheckpointId: "settled-checkpoint",
+      },
+    ]);
+  });
+
+  it.each([true, "false", null, 0])(
+    "reports explicit or malformed settlement abort %s as failed",
+    (aborted) => {
+      const translator = createPiDeltaTranslator({
+        resolveModelContextWindow: builtinCatalogResolver,
+      });
+      const deltas = translator.translate(
+        sdkMessage({ type: "agent_end", aborted, messages: [] }),
+      );
+      expect(deltas).toContainEqual(
+        expect.objectContaining({ kind: "turn.boundary", status: "failed" }),
+      );
+      expect(
+        deltas.some(
+          (delta) =>
+            delta.kind === "turn.boundary" && delta.status === "completed",
+        ),
+      ).toBe(false);
+    },
+  );
 
   it("session error envelopes settle the open turn as failed", () => {
     const harness = createHarness();

@@ -11,6 +11,12 @@ import {
 } from "./ThreadSecondaryPanelTabContent";
 import type { FilePreview } from "@bb/client-core";
 
+const projectPreviewQuery = vi.hoisted(() =>
+  vi.fn<
+    (_projectId: string, path: string) => ReturnType<typeof previewQuery>
+  >(),
+);
+
 function markdownPreview(path: string, url = `/content/${path}`): FilePreview {
   return {
     kind: "text",
@@ -46,8 +52,9 @@ vi.mock("@/hooks/queries/environment-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/project-queries", () => ({
-  useProjectFilePreview: (_projectId: string, path: string) =>
-    previewQuery(path),
+  useProjectFilePreview: projectPreviewQuery.mockImplementation(
+    (_projectId, path) => previewQuery(path),
+  ),
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
@@ -62,7 +69,10 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 
 vi.mock("@/hooks/queries/host-file-preview-query", () => ({
   useHostFilePreview: (_hostId: string, path: string) =>
-    previewQuery(path, "/api/v1/file-previews/lease_preview/readme.md"),
+    previewQuery(
+      path,
+      "/api/v1/hosts/host_preview/files/workspace/docs/readme.md",
+    ),
 }));
 
 afterEach(cleanup);
@@ -70,6 +80,34 @@ afterEach(cleanup);
 function imageSrc(name: string): string | null {
   return screen.getByRole("img", { name }).getAttribute("src");
 }
+
+it("renders project HTML through the selected host's file route", () => {
+  projectPreviewQuery.mockReturnValueOnce({
+    ...previewQuery("docs/report.html"),
+    data: {
+      kind: "text",
+      content: "<!doctype html><h1>Report</h1>",
+      mimeType: "text/html",
+      path: "docs/report.html",
+      url: "/content/docs/report.html",
+    },
+  });
+  const view = render(
+    <ProjectFilePreviewTabContent
+      activePath="docs/report.html"
+      environmentId={null}
+      hostId="host_preview"
+      isPanelOpen
+      lineRange={null}
+      projectId="proj_preview"
+      rootPath="/workspace"
+    />,
+  );
+
+  expect(view.container.querySelector("iframe")?.getAttribute("src")).toBe(
+    "/api/v1/projects/proj_preview/hosts/host_preview/files/docs/report.html",
+  );
+});
 
 describe("secondary-panel Markdown image routing", () => {
   it("routes workspace images when the preview caller supplies no routing", () => {
@@ -86,10 +124,10 @@ describe("secondary-panel Markdown image routing", () => {
     );
 
     expect(imageSrc("absolute")).toBe(
-      "/api/v1/threads/thr_preview/host-files/content?path=%2Fworkspace%2Fgenerated.png",
+      "/api/v1/threads/thr_preview/host-files/workspace/generated.png",
     );
     expect(imageSrc("relative")).toBe(
-      "/api/v1/threads/thr_preview/worktree/files/docs/images/chart.png",
+      "/api/v1/environments/env_preview/files/docs/images/chart.png",
     );
     expect(imageSrc("escape")).toBe("../../outside.png");
   });
@@ -107,12 +145,12 @@ describe("secondary-panel Markdown image routing", () => {
       />,
     );
 
-    expect(imageSrc("absolute")).toContain(
-      "/api/v1/projects/proj_preview/files/content?",
+    expect(imageSrc("absolute")).toBe(
+      "/api/v1/projects/proj_preview/hosts/host_preview/files/generated.png",
     );
-    expect(imageSrc("absolute")).toContain("path=generated.png");
-    expect(imageSrc("relative")).toContain("path=docs%2Fimages%2Fchart.png");
-    expect(imageSrc("absolute")).toContain("hostId=host_preview");
+    expect(imageSrc("relative")).toBe(
+      "/api/v1/projects/proj_preview/hosts/host_preview/files/docs/images/chart.png",
+    );
     expect(imageSrc("escape")).toBe("../../outside.png");
   });
 
@@ -129,15 +167,15 @@ describe("secondary-panel Markdown image routing", () => {
     );
 
     expect(imageSrc("absolute")).toBe(
-      "/api/v1/threads/thr_preview/host-files/content?path=%2Fworkspace%2Fgenerated.png",
+      "/api/v1/threads/thr_preview/host-files/workspace/generated.png",
     );
     expect(imageSrc("relative")).toBe(
-      "/api/v1/threads/thr_preview/host-files/content?path=%2Fworkspace%2Fdocs%2Fimages%2Fchart.png",
+      "/api/v1/threads/thr_preview/host-files/workspace/docs/images/chart.png",
     );
     expect(imageSrc("escape")).toBe("../../outside.png");
   });
 
-  it("confines host-scoped relative images to the preview lease root", () => {
+  it("confines host-scoped relative images to the previewed folder", () => {
     render(
       <HostScopedFilePreviewTabContent
         activePath="/workspace/docs/readme.md"
@@ -149,7 +187,7 @@ describe("secondary-panel Markdown image routing", () => {
 
     expect(imageSrc("absolute")).toBe("/workspace/generated.png");
     expect(imageSrc("relative")).toBe(
-      "/api/v1/file-previews/lease_preview/images/chart.png",
+      "/api/v1/hosts/host_preview/files/workspace/docs/images/chart.png",
     );
     expect(imageSrc("escape")).toBe("../../outside.png");
   });
@@ -165,7 +203,7 @@ describe("secondary-panel Markdown image routing", () => {
     );
 
     expect(imageSrc("absolute")).toBe(
-      "/api/v1/threads/thr_preview/host-files/content?path=%2Fworkspace%2Fgenerated.png",
+      "/api/v1/threads/thr_preview/host-files/workspace/generated.png",
     );
     expect(imageSrc("relative")).toBe(
       "/api/v1/threads/thr_preview/thread-storage/files/docs/images/chart.png",

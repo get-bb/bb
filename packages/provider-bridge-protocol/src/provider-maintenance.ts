@@ -20,6 +20,7 @@ export type ProviderInstallationRequirement = z.infer<
 export const providerInstallationStatusParamsSchema =
   providerMaintenanceParamsSchema.extend({
     requirement: providerInstallationRequirementSchema.optional(),
+    checkUpdates: z.boolean().default(true),
   });
 export type ProviderInstallationStatusParams = z.infer<
   typeof providerInstallationStatusParamsSchema
@@ -43,6 +44,7 @@ export const providerHealthSchema = z
     canInstall: z.boolean(),
     canUpdate: z.boolean(),
     loginCommand: z.string().min(1).nullable(),
+    localLoginCommand: z.string().min(1).nullable().optional(),
   })
   .passthrough();
 

@@ -1,0 +1,34 @@
+appId: app.getbb.mobile
+env:
+  SERVER_URL: http://127.0.0.1:41999
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: add-server-screen
+    timeout: 30000
+- runFlow: ../subflows/pair-direct-server.yaml
+- tapOn: .*Idle thread.*
+- extendedWaitUntil:
+    visible: .*follow-up.*
+    timeout: 30000
+- repeat:
+    times: 3
+    commands:
+      - tapOn: .*follow-up.*
+      - inputText: Keyboard draft
+      - takeScreenshot: keyboard-open
+      - back
+      - takeScreenshot: keyboard-closed
+      - assertVisible: Keyboard draft
+      - tapOn: Keyboard draft
+      - eraseText: 100
+      - back
+- tapOn: .*follow-up.*
+- inputText: Keyboard send check
+- tapOn: .*Submit.*
+- extendedWaitUntil:
+    visible: ".*Response to: Keyboard send check.*"
+    timeout: 30000
+- takeScreenshot: keyboard-after-send

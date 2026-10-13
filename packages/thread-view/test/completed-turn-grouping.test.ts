@@ -21,6 +21,7 @@ function messageBase({ id, seq }: MessageBaseArgs) {
   return {
     id,
     threadId: "thread-1",
+    sourceEvent: { seq, part: 0 },
     sourceSeqStart: seq,
     sourceSeqEnd: seq,
     createdAt: seq,
@@ -66,6 +67,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
   return {
     ...messageBase(args),
     kind: "user",
+    messageSeq: args.seq,
     initiator: args.initiator ?? "user",
     senderThreadId: null,
     systemMessageKind: "unlabeled",
@@ -102,19 +104,6 @@ function compactionMessage(
   };
 }
 
-function contextClearMessage(
-  args: MessageBaseArgs,
-): EventProjectionOperationMessage {
-  return {
-    ...messageBase(args),
-    kind: "operation",
-    opType: "context-clear",
-    title: "Context cleared",
-    status: "completed",
-    completedAt: args.seq,
-  };
-}
-
 function completedTurn(
   messages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
@@ -146,6 +135,27 @@ function summarySourceMessageIds(
 }
 
 describe("groupCompletedTurnMessages", () => {
+  it("keeps a bb thread tell command out of the summary", () => {
+    const before = commandMessage({ id: "command-1", seq: 1 });
+    const sent = {
+      ...commandMessage({ id: "sent", seq: 2 }),
+      command: 'bb thread tell thr_wrkr234567 "Is it ready?"',
+    };
+    const after = commandMessage({ id: "command-2", seq: 3 });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([before, sent, after], undefined),
+    );
+
+    expect(summarySourceMessageIds(groups)).toEqual([
+      ["command-1"],
+      ["command-2"],
+    ]);
+    expect(groups.summaryItems).toContainEqual({
+      kind: "ungrouped-message",
+      message: sent,
+    });
+  });
+
   it("unwraps a singleton compaction group after a user message", () => {
     const user = userMessage({ id: "compact-request", seq: 1 });
     const compaction = compactionMessage({ id: "compaction", seq: 2 });
@@ -159,20 +169,6 @@ describe("groupCompletedTurnMessages", () => {
     ]);
     expect(groups.terminalMessages).toEqual([]);
     expect(groups.trailingMessages).toEqual([]);
-  });
-
-  it("unwraps a singleton context-clear group", () => {
-    const contextClear = contextClearMessage({
-      id: "context-clear",
-      seq: 1,
-    });
-    const groups = groupCompletedTurnMessages(
-      completedTurn([contextClear], undefined),
-    );
-
-    expect(groups.summaryItems).toEqual([
-      { kind: "ungrouped-message", message: contextClear },
-    ]);
   });
 
   it("uses one summary group when no messages are ungroupable", () => {
@@ -196,19 +192,6 @@ describe("groupCompletedTurnMessages", () => {
     expect(summarySourceMessageIds(groups)).toEqual([
       ["assistant-1", "command-1"],
     ]);
-  });
-
-  it("keeps an assistant response visible when more assistant text follows it directly", () => {
-    const answer = assistantMessage({ id: "answer", seq: 1 });
-    const hookReply = assistantMessage({ id: "hook-reply", seq: 2 });
-    const groups = groupCompletedTurnMessages(
-      completedTurn([answer, hookReply], hookReply),
-    );
-
-    expect(groups.summaryItems).toEqual([
-      { kind: "ungrouped-message", message: answer },
-    ]);
-    expect(groups.terminalMessages).toEqual([hookReply]);
   });
 
   it("folds narration that precedes work and keeps the response that precedes the terminal text", () => {
@@ -285,42 +268,6 @@ describe("groupCompletedTurnMessages", () => {
     expect(summarySourceMessageIds(groups)).toEqual([]);
     expect(groups.terminalMessages.map((message) => message.id)).toEqual([
       "assistant-after",
-    ]);
-  });
-
-  it("does not segment summary groups around agent and system steers", () => {
-    const turn = completedTurn(
-      [
-        assistantMessage({ id: "assistant-before", seq: 1 }),
-        userMessage({
-          id: "agent-steer",
-          initiator: "agent",
-          seq: 2,
-          turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
-        }),
-        userMessage({
-          id: "system-steer",
-          initiator: "system",
-          seq: 3,
-          turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
-        }),
-        assistantMessage({ id: "assistant-after", seq: 4 }),
-      ],
-      undefined,
-    );
-    const groups = groupCompletedTurnMessages(turn);
-
-    expect(groups.summaryItems).toMatchObject([
-      {
-        kind: "summary",
-        startedAt: 1,
-        completedAt: 4,
-        segmentIndex: null,
-        summaryCount: 4,
-      },
-    ]);
-    expect(summarySourceMessageIds(groups)).toEqual([
-      ["assistant-before", "agent-steer", "system-steer", "assistant-after"],
     ]);
   });
 

@@ -13,6 +13,7 @@ import {
 import {
   createRecoveryThread,
   RECOVERY_TEST_TIMEOUT_MS,
+  HOST_OFFLINE_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -41,7 +42,7 @@ describe.sequential("fake provider idle-error reconciliation integration", () =>
         await waitForHostDisconnected(
           harness.api,
           harness.hostId,
-          RECOVERY_TIMEOUT_MS,
+          HOST_OFFLINE_TIMEOUT_MS,
         );
 
         requireThreadLifecycleEventApplied(

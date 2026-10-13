@@ -10,6 +10,7 @@ import {
   type DeclaredCodeThemeSlot,
   type UiCodeThemeDeclaration,
 } from "@bb/domain";
+import { isPathWithinDirectory } from "@bb/process-utils";
 
 const THEME_MANIFEST_FILE_NAME = "theme.json";
 const CONVENTION_CODE_THEME_FILES = {
@@ -31,7 +32,7 @@ function resolveWithinRoot(
     throw new Error(`${label} must be relative, got "${entry}"`);
   }
   const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
+  if (!isPathWithinDirectory(resolve(rootDir), resolved)) {
     throw new Error(`${label} escapes the theme directory: "${entry}"`);
   }
   return resolved;

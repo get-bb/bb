@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   assertNever,
@@ -7,7 +7,6 @@ import {
   type TimelineTitle,
   type TimelineTitleAction,
   type TimelineTitleDecoration,
-  type TimelineTitleLink,
   type TimelineTitleSegment,
   type TimelineTitleSegmentAccent,
   type TimelineTitleTone,
@@ -17,19 +16,24 @@ import { Icon } from "@bb/shared-ui/icon";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
 import { LiveDurationText } from "./LiveDurationText.js";
+import {
+  ThreadTitleMentions,
+  useResolveThreadTitle,
+  useThreadRoutePath,
+} from "@/components/thread/ThreadTitleMentions";
+import {
+  ConversationMessageOverflowToggle,
+  useIsOverflowing,
+} from "./conversation-message-overflow.js";
 
 export type TimelineTitleActionResolver = (
   action: TimelineTitleAction,
 ) => (() => void) | null;
 
-export type TimelineTitleLinkResolver = (
-  link: TimelineTitleLink,
-) => string | null;
-
 interface TimelineTitleViewProps {
   title: TimelineTitle;
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  wrap?: boolean;
 }
 
 function emToneClass(tone: TimelineTitleTone): string {
@@ -99,6 +103,14 @@ function renderStatusDecorationText(
   );
 }
 
+function segmentContent(segment: TimelineTitleSegment): ReactNode {
+  return segment.link?.kind === "thread" ? (
+    <ThreadTitleMentions title={segment.text} />
+  ) : (
+    segment.text
+  );
+}
+
 function renderSegment(
   segment: TimelineTitleSegment,
   index: number,
@@ -107,10 +119,13 @@ function renderSegment(
     onClick: (() => void) | null;
     linkHref: string | null;
   },
+  wrap: boolean,
 ): ReactNode {
-  const widthClass = segment.truncate
-    ? "min-w-0 truncate whitespace-pre"
-    : "shrink-0 whitespace-pre";
+  const widthClass = wrap
+    ? "whitespace-pre-wrap"
+    : segment.truncate
+      ? "min-w-0 truncate whitespace-pre"
+      : "shrink-0 whitespace-pre";
   const toneClass =
     segment.accent !== undefined
       ? accentToneClass(segment.accent, segment.em)
@@ -142,7 +157,7 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </RouteAnchor>
     );
   }
@@ -170,14 +185,14 @@ function renderSegment(
           }
         }}
       >
-        {segment.text}
+        {segmentContent(segment)}
       </span>
     );
   }
 
   return (
     <span key={index} className={baseClass}>
-      {segment.text}
+      {segmentContent(segment)}
     </span>
   );
 }
@@ -283,7 +298,7 @@ function renderDecoration(
       return (
         <span
           key={index}
-          className="inline-flex shrink-0 items-center"
+          className="inline-flex shrink-0 items-center self-center align-middle"
           title={decoration.hint}
         >
           <Icon
@@ -302,25 +317,40 @@ function renderDecoration(
 export function TimelineTitleView({
   title,
   onTitleAction,
-  resolveSegmentLinkHref,
+  wrap = false,
 }: TimelineTitleViewProps) {
   const onClick =
     title.action && onTitleAction ? onTitleAction(title.action) : null;
+  const resolveTitle = useResolveThreadTitle();
+  const threadRoutePath = useThreadRoutePath();
+  const plainTitle = title.segments.some((segment) => segment.link)
+    ? resolveTitle(title.plain)
+    : title.plain;
 
   return (
     <span
-      className="inline-flex min-w-0 max-w-full items-baseline gap-1 overflow-hidden whitespace-nowrap text-sm leading-5"
-      title={title.plain}
+      className={cn(
+        "min-w-0 max-w-full text-sm leading-5",
+        wrap
+          ? "whitespace-pre-wrap [overflow-wrap:anywhere]"
+          : "inline-flex items-baseline gap-1 overflow-hidden whitespace-nowrap",
+      )}
+      title={plainTitle}
     >
       {title.segments.map((segment, index) => {
-        const linkHref =
-          segment.link && resolveSegmentLinkHref
-            ? resolveSegmentLinkHref(segment.link)
-            : null;
+        const linkHref = segment.link
+          ? threadRoutePath(segment.link.threadId, undefined, null)
+          : null;
         return (
           <Fragment key={`segment-${index}`}>
             {index > 0 ? " " : null}
-            {renderSegment(segment, index, title.tone, { onClick, linkHref })}
+            {renderSegment(
+              segment,
+              index,
+              title.tone,
+              { onClick, linkHref },
+              wrap,
+            )}
           </Fragment>
         );
       })}
@@ -330,6 +360,33 @@ export function TimelineTitleView({
           {renderDecoration(decoration, index, title.tone)}
         </Fragment>
       ))}
+    </span>
+  );
+}
+
+export function ExpandableTimelineTitle(props: TimelineTitleViewProps) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const overflowing = useIsOverflowing({
+    elementRef: ref,
+    enabled: !expanded,
+    measurementKey: props.title.plain,
+  });
+
+  return (
+    <span className="block min-w-0 flex-1">
+      <span
+        ref={ref}
+        className={cn("block text-sm leading-5", !expanded && "line-clamp-2")}
+      >
+        <TimelineTitleView {...props} wrap />
+      </span>
+      {expanded || overflowing ? (
+        <ConversationMessageOverflowToggle
+          expanded={expanded}
+          onToggle={() => setExpanded((value) => !value)}
+        />
+      ) : null}
     </span>
   );
 }

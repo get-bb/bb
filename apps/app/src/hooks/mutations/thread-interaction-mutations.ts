@@ -2,7 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import { invalidateThreadPendingInteractionResolutionQueries } from "../cache-owners/mutation-cache-effects";
+import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
+import { useEnvironment } from "../queries/environment-queries";
+import { useHosts } from "../queries/host-queries";
+import { useThread } from "../queries/thread-queries";
+import {
+  applyResolvedThreadPendingInteraction,
+  invalidateThreadPendingInteractionResolutionQueries,
+} from "../cache-owners/mutation-cache-effects";
 
 interface ResolveThreadPendingInteractionMutationRequest {
   threadId: string;
@@ -10,10 +17,21 @@ interface ResolveThreadPendingInteractionMutationRequest {
   resolution: ResolvePendingInteractionRequest;
 }
 
-export function useResolveThreadPendingInteraction() {
-  const queryClient = useQueryClient();
+function useIsThreadHostConnected(threadId: string): boolean {
+  const environmentId = useThread(threadId).data?.environmentId;
+  const hostId = useEnvironment(environmentId).data?.hostId;
+  const hosts = useHosts({ enabled: hostId !== undefined }).data;
+  return (
+    hosts?.some((host) => host.id === hostId && host.status === "connected") ??
+    false
+  );
+}
 
-  return useMutation({
+export function useResolveThreadPendingInteraction(threadId: string) {
+  const queryClient = useQueryClient();
+  const isHostConnected = useIsThreadHostConnected(threadId);
+
+  const mutation = useMutation({
     meta: {
       errorMessage: "Failed to resolve pending interaction.",
       showErrorToast: false,
@@ -29,6 +47,7 @@ export function useResolveThreadPendingInteraction() {
         threadId,
       }),
     onSuccess: (interaction, variables) => {
+      applyResolvedThreadPendingInteraction({ interaction, queryClient });
       invalidateThreadPendingInteractionResolutionQueries({
         queryClient,
         threadId: variables.threadId,
@@ -36,4 +55,8 @@ export function useResolveThreadPendingInteraction() {
       return interaction;
     },
   });
+
+  const isStaleHostError =
+    isHostConnected && isHostDisconnectedError(mutation.error);
+  return { ...mutation, error: isStaleHostError ? null : mutation.error };
 }

@@ -22,13 +22,13 @@ The complete top-level factory API is `pluginId`, `log`, `settings`, `storage`,
 `http`, `rpc`, `realtime`, `background`, `cli`, `agents`, `providers`, `ui`,
 `events`, `experimental_hooks`, `experimental_environments`,
 `experimental_machines`, `experimental_serverAccess`, `status`, `server`, `hosts`,
-`experimental_aiServices`, `sdk`, and `onDispose`.
+`experimental_aiServices`, `sdk`, `onDispose`, and `onInstall`.
 
 Keyed registrations must be unique within one factory execution: duplicate
 settings, routes, rpc methods, services, schedules, CLI registrations, tools,
 instruction providers or mention providers are rejected.
-Listeners are different: `bb.events.on`, settings `onChange`, and `onDispose`
-are additive, so registering multiple listeners is supported.
+Listeners are different: `bb.events.on`, settings `onChange`, `onDispose`, and
+`onInstall` are additive, so registering multiple listeners is supported.
 
 ### bb.log
 
@@ -140,6 +140,9 @@ or `null` when `BB_APP_URL` is empty. It is not bind-gated.
 `bb.server.experimental_dataDir` gives the exact server data directory for a
 migration from BB-managed files. Do not write plugin state there. Use
 `bb.storage` for plugin-owned state.
+`bb.sdk.system.config().primaryHostId` identifies the server's local enrolled
+host, or is `null` when its identity is not initialized or its host record is
+missing or destroyed. It never falls back to a remote machine.
 
 ### bb.hosts
 
@@ -195,9 +198,11 @@ export default experimental_defineHostEntry({
 Do not construct the entry object without this helper.
 
 A host entry that deletes a directory it owns should first call
-`experimental_killProcessesWithCwdUnder({ directory })` from
+`experimental_killProcessesWithCwdUnder({ directories: [directory] })` from
 `@get-bb/plugin-sdk/host`, which SIGTERMs every process whose working
-directory is at or under it and SIGKILLs what survives the grace. Removing a
+directory is at or under any listed directory and SIGKILLs what survives the
+grace. Each call lists process working directories once, so pass a whole batch
+in one call rather than looping. Removing a
 workspace out from under a running process otherwise leaves it alive.
 
 The server factory calls only its own host entry:
@@ -267,7 +272,7 @@ Host limits protect the daemon:
 
 - A worker starts within 10 seconds and stops after five idle minutes.
 - One plugin can have 256 active calls and 32 MiB of active call input.
-- Each host RPC input and output can contain at most 8 MiB of JSON.
+- Each host RPC input can contain at most 32 MiB of JSON; output is limited to 8 MiB.
 - A call uses a 30-second default timeout and a five-second cancellation grace.
 - A worker can have 256 watches and 4,096 ignore entries per watch.
 - A watch path can contain 16 KiB; a watch batch can contain 1 MiB.
@@ -296,7 +301,7 @@ entry imports. A host entry that uses only the root helpers
 host builder stubs those helpers and bundles them into the self-contained
 artifact, including for managed Git installs, which run
 `npm install --omit=dev`. A host entry that imports
-`@get-bb/plugin-sdk/provider-bridge`, `@get-bb/plugin-sdk/ai-services`, or a
+`@get-bb/plugin-sdk/provider-bridge` or a
 published `@get-bb/plugin-sdk/host` contract such as
 `experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
 install, so that plugin lists the SDK under `dependencies` (see

@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   usePluginSlots,
   type PluginNewThreadPanelActionSlot,
@@ -17,7 +18,6 @@ import {
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
-import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 export interface OpenPluginPanelArgs {
@@ -27,7 +27,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 export interface PluginPanelActionEntry {
   id: string;
@@ -47,7 +47,7 @@ interface PanelActionOpenPanelArgs {
   openPluginPanel: OpenPluginPanelHandler;
 }
 
-function createPanelActionOpenPanel({
+export function createPanelActionOpenPanel({
   action,
   slot,
   openPluginPanel,
@@ -220,6 +220,10 @@ export function PluginPanelTabContent({
 }
 
 function UnavailableActionTab() {
+  const pluginsSettled = usePluginFrontendsSettled();
+  if (!pluginsSettled) {
+    return null;
+  }
   return (
     <div className="p-4">
       <EmptyStatePanel className="rounded-lg p-6 text-sm">
@@ -367,7 +371,6 @@ function FileOpenerTabContent({
             source={file.source}
             experimental_lineRange={lineRange}
             Original={BoundOriginal}
-            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

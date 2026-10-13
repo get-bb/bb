@@ -31,7 +31,7 @@ export function extractPiPromptInput(
         if (
           resource.kind === "command" &&
           resource.source === "skill" &&
-          resource.trigger === "/" &&
+          (resource.trigger === "/" || resource.trigger === "$") &&
           mention.start < mention.end &&
           mention.end <= item.text.length &&
           item.text.slice(mention.start, mention.end) ===
@@ -55,7 +55,11 @@ export function extractPiPromptInput(
         });
       } catch {}
     } else if (item.type === "localFile") {
-      chunks.push(`[Attached file: ${item.path}]`);
+      chunks.push(
+        item.name
+          ? `[Attached file "${item.name}": ${item.path}]`
+          : `[Attached file: ${item.path}]`,
+      );
     }
   }
   const [skill] = skills;

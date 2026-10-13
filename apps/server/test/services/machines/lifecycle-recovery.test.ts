@@ -2,12 +2,21 @@ import { z } from "zod";
 import { afterEach, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import {
+  requestEnvironmentRemoval,
+  sweepProviderEnvironment,
+} from "../../../src/services/environments/environment-engine.js";
+import { maintainMachine } from "../../../src/services/machines/lifecycle.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../../src/services/server-move/freeze-state.js";
+import {
   createEnvironment,
+  createTerminalSession,
   environments,
   getEnvironment,
-  getAppSettings,
-  setAppSettings,
   getHost,
+  getThread,
   hosts,
   listThreadIdsWithHostOfflineQueueWaits,
   updateHost,
@@ -15,6 +24,7 @@ import {
 import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   requestMachineRemoval,
+  retryMachineCleanup,
   requestMachineSuspension,
   reconcileMachine,
   resumeMachine,
@@ -35,6 +45,7 @@ import {
   seedQueuedMessage,
   seedSession,
 } from "../../helpers/seed.js";
+import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
 afterEach(() => {
@@ -110,14 +121,14 @@ it("recovers a persisted resuming machine without queued work", async () =>
     });
   }));
 
-it.each(["active", "suspended"] as const)(
-  "removes environments on a %s persistent machine without admitting new work",
-  async (phase) =>
+it.each([
+  { phase: "active", failCleanup: false },
+  { phase: "suspended", failCleanup: false },
+  { phase: "active", failCleanup: true },
+] as const)(
+  "removes environments on a $phase persistent machine (cleanup fails first: $failCleanup)",
+  async ({ phase, failCleanup }) =>
     withTestHarness(async (harness) => {
-      setAppSettings(harness.db, {
-        ...getAppSettings(harness.db),
-        machineGitCredentialsEnabled: false,
-      });
       const target = seedHostSession(harness.deps, { id: "review-removing" });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: target.host.id,
@@ -194,6 +205,7 @@ it.each(["active", "suspended"] as const)(
         })
         .where(eq(environments.id, environment.id))
         .run();
+      let cleanupFailurePending = failCleanup;
       const record = {
         pluginId: "review-worktree-plugin",
         provider: validatePluginEnvironmentProviderDeclaration({
@@ -207,6 +219,13 @@ it.each(["active", "suspended"] as const)(
             ownsPath: true,
           }),
           remove: async () => {
+            if (cleanupFailurePending) {
+              cleanupFailurePending = false;
+              return {
+                status: "failed",
+                message: "Workspace cleanup temporarily failed",
+              };
+            }
             await callPluginHostRpc(harness.deps, {
               pluginId: "review-worktree-plugin",
               hostId: target.host.id,
@@ -237,6 +256,17 @@ it.each(["active", "suspended"] as const)(
         }),
         decisionTimeoutMs: 1000,
       });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+        visibility: "hidden",
+      });
+      expect(requestEnvironmentRemoval(harness.deps, environment.id)).toBe(
+        false,
+      );
+      await sweepProviderEnvironment(harness.deps, environment.id);
+      expect(cleanupCall).not.toHaveBeenCalled();
       expect(requestMachineRemoval(harness.deps, target.host.id)).toBe(true);
       expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
       await expect(
@@ -253,11 +283,25 @@ it.each(["active", "suspended"] as const)(
         }),
       ).rejects.toThrow("cancelled");
       await sweepProviderMachine(harness.deps, target.host.id);
+      if (failCleanup) {
+        expect(getHost(harness.db, target.host.id)).toMatchObject({
+          phase: "removing",
+          teardownStatus: "failed",
+          statusMessage: "Workspace cleanup temporarily failed",
+        });
+        expect(machineRemove).not.toHaveBeenCalled();
+        await retryMachineCleanup(harness.deps, target.host.id);
+      }
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "destroyed",
         teardownStatus: "removed",
       });
       expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        archivedAt: null,
+        deletedAt: null,
+        status: "idle",
+      });
       expect(cleanupCall).toHaveBeenCalledOnce();
       expect(resume).toHaveBeenCalledTimes(phase === "suspended" ? 1 : 0);
       expect(machineRemove).toHaveBeenCalledOnce();
@@ -466,4 +510,55 @@ it("accepts reconciliation before the provider finishes and coalesces repeated r
         .poll(() => getHost(harness.db, host.id)?.phase)
         .toBe("suspended");
     }
+  }));
+
+it("holds the machine drain deadline while the server is moving", async () =>
+  withTestHarness({ terminalCloseTimeoutMs: 60 * 60_000 }, async (harness) => {
+    const target = seedHostSession(harness.deps, {
+      id: "review-frozen-drain",
+    });
+    createTerminalSession(harness.db, {
+      cols: 80,
+      daemonSessionId: target.session.id,
+      environmentId: null,
+      hostId: target.host.id,
+      initialCwd: "~",
+      rows: 24,
+      status: "running",
+      threadId: null,
+      title: "zsh",
+    });
+    const save = vi.fn(async () => {});
+    vi.useFakeTimers();
+    const outcome = maintainMachine(
+      harness.deps,
+      target.host.id,
+      "operation-frozen-drain",
+      save,
+    ).then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    setServerMoveFrozen(harness.db, true);
+    try {
+      await vi.advanceTimersByTimeAsync(
+        5 * 60_000 + SERVER_MOVE_FROZEN_RETRY_MS,
+      );
+      expect(getHost(harness.db, target.host.id)).toMatchObject({
+        phase: "suspending",
+        suspendRetryAt: null,
+      });
+    } finally {
+      setServerMoveFrozen(harness.db, false);
+    }
+
+    expect(
+      await advanceUntilSettled(outcome, SERVER_MOVE_FROZEN_RETRY_MS),
+    ).toMatchObject({
+      message: "Machine drain exceeded its deadline; old compute is retained",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
+    expect(getHost(harness.db, target.host.id)?.suspendRetryAt).not.toBeNull();
   }));

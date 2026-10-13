@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "activity-row-styles",
+  "type": "registry:ui",
+  "title": "activity-row-styles",
+  "description": "BB ui \"activity-row-styles\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/activity-row-styles.ts",
+      "content": "import { cn } from \"../../lib/utils\";\n\nexport type ActivityRowState =\n  | \"active\"\n  | \"pending\"\n  | \"completed\"\n  | \"failed\"\n  | \"muted\";\n\nconst ACTIVITY_ROW_CLASS: Record<ActivityRowState, string> = {\n  active:\n    \"rounded-md bg-background/70 px-2 py-1 shadow-xs ring-1 ring-border/60\",\n  pending: \"rounded-md px-2 py-0.5\",\n  completed: \"rounded-md px-2 py-0.5\",\n  failed: \"rounded-md bg-destructive/5 px-2 py-1 ring-1 ring-destructive/20\",\n  muted: \"rounded-md px-2 py-0.5 opacity-60\",\n};\n\nconst ACTIVITY_ICON_CLASS: Record<ActivityRowState, string> = {\n  active: \"animate-shine-icon text-foreground\",\n  pending: \"text-muted-foreground/45\",\n  completed: \"text-subtle-foreground\",\n  failed: \"text-destructive-text\",\n  muted: \"text-subtle-foreground\",\n};\n\nconst ACTIVITY_TEXT_CLASS: Record<ActivityRowState, string> = {\n  active: \"animate-shine font-medium text-foreground\",\n  pending: \"text-muted-foreground\",\n  completed:\n    \"text-subtle-foreground line-through decoration-subtle-foreground/70\",\n  failed: \"text-destructive-text\",\n  muted: \"text-subtle-foreground\",\n};\n\nconst ACTIVITY_META_CLASS: Record<ActivityRowState, string> = {\n  active: \"text-muted-foreground\",\n  pending: \"text-subtle-foreground\",\n  completed: \"text-subtle-foreground\",\n  failed: \"text-destructive-text\",\n  muted: \"text-subtle-foreground\",\n};\n\nexport function activityRowClass(\n  state: ActivityRowState,\n  className?: string,\n): string {\n  return cn(ACTIVITY_ROW_CLASS[state], className);\n}\n\nexport function activityIconClass(\n  state: ActivityRowState,\n  className?: string,\n): string {\n  return cn(ACTIVITY_ICON_CLASS[state], className);\n}\n\nexport function activityTextClass(\n  state: ActivityRowState,\n  className?: string,\n): string {\n  return cn(ACTIVITY_TEXT_CLASS[state], className);\n}\n\nexport function activityMetaClass(\n  state: ActivityRowState,\n  className?: string,\n): string {\n  return cn(ACTIVITY_META_CLASS[state], className);\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/activity-row-styles.ts"
+    }
+  ]
+}

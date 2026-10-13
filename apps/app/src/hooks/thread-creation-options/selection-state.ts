@@ -1,4 +1,9 @@
-import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type {
+  PermissionMode,
+  ReasoningLevel,
+  ServiceTier,
+  SessionOptionSelections,
+} from "@bb/domain";
 import type {
   CreateExecutionInputSources,
   ExecutionInputFieldSource,
@@ -41,6 +46,7 @@ export interface UsePromptModelReasoningOptions {
   initialReasoningLevel?: ReasoningLevel;
   initialPermissionMode?: PermissionMode;
   initialEnvironmentSelectionValue?: string;
+  sessionOptionSelections?: SessionOptionSelections;
   preferenceProjectId?: string | null;
   resolveProviderRouting?: (
     environmentSelectionValue: string,

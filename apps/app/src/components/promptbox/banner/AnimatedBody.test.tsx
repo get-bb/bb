@@ -52,6 +52,9 @@ describe("AnimatedBody", () => {
     expect(
       screen.getByRole("region", { hidden: true }).getAttribute("aria-hidden"),
     ).toBe("true");
+    expect(
+      screen.getByRole("region", { hidden: true }).hasAttribute("inert"),
+    ).toBe(true);
   });
 });
 

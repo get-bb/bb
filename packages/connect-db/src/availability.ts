@@ -3,8 +3,6 @@ import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { type HandleValidationError, validateLabel } from "./constants.js";
 import { labelClaim } from "./schema.js";
 
-export type LabelClaim = typeof labelClaim.$inferSelect;
-
 // oxlint-disable-next-line typescript/no-explicit-any
 export type ConnectDb = BaseSQLiteDatabase<
   "sync" | "async",

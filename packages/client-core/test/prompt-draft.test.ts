@@ -5,20 +5,12 @@ import {
   appendQuoteToDraftText,
   emptyPromptDraftState,
   isPromptDraftEmpty,
+  getProjectStoredPromptAttachmentPaths,
   parsePromptDraftStorage,
   promptDraftToInput,
   promptInputToDraft,
+  serializePromptDraftStorage,
 } from "../src/prompt/prompt-draft.js";
-
-const AUTOMATION_COMMAND_RESOURCE: PromptMentionResource = {
-  kind: "command",
-  trigger: "/",
-  name: "automation",
-  source: "command",
-  origin: "user",
-  label: "automation",
-  argumentHint: null,
-};
 
 describe("prompt draft helpers", () => {
   it("drops invalid legacy raw text drafts", () => {
@@ -28,6 +20,69 @@ describe("prompt draft helpers", () => {
       mentions: [],
       attachments: [],
     });
+  });
+
+  it("treats a stored zero attachment size as unknown", () => {
+    const parsed = parsePromptDraftStorage(
+      JSON.stringify({
+        text: "",
+        attachments: [
+          {
+            type: "localFile",
+            path: "/tmp/spec.md",
+            name: "spec.md",
+            sizeBytes: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.attachments).toEqual([
+      { type: "localFile", path: "/tmp/spec.md", name: "spec.md" },
+    ]);
+    expect(promptDraftToInput(parsed)).toEqual([
+      { type: "localFile", path: "/tmp/spec.md", name: "spec.md" },
+    ]);
+  });
+
+  it("preserves portable attachments through history conversion and persisted drafts", () => {
+    const input = [
+      {
+        type: "localImage" as const,
+        path: "shot.png",
+        sourceProjectId: "proj_source",
+      },
+      {
+        type: "localFile" as const,
+        path: "notes.txt",
+        name: "notes.txt",
+        sizeBytes: 5,
+        mimeType: "text/plain",
+        sourceProjectId: "proj_other",
+      },
+      {
+        type: "localFile" as const,
+        path: "/tmp/report.txt",
+        name: "report.txt",
+        hostId: "host_1",
+      },
+    ];
+    const restored = parsePromptDraftStorage(
+      serializePromptDraftStorage(promptInputToDraft(input)),
+    );
+
+    expect(promptDraftToInput(restored)).toEqual(input);
+    expect(
+      getProjectStoredPromptAttachmentPaths([
+        ...restored.attachments,
+        {
+          type: "localFile",
+          path: "legacy.txt",
+          name: "legacy.txt",
+          sizeBytes: 1,
+        },
+      ]),
+    ).toEqual(["legacy.txt"]);
   });
 
   it("parses structured drafts with attachments", () => {
@@ -115,105 +170,54 @@ describe("prompt draft helpers", () => {
     ]);
   });
 
-  it("expands automation command pills before mapping draft text to prompt input", () => {
-    const input = promptDraftToInput({
-      text: "/automation keep checking CI",
-      mentions: [
-        {
-          start: 0,
-          end: "/automation".length,
-          resource: AUTOMATION_COMMAND_RESOURCE,
-        },
-      ],
-      attachments: [],
-    });
-
-    expect(input).toEqual([
-      {
-        type: "text",
-        text: "Create a new bb automation to keep checking CI",
-        mentions: [],
-      },
-    ]);
-  });
-
-  it("keeps mention ranges correct after expanding an automation command pill", () => {
-    const threadResource: PromptMentionResource = {
-      kind: "thread",
-      threadId: "thr_child",
-      label: "Child thread",
+  it("keeps attachment mentions only while their attachment is in the draft", () => {
+    const text = "Compare @Pasted text.txt with @Pasted text 2.txt";
+    const attached = {
+      kind: "attachment" as const,
+      path: "Pasted-text-1.txt",
+      label: "Pasted text.txt",
     };
-    const text = "/automation inspect @thread";
-    const threadToken = "@thread";
-    const threadStart = text.indexOf(threadToken);
-    if (threadStart < 0) {
-      throw new Error("Expected thread token in test text");
-    }
-
+    const removed = {
+      kind: "attachment" as const,
+      path: "Pasted-text-2.txt",
+      label: "Pasted text 2.txt",
+    };
     const input = promptDraftToInput({
       text,
       mentions: [
-        {
-          start: 0,
-          end: "/automation".length,
-          resource: AUTOMATION_COMMAND_RESOURCE,
-        },
-        {
-          start: threadStart,
-          end: threadStart + threadToken.length,
-          resource: threadResource,
-        },
+        { start: 8, end: 24, resource: attached },
+        { start: 30, end: 48, resource: removed },
       ],
-      attachments: [],
+      attachments: [
+        { type: "localFile", path: "Pasted-text-1.txt", name: "Pasted text.txt" },
+      ],
     });
 
-    expect(input).toEqual([
-      {
-        type: "text",
-        text: "Create a new bb automation to inspect @thread",
-        mentions: [
-          {
-            start: "Create a new bb automation to inspect ".length,
-            end: "Create a new bb automation to inspect @thread".length,
-            resource: threadResource,
-          },
-        ],
-      },
-    ]);
-  });
-
-  it("leaves literal automation text unchanged when it is not a command pill", () => {
-    const input = promptDraftToInput({
-      text: "/automation keep checking CI",
-      mentions: [],
-      attachments: [],
+    expect(input[0]).toEqual({
+      type: "text",
+      text,
+      mentions: [{ start: 8, end: 24, resource: attached }],
     });
-
-    expect(input).toEqual([
-      { type: "text", text: "/automation keep checking CI", mentions: [] },
-    ]);
   });
 
-  it("omits zero-size localFile size when mapping draft attachments to prompt input", () => {
+  it("sends no size for an unknown or zero-size placeholder attachment", () => {
     const input = promptDraftToInput({
       text: "",
       mentions: [],
       attachments: [
+        { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
         {
           type: "localFile",
-          path: "uploads/spec.md",
-          name: "spec.md",
+          path: "uploads/plugin.md",
+          name: "plugin.md",
           sizeBytes: 0,
         },
       ],
     });
 
     expect(input).toEqual([
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-      },
+      { type: "localFile", path: "uploads/spec.md", name: "spec.md" },
+      { type: "localFile", path: "uploads/plugin.md", name: "plugin.md" },
     ]);
   });
 
@@ -279,7 +283,6 @@ describe("prompt draft helpers", () => {
           type: "localImage",
           path: "/tmp/screenshot.png",
           name: "screenshot.png",
-          sizeBytes: 0,
         },
         {
           type: "localFile",
@@ -314,6 +317,13 @@ describe("appendQuoteToDraftText", () => {
     const base = { text: "existing reply", mentions: [], attachments: [] };
     const next = appendQuoteToDraftText(base, "quoted");
     expect(next.text).toBe("existing reply\n> quoted\n");
+  });
+
+  it("stacks a second quote below the first, separated by a blank line", () => {
+    const first = appendQuoteToDraftText(emptyPromptDraftState(), "first");
+    expect(appendQuoteToDraftText(first, "second").text).toBe(
+      "> first\n\n> second\n",
+    );
   });
 
   it("ignores an empty or whitespace-only quote", () => {

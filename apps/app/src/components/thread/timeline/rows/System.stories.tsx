@@ -128,6 +128,22 @@ const threadInterruptedManualStop: TimelineRow = systemRow({
   completedAt: 1776810312000,
 });
 
+const threadInterruptedHostLost: TimelineRow = systemRow({
+  id: "thr_m8dsv5hjpi:op:thread-interrupted:1776810313",
+  threadId: "thr_m8dsv5hjpi",
+  turnId: null,
+  sourceSeqStart: 319,
+  sourceSeqEnd: 319,
+  startedAt: 1776810313000,
+  createdAt: 1776810313000,
+  systemKind: "operation",
+  operationKind: "thread-interrupted",
+  title: "Stopped — connection to host was lost",
+  detail: null,
+  status: "interrupted",
+  completedAt: 1776810313000,
+});
+
 const providerUnhandled: TimelineRow = systemRow({
   id: "thr_m22cr9ggq7:op:provider-unhandled:1776898870",
   threadId: "thr_m22cr9ggq7",
@@ -502,6 +518,64 @@ export function NonOperations() {
           />
         </TimelineStage>
       </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function IconAlignment() {
+  return (
+    <StoryCard>
+      {[
+        threadInterruptedHostLost,
+        compactionCompleted,
+        contextCleared,
+        parentChangeAssign,
+      ].map((row) => (
+        <section key={row.id} className="w-full max-w-[760px]">
+          <ThreadTimelineRows {...baseProps} timelineRows={[row]} />
+        </section>
+      ))}
+    </StoryCard>
+  );
+}
+
+export function SummaryOverflow() {
+  const summaries = [
+    ["One line", "Stopped manually"],
+    ["Two lines", "First line of the message. Second line of the message."],
+    [
+      "Model switch",
+      "This session was recorded with model `gpt-6-astra` but is resuming with `gpt-5.6-luna`. Consider switching back to `gpt-6-astra` as it may affect Codex performance.",
+    ],
+    [
+      "Long token",
+      "Unable to open /workspace/" +
+        "nested-directory/".repeat(30) +
+        "config.json",
+    ],
+  ];
+  return (
+    <StoryCard>
+      {summaries.map(([label, title]) => (
+        <section
+          key={label}
+          aria-label={label}
+          className="w-full max-w-[760px]"
+          style={label === "Two lines" ? { maxWidth: 220 } : undefined}
+        >
+          <ThreadTimelineRows
+            {...baseProps}
+            timelineRows={[
+              systemRow({
+                id: label,
+                operationKind: "warning",
+                title,
+                detail: null,
+              }),
+            ]}
+          />
+        </section>
+      ))}
     </StoryCard>
   );
 }

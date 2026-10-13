@@ -1,6 +1,7 @@
 import {
+  automationDetailReadResultSchema,
+  automationDetailResponseSchema,
   automationListResponseSchema,
-  automationReadResultSchema,
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
@@ -27,15 +28,15 @@ export const automationRpcContract = defineRpcContract({
   },
   automations_get: {
     input: projectAutomationInputSchema,
-    output: automationReadResultSchema,
+    output: automationDetailReadResultSchema,
   },
   automations_create: {
     input: createAutomationInputSchema,
-    output: automationResponseSchema,
+    output: automationDetailResponseSchema,
   },
   automations_update: {
     input: updateAutomationInputSchema,
-    output: automationResponseSchema,
+    output: automationDetailResponseSchema,
   },
   automations_delete: {
     input: projectAutomationInputSchema,

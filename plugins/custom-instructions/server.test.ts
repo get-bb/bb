@@ -89,4 +89,42 @@ describe("custom instructions plugin", () => {
       stderr: expect.stringContaining("at most 4096 characters"),
     });
   });
+
+  it("documents set in help, requires its text, accepts dashed text, and reports errors as JSON", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "custom-instructions",
+    });
+    await plugin(bb);
+
+    const help = (await harness.runCli(["set", "--help"])).stdout;
+    expect(help).toContain("bb instructions set");
+    expect(help).toContain("at most 4096 characters");
+
+    const dashed = await harness.runCli(["set", "--", "-n", "no flags here"]);
+    expect(dashed.exitCode, dashed.stderr).toBe(0);
+    await expect(harness.runCli(["get"])).resolves.toMatchObject({
+      stdout: "-n no flags here",
+    });
+
+    const missingText = await harness.runCli(["set"]);
+    expect(missingText.exitCode).toBe(1);
+    expect(missingText.stderr).toContain("missing required arguments: <text>");
+    await expect(harness.runCli(["get"])).resolves.toMatchObject({
+      stdout: "-n no flags here",
+    });
+
+    const envelope = await harness.runCli([
+      "set",
+      "x".repeat(MAX_CUSTOM_INSTRUCTIONS_LENGTH + 1),
+      "--json",
+    ]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid_instructions",
+        message: expect.stringContaining("at most 4096 characters"),
+      },
+    });
+  });
 });

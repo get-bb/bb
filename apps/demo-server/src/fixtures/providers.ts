@@ -17,6 +17,14 @@ function provider(
     available: true,
     logoUrl: `/api/v1/system/providers/${info.id}/logo`,
     maintenance: { health: false, usage: false, installation: false },
+    ...(info.capabilities.supportsServiceTier
+      ? {
+          serviceTiers: [
+            { id: "default", label: "Default" },
+            { id: "fast", label: "Fast" },
+          ],
+        }
+      : {}),
   };
 }
 

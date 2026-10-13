@@ -1,4 +1,7 @@
-import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
+import type {
+  BbDesktopBrowserApi,
+  BbDesktopBrowserTarget,
+} from "@bb/desktop-contract";
 
 export interface BrowserViewVisibilityCoordinator {
   show(
@@ -38,6 +41,30 @@ interface DestroyPersistedBrowserViewsForEnvironmentArgs {
 }
 
 const browserViewRecords = new Map<string, BrowserViewRecord>();
+const browserViewRecreationTargets = new Map<string, BbDesktopBrowserTarget>();
+
+export function allowBrowserViewRecreation(
+  tabId: string,
+  target: BbDesktopBrowserTarget,
+): void {
+  browserViewRecreationTargets.set(tabId, target);
+}
+
+export function takeBrowserViewRecreation(
+  tabId: string,
+  target: BbDesktopBrowserTarget,
+): boolean {
+  const allowedTarget = browserViewRecreationTargets.get(tabId);
+  if (
+    allowedTarget?.hostId !== target.hostId ||
+    allowedTarget.instanceId !== target.instanceId ||
+    allowedTarget.generation !== target.generation
+  ) {
+    return false;
+  }
+  browserViewRecreationTargets.delete(tabId);
+  return true;
+}
 
 export function createBrowserViewVisibilityCoordinator(
   desktopBrowser: BbDesktopBrowserApi,
@@ -89,6 +116,7 @@ export function destroyPersistedBrowserView({
   desktopBrowser.setVisible({ tabId, visible: false });
   desktopBrowser.detach(tabId);
   browserViewRecords.delete(tabId);
+  browserViewRecreationTargets.delete(tabId);
 }
 
 export function destroyPersistedBrowserViewsForThread({
@@ -123,4 +151,5 @@ export function destroyPersistedBrowserViewsForEnvironment({
 
 export function resetBrowserViewPersistence(): void {
   browserViewRecords.clear();
+  browserViewRecreationTargets.clear();
 }

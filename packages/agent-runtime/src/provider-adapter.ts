@@ -8,6 +8,7 @@ import type {
   ReasoningLevel,
   RuntimePermissionPolicy,
   ServiceTier,
+  SessionOptionSelections,
 } from "@bb/domain";
 import type {
   AgentRuntimeBridgeLaunch,
@@ -27,6 +28,7 @@ export type ProviderExecutionContext = {
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
   promptMode?: PromptMode;
+  sessionOptions?: SessionOptionSelections;
   providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;
@@ -44,6 +46,7 @@ export type AdapterCommand =
       type: "provider/installation/status";
       cwd?: string;
       requirement?: "thread_rewind";
+      checkUpdates: boolean;
     }
   | {
       type: "provider/installation/run";
@@ -56,7 +59,6 @@ export type AdapterCommand =
       cwd: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {
@@ -66,7 +68,6 @@ export type AdapterCommand =
       providerThreadId: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {
@@ -77,7 +78,6 @@ export type AdapterCommand =
       sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
-      disallowedTools?: readonly string[];
       instructionMode: InstructionMode;
     }
   | {

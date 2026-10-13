@@ -6,9 +6,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
-import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
+import { ConfirmDeleteDialog } from "@bb/shared-ui/confirm-delete-dialog";
 import { useRemoveHost } from "@/hooks/mutations/host-mutations";
+import { useMachineThreadPreview } from "@/hooks/queries/thread-queries";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
+
+const MACHINE_THREAD_PREVIEW_LIMIT = 5;
+
+export function serverMachineRemoveDisabledReason(
+  serverMoveEnabled: boolean,
+): string {
+  return serverMoveEnabled
+    ? "The server machine can't be removed. Move the server to another machine first."
+    : "The server machine can't be removed.";
+}
 
 export function machineRemovalConsequences(host: Host): string {
   if (host.type === "ephemeral") {
@@ -18,6 +30,35 @@ export function machineRemovalConsequences(host: Host): string {
     return "The provider cleans up resources it owns. Its environments remain as read-only history.";
   }
   return "Project checkouts stay on its disk, but its environments become read-only history and it cannot run new work until paired again.";
+}
+
+function MachineThreadPreviewList({ hostId }: { hostId: string }) {
+  const preview = useMachineThreadPreview({
+    hostId,
+    limit: MACHINE_THREAD_PREVIEW_LIMIT,
+  });
+  if (preview.data === undefined || preview.data.total === 0) return null;
+  const { threads, total } = preview.data;
+  const hiddenCount = total - threads.length;
+  const summary =
+    total === 1
+      ? "1 unarchived thread on this machine:"
+      : `${total} unarchived threads on this machine:`;
+  return (
+    <div className="space-y-1 text-sm text-muted-foreground">
+      <p>{summary}</p>
+      <ul className="list-disc space-y-0.5 pl-5 text-foreground marker:text-subtle-foreground">
+        {threads.map((thread) => (
+          <li key={thread.id}>
+            <span className="block truncate">
+              {getThreadDisplayTitle(thread)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 ? <p>and {hiddenCount} more</p> : null}
+    </div>
+  );
 }
 
 export function MachineRemoveDialog({
@@ -33,7 +74,6 @@ export function MachineRemoveDialog({
 
   return (
     <ConfirmDeleteDialog
-      modal={false}
       open={target !== null}
       onOpenChange={(open) => {
         if (!open && !removeHost.isPending) {
@@ -51,6 +91,7 @@ export function MachineRemoveDialog({
               {machineRemovalConsequences(target)}
             </DialogDescription>
           </DialogHeader>
+          <MachineThreadPreviewList hostId={target.id} />
           {removeHost.isError ? (
             <p className="text-sm text-destructive" role="alert">
               {getMutationErrorMessage({

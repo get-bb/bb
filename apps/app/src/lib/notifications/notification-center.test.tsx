@@ -7,7 +7,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { Toaster } from "sonner";
+import { AppToasterView } from "@/components/AppToasterView";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { appToast } from "@/components/ui/app-toast";
@@ -35,7 +35,7 @@ it("keeps notification details open when dismissing the toast restores composer 
   render(
     <>
       <textarea aria-label="Composer" />
-      <Toaster />
+      <AppToasterView />
       <NotificationCenter />
     </>,
   );

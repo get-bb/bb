@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   arrangePluginNavPanelPreferences,
-  arrangePluginNavPanels,
   BUILT_IN_SIDEBAR_NAVIGATION_KEYS,
   getPluginNavPanelKey,
   seedSkillsNavigationPreference,
@@ -60,56 +59,6 @@ describe("seedSkillsNavigationPreference", () => {
       ],
       visibleKeys: [],
     });
-  });
-});
-
-describe("arrangePluginNavPanels", () => {
-  it("falls back to registry order before the user has reordered anything", () => {
-    const { ordered, normalizedOrder } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: [],
-    });
-
-    expect(ordered.map(getPluginNavPanelKey)).toEqual([
-      "github/pulls",
-      "docs/vault",
-      "tasks/board",
-    ]);
-    expect(normalizedOrder).toEqual([
-      "github/pulls",
-      "docs/vault",
-      "tasks/board",
-    ]);
-  });
-
-  it("appends newly installed panels last", () => {
-    const { ordered } = arrangePluginNavPanels({
-      panels: [github, docs, tasks],
-      storedOrder: ["tasks/board", "github/pulls"],
-    });
-
-    expect(ordered.map(getPluginNavPanelKey)).toEqual([
-      "tasks/board",
-      "github/pulls",
-      "docs/vault",
-    ]);
-  });
-
-  it("keeps unregistered keys in the normalized order", () => {
-    const { ordered, normalizedOrder } = arrangePluginNavPanels({
-      panels: [github, docs],
-      storedOrder: ["strudel/repl", "docs/vault", "github/pulls"],
-    });
-
-    expect(ordered.map(getPluginNavPanelKey)).toEqual([
-      "docs/vault",
-      "github/pulls",
-    ]);
-    expect(normalizedOrder).toEqual([
-      "strudel/repl",
-      "docs/vault",
-      "github/pulls",
-    ]);
   });
 });
 

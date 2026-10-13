@@ -23,13 +23,16 @@ const BB_CLI_SKILL_ROOT = fileURLToPath(
 );
 
 function commandPaths(command: Command, prefix: string[] = []): string[] {
-  return command.commands.flatMap((child) => {
-    const path = [...prefix, child.name()];
-    const aliases = child
-      .aliases()
-      .map((alias) => [...prefix, alias].join(" "));
-    return [path.join(" "), ...aliases, ...commandPaths(child, path)];
-  });
+  const visible = new Set(command.createHelp().visibleCommands(command));
+  return command.commands
+    .filter((child) => visible.has(child))
+    .flatMap((child) => {
+      const path = [...prefix, child.name()];
+      const aliases = child
+        .aliases()
+        .map((alias) => [...prefix, alias].join(" "));
+      return [path.join(" "), ...aliases, ...commandPaths(child, path)];
+    });
 }
 
 function readMarkdownTree(directory: string): string {

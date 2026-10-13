@@ -362,6 +362,38 @@ describe("builtin Keep Awake server entry", () => {
     await host.harness.dispose();
   });
 
+  it("documents host ids in help and reports errors as JSON", async () => {
+    const host = createFakePluginHost({
+      pluginId: "keep-awake",
+      sdk: { hosts: { list: async () => [] } },
+    });
+    await plugin(host.bb);
+
+    const help = (await host.harness.runCli(["hosts", "--help"])).stdout;
+    expect(help).toContain("bb keep-awake hosts");
+    expect(help).toContain("<host-id...>");
+
+    const envelope = await host.harness.runCli([
+      "hosts",
+      "all",
+      "host-1",
+      "--json",
+    ]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "invalid_host_selection" },
+    });
+    expect(envelope.stderr).toContain(
+      '"all" cannot be combined with individual host ids',
+    );
+    await expect(
+      host.bb.storage.kv.get("configuration"),
+    ).resolves.toBeUndefined();
+
+    await host.harness.dispose();
+  });
+
   it("falls back to all hosts when plugin KV contains an invalid selection", async () => {
     const host = createFakePluginHost({
       pluginId: "keep-awake",

@@ -75,28 +75,8 @@ export function assertTerminalMessageIncludedInMessages(
   );
 }
 
-function withChildProjectionDetail(
-  message: EventProjectionMessage,
-): EventProjectionMessage {
-  if (message.kind !== "delegation") {
-    return message;
-  }
-  return {
-    ...message,
-    childProjection: applyProjectionTurnMessageDetail(
-      message.childProjection,
-      "full",
-    ),
-  };
-}
-
-function applyTurnMessageDetail(
-  turn: EventProjectionTurn,
-  turnMessageDetail: EventProjectionTurnMessageDetail,
-): EventProjectionTurn {
-  const messages = (turn.messages ?? []).map((message) =>
-    withChildProjectionDetail(message),
-  );
+function summarizeTurn(turn: EventProjectionTurn): EventProjectionTurn {
+  const messages = turn.messages ?? [];
   const terminalMessage = findLastTerminalTimelineMessage(messages);
   const summaryMessages = terminalMessage
     ? messages.slice(0, messages.indexOf(terminalMessage))
@@ -104,7 +84,6 @@ function applyTurnMessageDetail(
   const summaryCount = getProjectionSummaryCount(messages, terminalMessage);
   const includeMessages =
     turn.status === "pending" ||
-    turnMessageDetail === "full" ||
     (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
     isSingletonContextManagementOperation(summaryMessages) ||
     shouldIncludeSummaryTurnMessages(messages, terminalMessage);
@@ -137,18 +116,19 @@ export function applyProjectionTurnMessageDetail(
   projection: EventProjection,
   turnMessageDetail: EventProjectionTurnMessageDetail,
 ): EventProjection {
+  if (turnMessageDetail === "full") return projection;
   return {
     state: projection.state,
     entries: projection.entries.map((entry) => {
       if (entry.kind === "projected-message") {
         return {
           kind: "projected-message",
-          message: withChildProjectionDetail(entry.message),
+          message: entry.message,
         };
       }
       return {
         kind: "turn",
-        turn: applyTurnMessageDetail(entry.turn, turnMessageDetail),
+        turn: summarizeTurn(entry.turn),
       };
     }),
   };

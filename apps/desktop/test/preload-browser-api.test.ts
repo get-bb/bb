@@ -42,6 +42,7 @@ import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
+  BB_DESKTOP_FOCUS_WINDOW_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
   BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
@@ -109,8 +110,12 @@ const electronMock = vi.hoisted(() => {
       },
     },
     ipcRenderer: {
-      invoke(channel: string): Promise<BbDesktopInfo | BbDesktopWindowState> {
+      invoke(channel: string): Promise<unknown> {
         invokeCalls.push(channel);
+        if (channel === "bb-desktop:get-server-choices")
+          return Promise.resolve([
+            { id: "builtin", name: "Local", active: true },
+          ]);
         if (channel === "bb-desktop:get-window-state") {
           return Promise.resolve(desktopWindowState);
         }
@@ -172,6 +177,39 @@ describe("desktop preload browser API", () => {
     api = await loadPreload();
   }, 30_000);
 
+  it("validates server updates and unsubscribes while sending only opaque selection IDs", async () => {
+    expect(await api.getServerChoices?.()).toEqual([
+      { id: "builtin", name: "Local", active: true },
+    ]);
+    const updates = vi.fn();
+    const stop = api.onServerChoicesChange?.(updates);
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [
+        { id: "remote", name: "Remote", active: false, url: "private" },
+      ],
+    });
+    expect(updates).not.toHaveBeenCalled();
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [{ id: "remote", name: "Remote", active: false }],
+    });
+    expect(updates).toHaveBeenCalledWith([
+      { id: "remote", name: "Remote", active: false },
+    ]);
+    stop?.();
+    emitIpcPayload({
+      channel: "bb-desktop:server-choices-changed",
+      payload: [],
+    });
+    expect(updates).toHaveBeenCalledTimes(1);
+    api.selectServer?.("remote");
+    expect(electronMock.sendCalls).toContainEqual({
+      channel: "bb-desktop:select-server",
+      payload: "remote",
+    });
+  });
+
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
     const attachRequest = {
       threadId: "thread-1",
@@ -207,6 +245,7 @@ describe("desktop preload browser API", () => {
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
+      "evaluate",
       "findInPage",
       "focus",
       "getControl",
@@ -220,6 +259,7 @@ describe("desktop preload browser API", () => {
       "onFindResult",
       "onFocus",
       "onOpenTab",
+      "onPageMessage",
       "onReveal",
       "onScopedOpenTab",
       "onSnapshot",
@@ -249,6 +289,8 @@ describe("desktop preload browser API", () => {
     api.browser.setVisibleWithoutFocus?.(visibleRequest);
     api.browser.findInPage?.(findRequest);
     api.browser.stopFindInPage?.(stopFindRequest);
+    expect(api.focusWindow).toBeTypeOf("function");
+    api.focusWindow?.();
     api.setTheme("dark");
     await api.checkForUpdates();
     await expect(api.getWindowState?.()).resolves.toEqual({
@@ -306,6 +348,7 @@ describe("desktop preload browser API", () => {
         channel: BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
         payload: stopFindRequest,
       },
+      { channel: BB_DESKTOP_FOCUS_WINDOW_CHANNEL, payload: undefined },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);
     expect(electronMock.invokeCalls).toContain(BB_DESKTOP_GET_INFO_CHANNEL);

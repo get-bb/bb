@@ -1,14 +1,5 @@
 import { z } from "zod";
-import {
-  deriveConnectBaseUrl,
-  type ConnectCredential,
-} from "@bb/connect-client";
-
-const machineCodeResponseSchema = z.object({
-  code: z.string().min(1),
-  expiresInMs: z.number().int().positive(),
-  serverUrl: z.string().url(),
-});
+import { deriveConnectBaseUrl } from "@bb/connect-client";
 
 export interface MachineCode {
   code: string;
@@ -25,55 +16,27 @@ export class MachineCodeError extends Error {
   }
 }
 
-export async function fetchMachineCode(
-  credential: ConnectCredential,
-  signal: AbortSignal,
-): Promise<MachineCode> {
-  const url = `${deriveConnectBaseUrl(credential.serverUrl).replace(/\/$/u, "")}/api/connect/machine-code`;
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "x-bb-connect-machine": credential.credential },
-      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
-    });
-  } catch {
-    signal.throwIfAborted();
-    throw new MachineCodeError("network");
-  }
-  if (!response.ok) {
-    throw new MachineCodeError(
-      response.status === 409 ? "machine_limit" : "network",
-    );
-  }
-  const parsed = machineCodeResponseSchema.safeParse(await response.json());
-  if (!parsed.success) throw new MachineCodeError("network");
-  return {
-    code: parsed.data.code,
-    expiresAt: Date.now() + parsed.data.expiresInMs,
-    serverUrl: parsed.data.serverUrl,
-  };
-}
-
-export async function lookupMachineCode(
-  credential: ConnectCredential,
-  code: string,
-  signal: AbortSignal,
-) {
+export async function redeemMachineCode(args: {
+  signal: AbortSignal;
+  code: string;
+  serverUrl: string;
+}): Promise<{ credential: string; machineId: string; serverUrl: string }> {
   const response = await fetch(
-    `${deriveConnectBaseUrl(credential.serverUrl)}/api/connect/machine-code`,
+    `${deriveConnectBaseUrl(args.serverUrl)}/api/connect/redeem-machine`,
     {
-      method: "GET",
-      headers: {
-        "x-bb-connect-machine": credential.credential,
-        "x-bb-connect-code": code,
-      },
-      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: args.code }),
+      signal: AbortSignal.any([args.signal, AbortSignal.timeout(10_000)]),
     },
   );
   if (!response.ok)
-    throw new Error(`Machine code lookup failed (${response.status})`);
+    throw new Error(`Machine redeem failed (${response.status})`);
   return z
-    .object({ consumed: z.boolean(), machineId: z.string().nullable() })
+    .object({
+      credential: z.string().min(1),
+      machineId: z.string().min(1),
+      serverUrl: z.string().url(),
+    })
     .parse(await response.json());
 }

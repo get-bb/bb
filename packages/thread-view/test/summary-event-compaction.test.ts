@@ -50,39 +50,6 @@ describe("compactThreadTimelineSummaryEvents", () => {
     expect(compactedEventIds(rows)).toEqual(rows.map((row) => row.id));
   });
 
-  it("keeps only the first completed agent-message delta once compaction is enabled", () => {
-    const events = createFactory();
-    const completedMessageDeltas = Array.from({ length: 1000 }, (_, index) =>
-      events.assistantDelta({
-        seq: index + 1,
-        delta: `chunk-${index + 1}`,
-        itemId: "msg-1",
-      }),
-    );
-    const incompleteMessageDelta = events.assistantDelta({
-      seq: 1001,
-      delta: "incomplete",
-      itemId: "msg-2",
-    });
-    const completedMessage = events.assistantCompleted({
-      seq: 1002,
-      itemId: "msg-1",
-      text: "message-1002",
-    });
-
-    expect(
-      compactedEventIds([
-        ...completedMessageDeltas,
-        incompleteMessageDelta,
-        completedMessage,
-      ]),
-    ).toEqual([
-      completedMessageDeltas[0]?.id,
-      incompleteMessageDelta.id,
-      completedMessage.id,
-    ]);
-  });
-
   it("keeps the first delta for each completed agent message independently", () => {
     const events = createFactory();
     const firstMessageDeltas = Array.from({ length: 500 }, (_, index) =>

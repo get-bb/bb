@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "voice-input-textarea",
+  "type": "registry:ui",
+  "title": "voice-input-textarea",
+  "description": "BB ui \"voice-input-textarea\" — the plugin version of the BB app's voice-input-textarea, drawing on the host app at runtime (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/voice-input-textarea.tsx",
+      "content": "import {\n  experimental_VoiceInputTextarea,\n  type ExperimentalVoiceInputTextareaProps,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type VoiceInputTextareaProps = ExperimentalVoiceInputTextareaProps;\nexport const VoiceInputTextarea = experimental_VoiceInputTextarea;\n",
+      "type": "registry:ui",
+      "target": "components/ui/voice-input-textarea.tsx"
+    }
+  ]
+}

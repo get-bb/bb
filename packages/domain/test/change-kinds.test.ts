@@ -36,11 +36,12 @@ function lenientOptionsByEntity(): Map<string, LenientChangedOption> {
 const maximalThreadMetadata: ThreadChangeMetadata = {
   backgroundActivityChanged: true,
   eventTypes: [...threadEventTypeValues],
+  timelineSequence: 42,
   hasPendingInteraction: true,
   projectId: "proj_1",
   statusChange: {
     status: "active",
-    runtime: { displayStatus: "active", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "active" },
     activity: {
       activeBackgroundAgentCount: 1,
       activeBackgroundCommandCount: 1,
@@ -125,7 +126,6 @@ describe("lenient changed-message schema parity", () => {
           status: "active",
           runtime: {
             displayStatus: "teleporting",
-            hostReconnectGraceExpiresAt: null,
           },
           activity: {
             activeBackgroundAgentCount: 0,

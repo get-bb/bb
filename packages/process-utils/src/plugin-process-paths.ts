@@ -2,6 +2,13 @@ import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+export type PluginProcessDataKind = "host-data" | "bridge-data";
+
+export const PLUGIN_PROCESS_DATA_KINDS: readonly PluginProcessDataKind[] = [
+  "host-data",
+  "bridge-data",
+];
+
 export function safePluginSegment(pluginId: string): string {
   return encodeURIComponent(pluginId);
 }
@@ -9,7 +16,7 @@ export function safePluginSegment(pluginId: string): string {
 export async function ensurePluginProcessDataDir(args: {
   daemonDataDir: string;
   pluginId: string;
-  kind: "host-data" | "bridge-data";
+  kind: PluginProcessDataKind;
 }): Promise<string> {
   const directory = join(
     args.daemonDataDir,

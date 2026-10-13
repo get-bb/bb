@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
+import { ProjectSelector } from "@/components/pickers/ProjectSelector";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +26,11 @@ import type { ArchivedThreadsKindFilter } from "@/hooks/queries/query-keys";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import {
+  ThreadTitle,
+  useResolveThreadTitle,
+} from "@/components/thread/ThreadTitleMentions";
+import { CHILD_THREAD_NOUN } from "@/lib/child-thread-copy";
 
 const ALL_PROJECTS = "all";
 const ARCHIVED_THREAD_SEARCH_LIMIT = 50;
@@ -34,7 +40,7 @@ const KIND_OPTIONS: ReadonlyArray<{
   value: ArchivedThreadsKindFilter;
 }> = [
   { label: "All threads", value: "all" },
-  { label: "Root threads", value: "root" },
+  { label: "Threads", value: "root" },
   { label: "Child threads", value: "child" },
 ];
 
@@ -88,14 +94,16 @@ function ArchiveFilterMenu<T extends string>({
 function filterArchivedThreadsBySearch(
   threads: ThreadListEntry[],
   search: string,
+  resolveTitle: (title: string) => string,
 ): ThreadListEntry[] {
   const normalizedSearch = search.trim().toLocaleLowerCase();
   if (normalizedSearch.length === 0) return threads;
-  return threads.filter((thread) =>
-    getThreadDisplayTitle(thread)
-      .toLocaleLowerCase()
-      .includes(normalizedSearch),
-  );
+  return threads.filter((thread) => {
+    const title = getThreadDisplayTitle(thread);
+    return [title, resolveTitle(title)].some((text) =>
+      text.toLocaleLowerCase().includes(normalizedSearch),
+    );
+  });
 }
 
 export function ArchivedThreadsSettingsSection() {
@@ -117,6 +125,7 @@ export function ArchivedThreadsSettingsSection() {
     query: search,
   });
   const unarchiveThread = useUnarchiveThread();
+  const resolveTitle = useResolveThreadTitle();
 
   const projects = useMemo(() => {
     if (!sidebarNavigation.data) return [];
@@ -127,16 +136,6 @@ export function ArchivedThreadsSettingsSection() {
   }, [sidebarNavigation.data]);
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
-    [projects],
-  );
-  const projectOptions = useMemo(
-    () => [
-      { label: "All projects", value: ALL_PROJECTS },
-      ...projects.map((project) => ({
-        label: project.name,
-        value: project.id,
-      })),
-    ],
     [projects],
   );
 
@@ -154,7 +153,7 @@ export function ArchivedThreadsSettingsSection() {
     );
     return searchIsActive
       ? filteredThreads
-      : filterArchivedThreadsBySearch(filteredThreads, search);
+      : filterArchivedThreadsBySearch(filteredThreads, search, resolveTitle);
   }, [
     archivedThreadsQuery.data,
     kind,
@@ -162,6 +161,7 @@ export function ArchivedThreadsSettingsSection() {
     search,
     searchIsActive,
     threadSearch.data,
+    resolveTitle,
   ]);
 
   const groupedThreads = useMemo(() => {
@@ -177,9 +177,6 @@ export function ArchivedThreadsSettingsSection() {
   const selectedKindLabel =
     KIND_OPTIONS.find((option) => option.value === kind)?.label ??
     "All threads";
-  const selectedProjectLabel =
-    projectOptions.find((option) => option.value === projectId)?.label ??
-    "All projects";
   const isInitialLoading = searchIsActive
     ? threadSearch.isDebouncing ||
       (threadSearch.isLoading && threadSearch.data === undefined)
@@ -217,12 +214,14 @@ export function ArchivedThreadsSettingsSection() {
           options={KIND_OPTIONS}
           value={kind}
         />
-        <ArchiveFilterMenu
-          icon="Folder"
-          label={selectedProjectLabel}
-          onChange={setProjectId}
-          options={projectOptions}
+        <ProjectSelector
+          projects={projects}
           value={projectId}
+          onChange={(value) => setProjectId(value ?? ALL_PROJECTS)}
+          allProjectsValue={ALL_PROJECTS}
+          variant="outline"
+          modal={false}
+          className="min-w-36 justify-between gap-2 px-3 font-normal"
         />
       </div>
 
@@ -263,12 +262,17 @@ export function ArchivedThreadsSettingsSection() {
                       })}
                     >
                       <span className="flex min-w-0 items-center gap-2 text-sm">
-                        <span className="truncate">
-                          {getThreadDisplayTitle(thread)}
-                        </span>
+                        <ThreadTitle title={getThreadDisplayTitle(thread)} />
                         {thread.parentThreadId !== null ? (
                           <Pill variant="outline" className="shrink-0">
-                            child
+                            <span className="inline-flex items-center gap-1 align-middle">
+                              <Icon
+                                name="ChildThread"
+                                className="size-3"
+                                aria-hidden
+                              />
+                              {CHILD_THREAD_NOUN}
+                            </span>
                           </Pill>
                         ) : null}
                       </span>

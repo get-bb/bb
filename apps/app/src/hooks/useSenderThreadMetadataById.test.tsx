@@ -3,10 +3,13 @@
 import type { ReactNode } from "react";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { useSenderThreadMetadataById } from "./useSenderThreadMetadataById";
+import { createQueryNotificationScheduler } from "@/test/queryNotificationScheduler";
+
+const notifications = createQueryNotificationScheduler();
 
 function renderMetadataHook(queryClient: QueryClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -17,12 +20,11 @@ function renderMetadataHook(queryClient: QueryClient) {
   return renderHook(() => useSenderThreadMetadataById(), { wrapper: Wrapper });
 }
 
-function flushCacheNotifications(): Promise<void> {
-  return act(() => new Promise<void>((resolve) => setTimeout(resolve, 20)));
-}
+beforeEach(() => notifications.install());
 
 afterEach(() => {
   cleanup();
+  notifications.restore();
 });
 
 describe("useSenderThreadMetadataById", () => {
@@ -41,7 +43,7 @@ describe("useSenderThreadMetadataById", () => {
         makeThreadListEntry({ id: "thr_sender", title: "Sender thread" }),
       ]);
     });
-    await flushCacheNotifications();
+    await notifications.flush();
 
     expect(result.current).toBe(initial);
   });
@@ -65,21 +67,5 @@ describe("useSenderThreadMetadataById", () => {
       expect(result.current.get("thr_sender")?.title).toBe("Titled later");
     });
     expect(result.current).not.toBe(initial);
-  });
-
-  it("keeps the same map reference across events on unrelated query keys", async () => {
-    const queryClient = new QueryClient();
-    queryClient.setQueryData(threadsQueryKey(), [
-      makeThreadListEntry({ id: "thr_sender", title: "Sender thread" }),
-    ]);
-    const { result } = renderMetadataHook(queryClient);
-    const initial = result.current;
-
-    await act(async () => {
-      queryClient.setQueryData(["environments", "env_1"], { id: "env_1" });
-    });
-    await flushCacheNotifications();
-
-    expect(result.current).toBe(initial);
   });
 });

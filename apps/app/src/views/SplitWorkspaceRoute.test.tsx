@@ -21,13 +21,13 @@ vi.mock("./thread-detail/SplitThreadArea", () => ({
   },
 }));
 
-vi.mock("./RootComposeView", () => ({
+vi.mock("./LegacyProjectComposeRedirect", () => ({
   LegacyProjectComposeRedirect: () => <div>legacy redirect</div>,
 }));
 
 vi.mock("./ToolsView", () => ({
-  PluginsView: ({ pluginId }: { pluginId?: string }) => (
-    <output data-testid="tools-view">{pluginId ?? "overview"}</output>
+  PluginsView: ({ detailKey }: { detailKey?: string }) => (
+    <output data-testid="tools-view">{detailKey ?? "overview"}</output>
   ),
 }));
 

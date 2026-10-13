@@ -7,7 +7,21 @@ on:
     paths:
       - "apps/web/**"
       - "packages/connect-db/**"
+      - "packages/domain/src/plugin-install-badge.ts"
+      - "packages/shared-ui/src/**"
+      - "plugins/plugin-api-docs/src/**"
       - "changelog-parser.ts"
+      - "apps/server/scripts/generate-bb-official-marketplace.ts"
+      - "apps/server/src/services/plugin-catalog/bundled-marketplace-paths.ts"
+      - "apps/server/src/services/plugins/builtin-registry.ts"
+      - "packages/domain/src/plugin-catalog-category.ts"
+      - "packages/domain/src/plugin-id.ts"
+      - "packages/domain/src/plugin-manifest.ts"
+      - "plugins/bb-official.json"
+      - "plugins/*/package.json"
+      - "plugins/*/PLUGIN_OVERVIEW.md"
+      - "plugins/*/icons/*.svg"
+      - "plugins/*/*.svg"
   workflow_dispatch:
 
 env:
@@ -35,6 +49,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -52,10 +68,10 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .turbo/cache
-          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-v2-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
-            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-v2-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-v2-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline

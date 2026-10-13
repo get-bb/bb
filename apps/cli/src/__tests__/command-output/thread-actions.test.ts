@@ -386,124 +386,28 @@ describe("bb thread action command output", () => {
     });
   });
 
-  it("bb thread stop lets the server no-op when the thread is already idle", async () => {
-    const get = vi.fn(async () =>
-      fixtures.makeThread({
-        id: "thread-stop-idle",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "idle",
-        createdAt: 1,
-        updatedAt: 2,
-      }),
-    );
-    const stopPost = vi.fn(async () => ({ ok: true }));
-    stubServerApi({
-      "v1.threads.:id.$get": get,
-      "v1.threads.:id.stop.$post": stopPost,
-    });
-
-    await runCommand(["thread", "stop", "thread-stop-idle"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-stop-idle stopped",
-    );
-    expect(get).not.toHaveBeenCalled();
-    expect(stopPost).toHaveBeenCalledTimes(1);
-  });
-
-  it("bb thread stop lets the server no-op when the thread is in error", async () => {
-    const get = vi.fn(async () =>
-      fixtures.makeThread({
-        id: "thread-stop-error",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "error",
-        createdAt: 1,
-        updatedAt: 2,
-      }),
-    );
-    const stopPost = vi.fn(async () => ({ ok: true }));
-    stubServerApi({
-      "v1.threads.:id.$get": get,
-      "v1.threads.:id.stop.$post": stopPost,
-    });
-
-    await runCommand(["thread", "stop", "thread-stop-error"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-stop-error stopped",
-    );
-    expect(get).not.toHaveBeenCalled();
-    expect(stopPost).toHaveBeenCalledTimes(1);
-  });
-
-  it("bb thread stop still stops active threads", async () => {
-    const get = vi.fn(async () =>
-      fixtures.makeThread({
-        id: "thread-stop-active",
-        projectId: "proj-1",
-        providerId: "codex",
-        status: "active",
-        createdAt: 1,
-        updatedAt: 2,
-      }),
-    );
-    const stopPost = vi.fn(async () => ({ ok: true }));
-    stubServerApi({
-      "v1.threads.:id.$get": get,
-      "v1.threads.:id.stop.$post": stopPost,
-    });
-
-    await runCommand(["thread", "stop", "thread-stop-active"], register);
-
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-stop-active stopped",
-    );
-    expect(stopPost).toHaveBeenCalledTimes(1);
-  });
-
-  it("bb thread compact calls the manual compaction endpoint", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
-    stubServerApi({ "v1.threads.:id.compact.$post": post });
-
-    await runCommand(["thread", "compact", "thread-compact"], register);
-
-    expect(post).toHaveBeenCalledWith({ param: { id: "thread-compact" } });
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-compact context compaction requested",
-    );
-  });
-
-  it("bb thread clear invokes the context clear action", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
-    stubServerApi({ "v1.threads.:id.context.clear.$post": post });
-
-    await runCommand(["thread", "clear", "thread-clear"], register);
-
-    expect(post).toHaveBeenCalledWith({ param: { id: "thread-clear" } });
-    expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-clear context cleared",
-    );
-  });
-
   it.each([
+    ["stop", "stop", "stopped"],
+    ["compact", "compact", "context compaction requested"],
+    ["clear", "context.clear", "context cleared"],
     ["cancel-plan", "plan.cancel", "exited Plan mode"],
     ["clear-goal", "goal.clear", "cleared its Goal"],
   ])(
-    "bb thread %s calls the authoritative banner action",
+    "bb thread %s posts its action without reading the thread first",
     async (command, route, output) => {
       const post = vi.fn(async () => ({ ok: true }));
       stubServerApi({ [`v1.threads.:id.${route}.$post`]: post });
 
-      await runCommand(["thread", command, "thread-banner"], register);
+      await runCommand(["thread", command, "thread-action"], register);
 
-      expect(post).toHaveBeenCalledWith({ param: { id: "thread-banner" } });
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post).toHaveBeenCalledWith({ param: { id: "thread-action" } });
       expect(collectLogLines(vi.mocked(console.log))).toContain(
-        `Thread thread-banner ${output}`,
+        `Thread thread-action ${output}`,
       );
     },
   );
+
   it("bb thread retry defaults the turn and the reason at the boundary", async () => {
     const retryPost = vi.fn(async () => ({
       ok: true,

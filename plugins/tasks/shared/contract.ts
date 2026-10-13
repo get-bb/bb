@@ -42,18 +42,9 @@ export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
-export const presetReasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "ultracode",
-  "max",
-  "ultra",
-]);
+export const presetReasoningLevelSchema = nonBlankStringSchema;
 export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
-export const presetServiceTierSchema = z.enum(["default", "fast"]);
+export const presetServiceTierSchema = nonBlankStringSchema;
 export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",
@@ -541,6 +532,16 @@ export const tasksRpcContract = defineRpcContract({
       .strict(),
     output: taskMutationResultSchema,
   },
+  moveTaskToProject: {
+    input: z
+      .object({
+        taskId: idSchema,
+        projectId: idSchema,
+        authorName: nonBlankStringSchema.default("You"),
+      })
+      .strict(),
+    output: taskMutationResultSchema,
+  },
   createLabel: {
     input: z
       .object({
@@ -586,6 +587,7 @@ export const tasksRpcContract = defineRpcContract({
     input: z.union([
       z.object({ taskId: idSchema }).strict(),
       z.object({ commentId: idSchema }).strict(),
+      z.object({ commentsOfTaskId: idSchema }).strict(),
     ]),
     output: z.object({ attachments: z.array(attachmentSchema) }).strict(),
   },

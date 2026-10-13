@@ -6,8 +6,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   observedBorderBoxBlockSize,
@@ -29,10 +31,10 @@ interface ChevronProps {
   className?: string;
 }
 
-const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
+export const COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS = `text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:text-foreground`;
 const COLLAPSIBLE_HEADER_EXPANDED_TONE_CLASS = "text-foreground";
 export const COLLAPSIBLE_HEADER_STATIC_TONE_CLASS = "text-muted-foreground";
-const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
+export const COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS =
   "inline-flex max-w-full items-center gap-1 overflow-hidden py-0.5 text-left text-sm";
 const COLLAPSIBLE_HEADER_TEXT_CLASS = "min-w-0 truncate";
 
@@ -42,10 +44,9 @@ function Chevron({ className }: ChevronProps) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="0.75"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={cn("lucide lucide-chevron-right", className)}
+      className={cn("bb-icon-stroke", className)}
       aria-hidden="true"
       data-icon-root=""
     >
@@ -110,14 +111,23 @@ export function CollapsibleHeader({
             ? "rotate-90"
             : forceChevronVisible
               ? "opacity-100"
-              : "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100 max-md:pointer-coarse:opacity-100",
+              : cn(
+                  "opacity-0 group-hover/toggle:opacity-100 group-focus-visible/toggle:opacity-100",
+                  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+                ),
         )}
       />
     </button>
   );
 }
 
+export type ExpandablePanelIntentHandlers = Pick<
+  HTMLAttributes<HTMLDivElement>,
+  "onFocus" | "onPointerDown" | "onPointerEnter" | "onPointerLeave"
+>;
+
 interface ExpandablePanelProps {
+  intentHandlers?: ExpandablePanelIntentHandlers;
   isExpanded: boolean;
   summaryContent: ReactNode;
   headerToneClass: string;
@@ -148,14 +158,20 @@ function AnimatedExpandablePanelContent({
   const regionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const toggleAnimationDeadlineRef = useRef(0);
-  const isFirstToggleEffectRef = useRef(true);
+  const previousBodyExpandedRef = useRef(isBodyExpanded);
   useBrowserLayoutEffect(() => {
-    if (isFirstToggleEffectRef.current) {
-      isFirstToggleEffectRef.current = false;
-      return;
-    }
+    if (previousBodyExpandedRef.current === isBodyExpanded) return;
+    previousBodyExpandedRef.current = isBodyExpanded;
+    if (typeof ResizeObserver === "undefined") return;
     toggleAnimationDeadlineRef.current =
       performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
+    const region = regionRef.current;
+    const target = contentRef.current;
+    if (region && target) {
+      const height = target.offsetHeight;
+      region.style.transitionDuration = "";
+      region.style.height = `${height}px`;
+    }
   }, [isBodyExpanded]);
 
   useBrowserLayoutEffect(() => {
@@ -184,8 +200,7 @@ function AnimatedExpandablePanelContent({
       region.style.height = `${heightPx}px`;
     };
 
-    writeHeightSync(readHeightSync(undefined));
-
+    region.style.transitionDuration = "0s";
     if (typeof ResizeObserver === "undefined") {
       return;
     }
@@ -194,7 +209,7 @@ function AnimatedExpandablePanelContent({
       read: readHeightSync,
       write: writeHeightSync,
     });
-  }, [collapsedContent, isBodyExpanded, renderedBody]);
+  }, []);
 
   return (
     <div
@@ -219,6 +234,7 @@ function AnimatedExpandablePanelContent({
 }
 
 export function ExpandablePanel({
+  intentHandlers,
   isExpanded,
   summaryContent,
   headerToneClass,
@@ -302,7 +318,10 @@ export function ExpandablePanel({
       : null;
 
   return (
-    <div className={cn("rounded-md text-muted-foreground", className)}>
+    <div
+      className={cn("rounded-md text-muted-foreground", className)}
+      {...intentHandlers}
+    >
       {}
       <div className="group/timeline-row">
         <CollapsibleHeader

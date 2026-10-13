@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as defaultPlatform from "./font-platform";
 import * as iosPlatform from "./font-platform.ios";
-import {
-  FONT_FAMILIES,
-  FONT_WEIGHT_VALUES,
-  type FontWeightName,
-  resolveFont,
-} from "./fonts";
+import { type FontWeightName, resolveFont } from "./fonts";
 
 const WEIGHTS: readonly FontWeightName[] = [
   "regular",
@@ -54,59 +49,51 @@ describe("font platform modules", () => {
     });
     expect(iosPlatform.MONO_FAMILY).toBe("Menlo");
   });
-
-  it("derives the font tables from the platform module", () => {
-    for (const weight of WEIGHTS) {
-      expect(FONT_FAMILIES.sans[weight]).toBe(
-        defaultPlatform.SANS_FAMILIES[weight],
-      );
-      expect(FONT_FAMILIES.mono[weight]).toBe(defaultPlatform.MONO_FAMILY);
-      expect(FONT_WEIGHT_VALUES[weight]).toBe(
-        defaultPlatform.SANS_WEIGHTS[weight],
-      );
-    }
-  });
 });
 
 describe("resolveFont", () => {
   it("defaults to the regular sans face with no italic", () => {
     const font = resolveFont({});
     expect(font).toEqual({
-      fontFamily: FONT_FAMILIES.sans.regular,
+      fontFamily: "sans-serif",
       fontWeight: "400",
     });
     expect(font).not.toHaveProperty("fontStyle");
   });
 
-  it("always carries the fontFamily key so it overrides a class family", () => {
-    expect(Object.keys(resolveFont({}))).toContain("fontFamily");
-  });
-
   it("derives weight and family from web-style utility classes", () => {
     expect(resolveFont({ className: "text-sm font-medium" })).toEqual({
-      fontFamily: FONT_FAMILIES.sans.medium,
+      fontFamily: "sans-serif-medium",
       fontWeight: "500",
     });
     expect(
       resolveFont({ className: "font-mono text-xs font-semibold" }),
     ).toEqual({
-      fontFamily: FONT_FAMILIES.mono.semibold,
-      fontWeight: FONT_WEIGHT_VALUES.semibold,
+      fontFamily: "monospace",
+      fontWeight: "700",
     });
     expect(resolveFont({ className: "font-bold" }).fontWeight).toBe("700");
   });
 
-  it("mono always resolves to a concrete family name", () => {
-    for (const weight of WEIGHTS) {
-      expect(typeof resolveFont({ mono: true, weight }).fontFamily).toBe(
-        "string",
-      );
-    }
-  });
+  it.each([
+    ["regular", "sans-serif", "400"],
+    ["medium", "sans-serif-medium", "500"],
+    ["semibold", "sans-serif", "700"],
+    ["bold", "sans-serif", "700"],
+  ] as const)(
+    "resolves %s to the default platform's sans face and to monospace",
+    (weight, fontFamily, fontWeight) => {
+      expect(resolveFont({ weight })).toEqual({ fontFamily, fontWeight });
+      expect(resolveFont({ weight, mono: true })).toEqual({
+        fontFamily: "monospace",
+        fontWeight,
+      });
+    },
+  );
 
   it("does not match class prefixes loosely", () => {
     expect(resolveFont({ className: "font-mono-medium" })).toEqual({
-      fontFamily: FONT_FAMILIES.sans.regular,
+      fontFamily: "sans-serif",
       fontWeight: "400",
     });
     expect(resolveFont({ className: "font-boldish" }).fontWeight).toBe("400");
@@ -119,9 +106,9 @@ describe("resolveFont", () => {
         weight: "regular",
         mono: false,
       }),
-    ).toEqual({ fontFamily: FONT_FAMILIES.sans.regular, fontWeight: "400" });
+    ).toEqual({ fontFamily: "sans-serif", fontWeight: "400" });
     expect(resolveFont({ className: "font-sans", mono: true }).fontFamily).toBe(
-      FONT_FAMILIES.mono.regular,
+      "monospace",
     );
   });
 

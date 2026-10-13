@@ -69,7 +69,8 @@ describe("spawnLoggedProcess", () => {
       expect(readFileSync(logPath, "utf8")).toBe(
         `${"o".repeat(2 * 1024 * 1024)}\n${"e".repeat(2 * 1024 * 1024)}\nevent loop responsive\n`,
       );
-      expect(statSync(logPath).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32")
+        expect(statSync(logPath).mode & 0o777).toBe(0o600);
     },
   );
 

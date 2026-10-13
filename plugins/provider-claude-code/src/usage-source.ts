@@ -31,8 +31,11 @@ export function registerUsageSource(bb: BbPluginApi) {
     refresh: boolean,
   ): Promise<UsageMeasurement> => {
     const [hostId, providerId] = locatorSchema.parse(JSON.parse(resourceId));
-    const host = (await bb.sdk.hosts.list()).find((host) => host.id === hostId);
-    if (!host) throw new Error("Usage resource no longer exists.");
+    const host = await bb.sdk.hosts.get({ hostId }).catch((error: unknown) => {
+      if (error instanceof Error && "status" in error && error.status === 404)
+        throw new Error("Usage resource no longer exists.");
+      throw error;
+    });
     const previous = cache.get(resourceId);
     const unavailable = (message: string) =>
       usageMeasurementSchema.parse({
@@ -69,7 +72,11 @@ export function registerUsageSource(bb: BbPluginApi) {
       return previous;
     const promise = (async () => {
       try {
-        const result = await bb.sdk.system.usageLimits({ hostId, providerId });
+        const result = await bb.sdk.system.usageLimits({
+          hostId,
+          providerId,
+          refresh,
+        });
         const usage = result[providerId];
         if (!usage) throw new Error("Provider returned no usage information.");
         const metadata = metadataSchema.parse(usage);

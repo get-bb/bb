@@ -42,7 +42,6 @@ function createTestRuntimeEnv({
     BB_HOST_ENROLL_KEY: undefined,
     BB_HOST_DAEMON_PORT: "3002",
     BB_HOST_ID: undefined,
-    BB_HOST_NAME: undefined,
     BB_SERVER_URL: serverUrl,
     NODE_ENV: "development",
   };

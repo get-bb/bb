@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import type { ProviderCommand } from "@bb/server-contract";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   filterCommandSuggestions,
@@ -16,8 +17,10 @@ interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   commandScope: "new-thread" | "thread";
-  skillsTrigger: PromptMentionCommandTrigger | null;
+  skillsTriggers: readonly PromptMentionCommandTrigger[];
+  activeTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
+  threadProviderCommands?: readonly ProviderCommand[] | null;
   environmentId: string | null;
   hostId?: string | null;
   query: string | null;
@@ -27,7 +30,7 @@ interface UseCommandSuggestionsArgs {
 const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
 
 interface UseCommandSuggestionsResult {
-  trigger: PromptMentionCommandTrigger | null;
+  triggers: readonly PromptMentionCommandTrigger[];
   suggestions: ProviderCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -78,6 +81,24 @@ export function promptActionCommandSuggestions({
   );
 }
 
+export function threadProviderCommandSuggestions({
+  commands,
+  query,
+  trigger,
+}: {
+  commands: readonly ProviderCommand[] | null | undefined;
+  query: string;
+  trigger: PromptMentionCommandTrigger | null;
+}): ProviderCommandSuggestion[] {
+  if (trigger !== "/") {
+    return [];
+  }
+  return filterCommandSuggestions(
+    (commands ?? []).map(toProviderCommandSuggestion),
+    query,
+  );
+}
+
 function mergeCommandSuggestions(
   preferred: readonly ProviderCommandSuggestion[],
   fallback: readonly ProviderCommandSuggestion[],
@@ -100,11 +121,12 @@ function mergeCommandSuggestions(
 export function useCommandSuggestions(
   args: UseCommandSuggestionsArgs,
 ): UseCommandSuggestionsResult {
-  const trigger = args.skillsTrigger;
+  const trigger = args.activeTrigger;
   const isActive =
     args.projectId !== undefined &&
     args.providerId !== undefined &&
     trigger !== null &&
+    args.skillsTriggers.includes(trigger) &&
     args.query !== null;
 
   const trimmedQuery = args.query?.trim() ?? "";
@@ -136,7 +158,7 @@ export function useCommandSuggestions(
     isPointerCoarse &&
     args.projectId !== undefined &&
     args.providerId !== undefined &&
-    trigger !== null;
+    args.skillsTriggers.length > 0;
   const prefetchProjectId = args.projectId;
   const prefetchProviderId = args.providerId;
   const prefetchEnvironmentId = args.environmentId;
@@ -173,20 +195,30 @@ export function useCommandSuggestions(
         .map(toProviderCommandSuggestion)
         .filter(
           (suggestion) =>
-            args.commandScope === "thread" ||
-            suggestion.source !== "command" ||
-            suggestion.origin !== "builtin" ||
-            suggestion.name !== "compact",
+            (trigger !== "$" || suggestion.source === "skill") &&
+            (args.commandScope === "thread" ||
+              suggestion.source !== "command" ||
+              suggestion.origin !== "builtin" ||
+              suggestion.name !== "compact"),
         ),
       trimmedQuery,
     );
     return mergeCommandSuggestions(
-      promptActionSuggestions,
+      mergeCommandSuggestions(
+        promptActionSuggestions,
+        threadProviderCommandSuggestions({
+          commands: args.threadProviderCommands,
+          query: trimmedQuery,
+          trigger,
+        }),
+      ),
       discoveredSuggestions,
     );
   }, [
+    args.threadProviderCommands,
     commandsQuery.data?.commands,
     args.commandScope,
+    trigger,
     isActive,
     promptActionSuggestions,
     trimmedQuery,
@@ -200,7 +232,7 @@ export function useCommandSuggestions(
   const isError = isActive && commandsQuery.isError;
 
   return {
-    trigger,
+    triggers: args.skillsTriggers,
     suggestions,
     isLoading,
     isError,

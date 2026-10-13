@@ -1,5 +1,11 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import {
+  useLayoutEffect,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 
 interface UseOverflowMeasurementArgs {
   elementRef: RefObject<HTMLElement | null>;
@@ -130,15 +136,40 @@ export function useIsOverflowing(args: UseOverflowMeasurementArgs): boolean {
   return useOverflowMeasurement(args) === "overflowing";
 }
 
+function useContentHoldingToggle(
+  expanding: boolean,
+  onToggle: () => void,
+): (event: MouseEvent<HTMLButtonElement>) => void {
+  const bottomAnchor = useBottomAnchoredScroll();
+  return (event) => {
+    const scrollArea = bottomAnchor?.getScrollElement();
+    const row = event.currentTarget.closest<HTMLElement>(
+      "[data-timeline-row-id]",
+    );
+    if (!bottomAnchor || !scrollArea || !row) {
+      onToggle();
+      return;
+    }
+    const rowTopVisible =
+      row.getBoundingClientRect().top >= scrollArea.getBoundingClientRect().top;
+    bottomAnchor.holdContentPosition({
+      edge: expanding || rowTopVisible ? "top" : "bottom",
+      element: row,
+      update: onToggle,
+    });
+  };
+}
+
 export function ConversationMessageOverflowToggle({
   expanded,
   onToggle,
 }: ConversationMessageOverflowToggleProps) {
+  const handleClick = useContentHoldingToggle(!expanded, onToggle);
   return (
     <div className="mt-1 flex justify-end">
       <button
         type="button"
-        onClick={onToggle}
+        onClick={handleClick}
         className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground"
         aria-expanded={expanded}
       >
@@ -154,6 +185,7 @@ export function ConversationMessageInlineOverflowToggle({
   label,
   onToggle,
 }: ConversationMessageInlineOverflowToggleProps) {
+  const handleClick = useContentHoldingToggle(true, onToggle);
   return (
     <span className="pointer-events-none absolute inset-x-0 bottom-0 flex h-[1lh] items-stretch justify-end">
       <span
@@ -164,7 +196,7 @@ export function ConversationMessageInlineOverflowToggle({
       />
       <button
         type="button"
-        onClick={onToggle}
+        onClick={handleClick}
         className={cn(
           "pointer-events-auto cursor-pointer whitespace-nowrap pl-1.5 text-xs font-medium text-muted-foreground hover:text-foreground",
           buttonBackgroundClassName,

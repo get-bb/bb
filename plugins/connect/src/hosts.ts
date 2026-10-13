@@ -48,7 +48,7 @@ export class ShareHostResolver {
     );
     if (config.primaryHostId !== null) return config.primaryHostId;
     throw new Error(
-      "this bb has no primary host yet — connect a machine before sharing ports",
+      "this bb has no server machine yet — connect a machine before sharing ports",
     );
   }
 

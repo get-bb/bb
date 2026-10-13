@@ -121,9 +121,7 @@ it("forwards a select dialog to the runtime and returns the chosen option to pi"
     kind: "request_answer",
     value: "Allow once",
   });
-  expect(await extensionUiReplyOf(threadId)).toContain(
-    '"value":"Allow once"',
-  );
+  expect(await extensionUiReplyOf(threadId)).toContain('"value":"Allow once"');
 }, 90_000);
 
 it("maps a boolean answer to confirmed for a confirm dialog", async () => {
@@ -136,9 +134,7 @@ it("maps a boolean answer to confirmed for a confirm dialog", async () => {
   );
   const interaction = await waitForInteractionRequest(threadId);
   expect(interaction.params.payload.data.method).toBe("confirm");
-  expect(interaction.params.payload.data.message).toBe(
-    "This modifies files.",
-  );
+  expect(interaction.params.payload.data.message).toBe("This modifies files.");
   resolveInteraction(interaction.id, { kind: "request_answer", value: true });
   expect(await extensionUiReplyOf(threadId)).toContain('"confirmed":true');
 }, 90_000);

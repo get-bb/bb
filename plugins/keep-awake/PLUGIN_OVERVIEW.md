@@ -20,4 +20,4 @@ Add `--json` to any command for machine-readable output.
 
 ## Requirements
 
-Only macOS hosts are supported. On a Linux or Windows host, the plugin does nothing and writes a warning to the log.
+macOS and Windows hosts are supported. On macOS the plugin runs `caffeinate`; on Windows it holds a system-required execution state from a PowerShell process. Neither keeps the display on. On a Linux host, the plugin does nothing and writes a warning to the log.

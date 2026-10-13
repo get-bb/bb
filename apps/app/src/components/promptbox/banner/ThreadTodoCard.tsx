@@ -3,12 +3,11 @@ import type {
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
-import { AnimatedBody } from "@/components/promptbox/banner/AnimatedBody";
+import { AnimatedDisclosureBody } from "@/components/promptbox/banner/AnimatedBody";
 import {
   PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
-  PromptStackCardChevron,
 } from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
@@ -18,6 +17,11 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+  PromptStackHoverChevron,
+  useDisclosureFocusHandoff,
+} from "@bb/shared-ui/prompt-stack-disclosure";
 
 const STATUS_SORT_RANK: Record<ThreadTimelinePendingTodoItemStatus, number> = {
   in_progress: 0,
@@ -146,6 +150,7 @@ export function ThreadTodoCard({
   isExpanded,
   onToggle,
 }: ThreadTodoCardProps) {
+  const focus = useDisclosureFocusHandoff(isExpanded, onToggle);
   const items = pendingTodos?.items ?? [];
   if (items.length === 0) {
     return null;
@@ -164,8 +169,12 @@ export function ThreadTodoCard({
           aria-expanded={isExpanded}
           aria-controls={BODY_ID}
           aria-label={`To-do list: ${summary.aria}`}
-          onClick={onToggle}
-          className={TODO_HEADER_BUTTON_CLASS}
+          ref={focus.triggerRef}
+          onClick={focus.onTriggerClick}
+          className={cn(
+            TODO_HEADER_BUTTON_CLASS,
+            PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
+          )}
         >
           <Icon
             name="ListTodo"
@@ -180,20 +189,20 @@ export function ThreadTodoCard({
           >
             {summary.visible}
           </span>
-          <PromptStackCardChevron
-            isExpanded={isExpanded}
-            className={activityIconClass("active")}
-          />
+          <PromptStackHoverChevron isExpanded={isExpanded} />
         </button>
       </div>
-      <AnimatedBody
+      <AnimatedDisclosureBody
         id={BODY_ID}
         labelledBy={TOGGLE_ID}
         isExpanded={isExpanded}
         collapsedBorder="none"
+        collapseLabel="Collapse to-do list"
+        collapseRef={focus.collapseRef}
+        onCollapse={focus.onCollapseClick}
       >
         <TodoBody items={items} />
-      </AnimatedBody>
+      </AnimatedDisclosureBody>
     </PromptStackCard>
   );
 }

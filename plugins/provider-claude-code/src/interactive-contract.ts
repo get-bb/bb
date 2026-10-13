@@ -9,6 +9,7 @@ import { z } from "zod";
 
 export const CLAUDE_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 export const CLAUDE_EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";
+export const CLAUDE_BASH_TOOL_NAME = "Bash";
 
 export const claudeExitPlanModeInputSchema = z.object({
   plan: z.string().min(1),
@@ -45,6 +46,9 @@ const claudePermissionRuleValueSchema = z.object({
   toolName: z.string(),
   ruleContent: z.string().optional(),
 });
+export type ClaudePermissionRule = z.infer<
+  typeof claudePermissionRuleValueSchema
+>;
 
 const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
   z.object({
@@ -108,7 +112,7 @@ const CLAUDE_FILE_PERMISSION_KIND_BY_TOOL_NAME = new Map<
   ["Edit", "write"],
   ["Write", "write"],
   ["NotebookEdit", "write"],
-  ["Bash", "read_write"],
+  [CLAUDE_BASH_TOOL_NAME, "read_write"],
 ]);
 
 const CLAUDE_SANDBOX_NETWORK_TOOL_NAME = "SandboxNetworkAccess";
@@ -129,6 +133,14 @@ export function isClaudeConcreteFileChangeToolName(toolName: string): boolean {
   return getClaudeFilePermissionKind(toolName) === "write";
 }
 
+export function getSuggestedRules(
+  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined,
+): ClaudePermissionRule[] {
+  return (suggestions ?? []).flatMap((suggestion) =>
+    suggestion.type === "addRules" ? suggestion.rules : [],
+  );
+}
+
 function getSuggestedDirectories(
   suggestions: ClaudeSuggestedPermissionUpdate[] | undefined,
 ): string[] {
@@ -140,9 +152,7 @@ function getSuggestedDirectories(
 export function toPendingInteractionPermissionProfile(
   args: ClaudePermissionRequestProfileArgs,
 ): PendingInteractionGrantablePermissionProfile {
-  const hasRuleSuggestion = (args.suggestions ?? []).some(
-    (suggestion) => suggestion.type === "addRules",
-  );
+  const hasRuleSuggestion = getSuggestedRules(args.suggestions).length > 0;
   const directories = [
     ...getSuggestedDirectories(args.suggestions),
     ...(args.blockedPath === undefined ? [] : [args.blockedPath]),
@@ -175,7 +185,8 @@ export function toPendingInteractionPermissionProfile(
         })();
 
   const network =
-    CLAUDE_NETWORK_PERMISSION_TOOL_NAMES.has(args.toolName) || hasRuleSuggestion
+    CLAUDE_NETWORK_PERMISSION_TOOL_NAMES.has(args.toolName) ||
+    (hasRuleSuggestion && args.toolName !== CLAUDE_BASH_TOOL_NAME)
       ? { enabled: true }
       : null;
 
@@ -183,23 +194,6 @@ export function toPendingInteractionPermissionProfile(
     network,
     fileSystem,
   };
-}
-
-interface ShouldRequestClaudePermissionApprovalArgs {
-  blockedPath: string | undefined;
-  decisionReason: string | undefined;
-  suggestions: ClaudeSuggestedPermissionUpdate[] | undefined;
-  toolName: string;
-}
-
-export function shouldRequestClaudePermissionApproval(
-  args: ShouldRequestClaudePermissionApprovalArgs,
-): boolean {
-  return (
-    args.blockedPath !== undefined ||
-    args.decisionReason !== undefined ||
-    (args.suggestions?.length ?? 0) > 0
-  );
 }
 
 export interface ClaudePermissionRequestApprovalParams {
@@ -211,6 +205,7 @@ export interface ClaudePermissionRequestApprovalParams {
   input: Record<string, unknown>;
   reason: string | null;
   permissions: PendingInteractionGrantablePermissionProfile;
+  suggestedRules: ClaudePermissionRule[];
 }
 
 const claudeUserQuestionOptionSchema = z.object({
@@ -323,7 +318,7 @@ export type ClaudeInteractiveResponse = z.infer<
 
 interface BuildClaudePermissionUpdatesArgs {
   permissions: PendingInteractionGrantedPermissionProfile;
-  toolName: string | null | undefined;
+  rules: ClaudePermissionRule[];
 }
 
 export function buildClaudeSessionPermissionUpdates(
@@ -344,10 +339,10 @@ export function buildClaudeSessionPermissionUpdates(
     });
   }
 
-  if (args.toolName && args.permissions.network?.enabled === true) {
+  if (args.rules.length > 0) {
     updates.push({
       type: "addRules",
-      rules: [{ toolName: args.toolName }],
+      rules: args.rules,
       behavior: "allow",
       destination: "session",
     });

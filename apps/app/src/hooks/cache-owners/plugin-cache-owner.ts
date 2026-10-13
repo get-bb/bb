@@ -1,14 +1,19 @@
+import type { PluginUpdateJob } from "@bb/server-contract";
+import { trackPluginUpdate } from "@/lib/plugin-update-tracking";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   pluginListQueryOptions,
   type PluginSettingsView,
 } from "../queries/plugin-settings-queries";
-import type { InstalledPlugin } from "@bb/server-contract";
+import type { InstalledPlugin, PluginInstallJob } from "@bb/server-contract";
 import {
   allPluginCatalogSearchQueryKeyPrefix,
   allPluginListQueryKeyPrefix,
+  pluginInstallJobsQueryKey,
+  pluginUpdateJobsQueryKey,
   pluginListQueryKey,
   pluginMarketplacesQueryKey,
+  pluginSafeModeQueryKey,
   pluginSettingsViewQueryKey,
 } from "../queries/query-keys";
 
@@ -42,6 +47,30 @@ export function applyInstalledPlugin(args: {
       );
     },
   );
+}
+
+export function applyPluginInstallJob(args: {
+  queryClient: QueryClient;
+  job: PluginInstallJob;
+}): void {
+  args.queryClient.setQueryData<PluginInstallJob[]>(
+    pluginInstallJobsQueryKey(),
+    (current) => {
+      const jobs = current ?? [];
+      return jobs.some((candidate) => candidate.id === args.job.id)
+        ? jobs.map((candidate) =>
+            candidate.id === args.job.id ? args.job : candidate,
+          )
+        : [...jobs, args.job];
+    },
+  );
+}
+
+export function applyPluginSafeMode(args: {
+  queryClient: QueryClient;
+  enabled: boolean;
+}): void {
+  args.queryClient.setQueryData(pluginSafeModeQueryKey(), args.enabled);
 }
 
 export function invalidatePluginList(args: {
@@ -85,4 +114,20 @@ export function invalidatePluginMarketplaces(args: {
     queryKey: pluginMarketplacesQueryKey(),
   });
   invalidatePluginCatalogSearch(args);
+}
+
+export function applyPluginUpdateJob(args: {
+  queryClient: QueryClient;
+  job: PluginUpdateJob;
+}): void {
+  trackPluginUpdate(args.job.id, true);
+  args.queryClient.setQueryData<PluginUpdateJob[]>(
+    pluginUpdateJobsQueryKey(),
+    (current) => {
+      const jobs = current ?? [];
+      return jobs.some((job) => job.id === args.job.id)
+        ? jobs.map((job) => (job.id === args.job.id ? args.job : job))
+        : [...jobs, args.job];
+    },
+  );
 }

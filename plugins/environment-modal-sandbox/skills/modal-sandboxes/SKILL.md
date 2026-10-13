@@ -24,13 +24,15 @@ description: Connect Modal and create reusable cloud machines with the bundled s
    optional configured names as `{"preset":"Large","image":"Node 22"}`.
 
 Settings edits the Default image's Dockerfile, adds named Dockerfile or Modal
-image-ID entries, and adds named CPU/memory presets. One or zero choices use the
+image-ID entries, and adds named CPU/memory presets. Without a preset, new
+machines reserve 1 CPU and 2 GiB; Modal lets a sandbox burst above its
+reservation and bills whichever is higher. One or zero choices use the
 default without adding a composer chip; multiple choices share one chip. Agents
 can run
 `bb modal image show > Dockerfile`, edit the file, then run `bb modal image set
 --file ./Dockerfile`. `bb modal image reset` restores the bundled default.
 Append `--json` for structured output. File paths resolve from the CLI directory
-on the current thread's host, or the server primary host without thread context.
+on the current thread's host, or the server machine without thread context.
 Typed RPCs `image.definition`, `image.set({dockerfile})`, and `image.reset`
 return `{dockerfile, customized}` through `sdk.plugins.callRpc`.
 
@@ -84,6 +86,12 @@ bb modal sandbox exec SANDBOX -- bash -lc 'node --version && which git'
 bb modal sandbox exec SANDBOX --json -- bash -lc 'exit 7'
 bb modal sandbox stop SANDBOX --json
 ```
+
+`bb modal --help` and `bb modal <command> --help` list the commands, arguments,
+and options and exit 0. `--json` is accepted anywhere before `--`; with it, a
+failure is also reported as `{"ok":false,"error":{code,message,hint?}}` on
+stdout. Everything after `--` belongs to `sandbox exec` and is never parsed as
+an option.
 
 Build uses the saved Dockerfile and the same account-wide image cache as machine
 creation. It returns the image ID and the final 65,536 characters of build logs

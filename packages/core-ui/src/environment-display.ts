@@ -33,7 +33,13 @@ export interface EnvironmentDisplayInfo {
   modeLabel: string;
   compactModeLabel: string;
   providerLabel: string | null;
-  lifecycle: "provisioning" | "destroyed" | null;
+  lifecycle:
+    | "provisioning"
+    | "destroyed"
+    | "removed"
+    | "removing"
+    | "cleanup-failed"
+    | null;
   id: string;
 }
 
@@ -87,18 +93,27 @@ export function formatEnvironmentDisplay({
   host,
   providerLookup,
 }: FormatEnvironmentDisplayArgs): EnvironmentDisplayInfo {
+  const hostLifecycle =
+    environment.hostLifecycle === "active" ? null : environment.hostLifecycle;
   const lifecycle: EnvironmentDisplayInfo["lifecycle"] =
-    environment.status === "destroyed"
+    hostLifecycle ??
+    (environment.status === "destroyed"
       ? "destroyed"
       : environment.status === "provisioning"
         ? "provisioning"
-        : null;
+        : null);
   const lifecycleLabel =
-    lifecycle === "destroyed"
-      ? "Destroyed"
-      : lifecycle === "provisioning"
-        ? "Provisioning"
-        : null;
+    lifecycle === "removed"
+      ? "Unavailable — machine removed"
+      : lifecycle === "removing"
+        ? "Machine removal in progress"
+        : lifecycle === "cleanup-failed"
+          ? "Machine cleanup failed"
+          : lifecycle === "destroyed"
+            ? "Environment unavailable"
+            : lifecycle === "provisioning"
+              ? "Provisioning"
+              : null;
   const providerLabel = resolveEnvironmentProviderLabel(
     environment.environmentProviderId,
     providerLookup,
@@ -110,8 +125,16 @@ export function formatEnvironmentDisplay({
   const namedCompactLabel = providerLabel ?? localityLabel;
 
   return {
-    modeLabel: environment.name ?? lifecycleLabel ?? namedLabel,
-    compactModeLabel: environment.name ?? lifecycleLabel ?? namedCompactLabel,
+    modeLabel:
+      (hostLifecycle ? lifecycleLabel : null) ??
+      environment.name ??
+      lifecycleLabel ??
+      namedLabel,
+    compactModeLabel:
+      (hostLifecycle ? lifecycleLabel : null) ??
+      environment.name ??
+      lifecycleLabel ??
+      namedCompactLabel,
     providerLabel,
     lifecycle,
     id: environment.id,

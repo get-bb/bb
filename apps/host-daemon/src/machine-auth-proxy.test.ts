@@ -74,6 +74,42 @@ describe("startMachineAuthProxy", () => {
     },
   );
 
+  it.each(["resets", "closes"])(
+    "fails the caller's response when the upstream connection %s mid-body",
+    async (drop) => {
+      let dropUpstream = () => {};
+      const upstream = http.createServer((_request, response) => {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write("data: first\n\n");
+        dropUpstream = () => {
+          if (drop === "resets") response.socket?.resetAndDestroy();
+          else response.socket?.destroy();
+        };
+      });
+      const upstreamPort = await listen(upstream);
+      const proxy = await startMachineAuthProxy({
+        serverHeaders: {},
+        serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      });
+      proxies.push(proxy);
+
+      const response = await new Promise<http.IncomingMessage>(
+        (resolve, reject) => {
+          http.get(`${proxy.serverUrl}/stream`, resolve).on("error", reject);
+        },
+      );
+      const closed = new Promise<void>((resolve) =>
+        response.on("close", resolve),
+      );
+      response.on("error", () => {});
+      response.once("data", () => dropUpstream());
+      response.resume();
+      await closed;
+
+      expect(response.complete).toBe(false);
+    },
+  );
+
   it("forwards HTTP requests to the configured origin with authentication and caller headers", async () => {
     const upstream = http.createServer((request, response) => {
       expect(request.method).toBe("POST");

@@ -20,6 +20,7 @@ import {
   experimental_webSearchPresentation as webSearchPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
+  codexAsyncQuestionItemSchema,
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,
   codexHandledThreadItemSchema,
@@ -45,7 +46,9 @@ import {
   planStepsPresentation,
 } from "./presentation.js";
 import {
+  CODEX_ASYNC_QUESTION_EXTENSION_KIND,
   CODEX_GOAL_EXTENSION_KIND,
+  type CodexAsyncQuestionState,
   type CodexGoalState,
 } from "./extension-kinds.js";
 import { codexVisibilityMetadata } from "./visibility.js";
@@ -66,6 +69,7 @@ interface CodexRetryErrorContext {
 
 interface CodexEventTranslationState {
   rateLimitsByLimitId: Map<string, CodexRateLimitSnapshot>;
+  latestRateLimitId: string;
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
 }
@@ -73,6 +77,7 @@ interface CodexEventTranslationState {
 export function createCodexEventTranslationState(): CodexEventTranslationState {
   return {
     rateLimitsByLimitId: new Map(),
+    latestRateLimitId: "codex",
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
   };
@@ -181,6 +186,7 @@ export function applyCodexRateLimitUpdate(
     limitId,
   );
   state.rateLimitsByLimitId.set(limitId, rateLimits);
+  state.latestRateLimitId = limitId;
   return rateLimits;
 }
 
@@ -269,7 +275,7 @@ type CodexRateLimitCandidate = {
   rateLimits: ProviderRateLimitState;
 };
 
-function normalizeCodexRateLimits(
+export function normalizeCodexRateLimits(
   state: CodexEventTranslationState,
   preferredLimitId: string,
 ): ProviderRateLimitState {
@@ -759,6 +765,24 @@ function summarizeCollabAgentsStates(
   return lines.length > 0 ? lines.join("\n") : undefined;
 }
 
+function translateCodexAsyncQuestion(item: unknown): ThreadDelta[] {
+  const parsed = codexAsyncQuestionItemSchema.safeParse(item);
+  if (!parsed.success) {
+    return [];
+  }
+  const state: CodexAsyncQuestionState = {
+    itemId: parsed.data.id,
+    questions: parsed.data.questions,
+  };
+  return [
+    {
+      kind: "extension.state",
+      extensionKind: CODEX_ASYNC_QUESTION_EXTENSION_KIND,
+      payload: state,
+    },
+  ];
+}
+
 function translateCodexItemShape(
   item: unknown,
   state: CodexEventTranslationState,
@@ -1050,9 +1074,7 @@ export function translateCodexEventToDeltas(
           ...(handledEvent.params.turn.error?.message
             ? { error: { message: handledEvent.params.turn.error.message } }
             : {}),
-          ...(status === "completed" || status === "interrupted"
-            ? { providerCheckpointId: handledEvent.params.turn.id }
-            : {}),
+          providerCheckpointId: handledEvent.params.turn.id,
         },
       ];
     }
@@ -1148,6 +1170,7 @@ export function translateCodexEventToDeltas(
           presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
+        ...translateCodexAsyncQuestion(handledEvent.params.item),
       ];
     }
     case "item/agentMessage/delta":

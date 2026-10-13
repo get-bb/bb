@@ -279,35 +279,6 @@ describe("useEnvironmentDiffPatches", () => {
     });
   });
 
-  it("caches a patch fetch that resolves with no intervening eviction", async () => {
-    const { wrapper, queryClient } = createQueryClientTestHarness();
-
-    const patch: DiffPatchEntry = {
-      path: PATH,
-      patch: "diff --git a/file.ts b/file.ts\n+content\n",
-      truncated: false,
-    };
-    vi.mocked(sdk.environments.diffPatch).mockResolvedValue(
-      availableResponse(patch),
-    );
-
-    const { result } = renderHook(
-      () => useEnvironmentDiffPatches(ENVIRONMENT_ID, { target: TARGET }),
-      { wrapper },
-    );
-
-    act(() => {
-      result.current.requestPaths({ visible: [PATH], overscan: [] });
-    });
-
-    await waitFor(() => {
-      const state = result.current.getPatchState(PATH);
-      expect(state.status).toBe("loaded");
-      expect(state.patch).toBe(patch.patch);
-    });
-    expect(queryClient.getQueryData<DiffPatchEntry>(patchKey())).toEqual(patch);
-  });
-
   it("refreshes a retained patch without returning its card to loading", async () => {
     const { wrapper, queryClient } = createQueryClientTestHarness();
     const currentPatch: DiffPatchEntry = {

@@ -5,7 +5,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
-import type { TimelineTitleLink } from "@bb/thread-view";
 import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import { setPreferredTheme } from "@/hooks/useTheme";
@@ -22,16 +21,10 @@ function renderMarkdown(node: ReactNode) {
   return render(markdownTree(node));
 }
 
-function resolveThreadLink(link: TimelineTitleLink): string | null {
-  return link.kind === "thread"
-    ? `/projects/proj_demo/threads/${link.threadId}`
-    : null;
-}
-
 const THREAD_RESOURCE: PromptMentionResource = {
   kind: "thread",
   threadId: "thr_child",
-  projectId: "proj_demo",
+  projectId: "proj_target",
   label: "Rebuild comments",
 };
 
@@ -71,14 +64,13 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview prompt mentions", () => {
-  it("renders a thread mention as a linked pill resolved from the offsets", () => {
+  it("links an offset-backed thread mention through its own project", () => {
     const text = "See @thread:thr_child for the report.";
     renderMarkdown(
       <MarkdownPreview
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "@thread:thr_child", THREAD_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -86,7 +78,7 @@ describe("MarkdownPreview prompt mentions", () => {
     const pill = screen.getByText("Rebuild comments").closest("a");
     expect(pill).not.toBeNull();
     expect(pill?.getAttribute("href")).toBe(
-      "/projects/proj_demo/threads/thr_child",
+      "/projects/proj_target/threads/thr_child",
     );
   });
 
@@ -97,7 +89,6 @@ describe("MarkdownPreview prompt mentions", () => {
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "@src/foo_bar.ts", PATH_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
           resolveMentionLink: () => () => {},
         }}
       />,
@@ -115,7 +106,6 @@ describe("MarkdownPreview prompt mentions", () => {
         content={text}
         promptMentions={{
           mentions: [mentionAt(text, "/deploy", COMMAND_RESOURCE)],
-          resolveLinkHref: resolveThreadLink,
         }}
       />,
     );
@@ -127,7 +117,7 @@ describe("MarkdownPreview prompt mentions", () => {
     const { container } = renderMarkdown(
       <MarkdownPreview
         content={"first line\nsecond line"}
-        promptMentions={{ mentions: [], resolveLinkHref: resolveThreadLink }}
+        promptMentions={{ mentions: [] }}
       />,
     );
 

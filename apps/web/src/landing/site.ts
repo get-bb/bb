@@ -6,7 +6,7 @@ export const DOWNLOAD_FALLBACK_URL =
 export const DOWNLOAD_RELEASE_ASSET_BASE_URL =
   "https://github.com/get-bb/bb/releases/download/desktop-latest";
 
-export type DesktopPlatform = "macos" | "linux";
+export type DesktopPlatform = "macos" | "linux" | "windows";
 
 export const DEFAULT_DESKTOP_PLATFORM: DesktopPlatform = "macos";
 
@@ -29,18 +29,42 @@ export const DESKTOP_DOWNLOADS: Record<DesktopPlatform, DesktopDownload> = {
     redirectPath: "/download/macos",
   },
   linux: {
-    label: "Linux",
+    label: "Linux (Alpha)",
     buttonLabel: "Download for Linux",
     note: "x64 AppImage, alpha",
     installerExtension: ".AppImage",
     versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-linux.json`,
     redirectPath: "/download/linux",
   },
+  windows: {
+    label: "Windows (Alpha)",
+    buttonLabel: "Download for Windows",
+    note: "x64, alpha",
+    installerExtension: ".exe",
+    versionFeedUrl: `${DOWNLOAD_RELEASE_ASSET_BASE_URL}/desktop-version-windows.json`,
+    redirectPath: "/download/windows",
+  },
 };
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
+export const WINDOWS_DOWNLOAD_URL = "/download/windows";
 
 export type CtaPlacement = "nav" | "hero" | "local" | "closer" | "footer";
+
+export const UTM_PARAM_NAMES = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+] as const;
+
+export const CAMPAIGN_PARAM_NAMES = [
+  ...UTM_PARAM_NAMES,
+  "gclid",
+  "gbraid",
+  "wbraid",
+] as const;
 
 export function downloadHref(
   platform: DesktopPlatform,
@@ -57,24 +81,33 @@ export const SITE_DESCRIPTION =
 export const OG_DESCRIPTION =
   "bb can control, customize, and automate itself, laying the groundwork for your own software factory.";
 
-export function unfurlMeta(title: string, description: string, path: string) {
+export function unfurlMeta(
+  title: string,
+  description: string,
+  path: string,
+  image = {
+    path: "/og.png",
+    width: 2400,
+    height: 1260,
+    alt: "bb logo — The IDE that builds itself. Free, open source, and local-first.",
+  },
+) {
   return [
     { property: "og:title", content: title },
     { property: "og:description", content: description },
     { property: "og:type", content: "website" },
     { property: "og:url", content: `${SITE_URL}${path}` },
     { property: "og:site_name", content: "bb" },
-    { property: "og:image", content: `${SITE_URL}/og.png` },
-    { property: "og:image:width", content: "2400" },
-    { property: "og:image:height", content: "1260" },
+    { property: "og:image", content: `${SITE_URL}${image.path}` },
+    { property: "og:image:width", content: String(image.width) },
+    { property: "og:image:height", content: String(image.height) },
     {
       property: "og:image:alt",
-      content:
-        "bb logo — The IDE that builds itself. Free, open source, and local-first.",
+      content: image.alt,
     },
     { name: "twitter:card", content: "summary_large_image" },
     { name: "twitter:title", content: title },
     { name: "twitter:description", content: description },
-    { name: "twitter:image", content: `${SITE_URL}/og.png` },
+    { name: "twitter:image", content: `${SITE_URL}${image.path}` },
   ];
 }

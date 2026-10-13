@@ -10,6 +10,29 @@ export default {
   title: "ui/Markdown Preview",
 };
 
+export function LocalFileLinks() {
+  return (
+    <div className="w-full max-w-sm resize-x overflow-auto border border-border p-4">
+      <MarkdownPreview
+        content={[
+          "Updated plan in [docs/adr/0004-week-state-sync.md](/workspace/docs/adr/0004-week-state-sync.md) before the sync review.",
+          "Saw [`packages/config/src/runtime.ts`](/workspace/packages/config/src/runtime.ts) linked from the ADR index.",
+          "Read [the **updated _sync plan_**](/workspace/docs/adr/0004-week-state-sync.md) before review.",
+          "Updated `docs/adr/0004-week-state-sync.md` before review.",
+          "Read [the plan 👩🏽‍💻](/workspace/docs/adr/0004-week-state-sync.md) before review.",
+        ].join("\n\n")}
+        linkRouting={{
+          localFile: {
+            absoluteLinks: { kind: "trusted-host" },
+            relativeLinks: { baseDir: "/workspace", rootPath: "/workspace" },
+            onOpenLink: () => true,
+          },
+        }}
+      />
+    </div>
+  );
+}
+
 function PreviewStage({ children }: { children: ReactNode }) {
   return (
     <div

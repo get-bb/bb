@@ -42,11 +42,6 @@ function useSplitLayoutForIndicator(enabled: boolean): {
   return { layout, isCompact };
 }
 
-export interface ThreadSplitIndicatorTarget {
-  id: string;
-  projectId: string;
-}
-
 function buildSplitIndicator(
   layout: SplitLayout,
   matchingPaneIds: ReadonlySet<string>,
@@ -95,36 +90,4 @@ export function usePaneContentSplitIndicator(
     }
     return buildSplitIndicator(layout, new Set([pane.paneId]));
   }, [content, enabled, isCompact, layout]);
-}
-
-export function useThreadGroupSplitIndicator(
-  threads: readonly ThreadSplitIndicatorTarget[],
-  enabled: boolean,
-): PaneContentSplitIndicator {
-  const { layout, isCompact } = useSplitLayoutForIndicator(enabled);
-
-  return useMemo<PaneContentSplitIndicator>(() => {
-    if (
-      !enabled ||
-      threads.length === 0 ||
-      layout === null ||
-      isCompact ||
-      countPanes(layout.root) < 2
-    ) {
-      return NO_INDICATOR;
-    }
-    const threadKeys = new Set(
-      threads.map((thread) => `${thread.projectId}\0${thread.id}`),
-    );
-    const matchingPaneIds = new Set<string>();
-    for (const pane of listPanes(layout.root)) {
-      if (
-        pane.content.kind === "thread" &&
-        threadKeys.has(`${pane.content.projectId}\0${pane.content.threadId}`)
-      ) {
-        matchingPaneIds.add(pane.paneId);
-      }
-    }
-    return buildSplitIndicator(layout, matchingPaneIds);
-  }, [enabled, isCompact, layout, threads]);
 }

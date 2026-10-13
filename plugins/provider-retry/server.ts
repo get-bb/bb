@@ -1,6 +1,19 @@
+import {
+  readRetryDiagnostic,
+  retryDiagnosticContract,
+} from "./src/diagnostics.js";
+import {
+  retryAvailabilityMethod,
+  retryAvailabilitySchema,
+  type RetryAvailability,
+} from "./src/retry-contract.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
-import { DEFAULT_MAXIMUM_WAIT_MS, decideRetry } from "./src/retry-policy.js";
+import {
+  DEFAULT_MAXIMUM_WAIT_MS,
+  decideRetry,
+  isRateLimitFailure,
+} from "./src/retry-policy.js";
 
 const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
 
@@ -36,22 +49,55 @@ export default async function plugin(bb: BbPluginApi) {
     maximumWait = maximumWaitMs(next.maximumWait);
   });
 
-  /**
-   * The retry decision, which is the whole plugin.
-   *
-   * Everything it needs — which turn failed, what the provider said about its
-   * windows, how many times this turn has been retried — arrives on the event.
-   * What is left is policy, and then one call: core owns the queue, the
-   * schedule and the re-attempt, so asking for the retry IS scheduling it.
-   */
+  bb.rpc.register(retryDiagnosticContract, {
+    "decision.get": ({ threadId }) => readRetryDiagnostic(bb, threadId),
+  });
   bb.events.on("turn.failed", async (event) => {
+    let availability: RetryAvailability = { kind: "not-routed" };
+    if (isRateLimitFailure(event)) {
+      const sources = await bb.sdk.plugins.experimental_discoverRpc({
+        method: retryAvailabilityMethod,
+      });
+      for (const source of sources) {
+        try {
+          const result = await bb.sdk.plugins.callRpc({
+            pluginId: source.pluginId,
+            method: retryAvailabilityMethod,
+            input: { threadId: event.threadId, requestId: event.requestId },
+            outputSchema: retryAvailabilitySchema,
+            signal: AbortSignal.timeout(5_000),
+          });
+          if (result.kind !== "not-routed") {
+            availability = result;
+            break;
+          }
+        } catch (error) {
+          bb.log.warn(
+            `Retry availability failed for ${event.threadId}: ${String(error)}`,
+          );
+          availability = { kind: "unavailable", reason: "source-unavailable" };
+        }
+      }
+    }
     const decision = decideRetry({
+      availability,
       failure: event,
       maximumWaitMs: maximumWait,
       now: Date.now(),
       random: Math.random(),
     });
+    const recordDecision = () =>
+      bb.storage.kv.set(`decision:${event.threadId}`, {
+        requestId: event.requestId,
+        observedAt: Date.now(),
+        availability,
+        decision,
+      });
     if (decision.kind === "decline") {
+      await recordDecision();
+      bb.log.info(
+        `Automatic retry skipped for ${event.threadId}: ${decision.reason}${availability.kind === "unavailable" ? ` (${availability.reason})` : ""}.`,
+      );
       return;
     }
     await bb.sdk.threads.retry({
@@ -60,6 +106,7 @@ export default async function plugin(bb: BbPluginApi) {
       sendAt: decision.sendAt,
       reason: decision.reason,
     });
+    await recordDecision();
   });
 
   registerProviderRetryCli(bb);

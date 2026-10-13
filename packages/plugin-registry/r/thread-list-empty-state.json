@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "thread-list-empty-state",
+  "type": "registry:ui",
+  "title": "thread-list-empty-state",
+  "description": "BB ui \"thread-list-empty-state\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/empty-state"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/thread-list-empty-state.tsx",
+      "content": "import { EmptyState } from \"./empty-state\";\n\nexport const NO_THREADS_MESSAGE = \"No threads\";\n\nexport function ThreadListEmptyState({\n  message = NO_THREADS_MESSAGE,\n  showIcon = true,\n  className,\n}: {\n  message?: string;\n  showIcon?: boolean;\n  className?: string;\n}) {\n  return (\n    <EmptyState\n      message={message}\n      icon={showIcon ? \"MessageSquare\" : undefined}\n      className={className}\n      iconClassName=\"size-3.5 text-subtle-foreground/50\"\n      messageClassName=\"text-xs leading-4 text-subtle-foreground/60\"\n    />\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/thread-list-empty-state.tsx"
+    }
+  ]
+}

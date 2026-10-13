@@ -27,7 +27,13 @@ export function usePluginCommandBindings() {
         command: pluginCommandId(command.pluginId, command.id),
         desktopOnly: false,
         shortcut: command.defaultShortcut,
-        when: { all: ["mainSurface"], none: ["modalOpen"] },
+        when:
+          command.target === "composer"
+            ? {
+                all: ["mainSurface", "promptAvailable"],
+                none: ["modalOpen", "terminalFocus", "browserFocus"],
+              }
+            : { all: ["mainSurface"], none: ["modalOpen"] },
       }),
     );
     const resolved = resolvePluginCommandDefaults(

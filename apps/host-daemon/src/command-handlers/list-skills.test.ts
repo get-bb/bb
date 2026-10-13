@@ -153,42 +153,6 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     expect(byName(skills, "user-agent")?.filePath).toBe(files["user-agent"]);
   });
 
-  it("keeps native skill IDs stable when the workspace root moves", async () => {
-    const firstRoot = path.join(tempRoot, "checkout-a", ".bb", "skills");
-    const secondRoot = path.join(tempRoot, "checkout-b", ".bb", "skills");
-    await writeSkill(path.join(firstRoot, "review", "SKILL.md"), "review");
-    await writeSkill(path.join(secondRoot, "review", "SKILL.md"), "review");
-
-    const [first] = await discoverSkills({
-      roots: [
-        {
-          rootPath: firstRoot,
-          shape: "skill",
-          namePrefix: "",
-          source: "skill",
-          origin: "project",
-          identitySeed: "bb-project",
-          rootKind: "bb-project",
-        },
-      ],
-    });
-    const [second] = await discoverSkills({
-      roots: [
-        {
-          rootPath: secondRoot,
-          shape: "skill",
-          namePrefix: "",
-          source: "skill",
-          origin: "project",
-          identitySeed: "bb-project",
-          rootKind: "bb-project",
-        },
-      ],
-    });
-
-    expect(first?.id).toBe(second?.id);
-  });
-
   it("keeps a declared provider skill's ID stable when the workspace root moves", async () => {
     const roots = skillRoots({ project: [declared(".agent/skills")] });
     const ids: string[] = [];
@@ -327,8 +291,12 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     });
   });
 
-  it("classifies configured shared user and project roots", async () => {
+  it("classifies configured shared user and project roots without the bb project root", async () => {
     const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".bb", "skills", "bb-project-skill", "SKILL.md"),
+      "bb-project-skill",
+    );
     await writeSkill(
       path.join(
         fixture.homeDir,
@@ -356,6 +324,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     expect(byName(skills, "project-shared")?.rootKind).toBe("shared-project");
     expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
+    expect(byName(skills, "bb-project-skill")).toBeUndefined();
   });
 
   it("discovers a project skill through a symlinked shared root", async () => {

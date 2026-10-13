@@ -1,15 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type {
-  ExperimentalClaudePluginRoots,
-  ExperimentalVendorPluginRoots,
-} from "@get-bb/plugin-sdk/host";
+import type { ExperimentalVendorPluginRoots } from "@get-bb/plugin-sdk/host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  filterClaudeNativeRoots,
-  resolveClaudeNativeRoots,
-} from "./native-roots.js";
+import { resolveClaudeNativeRoots } from "./native-roots.js";
 
 interface Fixture {
   cwd: string;
@@ -266,40 +260,5 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
         ).toBe(true);
       }
     }
-  });
-
-  it("keeps the first 256 command roots of 260 plugins and warns once", () => {
-    const warn = vi.fn();
-    const claudeDir = path.join(
-      path.parse(process.cwd()).root,
-      "claude-config",
-    );
-    const cacheRoot = path.join(claudeDir, "plugins", "cache", "market");
-    const pluginCommands: ExperimentalClaudePluginRoots["commands"] =
-      Array.from({ length: 260 }, (_, index) => {
-        const name = `plugin-${String(index).padStart(3, "0")}`;
-        return {
-          path: path.join(cacheRoot, name, "1", "commands"),
-          origin: "user",
-          namePrefix: `${name}:`,
-          shape: "commands",
-        };
-      });
-
-    const roots = filterClaudeNativeRoots(
-      { claudeDir, skills: [], commands: pluginCommands },
-      warn,
-    );
-
-    expect(roots.commands).toHaveLength(256);
-    expect(commandPaths(roots).slice(0, 2)).toEqual([
-      path.join(claudeDir, "commands"),
-      path.join(cacheRoot, "plugin-000", "1", "commands"),
-    ]);
-    expect(roots.commands[255]?.namePrefix).toBe("plugin-254:");
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      `resolveNativeRoots: kept the first 256 of 261 commands roots; dropped 5 from "${path.join(cacheRoot, "plugin-255", "1", "commands")}" on`,
-    );
   });
 });

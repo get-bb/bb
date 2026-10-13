@@ -19,6 +19,7 @@ const SURFACE_PATHS = [
   "packages/plugin-sdk/src/app-contract.ts",
   "packages/plugin-sdk/src/app.ts",
   "packages/plugin-sdk/src/backend-contract.ts",
+  "packages/plugin-sdk/src/cli-spec.ts",
   "packages/plugin-sdk/src/host-contract.ts",
   "packages/plugin-sdk/src/host.ts",
   "packages/plugin-sdk/src/index.ts",

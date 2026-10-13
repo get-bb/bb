@@ -22,6 +22,9 @@ function formatTimestamp(value: number | null): string {
 function printMarketplace(marketplace: PluginMarketplace): void {
   console.log(`${marketplace.name}  ${marketplace.displayName}`);
   console.log(`  source: ${marketplace.source}`);
+  if (marketplace.subdirectory !== null) {
+    console.log(`  subdirectory: ${marketplace.subdirectory}`);
+  }
   if (marketplace.resolvedCommit !== null) {
     console.log(`  commit: ${marketplace.resolvedCommit}`);
   }
@@ -45,22 +48,36 @@ export function registerMarketplaceCommands(
     .description(
       "Add a marketplace from an https manifest URL, git:<url>[@<ref>], or path:<directory> (validates and caches the catalog; installs nothing)",
     )
+    .option(
+      "--subdirectory <path>",
+      "Read marketplace.json from this directory of a git: repository instead of its root",
+    )
     .option("--json", "Output JSON")
     .action(
-      action(async (source: string, opts: JsonOutputOptions) => {
-        const added = await createCliBbSdk(getUrl()).plugins.marketplaces.add({
-          source: normalizeSource(source),
-        });
-        if (opts.json) {
-          outputJson(opts, added);
-          return;
-        }
-        console.log(`Added marketplace ${added.name}:`);
-        printMarketplace(added);
-        console.log(
-          `Adding a marketplace installs nothing. Install an entry with \`bb plugin install <id>@${added.name}\`.`,
-        );
-      }),
+      action(
+        async (
+          source: string,
+          opts: JsonOutputOptions & { subdirectory?: string },
+        ) => {
+          const added = await createCliBbSdk(getUrl()).plugins.marketplaces.add(
+            {
+              source: normalizeSource(source),
+              ...(opts.subdirectory === undefined
+                ? {}
+                : { subdirectory: opts.subdirectory }),
+            },
+          );
+          if (opts.json) {
+            outputJson(opts, added);
+            return;
+          }
+          console.log(`Added marketplace ${added.name}:`);
+          printMarketplace(added);
+          console.log(
+            `Adding a marketplace installs nothing. Install an entry with \`bb plugin install <id>@${added.name}\`.`,
+          );
+        },
+      ),
     );
 
   marketplace
@@ -75,16 +92,32 @@ export function registerMarketplaceCommands(
           outputJson(opts, marketplaces);
           return;
         }
+        const showSubdirectory = marketplaces.some(
+          (entry) => entry.subdirectory !== null,
+        );
         console.log(
           renderBorderlessTable(
             {
-              head: ["Name", "Source", "Entries", "Refreshed"],
-              colWidths: [24, 58, 9, 26],
+              head: [
+                "Name",
+                "Source",
+                ...(showSubdirectory ? ["Subdirectory"] : []),
+                "Entries",
+                "Refreshed",
+              ],
+              colWidths: [
+                24,
+                showSubdirectory ? 42 : 58,
+                ...(showSubdirectory ? [16] : []),
+                9,
+                26,
+              ],
               trimTrailingWhitespace: true,
             },
             marketplaces.map((entry) => [
               entry.official ? `${entry.name} (official)` : entry.name,
               entry.source,
+              ...(showSubdirectory ? [entry.subdirectory ?? ""] : []),
               String(entry.entryCount),
               entry.lastError === null
                 ? formatTimestamp(entry.lastRefreshAt)

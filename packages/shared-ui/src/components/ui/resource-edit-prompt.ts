@@ -23,15 +23,3 @@ export function buildSkillEditThreadPrompt({
 }): string {
   return `Edit the bb skill ${quoteResourceName(name)} (ID ${id}) at ${path}. Inspect it with bb skill show ${id} --json and pass that revision to bb skill update when saving. I want to `;
 }
-
-export function buildAutomationEditThreadPrompt({
-  name,
-  projectId,
-  automationId,
-}: {
-  name: string;
-  projectId: string;
-  automationId: string;
-}): string {
-  return `Edit the bb automation ${quoteResourceName(name)} (ID ${automationId}) in project ${projectId}. I want to `;
-}

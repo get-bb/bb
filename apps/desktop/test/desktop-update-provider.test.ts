@@ -12,6 +12,9 @@ describe("desktop update feed url", () => {
     expect(createDesktopUpdateFeedUrl("linux")).toBe(
       "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json",
     );
+    expect(createDesktopUpdateFeedUrl("windows")).toBe(
+      "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-windows.json",
+    );
   });
 });
 
@@ -28,6 +31,16 @@ describe("desktop update support", () => {
         platform: "macos",
       }),
     ).toEqual({ autoUpdate: false, versionCheck: true });
+  });
+
+  it("checks for and installs updates on Windows", () => {
+    expect(
+      resolveDesktopUpdateSupport({
+        canReplaceAppImage: alwaysReplaceable,
+        env: { APPIMAGE: APP_IMAGE_PATH },
+        platform: "windows",
+      }),
+    ).toEqual({ autoUpdate: true, versionCheck: true });
   });
 
   it("installs updates on Linux only inside an AppImage", () => {

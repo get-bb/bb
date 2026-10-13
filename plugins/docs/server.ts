@@ -1,11 +1,16 @@
+import { proposalSchema, type Proposal } from "./proposals.js";
 import { watch } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { isRecord, parseMarkdownDocument } from "./markdown-document.js";
 import {
   defineRpcContract,
+  PluginCliError,
+  cliCommand,
+  defineCli,
   type BbPluginApi,
   type PluginCliContext,
+  type PluginCliResult,
   type PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -16,16 +21,21 @@ const MAX_TREE_ENTRIES = 5_000;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const SYNC_STATE_FILE = ".bb-docs-state.json";
 const SYNC_STATE_VERSION = 1;
+const MENTION_SUMMARY_TTL_MS = 10_000;
+const SUMMARY_READ_CONCURRENCY = 8;
 
-class CliUsageError extends Error {}
+class CliUsageError extends PluginCliError {
+  constructor(message: string) {
+    super(message, { code: "usage_error", exitCode: 2 });
+  }
+}
 
-const DOCS_CLI_USAGE =
-  "Usage: bb docs <vaults|vault-add|vault-remove|list|read|pull|status|push|write|mkdir|move|remove>";
-const DOCS_STATUS_USAGE =
-  "bb docs status [workspace-dir] [--delete] [--diff] [--workspace-host <id>] [--json]";
-const DOCS_STATUS_HELP = [
-  `Usage: ${DOCS_STATUS_USAGE}`,
-  "",
+const DOCS_DESCRIPTION = [
+  "Vaults hold the documents; every path is relative to its vault.",
+  "Pull a scope into a workspace directory, edit the files with normal tools, then run status and push.",
+].join("\n");
+
+const DOCS_STATUS_DESCRIPTION = [
   "Exit 0: no changes.",
   "Exit 1: the status operation failed.",
   "Exit 2: the command usage is not valid.",
@@ -35,40 +45,55 @@ const DOCS_STATUS_HELP = [
   "Exit 4 is a successful status result. Review the output, then run bb docs push separately.",
 ].join("\n");
 
-const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
-  vaults: new Set(["--json"]),
-  "vault-add": new Set(["--json"]),
-  "vault-remove": new Set(["--json"]),
-  list: new Set(["--vault", "--json"]),
-  read: new Set(["--vault", "--json"]),
-  pull: new Set([
-    "--vault",
-    "--into",
-    "--workspace-host",
-    "--json",
-    "--all",
-    "--folder",
-  ]),
-  status: new Set([
-    "--vault",
-    "--workspace-host",
-    "--json",
-    "--delete",
-    "--diff",
-  ]),
-  push: new Set([
-    "--vault",
-    "--workspace-host",
-    "--json",
-    "--delete",
-    "--dry-run",
-    "--diff",
-  ]),
-  write: new Set(["--vault", "--content", "--json"]),
-  mkdir: new Set(["--vault", "--json"]),
-  move: new Set(["--vault", "--json"]),
-  remove: new Set(["--vault", "--recursive", "--json"]),
-};
+const DEPRECATED_MUTATION_WARNING =
+  "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
+
+const DEPRECATED_DELETION_WARNING =
+  "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push --delete.";
+
+const VAULT_OPTION = {
+  type: "string",
+  placeholder: "id",
+  aliases: ["vault-id", "vaultId"],
+  description:
+    "Vault ID from `bb docs vaults`; defaults to the first configured vault",
+} as const;
+
+const WORKSPACE_HOST_OPTION = {
+  type: "string",
+  placeholder: "id",
+  aliases: ["host", "host-id"],
+  description:
+    "Host holding the workspace directory; defaults to the thread environment's host",
+} as const;
+
+const JSON_OPTION = {
+  type: "boolean",
+  description: "Emit machine-readable JSON",
+} as const;
+
+const DIFF_OPTION = {
+  type: "boolean",
+  description: "Include a unified diff for every changed file",
+} as const;
+
+const DELETE_OPTION = {
+  type: "boolean",
+  description:
+    "Also apply local file and empty-directory deletions to the vault",
+} as const;
+
+interface SyncCliArgs {
+  positionals: string[];
+  vaultId: string | undefined;
+  into: string | undefined;
+  workspaceHostId: string | undefined;
+  all: boolean;
+  folder: boolean;
+  delete: boolean;
+  dryRun: boolean;
+  diff: boolean;
+}
 
 interface VaultWatcher {
   close(): void;
@@ -234,6 +259,44 @@ type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
 type OpenerSource = z.infer<typeof openerSourceSchema>;
 
 export const docsRpcContract = defineRpcContract({
+  readProposal: {
+    input: z.object({ vaultId: vaultIdSchema, path: vaultPathSchema }).strict(),
+    output: proposalSchema.nullable(),
+  },
+  proposeNote: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        content: z.string(),
+        expectedSha256: z.string().min(1),
+        expectedVersion: z.number().int().positive().nullable(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
+  updateProposal: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        content: z.string(),
+        expectedVersion: z.number().int().positive(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
+  resolveProposal: {
+    input: z
+      .object({
+        vaultId: vaultIdSchema,
+        path: vaultPathSchema,
+        action: z.enum(["accept", "reject", "undo", "redo"]),
+        expectedVersion: z.number().int().positive(),
+      })
+      .strict(),
+    output: proposalSchema,
+  },
   syncSnapshot: {
     input: z
       .object({ vaultId: vaultIdSchema, scope: syncScopeSchema })
@@ -642,110 +705,6 @@ function parseVaultRow(value: unknown): Vault {
   };
 }
 
-function parseCli(argv: string[]): {
-  command: string;
-  positionals: string[];
-  vaultId?: string;
-  content?: string;
-  into?: string;
-  workspaceHostId?: string;
-  recursive: boolean;
-  json: boolean;
-  all: boolean;
-  folder: boolean;
-  delete: boolean;
-  dryRun: boolean;
-  diff: boolean;
-} {
-  const command = argv[0] ?? "help";
-  const allowedOptions = CLI_OPTIONS_BY_COMMAND[command];
-  const positionals: string[] = [];
-  let vaultId: string | undefined;
-  let content: string | undefined;
-  let recursive = false;
-  let json = false;
-  let all = false;
-  let folder = false;
-  let deleteFiles = false;
-  let dryRun = false;
-  let diff = false;
-  let into: string | undefined;
-  let workspaceHostId: string | undefined;
-  const nextValue = (flag: string, index: number): string => {
-    const value = argv[index + 1];
-    if (!value || value.startsWith("--")) {
-      throw new CliUsageError(`${flag} requires a value`);
-    }
-    return value;
-  };
-  for (let index = 1; index < argv.length; index += 1) {
-    const arg = argv[index]!;
-    if (arg.startsWith("--") && allowedOptions && !allowedOptions.has(arg)) {
-      throw new CliUsageError(`${arg} is not valid for bb docs ${command}`);
-    }
-    if (arg === "--vault") vaultId = nextValue(arg, index++);
-    else if (arg === "--content") content = nextValue(arg, index++);
-    else if (arg === "--into") into = nextValue(arg, index++);
-    else if (arg === "--workspace-host")
-      workspaceHostId = nextValue(arg, index++);
-    else if (arg === "--recursive") recursive = true;
-    else if (arg === "--json") json = true;
-    else if (arg === "--all") all = true;
-    else if (arg === "--folder") folder = true;
-    else if (arg === "--delete") deleteFiles = true;
-    else if (arg === "--dry-run") dryRun = true;
-    else if (arg === "--diff") diff = true;
-    else if (arg.startsWith("--"))
-      throw new CliUsageError(`Unknown option: ${arg}`);
-    else positionals.push(arg);
-  }
-  return {
-    command,
-    positionals,
-    vaultId,
-    content,
-    into,
-    workspaceHostId,
-    recursive,
-    json,
-    all,
-    folder,
-    delete: deleteFiles,
-    dryRun,
-    diff,
-  };
-}
-
-function validateCliPositionals(args: ReturnType<typeof parseCli>): void {
-  const expected: Record<string, { minimum: number; maximum: number }> = {
-    vaults: { minimum: 0, maximum: 0 },
-    "vault-add": { minimum: 2, maximum: 3 },
-    "vault-remove": { minimum: 1, maximum: 1 },
-    list: { minimum: 0, maximum: 0 },
-    read: { minimum: 1, maximum: 1 },
-    status: { minimum: 0, maximum: 1 },
-    push: { minimum: 0, maximum: 1 },
-    write: { minimum: 1, maximum: 1 },
-    mkdir: { minimum: 1, maximum: 1 },
-    move: { minimum: 2, maximum: 2 },
-    remove: { minimum: 1, maximum: 1 },
-  };
-  const range = expected[args.command];
-  if (!range) return;
-  if (
-    args.positionals.length < range.minimum ||
-    args.positionals.length > range.maximum
-  ) {
-    throw new CliUsageError(
-      `bb docs ${args.command} received ${args.positionals.length} positional argument(s); expected ${
-        range.minimum === range.maximum
-          ? range.minimum
-          : `${range.minimum}-${range.maximum}`
-      }`,
-    );
-  }
-}
-
 function waitForDelay(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
@@ -778,6 +737,12 @@ export default async function plugin(
       child_path TEXT NOT NULL,
       position INTEGER NOT NULL,
       PRIMARY KEY (vault_id, parent_path, child_path)
+    )`,
+    `CREATE TABLE IF NOT EXISTS proposals (
+      vault_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      data TEXT NOT NULL,
+      PRIMARY KEY (vault_id, path)
     )`,
   ]);
 
@@ -832,7 +797,7 @@ export default async function plugin(
     }
   }
 
-  function listVaultPaths(vault: Vault) {
+  function listVaultPaths(vault: Vault, signal?: AbortSignal) {
     return bb.sdk.files.listPaths({
       ...hostArgs(vault),
       path: vault.rootPath,
@@ -840,13 +805,15 @@ export default async function plugin(
       includeDirectories: true,
       includeHidden: false,
       limit: MAX_TREE_ENTRIES,
+      ...(signal ? { signal } : {}),
     });
   }
 
   async function listEntries(
     vault: Vault,
+    signal?: AbortSignal,
   ): Promise<{ entries: VaultEntry[]; truncated: boolean }> {
-    const result = await listVaultPaths(vault);
+    const result = await listVaultPaths(vault, signal);
     return {
       entries: result.paths
         .filter(
@@ -864,30 +831,102 @@ export default async function plugin(
   async function listNoteSummaries(
     vault: Vault,
     knownEntries?: VaultEntry[],
+    signal?: AbortSignal,
   ): Promise<NoteSummary[]> {
-    const entries = knownEntries ?? (await listEntries(vault)).entries;
-    const notes: NoteSummary[] = [];
+    const entries = knownEntries ?? (await listEntries(vault, signal)).entries;
     const markdownPaths = entries
       .filter((entry) => entry.kind === "file" && /\.md$/i.test(entry.path))
       .map((entry) => entry.path);
-    for (const notePath of markdownPaths) {
-      try {
-        const file = await bb.sdk.files.read({
-          ...hostArgs(vault),
-          path: absolutePath(vault, notePath),
-          rootPath: vault.rootPath,
-        });
-        const fallback = path.posix.basename(notePath).replace(/\.md$/i, "");
-        const summary = summarizeMarkdown(file.content, fallback);
-        notes.push({
-          path: notePath,
-          title: summary.title,
-          preview: summary.preview,
-          modifiedAtMs: file.modifiedAtMs ?? 0,
-        });
-      } catch {}
+    const notes: Array<NoteSummary | null> = markdownPaths.map(() => null);
+    let nextIndex = 0;
+    await Promise.all(
+      Array.from(
+        { length: Math.min(SUMMARY_READ_CONCURRENCY, markdownPaths.length) },
+        async () => {
+          while (nextIndex < markdownPaths.length) {
+            signal?.throwIfAborted();
+            const index = nextIndex++;
+            const notePath = markdownPaths[index]!;
+            try {
+              const file = await bb.sdk.files.read({
+                ...hostArgs(vault),
+                path: absolutePath(vault, notePath),
+                rootPath: vault.rootPath,
+                ...(signal ? { signal } : {}),
+              });
+              const fallback = path.posix
+                .basename(notePath)
+                .replace(/\.md$/i, "");
+              const summary = summarizeMarkdown(file.content, fallback);
+              notes[index] = {
+                path: notePath,
+                title: summary.title,
+                preview: summary.preview,
+                modifiedAtMs: file.modifiedAtMs ?? 0,
+              };
+            } catch {}
+          }
+        },
+      ),
+    );
+    signal?.throwIfAborted();
+    return notes
+      .filter((note): note is NoteSummary => note !== null)
+      .sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+  }
+
+  const mentionSummaries = new Map<
+    string,
+    {
+      rootPath: string;
+      hostId: string | null;
+      expiresAt: number;
+      notes: Promise<NoteSummary[]>;
     }
-    return notes.sort((a, b) => b.modifiedAtMs - a.modifiedAtMs);
+  >();
+  const mentionLifetime = new AbortController();
+  bb.onDispose(() => {
+    mentionLifetime.abort();
+    mentionSummaries.clear();
+  });
+
+  function mentionNoteSummaries(vault: Vault): Promise<NoteSummary[]> {
+    const cached = mentionSummaries.get(vault.id);
+    if (
+      cached &&
+      cached.rootPath === vault.rootPath &&
+      cached.hostId === vault.hostId &&
+      cached.expiresAt > Date.now()
+    ) {
+      return cached.notes;
+    }
+    const entry = {
+      rootPath: vault.rootPath,
+      hostId: vault.hostId,
+      expiresAt: Infinity,
+      notes: listNoteSummaries(
+        vault,
+        undefined,
+        AbortSignal.any([
+          mentionLifetime.signal,
+          AbortSignal.timeout(MENTION_SUMMARY_TTL_MS),
+        ]),
+      ),
+    };
+    entry.notes = entry.notes.then(
+      (notes) => {
+        entry.expiresAt = Date.now() + MENTION_SUMMARY_TTL_MS;
+        return notes;
+      },
+      (error: unknown) => {
+        if (mentionSummaries.get(vault.id) === entry) {
+          mentionSummaries.delete(vault.id);
+        }
+        throw error;
+      },
+    );
+    mentionSummaries.set(vault.id, entry);
+    return entry.notes;
   }
 
   async function notebookData(vaultId?: string) {
@@ -940,6 +979,7 @@ export default async function plugin(
     contentEncoding?: "utf8" | "base64";
     expectedSha256?: unknown;
     createOnly?: boolean;
+    proposalOnly?: boolean;
   }) {
     const vault = getVault(args.vaultId);
     const relativePath = requireVaultPath(args.rawPath);
@@ -960,9 +1000,77 @@ export default async function plugin(
           : {}),
     });
     if (result.outcome === "written") {
-      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      mentionSummaries.delete(vault.id);
+      bb.realtime.publish("vault-changed", {
+        vaultId: vault.id,
+        path: relativePath,
+        ...(args.proposalOnly ? { proposalOnly: true } : {}),
+      });
     }
     return result;
+  }
+
+  const vaultOperations = new Map<string, Promise<unknown>>();
+
+  async function serializeVault<T>(
+    vaultId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const key = vaultId;
+    const previous = vaultOperations.get(key) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => {
+        getVault(vaultId);
+        return work();
+      });
+    vaultOperations.set(key, current);
+    try {
+      return await current;
+    } finally {
+      if (vaultOperations.get(key) === current) vaultOperations.delete(key);
+    }
+  }
+
+  function readProposal(
+    vaultId: string,
+    relativePath: string,
+  ): Proposal | null {
+    const row = db
+      .prepare("SELECT data FROM proposals WHERE vault_id = ? AND path = ?")
+      .get(vaultId, relativePath);
+    if (!row) return null;
+    const data = z.object({ data: z.string() }).parse(row);
+    return proposalSchema.parse(JSON.parse(data.data));
+  }
+
+  function saveProposal(proposal: Proposal): Proposal {
+    db.prepare(
+      "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?) ON CONFLICT(vault_id, path) DO UPDATE SET data = excluded.data",
+    ).run(proposal.vaultId, proposal.path, JSON.stringify(proposal));
+    bb.realtime.publish("vault-changed", {
+      vaultId: proposal.vaultId,
+      path: proposal.path,
+      proposalOnly: true,
+    });
+    bb.realtime.publish("proposal-changed", {
+      vaultId: proposal.vaultId,
+      path: proposal.path,
+      version: proposal.version,
+    });
+    return proposal;
+  }
+
+  function requireProposal(
+    vaultId: string,
+    relativePath: string,
+    expectedVersion: number,
+  ): Proposal {
+    const proposal = readProposal(vaultId, relativePath);
+    if (!proposal || proposal.version !== expectedVersion) {
+      throw new Error("The proposal changed. Read it again before continuing.");
+    }
+    return proposal;
   }
 
   async function resolveOpenerFile(
@@ -1002,7 +1110,7 @@ export default async function plugin(
         source.experimental_hostId ??
         (await bb.sdk.system.config()).primaryHostId;
       if (!hostId) {
-        throw new Error("This project has no primary host");
+        throw new Error("This bb has no server machine yet");
       }
       const project = await bb.sdk.projects.get({
         projectId: source.projectId,
@@ -1015,7 +1123,7 @@ export default async function plugin(
         throw new Error(
           source.experimental_hostId
             ? "This project has no workspace on the selected host"
-            : "This project has no workspace on the primary host",
+            : "This project has no workspace on the server machine",
         );
       }
       if (matchingSources.length > 1) {
@@ -1090,14 +1198,41 @@ export default async function plugin(
     const vault = getVault(vaultId);
     const from = requireVaultPath(fromValue);
     const to = requireVaultPath(toValue);
-    await bb.sdk.files.move({
-      ...hostArgs(vault),
-      sourcePath: absolutePath(vault, from),
-      destinationPath: absolutePath(vault, to),
-      rootPath: vault.rootPath,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.move({
+        ...hostArgs(vault),
+        sourcePath: absolutePath(vault, from),
+        destinationPath: absolutePath(vault, to),
+        rootPath: vault.rootPath,
+      });
+      db.transaction(() => {
+        const rows = db
+          .prepare(
+            "SELECT data FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+          )
+          .all(vault.id, from, `${from}/`, `${from}/`);
+        deleteProposals(vault.id, from);
+        deleteProposals(vault.id, to);
+        const insert = db.prepare(
+          "INSERT INTO proposals (vault_id, path, data) VALUES (?, ?, ?)",
+        );
+        for (const row of rows) {
+          const { data } = z.object({ data: z.string() }).parse(row);
+          const proposal = proposalSchema.parse(JSON.parse(data));
+          proposal.path = to + proposal.path.slice(from.length);
+          insert.run(vault.id, proposal.path, JSON.stringify(proposal));
+        }
+      })();
+      mentionSummaries.delete(vault.id);
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { path: to };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { path: to };
+  }
+
+  function deleteProposals(vaultId: string, relativePath: string) {
+    db.prepare(
+      "DELETE FROM proposals WHERE vault_id = ? AND (path = ? OR substr(path, 1, length(?)) = ?)",
+    ).run(vaultId, relativePath, `${relativePath}/`, `${relativePath}/`);
   }
 
   async function removePath(
@@ -1107,14 +1242,18 @@ export default async function plugin(
   ): Promise<{ ok: true }> {
     const vault = getVault(vaultId);
     const relativePath = requireVaultPath(rawPath);
-    await bb.sdk.files.remove({
-      ...hostArgs(vault),
-      path: absolutePath(vault, relativePath),
-      rootPath: vault.rootPath,
-      recursive,
+    return serializeVault(vault.id, async () => {
+      await bb.sdk.files.remove({
+        ...hostArgs(vault),
+        path: absolutePath(vault, relativePath),
+        rootPath: vault.rootPath,
+        recursive,
+      });
+      deleteProposals(vault.id, relativePath);
+      mentionSummaries.delete(vault.id);
+      bb.realtime.publish("vault-changed", { vaultId: vault.id });
+      return { ok: true };
     });
-    bb.realtime.publish("vault-changed", { vaultId: vault.id });
-    return { ok: true };
   }
 
   function scopeContains(scope: SyncScope, relativePath: string): boolean {
@@ -1514,6 +1653,112 @@ export default async function plugin(
   }
 
   const handlers: PluginRpcHandlers<typeof docsRpcContract> = {
+    async readProposal(input) {
+      return readProposal(getVault(input.vaultId).id, input.path);
+    },
+    async proposeNote(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const previous = readProposal(vaultId, input.path);
+        if ((previous?.version ?? null) !== input.expectedVersion) {
+          throw new Error(
+            "The proposal changed. Read it again before proposing changes.",
+          );
+        }
+        const file = await readFile(vaultId, input.path);
+        if (
+          file.contentEncoding !== "utf8" ||
+          file.sha256 !== input.expectedSha256
+        ) {
+          throw new Error(
+            "The document changed. Read it again before proposing changes.",
+          );
+        }
+        return saveProposal({
+          vaultId,
+          path: input.path,
+          version: (previous?.version ?? 0) + 1,
+          baseContent: file.content,
+          baseSha256: file.sha256,
+          content: input.content,
+          status: "pending",
+          resolvedSha256: null,
+        });
+      });
+    },
+    async updateProposal(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const proposal = requireProposal(
+          vaultId,
+          input.path,
+          input.expectedVersion,
+        );
+        if (proposal.status !== "pending")
+          throw new Error("This proposal is no longer pending.");
+        return saveProposal({
+          ...proposal,
+          content: input.content,
+          version: proposal.version + 1,
+        });
+      });
+    },
+    async resolveProposal(input) {
+      const vaultId = getVault(input.vaultId).id;
+      return serializeVault(vaultId, async () => {
+        const proposal = requireProposal(
+          vaultId,
+          input.path,
+          input.expectedVersion,
+        );
+        const status = (
+          {
+            accept: proposal.status === "pending" ? "accepted" : null,
+            reject: proposal.status === "pending" ? "rejected" : null,
+            undo:
+              proposal.status === "accepted"
+                ? "undone"
+                : proposal.status === "rejected"
+                  ? "pending"
+                  : null,
+            redo: proposal.status === "undone" ? "pending" : null,
+          } as const
+        )[input.action];
+        if (!status)
+          throw new Error(
+            input.action === "undo"
+              ? "Nothing to undo."
+              : input.action === "redo"
+                ? "Nothing to redo."
+                : "This proposal is no longer pending.",
+          );
+        const next = { ...proposal, status, version: proposal.version + 1 };
+        const restoring = status === "undone";
+        const conflictMessage = restoring
+          ? "The document changed. Undo would overwrite newer edits."
+          : "The document changed. Ask for an updated proposal.";
+        if (status === "accepted" || restoring) {
+          const expectedSha256 = restoring
+            ? proposal.resolvedSha256
+            : proposal.baseSha256;
+          if (!expectedSha256) throw new Error("Nothing to undo.");
+          const result = await writeFile({
+            vaultId,
+            rawPath: input.path,
+            content: restoring ? proposal.baseContent : proposal.content,
+            expectedSha256,
+            proposalOnly: true,
+          });
+          if (result.outcome === "conflict") throw new Error(conflictMessage);
+          next.resolvedSha256 = result.sha256;
+        } else if (status === "pending") {
+          const file = await readFile(vaultId, input.path);
+          if (file.sha256 !== proposal.baseSha256)
+            throw new Error(conflictMessage);
+        }
+        return saveProposal(next);
+      });
+    },
     async syncSnapshot(input) {
       return syncSnapshot(input.vaultId, input.scope);
     },
@@ -1527,12 +1772,14 @@ export default async function plugin(
       return readFile(input.vaultId, input.path);
     },
     async saveNote(input) {
-      return writeFile({
-        vaultId: input.vaultId,
-        rawPath: input.path,
-        content: input.content,
-        expectedSha256: input.expectedSha256,
-      });
+      return serializeVault(getVault(input.vaultId).id, () =>
+        writeFile({
+          vaultId: input.vaultId,
+          rawPath: input.path,
+          content: input.content,
+          expectedSha256: input.expectedSha256,
+        }),
+      );
     },
     async createNote(input) {
       return createNote(input.vaultId, input);
@@ -1645,12 +1892,18 @@ export default async function plugin(
     },
     async removeVault(input) {
       const id = requireString(input.vaultId, "vaultId");
-      if (listVaults().length <= 1)
-        throw new Error("At least one vault is required");
-      db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
-      db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
-      bb.realtime.publish("vault-changed", { vaultId: id });
-      return { ok: true };
+      return serializeVault(id, async () => {
+        if (listVaults().length <= 1)
+          throw new Error("At least one vault is required");
+        db.transaction(() => {
+          db.prepare("DELETE FROM proposals WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM entry_order WHERE vault_id = ?").run(id);
+          db.prepare("DELETE FROM vaults WHERE id = ?").run(id);
+        })();
+        mentionSummaries.delete(id);
+        bb.realtime.publish("vault-changed", { vaultId: id });
+        return { ok: true as const };
+      });
     },
     async uploadAttachment(input) {
       const vaultId = input.vaultId;
@@ -1729,7 +1982,7 @@ export default async function plugin(
     },
     async saveOpenedFile(input) {
       const target = await resolveOpenerFile(input.source, input.path);
-      return bb.sdk.files.write({
+      const result = await bb.sdk.files.write({
         ...hostIdArgs(target.hostId),
         path: target.path,
         rootPath: target.rootPath,
@@ -1739,6 +1992,8 @@ export default async function plugin(
           ? { expectedSha256: input.expectedSha256 }
           : {}),
       });
+      if (result.outcome === "written") mentionSummaries.clear();
+      return result;
     },
   };
 
@@ -1826,7 +2081,7 @@ export default async function plugin(
   }
 
   async function resolveWorkspaceHostId(
-    args: ReturnType<typeof parseCli>,
+    args: SyncCliArgs,
     context: PluginCliContext,
   ): Promise<string | undefined> {
     if (args.workspaceHostId) return args.workspaceHostId;
@@ -1952,7 +2207,7 @@ export default async function plugin(
     );
   }
 
-  function parsePullScope(args: ReturnType<typeof parseCli>): SyncScope {
+  function parsePullScope(args: SyncCliArgs): SyncScope {
     if (args.all && (args.folder || args.positionals.length > 0)) {
       throw new CliUsageError(
         "--all cannot be combined with a path or --folder",
@@ -2001,10 +2256,7 @@ export default async function plugin(
     ].join("\n");
   }
 
-  async function runPull(
-    args: ReturnType<typeof parseCli>,
-    context: PluginCliContext,
-  ) {
+  async function runPull(args: SyncCliArgs, context: PluginCliContext) {
     const scope = parsePullScope(args);
     const snapshot = await syncSnapshot(args.vaultId, scope);
     const cwd = context.cwd ?? process.cwd();
@@ -2200,7 +2452,7 @@ export default async function plugin(
   }
 
   async function runPushPlan(
-    args: ReturnType<typeof parseCli>,
+    args: SyncCliArgs,
     context: PluginCliContext,
     apply: boolean,
   ) {
@@ -2574,211 +2826,632 @@ export default async function plugin(
   );
   routeRpc("/sync/apply", docsRpcContract.syncApply.input, handlers.syncApply);
 
-  bb.cli.register({
-    name: "docs",
-    summary: "Discover and safely sync Docs vaults",
-    commands: [
-      {
-        name: "vaults",
-        summary: "List configured vaults",
-        usage: "bb docs vaults [--json]",
-      },
-      {
-        name: "vault-add",
-        summary: "Add a vault",
-        usage: "bb docs vault-add <name> <absolute-root> [host-id]",
-      },
-      {
-        name: "vault-remove",
-        summary: "Remove a vault configuration",
-        usage: "bb docs vault-remove <id>",
-      },
-      {
-        name: "list",
-        summary: "List notes and folders",
-        usage: "bb docs list [--vault <id>] [--json]",
-      },
-      {
-        name: "read",
-        summary: "Read a file",
-        usage: "bb docs read <path> [--vault <id>]",
-      },
-      {
-        name: "pull",
-        summary: "Pull one file, a folder subtree, or a whole vault",
-        usage:
-          "bb docs pull <path> [--folder] | --all [--vault <id>] [--into <dir>] [--workspace-host <id>] [--json]",
-      },
-      {
-        name: "status",
-        summary: "Show local edits, conflicts, and ignored deletions",
-        usage: DOCS_STATUS_USAGE,
-      },
-      {
-        name: "push",
-        summary: "Safely push local edits using optimistic concurrency",
-        usage:
-          "bb docs push [workspace-dir] [--delete] [--dry-run] [--diff] [--workspace-host <id>] [--json]",
-      },
-      {
-        name: "write",
-        summary: "Deprecated: write a UTF-8 file directly",
-        usage: "bb docs write <path> --content <text> [--vault <id>]",
-      },
-      {
-        name: "mkdir",
-        summary: "Deprecated: create a folder directly",
-        usage: "bb docs mkdir <path> [--vault <id>]",
-      },
-      {
-        name: "move",
-        summary: "Deprecated: move a path directly",
-        usage: "bb docs move <from> <to> [--vault <id>]",
-      },
-      {
-        name: "remove",
-        summary: "Deprecated: remove a file or directory directly",
-        usage: "bb docs remove <path> [--vault <id>] [--recursive]",
-      },
-    ],
-    async run(argv, context) {
-      const wantsJson = argv.includes("--json");
-      if (
-        argv.length === 0 ||
-        argv[0] === "help" ||
-        argv[0] === "--help" ||
-        argv[0] === "-h"
-      ) {
-        return { exitCode: 0, stdout: DOCS_CLI_USAGE };
-      }
-      if (
-        argv[0] === "status" &&
-        (argv[1] === "help" || argv[1] === "--help" || argv[1] === "-h")
-      ) {
-        return { exitCode: 0, stdout: DOCS_STATUS_HELP };
-      }
-      try {
-        const args = parseCli(argv);
-        validateCliPositionals(args);
-        let result: unknown;
-        let exitCode = 0;
-        let warning = "";
-        if (args.command === "vaults") result = listVaults();
-        else if (args.command === "vault-add")
-          result = await handlers.createVault({
-            name: args.positionals[0],
-            rootPath: args.positionals[1],
-            hostId: args.positionals[2],
-          });
-        else if (args.command === "vault-remove")
-          result = await handlers.removeVault({ vaultId: args.positionals[0] });
-        else if (args.command === "list")
-          result = await notebookData(args.vaultId);
-        else if (args.command === "read")
-          result = await readFile(args.vaultId, args.positionals[0]);
-        else if (args.command === "pull") {
-          result = await runPull(args, context);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (isRecord(result) && result.outcome === "partial")
-            exitCode = 1;
-        } else if (args.command === "status") {
-          result = await runPushPlan(args, context, false);
-          if (isRecord(result) && result.outcome === "conflict") exitCode = 3;
-          else if (
-            isRecord(result) &&
-            ((Array.isArray(result.writes) && result.writes.length > 0) ||
-              (Array.isArray(result.deletes) && result.deletes.length > 0) ||
-              (Array.isArray(result.directories) &&
-                result.directories.length > 0) ||
-              (Array.isArray(result.deleteDirectories) &&
-                result.deleteDirectories.length > 0) ||
-              (Array.isArray(result.warnings) && result.warnings.length > 0))
-          )
-            exitCode = 4;
-        } else if (args.command === "push") {
-          result = await runPushPlan(args, context, true);
-          if (
-            isRecord(result) &&
-            (result.outcome === "conflict" || result.outcome === "partial")
-          )
-            exitCode = result.outcome === "conflict" ? 3 : 1;
-        } else if (args.command === "write") {
-          if (args.content === undefined)
-            throw new CliUsageError("write requires --content <text>");
-          result = await writeFile({
-            vaultId: args.vaultId,
-            rawPath: args.positionals[0],
-            content: args.content,
-          });
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "mkdir") {
-          result = await handlers.createFolder({
-            vaultId: args.vaultId,
-            path: args.positionals[0],
-          });
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "move") {
-          result = await movePath(
-            args.vaultId,
-            args.positionals[0],
-            args.positionals[1],
-          );
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push.";
-        } else if (args.command === "remove") {
-          result = await removePath(
-            args.vaultId,
-            args.positionals[0],
-            args.recursive,
-          );
-          warning =
-            "Deprecated: direct Docs mutations will be removed; use bb docs pull, edit local files, then bb docs push --delete.";
-        } else {
-          return {
-            exitCode: 2,
-            stderr: DOCS_CLI_USAGE,
-          };
-        }
-        const output =
-          args.command === "read" &&
-          !args.json &&
-          isRecord(result) &&
-          typeof result.content === "string"
-            ? result.content
-            : args.json
-              ? JSON.stringify(result, null, 2)
-              : formatSyncHumanOutput(args.command, result);
-        return {
-          exitCode,
-          stdout: output,
-          ...(warning ? { stderr: warning } : {}),
-        };
-      } catch (error) {
-        const message = errorMessage(error);
-        const usageError = error instanceof CliUsageError;
-        return {
-          exitCode: usageError ? 2 : 1,
-          ...(wantsJson
-            ? {
-                stdout: JSON.stringify(
-                  {
-                    outcome: "error",
-                    error: {
-                      code: usageError ? "usage_error" : "operation_failed",
-                      message,
-                    },
-                  },
-                  null,
-                  2,
-                ),
-              }
-            : { stderr: message }),
-        };
-      }
+  async function attemptCli(
+    work: () => Promise<PluginCliResult>,
+  ): Promise<PluginCliResult> {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof PluginCliError) throw error;
+      throw new PluginCliError(errorMessage(error), {
+        code: "operation_failed",
+      });
+    }
+  }
+
+  function renderCliResult(
+    command: string,
+    result: unknown,
+    asJson: boolean,
+  ): string {
+    return asJson
+      ? JSON.stringify(result, null, 2)
+      : formatSyncHumanOutput(command, result);
+  }
+
+  function workspaceArgs(args: {
+    positionals: string[];
+    vaultId: string | undefined;
+    into: string | undefined;
+    workspaceHostId: string | undefined;
+    all?: boolean;
+    folder?: boolean;
+    delete?: boolean;
+    dryRun?: boolean;
+    diff?: boolean;
+  }): SyncCliArgs {
+    return {
+      positionals: args.positionals,
+      vaultId: args.vaultId,
+      into: args.into,
+      workspaceHostId: args.workspaceHostId,
+      all: args.all ?? false,
+      folder: args.folder ?? false,
+      delete: args.delete ?? false,
+      dryRun: args.dryRun ?? false,
+      diff: args.diff ?? false,
+    };
+  }
+
+  function statusExitCode(result: unknown): number {
+    if (!isRecord(result)) return 0;
+    if (result.outcome === "conflict") return 3;
+    const changed = [
+      "writes",
+      "deletes",
+      "directories",
+      "deleteDirectories",
+      "warnings",
+    ].some(
+      (key) =>
+        Array.isArray(result[key]) && (result[key] as unknown[]).length > 0,
+    );
+    return changed ? 4 : 0;
+  }
+
+  const proposalPositionals = [
+    {
+      name: "path",
+      description: "Markdown path relative to the vault root",
+      required: true,
     },
-  });
+  ] as const;
+  const proposalVersionOption = {
+    type: "string",
+    required: true,
+    description:
+      "Version returned by proposal; use none only when no proposal exists",
+  } as const;
+
+  function parseProposalVersion(value: string): number | null {
+    if (value === "none") return null;
+    const version = Number(value);
+    if (!Number.isSafeInteger(version) || version < 1)
+      throw new CliUsageError("Expected a positive proposal version or none.");
+    return version;
+  }
+
+  const proposalCommands = Object.fromEntries(
+    (["accept", "reject", "undo", "redo"] as const).map((action) => [
+      action,
+      cliCommand({
+        summary: `${action[0]!.toUpperCase()}${action.slice(1)} a document proposal`,
+        positionals: proposalPositionals,
+        options: {
+          vault: VAULT_OPTION,
+          version: proposalVersionOption,
+          json: JSON_OPTION,
+        },
+        run: (input) =>
+          attemptCli(async () => {
+            const expectedVersion = parseProposalVersion(input.options.version);
+            if (expectedVersion === null)
+              throw new CliUsageError(
+                "This action requires a proposal version.",
+              );
+            const result = await handlers.resolveProposal({
+              vaultId: input.options.vault,
+              path: requireVaultPath(input.positionals.path),
+              action,
+              expectedVersion,
+            });
+            return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+          }),
+      }),
+    ]),
+  );
+
+  bb.cli.register(
+    defineCli({
+      name: "docs",
+      summary: "Discover and safely sync Docs vaults",
+      description: DOCS_DESCRIPTION,
+      usageErrorExitCode: 2,
+      commands: {
+        ...proposalCommands,
+        proposal: cliCommand({
+          summary: "Read the current proposal and its version",
+          positionals: proposalPositionals,
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: JSON.stringify(
+                await handlers.readProposal({
+                  vaultId: input.options.vault,
+                  path: requireVaultPath(input.positionals.path),
+                }),
+                null,
+                2,
+              ),
+            })),
+        }),
+        propose: cliCommand({
+          summary: "Propose a Markdown revision without changing the document",
+          positionals: proposalPositionals,
+          options: {
+            vault: VAULT_OPTION,
+            version: proposalVersionOption,
+            json: JSON_OPTION,
+            "expected-sha256": {
+              type: "string",
+              required: true,
+              description: "Current document SHA-256 from read --json",
+            },
+            file: {
+              type: "string",
+              required: true,
+              description:
+                "Workspace UTF-8 file containing the complete proposed Markdown",
+            },
+            "workspace-host": WORKSPACE_HOST_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const candidatePath = resolveHostPath(
+                context.cwd ?? process.cwd(),
+                input.options.file,
+              );
+              const hostId = await resolveWorkspaceHostId(
+                workspaceArgs({
+                  positionals: [],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                }),
+                context,
+              );
+              const file = await bb.sdk.files.read({
+                ...hostIdArgs(hostId),
+                path: candidatePath,
+                rootPath: (path.win32.isAbsolute(candidatePath) &&
+                !path.posix.isAbsolute(candidatePath)
+                  ? path.win32
+                  : path.posix
+                ).dirname(candidatePath),
+              });
+              if (file.contentEncoding !== "utf8")
+                throw new CliUsageError(
+                  "Proposal file must be UTF-8 Markdown.",
+                );
+              const result = await handlers.proposeNote({
+                vaultId: input.options.vault,
+                path: requireVaultPath(input.positionals.path, {
+                  extension: ".md",
+                }),
+                content: file.content,
+                expectedSha256: input.options["expected-sha256"],
+                expectedVersion: parseProposalVersion(input.options.version),
+              });
+              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+            }),
+        }),
+        "proposal-update": cliCommand({
+          summary: "Edit a pending candidate using its version",
+          positionals: proposalPositionals,
+          options: {
+            vault: VAULT_OPTION,
+            version: proposalVersionOption,
+            json: JSON_OPTION,
+            content: {
+              type: "string",
+              required: true,
+              description: "Complete candidate Markdown",
+            },
+          },
+          run: (input) =>
+            attemptCli(async () => {
+              const expectedVersion = parseProposalVersion(
+                input.options.version,
+              );
+              if (expectedVersion === null)
+                throw new CliUsageError(
+                  "This action requires a proposal version.",
+                );
+              const result = await handlers.updateProposal({
+                vaultId: input.options.vault,
+                path: requireVaultPath(input.positionals.path),
+                content: input.options.content,
+                expectedVersion,
+              });
+              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+            }),
+        }),
+        vaults: cliCommand({
+          summary: "List configured vaults",
+          suggestFor: ["vault"],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vaults",
+                listVaults(),
+                input.options.json,
+              ),
+            })),
+        }),
+        "vault-add": cliCommand({
+          summary: "Add a vault",
+          suggestFor: ["add-vault", "vault-create"],
+          positionals: [
+            {
+              name: "name",
+              description: "Display name for the vault",
+              required: true,
+            },
+            {
+              name: "absolute-root",
+              description:
+                "Absolute directory on the host; it is created when missing",
+              required: true,
+            },
+            {
+              name: "host-id",
+              description:
+                "Connected host holding the directory; omit for this server",
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vault-add",
+                await handlers.createVault({
+                  name: input.positionals.name,
+                  rootPath: input.positionals["absolute-root"],
+                  hostId: input.positionals["host-id"],
+                }),
+                input.options.json,
+              ),
+            })),
+        }),
+        "vault-remove": cliCommand({
+          summary: "Remove a vault configuration",
+          suggestFor: ["remove-vault", "vault-delete"],
+          positionals: [
+            {
+              name: "id",
+              description: "Vault ID from `bb docs vaults`",
+              required: true,
+            },
+          ],
+          options: { json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "vault-remove",
+                await handlers.removeVault({ vaultId: input.positionals.id }),
+                input.options.json,
+              ),
+            })),
+        }),
+        list: cliCommand({
+          summary: "List notes and folders",
+          aliases: ["ls"],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "list",
+                await notebookData(input.options.vault),
+                input.options.json,
+              ),
+            })),
+        }),
+        read: cliCommand({
+          summary: "Read a file",
+          aliases: ["cat"],
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => {
+              const result = await readFile(
+                input.options.vault,
+                input.positionals.path,
+              );
+              return {
+                exitCode: 0,
+                stdout:
+                  !input.options.json &&
+                  isRecord(result) &&
+                  typeof result.content === "string"
+                    ? result.content
+                    : renderCliResult("read", result, input.options.json),
+              };
+            }),
+        }),
+        pull: cliCommand({
+          summary: "Pull one file, a folder subtree, or a whole vault",
+          description:
+            "Writes the scope into a workspace directory with a .bb-docs-state.json manifest. Edit the files with ordinary tools, then run bb docs status and bb docs push.",
+          suggestFor: ["fetch", "clone", "checkout"],
+          positionals: [
+            {
+              name: "path",
+              description:
+                "Vault file, or folder with --folder; omit only with --all",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            into: {
+              type: "string",
+              placeholder: "dir",
+              aliases: ["dir", "target"],
+              description:
+                "Workspace directory to pull into; defaults to docs-<vault-id> under the working directory",
+            },
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            all: {
+              type: "boolean",
+              description: "Pull the whole vault instead of one path",
+            },
+            folder: {
+              type: "boolean",
+              aliases: ["recursive"],
+              description: "Treat the path as a folder subtree",
+            },
+            json: JSON_OPTION,
+          },
+          constraints: [{ kind: "at-most-one", options: ["all", "folder"] }],
+          run: (input, context) =>
+            attemptCli(async () => {
+              const path = input.positionals.path;
+              const result = await runPull(
+                workspaceArgs({
+                  positionals: path === undefined ? [] : [path],
+                  vaultId: input.options.vault,
+                  into: input.options.into,
+                  workspaceHostId: input.options["workspace-host"],
+                  all: input.options.all,
+                  folder: input.options.folder,
+                }),
+                context,
+              );
+              return {
+                exitCode: !isRecord(result)
+                  ? 0
+                  : result.outcome === "conflict"
+                    ? 3
+                    : result.outcome === "partial"
+                      ? 1
+                      : 0,
+                stdout: renderCliResult("pull", result, input.options.json),
+              };
+            }),
+        }),
+        status: cliCommand({
+          summary: "Show local edits, conflicts, and ignored deletions",
+          description: DOCS_STATUS_DESCRIPTION,
+          positionals: [
+            {
+              name: "workspace-dir",
+              description:
+                "Pulled workspace directory; defaults to --into or docs-<vault-id>",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            delete: DELETE_OPTION,
+            diff: DIFF_OPTION,
+            json: JSON_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const directory = input.positionals["workspace-dir"];
+              const result = await runPushPlan(
+                workspaceArgs({
+                  positionals: directory === undefined ? [] : [directory],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                  delete: input.options.delete,
+                  diff: input.options.diff,
+                }),
+                context,
+                false,
+              );
+              return {
+                exitCode: statusExitCode(result),
+                stdout: renderCliResult("status", result, input.options.json),
+              };
+            }),
+        }),
+        push: cliCommand({
+          summary: "Safely push local edits using optimistic concurrency",
+          description:
+            "Refuses to write when a vault file changed since the pull; resolve the conflict, then pull or push again.",
+          positionals: [
+            {
+              name: "workspace-dir",
+              description:
+                "Pulled workspace directory; defaults to --into or docs-<vault-id>",
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            "workspace-host": WORKSPACE_HOST_OPTION,
+            delete: DELETE_OPTION,
+            "dry-run": {
+              type: "boolean",
+              aliases: ["dryrun", "plan"],
+              description: "Plan the push without writing to the vault",
+            },
+            diff: DIFF_OPTION,
+            json: JSON_OPTION,
+          },
+          run: (input, context) =>
+            attemptCli(async () => {
+              const directory = input.positionals["workspace-dir"];
+              const result = await runPushPlan(
+                workspaceArgs({
+                  positionals: directory === undefined ? [] : [directory],
+                  vaultId: input.options.vault,
+                  into: undefined,
+                  workspaceHostId: input.options["workspace-host"],
+                  delete: input.options.delete,
+                  dryRun: input.options["dry-run"],
+                  diff: input.options.diff,
+                }),
+                context,
+                true,
+              );
+              return {
+                exitCode: !isRecord(result)
+                  ? 0
+                  : result.outcome === "conflict"
+                    ? 3
+                    : result.outcome === "partial"
+                      ? 1
+                      : 0,
+                stdout: renderCliResult("push", result, input.options.json),
+              };
+            }),
+        }),
+        write: cliCommand({
+          summary: "Deprecated: write a UTF-8 file directly",
+          description:
+            "Use bb docs pull, edit the files, then bb docs push instead.",
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            content: {
+              type: "string",
+              required: true,
+              placeholder: "text",
+              aliases: ["text", "body"],
+              description: "Complete UTF-8 file contents",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "write",
+                await writeFile({
+                  vaultId: input.options.vault,
+                  rawPath: input.positionals.path,
+                  content: input.options.content,
+                }),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        mkdir: cliCommand({
+          summary: "Deprecated: create a folder directly",
+          description:
+            "Use bb docs pull, create the directory locally, then bb docs push instead.",
+          positionals: [
+            {
+              name: "path",
+              description: "Folder path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "mkdir",
+                await handlers.createFolder({
+                  vaultId: input.options.vault,
+                  path: input.positionals.path,
+                }),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        move: cliCommand({
+          summary: "Deprecated: move a path directly",
+          description:
+            "Use bb docs pull, move the file locally, then bb docs push --delete instead.",
+          positionals: [
+            {
+              name: "from",
+              description: "Existing path relative to the vault root",
+              required: true,
+            },
+            {
+              name: "to",
+              description: "Destination path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: { vault: VAULT_OPTION, json: JSON_OPTION },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "move",
+                await movePath(
+                  input.options.vault,
+                  input.positionals.from,
+                  input.positionals.to,
+                ),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_MUTATION_WARNING,
+            })),
+        }),
+        remove: cliCommand({
+          summary: "Deprecated: remove a file or directory directly",
+          description:
+            "Use bb docs pull, delete the file locally, then bb docs push --delete instead.",
+          aliases: ["rm"],
+          positionals: [
+            {
+              name: "path",
+              description: "Path relative to the vault root",
+              required: true,
+            },
+          ],
+          options: {
+            vault: VAULT_OPTION,
+            recursive: {
+              type: "boolean",
+              description: "Remove a directory and everything inside it",
+            },
+            json: JSON_OPTION,
+          },
+          run: (input) =>
+            attemptCli(async () => ({
+              exitCode: 0,
+              stdout: renderCliResult(
+                "remove",
+                await removePath(
+                  input.options.vault,
+                  input.positionals.path,
+                  input.options.recursive,
+                ),
+                input.options.json,
+              ),
+              stderr: DEPRECATED_DELETION_WARNING,
+            })),
+        }),
+      },
+    }),
+  );
 
   bb.ui.registerMentionProvider({
     id: "note",
@@ -2787,7 +3460,7 @@ export default async function plugin(
       const needle = query.trim().toLowerCase();
       const matches = [];
       for (const vault of listVaults()) {
-        for (const note of await listNoteSummaries(vault)) {
+        for (const note of await mentionNoteSummaries(vault)) {
           if (
             needle &&
             !`${vault.name} ${note.title} ${note.preview} ${note.path}`
@@ -2812,8 +3485,13 @@ export default async function plugin(
       const vaultId = itemId.slice(0, separator);
       const relativePath = itemId.slice(separator + 1);
       const file = await readFile(vaultId, relativePath);
+      const proposal = readProposal(getVault(vaultId).id, relativePath);
       return {
-        context: `Docs document (${vaultId}/${relativePath}):\n\n${file.content}`,
+        context:
+          `Docs document (${vaultId}/${relativePath}):\nSHA-256: ${file.sha256}\n\n${file.content}` +
+          (proposal
+            ? `\n\nDocs proposal metadata:\n${JSON.stringify(proposal)}\nUse bb docs propose with this version and current document hash to propose a revision; do not push over the user's document.`
+            : "\n\nProposal version: none. Use bb docs propose to suggest changes for approval."),
       };
     },
   });
@@ -2840,6 +3518,7 @@ export default async function plugin(
             if (vault.hostId || watchers.has(vault.id)) continue;
             try {
               const watcher = watchVault(vault.rootPath, () => {
+                mentionSummaries.delete(vault.id);
                 if (debounce) clearTimeout(debounce);
                 debounce = setTimeout(() => {
                   bb.realtime.publish("vault-changed", {

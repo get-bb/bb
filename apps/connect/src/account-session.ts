@@ -10,7 +10,7 @@ function hasGetSetCookie(headers: Headers): headers is HeadersWithGetSetCookie {
   );
 }
 
-function getSetCookies(headers: Headers): string[] {
+export function getSetCookies(headers: Headers): string[] {
   return hasGetSetCookie(headers)
     ? headers.getSetCookie()
     : headers.getAll("set-cookie");

@@ -101,6 +101,17 @@ describe("extractThreadTimelinePendingTodos", () => {
     expect(result?.items.map((item) => item.text)).toEqual(["third"]);
   });
 
+  it("does not split an astral character at the todo text limit", () => {
+    const prefix = "x".repeat(239);
+    const result = extractThreadTimelinePendingTodos(ACTIVE, [
+      planStepsEvent({
+        seq: 1,
+        steps: [{ step: `${prefix}𠮷tail`, status: "active" }],
+      }),
+    ]);
+    expect(result?.items[0]?.text).toBe(prefix);
+  });
+
   it("ignores an opened (pending) snapshot and an empty one clears the banner", () => {
     expect(
       extractThreadTimelinePendingTodos(ACTIVE, [

@@ -26,7 +26,11 @@ function renderRow(item: PluginListItem) {
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
-        <InstalledPluginRow plugin={item} onUpdateClick={vi.fn()} />
+        <InstalledPluginRow
+          plugin={item}
+          onUpdateClick={vi.fn()}
+          onOpenPlugin={vi.fn()}
+        />
       </QueryClientWrapper>
     </MemoryRouter>,
   );

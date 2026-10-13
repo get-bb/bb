@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { threadCreateOriginSchema } from "./thread-create-origin.js";
 import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
@@ -17,10 +18,7 @@ import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
-export {
-  threadOriginKindSchema,
-  threadOriginKindValues,
-} from "./thread-origin-kind.js";
+export { threadOriginKindSchema } from "./thread-origin-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
 
 /**
@@ -36,7 +34,6 @@ export type { ThreadOriginKind } from "./thread-origin-kind.js";
 const threadRuntimeDisplayStatusValues = [
   ...threadStatusValues,
   "provisioning",
-  "host-reconnecting",
   "waiting-for-host",
 ] as const;
 const threadRuntimeDisplayStatusSchema = z.enum(
@@ -48,7 +45,6 @@ export type ThreadRuntimeDisplayStatus = z.infer<
 
 export const threadRuntimeStateSchema = z.object({
   displayStatus: threadRuntimeDisplayStatusSchema,
-  hostReconnectGraceExpiresAt: z.number().nullable(),
 });
 export type ThreadRuntimeState = z.infer<typeof threadRuntimeStateSchema>;
 
@@ -218,6 +214,8 @@ export const gitHostPullRequestSchema = z
     state: z.enum(["OPEN", "CLOSED", "MERGED"]),
     url: z.string().url(),
     isDraft: z.boolean(),
+    autoMerge: z.boolean(),
+    inMergeQueue: z.boolean().nullable(),
     baseRefName: z.string(),
     headRefName: z.string(),
     updatedAt: z.string().datetime(),
@@ -308,6 +306,7 @@ const threadPullRequestAttentionStateSchema = z.enum([
   "conflicts",
   "blocked",
   "draft",
+  "queued",
   "ready_to_merge",
   "merged",
   "closed",
@@ -326,6 +325,8 @@ export const threadPullRequestSchema = z
     baseRefName: z.string(),
     headRefName: z.string(),
     updatedAt: z.string().datetime(),
+    autoMerge: z.boolean(),
+    inMergeQueue: z.boolean().nullable(),
     checks: threadPullRequestChecksSchema,
     review: threadPullRequestReviewSchema,
     mergeability: threadPullRequestMergeabilitySchema,
@@ -336,6 +337,8 @@ export type ThreadPullRequest = z.infer<typeof threadPullRequestSchema>;
 
 export const threadQueuedMessageSchema = z.object({
   id: z.string(),
+  origin: threadCreateOriginSchema.nullable(),
+  originPluginId: z.string().nullable(),
   initiator: z.enum(["user", "agent", "system"]),
   senderThreadId: z.string().nullable(),
   /**
@@ -400,6 +403,7 @@ export const threadSchema = z.object({
   sectionId: z.string().nullable(),
   status: threadStatusSchema,
   parentThreadId: z.string().nullable(),
+  lifecycleOwnerThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),
   originPluginId: z.string().nullable(),

@@ -47,34 +47,6 @@ describe("createPendingToolCallTracker", () => {
     expect(sent[1]?.params.callId).toBe("call-2");
   });
 
-  it("settles a pending call from a success response payload", async () => {
-    const { tracker } = createTracker();
-    const result = tracker.forwardToolCall({
-      arguments: {},
-      providerThreadId: "provider-1",
-      scope: {},
-      threadId: "thread-1",
-      toolName: "my_tool",
-    });
-
-    expect(
-      tracker.handleToolCallResponse({
-        jsonrpc: "2.0",
-        id: 1,
-        result: {
-          success: true,
-          contentItems: [{ type: "inputText", text: "hello" }],
-        },
-      }),
-    ).toBe(true);
-    await expect(result).resolves.toEqual({
-      content: "hello",
-      contentBlocks: [{ type: "text", text: "hello" }],
-      images: [],
-      isError: false,
-    });
-  });
-
   it("settles a pending call from an error response", async () => {
     const { tracker } = createTracker();
     const result = tracker.forwardToolCall({

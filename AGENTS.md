@@ -25,8 +25,9 @@
 
 - Every end-user feature must also be usable through the SDK and `bb` CLI; ship and document these surfaces with the UI.
 - For changes to CLI commands/flags or user-facing configuration (env vars, `.bb/` workspace files, settings), update the discoverable surfaces listed in [docs/cli-guide-and-skill.md](docs/cli-guide-and-skill.md).
-- New public plugin API members (`@get-bb/plugin-sdk/app` exports, `app.slots.*` methods, or `BbPluginApi` properties) require an `experimental_` prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing behavior and stabilization criteria. Stabilization includes the audit, a project-wide rename, and removal of the entry.
-- The Plugin Guide is the only plugin API documentation. Add new surfaces to `packages/plugin-api-map/src/surfaces.ts` with their SDK symbols.
+- New public plugin API members (`@get-bb/plugin-sdk/app` exports, `app.slots.*` methods, or `BbPluginApi` properties) require an `experimental_` prefix and an entry in [docs/api_to_audit.md](docs/api_to_audit.md) describing behavior, stabilization criteria, and the core callers that use the same path. Stabilization includes the audit, a project-wide rename, and removal of the entry.
+- A plugin API that performs a core action must be the path core uses for that action. Extract core's implementation and route core's controls, shortcuts, and the API through it; never add a parallel plugin-only path. When several surfaces host the action, they share that implementation and one contract test table run against every surface. If core cannot use the API, it is not ready to ship.
+- The Plugin Guide is the only plugin API documentation. Add new surfaces to `plugins/plugin-api-docs/src/surfaces.ts` with their SDK symbols.
 
 ## Data Access
 
@@ -55,3 +56,4 @@
 - Use [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md): root cause, change, verification that demonstrates the fix, and `Fixes #N` when applicable.
 - End every agent-created issue and PR body with `> AGENT GENERATED`.
 - Ground debugging in observed state: logs, database queries, server APIs, or CLI output. For dev ports, data directories, entity IDs, and the local QA launcher, see [docs/debugging-and-qa.md](docs/debugging-and-qa.md).
+- Never tail the production bb connect gate (`bb-connect`) with `wrangler tail` or the dashboard's live logs. Attaching or detaching a tail resets its Durable Objects and drops every connected tunnel. Instead, query stored Workers Logs or the Cloudflare GraphQL Analytics API (`httpRequestsAdaptiveGroups`, `durableObjectsInvocationsAdaptiveGroups`), and reproduce with `wrangler tail --env staging` against `bb-connect-staging`.

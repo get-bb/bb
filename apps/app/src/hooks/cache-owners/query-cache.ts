@@ -10,6 +10,7 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
+import { patchCachedQueryData } from "./cache-effect-utils";
 import { readCachedSidebarBootstrap } from "@/lib/sidebar-bootstrap-cache";
 import type {
   SidebarBootstrapResponse,
@@ -70,17 +71,14 @@ interface CachedGlobalThreadListInvalidationParams {
   queryClient: QueryClient;
 }
 
-interface RootOrderThreadListInvalidationParams {
-  projectId?: string;
-  queryClient: QueryClient;
-}
-
 type SidebarNavigationProject = SidebarBootstrapResponse["projects"][number];
 export type CachedThreadListsAndSidebarNavigationMapper = (
   threads: ThreadListEntry[],
 ) => ThreadListEntry[];
-type SidebarNavigationThreadMapper =
-  CachedThreadListsAndSidebarNavigationMapper;
+type SidebarNavigationThreadMapper = (
+  threads: ThreadListEntry[],
+  projectId: string,
+) => ThreadListEntry[];
 
 interface ApplyToCachedSidebarNavigationThreadsArgs {
   mapper: SidebarNavigationThreadMapper;
@@ -277,32 +275,13 @@ export function getCachedGlobalThreadListInvalidationQueryKeys({
   return queryKeys;
 }
 
-export function getCachedRootOrderThreadListInvalidationQueryKeys({
-  projectId,
-  queryClient,
-}: RootOrderThreadListInvalidationParams): QueryKey[] {
-  const queryKeys: QueryKey[] = [];
-  for (const [queryKey] of queryClient.getQueriesData({
-    queryKey: threadsQueryKey(),
-  })) {
-    const filters = getThreadListFiltersFromQueryKey(queryKey);
-    if (filters === undefined) continue;
-    if (filters.projectId !== projectId) continue;
-    if (filters.archived) continue;
-    if (filters.parentThreadId !== undefined) continue;
-    if (filters.hasParent === true) continue;
-    queryKeys.push(queryKey);
-  }
-  return queryKeys;
-}
-
 function mapSidebarNavigationProjectThreads(
   project: SidebarNavigationProject,
   mapper: SidebarNavigationThreadMapper,
 ): SidebarNavigationProject {
   return {
     ...project,
-    threads: mapper(project.threads),
+    threads: mapper(project.threads, project.id),
   };
 }
 
@@ -310,7 +289,8 @@ export function applyToCachedSidebarNavigationThreads({
   mapper,
   queryClient,
 }: ApplyToCachedSidebarNavigationThreadsArgs): void {
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (currentNavigation) => {
       if (!currentNavigation) {
@@ -398,7 +378,7 @@ export function restoreCachedSidebarNavigation(
   queryClient: QueryClient,
   snapshot: CachedSidebarNavigationSnapshot,
 ): void {
-  queryClient.setQueryData(sidebarNavigationQueryKey(), snapshot);
+  patchCachedQueryData(queryClient, sidebarNavigationQueryKey(), snapshot);
 }
 
 export function getEnvironmentRecordInvalidationQueryKeys({
@@ -572,6 +552,7 @@ function threadMatchesListFilters(
 export function optimisticallyInsertThread(
   queryClient: QueryClient,
   thread: ThreadResponse,
+  environmentHostId: string | null = null,
 ): void {
   const queuedWork = thread.queuedMessageCount > 0 ? "waiting" : "none";
   const insertedThread: ThreadListEntry = {
@@ -584,7 +565,7 @@ export function optimisticallyInsertThread(
       activeGoalCount: 0,
     },
     environmentBranchName: null,
-    environmentHostId: null,
+    environmentHostId,
     environmentName: null,
     environmentPath: null,
     environmentProviderId: null,
@@ -627,14 +608,19 @@ export function optimisticallyInsertThread(
       continue;
     }
 
-    queryClient.setQueryData<ThreadListEntry[]>(queryKey, upsertThread(data));
+    patchCachedQueryData<ThreadListEntry[]>(
+      queryClient,
+      queryKey,
+      upsertThread(data),
+    );
   }
 
   if (thread.visibility === "hidden" || thread.archivedAt !== null) {
     return;
   }
 
-  queryClient.setQueryData<SidebarBootstrapResponse>(
+  patchCachedQueryData<SidebarBootstrapResponse>(
+    queryClient,
     sidebarNavigationQueryKey(),
     (navigation) => {
       if (!navigation) {
@@ -680,7 +666,7 @@ function updateCachedTimelineRows({
       continue;
     }
 
-    queryClient.setQueryData<ThreadTimelineResponse>(queryKey, {
+    patchCachedQueryData<ThreadTimelineResponse>(queryClient, queryKey, {
       ...response,
       rows: [...nextRows],
     });
@@ -744,6 +730,18 @@ export function updateCachedThreadListStatusState(
       thread.id === threadId ? { ...thread, ...statusChange } : thread,
     );
   });
+}
+
+export function updateCachedThreadStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  { status, runtime, latestAttentionAt, updatedAt }: ThreadStatusChangeMetadata,
+): void {
+  updateCachedThread(queryClient, threadId, (thread) =>
+    updatedAt < thread.updatedAt
+      ? thread
+      : { ...thread, status, runtime, latestAttentionAt, updatedAt },
+  );
 }
 
 export function getFetchingThreadListQueryKeys(

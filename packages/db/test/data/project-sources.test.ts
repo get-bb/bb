@@ -28,52 +28,6 @@ function setup() {
 }
 
 describe("project-sources", () => {
-  it("creates a project source", () => {
-    const { db, project } = setup();
-    const newHost = upsertHost(db, noopNotifier, {
-      name: "source-test-host",
-    });
-    const source = createProjectSource(db, noopNotifier, {
-      projectId: project.id,
-      type: "local_path",
-      hostId: newHost.id,
-      path: "/tmp/code",
-    });
-
-    expect(source.id).toMatch(/^src_/);
-    expect(source.projectId).toBe(project.id);
-    if (source.type !== "local_path") {
-      throw new Error(`Expected local_path source, got ${source.type}`);
-    }
-    expect(source.path).toBe("/tmp/code");
-    expect(source.isDefault).toBe(false);
-  });
-
-  it("lists sources by project", () => {
-    const { db, project } = setup();
-    const host2 = upsertHost(db, noopNotifier, {
-      name: "test-host-2",
-    });
-    const host3 = upsertHost(db, noopNotifier, {
-      name: "test-host-3",
-    });
-    createProjectSource(db, noopNotifier, {
-      projectId: project.id,
-      type: "local_path",
-      hostId: host2.id,
-      path: "/tmp/code1",
-    });
-    createProjectSource(db, noopNotifier, {
-      projectId: project.id,
-      type: "local_path",
-      hostId: host3.id,
-      path: "/tmp/code2",
-    });
-
-    const sources = listProjectSourcesByProjectIds(db, [project.id]);
-    expect(sources).toHaveLength(3);
-  });
-
   it("lists sources across project ids", () => {
     const { db, host, project } = setup();
     const host2 = upsertHost(db, noopNotifier, {

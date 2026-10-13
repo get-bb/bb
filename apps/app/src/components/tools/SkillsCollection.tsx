@@ -22,7 +22,7 @@ import { BbLogo } from "@/components/ui/bb-logo";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
@@ -341,7 +341,7 @@ export function SkillsOverview({
 }: SkillsOverviewProps) {
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
-  >(["bb"]);
+  >([]);
   const [sourceFilters, setSourceFilters] = useState<
     ResourceSkillSourceFilter[]
   >([]);
@@ -433,12 +433,10 @@ export function SkillsOverview({
       );
     });
     return [...filtered].sort((left, right) => {
-      if (providerFilters.length === 1 && providerFilters[0] === "bb") {
-        const officialResult =
-          Number(left.scope !== "bb-builtin") -
-          Number(right.scope !== "bb-builtin");
-        if (officialResult !== 0) return officialResult;
-      }
+      const officialResult =
+        Number(left.scope !== "bb-builtin") -
+        Number(right.scope !== "bb-builtin");
+      if (officialResult !== 0) return officialResult;
       const base =
         sortMode === "provider"
           ? providerLabel(left.provider, providerRoster).localeCompare(
@@ -509,6 +507,7 @@ export function SkillsOverview({
         ))}
       </ResourceListPanel>
       <ResourceInfiniteScrollSentinel
+        itemCount={libraryList.items.length}
         hasMore={libraryList.hasMore}
         onLoadMore={libraryList.loadMore}
       />

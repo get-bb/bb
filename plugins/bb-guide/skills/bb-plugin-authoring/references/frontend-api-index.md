@@ -15,6 +15,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `experimental_FileLink`
 - `UrlLink`
 - `experimental_NewThreadComposer`
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input
 - `experimental_ProviderModelPicker`
 - `experimental_PermissionModePicker`
 - `experimental_BranchPicker` — the host's branch picker with its options
@@ -30,17 +32,55 @@ Read the installed SDK declarations for the exact current signatures.
 - `useRealtimeConnectionState`
 - `useSettings`
 - `useBbContext`
+- `experimental_usePluginId` — this plugin's id, for keying browser-side
+  state such as localStorage entries
+- `experimental_useQuestionFormHost` — bb's answer shortcuts inside a
+  `pendingInteraction` form
 - `useBbNavigate`
 - `experimental_useAppPanel`
 - `experimental_useFixedTabTarget`
 - `useComposer`
-- `useComposerView`
+- `useComposers`
+- `useComposerView` — deprecated, runtime-only for older plugins; use `useComposer`
 - `experimental_useSidebarThreads`
-- `experimental_useSidebarThreadActions`
+- `experimental_useSidebarThreadActions` — deprecated, runtime-only for older
+  plugins; use the thread action registry, `useSdk().threads`, and
+  `useBbNavigate()`
+- `experimental_useArchiveEnvironmentThreads` — archive an environment's
+  threads with bb's pane cleanup, route repair, and Undo toast
+- `experimental_useThreadActions` — every thread action for one thread, in
+  menu order, or only `keys` for a row's quick actions
+- `experimental_useThreadActionRegistrations` — every registered thread
+  action's static title and icon, for a quick-action picker
+- `experimental_ThreadActionsMenu` — bb's thread menu behind your trigger
+- `experimental_ThreadActionsContextMenu` — bb's thread menu on right-click
+  or long-press
+- `experimental_THREAD_ACTION_GROUPS` — bb's thread menu group names
 - `experimental_useSidebarThreadPullRequest`
 - `experimental_useSidebarThreadSplit`
+- `useSidebarThreadDraft` — whether the composer holds an unsent draft for
+  one thread, for the pencil glyph bb's row paints
+- `useSidebarThreadDraftIds` — every thread id with an unsent draft, for
+  collapsed-group rollups
+- `useSidebarThreadRowStatus` — the row status another plugin's app-wide
+  script set on a thread, or null
+- `useSidebarThreadRowStatuses` — every row status by thread id, for
+  collapsed-group rollups
+- `useSidebarSplitLayout` — the whole split layout with the thread each pane
+  shows, or null when nothing is split
+- `useSidebarThreadShortcut` — the jump shortcut assigned to a row while the
+  app command modifier is held, or null
+- `ThreadTitle` — a thread's display title with its `@project:`, `@section:`,
+  and `@thread:` mentions rendered as bb's chips
+- `experimental_ThreadStatusGlyph` — bb's thread status glyph for an
+  indicator you resolve, with another plugin's row status and bb's labels
+- `useEnvironmentProviders` — bb's environment provider catalog, for naming
+  and drawing the environment a thread runs in
+- `useSdk` — bb's public API client bound to this plugin, the same areas the
+  `bb` CLI and the backend `bb.sdk` expose
 - `experimental_useProviders`
 - `experimental_useCodeTheme`
+- `experimental_copyToClipboard`
 
 ## Type exports
 
@@ -57,6 +97,8 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginNewThreadPanelProps`
 - `PluginPendingInteractionView`
 - `PluginPendingInteractionProps`
+- `ExperimentalQuestionFormHost`
+- `ExperimentalQuestionShortcut`
 - `BranchPickerProps`
 - `UseBranchesArgs`
 - `BranchesState`
@@ -72,15 +114,12 @@ Read the installed SDK declarations for the exact current signatures.
   `app.slots.experimental_machineProviderInputs`
 - `PluginSidebarFooterActionProps`
 - `ExperimentalSidebarFooterDisclosureProps`
-- `ExperimentalSidebarNavigationShortcut`
-- `ExperimentalSidebarNavigationAction`
-- `ExperimentalSidebarNavigationIcon`
-- `ExperimentalSidebarNavigationItem`
-- `ExperimentalSidebarNavigationActivationOptions`
-- `ExperimentalSidebarNavigationProps`
 - `PluginThreadListProps`
 - `PluginThreadHeaderActionProps`
 - `ExperimentalPluginBrowserToolbarActionProps`
+- `ExperimentalPluginBrowserPage`
+- `ExperimentalPluginBrowserPageEvaluateOptions`
+- `ExperimentalPluginBrowserPageWorld`
 - `PluginFileOpenerSource`
 - `PluginFileOpenerProps`
 - `CodeOverflowMode`
@@ -95,6 +134,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginMessageDirectiveMessage`
 - `PluginMessageDirectiveOpenWorkspaceFile`
 - `PluginMessageDirectiveProps`
+- `ExperimentalCodeFenceRendererProps`
 - `PluginHomepageSectionRegistration`
 - `PluginSettingsSectionRegistration`
 - `ExperimentalAppOverlayRegistration`
@@ -118,38 +158,67 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalSidebarFooterItemRegistration`
 - `ExperimentalSidebarFooterDisclosureController`
 - `ExperimentalSidebarFooter`
-- `ExperimentalSidebarNavigationRegistration`
 - `PluginSidebarThreadIndicator`
 - `PluginSidebarThreadActivity`
 - `PluginSidebarThread`
 - `PluginSidebarPullRequest`
 - `PluginSidebarThreadPullRequestState`
 - `PluginSidebarProject`
+- `PluginSidebarSection`
 - `PluginSidebarThreadsState`
 - `PluginProvidersState`
 - `PluginCodeThemeTokenRule`
 - `PluginCodeThemeData`
 - `PluginCodeThemeState`
-- `PluginSidebarThreadActions`
+- `ExperimentalClipboardContent`
+- `PluginSidebarThreadDraftState`
+- `PluginSidebarThreadRowStatus`
+- `PluginSidebarThreadShortcut`
+- `PluginThreadTitleProps`
+- `PluginThreadStatusGlyphProps`
+- `PluginEnvironmentProvider`
+- `PluginEnvironmentProvidersState`
+- `PluginBoundThreadsArea`
+- `PluginBrowserBbSdk`
 - `PluginThreadHeaderActionRegistration`
+- `PluginThreadActionTarget`
+- `PluginThreadActionChoice`
+- `PluginThreadActionChoices`
+- `PluginThreadActionRunInput`
+- `PluginThreadAction`
+- `PluginThreadActionDataInput` — what a registration's `useData` receives (`threadIds`)
+- `PluginThreadActionItemInput` — what a registration's `item` receives
+- `PluginThreadActionRegistration` — the registration accepted by
+  `app.slots.experimental_threadAction`
+- `PluginBoundThreadAction`
+- `PluginThreadActionEntry` — one row of `experimental_useThreadActions`
+- `PluginThreadActionRegistrationInfo`
+- `PluginThreadActionsOptions`
+- `PluginThreadActionsInlineItem`
+- `PluginThreadActionsTriggerProps` — what a thread menu's `trigger` must
+  spread onto its button
+- `PluginThreadActionsMenuProps`
+- `PluginThreadActionsContextMenuProps`
 - `ExperimentalPluginBrowserToolbarActionRegistration`
 - `PluginSidebarSplitPane`
+- `PluginSidebarSplitLayout`
 - `PluginSidebarThreadSplit`
 - `PluginThreadListRegistration`
 - `PluginFileOpenerRegistration`
 - `PluginSourceCodeRendererRegistration`
 - `PluginDiffRendererRegistration`
 - `PluginMessageDirectiveRegistration`
+- `ExperimentalCodeFenceRendererRegistration`
+- `ExperimentalCodeFenceStatus`
 - `ThreadChatMessageReference`
 - `PluginTargetedPanelActionOpenOptions`
 - `PluginMessageActionContext`
 - `PluginMessageActionRegistration`
 - `PluginAppCommands`
 - `PluginCommandContext`
-- `PluginCommandPaletteActionContext` (deprecated alias)
 - `PluginCommandShortcut`
 - `PluginCommandRegistration`
-- `PluginCommandPaletteActionRegistration` (deprecated alias)
+- `ExperimentalComposerCommandRegistration`
 - `PluginProviderIconRegistration`
 - `PluginTimelineRowPresentation`
 - `PluginTimelineRowStatus`
@@ -170,11 +239,19 @@ Read the installed SDK declarations for the exact current signatures.
 - `PluginRealtimeConnectionState`
 - `PluginComposerScope`
 - `ComposerCustomization`
+- `ExperimentalComposerPopupRegistration`
 - `ComposerPlusMenuItem`
-- `ComposerView`
-- `ExperimentalComposerSubmitOptions`
+- `ComposerSendMenuItem`
+- `ComposerSubmitOptions`
+- `ComposerSelection`
 - `ComposerRichTextSpec`
-- `ComposerStructuredDraft`
+- `ComposerDraft`
+- `ComposerDraftSnapshot`
+- `ComposerDraftReplacement`
+- `ComposerAttachment`
+- `ComposerMention`
+- `ComposerInsertPart`
+- `ComposerInsertOptions`
 - `PluginComposerTextEffect`
 - `PluginComposerThreadRowStatus`
 - `PluginComposerMention`
@@ -187,6 +264,7 @@ Read the installed SDK declarations for the exact current signatures.
 - `ExperimentalPermissionModePickerProps`
 - `NewThreadRequest`
 - `NewThreadComposerProps`
+- `ExperimentalVoiceInputTextareaProps`
 - `MarkdownProps`
 - `UrlLinkProps`
 - `ExperimentalLiveFileTarget`

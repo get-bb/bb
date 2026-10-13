@@ -4,6 +4,7 @@ import type {
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
 import type {
+  PluginCodeFenceRendererSlot,
   PluginComposerCustomizationSlot,
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
@@ -132,6 +133,23 @@ export function resolveComposerPlusMenuItems(
   return resolved;
 }
 
+export function resolveComposerSendMenuItems(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+): readonly ResolvedComposerPlusMenuItem[] {
+  const resolved: ResolvedComposerPlusMenuItem[] = [];
+  for (const customization of customizations) {
+    if (!composerCustomizationApplies(customization, scopeKind)) continue;
+    for (const item of customization.sendMenu ?? []) {
+      resolved.push({
+        ...resolvedComposerContribution(customization, item.id),
+        item,
+      });
+    }
+  }
+  return resolved;
+}
+
 export function resolveComposerEditorEffects(
   customizations: readonly PluginComposerCustomizationSlot[],
   scopeKind: PluginComposerScope["kind"],
@@ -183,12 +201,23 @@ export function resolveTimelineRenderer(
   registrations: readonly PluginTimelineRendererSlot[],
   target:
     | { kind: "extension"; extensionKind: string }
+    | { kind: "form"; pluginId: string; rendererId: string }
     | { kind: "tool"; providerPluginId: string | null },
 ): PluginTimelineRendererSlot | null {
   if (target.kind === "extension") {
     return (
       registrations.find(
         (registration) => registration.kind === target.extensionKind,
+      ) ?? null
+    );
+  }
+  if (target.kind === "form") {
+    const kind = `${target.pluginId}/${target.rendererId}`;
+    return (
+      registrations.find(
+        (registration) =>
+          registration.pluginId === target.pluginId &&
+          registration.kind === kind,
       ) ?? null
     );
   }
@@ -241,6 +270,43 @@ export function resolveMessageDirectiveRegistry(
   for (const [id, claimants] of claimantsById) {
     const directive = resolveMessageDirectiveClaimants(claimants);
     if (directive !== null) resolved.set(id, directive);
+  }
+  return resolved;
+}
+
+export type ResolvedCodeFenceRenderer =
+  | { status: "ok"; slot: PluginCodeFenceRendererSlot }
+  | { status: "collision"; pluginIds: readonly string[] };
+
+export function resolveCodeFenceRendererRegistry(
+  registrations: readonly PluginCodeFenceRendererSlot[],
+): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
+  const claimantsByLanguage = new Map<string, PluginCodeFenceRendererSlot[]>();
+  for (const registration of registrations) {
+    for (const language of registration.languages) {
+      const claimants = claimantsByLanguage.get(language);
+      if (claimants === undefined) {
+        claimantsByLanguage.set(language, [registration]);
+      } else {
+        claimants.push(registration);
+      }
+    }
+  }
+  const resolved = new Map<string, ResolvedCodeFenceRenderer>();
+  for (const [language, claimants] of claimantsByLanguage) {
+    const [first] = claimants;
+    if (first === undefined) continue;
+    resolved.set(
+      language,
+      claimants.length === 1
+        ? { status: "ok", slot: first }
+        : {
+            status: "collision",
+            pluginIds: [
+              ...new Set(claimants.map((claimant) => claimant.pluginId)),
+            ].sort(),
+          },
+    );
   }
   return resolved;
 }
@@ -317,3 +383,21 @@ export function resolveFileOpenerReplacement(args: {
         buildFileOpenerRef(candidate) === preference),
   );
 }
+
+export function resolveComposerPopups(
+  customizations: readonly PluginComposerCustomizationSlot[],
+  scopeKind: PluginComposerScope["kind"],
+) {
+  return customizations.flatMap((customization) =>
+    composerCustomizationApplies(customization, scopeKind)
+      ? (customization.experimental_popups ?? []).map((popup) => ({
+          ...resolvedComposerContribution(customization, popup.id),
+          popup,
+        }))
+      : [],
+  );
+}
+
+export type ResolvedComposerPopup = ReturnType<
+  typeof resolveComposerPopups
+>[number];

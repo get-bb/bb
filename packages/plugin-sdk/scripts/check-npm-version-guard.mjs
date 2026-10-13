@@ -248,6 +248,7 @@ function loadLocalPackage() {
         "turbo",
         "run",
         "build",
+        "build:types",
         `--filter=${PACKAGE_NAME}`,
         "--output-logs=errors-only",
       ],

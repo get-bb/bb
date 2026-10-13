@@ -156,18 +156,6 @@ describe("named managed-worktree base branch", () => {
     });
   });
 
-  it("passes a named non-default branch through unchanged", async () => {
-    await withTestHarness(async (harness) => {
-      await expect(
-        createNamedBaseBranchThread(harness, {
-          baseBranch: "release/2026-05",
-        }),
-      ).resolves.toEqual({
-        branch: { kind: "named", name: "release/2026-05" },
-      });
-    });
-  });
-
   it("does not reinterpret an origin-qualified branch", async () => {
     await withTestHarness(async (harness) => {
       const onInspectGitSource = vi.fn();

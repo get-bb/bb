@@ -534,6 +534,15 @@ function upsertRunningExecCall(
     return createRunningExecCall(incoming, meta, threadId, scopeFields.scope);
   }
 
+  if (
+    existing.kind === "command" &&
+    existing.approvalStatus === "waiting_for_approval" &&
+    incoming.kind === "command" &&
+    incoming.approvalStatus === null &&
+    incoming.status === "pending"
+  ) {
+    existing.startedAt = meta.createdAt;
+  }
   mergeRunningExecutionMetadata(existing, incoming);
   mergeExecutionCompletion(existing, incoming);
   if (!existing.parentToolCallId && incoming.parentToolCallId) {
@@ -781,6 +790,7 @@ function mergeExecutionSummary(
     switch (incoming.kind) {
       case "command":
         if (target.kind !== "command") return;
+        if ("startedAt" in incoming) target.startedAt = incoming.startedAt;
         mergeCommandExecutionFields(target, incoming);
         break;
       case "tool-call":
@@ -906,6 +916,7 @@ function createExecMessage(
   const base = {
     id: messageId(call.threadId, rowKindForId, call.callId),
     threadId: call.threadId,
+    sourceEvent: { seq: call.sourceSeqStart, part: 0 },
     sourceSeqStart: call.sourceSeqStart,
     sourceSeqEnd: call.sourceSeqEnd,
     createdAt: call.createdAt,
@@ -993,6 +1004,30 @@ export function onExecBegin(
         call.createdAt,
       );
     }
+    return;
+  }
+
+  const historyMatch = findExecMessageInHistoryCells(state, call.callId);
+  const reopensDelegation =
+    historyMatch !== null &&
+    !existingRunning &&
+    historyMatch.call.kind === "delegation" &&
+    call.kind === "delegation";
+  if (reopensDelegation) {
+    historyMatch.call.status = "pending";
+    historyMatch.call.completedAt = null;
+    state.toolActivity.finalizedExecCallIds.delete(call.callId);
+  }
+  if (historyMatch && (existingRunning || reopensDelegation)) {
+    mergeExecutionSummary(historyMatch.call, call);
+    historyMatch.cell.sourceSeqEnd = Math.max(
+      historyMatch.cell.sourceSeqEnd,
+      call.sourceSeqEnd,
+    );
+    historyMatch.cell.createdAt = Math.max(
+      historyMatch.cell.createdAt,
+      call.createdAt,
+    );
     return;
   }
 

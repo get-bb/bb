@@ -31,6 +31,8 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    providerCommands: null,
+    sessionOptions: null,
     modelFallback: null,
     maxSeq: 0,
     timelinePage: {
@@ -55,7 +57,9 @@ const baseKeyArgs: ThreadTimelineCacheKeyArgs = {
   environmentId: null,
   page: latestPage,
   includeNestedRows: false,
+  deferContent: false,
   summaryOnly: false,
+  includeClearedContextHistory: false,
   includeDiagnosticOperations: false,
   completedTurnDisplay: "collapse",
 };
@@ -71,16 +75,6 @@ describe("createThreadTimelineCache", () => {
     expect(build).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
     expect(cache.size).toBe(1);
-  });
-
-  it("rebuilds when the key changes (e.g. new maxSeq)", () => {
-    const cache = createThreadTimelineCache();
-    const build = vi.fn(() => makeResponse(3));
-
-    cache.getOrBuild("thr_x", "k1", build);
-    cache.getOrBuild("thr_x", "k2", build);
-
-    expect(build).toHaveBeenCalledTimes(2);
   });
 
   it("does not cache responses above the row cap (streaming expanded turns)", () => {

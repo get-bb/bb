@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getSidebarThreadNavigationTargets,
   getSidebarThreadShortcutTargets,
@@ -16,7 +16,57 @@ function appendShortcutTarget(root: HTMLElement, threadId?: string) {
   return target;
 }
 
+const checkVisibilityDescriptor = Object.getOwnPropertyDescriptor(
+  Element.prototype,
+  "checkVisibility",
+);
+
 describe("sidebar thread shortcuts", () => {
+  beforeEach(() => {
+    Object.defineProperty(Element.prototype, "checkVisibility", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => true),
+    });
+  });
+
+  afterEach(() => {
+    if (checkVisibilityDescriptor) {
+      Object.defineProperty(
+        Element.prototype,
+        "checkVisibility",
+        checkVisibilityDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(Element.prototype, "checkVisibility");
+    }
+  });
+
+  it("skips invisible rows and windowed placeholders before numbering targets", () => {
+    const root = document.createElement("aside");
+    const hidden = appendShortcutTarget(root, "thr_hidden");
+    hidden.checkVisibility = () => false;
+    appendShortcutTarget(root, "thr_a");
+    const placeholder = document.createElement("div");
+    placeholder.setAttribute(
+      "data-sidebar-windowed-nav",
+      "thr_hidden_windowed:proj_1",
+    );
+    placeholder.checkVisibility = () => false;
+    root.append(placeholder);
+    appendShortcutTarget(root, "thr_b");
+
+    for (const targets of [
+      getSidebarThreadShortcutTargets(root),
+      getSidebarThreadNavigationTargets(root),
+    ]) {
+      expect(targets.map(({ threadId, key }) => ({ threadId, key }))).toEqual([
+        { threadId: "thr_a", key: "1" },
+        { threadId: "thr_b", key: "2" },
+      ]);
+    }
+  });
+
   it("assigns 1 through 9 in rendered row order", () => {
     const root = document.createElement("aside");
     appendShortcutTarget(root);
@@ -67,5 +117,33 @@ describe("sidebar thread shortcuts", () => {
     expect(
       getSidebarThreadShortcutTargets(root).map((target) => target.threadId),
     ).toEqual(["thr_a", "thr_d"]);
+  });
+
+  it("excludes More menu rows and placeholders from both shortcut orders", () => {
+    const root = document.createElement("aside");
+    appendShortcutTarget(root, "thr_a");
+    const overflow = document.createElement("div");
+    overflow.dataset.sidebarOverflow = "true";
+    root.append(overflow);
+    const nestedGroup = document.createElement("div");
+    overflow.append(nestedGroup);
+    appendShortcutTarget(nestedGroup, "thr_hidden");
+    const placeholder = document.createElement("div");
+    placeholder.setAttribute(
+      "data-sidebar-windowed-nav",
+      "thr_hidden_windowed:proj_1",
+    );
+    nestedGroup.append(placeholder);
+    appendShortcutTarget(root, "thr_b");
+
+    for (const targets of [
+      getSidebarThreadShortcutTargets(root),
+      getSidebarThreadNavigationTargets(root),
+    ]) {
+      expect(targets.map(({ threadId, key }) => ({ threadId, key }))).toEqual([
+        { threadId: "thr_a", key: "1" },
+        { threadId: "thr_b", key: "2" },
+      ]);
+    }
   });
 });

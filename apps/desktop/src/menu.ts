@@ -1,11 +1,14 @@
 import {
   app,
   Menu,
+  shell,
   type BaseWindow,
   type MenuItemConstructorOptions,
 } from "electron";
+import type { BbDesktopZoomCommand } from "@bb/desktop-contract";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
+import { BUILTIN_SERVER_NAME } from "./server-target.js";
 
 const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
 const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
@@ -14,19 +17,29 @@ const NEW_THREAD_MENU_LABEL = "New Thread";
 const NEW_WINDOW_MENU_LABEL = "New Window";
 const CLOSE_WINDOW_MENU_LABEL = "Close Window";
 const OPEN_SETTINGS_MENU_LABEL = "Settings…";
+const VIEW_LICENSE_MENU_LABEL = "View License";
+const LICENSE_URL = "https://github.com/get-bb/bb/blob/main/LICENSE";
+const UNINSTALL_MENU_LABEL = "How to Uninstall bb";
+const UNINSTALL_URL = "https://getbb.app/uninstall";
 const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
 const RELOAD_ACCELERATOR = "CommandOrControl+R";
 const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
+const DESKTOP_SETTINGS_MENU_LABEL = "Desktop Settings";
 const SERVER_MENU_LABEL = "Server";
-const SERVER_MENU_ITEM_ID = "bb-server-menu";
+const DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID = "bb-desktop-settings-server-menu";
+const WINDOW_SERVER_MENU_ITEM_ID = "bb-server-menu";
+const SERVER_MENU_ITEM_IDS = [
+  DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID,
+  WINDOW_SERVER_MENU_ITEM_ID,
+];
 export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
 export const CONNECT_SERVERS_SKIPPED_MENU_LABELS: Record<
   ConnectServerSyncSkipReason,
   string
 > = {
   "no-credential": "No Connect servers — sign in to bb Connect",
-  "not-paired": "No Connect servers — Connect not paired on This Mac",
+  "not-paired": `No Connect servers — Connect not paired on ${BUILTIN_SERVER_NAME}`,
   "plugin-disabled": "No Connect servers — Connect plugin disabled",
   unauthorized: "No Connect servers — sign in to bb Connect again",
   unavailable: "No Connect servers — could not reach bb Connect",
@@ -50,11 +63,13 @@ export interface InstallApplicationMenuArgs {
     browserWindow: BaseWindow | undefined,
     ignoreCache: boolean,
   ): void;
+  zoomFocusedPage(command: BbDesktopZoomCommand): void;
   closeWindowOrSideTab(browserWindow: BaseWindow | undefined): void;
   createNewWindow(): void;
   openServerDaemonLogs(): void;
   selectServer(serverId: string): void;
   setServerUrl(): void;
+  addServer(): void;
   onServerMenuWillShow?: () => void;
   serverDaemonLogsMenuEnabled: boolean;
   servers: ApplicationMenuServerItem[];
@@ -76,8 +91,17 @@ function createServerDaemonLogsMenuItems(
   ];
 }
 
-function createServerMenuItems(
-  args: InstallApplicationMenuArgs,
+export type ServerMenuArgs = Pick<
+  InstallApplicationMenuArgs,
+  | "addServer"
+  | "connectServersSkipReason"
+  | "selectServer"
+  | "servers"
+  | "setServerUrl"
+>;
+
+export function createServerMenuItems(
+  args: ServerMenuArgs,
 ): MenuItemConstructorOptions[] {
   const serverItems: MenuItemConstructorOptions[] = args.servers.map(
     (server) => ({
@@ -101,6 +125,12 @@ function createServerMenuItems(
           },
         ]),
     { type: "separator" },
+    {
+      label: "Add Server…",
+      click() {
+        args.addServer();
+      },
+    },
     {
       label: SET_SERVER_URL_MENU_LABEL,
       click() {
@@ -130,6 +160,16 @@ export function buildApplicationMenuTemplate(
             args.openSettings();
           },
           label: OPEN_SETTINGS_MENU_LABEL,
+        },
+        {
+          label: DESKTOP_SETTINGS_MENU_LABEL,
+          submenu: [
+            {
+              id: DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID,
+              label: SERVER_MENU_LABEL,
+              submenu: createServerMenuItems(args),
+            },
+          ],
         },
         { type: "separator" },
         ...(args.isMac
@@ -231,9 +271,27 @@ export function buildApplicationMenuTemplate(
           role: "toggleDevTools",
         },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        {
+          accelerator: "CommandOrControl+0",
+          label: "Actual Size",
+          click() {
+            args.zoomFocusedPage("reset");
+          },
+        },
+        {
+          accelerator: "CommandOrControl+Plus",
+          label: "Zoom In",
+          click() {
+            args.zoomFocusedPage("in");
+          },
+        },
+        {
+          accelerator: "CommandOrControl+-",
+          label: "Zoom Out",
+          click() {
+            args.zoomFocusedPage("out");
+          },
+        },
         ...createServerDaemonLogsMenuItems(args),
       ],
     },
@@ -244,13 +302,30 @@ export function buildApplicationMenuTemplate(
         ...(args.isMac ? [{ role: "zoom" as const }] : []),
         { type: "separator" },
         {
-          id: SERVER_MENU_ITEM_ID,
+          id: WINDOW_SERVER_MENU_ITEM_ID,
           label: SERVER_MENU_LABEL,
           submenu: createServerMenuItems(args),
         },
         ...(args.isMac
           ? [{ type: "separator" as const }, { role: "front" as const }]
           : []),
+      ],
+    },
+    {
+      role: "help",
+      submenu: [
+        {
+          label: VIEW_LICENSE_MENU_LABEL,
+          click: () => {
+            void shell.openExternal(LICENSE_URL);
+          },
+        },
+        {
+          label: UNINSTALL_MENU_LABEL,
+          click: () => {
+            void shell.openExternal(UNINSTALL_URL);
+          },
+        },
       ],
     },
   ];
@@ -260,11 +335,11 @@ export function installApplicationMenu(args: InstallApplicationMenuArgs): void {
   const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate(args));
   const onServerMenuWillShow = args.onServerMenuWillShow;
   if (onServerMenuWillShow !== undefined) {
-    menu
-      .getMenuItemById(SERVER_MENU_ITEM_ID)
-      ?.submenu?.on("menu-will-show", () => {
+    for (const id of SERVER_MENU_ITEM_IDS) {
+      menu.getMenuItemById(id)?.submenu?.on("menu-will-show", () => {
         onServerMenuWillShow();
       });
+    }
   }
   Menu.setApplicationMenu(menu);
 }

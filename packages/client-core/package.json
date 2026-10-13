@@ -2,6 +2,7 @@
   "name": "@bb/client-core",
   "version": "0.0.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -21,6 +22,7 @@
     "@bb/domain": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "@bb/thread-view": "workspace:*",
     "zod": "^4.3.6"
   },

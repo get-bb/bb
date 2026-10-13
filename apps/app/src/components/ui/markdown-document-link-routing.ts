@@ -6,8 +6,8 @@ import {
   normalizeAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
 import {
+  buildEnvironmentFileContentUrl,
   buildThreadStorageRawContentUrl,
-  buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import { buildMarkdownFileImageRouting } from "./markdown-file-image-routing";
 import type { MarkdownLinkRouting } from "./markdown-link-routing";
@@ -47,7 +47,11 @@ export function buildMarkdownDocumentLinkRouting({
     threadId,
     resolveRelativeSrc: (path) =>
       target.kind === "workspace"
-        ? buildThreadWorktreeRawContentUrl(threadId, path)
+        ? buildEnvironmentFileContentUrl(
+            target.environmentId,
+            { kind: "working-tree" },
+            path,
+          )
         : buildThreadStorageRawContentUrl(threadId, path),
   });
   return {

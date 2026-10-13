@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
-import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { ClientTurnRequestId } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_createDeltaAssembler as createDeltaAssembler,
+  type ThreadEvent,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import {
   createClaudeDeltaTranslator,
   type ClaudeDeltaTranslationContext,
@@ -11,6 +14,14 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "./__fixtures__");
+
+export function threadScope(): ThreadEvent["scope"] {
+  return { kind: "thread" };
+}
+
+export function turnScope(turnId: string): ThreadEvent["scope"] {
+  return { kind: "turn", turnId };
+}
 
 function isFixtureObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

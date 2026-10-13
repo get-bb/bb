@@ -126,6 +126,19 @@ export async function serverAccessStatus(
   return { ...configuration, providers };
 }
 
+function acquisitionKey(
+  host: NonNullable<ReturnType<typeof getHost>>,
+  fallback: string,
+): string {
+  const owner =
+    host.machineProviderId === null
+      ? null
+      : (getMachineProvider(host.machineProviderId)?.pluginId ?? null);
+  return owner !== null && host.launchKey !== null
+    ? JSON.stringify([owner, host.launchKey])
+    : fallback;
+}
+
 async function resolve(
   deps: Dependencies,
   args: {
@@ -185,7 +198,10 @@ async function resolve(
     let result: unknown;
     try {
       result = await invokeServerAccessProvider(record, () =>
-        record.provider.acquire(args),
+        record.provider.acquire({
+          ...args,
+          key: acquisitionKey(host, args.key),
+        }),
       );
       const parsed = acquireResultSchema.safeParse(result);
       if (!parsed.success)
@@ -226,17 +242,10 @@ async function resolve(
 async function release(
   deps: Dependencies,
   args: { key: string; hostId: string },
+  purpose: "remove" | "repair" = "remove",
 ) {
   const host = getHost(deps.db, args.hostId);
   if (!host) return;
-  const owner =
-    host.machineProviderId === null
-      ? null
-      : (getMachineProvider(host.machineProviderId)?.pluginId ?? null);
-  const acquisitionKey =
-    owner !== null && host.launchKey !== null
-      ? JSON.stringify([owner, host.launchKey])
-      : args.key;
   const providerId = host.serverAccessProviderId;
   const grantId = host.serverAccessGrantId;
   if (providerId === null) return;
@@ -245,6 +254,8 @@ async function release(
       (entry) => entry.provider.id === providerId,
     );
     if (!record) {
+      if (purpose === "repair")
+        throw new Error("Server access provider is unavailable");
       deps.logger.warn(
         { hostId: args.hostId, providerId },
         "Server access provider is not installed; skipping release during machine removal",
@@ -252,7 +263,7 @@ async function release(
     } else {
       await invokeServerAccessProvider(record, () =>
         record.provider.release({
-          key: acquisitionKey,
+          key: acquisitionKey(host, args.key),
           grantId,
           hostId: args.hostId,
         }),
@@ -261,9 +272,24 @@ async function release(
   }
   deps.db
     .update(hosts)
-    .set({ serverAccessProviderId: null, serverAccessGrantId: null })
+    .set({
+      serverAccessProviderId: purpose === "repair" ? providerId : null,
+      serverAccessGrantId: null,
+    })
     .where(eq(hosts.id, args.hostId))
     .run();
 }
 
-export const serverAccess = { resolve, release };
+async function repair(
+  deps: Dependencies,
+  args: { key: string; hostId: string; signal: AbortSignal },
+): Promise<ServerAccessGrant> {
+  args.signal.throwIfAborted();
+  const host = getHost(deps.db, args.hostId);
+  if (!host || host.destroyedAt !== null)
+    throw new Error("Machine identity is unavailable");
+  await release(deps, args, "repair");
+  return resolve(deps, args);
+}
+
+export const serverAccess = { resolve, release, repair };

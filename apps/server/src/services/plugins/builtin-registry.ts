@@ -20,6 +20,8 @@ interface ResolveBuiltinPluginRootPathArgs {
 
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
+export const BUILTIN_PLUGIN_ID_PREFIX = "bb--";
+
 const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
 
 export function accountPoolDefaultEnabled(
@@ -32,6 +34,11 @@ export function accountPoolDefaultEnabled(
 const REPO_PLUGINS_DIRECTORY_NAME = "plugins";
 
 export const BUILTIN_PLUGINS = [
+  {
+    name: "storage-retention",
+    pluginId: "bb--storage-retention",
+    defaultEnabled: false,
+  },
   {
     name: "bb-guide",
     pluginId: "bb-guide",
@@ -50,6 +57,16 @@ export const BUILTIN_PLUGINS = [
   {
     name: "automations",
     pluginId: "automations",
+    defaultEnabled: true,
+  },
+  {
+    name: "bb-account",
+    pluginId: "bb-account",
+    defaultEnabled: true,
+  },
+  {
+    name: "bb-ai",
+    pluginId: "bb-ai",
     defaultEnabled: true,
   },
   {
@@ -119,13 +136,18 @@ export const BUILTIN_PLUGINS = [
   },
   {
     name: "provider-usage",
-    pluginId: "provider-usage",
+    pluginId: "bb--provider-usage",
     defaultEnabled: true,
   },
   {
     name: "provider-acp",
     pluginId: "provider-acp",
     defaultEnabled: true,
+  },
+  {
+    name: "provider-acp-next",
+    pluginId: "bb--provider-acp-next",
+    defaultEnabled: false,
   },
   {
     name: "keep-awake",
@@ -158,9 +180,29 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "thread-list",
+    pluginId: "thread-list",
+    defaultEnabled: true,
+  },
+  {
+    name: "prompt-library",
+    pluginId: "bb--prompt-library",
+    defaultEnabled: false,
+  },
+  {
+    name: "mcp",
+    pluginId: "bb--mcp",
+    defaultEnabled: false,
+  },
+  {
     name: "scheduled-send",
     pluginId: "scheduled-send",
     defaultEnabled: true,
+  },
+  {
+    name: "agent-annotations",
+    pluginId: "agent-annotations",
+    defaultEnabled: false,
   },
   {
     name: "concurrency-limit",
@@ -232,6 +274,21 @@ export const BUNDLED_PLUGINS: readonly BundledPluginDefinition[] = [
   ...BUILTIN_PLUGINS,
   ...OFFICIAL_PLUGINS,
 ];
+
+export interface BundledPluginReplacement {
+  pluginId: string;
+  replaces: string;
+  carriedSettings: readonly string[];
+}
+
+export const BUNDLED_PLUGIN_REPLACEMENTS: readonly BundledPluginReplacement[] =
+  [
+    {
+      pluginId: "bb--provider-acp-next",
+      replaces: "provider-acp",
+      carriedSettings: ["customAgents"],
+    },
+  ];
 
 const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 

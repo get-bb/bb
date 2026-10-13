@@ -1,13 +1,15 @@
 import { hostProviderCliInstallEventSchema } from "@bb/server-contract";
-import type { Host } from "@bb/domain";
+import type { Host, HostType } from "@bb/domain";
 import type {
   CreateHostJoinCodeResponse,
   CreateMachineRequest,
   HostEnrollmentCommandResponse,
+  HostReconnectResponse,
   HostCloneDefaultPathQuery,
   HostCloneDefaultPathResponse,
   HostDirectoryListing,
   HostDirectoryQuery,
+  HostDiscoveredReposResponse,
   HostActionResponse,
   HostPathsExistRequest,
   HostPathsExistResponse,
@@ -17,6 +19,7 @@ import type {
   HostProviderCliInstallRequest,
   HostProviderCliStatusResponse,
   HostRetryUpdateResponse,
+  DeleteOldServerCopyResponse,
   UpdateHostRequest,
   SystemMachineProvider,
 } from "@bb/server-contract";
@@ -43,7 +46,16 @@ export interface HostActionArgs {
   hostId: string;
 }
 
+export interface HostReconnectArgs extends HostActionArgs {
+  signal?: AbortSignal;
+}
+
 export interface HostDirectoryArgs extends HostDirectoryQuery {
+  hostId: string;
+  signal?: AbortSignal;
+}
+
+export interface HostDiscoverReposArgs {
   hostId: string;
   signal?: AbortSignal;
 }
@@ -69,6 +81,7 @@ export interface HostProviderCliInstallArgs extends HostProviderCliInstallReques
 
 export interface HostListArgs {
   includeCreating?: boolean;
+  type?: HostType;
   signal?: AbortSignal;
 }
 
@@ -84,8 +97,13 @@ export interface MachineProviderListArgs {
 export type HostCreateJoinCodeResult = CreateHostJoinCodeResponse;
 export type HostDeleteResult = { ok: true };
 export type HostDirectoryResult = HostDirectoryListing;
-export type HostGetResult = Host & { connectMachineId: string | null };
+export type HostDiscoverReposResult = HostDiscoveredReposResponse;
+export type HostGetResult = Host & {
+  connectMachineId: string | null;
+  threadStorageRootPath: string | null;
+};
 export type HostEnrollmentCommandResult = HostEnrollmentCommandResponse;
+export type HostReconnectResult = HostReconnectResponse;
 export type HostCloneDefaultPathResult = HostCloneDefaultPathResponse;
 export type HostProviderCliInstallResult = HostProviderCliInstallEvent[];
 export type HostListResult = Host[];
@@ -102,9 +120,17 @@ export interface HostsArea {
   experimental_getEnrollmentCommand(
     args: HostGetArgs,
   ): Promise<HostEnrollmentCommandResult>;
+  experimental_reconnect(args: HostReconnectArgs): Promise<HostReconnectResult>;
+  /** @deprecated Use experimental_create() and experimental_getEnrollmentCommand() for bootstrap enrollment. */
   createJoinCode(): Promise<HostCreateJoinCodeResult>;
   delete(args: HostDeleteArgs): Promise<HostDeleteResult>;
+  experimental_deleteOldServerCopy(
+    args: HostActionArgs,
+  ): Promise<DeleteOldServerCopyResponse>;
   directory(args: HostDirectoryArgs): Promise<HostDirectoryResult>;
+  experimental_discoverRepos(
+    args: HostDiscoverReposArgs,
+  ): Promise<HostDiscoverReposResult>;
   get(args: HostGetArgs): Promise<HostGetResult>;
   cloneDefaultPath(
     args: HostCloneDefaultPathArgs,
@@ -168,6 +194,14 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
         ),
       );
     },
+    async experimental_reconnect(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["reconnect-commands"].$post(
+          { param: { id: input.hostId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
     async createJoinCode() {
       return transport.readJson(
         transport.api.v1.hosts["join-codes"].$post({
@@ -183,6 +217,13 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
       );
       return { ok: true };
     },
+    async experimental_deleteOldServerCopy(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["old-server-copy"].$delete({
+          param: { id: input.hostId },
+        }),
+      );
+    },
     async directory(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"].directory.$get(
@@ -190,6 +231,14 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
             param: { id: input.hostId },
             query: { path: input.path },
           },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async experimental_discoverRepos(input) {
+      return transport.readJson(
+        transport.api.v1.hosts[":id"]["discovered-repos"].$get(
+          { param: { id: input.hostId } },
           ...signalRequestArgs(input.signal),
         ),
       );
@@ -243,6 +292,7 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
                 : {
                     includeCreating: input.includeCreating ? "true" : "false",
                   }),
+              ...(input?.type === undefined ? {} : { type: input.type }),
             },
           },
           ...signalRequestArgs(input?.signal),

@@ -1,9 +1,11 @@
+import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
   getThread,
+  getLatestThreadSequence,
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
@@ -24,7 +26,10 @@ import {
   type HostDaemonRejectedEvent,
 } from "@bb/host-daemon-contract";
 import {
+  THREAD_SESSION_OPTIONS_STATE_KIND,
   requireThreadEventScopeTurnId,
+  systemThreadInterruptedEventDataSchema,
+  type ChildThreadOutcome,
   type ThreadEventType,
   type ThreadEventTurnStatus,
 } from "@bb/domain";
@@ -50,7 +55,12 @@ import {
   runtimeErrorLogFields,
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
+import { dropSettledThreadSessionOptionSelections } from "../services/threads/thread-session-options.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
+import {
+  applyGeneratedThreadTitle,
+  sanitizeGeneratedTitle,
+} from "../services/threads/title-generation.js";
 import {
   getInactiveSessionLogFields,
   requireAuthenticatedDaemonSession,
@@ -58,6 +68,7 @@ import {
 import { getAuthenticatedDaemon } from "./auth.js";
 import { validateExtensionPayloads } from "./extension-payloads.js";
 import { validatePresentationIcons } from "./presentation-icons.js";
+import { observeTurnTraceEventBatch } from "../services/system/turn-trace.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -92,6 +103,7 @@ interface ResolveEventsToApplyArgs {
 }
 
 interface NotifyInsertedEventThreadsDeps {
+  db: AppDeps["db"];
   hub: AppDeps["hub"];
 }
 
@@ -218,6 +230,7 @@ interface AddParentTurnNotificationFollowUpArgs {
   followUps: EventEffectFollowUp[];
   thread: NonNullable<ReturnType<typeof getThread>>;
   turnStatus: ThreadEventTurnStatus;
+  interruption?: ChildThreadOutcome["interruption"];
 }
 
 interface ParentTurnNotificationFollowUp {
@@ -227,6 +240,7 @@ interface ParentTurnNotificationFollowUp {
   parentThreadId: string;
   title: string | null;
   turnStatus: ThreadEventTurnStatus;
+  interruption?: ChildThreadOutcome["interruption"];
 }
 
 interface QueuedMessageDispatchFollowUp {
@@ -349,6 +363,7 @@ function notifyInsertedEventThreads(
         ? { backgroundActivityChanged: true }
         : {}),
       eventTypes: Array.from(eventTypes),
+      timelineSequence: getLatestThreadSequence(deps.db, { threadId }),
     });
   }
 }
@@ -372,6 +387,7 @@ function addParentTurnNotificationFollowUp(
     parentThreadId: args.thread.parentThreadId,
     title: args.thread.title,
     turnStatus: args.turnStatus,
+    ...(args.interruption ? { interruption: args.interruption } : {}),
   });
 }
 
@@ -414,6 +430,30 @@ async function applyEventEffects(
         continue;
       }
 
+      if (event.type === "thread/name/updated") {
+        if (event.source === "agent") {
+          const title = sanitizeGeneratedTitle(event.threadName);
+          if (title !== null) {
+            applyGeneratedThreadTitle(deps, {
+              threadId: entry.threadId,
+              title,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (event.type === "thread/extensionState/updated") {
+        if (event.kind === THREAD_SESSION_OPTIONS_STATE_KIND) {
+          dropSettledThreadSessionOptionSelections(deps, {
+            threadId: entry.threadId,
+            environmentId:
+              getThread(deps.db, entry.threadId)?.environmentId ?? null,
+          });
+        }
+        continue;
+      }
+
       if (event.type === "turn/completed") {
         const turnId = requireThreadEventScopeTurnId({
           type: event.type,
@@ -443,12 +483,27 @@ async function applyEventEffects(
               threadId: turnCompleted.thread.id,
               turnId,
             });
-          if (!alreadyHandledByCommandFailure) {
+          const interruption =
+            event.status === "interrupted"
+              ? getTurnInterruption(deps, {
+                  threadId: turnCompleted.thread.id,
+                  turnId,
+                })
+              : undefined;
+          const manuallyStopped =
+            interruption?.reason === "manual-stop" ||
+            (event.status === "interrupted" &&
+              wasTurnManuallyStopped(deps, {
+                threadId: turnCompleted.thread.id,
+                turnId,
+              }));
+          if (!alreadyHandledByCommandFailure && !manuallyStopped) {
             addParentTurnNotificationFollowUp({
               failedParentNotificationThreadIds,
               followUps,
               thread: turnCompleted.thread,
               turnStatus: event.status,
+              ...(interruption ? { interruption } : {}),
             });
           }
         }
@@ -520,6 +575,9 @@ async function executeEventFollowUpBestEffort(
           },
           parentThreadId: followUp.parentThreadId,
           turnStatus: followUp.turnStatus,
+          ...(followUp.interruption
+            ? { interruption: followUp.interruption }
+            : {}),
         });
         return;
       case "queued-message-dispatch":
@@ -645,6 +703,97 @@ function hasThreadStopBeforeTurnStarted(
       .limit(1)
       .get() !== undefined
   );
+}
+
+function wasTurnManuallyStopped(
+  deps: Pick<AppDeps, "db">,
+  args: HasThreadStopBeforeTurnStartedArgs,
+): boolean {
+  const turnStarted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, args.turnId),
+        eq(storedEvents.type, "turn/started"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!turnStarted) return false;
+
+  return (
+    deps.db
+      .select({ id: storedEvents.id })
+      .from(storedEvents)
+      .where(
+        and(
+          eq(storedEvents.threadId, args.threadId),
+          eq(storedEvents.type, "system/thread/interrupted"),
+          gt(storedEvents.sequence, turnStarted.sequence),
+          sql`json_extract(${storedEvents.data}, '$.reason') = 'manual-stop'`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+function getTurnInterruption(
+  deps: Pick<AppDeps, "db">,
+  args: HasThreadStopBeforeTurnStartedArgs,
+): ChildThreadOutcome["interruption"] {
+  const turnStarted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, args.turnId),
+        eq(storedEvents.type, "turn/started"),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!turnStarted) {
+    return undefined;
+  }
+
+  const turnCompleted = deps.db
+    .select({ sequence: storedEvents.sequence })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.turnId, args.turnId),
+        eq(storedEvents.type, "turn/completed"),
+      ),
+    )
+    .orderBy(desc(storedEvents.sequence))
+    .limit(1)
+    .get();
+  if (!turnCompleted) return undefined;
+
+  const interruption = deps.db
+    .select({ data: storedEvents.data })
+    .from(storedEvents)
+    .where(
+      and(
+        eq(storedEvents.threadId, args.threadId),
+        eq(storedEvents.type, "system/thread/interrupted"),
+        gt(storedEvents.sequence, turnStarted.sequence),
+        lt(storedEvents.sequence, turnCompleted.sequence),
+      ),
+    )
+    .orderBy(desc(storedEvents.sequence))
+    .limit(1)
+    .get();
+  return interruption
+    ? systemThreadInterruptedEventDataSchema.parse(
+        JSON.parse(interruption.data),
+      )
+    : undefined;
 }
 
 function hasThreadAlreadyStartedRun(
@@ -901,6 +1050,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
     "/session/events",
     hostDaemonEventBatchRequestSchema,
     async (context, payload) => {
+      const receivedAt = performance.now();
       let session: ReturnType<typeof requireAuthenticatedDaemonSession>;
       try {
         session = requireAuthenticatedDaemonSession({
@@ -1011,9 +1161,16 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           "Dropped orphan thread-state snapshot with no stored turn/started",
         );
       }
+      const committedAt = performance.now();
       notifyInsertedEventThreads(deps, {
         eventInputs,
         insertedInputIndexes: appendResult.insertedInputIndexes,
+      });
+      observeTurnTraceEventBatch({
+        committedAt,
+        events: postableEvents,
+        notifiedAt: performance.now(),
+        receivedAt,
       });
 
       const followUps = await applyEventEffects(

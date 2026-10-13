@@ -5,17 +5,11 @@ import {
   type DesktopSession,
   type ListAccountServersResult,
 } from "@bb/connect-client";
-import { ConnectPairError } from "./redeem.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus, ShareListing } from "./types.js";
 import { MachineCodeError, type MachineCode } from "./machine-code.js";
 import type { ShareHostResolver } from "./hosts.js";
-
-const pairInputSchema = z.object({
-  code: z.string().min(1),
-  server: z.string().url().optional(),
-  baseUrl: z.string().url().optional(),
-});
+import type { HostedConnectApi } from "./hosted.js";
 
 const portInputSchema = z
   .object({
@@ -40,6 +34,7 @@ const connectStatusSchema: z.ZodType<ConnectStatus> = z
   .object({
     state: z.enum(["disconnected", "pairing", "connected", "reconnecting"]),
     paired: z.boolean(),
+    enabled: z.boolean(),
     handle: z.string().nullable(),
     url: z.string().nullable(),
     dashboardUrl: z.string(),
@@ -81,12 +76,6 @@ const desktopSessionSchema: z.ZodType<DesktopSession> = z
   })
   .strict();
 
-const mobilePairingSchema = z
-  .object({
-    enabled: z.boolean(),
-  })
-  .strict();
-
 const machineCodeSchema: z.ZodType<MachineCode> = z
   .object({
     code: z.string(),
@@ -96,9 +85,11 @@ const machineCodeSchema: z.ZodType<MachineCode> = z
   .strict();
 
 export const connectRpcContract = defineRpcContract({
-  pair: { input: pairInputSchema, output: connectStatusSchema },
   status: { input: z.null(), output: connectStatusSchema },
-  disconnect: { input: z.null(), output: connectStatusSchema },
+  setRemoteAccess: {
+    input: z.object({ enabled: z.boolean() }).strict(),
+    output: connectStatusSchema,
+  },
   expose: { input: portInputSchema, output: shareListingSchema },
   unexpose: {
     input: portInputSchema,
@@ -111,13 +102,16 @@ export const connectRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  unexposeAll: {
+    input: z.object({ hostId: z.string().min(1) }).strict(),
+    output: z.object({ removed: z.number().int().nonnegative() }).strict(),
+  },
   listShares: { input: z.null(), output: z.array(shareListingSchema) },
   listAccountServers: {
     input: z.null(),
     output: listAccountServersResultSchema,
   },
   createDesktopSession: { input: z.null(), output: desktopSessionSchema },
-  mobilePairing: { input: z.null(), output: mobilePairingSchema },
   createMachineCode: { input: z.null(), output: machineCodeSchema },
   revokeMachine: {
     input: revokeMachineInputSchema,
@@ -139,32 +133,33 @@ async function rethrowErrorCode<T>(
   }
 }
 
-export interface MobilePairingGate {
-  enabled(): Promise<boolean>;
+export interface RemoteAccessSwitch {
+  set(enabled: boolean): Promise<ConnectStatus>;
 }
 
-export function createRpcHandlers(
-  tunnel: ConnectTunnel,
-  hostResolver: ShareHostResolver,
-  mobilePairing: MobilePairingGate,
-): ConnectRpcHandlers {
-  return {
-    async pair(args) {
-      return rethrowErrorCode(
-        () =>
-          tunnel.pair({
-            code: args.code,
-            ...(args.server !== undefined ? { serverUrl: args.server } : {}),
-            ...(args.baseUrl !== undefined ? { baseUrl: args.baseUrl } : {}),
-          }),
-        (error) => error instanceof ConnectPairError,
+export function createRpcHandlers(args: {
+  tunnel: ConnectTunnel;
+  hosted: HostedConnectApi;
+  hostResolver: ShareHostResolver;
+  remoteAccess: RemoteAccessSwitch;
+}): ConnectRpcHandlers {
+  const { tunnel, hosted, hostResolver, remoteAccess } = args;
+  const identity = () => {
+    const current = tunnel.getIdentity();
+    if (current === null) {
+      throw new ConnectListError(
+        "not_paired",
+        "this bb isn't signed in to a bb account — run `bb account login`",
       );
-    },
+    }
+    return current;
+  };
+  return {
     async status() {
       return tunnel.refreshStatus();
     },
-    async disconnect() {
-      return tunnel.disconnect();
+    async setRemoteAccess(args) {
+      return remoteAccess.set(args.enabled);
     },
     async expose(args) {
       const host =
@@ -179,32 +174,41 @@ export function createRpcHandlers(
         args.hostId ?? (await hostResolver.serverHostId()),
       );
     },
+    async unexposeAll(args) {
+      return tunnel.unexposeAll(args.hostId);
+    },
     async listShares() {
       return tunnel.listShares();
     },
     async listAccountServers() {
       return rethrowErrorCode(
-        () => tunnel.listAccountServers(),
+        () => hosted.listAccountServers(identity()),
         (error) => error instanceof ConnectListError,
       );
     },
     async createDesktopSession() {
       return rethrowErrorCode(
-        () => tunnel.createDesktopSession(),
+        () => {
+          identity();
+          return hosted.createDesktopSession();
+        },
         (error) => error instanceof ConnectListError,
       );
     },
-    async mobilePairing() {
-      return { enabled: await mobilePairing.enabled() };
-    },
     async createMachineCode() {
       return rethrowErrorCode(
-        () => tunnel.createMachineCode(),
+        () => {
+          if (tunnel.getIdentity() === null) {
+            throw new MachineCodeError("not_paired");
+          }
+          return hosted.createMachineCode(AbortSignal.timeout(10_000));
+        },
         (error) => error instanceof MachineCodeError,
       );
     },
     async revokeMachine(args) {
-      await tunnel.revokeMachine(args.machineId);
+      if (tunnel.getIdentity() === null) throw new Error("not_paired");
+      await hosted.revokeMachine(args.machineId);
       return { ok: true };
     },
   };

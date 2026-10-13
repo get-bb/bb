@@ -1,0 +1,1 @@
+export const PROMPT_ATTACHMENT_MAX_BYTES = 35 * 1024 * 1024;

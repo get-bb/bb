@@ -8,11 +8,6 @@ import {
   type BbAppManagedEnvConfig,
   type BbAppManagedEnvFile,
 } from "@bb/config/bb-app-managed-config";
-import {
-  validateInferenceFallbackModel,
-  validateInferenceModel,
-  validateTranscriptionModel,
-} from "@bb/config/inference-model";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
@@ -20,7 +15,6 @@ import type { NotificationHub } from "../../ws/hub.js";
 interface ApplyBbAppManagedConfigArgs {
   baseConfig: ServerRuntimeConfig;
   managedConfig: BbAppManagedConfig;
-  managedEnvFile: BbAppManagedEnvFile;
   targetConfig: ServerRuntimeConfig;
 }
 
@@ -99,26 +93,11 @@ export function applyBbAppManagedConfig(
   args: ApplyBbAppManagedConfigArgs,
 ): void {
   const managedConfig = args.managedConfig.config ?? {};
-  const managedEnv = args.managedEnvFile.env ?? {};
 
   args.targetConfig.customModels =
     args.managedConfig.customModels ?? args.baseConfig.customModels;
   args.targetConfig.sharedSkillRoots =
     args.managedConfig.sharedSkillRoots ?? args.baseConfig.sharedSkillRoots;
-  args.targetConfig.inferenceModel =
-    managedConfig.BB_INFERENCE !== undefined
-      ? validateInferenceModel(managedConfig.BB_INFERENCE)
-      : args.baseConfig.inferenceModel;
-  args.targetConfig.inferenceFallbackModel =
-    managedConfig.BB_INFERENCE_FALLBACK !== undefined
-      ? validateInferenceFallbackModel(managedConfig.BB_INFERENCE_FALLBACK)
-      : args.baseConfig.inferenceFallbackModel;
-  args.targetConfig.transcriptionModel =
-    managedConfig.BB_TRANSCRIPTION !== undefined
-      ? validateTranscriptionModel(managedConfig.BB_TRANSCRIPTION)
-      : args.baseConfig.transcriptionModel;
-  args.targetConfig.openAiApiKey =
-    managedEnv.OPENAI_API_KEY ?? args.baseConfig.openAiApiKey;
 
   setOptionalAppUrl(
     args.targetConfig,
@@ -179,7 +158,6 @@ export async function createBbAppManagedConfigReloader(
     applyBbAppManagedConfig({
       baseConfig,
       managedConfig,
-      managedEnvFile,
       targetConfig: nextConfig,
     });
     applyManagedProcessEnv({

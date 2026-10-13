@@ -34,7 +34,6 @@ const routes = [
       truncated: false,
     },
   },
-  { path: "files/content", query: "path=hello.txt", body: "hi\n" },
 ];
 
 describe("Personal project file access", () => {

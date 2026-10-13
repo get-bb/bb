@@ -233,27 +233,6 @@ describe("buildThreadHandoffCreateRequest", () => {
     });
   });
 
-  it("marks changed handoff execution as explicit", () => {
-    const request = buildThreadHandoffCreateRequest({
-      draft: { text: "Keep going", mentions: [], attachments: [] },
-      execution: {
-        ...EXECUTION,
-        model: "claude-sonnet-5",
-        reasoningLevel: "medium",
-        permissionMode: "full",
-      },
-      seed: SEED,
-    });
-
-    expect(request?.executionInputSources).toEqual({
-      providerId: "explicit",
-      model: "explicit",
-      reasoningLevel: "explicit",
-      serviceTier: "explicit",
-      permissionMode: "explicit",
-    });
-  });
-
   it("returns null without follow-up input or a resolved model", () => {
     expect(
       buildThreadHandoffCreateRequest({

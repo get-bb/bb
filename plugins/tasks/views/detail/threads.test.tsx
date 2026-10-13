@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { makeTask } from "../../test-fixtures.js";
+import { makeTask, rpcInput } from "../../test-fixtures.js";
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) => ({
@@ -68,8 +68,10 @@ function detailRpc(overrides: Record<string, unknown> = {}) {
     listPresets: () => ({ presets: [] }),
     sidebarSummary: () => ({ projects: [] }),
     getTaskByKey: () => ({ task }),
-    listTasks: (input: { parentTaskId?: string } | null) =>
-      input?.parentTaskId ? { tasks: [] } : { tasks: [task] },
+    listTasks: (input: unknown) =>
+      input !== null && rpcInput(input).parentTaskId
+        ? { tasks: [] }
+        : { tasks: [task] },
     listLabels: () => ({ labels: [] }),
     listAttachments: () => ({ attachments: [] }),
     listTaskThreads: () => ({
@@ -158,9 +160,9 @@ describe("task detail pull request pills", () => {
               ? []
               : [taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker")],
           }),
-          taskThreadsDetach: (input: { threadId: string }) => {
+          taskThreadsDetach: (input: unknown) => {
             detached = true;
-            return { threadId: input.threadId };
+            return { threadId: rpcInput(input).threadId };
           },
         }),
       },

@@ -23,7 +23,9 @@ bb plugin install github
 - **Mentions**: `@` or `#` in any composer completes GitHub issues and PRs; the
   selected item's title/body/state is attached as agent context at send time.
 - **`bb github` CLI**: `repos`, `issues [repo]`, `prs [repo]`, `sync` — also
-  discoverable by agents through the plugin-commands skill.
+  discoverable by agents through the plugin-commands skill. Each command takes
+  `--json` (`{"ok":true,…}` on success, `{"ok":false,"error":{…}}` on failure)
+  and `--help`, which prints its arguments and options and exits 0.
 
 ## Auth
 

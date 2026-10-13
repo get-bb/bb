@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createStore, getDefaultStore, Provider as JotaiProvider } from "jotai";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -14,10 +14,10 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
-import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import {
+  AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
   replacementProviderKey,
 } from "@/lib/plugin-replacement-preference";
@@ -26,15 +26,15 @@ import { DiffHost } from "./DiffHost";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 
 const bbDiff = vi.hoisted(() => ({
-  loaded: false,
+  renderFails: false,
   lastProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("./BbDiff", async () => {
   const React = await import("react");
-  bbDiff.loaded = true;
   return {
     default: (props: Record<string, unknown>) => {
+      if (bbDiff.renderFails) throw new Error("renderer exploded");
       bbDiff.lastProps = props;
       return React.createElement(
         "div",
@@ -100,11 +100,15 @@ function registerDiffRenderer(
 }
 
 beforeEach(() => {
-  bbDiff.loaded = false;
+  window.localStorage.clear();
+  getDefaultStore().set(
+    diffRendererProviderAtom,
+    AUTOMATIC_REPLACEMENT_PROVIDER,
+  );
+  bbDiff.renderFails = false;
   bbDiff.lastProps = null;
   receivedProps.length = 0;
   resetPluginSlotStoreForTest();
-  resetDeprecatedAliasWarningsForTests();
   applyResolvedCodeTheme(defaultResolvedCodeTheme);
 });
 
@@ -116,7 +120,7 @@ afterEach(() => {
 });
 
 describe("DiffHost", () => {
-  it("skips BB's renderer and full-file enrichment when a replacement never delegates", async () => {
+  it("skips BB's renderer and passes full-file contents when a replacement never delegates", async () => {
     registerDiffRenderer((props) => {
       receivedProps.push(props);
       return <div data-testid="plugin-diff">plugin diff</div>;
@@ -135,7 +139,7 @@ describe("DiffHost", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(bbDiff.loaded).toBe(false);
+    expect(bbDiff.lastProps).toBeNull();
     expect(receivedProps.at(-1)?.experimental_fullFileContents).toBe(
       FULL_FILE_CONTENTS,
     );
@@ -205,7 +209,6 @@ describe("DiffHost", () => {
     );
 
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
-    expect(bbDiff.loaded).toBe(true);
     expect(bbDiff.lastProps?.file).toBeDefined();
   });
 
@@ -268,12 +271,15 @@ describe("DiffHost", () => {
     expect(screen.queryByTestId("aardvark-diff")).toBeNull();
   });
 
-  it("falls back to BB's renderer when the replacement crashes", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("contains a failing BB renderer inside a delegating replacement without disabling the plugin", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
-    registerDiffRenderer(() => {
-      throw new Error("replacement exploded");
-    });
+    bbDiff.renderFails = true;
+    registerDiffRenderer(({ Original }) => (
+      <section aria-label="Plugin chrome">
+        <Original />
+      </section>
+    ));
 
     render(
       <DiffHost
@@ -283,6 +289,13 @@ describe("DiffHost", () => {
       />,
     );
 
+    const alert = await screen.findByRole("alert");
+    expect(
+      screen.getByRole("region", { name: "Plugin chrome" }).contains(alert),
+    ).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    bbDiff.renderFails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByTestId("bb-diff")).toBeDefined();
   });
 
@@ -308,7 +321,7 @@ describe("experimental_Diff", () => {
     await screen.findByTestId("plugin-diff");
     expect(receivedProps.at(-1)?.path).toBe("src/app.ts");
     expect(receivedProps.at(-1)?.experimental_fullFileContents).toBeNull();
-    expect(bbDiff.loaded).toBe(false);
+    expect(bbDiff.lastProps).toBeNull();
   });
 
   it("completes a header-less patch before handing it to a replacement", async () => {
@@ -356,62 +369,6 @@ describe("experimental_Diff", () => {
 
     expect(screen.getByText("not a patch at all")).toBeDefined();
     expect(screen.queryByTestId("bb-diff")).toBeNull();
-    expect(bbDiff.loaded).toBe(false);
-  });
-});
-
-describe("DiffHost experimental_Original alias", () => {
-  it("delegates to BB's renderer through the alias and warns once across renders", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    let renders = 0;
-    registerDiffRenderer(({ experimental_Original: LegacyOriginal }) => {
-      renders += 1;
-      return LegacyOriginal === undefined ? (
-        <div>alias missing</div>
-      ) : (
-        <LegacyOriginal />
-      );
-    });
-
-    const { rerender } = render(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={null}
-      />,
-    );
-    expect(await screen.findByTestId("bb-diff")).toBeDefined();
-    expect(bbDiff.lastProps?.view).toBe("unified");
-
-    rerender(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={null}
-        view="split"
-      />,
-    );
-    expect(await screen.findByText("bb diff split/scroll")).toBeDefined();
-    expect(renders).toBe(2);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith(
-      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
-    );
-  });
-
-  it("never warns for a renderer that reads Original", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    registerDiffRenderer(({ Original }) => <Original />);
-
-    render(
-      <DiffHost
-        file={parseFixture()}
-        patchText={PATCH}
-        fullFileContents={null}
-      />,
-    );
-
-    expect(await screen.findByTestId("bb-diff")).toBeDefined();
-    expect(warn).not.toHaveBeenCalled();
+    expect(bbDiff.lastProps).toBeNull();
   });
 });

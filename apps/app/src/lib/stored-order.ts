@@ -38,25 +38,36 @@ export function arrangeByStoredOrder<TItem>({
   return { ordered, normalizedOrder };
 }
 
-interface ReorderStoredOrderArgs {
-  activeId: string;
-  overId: string;
-  order: readonly string[];
-  visibleIds: readonly string[];
-}
+type ReorderStoredOrderArgs<TId extends string> = {
+  order: readonly TId[];
+  visibleIds: readonly TId[];
+} & (
+  | { activeId: string; overId: string }
+  | { nextVisibleIds: readonly TId[] }
+);
 
-export function reorderStoredOrder({
-  activeId,
-  overId,
-  order,
-  visibleIds,
-}: ReorderStoredOrderArgs): string[] | null {
-  const from = visibleIds.indexOf(activeId);
-  const to = visibleIds.indexOf(overId);
-  if (from === -1 || to === -1 || from === to) return null;
-
-  const nextVisible = arrayMove(visibleIds, from, to);
+export function reorderStoredOrder<TId extends string>(
+  args: ReorderStoredOrderArgs<TId>,
+): TId[] | null {
+  const { order, visibleIds } = args;
   const visibleSet = new Set(visibleIds);
+  let nextVisible: readonly TId[];
+  if ("nextVisibleIds" in args) {
+    nextVisible = args.nextVisibleIds;
+    if (
+      nextVisible.length !== visibleIds.length ||
+      new Set(nextVisible).size !== visibleSet.size ||
+      nextVisible.some((id) => !visibleSet.has(id)) ||
+      haveSameOrder(nextVisible, visibleIds)
+    ) {
+      return null;
+    }
+  } else {
+    const from = visibleIds.findIndex((id) => id === args.activeId);
+    const to = visibleIds.findIndex((id) => id === args.overId);
+    if (from === -1 || to === -1 || from === to) return null;
+    nextVisible = arrayMove(visibleIds, from, to);
+  }
   let cursor = 0;
   return order.map((id) => (visibleSet.has(id) ? nextVisible[cursor++] : id));
 }

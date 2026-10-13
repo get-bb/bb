@@ -18,9 +18,7 @@ function renderSidebar(activePluginId: string | null = null) {
     <MemoryRouter>
       <SidebarProvider>
         <SettingsSidebarContent
-          appRoutePath="/"
           isResizing={false}
-          mobileHosted
           navigation={{
             activePluginId,
             activeSection: activePluginId === null ? "general" : null,

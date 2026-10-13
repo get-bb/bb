@@ -4,7 +4,10 @@
 
 ```ts
 bb.events.on("experimental_thread.events", ({ thread, sequence }) => { ... });
+bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }) => { ... }); // see backend-sdk.md
 bb.events.on("experimental_terminal.input", ({ terminal }) => { ... });
+bb.events.on("experimental_environment.removed", ({ removal }) => { ... });
+bb.events.on("experimental_host.deleted", ({ host }) => { ... });
 bb.events.on("thread.created", ({ thread }) => { ... });
 bb.events.on("thread.active", ({ thread }) => { ... });
 bb.events.on("thread.idle", ({ thread, lastAssistantText }) => { ... });   // lastAssistantText: string | null
@@ -19,25 +22,18 @@ bb.events.on("turn.failed", (event) => { ... });                           // id
 bb.events.on("message.cancelled", ({ entry }) => { ... });                 // row deleted before dispatch
 ```
 
-**Events are announcements core makes.** Something already happened, your
-handler is told, and whatever it returns is IGNORED. The surface that ASKS is
-`bb.experimental_hooks`, below, where core acts on your answer — the same split
-git draws between post-commit and pre-commit hooks.
+Events announce completed changes; handler return values are ignored.
+Use `bb.experimental_hooks` when core needs an answer before acting.
 
-Fourteen events. The seven `thread.*` ones are thread lifecycle. `interaction.pending`
-fires after core commits a pending interaction row. The three `message.*`
-ones fire when a dispatch is queued behind a wait, when a queued row's waits
-all clear and it dispatches, or when the queued row is cancelled. Every listener sees every queued row, so a plugin
-that only wants its own filters on
+Fourteen events. The seven `thread.*` ones report thread lifecycle. `interaction.pending` fires
+when core commits a pending interaction. `message.queued` fires when dispatch
+waits, including when its wait changes; `message.dispatched` fires when all waits
+clear. Every listener receives every queued row. Filter plugin-owned waits with
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
-`message.queued` fires again when a row's wait is rewritten, because a row that
-moved from one wait to another is news to whoever was waiting on the old one.
 
-`message.cancelled` fires when the user removes a queued row before it ever
-dispatched — the only signal for that removal. A plugin holding external
-resources for a waiting message (a sandbox mid-provision via an environment
-provider, a reserved slot) releases them here; archive/delete of the whole
-thread fires the thread event instead.
+`message.cancelled` is the only notification when a queued row is removed before
+dispatch. Release external resources reserved for that message here. Archiving
+or deleting the whole thread fires its thread lifecycle event instead.
 
 `turn.failed` fires after a turn failed and the thread has already landed in
 `error`. Its payload (`PluginTurnFailedEvent`) is ids and failure facts only —
@@ -90,8 +86,11 @@ fire-and-forget after the transition and can never block or veto it. `thread`
 is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
 and counted in the plugin's handler stats (`bb plugin list`).
 
-Lifecycle events are broadcast to all loaded plugins regardless of sidebar
-visibility.
+Lifecycle events reach all loaded plugins regardless of sidebar visibility.
+Events missed while unloaded are not replayed. Register handlers first, then
+reconcile tracked threads at startup after a restart, reload, or disabled period. Make handlers idempotent if a live
+event overlaps reconciliation. Avoid polling thread state to detect lifecycle
+changes.
 
 `thread.created` fires on row creation, so the first user message is not
 always in the timeline yet. To react to a thread's content, listen on
@@ -111,6 +110,11 @@ the delivered thread is active before extending its idle deadline.
 terminal. Its public terminal DTO includes hostId; keystrokes are not included. Output,
 keepalives and opening a terminal do not count.
 
+`experimental_host.deleted` fires once after a machine is removed, whether a user
+removed it or its machine provider finished tearing it down. `host` is the public
+host DTO as it was at removal; `bb.sdk.hosts.get` answers 404 for it afterwards, so
+drop any per-host state here. Connect prunes shared ports for the removed machine.
+
 ### bb.experimental_hooks — the dispatch checkpoint
 
 **Hooks are questions core asks.** Core stops, hands your handler a context, and
@@ -128,14 +132,43 @@ bb.experimental_hooks.on("message.dispatch", (ctx) => {
   // ctx.project / ctx.environment / ctx.host / ctx.environmentIntent,
   // ctx.input.blocks + ctx.input.text,
   // ctx.requestedExecution, ctx.executionSources, ctx.origin /
-  // ctx.originPluginId / ctx.startedOnBehalfOf / ctx.parentThreadId,
-  // ctx.queuedMessage (the queued row on a re-attempt, else null),
+  // ctx.originPluginId / ctx.parentThreadId,
+  // ctx.initiator ("user" | "agent" | "system" | "mixed") + ctx.senderThreadId,
+  // ctx.queuedMessages (all queued rows in dispatch order, else []),
   // ctx.experimental_submission (plugin-owned composer data, else null).
   if (isBlocked(ctx.input.text)) return { action: "reject", message: "…" };
   if (atCapacity()) return { action: "wait", reason: "4 of 4 running" };
   return { action: "proceed" };
 });
 ```
+
+`ctx.queuedMessages` contains every queued row in the dispatch, in order, or
+an empty array for an inline attempt. Each row carries its own content,
+`initiator` and `senderThreadId`. `ctx.input` is the combined input; the hook
+returns one decision for the entire group, preserving send-together behavior.
+
+`ctx.initiator` summarizes the authors: `user`, `agent`, or `system` when all
+messages share that category, and `mixed` when categories differ. Two different
+agents still yield `agent`. `ctx.senderThreadId` is the sender ID shared by all
+messages, null when none of them has a sender, and `"mixed"` when they
+disagree — so null still means a human typed it rather than bb being unsure.
+Individual rows never report `mixed`, and recorded turns keep their existing
+initiator types.
+A queued thread-start preserves its requester's author; a retry is `system`
+with no sender.
+
+`ctx.origin` and `ctx.originPluginId` are stored with the queued row and remain
+stable across re-attempts. For grouped dispatches they describe the first row.
+
+`ctx.queuedMessage` has been replaced in the context type by `queuedMessages`.
+Core still emits the first row (or null) under the old name for handlers built
+against an older SDK; new handlers inspect the full array.
+
+`ctx.startedOnBehalfOf` is no longer part of the context type. It answered a
+different question — why the THREAD was started — so it could not identify the
+sender of the message at hand. Core still sets it on the object for handlers
+built against an older SDK; new handlers read `ctx.initiator` and
+`ctx.senderThreadId`.
 
 The context is `MessageDispatchHookContext` (`ctx.attempt` is
 `PluginDispatchAttemptKind`, `ctx.input` is `PluginDispatchInput`,
@@ -148,7 +181,8 @@ The hook pass runs before scheduling, thread, workspace, host, and interaction
 waits. Plugin policy therefore sees each submission before operational state
 can defer it. `experimental_submission` is present only on the initial
 composer submission; a plugin that waits can recognize later attempts through
-`ctx.queuedMessage.waitingOn.pluginId`.
+`ctx.queuedMessages.some(message => message.waitingOn?.kind === "plugin" &&
+message.waitingOn.pluginId === bb.pluginId)`.
 
 Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, which
 becomes the row's `sendAt` so core's due sweep re-attempts then) and `reject`
@@ -243,8 +277,14 @@ call `sdk.environments.delete` to drive retirement. The former
 contract are removed. The environment-provider entry exports operation types.
 
 `create` receives the resolved facts, thread, suggestedBranchName, monotonic
-attempt, pathKey, rebuild, `previous: { environment, resource } | null`,
-report, and an abort signal. It is one long call and must be idempotent for
+attempt, pathKey, report, and an abort signal, and always builds a fresh
+environment. A thread whose environment was destroyed gets it back only when
+the user asks for a restore and the provider declares the optional
+`restore`: it receives the same facts, with the inputs the
+environment was created with, plus `previous: { environment, resource }`
+describing the removed environment, and decides what restoring means, such as
+checking the recorded branch out again. Without it, core never rebuilds a
+destroyed environment and its threads report it unavailable. `create` is one long call and must be idempotent for
 pathKey: after a process or plugin restart, core calls it again with the same
 attempt and pathKey. Return `created` with `path`, explicit `ownsPath`
 and optional `mergeBaseBranch`, or `failed` with a message; a failed create is terminal.
@@ -253,7 +293,7 @@ and optional `mergeBaseBranch`, or `failed` with a message; a failed create is t
 
 A created result may carry a private JSON resource capped at
 16 KiB. Core transfers it directly to the environment row and never includes
-it in responses or events. Rebuild and removal receive it; completed removal
+it in responses or events. Restore and removal receive it; completed removal
 clears it. On cancellation core aborts create, waits for it to stop, then calls
 `remove` with nullable `environment`, `hostId` and `path`, plus `pathKey`,
 `resource`, `attempt`, `report`, and a new signal. Remove must clean everything
@@ -374,6 +414,9 @@ function IssuesButton() {
 }
 ```
 
+Each handler also receives a context whose `experimental_caller` identifies
+the calling plugin; see "Calling another plugin's RPC" in `backend-sdk.md`.
+
 The wire envelope is `{ ok: true, result }` or `{ ok: false, error }`.
 Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
@@ -447,3 +490,10 @@ compares stored paths in the database and does not contact hosts.
 Scoped discovery omits providers whose declared requirements are unmet without
 running Git inspection or plugin availability. Without a machine scope,
 discovery includes providers structurally eligible on any persistent machine.
+
+`experimental_environment.removed` carries `{ removal }` after successful
+provider removal is committed. The payload contains `environmentId`, `removedAt`,
+`hostId`, `path`, and `providerOwnedPath`, preserving the pre-removal machine and
+path. Notifications are ephemeral: reconcile external state on startup and
+reconnect, and periodically, to recover missed events. Provider success does not
+guarantee the checkout path was deleted.

@@ -5,7 +5,7 @@ import {
   parseConnectPairingPayload,
   type ConnectPairingInput,
 } from "@/data/connect";
-import { Button, GROUPED_CARD_RADIUS, Text } from "@/ui";
+import { Button, GROUPED_CARD_RADIUS, Icon, Text } from "@/ui";
 
 interface ConnectScannerProps {
   onScanned: (input: ConnectPairingInput) => void;
@@ -29,17 +29,16 @@ export function ConnectScanner({ onScanned, active }: ConnectScannerProps) {
   if (!permission.granted) {
     return (
       <View
-        className="items-center gap-3 bg-surface-grouped-cell px-4 py-6"
+        className="items-center gap-4 border border-border bg-surface-grouped-cell px-6 py-6"
         style={CARD_STYLE}
         testID="connect-scanner-permission"
       >
+        <Icon name="Camera" size={32} />
         <Text variant="bodyLarge" className="text-center">
           bb needs the camera to scan the pairing QR code.
         </Text>
         {permission.canAskAgain ? (
-          <Button onPress={() => void requestPermission()} icon="Eye">
-            Allow camera
-          </Button>
+          <Button onPress={() => void requestPermission()}>Allow camera</Button>
         ) : (
           <Button
             variant="outline"
@@ -84,7 +83,7 @@ export function ConnectScanner({ onScanned, active }: ConnectScannerProps) {
       <Text variant="footnote" tone="muted" className="px-4">
         {lastIgnored
           ? `Not a bb pairing code: ${lastIgnored}`
-          : "Point the camera at the QR code from bb Settings → Remote access → Add mobile device."}
+          : "Point the camera at the QR code from bb Settings → Mobile → Add mobile device."}
       </Text>
     </View>
   );

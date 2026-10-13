@@ -41,7 +41,7 @@ export function sessionCookieSpec(
     path: "/",
     secure: url.protocol === "https:",
     httpOnly: true,
-    expires: new Date(cookie.expiresAt).toISOString(),
+    expires: new Date(cookie.expiresAt).toISOString().replace(/Z$/u, "+00:00"),
   };
 }
 

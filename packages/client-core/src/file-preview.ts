@@ -22,8 +22,12 @@ const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown"];
 const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
 const CSV_FILE_EXTENSIONS = [".csv"];
 const CSV_MIME_TYPES = new Set(["application/csv", "text/csv"]);
-const HTML_FILE_EXTENSION = ".html";
+const HTML_FILE_EXTENSIONS = [".html", ".htm"];
 const NULL_CHARACTER = "\u0000";
+
+export const FILE_PREVIEW_SAMPLE_BYTES = 64 * 1024;
+export const FILE_PREVIEW_TEXT_MAX_BYTES = 25 * 1024 * 1024;
+export const FILE_PREVIEW_HTML_MAX_BYTES = 5 * 1024 * 1024;
 
 export interface FilePreviewTarget {
   name?: string;
@@ -49,8 +53,12 @@ export interface TextFilePreview extends FilePreviewBase {
   content: string;
 }
 
+export type UnsupportedFilePreviewReason = "binary" | "too-large";
+
 interface UnsupportedFilePreview extends FilePreviewBase {
   kind: "unsupported";
+  reason: UnsupportedFilePreviewReason;
+  sizeBytes: number;
 }
 
 export type FilePreview =
@@ -167,6 +175,12 @@ interface BuildFilePreviewArgs extends FilePreviewTarget {
   mimeType: string;
 }
 
+interface BuildFilePreviewFromSampleArgs extends FilePreviewTarget {
+  mimeType: string;
+  sampleBytes: Uint8Array;
+  sizeBytes: number;
+}
+
 function isKnownTextMimeType(mimeType: string): boolean {
   return (
     mimeType.startsWith("text/") ||
@@ -182,6 +196,16 @@ function decodeUtf8Text(contentBytes: Uint8Array): string | null {
     return content.includes(NULL_CHARACTER) ? null : content;
   } catch {
     return null;
+  }
+}
+
+function isUtf8TextSample(sampleBytes: Uint8Array): boolean {
+  try {
+    return !new TextDecoder("utf-8", { fatal: true })
+      .decode(sampleBytes, { stream: true })
+      .includes(NULL_CHARACTER);
+  } catch {
+    return false;
   }
 }
 
@@ -205,7 +229,10 @@ function hasCsvExtension(path: string): boolean {
 }
 
 export function isHtmlFilePreviewPath(path: string): boolean {
-  return path.toLowerCase().endsWith(HTML_FILE_EXTENSION);
+  const normalizedPath = path.toLowerCase();
+  return HTML_FILE_EXTENSIONS.some((extension) =>
+    normalizedPath.endsWith(extension),
+  );
 }
 
 export function normalizeFilePreviewMimeType(value: string | null): string {
@@ -254,6 +281,8 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
       return {
         kind: "unsupported",
         ...base,
+        reason: "binary",
+        sizeBytes: args.contentBytes.byteLength,
       };
     }
     return {
@@ -282,5 +311,43 @@ export function buildFilePreview(args: BuildFilePreviewArgs): FilePreview {
   return {
     kind: "unsupported",
     ...base,
+    reason: "binary",
+    sizeBytes: args.contentBytes.byteLength,
   };
+}
+
+export function buildFilePreviewFromSample(
+  args: BuildFilePreviewFromSampleArgs,
+): FilePreview | null {
+  const base = {
+    mimeType: args.mimeType,
+    name: args.name,
+    path: args.path,
+    url: args.url,
+  };
+  const unsupported = (reason: UnsupportedFilePreviewReason): FilePreview => ({
+    kind: "unsupported",
+    ...base,
+    reason,
+    sizeBytes: args.sizeBytes,
+  });
+
+  if (args.mimeType.startsWith("image/")) {
+    return { kind: "image", ...base };
+  }
+
+  const isText = isKnownTextMimeType(args.mimeType)
+    ? decodeDeclaredTextContent(args.sampleBytes) !== null
+    : isUtf8TextSample(args.sampleBytes);
+  if (isText) {
+    return args.sizeBytes > FILE_PREVIEW_TEXT_MAX_BYTES
+      ? unsupported("too-large")
+      : null;
+  }
+
+  if (args.mimeType.startsWith("video/")) {
+    return { kind: "video", ...base };
+  }
+
+  return unsupported("binary");
 }

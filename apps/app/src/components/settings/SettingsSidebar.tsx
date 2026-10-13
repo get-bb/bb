@@ -16,8 +16,6 @@ import { getSettingsSectionRoutePath } from "./settings-sections";
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
   isResizing: boolean;
-  appRoutePath: string;
-  mobileHosted?: boolean;
 }
 
 type SettingsSidebarNavigation = Pick<
@@ -33,8 +31,6 @@ interface SettingsSidebarContentProps extends SettingsSidebarProps {
 export function SettingsSidebarContent({
   onResizeMouseDown,
   isResizing,
-  appRoutePath,
-  mobileHosted,
   navigation,
   testIdPrefix = "settings",
 }: SettingsSidebarContentProps) {
@@ -43,14 +39,10 @@ export function SettingsSidebarContent({
 
   return (
     <SectionSidebar
-      backLabel="Back to app"
-      backTo={appRoutePath}
       isResizing={isResizing}
-      mobileHosted={mobileHosted}
       onResizeMouseDown={onResizeMouseDown}
       testIdPrefix={testIdPrefix}
     >
-      <SectionSidebarLabel>Settings</SectionSidebarLabel>
       <div className="mt-1 space-y-0.5">
         {sections
           .filter((section) => section.id !== "archived")
@@ -132,16 +124,12 @@ export function SettingsSidebarContent({
 export function SettingsSidebar({
   onResizeMouseDown,
   isResizing,
-  appRoutePath,
-  mobileHosted,
 }: SettingsSidebarProps) {
   const navigation = useSettingsNavState();
 
   return (
     <SettingsSidebarContent
-      appRoutePath={appRoutePath}
       isResizing={isResizing}
-      mobileHosted={mobileHosted}
       navigation={navigation}
       onResizeMouseDown={onResizeMouseDown}
     />

@@ -6,12 +6,15 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { threadScope, turnScope } from "@bb/domain";
 import { applyLoggedThreadLifecycleEvent } from "../../../src/services/threads/lifecycle-outcome.js";
+import { beginProjectDeletion } from "../../../src/services/projects/project-deletion.js";
 import { createThreadRecord } from "../../../src/services/threads/thread-create-helpers.js";
+import { archiveThreadAndReleaseChildren } from "../../../src/services/threads/thread-ownership.js";
 import type { ThreadCreateServiceRequest } from "../../../src/services/threads/thread-create-request.js";
 import {
   seedEvent,
   seedThreadFixture,
   seedTurnStarted,
+  seedThread,
 } from "../../helpers/seed.js";
 import { createUserQuestionPayload } from "../../helpers/pending-interactions.js";
 import {
@@ -157,6 +160,12 @@ describe("plugin thread lifecycle events", () => {
         event: { type: "run.succeeded" },
       });
       expect(outcome.applied).toBe(true);
+      expect(
+        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+          threadId: thread.id,
+          event: { type: "run.succeeded" },
+        }).applied,
+      ).toBe(false);
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
       expect(recorded[0]?.thread.id).toBe(thread.id);
@@ -202,6 +211,12 @@ describe("plugin thread lifecycle events", () => {
         event: { type: "run.failed" },
       });
       expect(outcome.applied).toBe(true);
+      expect(
+        applyLoggedThreadLifecycleEvent(lifecycleDeps(harness), {
+          threadId: thread.id,
+          event: { type: "run.failed" },
+        }).applied,
+      ).toBe(false);
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
       expect(recorded[0]?.thread.id).toBe(thread.id);
@@ -391,7 +406,7 @@ describe("plugin thread lifecycle events", () => {
     }
   });
 
-  it("delivers thread.deleted from route-driven deletion", async () => {
+  it("delivers one delete event per live dependent from route-driven deletion", async () => {
     const recorded: RecordedThreadPayload[] = [];
     globals.__deletedEvents = recorded;
     const { harness, cleanup } = await setUpPluginHarness(`
@@ -405,34 +420,181 @@ describe("plugin thread lifecycle events", () => {
       const { project, thread } = seedThreadFixture(harness, {
         thread: { status: "idle" },
       });
+      const alreadyDeleted = seedThread(harness.deps, {
+        projectId: project.id,
+        lifecycleOwnerThreadId: thread.id,
+      });
+      const liveChild = seedThread(harness.deps, {
+        projectId: project.id,
+        lifecycleOwnerThreadId: thread.id,
+      });
 
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}`,
+      const childResponse = await harness.app.request(
+        `/api/v1/threads/${alreadyDeleted.id}`,
         {
           method: "DELETE",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ childThreadsConfirmed: false }),
         },
       );
+      expect(childResponse.status).toBe(200);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: true }),
+        },
+      );
 
       expect(response.status).toBe(200);
-      await vi.waitFor(() => expect(recorded).toHaveLength(1));
-      expect(recorded[0]?.thread.id).toBe(thread.id);
-      expect(recorded[0]?.thread.projectId).toBe(project.id);
-      expect(recorded[0]?.thread.deletedAt).toEqual(expect.any(Number));
+      await vi.waitFor(() => expect(recorded).toHaveLength(3));
+      expect(recorded.map(({ thread }) => thread.id).sort()).toEqual(
+        [thread.id, alreadyDeleted.id, liveChild.id].sort(),
+      );
+      for (const event of recorded) {
+        expect(event.thread.projectId).toBe(project.id);
+        expect(event.thread.deletedAt).toEqual(expect.any(Number));
+      }
     } finally {
       delete globals.__deletedEvents;
       await cleanup();
     }
   });
 
-  it("delivers thread.archived from route-driven archiving", async () => {
-    const recorded: RecordedThreadPayload[] = [];
-    globals.__archivedEvents = recorded;
+  it("delivers one archive and unarchive event per transitioned thread", async () => {
+    const recorded: Array<{ kind: string; threadId: string }> = [];
+    const recordedProjectIds: string[] = [];
+    globals.__cascadeEvents = recorded;
+    globals.__cascadeProjectIds = recordedProjectIds;
     const { harness, cleanup } = await setUpPluginHarness(`
       export default function plugin(bb: any) {
-        bb.events.on("thread.archived", (payload: any) => {
-          (globalThis as any).__archivedEvents.push(payload);
+        for (const kind of ["thread.archived", "thread.unarchived"]) {
+          bb.events.on(kind, ({ thread }: any) => {
+            (globalThis as any).__cascadeEvents.push({ kind, threadId: thread.id });
+            (globalThis as any).__cascadeProjectIds.push(thread.projectId);
+          });
+        }
+      }
+    `);
+    try {
+      const { project, thread } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        lifecycleOwnerThreadId: thread.id,
+      });
+      const archived = await harness.app.request(
+        `/api/v1/threads/${thread.id}/archive-all`,
+        { method: "POST" },
+      );
+      expect(archived.status).toBe(200);
+      const repeatedArchive = await harness.app.request(
+        `/api/v1/threads/${thread.id}/archive-all`,
+        { method: "POST" },
+      );
+      expect(repeatedArchive.status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(2));
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          { kind: "thread.archived", threadId: thread.id },
+          { kind: "thread.archived", threadId: child.id },
+        ]),
+      );
+      for (const threadId of [thread.id, child.id]) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${threadId}/unarchive`,
+          { method: "POST" },
+        );
+        expect(response.status).toBe(200);
+        const repeated = await harness.app.request(
+          `/api/v1/threads/${threadId}/unarchive`,
+          { method: "POST" },
+        );
+        expect(repeated.status).toBe(200);
+      }
+      await vi.waitFor(() => expect(recorded).toHaveLength(4));
+      expect(recorded.slice(2)).toEqual([
+        { kind: "thread.unarchived", threadId: thread.id },
+        { kind: "thread.unarchived", threadId: child.id },
+      ]);
+      expect(new Set(recordedProjectIds)).toEqual(new Set([project.id]));
+    } finally {
+      delete globals.__cascadeEvents;
+      delete globals.__cascadeProjectIds;
+      await cleanup();
+    }
+  });
+
+  it("delivers a parent change for a moved thread and each child released by an archive", async () => {
+    const recorded: Array<{
+      threadId: string;
+      parentThreadId: string | null;
+      previousParentThreadId: string | null;
+    }> = [];
+    globals.__parentChangedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("experimental_thread.parentChanged", ({ thread, previousParentThreadId }: any) => {
+          (globalThis as any).__parentChangedEvents.push({
+            threadId: thread.id,
+            parentThreadId: thread.parentThreadId,
+            previousParentThreadId,
+          });
+        });
+      }
+    `);
+    try {
+      const { project, thread: parent } = seedThreadFixture(harness, {
+        thread: { status: "idle" },
+      });
+      const child = seedThread(harness.deps, { projectId: project.id });
+      const sibling = seedThread(harness.deps, {
+        projectId: project.id,
+        parentThreadId: parent.id,
+      });
+      const move = (body: unknown) =>
+        harness.app.request(`/api/v1/threads/${child.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+      expect((await move({ parentThreadId: parent.id })).status).toBe(200);
+      expect((await move({ parentThreadId: parent.id })).status).toBe(200);
+      expect((await move({ title: "Renamed" })).status).toBe(200);
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      archiveThreadAndReleaseChildren(harness.deps, { threadId: parent.id });
+      await vi.waitFor(() => expect(recorded).toHaveLength(3));
+      expect(recorded[0]).toEqual({
+        threadId: child.id,
+        parentThreadId: parent.id,
+        previousParentThreadId: null,
+      });
+      expect(recorded.slice(1)).toEqual(
+        expect.arrayContaining(
+          [child.id, sibling.id].map((threadId) => ({
+            threadId,
+            parentThreadId: null,
+            previousParentThreadId: parent.id,
+          })),
+        ),
+      );
+    } finally {
+      delete globals.__parentChangedEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers one delete event per thread when deleting a project", async () => {
+    const recorded: string[] = [];
+    globals.__projectDeletedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.deleted", ({ thread }: any) => {
+          (globalThis as any).__projectDeletedEvents.push(thread.id);
         });
       }
     `);
@@ -440,18 +602,16 @@ describe("plugin thread lifecycle events", () => {
       const { project, thread } = seedThreadFixture(harness, {
         thread: { status: "idle" },
       });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/archive-all`,
-        { method: "POST" },
-      );
-
-      expect(response.status).toBe(200);
-      await vi.waitFor(() => expect(recorded).toHaveLength(1));
-      expect(recorded[0]?.thread.id).toBe(thread.id);
-      expect(recorded[0]?.thread.projectId).toBe(project.id);
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        lifecycleOwnerThreadId: thread.id,
+      });
+      beginProjectDeletion(harness.deps, { projectId: project.id });
+      beginProjectDeletion(harness.deps, { projectId: project.id });
+      await vi.waitFor(() => expect(recorded).toHaveLength(2));
+      expect(recorded.sort()).toEqual([thread.id, child.id].sort());
     } finally {
-      delete globals.__archivedEvents;
+      delete globals.__projectDeletedEvents;
       await cleanup();
     }
   });

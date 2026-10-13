@@ -255,7 +255,6 @@ export function OfflineMachine() {
           providers={STORY_ENVIRONMENT_PROVIDERS}
           selectedProviderHostId={offlineBuildHost.id}
           onSelectProvider={noop}
-          multiMachinePickerEnabled
           machines={{
             hosts: contextualMachineHosts,
             localDaemonHostId: HOST_IDS.local,
@@ -287,7 +286,6 @@ export function MachineNeedsSetup() {
             primaryHostId: HOST_IDS.local,
           }}
           onRequestMachineSetup={noop}
-          multiMachinePickerEnabled
           defaultOpen
           modal={false}
         />
@@ -310,7 +308,6 @@ export function ManyMachines() {
       isLocal={false}
       providers={STORY_ENVIRONMENT_PROVIDERS}
       onSelectProvider={noop}
-      multiMachinePickerEnabled
       machines={{
         hosts,
         localDaemonHostId: null,
@@ -319,6 +316,132 @@ export function ManyMachines() {
       defaultOpen
       modal={false}
     />
+  );
+}
+
+export function MachineMenuReuse() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="machine-grouped menu · reuse offered"
+        hint="the composer always wires reuse — the row sits once below every machine group"
+      >
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={machineSources}
+          host={machineHosts[0] ?? null}
+          isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
+          onSelectHost={noop}
+          onSelectReuse={noop}
+          machines={{
+            hosts: machineHosts,
+            localDaemonHostId: HOST_IDS.local,
+            primaryHostId: HOST_IDS.local,
+          }}
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MachineMenuReuseSelected() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="machine-grouped menu · reuse selected"
+        hint="a reuse value marks the row current instead of leaving every row unselected"
+      >
+        <EnvironmentPickerUI
+          value="reuse:env_alpha"
+          sources={machineSources}
+          host={machineHosts[0] ?? null}
+          isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
+          onSelectHost={noop}
+          onSelectReuse={noop}
+          machines={{
+            hosts: machineHosts,
+            localDaemonHostId: HOST_IDS.local,
+            primaryHostId: HOST_IDS.local,
+          }}
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function OfflineMachineReuse() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="offline machine · reuse offered"
+        hint="a disconnected machine's rows stay disabled while reuse remains selectable"
+      >
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={contextualMachineSources}
+          host={machineHosts[0] ?? null}
+          isLocal
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          selectedProviderHostId={HOST_IDS.local}
+          onSelectProvider={noop}
+          onSelectHost={noop}
+          onSelectReuse={noop}
+          machines={{
+            hosts: [machineHosts[0] ?? null, offlineBuildHost].filter(
+              (host) => host !== null,
+            ),
+            localDaemonHostId: HOST_IDS.local,
+            primaryHostId: HOST_IDS.local,
+          }}
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function MachineSearchReuse() {
+  const hosts = Array.from({ length: 12 }, (_, index) =>
+    makeHost({ id: `host_scroll_${index}`, name: `Machine ${index + 1}` }),
+  );
+  return (
+    <StoryCard>
+      <StoryRow
+        label="machine search · reuse offered"
+        hint="the search variant sizes to content too, and holds that width while results filter"
+      >
+        <EnvironmentPickerUI
+          value="provider:project-checkout"
+          sources={hosts.map((host, index) =>
+            makeSource(`src_scroll_${index}`, host.id, "/projects/bb"),
+          )}
+          host={hosts[0] ?? null}
+          isLocal={false}
+          providers={STORY_ENVIRONMENT_PROVIDERS}
+          onSelectProvider={noop}
+          onSelectHost={noop}
+          onSelectReuse={noop}
+          machines={{
+            hosts,
+            localDaemonHostId: null,
+            primaryHostId: hosts[0]?.id ?? null,
+          }}
+          defaultOpen
+          modal={false}
+        />
+      </StoryRow>
+    </StoryCard>
   );
 }
 

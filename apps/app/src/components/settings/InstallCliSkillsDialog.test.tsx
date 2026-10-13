@@ -40,25 +40,6 @@ function checkbox(name: string): HTMLInputElement {
 }
 
 describe("InstallCliSkillsDialog", () => {
-  it("preselects the connected machines and installs exactly those", () => {
-    const onInstall = vi.fn();
-    render(
-      <InstallCliSkillsDialog
-        open={true}
-        onOpenChange={() => undefined}
-        hosts={hosts}
-        statusByHostId={statuses}
-        onCancel={() => undefined}
-        onInstall={onInstall}
-        pending={false}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
-
-    expect(onInstall).toHaveBeenCalledWith(["host-laptop", "host-studio"]);
-  });
-
   it("installs only the machines left selected", () => {
     const onInstall = vi.fn();
     render(

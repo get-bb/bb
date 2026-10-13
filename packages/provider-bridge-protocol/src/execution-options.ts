@@ -2,6 +2,7 @@ import {
   promptModeSchema,
   reasoningLevelSchema,
   runtimePermissionPolicySchema,
+  sessionOptionSelectionsSchema,
   serviceTierSchema,
 } from "@bb/domain";
 import { z } from "zod";
@@ -12,6 +13,7 @@ export const bridgeExecutionOptionsSchema = z
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
     promptMode: promptModeSchema.optional(),
+    sessionOptions: sessionOptionSelectionsSchema.optional(),
     instructions: z.string().optional(),
     envVars: z.record(z.string(), z.string()).optional(),
     providerOptions: z.record(z.string(), z.unknown()).optional(),

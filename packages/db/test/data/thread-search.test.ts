@@ -366,6 +366,237 @@ describe("thread search data", () => {
     }
   });
 
+  it("ranks title matches first, then the rest by most recent activity", () => {
+    const { db, project } = setup();
+    try {
+      const titled = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss plugins",
+      });
+      const older = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      const newer = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Release notes",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [older, newer].map((thread) => ({
+          threadId: thread.id,
+          sourceKind: "assistant_message",
+          sourceKey: "event:1",
+          sourceSeq: 1,
+          text: "moss plugins moss plugins moss plugins",
+        })),
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titled.id);
+      setUpdatedAt.run(2, older.id);
+      setUpdatedAt.run(3, newer.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        titled.id,
+        newer.id,
+        older.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("does not rank a titled thread's fallback text as a title match", () => {
+    const { db, project } = setup();
+    try {
+      const titledWithFallback = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+        titleFallback: "fallbackneedle in the first prompt",
+      });
+      const newerMessage = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Release notes",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: newerMessage.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "a fallbackneedle message",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titledWithFallback.id);
+      setUpdatedAt.run(2, newerMessage.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "fallbackneedle",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        newerMessage.id,
+        titledWithFallback.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("ranks a title as a title match only when it has every word", () => {
+    const { db, project } = setup();
+    try {
+      const fullTitle = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss plugins",
+      });
+      const partialTitle = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Moss editor",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: partialTitle.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "add plugins support",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, fullTitle.id);
+      setUpdatedAt.run(2, partialTitle.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        fullTitle.id,
+        partialTitle.id,
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("splits an underscored query into words like other punctuation", () => {
+    const { db, project } = setup();
+    try {
+      const titled = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Search the thread list",
+      });
+      const newerMessage = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: newerMessage.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "rename thread_search before shipping",
+          },
+        ],
+      });
+      const setUpdatedAt = db.$client.prepare(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+      );
+      setUpdatedAt.run(1, titled.id);
+      setUpdatedAt.run(2, newerMessage.id);
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "thread_search",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.results.map((result) => result.thread.id)).toEqual([
+        titled.id,
+        newerMessage.id,
+      ]);
+      expect(
+        results.active.results[1]?.matches[0]?.highlightRanges,
+      ).toEqual([
+        { start: 7, end: 13 },
+        { start: 14, end: 20 },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("shows the message that has every word over an earlier partial match", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Weekly planning",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "moss notes",
+          },
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:2",
+            sourceSeq: 2,
+            text: "moss plugins",
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "moss plugins",
+        limitPerGroup: 20,
+      });
+
+      expect(
+        results.active.results[0]?.matches.map((match) => ({
+          text: match.text,
+          sourceSeq: match.sourceSeq,
+        })),
+      ).toEqual([{ text: "moss plugins", sourceSeq: 2 }]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("returns title matches alongside the single best message match", () => {
     const { db, project } = setup();
     try {

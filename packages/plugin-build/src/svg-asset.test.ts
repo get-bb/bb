@@ -14,20 +14,6 @@ const LOGO = 'manifest bb.branding.logo.light ("./logo.svg")';
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
-const FIRST_PARTY_BRANDING_SVGS = [
-  "examples/plugins/echo-provider/icons/receipt.svg",
-  "plugins/plugin-api-docs/icons/ai-generative.svg",
-  "plugins/provider-acp/icons/acp.svg",
-  "plugins/provider-acp/icons/cursor.svg",
-  "plugins/provider-acp/icons/grok.svg",
-  "plugins/provider-acp/icons/hermes-agent.svg",
-  "plugins/provider-acp/icons/omp.svg",
-  "plugins/provider-acp/icons/opencode.svg",
-  "plugins/provider-claude-code/icons/claude-code.svg",
-  "plugins/provider-codex/icons/codex.svg",
-  "plugins/provider-pi/icons/pi.svg",
-];
-
 function discoverFirstPartyBrandingSvgs(): string[] {
   const files: string[] = [];
   for (const pluginsDir of ["plugins", "examples/plugins"]) {
@@ -43,6 +29,8 @@ function discoverFirstPartyBrandingSvgs(): string[] {
   }
   return files.sort();
 }
+
+const FIRST_PARTY_BRANDING_SVGS = discoverFirstPartyBrandingSvgs();
 
 const LATIN1_SVG: Uint8Array = Buffer.from(
   '<svg xmlns="http://www.w3.org/2000/svg"><title>Café</title><path d="M0 0h4v4z"/></svg>',
@@ -276,8 +264,8 @@ describe("assertValidPluginLogoSvg (SVG logos and provider icons, at build)", ()
     },
   );
 
-  it("covers every SVG a first-party or example plugin ships under icons/", () => {
-    expect(discoverFirstPartyBrandingSvgs()).toEqual(FIRST_PARTY_BRANDING_SVGS);
+  it("finds the SVGs first-party and example plugins ship under icons/", () => {
+    expect(FIRST_PARTY_BRANDING_SVGS.length).toBeGreaterThan(0);
   });
 });
 

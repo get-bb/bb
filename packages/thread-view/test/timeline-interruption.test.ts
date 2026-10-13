@@ -3,33 +3,12 @@ import type { ThreadEventRow } from "@bb/domain";
 import type { TimelineRow } from "@bb/server-contract";
 import {
   createTimelineEventFactory,
+  flattenTimelineRows,
   renderTimelineFixture,
 } from "./timeline-test-harness.js";
 
 type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
 type TimelineSystemRow = Extract<TimelineRow, { kind: "system" }>;
-
-function getNestedRows(row: TimelineRow): readonly TimelineRow[] {
-  if (row.kind === "turn") {
-    return row.children ?? [];
-  }
-  if (row.kind === "work" && row.workKind === "delegation") {
-    return row.childRows;
-  }
-  return [];
-}
-
-function flattenTimelineRows(rows: readonly TimelineRow[]): TimelineRow[] {
-  const flattenedRows: TimelineRow[] = [];
-  const visitRows = (currentRows: readonly TimelineRow[]): void => {
-    for (const row of currentRows) {
-      flattenedRows.push(row);
-      visitRows(getNestedRows(row));
-    }
-  };
-  visitRows(rows);
-  return flattenedRows;
-}
 
 function getOnlyWorkRowByCallId(
   rows: readonly TimelineRow[],

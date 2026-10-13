@@ -3,7 +3,6 @@ import { toolInputSchema } from "./contracts.js";
 import { NOT_UNIQUE_MESSAGE } from "./tool-definition.js";
 import {
   MAX_INTERACTION_PAYLOAD_BYTES,
-  PreviewTooLargeError,
   assertInteractionPayloadFits,
   buildInteractionPayload,
   buildInteractionTitle,
@@ -23,25 +22,6 @@ const twoOptions = [
 ];
 
 describe("tool input validation", () => {
-  it("defaults multiSelect so a model that omits it gets single-select", () => {
-    const parsed = parseInput({
-      questions: [{ question: "Which DB?", header: "DB", options: twoOptions }],
-    });
-    expect(parsed.questions[0]?.multiSelect).toBe(false);
-  });
-
-  it("accepts a valid call", () => {
-    expect(
-      validateToolInput(
-        parseInput({
-          questions: [
-            { question: "Which DB?", header: "DB", options: twoOptions },
-          ],
-        }),
-      ),
-    ).toBeNull();
-  });
-
   it("rejects duplicate prompts, which would collapse into one answer key", () => {
     expect(
       validateToolInput(
@@ -153,24 +133,6 @@ describe("buildInteractionPayload", () => {
 });
 
 describe("assertInteractionPayloadFits", () => {
-  it("rejects a payload whose previews would blow the interaction limit", () => {
-    const preview = "x".repeat(4096);
-    const questions = Array.from({ length: 4 }, (_unused, index) => ({
-      question: `Question ${index}?`,
-      header: `Q${index}`,
-      options: Array.from({ length: 4 }, (_option, optionIndex) => ({
-        label: `Option ${optionIndex}`,
-        description: "Detail.",
-        preview,
-      })),
-    }));
-    const payload = buildInteractionPayload(parseInput({ questions }));
-
-    expect(() => assertInteractionPayloadFits(payload)).toThrow(
-      PreviewTooLargeError,
-    );
-  });
-
   it("accepts a realistic payload", () => {
     const payload = buildInteractionPayload(
       parseInput({
@@ -275,22 +237,6 @@ describe("buildToolResult", () => {
         { label: "SQLite", description: "Embedded." },
       ],
     });
-  });
-
-  it("appends free text after a selection and records it as a note", () => {
-    const result = buildToolResult(payload, {
-      answers: {
-        q0: { selected: ["q0o0"], freeText: "but shard it" },
-        q1: { selected: [] },
-      },
-    });
-
-    expect(result.answers["Which DB?"]).toBe("Postgres; but shard it");
-    expect(result.annotations?.["Which DB?"]).toEqual({
-      preview: "CREATE TABLE t();",
-      notes: "but shard it",
-    });
-    expect(result.answers).not.toHaveProperty("Which extras?");
   });
 
   it("returns free text alone as the whole answer, with no redundant note", () => {

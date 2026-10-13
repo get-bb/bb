@@ -14,7 +14,7 @@ import {
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,
 } from "@bb/sdk";
 import type { BbSdk } from "@bb/sdk/node";
-import { joinValues } from "../helpers.js";
+import { parseDurationMs } from "../../duration.js";
 
 export const THREAD_WAIT_EXIT_CODE_TIMEOUT = 2;
 export const THREAD_WAIT_EXIT_CODE_INVALID_REQUEST = 3;
@@ -22,7 +22,8 @@ export const THREAD_WAIT_EXIT_CODE_UNREACHABLE = 4;
 export const DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS =
   DEFAULT_THREAD_WAIT_TIMEOUT_MS / 1000;
 
-const SERVICE_TIERS: ServiceTier[] = ["fast", "default"];
+export const SERVICE_TIER_HELP =
+  "Service tier id the provider lists for the model, such as default or fast (see `bb provider models`)";
 export const PERMISSION_MODE_HELP =
   "Permission mode: accept-edits, auto, or full";
 export const PLAN_HELP =
@@ -38,18 +39,14 @@ export function buildPromptInputs(args: {
     args.plan
       ? createBuiltinPlanCommandTextInput(args.message)
       : { type: "text", text: args.message, mentions: [] },
-    ...(args.files ?? []).map(
-      (path): PromptInput => ({
-        type: "localFile",
-        path,
-      }),
-    ),
-    ...(args.images ?? []).map(
-      (path): PromptInput => ({
-        type: "localImage",
-        path,
-      }),
-    ),
+    ...(args.files ?? []).map((path): PromptInput => ({
+      type: "localFile",
+      path,
+    })),
+    ...(args.images ?? []).map((path): PromptInput => ({
+      type: "localImage",
+      path,
+    })),
   ];
 }
 
@@ -147,28 +144,26 @@ export async function uploadClientAttachmentInputs(args: {
   );
 }
 
-export function parseThreadWaitTimeoutSeconds(
-  value: string | undefined,
-): number {
-  if (value === undefined) return DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS;
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("Timeout must be a non-negative number of seconds.");
-  }
-  return parsed;
+export function parseThreadWaitTimeoutMs(value: string | undefined): number {
+  if (value === undefined) return DEFAULT_THREAD_WAIT_TIMEOUT_MS;
+  return parseDurationMs({
+    allowZero: true,
+    defaultUnit: "s",
+    label: "--timeout",
+    value,
+  });
 }
 
 export function parseThreadWaitPollIntervalMs(
   value: string | undefined,
 ): number {
   if (value === undefined) return DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    throw new Error(
-      "Poll interval must be a positive integer number of milliseconds.",
-    );
-  }
-  return parsed;
+  return parseDurationMs({
+    allowZero: false,
+    defaultUnit: "ms",
+    label: "--poll-interval",
+    value,
+  });
 }
 
 export function parseServiceTier(
@@ -180,7 +175,7 @@ export function parseServiceTier(
     return parsed.data;
   }
   throw new Error(
-    `Invalid service tier '${value}'. Expected ${joinValues(SERVICE_TIERS)}.`,
+    `Invalid service tier '${value}'. Expected a tier id the provider lists, such as default or fast.`,
   );
 }
 

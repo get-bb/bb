@@ -1,4 +1,5 @@
 import type { EventProjectionMessage } from "./event-projection-types.js";
+import { parseSentThreadMessage } from "./tool-call-parsing.js";
 
 export function isTimelineTerminalMessage(
   message: EventProjectionMessage,
@@ -24,6 +25,9 @@ export function isTimelineUngroupableMessage(
   }
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
+  }
+  if (message.kind === "command") {
+    return parseSentThreadMessage(message) !== null;
   }
   return false;
 }

@@ -32,9 +32,9 @@ describe("system config server URL", () => {
     expect(
       await readServerUrl(
         { appUrl: undefined, isDevelopment: false },
-        "http://bb.lan:38886/api/v1/system/config",
+        "http://192.168.1.5:38886/api/v1/system/config",
       ),
-    ).toBe("http://bb.lan:38886");
+    ).toBe("http://192.168.1.5:38886");
   });
 
   it("maps the forwarded dev frontend origin onto the server port", async () => {

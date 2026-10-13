@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
-import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/QueuedMessagesList";
+import type { QueuedMessageEditRequest } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import type { PromptDraftState } from "@bb/client-core";
 import { queuedInputToDraft } from "@bb/client-core";
 import type { InlineComposerDraftSession } from "./useActiveComposerDraft";
+import { useQueuedMessageEditHold } from "./useQueuedMessageEditHold";
 
 export interface InlineQueuedMessageEditState {
   draft: PromptDraftState;
@@ -111,6 +112,11 @@ export function useInlineQueuedMessageEditing({
     inlineEditingQueuedMessage,
     inlineEditingQueuedMessageState,
   ]);
+  useQueuedMessageEditHold({
+    queuedMessageId: inlineEditingQueuedMessage?.queuedMessageId ?? null,
+    threadId: inlineEditingQueuedMessage?.ownerThreadId ?? null,
+    onRejected: dismissInlineQueuedMessageEditor,
+  });
 
   const beginEditQueuedMessage = useCallback(
     ({ queuedMessageId, queuedMessageIndex }: QueuedMessageEditRequest) => {

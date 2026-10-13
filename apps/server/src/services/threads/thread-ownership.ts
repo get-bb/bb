@@ -1,5 +1,6 @@
 import {
   archiveThread,
+  getThread,
   listUnarchivedAssignedChildThreads,
   type DbNotifier,
   type DbTransaction,
@@ -9,6 +10,7 @@ import type { PromptInput, SystemMessageSubject, Thread } from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
+import { emitPluginThreadParentChanged } from "../plugins/plugin-thread-events.js";
 import {
   buildParentSystemInputFromTemplateSlot,
   buildParentSystemThreadMention,
@@ -58,6 +60,17 @@ interface ThreadOwnershipTransactionDeps {
   db: DbTransaction;
   hub: DbNotifier;
 }
+
+interface PendingOwnershipChange {
+  previousParentThreadId: string | null;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const pendingOwnershipChanges = new WeakMap<
+  LoggedPendingInteractionWorkSessionDeps["db"],
+  Map<string, PendingOwnershipChange>
+>();
+const THREAD_OWNERSHIP_NOTICE_DELAY_MS = 2_000;
 
 const THREAD_OWNERSHIP_MENTION_SLOT = "__BB_THREAD_OWNERSHIP_MENTION__";
 
@@ -121,31 +134,80 @@ export async function handleThreadOwnershipChange(
     previousParentThreadId: args.previousThread.parentThreadId,
     nextParentThreadId: args.updatedThread.parentThreadId,
   });
+  emitPluginThreadParentChanged(
+    args.updatedThread,
+    args.previousThread.parentThreadId,
+  );
 
-  if (args.updatedThread.parentThreadId) {
+  let pendingChanges = pendingOwnershipChanges.get(deps.db);
+  if (!pendingChanges) {
+    pendingChanges = new Map();
+    pendingOwnershipChanges.set(deps.db, pendingChanges);
+  }
+  const childThreadId = args.updatedThread.id;
+  const pending = pendingChanges.get(childThreadId);
+  if (pending) {
+    clearTimeout(pending.timer);
+  }
+  const previousParentThreadId = pending
+    ? pending.previousParentThreadId
+    : args.previousThread.parentThreadId;
+  const timer = setTimeout(() => {
+    pendingChanges.delete(childThreadId);
+    void sendThreadOwnershipNotices(
+      deps,
+      childThreadId,
+      previousParentThreadId,
+    ).catch((error) => {
+      deps.logger.error(
+        { childThreadId, err: error },
+        "Failed to send delayed ownership system messages",
+      );
+    });
+  }, THREAD_OWNERSHIP_NOTICE_DELAY_MS);
+  timer.unref();
+  pendingChanges.set(childThreadId, { previousParentThreadId, timer });
+}
+
+async function sendThreadOwnershipNotices(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  childThreadId: string,
+  previousParentThreadId: string | null,
+): Promise<void> {
+  const thread = getThread(deps.db, childThreadId);
+  if (
+    !thread ||
+    thread.deletedAt !== null ||
+    thread.archivedAt !== null ||
+    thread.parentThreadId === previousParentThreadId
+  ) {
+    return;
+  }
+
+  if (thread.parentThreadId) {
     await queueParentSystemMessageBestEffort(deps, {
-      childThreadId: args.updatedThread.id,
-      parentThreadId: args.updatedThread.parentThreadId,
+      childThreadId: thread.id,
+      parentThreadId: thread.parentThreadId,
       input: buildThreadOwnershipSystemInput(
         "systemMessageThreadOwnershipAssigned",
-        args.updatedThread,
+        thread,
       ),
       reason: "assigned",
       templateId: "systemMessageThreadOwnershipAssigned",
-      threadName: parentSystemThreadLabel(args.updatedThread),
+      threadName: parentSystemThreadLabel(thread),
     });
   }
-  if (args.previousThread.parentThreadId) {
+  if (previousParentThreadId) {
     await queueParentSystemMessageBestEffort(deps, {
-      childThreadId: args.updatedThread.id,
-      parentThreadId: args.previousThread.parentThreadId,
+      childThreadId: thread.id,
+      parentThreadId: previousParentThreadId,
       input: buildThreadOwnershipSystemInput(
         "systemMessageThreadOwnershipRemoved",
-        args.updatedThread,
+        thread,
       ),
       reason: "removed",
       templateId: "systemMessageThreadOwnershipRemoved",
-      threadName: parentSystemThreadLabel(args.updatedThread),
+      threadName: parentSystemThreadLabel(thread),
     });
   }
 }
@@ -153,10 +215,11 @@ export async function handleThreadOwnershipChange(
 function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
   deps: ThreadOwnershipTransactionDeps,
   args: ReleaseUnarchivedChildrenFromArchivedThreadArgs,
-): void {
+): Thread[] {
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThreadId,
   });
+  const released: Thread[] = [];
 
   for (const childThread of childThreads) {
     const updatedThread = updateThread(deps.db, deps.hub, childThread.id, {
@@ -172,7 +235,9 @@ function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
       previousParentThreadId: childThread.parentThreadId,
       nextParentThreadId: updatedThread.parentThreadId,
     });
+    released.push(updatedThread);
   }
+  return released;
 }
 
 export function archiveThreadAndReleaseChildren(
@@ -191,7 +256,7 @@ export function archiveThreadAndReleaseChildren(
         return null;
       }
 
-      releaseUnarchivedChildrenFromArchivedThreadInTransaction(
+      const released = releaseUnarchivedChildrenFromArchivedThreadInTransaction(
         {
           db: tx,
           hub: notificationBuffer,
@@ -202,11 +267,15 @@ export function archiveThreadAndReleaseChildren(
         },
       );
 
-      return archivedThread;
+      return { archivedThread, released };
     },
     { behavior: "immediate" },
   );
 
   notificationBuffer.flushInto(deps.hub);
-  return result;
+  if (result === null) return null;
+  for (const thread of result.released) {
+    emitPluginThreadParentChanged(thread, result.archivedThread.id);
+  }
+  return result.archivedThread;
 }

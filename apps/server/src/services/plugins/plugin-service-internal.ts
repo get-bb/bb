@@ -1,6 +1,7 @@
+import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
-import type { DbConnection } from "@bb/db";
+import type { DbConnection, HostRow } from "@bb/db";
 import type {
   DynamicTool,
   PendingInteraction,
@@ -18,7 +19,10 @@ import type {
 import type { ServerLogger } from "../../types.js";
 import type { TelemetryService } from "../system/telemetry.js";
 import type { NotificationHub } from "../../ws/hub.js";
-import type { BundledPluginRegistration } from "./builtin-registry.js";
+import type {
+  BundledPluginRegistration,
+  BundledPluginReplacement,
+} from "./builtin-registry.js";
 import type { PluginManifest } from "./manifest.js";
 import type {
   PluginApiHandle,
@@ -46,6 +50,7 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
+  moduleRootUrls: Set<string>;
 }
 
 export interface PluginHostArtifactSnapshot {
@@ -103,8 +108,11 @@ export interface PluginServiceDeps {
   dataDir: string;
   appVersion: string;
   bundledPlugins?: readonly BundledPluginRegistration[];
+  bundledPluginReplacements?: readonly BundledPluginReplacement[];
   watchBuiltinPluginSources?: boolean;
   loadTimeoutMs?: number;
+  /** How long an install waits for `bb.onInstall` handlers. Defaults to 30s. */
+  installHandlerTimeoutMs?: number;
   serviceStopTimeoutMs?: number;
   serviceRestartBaseMs?: number;
   mentionSearchTimeoutMs?: number;
@@ -206,16 +214,22 @@ export type PluginMentionResolveResult =
   | { ok: false; error: string };
 
 export interface PluginThreadEventEmitter {
+  emitEnvironmentRemoved(removal: EnvironmentRemoval): void;
   emitThreadEvents(threadId: string): void;
   emitTerminalInput(
     terminal: import("@bb/server-contract").TerminalSession,
   ): void;
+  emitHostDeleted(host: HostRow): void;
   emitThreadCreated(thread: Thread): void;
   emitThreadActive(thread: Thread): void;
   emitThreadIdle(thread: Thread): void;
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadUnarchived(thread: Thread): void;
+  emitThreadParentChanged(
+    thread: Thread,
+    previousParentThreadId: string | null,
+  ): void;
   emitThreadDeleted(thread: Thread): void;
   emitInteractionPending(thread: Thread, interaction: PendingInteraction): void;
   /**

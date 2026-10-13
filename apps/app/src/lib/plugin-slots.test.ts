@@ -77,6 +77,7 @@ describe("plugin slot store", () => {
         homepageSections: [
           { id: "three", title: "Three", component: SectionComponent },
         ],
+        composerCustomizations: [{ id: "replacement" }],
       }),
     );
 
@@ -85,6 +86,7 @@ describe("plugin slot store", () => {
       "three",
     ]);
     expect(snapshot.homepageSections[0]?.generation).toBe(2);
+    expect(snapshot.composerCustomizations[0]?.generation).toBe(2);
   });
 
   it("keeps New thread actions separate from thread-scoped actions", () => {
@@ -108,29 +110,6 @@ describe("plugin slot store", () => {
     expect(snapshot.newThreadPanelActions.map((action) => action.id)).toEqual([
       "compose",
     ]);
-  });
-
-  it("replaces composer customizations wholesale with generation metadata", () => {
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        composerCustomizations: [{ id: "first" }, { id: "second" }],
-      }),
-    );
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        composerCustomizations: [{ id: "replacement" }],
-      }),
-    );
-
-    expect(
-      getPluginSlotSnapshot().composerCustomizations.map((registration) => ({
-        id: registration.id,
-        pluginId: registration.pluginId,
-        generation: registration.generation,
-      })),
-    ).toEqual([{ id: "replacement", pluginId: "demo", generation: 2 }]);
   });
 
   it("removes a plugin's registrations and notifies subscribers", () => {
@@ -196,31 +175,6 @@ describe("plugin slot store", () => {
       { pluginId: "alpha", id: "chart", generation: 1 },
       { pluginId: "zeta", id: "z-vis", generation: 1 },
     ]);
-  });
-
-  it("replaces and removes messageDirectives on reload/uninstall", () => {
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        messageDirectives: [
-          { id: "inline-vis", component: DirectiveComponent },
-        ],
-      }),
-    );
-    setPluginSlotRegistrations(
-      "demo",
-      registrationSet({
-        messageDirectives: [{ id: "chart", component: DirectiveComponent }],
-      }),
-    );
-
-    let snapshot = getPluginSlotSnapshot();
-    expect(snapshot.messageDirectives.map((d) => d.id)).toEqual(["chart"]);
-    expect(snapshot.messageDirectives[0]?.generation).toBe(2);
-
-    removePluginSlotRegistrations("demo");
-    snapshot = getPluginSlotSnapshot();
-    expect(snapshot.messageDirectives).toHaveLength(0);
   });
 });
 

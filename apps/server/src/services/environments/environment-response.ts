@@ -1,8 +1,15 @@
-import type { EnvironmentRow } from "@bb/db";
-import type {
-  Environment,
-  EnvironmentWorkspaceDisplayKind,
-  WorkspaceProvisionType,
+import {
+  getHost,
+  listHostsByIds,
+  type DbConnection,
+  type EnvironmentRow,
+} from "@bb/db";
+import {
+  resolveEnvironmentHostLifecycle,
+  type Environment,
+  type EnvironmentHostLifecycle,
+  type EnvironmentWorkspaceDisplayKind,
+  type WorkspaceProvisionType,
 } from "@bb/domain";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "./environment-provider-ids.js";
 
@@ -48,7 +55,37 @@ export function resolveEnvironmentWorkspaceDisplayKind(
   return "other";
 }
 
-export function toEnvironmentResponse(row: EnvironmentRow): Environment {
+export function toEnvironmentResponse(
+  db: DbConnection,
+  row: EnvironmentRow,
+): Environment {
+  return toEnvironmentResponseWithHostLifecycle(
+    row,
+    resolveEnvironmentHostLifecycle(getHost(db, row.hostId)),
+  );
+}
+
+export function toEnvironmentResponses(
+  db: DbConnection,
+  rows: readonly EnvironmentRow[],
+): Environment[] {
+  const hostById = new Map(
+    listHostsByIds(db, [...new Set(rows.map((row) => row.hostId))]).map(
+      (host) => [host.id, host],
+    ),
+  );
+  return rows.map((row) =>
+    toEnvironmentResponseWithHostLifecycle(
+      row,
+      resolveEnvironmentHostLifecycle(hostById.get(row.hostId) ?? null),
+    ),
+  );
+}
+
+function toEnvironmentResponseWithHostLifecycle(
+  row: EnvironmentRow,
+  hostLifecycle: EnvironmentHostLifecycle,
+): Environment {
   return {
     id: row.id,
     name: row.name,
@@ -84,6 +121,7 @@ export function toEnvironmentResponse(row: EnvironmentRow): Environment {
                 : { message: row.teardownMessage }),
             },
     },
+    hostLifecycle,
     environmentProviderSelection: row.environmentProviderSelection,
     environmentProviderInstanceKey: row.environmentProviderInstanceKey,
     managed: row.providerOwnsPath,

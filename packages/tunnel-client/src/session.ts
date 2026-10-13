@@ -21,6 +21,9 @@ import type { TunnelClientLogger } from "./logger.js";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const HEARTBEAT_DEADLINE_MS = 60_000;
+const HEARTBEAT_LATE_TICK_MS = HEARTBEAT_INTERVAL_MS + 5_000;
+const SEND_BUFFER_HIGH_WATER_BYTES = 1024 * 1024;
+const SEND_BUFFER_POLL_MS = 10;
 
 const UNREGISTERED_PORT_BODY = "this port is not shared";
 const textEncoder = new TextEncoder();
@@ -108,6 +111,16 @@ interface ResolvedStreamOrigin {
   host?: string;
 }
 
+export interface TunnelSessionSnapshot {
+  openHttpStreams: number;
+  openWsStreams: number;
+  bytesReceived: number;
+  bytesSent: number;
+  lastReceivedAgeMs: number | null;
+  lastSentAgeMs: number | null;
+  bufferedBytes: number;
+}
+
 export type StreamOriginResult =
   | { kind: "ok"; resolved: ResolvedStreamOrigin }
   | { kind: "unregistered" };
@@ -118,14 +131,22 @@ interface TunnelSessionOptions {
   resolveOrigin: (target: string | undefined) => StreamOriginResult;
   onRemoteClientsChange?: (remoteClients: number) => void;
   onActivity?: (at: number) => void;
+  monotonicNow?: () => number;
 }
 
 export class TunnelSession {
   private readonly httpStreams = new Map<number, HttpStream>();
   private readonly wsStreams = new Map<number, WsStream>();
   private lastAck = Date.now();
+  private lastReceivedAckAt: number | null = null;
+  private lastHeartbeatTickAt = 0;
+  private stallGraceSinceAck = false;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private remoteClientCount = 0;
+  private bytesReceived = 0;
+  private bytesSent = 0;
+  private lastReceivedAt: number | null = null;
+  private lastSentAt: number | null = null;
   lastRemoteActivityAt: number | null = null;
 
   constructor(private readonly options: TunnelSessionOptions) {}
@@ -134,20 +155,57 @@ export class TunnelSession {
     return this.remoteClientCount;
   }
 
+  get lastHeartbeatAckAt(): number | null {
+    return this.lastReceivedAckAt;
+  }
+
+  snapshot(now: number): TunnelSessionSnapshot {
+    return {
+      openHttpStreams: this.httpStreams.size,
+      openWsStreams: this.wsStreams.size,
+      bytesReceived: this.bytesReceived,
+      bytesSent: this.bytesSent,
+      lastReceivedAgeMs:
+        this.lastReceivedAt === null ? null : now - this.lastReceivedAt,
+      lastSentAgeMs: this.lastSentAt === null ? null : now - this.lastSentAt,
+      bufferedBytes: this.options.tunnel.bufferedAmount,
+    };
+  }
+
   start(): void {
     const { tunnel } = this.options;
+    const monotonicNow = this.options.monotonicNow ?? (() => performance.now());
+    this.lastAck = Date.now();
+    this.lastReceivedAckAt = null;
+    this.lastHeartbeatTickAt = monotonicNow();
     this.heartbeat = setInterval(() => {
-      if (Date.now() - this.lastAck > HEARTBEAT_DEADLINE_MS) {
+      const tickAt = monotonicNow();
+      const tickGapMs = tickAt - this.lastHeartbeatTickAt;
+      this.lastHeartbeatTickAt = tickAt;
+      const now = Date.now();
+      if (tickGapMs > HEARTBEAT_LATE_TICK_MS && !this.stallGraceSinceAck) {
+        this.options.log.warn(
+          `event loop stalled for ${Math.round(tickGapMs / 1000)}s; restarting the tunnel heartbeat deadline`,
+        );
+        this.lastAck = now;
+        this.stallGraceSinceAck = true;
+      } else if (now - this.lastAck > HEARTBEAT_DEADLINE_MS) {
         this.options.log.warn("tunnel heartbeat missed; reconnecting");
         tunnel.terminate();
         return;
       }
-      tunnel.send(HEARTBEAT_REQUEST);
+      this.sendRaw(HEARTBEAT_REQUEST, Buffer.byteLength(HEARTBEAT_REQUEST));
     }, HEARTBEAT_INTERVAL_MS);
 
     tunnel.on("message", (data: Buffer, isBinary: boolean) => {
+      this.bytesReceived += data.byteLength;
+      this.lastReceivedAt = Date.now();
       if (!isBinary) {
-        if (data.toString() === HEARTBEAT_RESPONSE) this.lastAck = Date.now();
+        if (data.toString() === HEARTBEAT_RESPONSE) {
+          this.lastAck = Date.now();
+          this.lastReceivedAckAt = this.lastAck;
+          this.stallGraceSinceAck = false;
+        }
         return;
       }
       try {
@@ -189,8 +247,26 @@ export class TunnelSession {
 
   private send(frame: Frame): void {
     if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
-      this.options.tunnel.send(encodeFrame(frame));
+      const encoded = encodeFrame(frame);
+      this.sendRaw(encoded, encoded.byteLength);
     }
+  }
+
+  private async waitForSendBuffer(signal: AbortSignal): Promise<void> {
+    const { tunnel } = this.options;
+    while (
+      !signal.aborted &&
+      tunnel.readyState === NodeWebSocket.OPEN &&
+      tunnel.bufferedAmount > SEND_BUFFER_HIGH_WATER_BYTES
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, SEND_BUFFER_POLL_MS));
+    }
+  }
+
+  private sendRaw(data: string | Uint8Array, byteLength: number): void {
+    this.options.tunnel.send(data);
+    this.bytesSent += byteLength;
+    this.lastSentAt = Date.now();
   }
 
   private onFrame(frame: Frame): void {
@@ -316,6 +392,7 @@ export class TunnelSession {
           chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
         responseBytes += value.byteLength;
         for (const frame of chunkBody(streamId, value)) this.send(frame);
+        await this.waitForSendBuffer(stream.abort.signal);
       }
       this.send({ type: "body-end", streamId });
       if (initialThreadLoad) {
@@ -335,6 +412,9 @@ export class TunnelSession {
       }
     } catch (e) {
       if (!stream.abort.signal.aborted) {
+        this.options.log.warn(
+          `origin http error on ${meta.method} ${new URL(meta.path, "http://bb.local").pathname}: ${String(e)}`,
+        );
         this.send({
           type: "close-stream",
           streamId,

@@ -1,0 +1,136 @@
+import {
+  useId,
+  type KeyboardEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import { PaletteModeChip, type PaletteModeChipProps } from "./PaletteModeChip";
+import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
+
+export const PALETTE_SECTION_LABEL_CLASS =
+  "px-2 py-1 text-xs font-normal leading-5 text-subtle-foreground";
+
+export function PaletteShortcut({ children }: { children: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="pointer-events-none inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-sm bg-state-hover/50 px-1.5 py-1 font-sans text-xs font-normal leading-none tabular-nums text-subtle-foreground"
+    >
+      {children}
+    </kbd>
+  );
+}
+
+interface PaletteShellProps {
+  activeDescendantId?: string;
+  children: ReactNode;
+  inputDescription: string;
+  inputLabel: string;
+  inputRef?: Ref<HTMLInputElement>;
+  listId: string;
+  listLabel: string;
+  listRef?: Ref<HTMLDivElement>;
+  modeChip?: PaletteModeChipProps;
+  inputAccessory?: ReactNode;
+  onInputChange: (value: string) => void;
+  onInputKeyDown: KeyboardEventHandler<HTMLInputElement>;
+  placeholder: string;
+  value: string;
+}
+
+export function PaletteShell({
+  activeDescendantId,
+  children,
+  inputDescription,
+  inputLabel,
+  inputRef,
+  listId,
+  listLabel,
+  listRef,
+  modeChip,
+  inputAccessory,
+  onInputChange,
+  onInputKeyDown,
+  placeholder,
+  value,
+}: PaletteShellProps) {
+  const isCompact = useIsCompactViewport();
+  const inputDescriptionId = useId();
+  const overflow = useScrollOverflowState<HTMLDivElement>({
+    measureOverflow: true,
+  });
+  const composedListRef = useComposedRefs(listRef, overflow.scrollRef);
+  const resultsMask =
+    overflow.aboveOverflow && overflow.belowOverflow
+      ? "linear-gradient(to bottom, transparent 0, black 1.5rem, black calc(100% - 1.5rem), transparent 100%)"
+      : overflow.aboveOverflow
+        ? "linear-gradient(to bottom, transparent 0, black 1.5rem, black 100%)"
+        : overflow.belowOverflow
+          ? "linear-gradient(to bottom, black 0, black calc(100% - 1.5rem), transparent 100%)"
+          : undefined;
+
+  return (
+    <TooltipProvider>
+      <PaletteInputBand>
+        {modeChip === undefined ? null : <PaletteModeChip {...modeChip} />}
+        <input
+          ref={inputRef}
+          autoFocus
+          role="combobox"
+          aria-expanded
+          aria-controls={listId}
+          aria-activedescendant={activeDescendantId}
+          aria-describedby={inputDescriptionId}
+          aria-label={inputLabel}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onInputChange(event.target.value)}
+          onKeyDown={onInputKeyDown}
+        />
+        <span id={inputDescriptionId} className="sr-only">
+          {inputDescription}
+        </span>
+        {inputAccessory}
+      </PaletteInputBand>
+      <div
+        className="relative min-h-0 overflow-hidden rounded-b-[inherit] bg-background"
+        data-palette-results-clip
+      >
+        <div
+          ref={composedListRef}
+          id={listId}
+          role="listbox"
+          aria-label={listLabel}
+          className={`${isCompact ? "h-full" : "max-h-[min(24rem,50dvh)]"} overflow-y-auto p-1`}
+          style={{
+            WebkitMaskImage: resultsMask,
+            maskImage: resultsMask,
+          }}
+          data-palette-results-viewport
+        >
+          <div
+            ref={overflow.topSentinelRef}
+            aria-hidden
+            className="-mb-px h-px w-full"
+            data-palette-scroll-sentinel="top"
+          />
+          {children}
+          <div
+            ref={overflow.bottomSentinelRef}
+            aria-hidden
+            className="h-px w-full"
+            data-palette-scroll-sentinel="bottom"
+          />
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}

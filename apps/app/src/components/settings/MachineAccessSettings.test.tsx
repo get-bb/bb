@@ -41,7 +41,9 @@ it("follows access availability through setup, readiness, revocation, and recove
     </MemoryRouter>
   );
   const rendered = render(view());
-  expect(screen.getByText("Pair the relay")).toBeTruthy();
+  expect(
+    screen.getByRole("link", { name: "Set up Relay" }).getAttribute("href"),
+  ).toBe("/settings/plugins/relay-plugin");
   expect(screen.queryByText("Ready")).toBeNull();
   const provider = state.config.serverAccess.providers[0]!;
   provider.availability = {
@@ -62,11 +64,13 @@ it("follows access availability through setup, readiness, revocation, and recove
   provider.availability = { status: "available" };
   rendered.rerender(view());
   expect(screen.getByText("Ready")).toBeTruthy();
-  expect(screen.getByText("Ready to add machines.")).toBeTruthy();
+  expect(screen.getByText("Ready to connect devices.")).toBeTruthy();
   state.config.serverAccess.providers = [];
   rendered.rerender(view());
   expect(
-    screen.getByText("This connection method is not installed."),
+    screen.getByText(
+      "This connection method is not installed. Choose another method above.",
+    ),
   ).toBeTruthy();
   expect(screen.queryByText("Ready")).toBeNull();
 });

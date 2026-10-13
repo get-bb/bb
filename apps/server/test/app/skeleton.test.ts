@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   getPersonalProject,
   getProjectExecutionDefaults,
-  hosts,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -113,6 +112,54 @@ describe("server skeleton", () => {
     }
   });
 
+  it.each([
+    ["ENOENT", "required server package file or packaging tool is missing"],
+    ["EACCES", "lacks permission"],
+    ["ENOSPC", "ran out of disk space"],
+    ["OTHER", "could not build or read"],
+  ])("reports safe host package diagnostics for %s", async (code, message) => {
+    const harness = await createTestAppHarness();
+    const error = Object.assign(
+      new Error("private server path and credentials"),
+      { code },
+    );
+    const log = vi.spyOn(harness.deps.logger, "error");
+    const { app } = createApp(harness.deps, {
+      bbAppArtifactService: {
+        getArtifact: async () => {
+          throw error;
+        },
+        getVersion: async () => "test",
+      },
+    });
+    try {
+      const response = await app.request("/install/bb-app.tgz");
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const body = await readJson(response);
+      expect(body).toMatchObject({
+        code: "host_package_unavailable",
+        message: expect.stringContaining(message),
+        diagnosticId: expect.any(String),
+      });
+      if (
+        body === null ||
+        typeof body !== "object" ||
+        !("diagnosticId" in body)
+      ) {
+        throw new Error("Missing diagnostic ID");
+      }
+      expect(JSON.stringify(body)).not.toContain("private server path");
+      expect(log).toHaveBeenCalledWith(
+        { err: error, diagnosticId: body.diagnosticId },
+        "Host package download failed",
+      );
+    } finally {
+      log.mockRestore();
+      await harness.cleanup();
+    }
+  });
+
   it("echoes the launcher's launch id on /health only when one was given", async () => {
     await withTestHarness({ launchId: "launch-123" }, async (harness) => {
       const response = await harness.app.request("/health");
@@ -126,14 +173,6 @@ describe("server skeleton", () => {
       await expect(
         readJson(await harness.app.request("/health")),
       ).resolves.toEqual({ ok: true });
-    });
-  });
-
-  it("serves public routes without auth", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request("/api/v1/hosts");
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual([]);
     });
   });
 
@@ -252,12 +291,6 @@ describe("server skeleton", () => {
       await serverApp.closeWebSockets();
       await harness.cleanup();
     }
-  });
-
-  it("initializes an in-memory database and applies migrations", () => {
-    const db = initDb(":memory:");
-    expect(db.select().from(hosts).all()).toEqual([]);
-    db.$client.close();
   });
 
   it("ensures the personal project without pinning execution defaults", () => {

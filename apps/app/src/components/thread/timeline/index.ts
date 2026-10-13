@@ -16,7 +16,6 @@ export type {
   ThreadTimelineInlineMessageEditor,
   ThreadTimelineForkMessageHandler,
   ThreadTimelineAddToChatHandler,
-  ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLink,

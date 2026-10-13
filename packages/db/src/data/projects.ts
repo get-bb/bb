@@ -1,4 +1,6 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { prepareCachedQuery } from "../connection.js";
+import { hostPathEquals } from "./host-path-sql.js";
+import { and, asc, desc, eq, isNull, placeholder } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   DbConnection,
@@ -120,7 +122,7 @@ function getPublicProjectWithLocalPathSource(
           publicProjectFilter(),
           eq(projectSources.type, source.type),
           eq(projectSources.hostId, source.hostId),
-          eq(projectSources.path, source.path),
+          hostPathEquals(projectSources.path, source.path),
         ),
       )
       .orderBy(asc(projects.sortKey), asc(projects.id))
@@ -223,8 +225,15 @@ export function findOrCreateProjectByLocalPathSource(
   return { project, source: toProjectSource(source) };
 }
 
+const prepareGetProject = (db: DbQueryConnection) =>
+  db
+    .select()
+    .from(projects)
+    .where(eq(projects.id, placeholder("id")))
+    .prepare();
+
 export function getProject(db: DbConnection, id: string) {
-  return db.select().from(projects).where(eq(projects.id, id)).get() ?? null;
+  return prepareCachedQuery(db, prepareGetProject).get({ id }) ?? null;
 }
 
 export function getPersonalProject(db: DbConnection) {

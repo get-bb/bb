@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
+import { resolveBundledNpxCli } from "@bb/plugin-build";
 import matter from "gray-matter";
 import { ApiError } from "../../errors.js";
 import { REGISTRY_SKILL_NAME_PATTERN } from "./registry-parse.js";
@@ -56,16 +57,18 @@ function registrySkillsCliInvocation(args: {
           "USERPROFILE",
           "APPDATA",
           "LOCALAPPDATA",
+          "ELECTRON_RUN_AS_NODE",
         ]
-      : ["PATH", "HOME", "TMPDIR"];
+      : ["PATH", "HOME", "TMPDIR", "ELECTRON_RUN_AS_NODE"];
   const env: NodeJS.ProcessEnv = { DISABLE_TELEMETRY: "1" };
   for (const key of allowedKeys) {
     const value = process.env[key];
     if (value !== undefined) env[key] = value;
   }
   return {
-    command: process.platform === "win32" ? "npx.cmd" : "npx",
+    command: process.execPath,
     args: [
+      resolveBundledNpxCli(),
       "-y",
       `skills@${REGISTRY_SKILLS_CLI_VERSION}`,
       "add",

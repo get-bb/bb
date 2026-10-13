@@ -102,7 +102,6 @@ interface QueuedAnimationFrames {
 
 interface RenderLayoutArgs {
   collapseActive?: boolean;
-  compactPresentation?: "shelf" | "full";
   isCompactViewport: boolean;
   onClose?: () => void;
   isFocusedHosted?: boolean;
@@ -172,7 +171,6 @@ function renderLayout(args: RenderLayoutArgs) {
           }
           renderPanel={renderArgs.renderPanel}
           composerHost={null}
-          compactPresentation={renderArgs.compactPresentation ?? "shelf"}
         />
       </CompactViewportOverrideProvider>,
       renderArgs.isFocusedHosted,

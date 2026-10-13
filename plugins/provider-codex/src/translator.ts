@@ -5,12 +5,12 @@ import {
   type ThreadEventItemStatus,
   extractResultText,
   type PreparedProviderCommandDispatch,
-  type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  normalizeCodexRateLimits,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
@@ -24,6 +24,7 @@ import {
   codexSubAgentActivityItemSchema,
   codexThreadClosedParamsSchema,
   type CodexSubAgentActivityItem,
+  type CodexTurn,
 } from "./schemas.js";
 import {
   buildCodexConfig,
@@ -35,6 +36,15 @@ import {
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
 import { subAgentPresentation } from "./presentation.js";
+
+const codexTurnLifecyclePeekSchema = z
+  .object({
+    threadId: z.string(),
+    turn: z.object({ id: z.string() }).passthrough(),
+  })
+  .passthrough();
+
+const MAX_RESPONSE_HANDLED_TURNS_PER_THREAD = 256;
 
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
@@ -377,6 +387,10 @@ export function createCodexEventTranslator(
     string,
     ClientTurnRequestId[]
   >();
+  const responseHandledTurnsByThreadId = new Map<
+    string,
+    Map<string, { started: boolean; completed: boolean }>
+  >();
   const pendingWorkspaceWriteGitWritableRootsByThreadId = new Map<
     string,
     string[]
@@ -555,6 +569,7 @@ export function createCodexEventTranslator(
     providerThreadId: string;
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
+    responseHandledTurnsByThreadId.delete(providerThreadId);
     return clearCodexDelegationParentState(providerThreadId);
   }
 
@@ -661,6 +676,94 @@ export function createCodexEventTranslator(
       args.providerThreadId,
       nextSequences,
     );
+  }
+
+  function openTurnFromStartResponse(args: {
+    providerThreadId: string;
+    turn: CodexTurn;
+    clientRequestId: ClientTurnRequestId;
+    turnAlreadyOpen: boolean;
+  }): ThreadDelta[] {
+    const { providerThreadId, turn, clientRequestId, turnAlreadyOpen } = args;
+    const queued =
+      nativeTurnStartClientRequestIdsByProviderThreadId.get(providerThreadId);
+    if (queued?.[0] !== clientRequestId) {
+      return [];
+    }
+    if (turnAlreadyOpen) {
+      removeNativeTurnStartClientRequestId({
+        clientRequestId,
+        providerThreadId,
+      });
+      return [
+        { kind: "input.accepted", clientRequestId, providerTurnId: turn.id },
+      ];
+    }
+    const startedDeltas = translateEvent({
+      jsonrpc: "2.0",
+      method: "turn/started",
+      params: { threadId: providerThreadId, turn },
+    });
+    if (turn.status === "inProgress") {
+      recordResponseHandledTurn(providerThreadId, turn.id, false);
+      return startedDeltas;
+    }
+    const settledDeltas = translateEvent({
+      jsonrpc: "2.0",
+      method: "turn/completed",
+      params: { threadId: providerThreadId, turn },
+    });
+    recordResponseHandledTurn(providerThreadId, turn.id, true);
+    return [...startedDeltas, ...settledDeltas];
+  }
+
+  function recordResponseHandledTurn(
+    providerThreadId: string,
+    turnId: string,
+    completed: boolean,
+  ): void {
+    const turns =
+      responseHandledTurnsByThreadId.get(providerThreadId) ??
+      new Map<string, { started: boolean; completed: boolean }>();
+    turns.set(turnId, { started: true, completed });
+    if (turns.size > MAX_RESPONSE_HANDLED_TURNS_PER_THREAD) {
+      const oldest = turns.keys().next().value;
+      if (oldest !== undefined) {
+        turns.delete(oldest);
+      }
+    }
+    responseHandledTurnsByThreadId.set(providerThreadId, turns);
+  }
+
+  function consumeResponseHandledTurnLifecycle(
+    event: ProviderRuntimeEvent,
+  ): boolean {
+    const boundary =
+      event.method === "turn/started"
+        ? "started"
+        : event.method === "turn/completed"
+          ? "completed"
+          : null;
+    if (boundary === null) {
+      return false;
+    }
+    const parsed = codexTurnLifecyclePeekSchema.safeParse(event.params);
+    if (!parsed.success) {
+      return false;
+    }
+    const turns = responseHandledTurnsByThreadId.get(parsed.data.threadId);
+    const turn = turns?.get(parsed.data.turn.id);
+    if (!turn?.[boundary]) {
+      return false;
+    }
+    turn[boundary] = false;
+    if (!turn.started && !turn.completed) {
+      turns?.delete(parsed.data.turn.id);
+      if (turns?.size === 0) {
+        responseHandledTurnsByThreadId.delete(parsed.data.threadId);
+      }
+    }
+    return true;
   }
 
   function shiftNativeTurnStartClientRequestId(
@@ -1111,10 +1214,12 @@ export function createCodexEventTranslator(
     if (!tracked.terminal) {
       return [];
     }
-    const wasOpen = isTrackedSubAgentOpen(tracked);
+    if (!isTrackedSubAgentOpen(tracked)) {
+      return beginCodexTrackedSubAgent(activity);
+    }
     tracked.pendingFollowups += 1;
     rearmTrackedSubAgent(tracked);
-    return wasOpen ? [] : [buildCodexSubAgentOpenDelta(tracked)];
+    return [];
   }
 
   function hasConsumablePendingDelegationLink(args: {
@@ -1506,36 +1611,47 @@ export function createCodexEventTranslator(
     return repairedDeltas;
   }
 
-  function buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[] {
+  function resetRateLimits(): void {
+    eventTranslationState.rateLimitsByLimitId.clear();
+    eventTranslationState.latestRateLimitId = "codex";
+  }
+
+  function recoverRateLimits(
+    response: z.output<typeof codexRateLimitReadResponseSchema> | null,
+  ): ThreadDelta[] {
+    const preferredLimitId = eventTranslationState.latestRateLimitId;
+    eventTranslationState.rateLimitsByLimitId.clear();
+    const snapshots = response?.rateLimitsByLimitId ?? null;
+    if (response === null) {
+      applyCodexRateLimitUpdate(eventTranslationState, {
+        limitId: preferredLimitId,
+      });
+    } else if (snapshots === null || Object.keys(snapshots).length === 0) {
+      applyCodexRateLimitUpdate(eventTranslationState, response.rateLimits);
+    } else {
+      for (const [limitId, snapshot] of Object.entries(snapshots)) {
+        applyCodexRateLimitUpdate(eventTranslationState, {
+          ...snapshot,
+          limitId: snapshot.limitId ?? limitId,
+        });
+      }
+    }
+    eventTranslationState.latestRateLimitId = preferredLimitId;
     return [
       {
-        plan: {
-          kind: "request" as const,
-          method: "account/rateLimits/read",
-        },
-        required: false,
-        onResult(result: unknown) {
-          const response = codexRateLimitReadResponseSchema.parse(result);
-          const snapshots = response.rateLimitsByLimitId;
-          if (snapshots === null || Object.keys(snapshots).length === 0) {
-            applyCodexRateLimitUpdate(
-              eventTranslationState,
-              response.rateLimits,
-            );
-            return;
-          }
-          for (const [limitId, snapshot] of Object.entries(snapshots)) {
-            applyCodexRateLimitUpdate(eventTranslationState, {
-              ...snapshot,
-              limitId: snapshot.limitId ?? limitId,
-            });
-          }
-        },
+        kind: "provider.rateLimits",
+        rateLimits: normalizeCodexRateLimits(
+          eventTranslationState,
+          preferredLimitId,
+        ),
       },
     ];
   }
 
   function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
+    if (consumeResponseHandledTurnLifecycle(event)) {
+      return [];
+    }
     const closedThreadDeltas = clearClosedThreadState(event);
     if (closedThreadDeltas.length > 0) {
       return closedThreadDeltas;
@@ -1575,10 +1691,12 @@ export function createCodexEventTranslator(
 
   return {
     activateThreadGitWritableRoots,
-    buildPostInitializeRequests,
+    recoverRateLimits,
+    resetRateLimits,
     clearExitedChildThreadState,
     configureInjectedTools,
     getThreadGitWritableRoots,
+    openTurnFromStartResponse,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,

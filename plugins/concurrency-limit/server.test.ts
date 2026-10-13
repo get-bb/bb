@@ -139,13 +139,6 @@ describe("configuration", () => {
     const { harness } = await setup();
 
     expect(harness.registrations.settingsDescriptors).toEqual({});
-    expect(harness.registrations.rpcMethods).toEqual([
-      "getConfiguration",
-      "setConfiguration",
-    ]);
-    expect(
-      harness.registrations.services.map((service) => service.name),
-    ).toEqual(["capacity-detector"]);
   });
 
   it("returns each host's detected automatic limit and retained offline capacity", async () => {
@@ -331,6 +324,39 @@ describe("configuration", () => {
     await expect(
       harness.behavior.runCli(["global", "1.5"]),
     ).resolves.toMatchObject({ exitCode: 1 });
+  });
+
+  it("documents the limit range in help and reports errors as JSON", async () => {
+    const { harness } = await setup({
+      hosts: [hostRecord("host-a", "connected", "Laptop")],
+      capacities: [{ hostId: "host-a", availableParallelism: 8 }],
+    });
+
+    const help = (await harness.behavior.runCli(["host", "--help"])).stdout;
+    expect(help).toContain("bb concurrency-limit host");
+    expect(help).toContain("0 to 10000");
+
+    const envelope = await harness.behavior.runCli([
+      "host",
+      "host-b",
+      "--json",
+    ]);
+    expect(envelope.exitCode).toBe(1);
+    expect(JSON.parse(envelope.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: "unknown_host",
+        message: "Unknown host: host-b",
+        hint: "Run `bb machine list` for the enrolled host ids.",
+      },
+    });
+    expect(envelope.stderr).toContain("Unknown host: host-b");
+
+    const badLimit = await harness.behavior.runCli(["host", "host-a", "many"]);
+    expect(badLimit.exitCode).toBe(1);
+    expect(badLimit.stderr).toContain(
+      "Limit must be auto or a whole number from 0 to 10000",
+    );
   });
 });
 

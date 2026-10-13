@@ -1,3 +1,5 @@
+import { sliceUtf16Head } from "@bb/text-utils";
+
 const TERMINAL_TITLE_MAX_LENGTH = 200;
 
 interface NormalizeTerminalTitleArgs {
@@ -16,7 +18,7 @@ export function normalizeTerminalTitle({
     return null;
   }
 
-  return trimmedTitle.slice(0, TERMINAL_TITLE_MAX_LENGTH);
+  return sliceUtf16Head(trimmedTitle, TERMINAL_TITLE_MAX_LENGTH);
 }
 
 function isShellPathTitle(title: string): boolean {

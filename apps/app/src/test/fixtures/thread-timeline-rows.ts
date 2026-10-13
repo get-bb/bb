@@ -305,7 +305,7 @@ interface SystemRowBase extends TimelineRowBase {
 
 interface DelegationRowArgs extends RowBaseOverrideArgs {
   callId?: string;
-  childRows?: TimelineRow[];
+  childRows?: TimelineRow[] | null;
   description?: string | null;
   durationMs?: number | null;
   id?: string;
@@ -477,6 +477,7 @@ export function conversationRow({
     return {
       ...rowBase,
       kind: "conversation",
+      messageSeq: rowBase.sourceSeqEnd,
       role,
       text,
       mentions: [],
@@ -500,6 +501,7 @@ export function conversationRow({
   return {
     ...rowBase,
     kind: "conversation",
+    messageSeq: rowBase.sourceSeqEnd,
     role,
     text,
     attachments,

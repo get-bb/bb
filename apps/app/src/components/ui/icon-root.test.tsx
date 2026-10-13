@@ -76,9 +76,9 @@ describe("icon root marker", () => {
     expect(custom.container.querySelectorAll("[data-icon-root]")).toHaveLength(
       1,
     );
-    expect(
-      custom.container.querySelector("[data-icon-root]")?.tagName,
-    ).toBe("SPAN");
+    expect(custom.container.querySelector("[data-icon-root]")?.tagName).toBe(
+      "SPAN",
+    );
     cleanup();
 
     const mask = render(<PluginCompactIconMask url="/duck.svg" />);

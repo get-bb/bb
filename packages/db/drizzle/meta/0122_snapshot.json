@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "86432883-d8b9-49f2-b059-c196dbc0d309",
-  "prevId": "fff17f7f-b6ad-4fc3-89c1-363790347638",
+  "id": "400e2766-2c16-45b2-bd9b-694329a06a0b",
+  "prevId": "b397e64e-ad43-4c17-a389-538af608fb6e",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -2596,6 +2596,272 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "project_attachment_backfills": {
+      "name": "project_attachment_backfills",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "thread_cursor": {
+          "name": "thread_cursor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_cursor": {
+          "name": "input_cursor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_id": {
+          "name": "input_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_sequence": {
+          "name": "input_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempted_at": {
+          "name": "attempted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "project_attachment_backfills_project_id_projects_id_fk": {
+          "name": "project_attachment_backfills_project_id_projects_id_fk",
+          "tableFrom": "project_attachment_backfills",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_attachment_threads": {
+      "name": "project_attachment_threads",
+      "columns": {
+        "attachment_id": {
+          "name": "attachment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_attachment_threads_thread_idx": {
+          "name": "project_attachment_threads_thread_idx",
+          "columns": [
+            "thread_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_attachment_threads_attachment_id_project_attachments_id_fk": {
+          "name": "project_attachment_threads_attachment_id_project_attachments_id_fk",
+          "tableFrom": "project_attachment_threads",
+          "tableTo": "project_attachments",
+          "columnsFrom": [
+            "attachment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_attachment_threads_thread_id_threads_id_fk": {
+          "name": "project_attachment_threads_thread_id_threads_id_fk",
+          "tableFrom": "project_attachment_threads",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "project_attachment_threads_attachment_id_thread_id_pk": {
+          "columns": [
+            "attachment_id",
+            "thread_id"
+          ],
+          "name": "project_attachment_threads_attachment_id_thread_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_attachments": {
+      "name": "project_attachments",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stored_path": {
+          "name": "stored_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "original_name": {
+          "name": "original_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ready_at": {
+          "name": "ready_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deletion_claimed_at": {
+          "name": "deletion_claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "project_attachments_project_path_idx": {
+          "name": "project_attachments_project_path_idx",
+          "columns": [
+            "project_id",
+            "stored_path"
+          ],
+          "isUnique": true
+        },
+        "project_attachments_project_created_idx": {
+          "name": "project_attachments_project_created_idx",
+          "columns": [
+            "project_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "project_attachments_deletion_idx": {
+          "name": "project_attachments_deletion_idx",
+          "columns": [
+            "project_id",
+            "deletion_claimed_at",
+            "id"
+          ],
+          "isUnique": false,
+          "where": "\"project_attachments\".\"deletion_claimed_at\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {
+        "project_attachments_project_id_projects_id_fk": {
+          "name": "project_attachments_project_id_projects_id_fk",
+          "tableFrom": "project_attachments",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "project_attachments_size_check": {
+          "name": "project_attachments_size_check",
+          "value": "\"project_attachments\".\"size_bytes\" >= 0"
+        }
+      }
+    },
     "project_execution_defaults": {
       "name": "project_execution_defaults",
       "columns": {
@@ -4086,6 +4352,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "lifecycle_owner_thread_id": {
+          "name": "lifecycle_owner_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "source_thread_id": {
           "name": "source_thread_id",
           "type": "text",
@@ -4164,22 +4437,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "status_changed_at": {
-          "name": "status_changed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "awaiting_user_reply": {
-          "name": "awaiting_user_reply",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -4196,6 +4453,14 @@
         }
       },
       "indexes": {
+        "threads_project_id_idx": {
+          "name": "threads_project_id_idx",
+          "columns": [
+            "project_id",
+            "id"
+          ],
+          "isUnique": false
+        },
         "threads_project_updated_idx": {
           "name": "threads_project_updated_idx",
           "columns": [
@@ -4229,6 +4494,13 @@
           "name": "threads_environment_idx",
           "columns": [
             "environment_id"
+          ],
+          "isUnique": false
+        },
+        "threads_lifecycle_owner_idx": {
+          "name": "threads_lifecycle_owner_idx",
+          "columns": [
+            "lifecycle_owner_thread_id"
           ],
           "isUnique": false
         },
@@ -4342,6 +4614,19 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "threads_lifecycle_owner_thread_id_threads_id_fk": {
+          "name": "threads_lifecycle_owner_thread_id_threads_id_fk",
+          "tableFrom": "threads",
+          "tableTo": "threads",
+          "columnsFrom": [
+            "lifecycle_owner_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "threads_source_thread_id_threads_id_fk": {

@@ -1,14 +1,8 @@
 import { z } from "zod";
 import { parseJsonDocument } from "../plugins/collection-manifest.js";
-import {
-  boundedResponseBytes,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
-  type MarketplaceFetch,
-} from "./marketplace-http.js";
+import type { MarketplaceFetch } from "./marketplace-http.js";
 
 const MARKETPLACE_STATS_FILENAME = "stats.json";
-
-const MARKETPLACE_STATS_MAX_BYTES = 512 * 1024;
 
 const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 
@@ -74,7 +68,6 @@ export async function fetchMarketplaceStats(args: {
     method: "GET",
     headers: new Headers({ accept: "application/json" }),
     redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
   });
   if (response.status === 404) {
     await response.body?.cancel();
@@ -84,12 +77,6 @@ export async function fetchMarketplaceStats(args: {
     await response.body?.cancel();
     throw new Error(`request failed with HTTP ${response.status}`);
   }
-  const raw = new TextDecoder().decode(
-    await boundedResponseBytes(
-      response,
-      MARKETPLACE_STATS_MAX_BYTES,
-      "marketplace install counts",
-    ),
-  );
+  const raw = await response.text();
   return parseMarketplaceStatsJson(raw, "marketplace install counts");
 }

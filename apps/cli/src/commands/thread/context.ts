@@ -34,6 +34,11 @@ export function registerContextCommand(
           console.log(
             `${usage.estimated ? "Estimated context" : "Context window"}: ${count(usage.usedTokens)} / ${count(usage.modelContextWindow)} tokens`,
           );
+          if (usage.cost) {
+            console.log(
+              `Session cost: ${usage.cost.amount} ${usage.cost.currency}`,
+            );
+          }
           if (!usage.snapshot) return;
           console.log(`Captured: ${usage.snapshot.capturedAt}`);
           for (const category of usage.snapshot.categories) {

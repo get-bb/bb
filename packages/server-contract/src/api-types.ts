@@ -1,5 +1,6 @@
 export * from "./api/shared.js";
 export * from "./api/projects.js";
+export * from "./api/prompt-history.js";
 export * from "./api/skills.js";
 export * from "./api/environments.js";
 export * from "./api/files.js";
@@ -10,3 +11,4 @@ export * from "./api/ui-preferences.js";
 export * from "./api/terminals.js";
 export * from "./api/threads.js";
 export * from "./api/desktop-browsers.js";
+export * from "./api/server-move.js";

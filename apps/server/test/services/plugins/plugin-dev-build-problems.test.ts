@@ -14,6 +14,7 @@ async function createRuntime() {
   migrate(db);
   return createPluginRuntime({
     machineEnrollments: null,
+    includedBuiltinNames: new Set(),
     deps: {
       db,
       hub: {

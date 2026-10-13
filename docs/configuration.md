@@ -12,13 +12,19 @@ Use `bb-app config` for non-secret bb settings:
 
 ```bash
 npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
-npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
-npx bb-app config set BB_INFERENCE_FALLBACK codex/gpt-5.4-mini
-npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
 npx bb-app config unset BB_APP_URL
 npx bb-app config refresh
 ```
+
+BB accepts request hosts that are `localhost`, IP addresses (including LAN and
+Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or reverse
+proxy, set `npx bb-app config set BB_APP_URL https://bb.example.com` before
+connecting, including from the CLI or SDK. A matching `Host` and `Origin`, or
+`X-Forwarded-Host`, cannot authorize an unconfigured DNS name. A proxy can
+preserve the configured host or forward to localhost. BB Connect rewrites
+requests to the local server address and needs no additional configuration.
+`BB_SERVER_BIND_HOST=0.0.0.0` remains supported for direct remote access.
 
 Use `bb-app env` for provider credentials and provider-specific environment:
 
@@ -35,6 +41,18 @@ Commit `.bb-env-teardown.sh` when bb must release external resources before it
 removes that worktree. See [Worktrees, setup scripts, and teardown
 scripts](worktrees.md) for the lifecycle, environment, timeout, and failure
 contracts.
+
+## Linux machine installer
+
+The machine installer normally installs a persistent systemd user service. If
+the current user's bus is unavailable, it retries using the runtime path from
+`loginctl`. On a systemd host it then fails before enrolling if the bus still
+cannot be reached. In containers and on machines without systemd as init, it
+runs a detached daemon instead. Set
+`BB_INSTALL_SKIP_SERVICE=1` on the installer command only when running without
+a service is intentional. No service starts the daemon after a reboot. The
+temporary daemon used for a first join is not supervised; a previously joined
+daemon started by the installer is supervised while its launcher runs.
 
 `bb-app config list` shows non-secret values. `bb-app env list` redacts every
 value and only shows whether a key is set.
@@ -78,11 +96,16 @@ over shell variables. The environment remains the internal and deployment
 substrate, and source-development commands still load `.env` files.
 
 For source development, `pnpm dev` automatically injects
-`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`. The
-Connect plugin accepts this loopback origin only when `NODE_ENV=development`
-and uses it only as the unpaired default. Explicit `bb connect --server ...`
-or `--base-url ...` targets take precedence, and packaged/production bb keeps
-the `https://getbb.app` default. This value is launcher-managed, not a
+`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`;
+`pnpm dev --staging` injects `https://vibecodethis.site` instead. The bb
+account plugin accepts only those origins, only when `NODE_ENV=development`,
+and uses the value as the sign-in default; the Connect plugin
+uses it for its dashboard link while signed out. Explicit
+`bb account login --base-url ...`, `bb connect --server ...`, or
+`--base-url ...` targets take precedence but accept only `https://getbb.app`
+and `https://vibecodethis.site` (plus `http://bb.localhost:<port>` when
+`NODE_ENV=development`), and packaged/production bb keeps the
+`https://getbb.app` default. This value is launcher-managed, not a
 `bb-app config` setting.
 
 After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
@@ -90,23 +113,19 @@ After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
 running, the new values apply on the next start. If you edit either file by
 hand, run `npx bb-app config refresh` to apply the files to a running server.
 
-The live reload applies config keys such as `BB_APP_URL`, `BB_INFERENCE`,
-`BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION`, plus env values explicitly
-consumed at runtime such as `OPENAI_API_KEY`. If one of those config keys is
-stored with `bb-app env` instead, it is startup-only; use `bb-app config` when
-you need a live change.
+The live reload applies the `BB_APP_URL` config key and provider env values. If
+`BB_APP_URL` is stored with `bb-app env` instead, it is startup-only; use
+`bb-app config` when you need a live change.
 
 `BB_LOG_LEVEL` is the startup-only `bb-app config` key. The complete current
 set of startup-only server or launcher env entries is:
 
 - `BB_APP_SURFACE`, `BB_APP_URL`, `BB_DATA_DIR`, `BB_DEV_APP_PORT`, and
   `BB_EXTERNAL_URL`
-- `BB_HOST_DAEMON_PORT`, `BB_INFERENCE`,
-  `BB_INFERENCE_FALLBACK`, and `BB_INHERITED_SKILLS_ROOTS`
+- `BB_HOST_DAEMON_PORT` and `BB_INHERITED_SKILLS_ROOTS`
 - `BB_LOG_LEVEL`, `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`,
   `BB_MARKETPLACE_URL`, `BB_POSTHOG_API_KEY`, and `BB_TELEMETRY`
-- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, `BB_TRANSCRIPTION`, and all
-  `BB_FF_*` feature flags
+- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, and all `BB_FF_*` feature flags
 
 Setting or unsetting one still runs the reload for any other pending changes,
 but the running processes keep their current values. Apply it with a full
@@ -137,40 +156,190 @@ Two things read that file:
 Both confirm that the recorded process really is a bb launcher before they
 signal it, so a stale file left by a crash cannot stop an unrelated process.
 
+## The bb Command On PATH
+
+Settings → General → Command line has an **Install** button that installs the
+bb CLI for use outside bb: it puts the `bb` command on your PATH, so you, a
+script, or an agent running outside bb (such as Claude Code or Codex) can
+control bb with `bb thread list` and every other CLI command. Threads in bb
+already have `bb` on their PATH and need nothing. **Remove** takes it off again. Nothing changes your PATH until
+you choose Install. The CLI equivalent is `bb settings cli-command` (show),
+`bb settings cli-command install`, and `bb settings cli-command remove`; the
+SDK methods are `system.experimental_cliCommand()`,
+`system.experimental_installCliCommand()`, and
+`system.experimental_removeCliCommand()`, over
+`GET /api/v1/system/cli-command` and `POST .../install` and `.../remove`.
+
+- Every start of an installed bb (`npx bb-app` or the desktop app) writes a
+  small launcher to `<dataDir>/bin/bb` (`bb.cmd` on Windows). It runs the bb
+  CLI of the install that started last, with that install's own Node runtime,
+  so the desktop app needs no separate Node. After bb moves or updates, start
+  it once to refresh the launcher. Source checkouts (`pnpm start`, `pnpm dev`)
+  write no launcher and do not show the setting.
+- Install acts on the computer that runs the bb server. On macOS and Linux it
+  links the launcher into the first usable folder of `/opt/homebrew/bin` and
+  `/usr/local/bin` (macOS only), `~/.local/bin`, and `~/bin`, preferring one
+  already on your PATH. If the folder is not on your PATH, the setting says so.
+  On Windows it appends `<dataDir>\bin` to your user PATH.
+- bb never replaces another `bb`. If one already comes first on your PATH
+  (for example a global `npm install -g bb-app`, the `~/.local/bin/bb` a bb
+  machine install added, or Babashka), the setting names it and Install is
+  refused with `409 cli_command_blocked`.
+- Remove deletes only links that point at a bb launcher, or the
+  `<dataDir>\bin` PATH entry on Windows.
+- Machine credentials cannot install or remove the command.
+
+`BB_CLI_LAUNCHER` is an internal path the launcher passes to its server child;
+do not set it yourself.
+
+## In-App Updates
+
+In-app updates are on when you start bb with `npx bb-app start` (or a global
+`bb-app`) or with `pnpm start` from a source checkout. bb runs under a small
+update shim, so Settings → Updates and `bb updates app apply` can update bb
+without a terminal. Pass `--no-in-app-updates` to turn them off: bb then starts
+without the shim and Settings → Updates shows the npm upgrade command for
+release installs. `--in-app-updates`, which earlier releases needed, is still
+accepted and changes nothing. Source checkouts show their
+Git revision, or a labeled build version when unavailable, and are never compared
+with npm releases. Without the update shim, no freshness indicator is shown.
+Failed checks report “Latest unknown”; release checks can be retried in the UI,
+with `sdk.system.version({ force: true })`, or by rerunning `bb updates`.
+`GET /api/v1/system/version` and `sdk.system.version()` expose nullable
+`installKind` (`desktop`, `npm`, or `source`) and `currentCommit` fields.
+
+- **npm installs** download the new release into
+  `<dataDir>/app-versions/<version>/` while bb keeps running, then restart into
+  it. The shim runs whichever is newer, that install or the `npx` copy you
+  launched; pass `--bundled` to run the launched copy regardless. bb keeps the
+  running and previous versions and deletes older ones. Stable installs follow
+  the `latest` dist-tag and nightly builds follow `nightly`.
+- **Source checkouts** update only from a clean `main` that fast-forwards to
+  `origin/main`. bb stops, fast-forwards, runs `pnpm install --frozen-lockfile`,
+  rebuilds, and restarts. Other branches, local commits, and uncommitted tracked
+  changes block the update with an explanation.
+
+bb does not roll back an update. If the new version fails to start, bb exits
+with its error and the next start runs the new version again, as it would after
+a manual upgrade. Run a newer release (`npx bb-app@latest`) or fix the cause; an
+older release may not open a database the new version migrated. A source
+checkout whose rebuild fails stays on the new commit; fix the build and run
+`pnpm start` again. Download, install, and fast-forward failures happen before
+bb stops, so the current version keeps running.
+
+The outcome is recorded in `<dataDir>/bb-app-update.json` once bb starts
+cleanly, and shown in Settings → Updates, `bb updates app`, and the API until
+dismissed. Do not edit that file. If bb is stopped during the restart, an npm
+install starts the new version next time, while a source checkout stays on its
+current commit and reports the update as failed. Only one launcher manages
+updates for a data directory:
+a second `bb-app start` on the same data directory runs with in-app updates off,
+and `bb-app stop` stops the managing launcher. If threads start while an update
+downloads and you did not agree to interrupt threads, bb cancels the restart and
+asks you to update again.
+
+A server the desktop app starts updates with the desktop app instead. When the
+desktop app connects to a server it did not start, Settings → Updates lists
+**bb server** (updated in-app on that server's machine) and **bb desktop** (this
+app's own relaunch update) separately. `pnpm dev`, `bb-server`, and a standalone
+`bb-host-daemon` do not offer in-app updates. Updating restarts bb,
+which interrupts running threads; the app and CLI ask first.
+
+`BB_APP_UPDATE_MODE`, `BB_APP_INSTALL_KIND`, `BB_APP_SOURCE_ORIGIN`, and
+`BB_APP_SOURCE_COMMIT` are internal markers the launcher passes to its server
+child; do not set them yourself.
+
 ## Common Keys
 
-| Key                     | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ----------------------- | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
-| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `<service>/<model>` format, where `<service>` is an AI service a loaded plugin registers (`bb settings ai-services` lists them; `codex` comes with the codex plugin and uses the codex CLI's credentials with no reasoning) or a pi-ai provider the server calls directly with its API key. Defaults to `codex/gpt-5.6-luna`.                                              |
-| `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                                                                                                                                                                                             |
-| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                                        |
-| `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
-| `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
-| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
-| `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                                   |
-| `BB_HOST_DAEMON_PORT`   | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                           |
-| `BB_LOG_LEVEL`          | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                          |
-| `BB_ACCOUNT_POOL_PARENT_URL` | Set automatically by a parent bb server       | Nested bb servers       | Account Pooler hub of the bb server whose thread launched this one. When present the Account Pooler plugin is enabled on first run and defaults to proxying to that parent; `bb pool parent isolate` opts out. Not a `bb-app config` key.                                                                                                                                                                  |
-| `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server     | Nested bb servers       | Machine token this nested server presents to the parent Account Pooler hub. Paired with `BB_ACCOUNT_POOL_PARENT_URL`; both must be well formed or proxying stays off. Not a `bb-app config` key.                                                                                                                                                                                                           |
-| `OPENAI_API_KEY`        | `bb-app env`                                       | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                                                                                                                                                                                                                                                                                          |
+| Key                            | Command                                            | When to set             | Used for                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------ | -------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BB_APP_URL`                   | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                                                                                                                                                                                                     |
+| `BB_MARKETPLACE_URL`           | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace. It defaults to `https://getbb.app/marketplace/v2/marketplace.json`. If the default v2 request returns 404, the server requests v1. Set another URL to test catalog refreshes. The server requests that URL without fallback. It changes only `bb-community`. Add other marketplaces with `bb marketplace add`. Restart the app after a change. |
+| `BB_SERVER_URL`                | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                                 |
+| `BB_SERVER_BIND_HOST`          | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                                        |
+| `BB_SERVER_PORT`               | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                                   |
+| `BB_HOST_DAEMON_PORT`          | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                           |
+| `BB_LOG_LEVEL`                 | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                          |
+| `BB_ACCOUNT_POOL_PARENT_URL`   | Set automatically by a parent bb server            | Nested bb servers       | Account Pooler hub of the bb server whose thread launched this one. When present the Account Pooler plugin is enabled on first run and defaults to proxying to that parent; `bb pool parent isolate` opts out. Not a `bb-app config` key.                                                                                                                                                                      |
+| `BB_ACCOUNT_POOL_PARENT_TOKEN` | Set automatically by a parent bb server            | Nested bb servers       | Machine token this nested server presents to the parent Account Pooler hub. Paired with `BB_ACCOUNT_POOL_PARENT_URL`; both must be well formed or proxying stays off. Not a `bb-app config` key.                                                                                                                                                                                                               |
 
-By default, helper inference and voice transcription use Codex credentials from
-the host daemon. Run `codex login` on the host for the default path. Set
-provider env keys only when opting into a non-Codex provider route.
+The `bb` CLI records each failed invocation on the machine that ran it, in
+`<data dir>/logs/cli-errors.jsonl`: the time, CLI version, command path, error
+code, exit code, current thread ID, and the unknown command or flag. It never
+records argument values or error text. The file rotates to `cli-errors.jsonl.1`
+at 2 MB. `bb diagnostics cli-errors [--since 7d] [--json]` tallies it and
+`--clear` deletes it. Set `BB_CLI_ERROR_LOG=0` in the environment that runs `bb`
+to turn recording off.
 
-With a ChatGPT subscription login, `codex/` voice transcription posts to a
+## AI services
+
+Thread titles (and the branch names built from them), commit messages, and
+voice transcripts come from AI services that plugins register. Choose one per
+task in Settings → AI services or with the CLI:
+
+```bash
+bb settings ai-services
+bb settings ai-services set commit-message my-openrouter
+bb settings ai-services set voice off
+bb settings ai-services test thread-title
+```
+
+Each task is `automatic` (the default), `off`, or a service id. A service is
+identified by its plugin and its id, so two plugins may register the same id;
+pass `--plugin <plugin-id>` to `set` when they do. Automatic tries
+bb cloud (`bb`, the `bb-ai` plugin, for a signed-in bb account) first,
+then all other registered services in lexicographic order of plugin id and
+service id, including third-party plugins. Only services supporting the task
+participate; unavailable services and failed requests fall through to the next.
+Codex (`codex`, the `provider-codex` plugin) uses the Codex CLI login on the
+primary machine. bb cloud is on by default once you sign in; `bb ai off` turns it off
+(it then sends nothing to getbb.app) and `bb ai on` turns it back on. A service you pick
+is used alone; if it fails, titles fall back to the start of the prompt and
+commits to `bb: automated commit`. Each plugin picks its own model.
+
+`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION` were removed.
+bb ignores them in `~/.bb/config.json` with a warning, and `bb-app config set`
+refuses them.
+
+With a ChatGPT subscription login, Codex voice transcription posts to a
 `chatgpt.com` endpoint that sits behind Cloudflare bot protection. On some
-networks Cloudflare challenges that request; bb retries, then reports
-"Voice transcription is temporarily unavailable" and logs the Cloudflare
-challenge on the server. If that happens often, route transcription through an
-API key instead: `codex login --with-api-key`, or set `BB_TRANSCRIPTION` to
-`openai/gpt-transcribe` with `OPENAI_API_KEY`.
+networks Cloudflare challenges that request and transcription fails. If that
+happens often, run `codex login --with-api-key` on the primary machine, or pick
+another voice service.
 
-The microphone picker in Settings → Voice Input is client-local. It stores the
+bb accepts voice recordings up to 25 MB. A service may set a lower limit;
+Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
+
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
+The microphone preference is client-local. It stores the
 selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`; it does not change `bb-app config` or the
-server-side transcription model.
+`bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
+back to the system default and other available inputs when it is disconnected,
+then uses the saved preference again when it reconnects. Select System default to follow system
+microphone changes; it does not change which service
+transcribes.
 
 The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
 The default is `https://exp.host/--/api/v2/push/send`. Change it with
@@ -182,7 +351,18 @@ channel key). Web and desktop clients receive system notifications while a bb
 tab or window remains open; browsers require HTTPS or localhost and per-device
 notification permission. Settings → Push notifications offers permission and
 test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display.
+connected, permitted clients; it does not confirm OS display. A thread uses
+its own level; otherwise a child thread uses `childLevel` (`inherit` for the
+same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
+and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
+default `all`). A thread's level also limits its child threads: the result is
+capped by every ancestor's own level, so muting a parent mutes its whole
+subtree, and a parent set to `all` never makes workers louder than their own
+level or `childLevel`.
+`input-only` keeps questions, approvals and errors but skips finished turns.
+Change the defaults with `bb plugin config push-notifications set defaultLevel
+muted` (or `childLevel`). Set one thread with
+`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
 
 The builtin Keep Awake plugin has one autosaving configuration page with an
 enable switch and an all-or-selected host picker. On selected macOS hosts it
@@ -223,6 +403,9 @@ setting. When a read-modify-write payload contains conflicting values, the
 value changed from the saved setting wins. Hidden diagnostics do not count
 toward timeline event or byte limits.
 
+The prompt box uses plain-text editing. Markdown delimiters remain visible while
+editing.
+
 The "Default thread followup behavior" picker in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. A
 queued message waits and then runs when the agent stops. A steer message goes
@@ -234,6 +417,41 @@ keeps "Queue" because a one-time migration stamps the old default onto it. Set
 it with
 `bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
 "Steer".
+
+The "Show Git changes and Commit button" switch in Settings → General defaults to on.
+Turn it off to hide the untracked, uncommitted, and committed file summary and
+expanded file list above every thread composer, the pull-request status and actions
+in that shelf, and the Commit action in the thread header and overflow menu.
+Thread relationships and workspace warnings remain visible. This server-wide preference persists
+across reloads and applies to every connected app client. Set it with
+`bb settings general showGitChanges false` or read the current config and call
+`sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
+Older clients that omit the field preserve the saved value.
+
+The "Show messages from before a context clear" switch in Settings → General defaults
+to off. When off, a thread's timeline, conversation outline, and message lookup
+start at its latest `Context cleared` boundary. Turn it on to keep earlier
+messages above the boundary; they load on scroll like other older activity and
+appear in the outline and `bb thread log --message` lookups. Clearing still starts a
+fresh provider conversation and resets the context meter either way. Set it
+with `bb settings general keepHistoryAfterContextClear true` or
+`bb.sdk.system.updateGeneralSettings` using `keepHistoryAfterContextClear`.
+Older clients that omit the field preserve the saved value.
+
+The "Thread archive confirmation" switch in Settings → General defaults to on.
+Turn it off to archive a thread and its child threads immediately without a
+confirmation popup. The archive toast still offers Undo. This server-wide
+preference applies to all connected app clients. Set it with
+`bb settings general confirmThreadArchive false` or
+`bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
+CLI and SDK archive operations remain non-interactive.
+
+A new install opens a first-run setup guide (connect an agent, add projects,
+pick plugins, set up devices). `onboardingCompletedAt` in general settings
+records when it was finished or skipped; `bb settings replay-onboarding`, or
+Settings → General → Setup guide, clears it so the guide shows again.
+The projects step lists what `bb project discover` and
+`bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
 entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
@@ -247,6 +465,15 @@ and falls back to the provider default; the next send records that default, so
 select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
+The "Allow faster service tiers" switch in Settings → Providers defaults to on.
+Turn it off with `bb settings general allowFastServiceTier false` or
+`bb.sdk.system.updateGeneralSettings`. While off, new turns use the default
+service tier, including explicit requests for another tier (`fast`, Codex
+`ultrafast`, or any other tier a provider lists), automations, and previously
+queued messages. The app hides the service tier control. Turn the setting on to
+choose a faster tier again; completed turns and project defaults saved while it
+was off retain the default tier.
+
 The "New branch prefix" field in Settings → General sets the text bb
 puts in front of every branch name it creates for a managed worktree or a new
 checkout branch. It defaults to `bb/`, which produces
@@ -257,6 +484,69 @@ start a valid git branch name, such as one with a space or a leading `-`, and
 the prefix is at most 64 characters. The prefix applies to branches bb creates
 after you change it; it does not rename an existing branch or worktree. Set it
 with `bb settings general managedBranchPrefix <prefix>`.
+
+The bundled **Storage & retention** plugin is disabled by default. Enable it with
+`bb plugin enable bb--storage-retention`, then open its sidebar panel. Both policies
+default to Never. The plugin stores its policy and latest run in its own storage;
+there are no general app settings for retention. Preview with
+`bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`
+to save. Use `never` to turn either policy off. Days range from 1 to 3650.
+
+The plugin also offers **Delete thread storage on archive**, off by default.
+All retention settings save immediately in the panel.
+Set it with `bb storage retention --delete-storage-on-archive true --save --yes`
+(or `false` to disable). It clears storage for future manual and automatic
+archives, including cascaded children, preserving conversations and uploaded
+attachments and skipping pinned threads. Pending cleanup persists across reloads
+and retries every minute until the core archive undo grace has elapsed (currently
+30 seconds), the thread has stopped, and its machine is online. Bulk archived-file
+cleanup also respects this grace and rechecks eligibility before each batch.
+Unarchiving cancels pending cleanup. Existing archives are not cleared by enabling
+this setting; use the explicit archived-file cleanup action for those.
+
+**Delete development data when its checkout is removed** is a separate,
+off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(use `false` to disable). It scans online persistent machines on plugin startup, machine reconnect, and hourly, and
+cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
+scans, including existing data. The machine rechecks absence before deletion,
+stops servers working inside removed checkouts, and keeps existing or unresolved
+sources. Offline/busy machines and failed cleanup retry on later scans. Thread
+retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running cleanup there to finish. Startup and
+periodic scans recover missed events by checking the filesystem; no removal
+history is stored in the core database.
+
+The hourly plugin schedule processes up to 50 trees per action across all projects.
+Archive eligibility uses each affected member's updatedAt; deletion requires every
+lifecycle member to have been archived past the cutoff. Pinned members exempt the
+group. Cross-plugin protection is deferred: pin automation targets to keep them.
+Archiving may remove worktrees including uncommitted changes; deletion removes
+history and thread storage. Disabling the plugin stops retention
+without losing the saved policy. The plugin uses existing SDK thread listing and
+archive/delete APIs, accepting changes between inspection and mutation.
+
+Storage reads use cached reports and never trigger disk scans. Start a background
+scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
+scan every online machine; rerun usage to see its status and results. Bulk cleanup runs one job at a time per machine; scans run alongside cleanup, and a finished scan leaves out anything cleared while it ran. The existing
+bounded idle orphan sweep remains independent of the plugin.
+`bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
+`bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
+or more from archived threads' storage, keeping smaller files and skipping
+pinned and running threads. The page starts this cleanup in the background,
+reports its running/completed/failed status, and survives navigation or reconnects.
+`bb storage usage` also exposes that status as `largeFileCleanup`. The CLI waits
+for deletion to finish;
+`bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
+whole storage folders, including small files, skipping pinned and running threads;
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
+instances whose source checkout no longer exists, first stopping servers still
+running from that checkout; add `--instance NAME` to remove one entry of any
+kind, stopping its dev server first if it is running;
+`bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
+`bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
+The plugin owns the disk scanner, cached reports, classification, and host-worker
+file operations. Reports are snapshots; changes outside the plugin appear after
+a rescan. These actions are available through its typed plugin RPC. See the
+[plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
 
 Settings → Providers lists every registered agent provider in picker order.
 Move a provider up or down to change the order and choose the default for new
@@ -287,6 +577,13 @@ Each provider's own options live on its plugin: Codex memory and native
 subagents under the Codex provider plugin, and Claude Code memory, native
 subagents, and the Workflow tool under the Claude Code provider plugin.
 
+Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
+defaults to `false`. Enable it with
+`bb plugin config provider-claude-code set disable1MContext true`.
+bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
+Changes restart the thread's Claude process before its next turn, preserving
+conversation context.
+
 Claude Code starts without its Claude in Chrome browser tools when bb runs it,
 even when the interactive `claude` CLI has Chrome enabled by default. Turn the
 tools on for bb threads with
@@ -294,6 +591,13 @@ tools on for bb threads with
 Claude Code with `--chrome`. The host needs the Claude in Chrome extension and a
 claude.ai login; API-key sessions keep Chrome off. A change restarts the thread's
 Claude process before its next turn and keeps the conversation.
+
+In Accept Edits and Approve for me modes, bb runs Claude Code's Bash commands in
+Claude Code's sandbox. Turn it off with
+`bb plugin config provider-claude-code set sandboxEnabled false`. Bash commands
+then go through Claude Code's normal approvals and your own Claude Code
+permission and sandbox settings. A change restarts the thread's Claude process
+before its next turn and keeps the conversation.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. On
 coarse-pointer touch devices, the software-keyboard Return path inserts a
@@ -341,8 +645,50 @@ pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
 untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
-`Control+Shift+[/]` on the web.
+`Control+Shift+[/]` on the web; they follow the sidebar order.
 
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows: they move through the pages opened
+in the current window, like browser history. They use `Mod+[` / `Mod+]` on
+desktop and the web; in the browser, bb handles the key instead of the
+browser's own Back while it has somewhere to go. At either end the desktop app
+does nothing, while the web app leaves the key to the browser's own Back or
+Forward. The commands appear in the command palette only when there is
+somewhere to go, and they don't run while the in-app browser has focus.
+Hovering an arrow shows its current shortcut.
+
+On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Command+Control+ArrowUp` / `Command+Control+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
+The initially unassigned `panel.fullScreen.toggle` command runs the right
+panel's Full Screen / Exit Full Screen control while the panel is open. In a
+split right panel it maximizes the focused group.
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. On Windows/Linux, these arrow navigation
+commands start unassigned to preserve native Control-arrow editing shortcuts.
+Rebind any of these commands in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
+Use `bb settings keyboard reset <command>` to adopt the current default.
+Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
+on all platforms. A platform-specific override takes precedence over a general one,
+including when disabled. UI edits and clears apply only to the current platform;
+UI resets remove overrides for the current platform so web and desktop each use
+their own defaults. Shared overrides become explicit bindings on the other platforms
+to preserve their behavior. Explicit overrides remain resettable even when they match
+a default shortcut.
+CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
+other platforms. Unscoped `set` updates the general override; unscoped `reset`
+clears all scopes for the selected command (or every command if omitted).
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
@@ -377,7 +723,9 @@ delayed shortcut badges without disabling any shortcuts.
 | Layout    | Maximize / restore chat pane              | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane                   | `Mod+Shift+X`                     | While split              |
 | Window    | New window                                | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Go back / go forward                      | Surface defaults above            | Desktop / web            |
 | Window    | Settings                                  | `Mod+,`                           | All clients              |
+| Window    | Open data directory                       | Unassigned                        | Desktop                  |
 | Layout    | Toggle sidebar                            | `Mod+\`                           | All clients              |
 | Panel     | New tab / close tab / toggle              | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
 | Workspace | Quick open file / toggle diff             | `Mod+P` / `Mod+D`                 | All clients              |
@@ -436,6 +784,43 @@ uses this mapping to launch remote-capable editors and terminals over SSH.
 Browsers or devices without a helper can still use bb; local editor actions are
 simply unavailable.
 
+## Provider availability
+
+Settings → Providers lists disabled providers below enabled providers in the same
+list. Only enabled providers can be reordered. Each row’s three-dot menu enables
+or disables the provider, or makes an enabled provider the default. Enable
+restores a provider and, if needed, its supplying plugin.
+Disabling an individual provider leaves its plugin, sibling providers, installed
+CLI, and existing threads intact. In-flight turns can finish; new turns and
+sessions are rejected until the provider is enabled again. Queued messages and
+automations are subject to the same server-side check.
+
+```bash
+bb provider list --all
+bb provider disable acp-opencode
+bb provider enable claude-code
+```
+
+`bb provider list` and thread pickers omit disabled providers. `list --all`
+shows the global management catalog, including providers whose plugins are off;
+it cannot be combined with machine or environment selectors. Enabling a shared
+plugin preserves individual provider opt-outs. Disabling the selected default
+clears that choice, allowing the next enabled provider in saved order to be used.
+A project whose last-used provider is disabled also falls back to that order;
+explicitly requesting a disabled provider is still rejected.
+
+The core `disabledProviderIds` value lists disabled providers by ID. It is stored
+apart from Settings → General, so only the provider enable/disable route, CLI and
+SDK change it; a general-settings save, even from a stale client, cannot. Enable
+removes the ID, so the provider returns to its automatic discovery behavior:
+agents such as `acp-opencode` again appear only where their CLI is installed.
+Uninstalling a plugin forgets the disabled state of its providers.
+
+The SDK exposes `sdk.providers.catalog()` and
+`sdk.providers.setEnabled({ providerId: "acp-opencode", enabled: false })`.
+Install provider plugins in Settings → Plugins. Configure custom ACP agents in
+the ACP providers plugin settings.
+
 ## Custom ACP Agents
 
 Known ACP agents appear when their CLI is installed on the host. bb exposes
@@ -444,6 +829,23 @@ Known ACP agents appear when their CLI is installed on the host. bb exposes
 CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH. `acp-cursor` is always
 listed.
+
+The rebuilt ACP adapter ships as a second built-in plugin, "ACP providers (new
+adapter)", which is off by default. Turn it on in Settings → Plugins or with
+`bb plugin enable bb--provider-acp-next`. It registers the same provider ids,
+so existing threads keep working, and only one of the two ACP plugins runs at
+a time: turning the new one on turns "ACP providers" off, turning it off
+turns "ACP providers" back on, and the `customAgents` list follows the switch
+in both directions. The new adapter adds agent options in the model picker
+(the agent's mode stays in the composer footer), live slash commands in the
+composer, agent questions as question cards, sign-in
+guidance, and the official ACP registry: its settings page lists the
+registry's agents with an Add button, and `bb acp registry`, `bb acp add
+<agent-id>` and `bb acp remove <agent-id>` do the same from the CLI. Adding
+one writes a `customAgents` entry that runs the registry's `npx` or `uvx`
+package on the thread's host, so the host needs Node.js or uv. Agents the
+registry ships only as a downloadable binary are listed but must be installed
+by hand and added as a custom agent.
 
 Add your own agent through the ACP providers plugin's `customAgents` setting,
 which holds a JSON array. In the app it is the multi-line editor on the
@@ -480,17 +882,26 @@ setting changes, with no restart and no `config refresh`.
 A configured agent's command is local code execution and only works with a
 co-located daemon.
 
-### The deprecated `customAcpAgents` config array
+BB launches OpenCode sessions with `OPENCODE_CLIENT=acp` and
+`OPENCODE_ENABLE_QUESTION_TOOL=false`, overriding inherited and custom launch
+values. Native questions have no ACP interaction handler in BB; agents use the
+ask-user-question plugin’s `AskUserQuestion` tool instead. This also applies to
+custom agents with `dialect: "opencode"` and does not change OpenCode config files.
 
-Before ACP agents were plugin-owned, custom agents lived in `customAcpAgents`
-in `~/.bb/config.json`. bb still **reads** that array so an existing agent keeps
-working, logs a deprecation warning for each one, and never writes to it.
-Support ends in 0.41 — move each entry into the `customAgents` setting above.
-The two shapes are identical except that the setting has no `logo` field: a
-plugin-registered provider's icon is a host glyph or an asset the plugin ships,
-so a configured agent shows the generic tool glyph, and bb drops the field when
-it reads the old array. A setting entry wins over a config entry with the same
-`id`.
+## OpenCode Go Usage
+
+OpenCode Go subscription usage uses the credentials configured on the selected
+machine. Sign in to Go in OpenCode there, then select that machine in Provider
+usage or run `bb settings usage --machine <id-or-name> --json`. BB reads
+`OPENCODE_API_KEY` first, then the active official Console account and organization
+from `$XDG_DATA_HOME/opencode/opencode.db`, then `OPENCODE_AUTH_CONTENT` or
+`$XDG_DATA_HOME/opencode/auth.json` (default data directory `~/.local/share/opencode`).
+Console account storage is read only; OpenCode owns refreshing expired sessions.
+The `opencode-go` API key takes precedence over the shared `opencode` key.
+Custom ACP launch `env` overrides apply to credential lookup; a custom wrapper
+must declare `dialect: "opencode"` and `providerUsage: true`. The endpoint requires
+an active Go subscription and reports its five-hour, weekly, and monthly quota
+windows, not other providers' usage or Zen pay-as-you-go spending.
 
 ## Custom Models
 
@@ -558,10 +969,13 @@ runs. When both files exist, `<dataDir>/AGENTS.md` is appended first and
 `<workspace>/.bb/AGENTS.md` second. An empty or whitespace-only file is treated
 as absent.
 
-No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
-(`CLAUDE.md` for Claude Code, a repo-root `AGENTS.md` for Codex) remain
-provider-specific. bb reads the files above itself and injects them, so use them
-for guidance you want every bb thread to receive regardless of provider.
+No agent loads `.bb/AGENTS.md` natively. Provider-native instruction files
+remain separate. Codex reads a repo-root `AGENTS.md`. Claude Code 2.1.277 and
+later also reads `AGENTS.md` when no project or ancestor `CLAUDE.md` or
+`CLAUDE.local.md` takes precedence. Older Claude Code versions and sessions
+without its built-in `AGENTS.md` support still require `CLAUDE.md`. bb reads
+the files above itself and injects them, so use them for guidance you want every
+bb thread to receive regardless of provider.
 
 ## Skills
 
@@ -626,7 +1040,7 @@ source. The CLI equivalents are `bb machine list`, `bb project create
 
 Multi-machine execution is independent of browser access. Tailscale and bb
 connect let another browser reach the bb server; multi-machine support lets
-that server dispatch work to non-primary host daemons. The Settings → Machines
+that server dispatch work to host daemons on other machines. The Settings → Machines
 installer can use a paired bb connect account to route the daemon and its CLI
 back to the server. Machine credentials remain locally managed as described at
 the top of this document.
@@ -653,9 +1067,12 @@ and strong ETag. That package contains the daemon, its workers and native
 dependencies, and the bundled `bb` CLI; it omits the server and web app. The
 installer verifies the digest and skips the download and npm install when its
 recorded installed digest receives `304 Not Modified`. It falls back to the npm
-registry only when the package route returns 404. It installs the package under
-the machine's bb data directory rather than npm's system-wide prefix, so
-enrollment needs neither `sudo` nor a global npm configuration.
+registry only when the package route returns 404. When the server cannot prepare
+the package, the route returns a generic reason and a diagnostic ID, and the
+installer prints them; the full exception is logged with that ID as "Host
+package download failed". It
+installs the package under the machine's bb data directory rather than npm's
+system-wide prefix, so enrollment needs neither `sudo` nor a global npm configuration.
 Installed services enable `--auto-update`; remove that flag from the launchd
 plist or systemd user unit and reload the service to opt out. Updates only move
 to a newer server protocol, retry failures with a persisted exponential backoff
@@ -665,34 +1082,93 @@ a transient failure.
 
 ## Sidebar preferences
 
-Sidebar layout preferences are stored on the server in a keyed registry so
+Sidebar and Info panel layout preferences are stored on the server in a keyed registry so
 every window, device, and the CLI read the same value. Each key has a typed
 schema, a default, and a revision that increments on every write. Writes name
 the revision they expect and receive `409 ui_preference_conflict` when another
 client wrote first, so a stale window cannot silently clobber a newer value.
 
-| Key                               | Value                                               |
-| --------------------------------- | --------------------------------------------------- |
-| `sidebar.organizationMode`        | `project`, `chronological`, or `machine`            |
-| `sidebar.chronologicalSort`       | `updated`, `created`, `alpha`, or `none`            |
-| `sidebar.sectionOrder`            | Section id list for **By project**                  |
-| `sidebar.manualSectionOrder`      | Section id list for **Manually**                    |
-| `sidebar.machineSectionOrder`     | Section id list for **By machine**                  |
-| `sidebar.collapsedSections`       | Collapsed built-in sections (`pinned`, `threads`)   |
-| `sidebar.collapsedProjects`       | Collapsed project ids                               |
-| `sidebar.collapsedThreads`        | Thread ids whose children are collapsed             |
-| `sidebar.collapsedEnvironments`   | Collapsed environment ids                           |
-| `sidebar.collapsedThreadSections` | Collapsed thread section ids                        |
-| `sidebar.collapsedMachines`       | Collapsed machine ids                               |
-| `sidebar.footerOrder`             | Footer action order                                 |
-| `sidebar.hiddenFooterItems`       | Footer actions moved into More                      |
-| `sidebar.pluginPanelOrder`        | Navigation entry order                              |
-| `sidebar.visiblePluginPanels`     | Navigation entries shown, or `null` for every entry |
-| `sidebar.navigationProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
-| `sidebar.threadListProvider`      | Plugin key, `__automatic__`, or `__builtin__`       |
+| Key                                  | Value                                                                                                            |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `sidebar.organizationMode`           | `project`, `chronological`, or `machine`                                                                         |
+| `sidebar.threadGrouping.environment` | `auto`, `true`, or `false`                                                                                       |
+| `sidebar.chronologicalSort`          | `updated`, `created`, `alpha`, or `none`                                                                         |
+| `sidebar.sectionOrder`               | Section id list for **By project**                                                                               |
+| `sidebar.manualSectionOrder`         | Section id list for **Manually**                                                                                 |
+| `sidebar.machineSectionOrder`        | Section id list for **By machine**                                                                               |
+| `sidebar.hiddenGroups`               | Legacy project, custom section, and machine ids migrated once into the Thread list plugin                        |
+| `sidebar.footerOrder`                | Footer action order                                                                                              |
+| `sidebar.hiddenFooterItems`          | Footer actions moved into More                                                                                   |
+| `sidebar.pluginPanelOrder`           | Rail destination order                                                                                           |
+| `sidebar.visiblePluginPanels`        | Rail destinations shown, or `null` for every destination                                                         |
+| `sidebar.threadListProvider`         | Plugin key or `__automatic__` (default)                                                                          |
+| `infoPanel.collapsedSections`        | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`) |
 
-Custom (`chronological`) is the default for `sidebar.organizationMode` when no
-value is saved. Existing server and legacy browser choices are preserved.
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
+
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`
+order and show or hide rail destinations.
+
+In the macOS desktop app, wide windows add a title bar holding the window
+controls, Back and Forward, and the sidebar toggle. It shares the rail's
+background, and the sidebar and page sit in a card below it. On narrow windows
+and phones the rail sits inside the drawer: Home, Plugins, Skills, and Settings
+swap the list beside it and leave the drawer open, and a plugin page closes it.
+
+New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
+Migrated installations with existing projects, threads, or UI preferences fall back
+to By project (`project`). Explicit server choices take precedence over legacy
+browser choices, which take precedence over this installation fallback. Reset
+saves the installation fallback as an explicit choice.
+
+The built-in sidebar defaults to Active, including threads with saved messages.
+Filter selects Active and Archived and remembers the selection in this browser,
+not in the server-backed preferences or SDK/CLI. There is no separate
+Drafts section or filter; saved messages remain in their owning thread. The
+selected archived threads retain their section, project, machine, and pin placement.
+Choose Filter in a sidebar header's combined actions menu to change the selection.
+The combined menu offers Organize, Sort by, and Filter.
+Organize retains its Sections choices and Groups → By environment toggle.
+Desktop archived rows have a persistent Unarchive icon
+that restores the thread without navigating away.
+Archived loads pages only while selected.
+Plugin sidebar replacements own their rendering.
+
+The palette's Filter independently selects Active and Archived before
+and after typing. It defaults to Active and remembers its selection in this
+browser only; it is not configurable through SDK/CLI.
+Active includes threads with saved messages. Search threads retains the existing
+title and conversation search behavior and opens the owning thread.
+Archived loads a bounded list in most-recently-archived order only while selected.
+Search uses the existing
+ranked Active/Archived response and displays the selected groups, with six initial
+rows in one group or three each when both are nonempty, plus Show more.
+
+`sidebar.threadGrouping.environment` decides whether two or more sibling threads
+that share one worktree environment collapse into a single worktree row inside
+their section. `true` groups them and `false` keeps every thread on its own row,
+in every organization mode. The default, `auto`, groups them in **By project**
+and **By machine** and leaves them flat in **Custom**, which is how each mode
+behaved before the preference existed. Set this preference through Organize →
+Groups → By environment, settings, or
+`bb settings ui set sidebar.threadGrouping.environment true`; an explicit
+`true` or `false` applies to every mode.
+
+Each `sidebar.threadGrouping.*` key toggles one grouping dimension
+independently, so a future dimension adds a key rather than changing this one.
 
 Read and write them with:
 
@@ -722,24 +1198,97 @@ value. A change on one device reaches every other connected window through the
 `ui-preferences-changed` broadcast without a reload.
 
 Sidebar width and open state stay in the browser because they depend on the
-window size.
+window size, and each browser tab or desktop window keeps its own. Collapsing or
+resizing the sidebar in one tab leaves every other open tab alone; a newly
+opened tab or window starts from the most recent choice made anywhere in this
+browser.
+
+### Thread-list visibility
+
+Choose **Hide from list** in Threads, a project, custom section, or machine's menu to
+move it into **More**. Its menu in More offers **Add to list** to restore it.
+**Customize list** manages visibility and order for the current
+organization. Hiding a group preserves its threads, saved order, and collapse
+state; pinned threads stay in Pinned. Hidden work remains reachable through More,
+search, and direct links. More shows activity without automatically restoring
+hidden groups.
+
+The Thread list plugin's `hiddenGroups` preference defaults to `[]` and accepts `threads`,
+`project:<projectId>`, `section:<sectionId>`, and `machine:<hostId>` keys
+(`machine:no-machine` for the unassigned machine group). Each organization uses
+only its matching keys; `threads` applies to every organization. Pinned cannot
+be hidden. Duplicate keys are deduplicated; unavailable IDs are retained
+without creating sidebar rows, and new groups default to visible.
+
+```sh
+bb thread-list prefs get hiddenGroups
+bb thread-list prefs set hiddenGroups '["threads","project:proj_example","section:sec_example"]'
+bb thread-list prefs reset hiddenGroups
+```
+
+`set` replaces the complete list across organizations, so include any existing
+keys you want to keep hidden. `reset` restores the default empty list and shows
+every group. The plugin's `setPreference` and `resetPreference` RPCs expose the
+same operations to its app client.
+
+### Thread row actions
+
+**Customize row actions**, in a thread row's actions menu, picks
+the quick-action buttons a thread row shows on hover, left of its actions menu.
+It turns that row's quick actions into three editable slots in place, with the
+rest of the list still visible; click a slot to pick an action for it, or Hide
+to empty a filled slot. Picking an action that is already in another slot swaps
+the two. Drag a filled slot onto another to reorder them. Hiding every slot
+leaves only the actions menu. Done, Escape, or a click elsewhere finishes;
+each change saves immediately.
+Archived rows keep their unarchive button regardless of this setting.
+
+The Thread list plugin's `rowActions` preference stores up to three thread
+action keys in display order and defaults to `["bb--core/archive"]`. bb's
+keys are `bb--core/split`, `bb--core/newThreadInEnvironment`,
+`bb--core/copyLink`, `bb--core/read`, `bb--core/pin`, `bb--core/rename`,
+`bb--core/archive`, and `bb--core/delete`; the thread list's own Move to
+section is `thread-list/move`, and other plugins add `<pluginId>/<actionId>`.
+Bare legacy ids (`pin`, `archive`, `move`, …) and `core/<id>` keys are
+accepted and migrate to their current keys. Duplicates are deduplicated. A key
+whose action is hidden for a row (`bb--core/split` for the thread in view,
+`thread-list/move` for a thread that cannot move) or whose plugin is not
+installed is skipped on that row. `bb--core/split` reads Focus split for a
+thread open in another split pane. `thread-list/move` opens a menu of sections.
+
+```sh
+bb thread-list prefs get rowActions
+bb thread-list prefs set rowActions '["bb--core/pin","bb--core/copyLink","bb--core/archive"]'
+bb thread-list prefs set rowActions '[]'
+bb thread-list prefs reset rowActions
+```
 
 ### Sidebar footer
 
-Settings → Appearance → Sidebar footer lets users reorder and hide built-in and
-registered plugin actions. Right-click an action and choose Hide to move it into
-More. More appears only when registered actions are hidden; they remain usable.
+The footer shows as many icons as fit the sidebar's width, followed by an
+always-available More menu. More lists hidden actions and actions that don't
+fit, plus Customize footer and Hide footer. Hide footer moves every action into
+More, leaving only the More button; the same menu item then reads Show footer,
+which shows them again. Customize footer replaces the
+footer row with an editor split into Footer and More menu zones: remove an icon
+with its minus badge (its slot stays empty and current overflow stays hidden in
+More), add a More item with its plus button (disabled while the footer has no
+room), and drag within either zone to reorder. Customize footer and
+Customize sidebar close each other. Right-click an action and choose Hide from
+footer, or Customize footer. Settings → Appearance → Sidebar footer edits the
+same preferences. Apart from the minus badge, width overflow never changes saved
+visibility, and every action in More remains usable.
 Hiding an open disclosure closes it; selecting it from More opens it again.
 
 The UI preferences `sidebar.footerOrder` and `sidebar.hiddenFooterItems` contain
-stable IDs: `builtin:settings`, `builtin:report-bug`, and
+stable IDs: `builtin:mobile`, `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>` (URI-encoded components).
 Unknown and disabled-plugin IDs are retained across reloads; new actions default
 visible. The existing SDK UI preferences and CLI manage the same values:
 
 ```sh
 bb settings ui set sidebar.hiddenFooterItems '["builtin:report-bug"]'
-bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:settings"]'
+bb settings ui set sidebar.footerOrder '["builtin:report-bug","builtin:mobile"]'
 bb settings ui reset sidebar.hiddenFooterItems
 ```
 
@@ -807,13 +1356,18 @@ or enabled account is available without a plugin reload.
 When the plugin has an enabled account whose secret file is readable and
 valid, it automatically contributes the provider's hub route and a
 machine-specific secret token to Claude Code or Codex sessions on every host.
-Claude Code also receives `ENABLE_TOOL_SEARCH=true`.
+Claude Code also receives `ENABLE_TOOL_SEARCH=true` and
+`_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL=1`.
 Codex receives `CODEX_OPENAI_BASE_URL` and the secret
 `CODEX_POOL_AUTH_TOKEN`; bb applies both when launching `codex app-server`
 without writing to `~/.codex/config.toml`.
 Codex image generation and editing use the same authenticated pool route.
 Claude Code disables tool search behind a custom base URL by default; the hub
 forwards `tool_reference` blocks unchanged, so the override keeps it on.
+Behind a custom base URL, Claude Code also limits Opus models without a `[1m]`
+suffix to a 200k context window. The hub forwards to Anthropic's API, so the
+second override gives pooled sessions the same native context window as a
+direct login.
 Tokens are never printed
 by the CLI. Plugin startup and `bb pool status` remove token files for machines
 that are no longer enrolled. Status lists token mint and last-use timestamps
@@ -878,83 +1432,83 @@ Upgrading from an Account Pooler build that stored these values through
 `bb.settings` resets the threshold and both QA-only upstream overrides to
 their defaults. Those old values are not migrated.
 
-Two more plugin-owned values control cache miss debugging. `cacheMissDebug`
-defaults to `false`. When it is `true`, the hub pairs each successful pooled
-Claude `/v1/messages` or Codex `/v1/responses` request that carries a provider
-session id with the earlier request from that session. It records a report
-when the missed cached tokens reach `cacheMissMinTokens`, a positive integer
-that defaults to `10000`. Missed tokens are the tokens the earlier request left
-cached minus the tokens this request read from cache. Claude requests with no
-`cache_control` breakpoint are not tracked. Idle gaps run between the times the
-hub sent the two requests upstream, so rate-limit waits and failed failover
-attempts do not count, and are measured against a 5 minute Claude cache
-lifetime (1 hour with a 1h breakpoint) or a 30 minute Codex lifetime. The hub
-parses a request after the first response chunk is forwarded and analyzes it
-after the client receives the end of the response, so debugging adds no
-parsing before forwarding. Each report names the likely causes and the first
-divergent prompt segment, with short excerpts. Reports stay in server memory
-only. Turning debugging off discards prompt snapshots, and log lines carry ids,
-token counts, and cause kinds but no prompt text. A nested server in `proxy`
-mode does not analyze forwarded traffic, so enable it on the parent. The
-`cacheMiss.list` and `cacheMiss.clear` plugin RPCs expose the same reports.
-With `--json`, `bb pool cache-miss list` prints `cacheMissDebug` and
-`forwardsToParent` next to `reports`, so a script can tell an empty list from
-disabled reporting or a server that leaves analysis to its parent:
-
-```sh
-bb pool config set cacheMissDebug true
-bb pool config set cacheMissMinTokens 10000
-bb pool cache-miss list [--json]
-bb pool cache-miss clear
-```
-
 ## bb connect
 
-`bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
-server for browser access at `<handle>.getbb.app` (claim a handle and copy the
-command at https://getbb.app). Remote access is owned by the builtin
-**connect plugin** (`plugins/connect/`): pairing redeems the code and stores
-the durable credential in the plugin's kv storage (in `bb.db`), and the
-plugin's background service holds the connect tunnel — dialing the gate,
-proxying relayed requests to the server's own loopback (which serves the SPA
+Remote access makes this bb server reachable at `https://<handle>.getbb.app`
+once it is signed in to a getbb.app account. Two builtin plugins share the
+work:
 
-- `/api` + `/ws`), and reconnecting with capped backoff. The tunnel therefore
-  lives as long as the bb server runs (with the plugin enabled) and
-  re-establishes on restart; there is no foreground client. Pair from a machine
-  without an installed bb via `npx -p bb-app@latest bb connect …`.
-  `bb connect status` shows the connect state and every share's host and URL;
-  `bb connect off` disconnects and clears the pairing. After pairing,
-  `bb connect expose <port>` run from a thread shares that thread environment's
-  enrolled host. Server-host URLs remain
-  `https://<server-label>--<port>.getbb.app`; other machines use
-  `https://<machine-label>--<port>.getbb.app` and proxy directly through the
-  owning daemon. Outside a thread the command defaults to the server host;
-  `--host <name-or-id>` overrides host resolution. Access requires the owner's
-  getbb.app session (not a public link). `bb connect unexpose <port>` and
-  `bb connect shares` use the same host resolution and accept the same
-  `--host` override. Their JSON rows include `hostId`, `hostName`, `port`, and
-  `url`; `shares --json` also includes the resolved `host`. A machine without
-  a live Connect enrollment fails fast with instructions to remove and re-add
-  it in Settings → Machines. Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access;
-  `bb plugin enable connect` restores it.
+- **bb account** (`plugins/bb-account/`) signs this bb in and holds the
+  server credential in its plugin KV (in `bb.db`). It never returns the
+  credential; other plugins make hosted requests through its
+  `bb-account.v1.fetch` rpc, and only the connect plugin may use its
+  `/api/connect/` paths. Sign in with `bb account login` (a getbb.app link and
+  code to approve in any browser) or Settings → bb account. `bb account status`
+  shows the account, including a paired bb whose account hasn't loaded yet
+  (it keeps retrying). `bb account logout` revokes the credential on
+  getbb.app and forgets it; if getbb.app can't be reached, it still signs out
+  locally and says the server wasn't revoked.
+- **connect** (`plugins/connect/`) uses bb account's credential. Its
+  background service holds the tunnel: it dials the gate with the server
+  credential it reads from bb account, proxies relayed requests to the
+  server's own loopback (which serves the SPA, `/api`, and `/ws`), and
+  reconnects with capped backoff. When the gate refuses the credential, bb
+  account checks it with getbb.app and signs out if it was revoked. It also
+  keeps a copy of the pairing where bb
+  builds from before bb account look for it, so downgrading keeps remote
+  access. The tunnel lives as long
+  as the bb server runs and re-establishes on restart; there is no foreground
+  client.
 
-The tunnel client lives in `plugins/connect/`; the CLI command is proxied to
-the plugin, and Settings → Connect drives the plugin's rpc (including shared
-ports).
+The getbb.app dashboard's pairing command,
+`bb connect --code <code> --server https://<handle>.getbb.app`, signs this bb
+in like `bb account login --code <code>` and also turns remote access back on
+if it was off. Pair from a machine without an installed bb via
+`npx -p bb-app@latest bb connect …`. `--server` and `--base-url` (on both
+`bb connect` and `bb account login`) accept only `https://getbb.app` and
+`https://vibecodethis.site` origins (a `--server` URL is reduced to its apex);
+a development build also accepts `http://bb.localhost:<port>`.
+
+The connect plugin's `remoteAccess` setting turns remote access off and on
+without signing out. `bb connect off` closes the tunnel and machine shares and
+keeps the account signed in; `bb connect on` reopens them. The same setting is
+the Remote access switch in Settings and
+`bb plugin config connect set remoteAccess <true|false>`. `bb account logout`
+forgets the pairing, and disabling the plugin (`bb plugin disable connect`)
+cuts off all remote access until `bb plugin enable connect`.
+
+`bb connect status` shows the connect state and every share's host and URL.
+`bb connect expose <port>` run from a thread shares that thread environment's
+enrolled host. Server-host URLs remain
+`https://<server-label>--<port>.getbb.app`; other machines use
+`https://<machine-label>--<port>.getbb.app` and proxy directly through the
+owning daemon. Outside a thread the command defaults to the server host;
+`--host <name-or-id>` overrides host resolution. Access requires the owner's
+getbb.app session (not a public link). `bb connect unexpose <port>` and
+`bb connect shares` use the same host resolution and accept the same `--host`
+override. Their JSON rows include `hostId`, `hostName`, `port`, and `url`;
+`shares --json` also includes the resolved `host`. A machine without a live
+Connect enrollment fails fast with instructions to remove and re-add it in
+Settings → Machines.
+
+The CLI commands are proxied to the plugins, and Settings → bb connect
+drives connect's rpc (including shared ports).
 
 ### Pairing the bb mobile app
+
+Android source builds optionally read `GOOGLE_SERVICES_JSON`, an absolute path
+to the Firebase Android configuration file. Without it, they use
+`apps/mobile/google-services.json` when present; without either, the app builds
+without Firebase push configuration. For EAS, configure it as a file environment
+variable. Android build, signing, and Play submission instructions are in
+[`apps/mobile/README.md`](../apps/mobile/README.md#android-production-setup).
 
 The bb mobile app reaches a paired bb through the same connect route. It
 enrolls as a connect **machine** — its own credential on the getbb.app account,
 separate from the server's pairing secret and individually revocable — so
-pairing starts from the bb, not from the phone. Both pairing surfaces sit
-behind the `mobileApp` experiment (Settings → Experiments → **Mobile app**, or
-`bb settings experiment mobileApp true`) until the app is generally available;
-the connect plugin reads the experiment from `/system/config` on every call,
-so a toggle applies without a plugin reload:
+pairing starts from the bb, not from the phone. No experiment is required.
 
-- Settings → Remote access → **Add mobile device** mints a one-time code and
+- Settings → Mobile → **Add mobile device** mints a one-time code and
   shows it as a QR code plus copyable text with a countdown.
 - `bb connect machine-code` prints the same code, server URL, connect apex,
   and expiry; `bb connect machine-code --json` returns
@@ -965,7 +1519,7 @@ once. The phone then appears in the getbb.app dashboard machine list, where you
 can revoke it; every enrollment takes one of the account's machine slots
 (desktop apps, remote execution machines, and phones all count), so a
 machine-limit error asks you to revoke an unused device first. Both surfaces
-need the experiment on, the bb paired (`bb connect --code …`), and the connect
+need the experiment on, the bb signed in (`bb account login`), and the connect
 plugin enabled; with the experiment off the panel hides the section and
 `bb connect machine-code` exits 1 with a pointer to the toggle.
 
@@ -982,34 +1536,25 @@ while keeping workspace changes.
 
 Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. All experiments start off.
+bb stores only the experiments you set; the others follow the shipped default.
 The default-off `changelogPreview` experiment shows the latest release notes
 as a compact, dismissible card on Settings → Updates.
-The `mobileApp` experiment turns on pairing for the bb mobile app: the
-**Add mobile device** card under Settings → Remote access and the
-`bb connect machine-code` command (see "Pairing the bb mobile app" above). It
-is off by default while the app is in early access.
 
 BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
 
-The `sidebarProgressiveDisclosure` experiment is off by default. In **By
-project** and **By machine**, it shows the first five groups in the current sort
-order, keeps attention groups visible, and reveals ten more per **Show more**
-click. Revealed groups stay visible through activity and sort-order changes.
-**Manually** is unchanged. Toggle it with `bb settings experiment
-sidebarProgressiveDisclosure <true|false>`.
+Long timelines and large expanded timeline details retain stable
+height-preserving wrappers while mounting only rows near their active
+scrollport.
 
-The `timelineWindowing` experiment is off by default. When enabled, long
-timelines and large expanded timeline details retain stable height-preserving
-wrappers while mounting only rows near their active scrollport. Toggle it with
-`bb settings experiment timelineWindowing <true|false>`.
-
-The `multiMachinePicker` experiment is off by default. When enabled, projects
-with at least three machines use a searchable, target-first environment picker,
-and machine-only pickers become searchable when they have more than five
-machines. Toggle it with `bb settings experiment multiMachinePicker
-<true|false>`.
+The `serverMove` experiment is off by default. When enabled, Settings → Machines
+offers Move server here, and the server accepts `bb server move`,
+`bb server export`, and old server copy deletion (`POST /api/v1/server/move`,
+`/server/move/check`, `/server/export`, `DELETE /api/v1/hosts/:id/old-server-copy`).
+While it is off those routes return 403 `server_move_experiment_disabled`;
+move status and cancel stay available. Toggle it with
+`bb settings experiment serverMove <true|false>`.
 
 ## Thread Timeline Window
 
@@ -1081,7 +1626,10 @@ not on disk. `bb marketplace add|list|refresh|remove` and Settings → Plugin
 marketplaces manage them; the reserved `bb-community` marketplace comes from
 `BB_MARKETPLACE_URL` and cannot be added or removed. Adding a marketplace
 installs nothing, and removing one keeps its installed plugins as direct
-installs.
+installs. A `git:` marketplace reads `marketplace.json` from the repository
+root, or from the relative directory given with
+`bb marketplace add --subdirectory <relative-path>` (the Subdirectory field in
+Settings); bb stores that directory and reuses it on every refresh.
 
 ### Multi-plugin repositories
 
@@ -1135,6 +1683,29 @@ database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
+### Claude Code provider
+
+bb forwards only two environment variables to the Claude Code CLI, stripping
+every other. `BB_CLAUDE_CODE_EXECUTABLE` picks the `claude` binary;
+`CLAUDE_CODE_OAUTH_TOKEN` authenticates it on a machine with no interactive
+login, such as a CI runner. Mint the token with `claude setup-token`, which is
+long-lived where the credentials from `/login` are not. A logged-in machine
+needs neither.
+
+### Ask User Question plugin
+
+The builtin Ask User Question plugin keeps an unanswered question card open for
+30 minutes by default. When it expires, the agent receives a timeout result and
+the card closes. Choose `1 hour`, `4 hours`, `8 hours`, `24 hours`, `3 days`, or
+`7 days` under the plugin settings, or configure it from the CLI:
+
+```bash
+bb plugin config ask-user-question set questionTimeout "24 hours"
+```
+
+The setting applies to questions asked after it changes. A server restart still
+closes every open card.
+
 ### Provider retry plugin
 
 The builtin Provider retry plugin is enabled on fresh installations. When a turn
@@ -1177,9 +1748,9 @@ The builtin Notes plugin adds a Markdown-only source editor over one folder. It
 has one setting, edited under Plugins → Installed plugins or with
 `bb plugin config notes set <key> <value>`:
 
-| Key             | Default   | Behavior                                                                      |
-| --------------- | --------- | ----------------------------------------------------------------------------- |
-| `rootDirectory` | `~/Notes` | Folder whose Markdown files the Notes panel lists, opens, and writes.         |
+| Key             | Default   | Behavior                                                              |
+| --------------- | --------- | --------------------------------------------------------------------- |
+| `rootDirectory` | `~/Notes` | Folder whose Markdown files the Notes panel lists, opens, and writes. |
 
 The value must be absolute or start with `~/`; a relative path is refused. It
 resolves on the primary machine, so `~` expands to the home directory of the
@@ -1198,9 +1769,9 @@ The Trees plugin is an opt-in official plugin: `bb plugin install trees`. It has
 one setting, edited under Plugins → Installed plugins or with
 `bb plugin config trees set <key> <value>`:
 
-| Key             | Default   | Behavior                                                                                                 |
-| --------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `rootDirectory` | `~/Trees` | Folder holding one subdirectory per tree project, each with that project's task Markdown files.         |
+| Key             | Default   | Behavior                                                                                        |
+| --------------- | --------- | ----------------------------------------------------------------------------------------------- |
+| `rootDirectory` | `~/Trees` | Folder holding one subdirectory per tree project, each with that project's task Markdown files. |
 
 The value must be absolute or start with `~/`; a relative path is refused. It
 resolves on the primary machine, so `~` expands to the home directory of the
@@ -1321,6 +1892,14 @@ directory and reused by subsequent runs. Its generated command accepts
 
 ## Source Development
 
+`pnpm mobile:apk:dev` builds the standalone Android development app, **bb dev**,
+with orange icons and package `app.getbb.mobile.dev`. Output is
+`apps/mobile/build-output/bb-dev.apk`; append `-- x86_64` for an Intel emulator.
+The build command sets `BB_MOBILE_VARIANT=dev` for Expo configuration. Direct
+Expo commands accept `BB_MOBILE_VARIANT=production` (the default) or `dev`;
+other values fail validation. The dev variant omits production Firebase and
+HTTPS app-link registration. See [mobile build instructions](../apps/mobile/README.md#android-local-apk-and-verification).
+
 For source development only, `pnpm dev`, `pnpm start:worktree`,
 `pnpm start:worktree-remote`, `pnpm start:worktree --dryrun`,
 and `pnpm start` load the repo-root dotenv
@@ -1385,13 +1964,18 @@ before you share them.
 Agents use `bb browser-automation` through its bundled skill. Screenshot results
 contain temporary JPEG paths and the browser host ID; remote captures can be
 fetched with `bb file read <path> --host <host-id> --json`. Read or copy images
-before closing the session, which deletes its temporary files.
+before closing the session, which deletes its temporary files. Opening a
+local headless session also returns a `previewDirective` that the agent pastes
+into its message; BB renders it inline as a live preview that expands into a
+lightbox. Desktop sessions return none, because
+that browser is already visible in the app. There is no setting for it;
+collapse the card to pause it.
 
 The Browser Automation plugin supports desktop attachment and headless Chrome on enrolled hosts. Cloud browsers are deferred. The plugin pins one exact `dev-browser` npm release (currently 1.0.0-rc.3) with per-platform binary digests in `plugins/browser-automation/runtime-pin.ts`; the pin, the verification steps, and the bump procedure are documented in `plugins/browser-automation/README.md`.
 
 On each selected browser host, the plugin's host worker installs that release automatically on first use under `<plugin host dataDir>/runtime/npm/`, using the host's `npm` with scripts disabled, verifying the registry signature and SLSA provenance, downloading the matching GitHub release binary, and checking its digest before launch. Later sessions reuse the verified install without network access. Headless mode discovers installed Chrome/Chromium or uses `<plugin host dataDir>/runtime/chrome`. These files belong to the plugin host storage directory; they are not paths on the server or invoking agent host, and the user's global npm installation is never modified. No runtime sandbox-disabling setting is provided.
 
-For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke, `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path, and `DEV_BROWSER_SMOKE_NO_SANDBOX=1` enables the fixture's no-sandbox wrapper where the test host requires it. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
+For isolated development smoke tests only, `DEV_BROWSER_SMOKE_BINARY` selects the absolute binary path for the runtime smoke and `DEV_BROWSER_SMOKE_CHROME` selects the absolute Chrome path. The `smoke:install` task performs a real install of the pinned release into a disposable directory. These variables do not change normal plugin runtime behavior.
 
 ## Agent guidance plugin settings
 
@@ -1431,8 +2015,10 @@ Direct grants omit headers. Legacy `machineCredential` configuration is translat
 into the corresponding request header when loading an existing machine.
 
 For machine enrollment, `BB_DATA_DIR` selects isolated machine state instead of
-`~/.bb-machines/<server-host>`. `bb machine enroll` refuses the default `~/.bb`
-directory and a conflicting host or server identity. Local `bb machine
+`~/.bb-machines/<server-host>`; a reconnect command defaults to the data
+directory the machine's daemon last reported. `bb machine enroll` refuses the default `~/.bb`
+directory unless its `host-id` already names this machine, and it refuses a
+conflicting host or server identity. Local `bb machine
 start|stop|uninstall --host-id <id>` treats `BB_DATA_DIR` (or `--data-dir`) as an
 ownership assertion, not permission to act on arbitrary files: lifecycle commands
 require a canonical installer-owned directory under `~/.bb-machines` and verify
@@ -1448,66 +2034,78 @@ teardown hooks. Ordinary setup uses `environment.attach`; explicit hooks use
 the daemon applies them to the hook child process. Hook progress and errors are
 forwarded as-is, so contributed values printed by the child remain visible.
 Machine selection and precedence stay in the server
-resolver, which returns no contributions for the local host.
+resolver.
 
-Settings → Machines → Machine environment defines variables for all enrolled
-machine hosts. Local hosts do not receive them. All values are encrypted in the
-database using AES-256-GCM and are never returned by settings reads. The server
-keeps the encryption key in its data directory's `machine-environment-key` file
-(mode 0600); include this file with database backups. Names and notes are public
-metadata. Existing plaintext settings and private secret files migrate on first
-access; each old secret file is removed only after its encrypted record is saved.
-Historical backups may still contain values stored before migration.
+Settings → Environment variables is the machine environment editor. Its scope
+control sits under the section header and switches between All projects and a
+single project. Project settings →
+Advanced settings exposes the same editor for that project, where inherited
+global variables are listed read-only with an Override action. Project variables
+follow the project across machines and worktrees, including the primary host.
+Values are encrypted in one `environment_variables` table;
+`project_id IS NULL` denotes global scope. Database migration preserves existing
+ciphertext from `app_settings_values`. New ciphertext authenticates both scope
+and name; legacy global ciphertext remains readable. The server keeps the key
+in its data directory's `machine-environment-key` file (mode 0600); back it up
+with the database. Names and notes are public metadata; settings APIs never
+return saved values. Provider environment diagnostics mask core contributions.
+Commands can still print their own environment values.
 
-The server synchronizes the machine environment into enrolled daemons before
-they accept work, on reconnect, and when settings change. The daemon and its
-new child processes inherit these values, including background git and gh
-commands. Replacement snapshots remove stale overrides and restore the original
-daemon values. This does not alter unrelated OS processes or already-running
-children, and does not restart cached provider runtimes. Those runtimes retain
-their launch environment until recreated. Core also resolves the environment for each agent turn, project-source
-clone, host setup call, and new BB terminal. User variables override built-ins; agent-provider
-contributions override host variables for agent turns. Existing terminals keep
-the environment they started with: open a new terminal after a change. Agent
-turns receive refreshed values on their next turn and after resume. Codex rebuilds
-its loaded session from the existing conversation when the environment changes.
+Built-in credentials are overridden by global variables, then project variables.
+Agent-provider contributions retain precedence over these values. Empty strings
+are explicit overrides. Deleting a project override restores the inherited value.
+Project deletion removes its variables when its database row is removed.
 
-Plugin host calls start immediately using the current environment while any calls
-are active in that plugin worker. Changed or removed machine variables take
-effect on the next call after all active calls finish. Continuous overlapping
-calls can keep the previous values until the worker becomes idle.
+Global values synchronize into every host daemon, including the primary host,
+before work, on reconnect, and when settings change. Project values are resolved
+by the server and passed only to project operations core runs: agent turns/resume,
+source clones, setup/teardown hooks, and new terminals. They never modify the
+daemon's global environment. Existing terminals and commands retain
+their launch environment. Agent turns receive fresh values on the next turn;
+providers reconstruct sessions where needed to apply changed or removed values.
 
-Ordinary setup variable delivery requires host-daemon protocol 205; immediate
-plugin-call reuse across environment changes requires protocol 206. Daemon-wide
-machine environment synchronization requires protocol 207. Older daemons must
-update before the server accepts their session.
+Plugin host calls receive global variables only; they cannot select a project.
+A plugin worker keeps its current environment while any of its calls are active,
+as before. This means a project override of a credential such as `GH_TOKEN`
+applies to the project's clone, setup script, terminals, and agent turns, but
+not to git commands an environment provider plugin runs on the machine, which
+use the global value. Project-scoped contributions require daemon protocol 211;
+older daemons update before the server accepts their session.
 
-The built-in GitHub row uses `gh auth token --hostname github.com` and `gh api
---hostname github.com user` on the server host. It supplies `GH_TOKEN`, Git's
+For non-primary hosts, the built-in GitHub row uses `gh auth token --hostname
+github.com` and `gh api --hostname github.com user` on the server host. It
+supplies `GH_TOKEN`, Git's
 `GIT_CONFIG_*` environment entries for an HTTPS credential helper and SSH URL
 rewrites for github.com, and author/committer identity. The helper expands
 `GH_TOKEN` when Git calls it; no helper file, global Git config, or credential
-store is installed. Private email uses `<id>+<login>@users.noreply.github.com`.
+store is installed. The primary host continues using its local Git authentication
+unless an explicit global or project `GH_TOKEN` overrides it. A server without a
+local host daemon has no primary host, so every machine receives the built-in
+row. Private email uses
+`<id>+<login>@users.noreply.github.com`.
 A user `GH_TOKEN` overrides the built-in token, and the row shows overridden.
 Tokens obtained from gh are never persisted by the server. Image construction
 and Modal filesystem snapshot settings do not receive these contributions.
 
-Use `bb machine env list --json`, `bb machine env set NAME [--note
-text] --json`, and `bb machine env unset NAME --json`. Set reads its value from
-stdin, removes one trailing newline, and never accepts a value in argv. For
-example, `printf '%s' staging | bb machine env set DEPLOY_REGION`. Pipe secrets
-from a secure source instead of putting them in shell history.
+Use `bb machine env list`, `bb machine env set NAME [--note text]`, and
+`bb machine env unset NAME`; all accept `--project <id>` and `--json`.
+Omitting `--project` retains global behavior. Set reads stdin, removes one
+trailing newline, and never accepts a value in argv. For example:
+`printf '%s' staging | bb machine env set DEPLOY_REGION --project proj_example`.
 
-SDK parity: `sdk.system.machineEnvironment()` and
-`sdk.system.replaceMachineEnvironment({ variables })`. Replacement is atomic;
-pass every row to retain, using `value: null` for an unchanged saved secret. All
-list rows have `value: null` and `secret: true`.
-`bb machine env list` reports the built-in readiness as `builtInGit`.
+SDK parity: `sdk.system.machineEnvironment`, `replaceMachineEnvironment`,
+`setMachineEnvironmentVariable`, and `deleteMachineEnvironmentVariable` manage
+global values. The same methods under `sdk.projects` take `projectId`.
+Set/delete mutate one variable atomically. Replacement atomically replaces one
+scope, with `value: null` retaining an existing secret; missing saved values
+are rejected. Project reads return `variables` and `inheritedVariables`, with
+`value: null` and `secret: true` for every row. `builtInGit` reports effective
+GitHub credential readiness.
 
-Automatic machine GitHub credentials are enabled by default. Use
+Automatic GitHub credential forwarding to non-primary hosts is enabled by default. Use
 `bb settings general machineGitCredentialsEnabled false` to stop forwarding the
-server gh credentials to machines; `true` enables them again. In Machines →
-Advanced settings, the automatic GH_TOKEN switch controls the same setting.
+server gh credentials to machines; `true` enables them again. In Settings →
+Environment variables, the automatic GH_TOKEN switch controls the same setting.
 This does not log the server out or suppress an explicit custom GH_TOKEN.
 Changes apply to new turns, setup commands and terminals.
 
@@ -1561,3 +2159,132 @@ Share anonymous usage data (or `bb settings general telemetryEnabled true`).
 SDK callers can use `system.updateGeneralSettings` with `telemetryEnabled`.
 `BB_TELEMETRY=false` always disables telemetry, even when the saved preference
 is enabled.
+
+When opted in, anonymous usage telemetry sends these PostHog events with a random install id,
+the app version, install kind, platform, OS release, architecture, and Node
+version: `app_started`, `telemetry_disabled`, `thread_created`,
+`user_message_sent`, and `plugin_installed`, plus setup events the app reports
+through `POST /api/v1/system/telemetry/events` (`sdk.system.experimental_recordTelemetryEvent`):
+`onboarding_started` (whether an agent was installed or ready at first launch),
+`onboarding_step_reached`, `onboarding_step_completed`, and
+`onboarding_step_skipped` (per setup-guide step, marked first run or replay),
+`onboarding_finished` (completed or skipped), `onboarding_agent_state`
+(aggregate installed/ready booleans when the guide's health snapshot changes;
+null means unknown or a failed health query), and `onboarding_sign_in`
+(started, ready, exited, failed, or cancelled, marked first run or replay).
+Sign-in `ready` means the selected provider's health became ready during the
+attempt. `exited` means its command exited successfully before readiness was
+observed; it does not establish successful authentication. Cancellation
+includes leaving the Agent step or switching sign-in methods.
+
+`new_thread_submit` records started, accepted, or failed composer submissions.
+It covers all new-thread submissions, so analytics must restrict first-send
+analysis to the installation's earliest attempt and check prior thread history.
+Accepted means the creation callback succeeded, not that the provider produced
+an answer. Disabled send controls and later turn failures are not measured.
+Attempts without a delivered outcome remain unknown, not inferred failures.
+
+The route accepts only these events and their fixed enums, booleans, and unknown
+markers. These additions include no provider IDs, account details, prompts,
+project or file names, terminal output, error messages, or session identifiers.
+They do not measure foreground time, app exit, or install/update error reasons.
+
+Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
+or with `bb settings general telemetryEnabled false`. The saved server-wide preference
+takes effect immediately and persists across restarts. SDK callers can use
+`system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
+always disables telemetry, even when the saved preference is enabled.
+
+### Thread list provider icons, read status grouping, and lifecycle filter
+
+The Thread list plugin's `showProviderIcons` preference defaults to `true`.
+Organize → Rows → Provider icons or
+`bb thread-list prefs set showProviderIcons false` hides the agent provider
+icon before each thread title. Unknown provider ids have no icon.
+
+The `groupByReadStatus` preference defaults to `false`. Organize → Groups →
+By read status or `bb thread-list prefs set groupByReadStatus true` lists
+threads that show an unread dot above the rest, keeping the selected sort within
+each group. Parent threads start collapsed while it is on, without changing the
+saved collapsed state. The open thread keeps its place until another thread is
+opened, and pinned threads keep their manual order. It is exclusive with By
+environment: while it is on, worktree threads are not grouped.
+
+The Thread list plugin's `threadLifecycles` preference selects `["active"]`
+(the default), `["archived"]`, or `["active","archived"]`. Set it with
+`bb thread-list prefs set threadLifecycles '["archived"]'` or the header's
+Filter menu. It syncs to every window and rejects empty or duplicate values.
+
+## Desktop browser cookie discovery
+
+The desktop app combines known-browser definitions with schema-based discovery
+of Chromium and Firefox cookie stores matched to registered web browsers.
+Known-browser entries remain available without registration metadata.
+On Linux, an absolute `XDG_CONFIG_HOME`
+in the desktop process environment replaces `~/.config` for discovery and known
+Chromium profile locations; relative values are ignored. Flatpak and Snap data
+directories are also searched. On macOS, discovery searches Application Support.
+The desktop app's own profile is excluded. See `bb guide browser` for search
+bounds, encryption limitations, and the `import-sources` / `import-cookies`
+commands. No additional BB setting is required to enable discovery.
+
+### Mobile app downloads
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
+The publishing workflow verifies the signed APK and publishes both the checksum-named
+asset and the stable `bb-android.apk` alias, then `latest.json`.
+
+### Server performance diagnostics
+
+`BB_PERF_DIAGNOSTICS=1` permits opt-in CPU profiling and detailed server
+performance logs; the default is false. Restart to change it. The launcher
+flag `pnpm start --perf-diagnostics` (also `pnpm start:worktree` and `bb-app`)
+grants permission for that launch; the experiment must also be on. See [diagnostics](debugging-and-qa.md#opt-in-server-performance-diagnostics)
+for capture retention, overhead, and interpretation.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.
+
+## Prompt Library
+
+The bundled Prompt Library plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--prompt-library`. Its
+**Search prompts** command defaults to Ctrl+R and can be rebound in Keyboard
+Settings. Search scope is remembered in browser local storage separately for
+new-thread and follow-up composers. Starred text and mentions persist in the
+plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
+for CLI and SDK commands.
+
+## MCP server
+
+The bundled MCP server plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--mcp`. While it is enabled, bb
+serves a Model Context Protocol endpoint at `/mcp` on its bb connect address
+and at `/api/v1/plugins/bb--mcp/http/mcp` on the loopback address.
+`bb mcp status` prints both. Remote apps sign in through the bb account, and
+an approved app can run any `bb` command; `bb mcp clients` lists them and
+`bb mcp revoke <grant-id>` disconnects one. The local address needs no
+sign-in and has the same trust as the `bb` CLI on that machine. See the
+[MCP skill](../plugins/mcp/skills/mcp/SKILL.md) for the tools and the few
+commands that cannot run over MCP.

@@ -58,23 +58,6 @@ const builtHtml = [
 describe("reorderHeadForFirstPaint", () => {
   const fontTags = resolveFontPreloadTags(bundle, "/");
 
-  it("moves the stylesheet and font preload ahead of the script and preload block", () => {
-    const html = reorderHeadForFirstPaint(builtHtml, fontTags);
-
-    const themeAt = html.indexOf("bb.theme");
-    const fontAt = html.search(/<link[^>]*as="font"/);
-    const stylesheetAt = html.search(/<link[^>]*rel="stylesheet"/);
-    const entryAt = html.search(/<script type="module"/);
-    const firstPreloadAt = html.search(/<link rel="modulepreload"/);
-
-    expect(themeAt).toBeLessThan(fontAt);
-    expect(fontAt).toBeLessThan(stylesheetAt);
-    expect(stylesheetAt).toBeLessThan(entryAt);
-    expect(stylesheetAt).toBeLessThan(firstPreloadAt);
-    expect(html.match(/rel="stylesheet"/g)).toHaveLength(1);
-    expect(html).toContain('<link fetchpriority="high" rel="stylesheet"');
-  });
-
   it("still front-loads the stylesheet when the font is not in the bundle", () => {
     const html = reorderHeadForFirstPaint(builtHtml, []);
     expect(html.search(/rel="stylesheet"/)).toBeLessThan(
@@ -148,6 +131,7 @@ describe("reorderHeadForFirstPaint on the document Vite emits from index.html", 
     }
     expect(Math.max(...modulepreloadsAt)).toBeLessThan(headEndAt);
     expect(html.match(/rel="stylesheet"/g)).toHaveLength(1);
+    expect(html).toContain('<link fetchpriority="high" rel="stylesheet"');
     expect(html.match(/<script type="module"/g)).toHaveLength(1);
     expect(html).toMatch(/boot-vendor-def\.js">\n  <\/head>/);
   });

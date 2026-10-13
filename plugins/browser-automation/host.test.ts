@@ -31,6 +31,7 @@ describe("host runtime preparation", () => {
     );
     const factory = vi.fn(async (): Promise<RuntimeSession> => ({
       close: async () => {},
+      preview: null,
       run: async () => {
         throw new Error("unused");
       },
@@ -164,6 +165,7 @@ describe("host session lifetime", () => {
       createHostEntry(
         async () => ({
           close,
+          preview: null,
           run: async (_script, _timeout, signal) =>
             new Promise((_resolve, reject) => {
               signal.addEventListener(
@@ -211,6 +213,113 @@ describe("host session lifetime", () => {
       harness.experimental_call("open", open(randomUUID())),
     ).rejects.toThrow("launch failed");
     expect(harness.experimental_getRetainedWorkerLeaseCount()).toBe(0);
+    await harness.experimental_dispose();
+  });
+});
+describe("host live preview", () => {
+  const frame = {
+    sequence: 3,
+    mimeType: "image/jpeg" as const,
+    data: "abc",
+    width: 1280,
+    height: 720,
+    url: "https://example.test/",
+    title: "Example",
+  };
+  it("long-polls the session preview without counting as session activity", async () => {
+    const next = vi.fn(async () => frame);
+    const close = vi.fn(async () => {});
+    const harness = experimental_createHostEntryHarness(
+      createHostEntry(
+        async () => ({
+          close,
+          preview: { next, close() {} },
+          run: async () => ({ text: "", images: [], exitCode: 0 }),
+        }),
+        resolver,
+      ),
+    );
+    const id = randomUUID();
+    await harness.experimental_call("open", {
+      sessionId: id,
+      expiresAt: Date.now() + 60_000,
+      idleTimeoutMs: 1_200,
+    });
+    const started = Date.now();
+    while (Date.now() - started < 1_000) {
+      expect(
+        await harness.experimental_call("preview", {
+          sessionId: id,
+          afterSequence: 2,
+          waitMs: 5_000,
+          size: "full",
+        }),
+      ).toEqual({ frame });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(next).toHaveBeenCalledWith(
+      2,
+      5_000,
+      expect.any(AbortSignal),
+      "full",
+    );
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce(), {
+      timeout: 3_000,
+    });
+    await expect(
+      harness.experimental_call("preview", {
+        sessionId: id,
+        afterSequence: 0,
+        waitMs: 0,
+        size: "thumbnail",
+      }),
+    ).rejects.toThrow("stopped");
+    await harness.experimental_dispose();
+  });
+  it("refuses sessions attached to a desktop browser and cancels waits on close", async () => {
+    const waiting = vi.fn(
+      (_after: number, _wait: number, signal: AbortSignal) =>
+        new Promise<null>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("stopped")), {
+            once: true,
+          });
+        }),
+    );
+    const factory = vi
+      .fn()
+      .mockResolvedValueOnce({ close: async () => {}, preview: null })
+      .mockResolvedValueOnce({
+        close: async () => {},
+        preview: { next: waiting, close() {} },
+      });
+    const harness = experimental_createHostEntryHarness(
+      createHostEntry(factory, resolver),
+    );
+    const desktop = randomUUID(),
+      local = randomUUID();
+    await harness.experimental_call("open", {
+      ...open(desktop),
+      connectionUrl: "ws://127.0.0.1:9/devtools/browser/x",
+    });
+    await harness.experimental_call("open", open(local));
+    await expect(
+      harness.experimental_call("preview", {
+        sessionId: desktop,
+        afterSequence: 0,
+        waitMs: 0,
+        size: "thumbnail",
+      }),
+    ).rejects.toThrow("local headless");
+    const pending = harness.experimental_call("preview", {
+      sessionId: local,
+      afterSequence: 0,
+      waitMs: 5_000,
+      size: "thumbnail",
+    });
+    const rejected = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(waiting).toHaveBeenCalledOnce());
+    await harness.experimental_call("close", { sessionId: local });
+    await rejected;
     await harness.experimental_dispose();
   });
 });

@@ -4,6 +4,7 @@ import {
   EMPTY_FIXED_PANEL_TABS_STATE,
   areFixedPanelTabsEquivalent,
   buildFixedPanelTabId,
+  createAttachmentFilePreviewFixedPanelTab,
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
   createHostFilePreviewFixedPanelTab,
@@ -294,6 +295,28 @@ describe("workspace file preview fixed panel tabs", () => {
 
     expect(parsed.secondary.activeTabId).toBe(projectTab.id);
     expect(parsed.secondary.tabs).toEqual([projectTab]);
+  });
+
+  it("round-trips an attachment preview through storage and the thread-tabs contract", () => {
+    const tab = createAttachmentFilePreviewFixedPanelTab({
+      name: "Pasted text.txt",
+      path: "Pasted-text-1791431248908-krajcq.txt",
+      projectId: "proj_app",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: { activeTabId: tab.id, isOpen: true, tabs: [tab] },
+      lastUsedAt: NOW,
+    });
+
+    const parsed = parseFixedPanelTabsState({
+      initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+      now: NOW,
+      storedValue: serializeFixedPanelTabsState({ state }),
+    });
+
+    expect(parsed.secondary.activeTabId).toBe(tab.id);
+    expect(parsed.secondary.tabs).toEqual([tab]);
+    expect(threadTabsSchema.parse([tab])).toEqual([tab]);
   });
 
   it("does not collide project-source preview tabs for the same path in different projects", () => {

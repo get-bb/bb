@@ -15,7 +15,7 @@ export {
   createThreadProvisioningId,
 } from "./ids.js";
 
-export { migrate } from "./migrate.js";
+export { countAppliedMigrations, migrate } from "./migrate.js";
 export {
   isSqliteForeignKeyConstraint,
   isSqliteUniqueConstraintOnColumns,

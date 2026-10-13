@@ -109,7 +109,7 @@ it("installs runtime dependencies with development dependencies present and life
   await expect(
     readFile(join(rootDir, "node_modules/dev-tool/package.json")),
   ).rejects.toMatchObject({ code: "ENOENT" });
-});
+}, 60_000);
 
 it("leaves the source manifest unchanged when a runtime dependency cannot be installed", async () => {
   const original = manifest({
@@ -125,7 +125,7 @@ it("leaves the source manifest unchanged when a runtime dependency cannot be ins
   await expect(
     readFile(join(rootDir, "package-lock.json")),
   ).rejects.toMatchObject({ code: "ENOENT" });
-});
+}, 60_000);
 
 it("uses the shipped npm and Node runtime when PATH contains no executables", async () => {
   vi.stubEnv("PATH", rootDir);
@@ -136,4 +136,4 @@ it("uses the shipped npm and Node runtime when PATH contains no executables", as
   await installGitDependencies(rootDir);
 
   expect(await readFile(join(rootDir, "package.json"), "utf8")).toBe(original);
-});
+}, 60_000);

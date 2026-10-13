@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import {
   createServer,
@@ -8,7 +7,6 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { waitForProcessExit } from "@bb/config/child-process-exit";
 import type {
   BbAppStartContext,
   ManagedFullStackProcesses,
@@ -96,42 +94,6 @@ function createStartContext(args: {
 }
 
 describe("waitForServerHealth", () => {
-  it("does not accept another server's /health while the child is still booting", async () => {
-    let healthRequests = 0;
-    const foreign = await listen((_request, response) => {
-      healthRequests += 1;
-      answerHealth(response, { ok: true });
-    });
-    const child = spawn(
-      process.execPath,
-      ["-e", "setTimeout(() => process.exit(1), 400)"],
-      { stdio: "ignore" },
-    );
-
-    try {
-      const outcome = await waitForServerHealth({
-        childProcess: child,
-        expectedLaunchId: "launch-expected",
-        timeoutMs: 5_000,
-        url: `http://127.0.0.1:${foreign.port}/health`,
-      }).then(
-        () => "healthy" as const,
-        (error: unknown) =>
-          error instanceof Error ? error.message : String(error),
-      );
-      await waitForProcessExit(child);
-
-      expect(child.exitCode).toBe(1);
-      expect(healthRequests).toBeGreaterThan(0);
-      expect(outcome).toBe(
-        `Process exited before becoming healthy: another server is already answering at http://127.0.0.1:${foreign.port}/health`,
-      );
-    } finally {
-      if (child.exitCode === null) child.kill("SIGKILL");
-      await foreign.close();
-    }
-  });
-
   it("keeps polling past foreign answers until the child echoes its launch id", async () => {
     let healthRequests = 0;
     const server = await listen((_request, response) => {

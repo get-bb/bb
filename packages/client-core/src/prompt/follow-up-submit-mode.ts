@@ -1,6 +1,5 @@
 export type FollowUpBlockedReason =
   | "loading-execution-options"
-  | "loading-pending-interactions"
   | "pending-interaction"
   | "unavailable";
 

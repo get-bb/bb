@@ -26,6 +26,13 @@ describe("bridge-kit presentation", () => {
     expect(webSearchPresentation(undefined)).not.toHaveProperty("title");
   });
 
+  it("does not split an astral character at the headline limit", () => {
+    const title = presentationTitle(
+      `${"x".repeat(PRESENTATION_TITLE_MAX_LENGTH - 2)}𠮷tail`,
+    );
+    expect(title).toBe(`${"x".repeat(PRESENTATION_TITLE_MAX_LENGTH - 2)}…`);
+  });
+
   it("caps the detail at the persisted presentation schema's limit", () => {
     const detail = presentationDetail(
       "d".repeat(THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH + 50),
@@ -35,6 +42,13 @@ describe("bridge-kit presentation", () => {
     );
     expect(detail.endsWith("…")).toBe(true);
     expect(presentationDetail("short")).toBe("short");
+  });
+
+  it("does not split an astral character at the detail limit", () => {
+    const prefix = "x".repeat(
+      THREAD_EVENT_ITEM_PRESENTATION_DETAIL_MAX_LENGTH - 2,
+    );
+    expect(presentationDetail(`${prefix}𠮷tail`)).toBe(`${prefix}…`);
   });
 
   it("headlines a file by its name, not its directory", () => {

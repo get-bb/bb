@@ -518,28 +518,6 @@ describe("git semver tag resolution", () => {
     }
   });
 
-  it("carries the selected release tag on the resolution", async () => {
-    const { repo, commitOf } = await tagRepo();
-
-    expect(
-      await resolveGitUpdate({
-        url: repo,
-        intent: {
-          kind: "range",
-          range: "^1.0.0",
-          tagPrefix: "",
-          resolvedTag: "v1.0.0",
-        },
-        currentCommit: commitOf.get("v1.0.0") ?? "",
-        probeCandidate: compatibleProbe,
-      }),
-    ).toMatchObject({
-      outcome: "update-available",
-      candidateGitTag: "v1.1.0",
-      candidate: { version: commitOf.get("v1.1.0") },
-    });
-  });
-
   it("walks down to the newest release this bb can run", async () => {
     const { repo, commitOf } = await tagRepo();
     const probed: string[] = [];

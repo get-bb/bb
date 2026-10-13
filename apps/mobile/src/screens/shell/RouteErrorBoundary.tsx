@@ -1,4 +1,5 @@
 import type { ErrorBoundaryProps } from "expo-router";
+import { useEffect } from "react";
 import {
   Platform,
   Pressable,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { revealApp } from "@/app-shell";
 
 const PALETTE = {
   light: {
@@ -31,6 +33,7 @@ const MONO_FAMILY = Platform.select({ ios: "Menlo", default: "monospace" });
 export function RouteErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const insets = useSafeAreaInsets();
   const colors = PALETTE[useColorScheme() === "dark" ? "dark" : "light"];
+  useEffect(revealApp, []);
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}

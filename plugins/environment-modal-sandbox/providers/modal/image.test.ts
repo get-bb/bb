@@ -57,7 +57,7 @@ it("builds and publishes the bundled tools image without daemon or credentials",
   expect(definition.commands).toContain("USER node");
   expect(definition.commands.join("\n")).toContain("bubblewrap");
   expect(definition.commands.join("\n")).toContain(
-    "@earendil-works/pi-coding-agent@0.84.0",
+    "@earendil-works/pi-coding-agent@0.99.0",
   );
   expect(definition.commands.join("\n")).toContain("@openai/codex@");
   expect(definition.commands.join("\n")).toContain(

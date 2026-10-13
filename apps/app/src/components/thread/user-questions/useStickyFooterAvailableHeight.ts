@@ -6,6 +6,7 @@ const STICKY_FOOTER_FLEX_ATTRIBUTE = "data-sticky-footer-flex";
 
 export function useStickyFooterAvailableHeight(
   ref: RefObject<HTMLElement | null>,
+  enabled = true,
 ): number | null {
   const bottomAnchor = useBottomAnchoredScroll();
   const getScrollElement = bottomAnchor?.getScrollElement ?? null;
@@ -17,7 +18,7 @@ export function useStickyFooterAvailableHeight(
     const footer = element?.closest<HTMLElement>(
       `[${SCROLL_FOOTER_ATTRIBUTE}]`,
     );
-    if (!element || !scrollElement || !footer) {
+    if (!enabled || !element || !scrollElement || !footer) {
       setAvailableHeight(null);
       return;
     }
@@ -44,7 +45,7 @@ export function useStickyFooterAvailableHeight(
       observer.disconnect();
       element.removeAttribute(STICKY_FOOTER_FLEX_ATTRIBUTE);
     };
-  }, [getScrollElement, ref]);
+  }, [enabled, getScrollElement, ref]);
 
   return availableHeight;
 }

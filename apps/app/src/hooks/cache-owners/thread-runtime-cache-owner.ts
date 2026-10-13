@@ -1,6 +1,7 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import type {
+  Environment,
   PromptHistoryEntry,
   ResolvedThreadExecutionOptions,
   ThreadListEntry,
@@ -45,6 +46,7 @@ import {
   type ThreadListCacheData,
 } from "./thread-list-cache-data";
 import {
+  environmentQueryKey,
   projectPromptHistoryQueryKey,
   projectSourceBranchesQueryKeyPrefix,
   threadPromptHistoryQueryKey,
@@ -406,6 +408,8 @@ function buildOptimisticQueuedMessage({
 
   return {
     id: `optimistic-queued-${nanoid()}`,
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: request.id,
@@ -671,6 +675,7 @@ function buildOptimisticUserMessageRow({
           imageUrls: attachments.imageUrls ?? [],
           localImagePaths: attachments.localImagePaths ?? [],
           localFilePaths: attachments.localFilePaths ?? [],
+          localFileDetails: attachments.localFileDetails ?? [],
         }
       : null;
   return {
@@ -679,6 +684,7 @@ function buildOptimisticUserMessageRow({
     role: "user",
     threadId,
     turnId: null,
+    messageSeq: 0,
     sourceSeqStart: 0,
     sourceSeqEnd: 0,
     startedAt: createdAt,
@@ -726,7 +732,6 @@ function applyOptimisticAcceptedTurnThreadState({
     runtime: {
       ...thread.runtime,
       displayStatus:
-        thread.runtime.displayStatus === "host-reconnecting" ||
         thread.runtime.displayStatus === "waiting-for-host"
           ? thread.runtime.displayStatus
           : "active",
@@ -900,15 +905,37 @@ export function applyCreateThreadResult({
   thread,
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
-  optimisticallyInsertThread(queryClient, thread);
-  prependProjectPromptHistory(
+  const environmentId =
+    request.environment.type === "reuse"
+      ? request.environment.environmentId
+      : thread.environmentId;
+  const cachedHostId =
+    environmentId === null
+      ? null
+      : (queryClient.getQueryData<Environment>(environmentQueryKey(environmentId))
+          ?.hostId ?? null);
+  const selectedHostId =
+    request.environment.type === "provider" &&
+    request.environment.machine?.type === "existing"
+      ? request.environment.machine.hostId
+      : request.environment.type === "host"
+        ? (request.environment.hostId ?? null)
+        : null;
+  optimisticallyInsertThread(
     queryClient,
-    request.projectId,
-    buildAcceptedPromptHistoryEntry({
-      createdAt: thread.createdAt,
-      input: request.input,
-    }),
+    thread,
+    cachedHostId ?? selectedHostId,
   );
+  if (request.input.length > 0) {
+    prependProjectPromptHistory(
+      queryClient,
+      request.projectId,
+      buildAcceptedPromptHistoryEntry({
+        createdAt: thread.createdAt,
+        input: request.input,
+      }),
+    );
+  }
   invalidateProjectPromptHistoryQueries({
     queryClient,
     projectId: request.projectId,

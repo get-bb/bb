@@ -100,7 +100,6 @@ describe.skipIf(!corpusAvailable())(
               )?.info.displayName,
               threadName: thread.title ?? "",
               threadStatus: thread.status,
-              turnMessageDetail: "summary",
               workspaceRoot: null,
             },
           });
@@ -169,6 +168,7 @@ describe.skipIf(!corpusAvailable())(
           const { profile } = buildThreadTimelineWithProfile(db, thread, {
             completedTurnDisplay: "collapse",
             eventBudget: 1_500,
+            includeClearedContextHistory: false,
             includeDiagnosticOperations: false,
             maxInlineOutputChars: 32_000,
             maxSeq: getLatestThreadSequence(db, { threadId }),

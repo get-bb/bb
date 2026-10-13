@@ -1,13 +1,13 @@
 import "../global.css";
 import "../src/lib/polyfills";
 
-import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
+  holdLaunchSplash,
+  LaunchSplash,
   PaletteProvider,
   ProfilesProvider,
   ServerPaletteSync,
@@ -21,7 +21,7 @@ import { RootNavigator, RouteErrorBoundary } from "@/screens";
 import { ThemeProvider } from "@/theme";
 import { SheetProvider, Toaster } from "@/ui";
 
-void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+holdLaunchSplash();
 
 export const unstable_settings = { anchor: "index" };
 
@@ -29,13 +29,8 @@ export { RouteErrorBoundary as ErrorBoundary };
 
 export default function RootLayout() {
   const boot = useAppBoot();
-  const ready = boot.ready;
 
-  useEffect(() => {
-    if (ready) void SplashScreen.hideAsync().catch(() => undefined);
-  }, [ready]);
-
-  if (!ready) return null;
+  if (!boot.ready) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -53,6 +48,7 @@ export default function RootLayout() {
                     <QuickActionsHandler />
                     <PushNotificationsHost />
                     <Toaster />
+                    <LaunchSplash />
                   </SheetProvider>
                 </ProfilesProvider>
               </ThemeProvider>

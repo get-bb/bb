@@ -14,7 +14,7 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 ## Source
 
 - `apps/app/src/lib/app-command-metadata.ts`
-- `apps/app/src/components/sidebar/ProjectList.tsx`
+- `plugins/thread-list/app/list/ProjectList.tsx`
 - `apps/cli/src/commands/thread/organization.ts`
 - `apps/app/src/components/notifications/NotificationCenter.tsx`
 
@@ -48,7 +48,7 @@ recipe. External writes require a disposable test target and task authorization.
 - Root compose uses one new-thread draft across project selections. Enter multiline text with Shift+Enter; do not pass literal newlines to dev-browser fill() on the rich editor because they can submit. Source: `apps/app/src/hooks/usePromptDraftStorage.ts:17`.
 - Ctrl+K opens thread search. For command actions use Ctrl+Shift+P and preserve the leading > when filling the command search field; removing > switches to thread search. Source: `apps/server/src/services/system/app-keybindings.ts:145`.
 - On Linux web, previous/next use Ctrl+Shift+[ and Ctrl+Shift+]; numbered jumps use Ctrl+Shift+1…9. Scope visible sidebar order and await the resulting route. Serialize CLI open/pane commands across all connected profiles. Source: `apps/server/src/services/system/app-keybindings.ts:153`.
-- Select Sidebar display options → Manually before creating or organizing sections. By project and By machine do not expose the same manual section controls. Section create/rename/delete are global, while collapsed/order preferences are client-local; inspect source for the supported drag interaction. Source: `apps/app/src/components/sidebar/ProjectList.tsx:575`.
+- Select Sidebar display options → Manually before creating or organizing sections. By project and By machine do not expose the same manual section controls. Section create/rename/delete are global, while collapsed/order preferences are client-local; inspect source for the supported drag interaction. Source: `plugins/thread-list/app/list/ProjectList.tsx:427`.
 - Both global and project archived routes redirect to /settings/archived. Use its project filter when project-scoped archived results are required; the legacy project URL does not preserve a project filter. Source: `apps/app/src/App.tsx:228`.
 - Open >Show all notifications after generating a local toast. Verify Copy notification, Dismiss notification, Clear all, and Hide notifications. This center stores an in-memory toast history; it does not supply a thread-inbox read/link contract and does not persist across reload. Source: `apps/app/src/components/notifications/NotificationCenter.tsx:78`.
 - Unknown route paths redirect to Home (/); separately test a well-formed missing thread deep link for visible missing-resource feedback. Do not expect every unknown path to fail visibly. Source: `apps/app/src/views/SplitWorkspaceRoute.tsx:78`.

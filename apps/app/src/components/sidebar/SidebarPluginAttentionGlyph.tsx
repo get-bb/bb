@@ -49,7 +49,7 @@ export function SidebarPluginAttentionGlyph({
   if (key === null || key === acknowledgedKey) return null;
   const label = pluginAttentionLabel(plugins);
   return (
-    <SidebarMenuItem className="min-w-0">
+    <SidebarMenuItem className="shrink-0">
       <SidebarMenuButton
         asChild
         aria-label={label}

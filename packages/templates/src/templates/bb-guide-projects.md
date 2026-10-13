@@ -11,6 +11,9 @@ A project maps to a code repository. All threads belong to a project.
 
   bb project list                         List ordinary projects
     --include-personal                    Also include the personal project
+  bb project discover                     Find recently used git repos
+    --machine <id-or-name>                Machine to scan (default: local)
+    --host <id-or-name>                   Alias for --machine
   bb project history <id>                 List prompt history
   bb project reorder <id>                 Reorder in the sidebar
     --after <id>                          Previous project, or omit for start
@@ -22,7 +25,7 @@ A project maps to a code repository. All threads belong to a project.
 
   An explicit machine/host selector accepts an exact ID or unambiguous name and
   binds --root to that machine. Omitting the selector preserves the existing
-  local CLI machine fallback (normally the primary machine).
+  local CLI machine fallback (normally the server machine).
 
   bb project show <id>                    Show project details
     Accepts proj_personal to inspect Personal.
@@ -31,6 +34,13 @@ A project maps to a code repository. All threads belong to a project.
 
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
+
+Global prompt history:
+
+  bb prompt-history list [--cursor <cursor>] [--limit <number>]
+
+  Lists accepted prompts across projects and threads newest first. Pass the
+  returned cursor to continue from the next page.
 
 Discovery:
 
@@ -47,7 +57,7 @@ Discovery:
   The machine/host and environment selectors are mutually exclusive. An
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
-  falls back to the primary machine's project source.
+  falls back to the server machine's project source.
 
   Personal file access (`paths`, `files`, `content`) requires an explicit
   --environment <id> belonging to Personal. Personal has no default project

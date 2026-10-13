@@ -13,10 +13,6 @@ import {
   type PromptBoxSubmissionConfig,
   type PromptVoiceConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   makeAttachmentsConfig as makeAttachments,
@@ -44,16 +40,16 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 const idleVoice: PromptVoiceConfig = {
   state: "idle",
+  microphoneWarning: null,
   isSupported: true,
   stream: null,
   start: noop,
   stop: noop,
+  send: noop,
   cancel: noop,
 };
 
@@ -149,6 +145,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_qfk8ksbxkk",
     title: "Wire up promptbox stories",
+    relation: null,
   },
   {
     kind: "thread",
@@ -157,6 +154,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_mgr_kj4n2x",
     title: "Parent: app/timeline cleanup sprint",
+    relation: null,
   },
   {
     kind: "thread",
@@ -165,6 +163,7 @@ const liveMentionThreads: PromptMentionSuggestion[] = [
     projectId: "proj_promptbox",
     threadId: "thr_4hge9xn14m",
     title: "Review flow cleanup",
+    relation: null,
   },
 ];
 
@@ -765,7 +764,7 @@ function WithLiveSkillsRow() {
       typeahead={makeTypeahead(
         {},
         {
-          trigger: "/",
+          triggers: ["/"],
           suggestions,
           isLoading: false,
           isError: false,
@@ -1090,6 +1089,65 @@ export function Overview() {
         hint="voice.state === 'transcribing' → spinner + cancel"
       >
         <RecordingProcessingRow />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+function CompactVoiceComparisonRow({
+  compact = true,
+  initialValue = "",
+  running = false,
+}: {
+  compact?: boolean;
+  initialValue?: string;
+  running?: boolean;
+}) {
+  const { value, mentionRanges, onChange } = useControlledValue(initialValue);
+  const [state, setState] = useState<PromptVoiceConfig["state"]>("idle");
+  return (
+    <PromptBoxInternal
+      value={value}
+      mentionRanges={mentionRanges}
+      onChange={onChange}
+      onSubmit={noop}
+      placeholder="Ask for a follow-up"
+      compact={
+        compact
+          ? { isCompact: true, placeholder: "Ask for a follow-up" }
+          : undefined
+      }
+      typeahead={makeTypeahead()}
+      mentionMenuPlacement="bottom"
+      attachments={makeAttachments()}
+      history={baseHistory}
+      submission={makeSubmission({ isRunning: running, onStop: noop })}
+      voice={{
+        ...idleVoice,
+        state,
+        start: () => setState("recording"),
+        stop: () => setState("transcribing"),
+        cancel: () => setState("idle"),
+      }}
+      footerStart={<ExecutionControls {...mockExecution} />}
+    />
+  );
+}
+
+export function CompactVoiceComparison() {
+  return (
+    <StoryCard>
+      <StoryRow label="Expanded reference">
+        <CompactVoiceComparisonRow compact={false} />
+      </StoryRow>
+      <StoryRow label="Compact empty input">
+        <CompactVoiceComparisonRow />
+      </StoryRow>
+      <StoryRow label="Compact submit">
+        <CompactVoiceComparisonRow initialValue="Review the changes" />
+      </StoryRow>
+      <StoryRow label="Compact stop">
+        <CompactVoiceComparisonRow running />
       </StoryRow>
     </StoryCard>
   );

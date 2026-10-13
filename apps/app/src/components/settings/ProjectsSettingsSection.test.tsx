@@ -273,7 +273,7 @@ describe("ProjectsSettingsSection", () => {
 
     expect(await screen.findByText("bb")).toBeDefined();
     expect(screen.getByText("github.com/get-bb/bb")).toBeDefined();
-    expect(screen.getByText("2 of 2 machines")).toBeDefined();
+    expect(await screen.findByText("2 of 2 machines")).toBeDefined();
     expect(screen.getByText("3 threads")).toBeDefined();
     expect(screen.getByText("1 of 2 machines")).toBeDefined();
     expect(screen.getByText("No git remote")).toBeDefined();

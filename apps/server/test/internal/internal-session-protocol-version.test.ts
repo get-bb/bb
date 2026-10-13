@@ -1,13 +1,21 @@
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
-  createHostDaemonClient,
+  type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
+import type { Hono } from "hono";
+import { hc } from "hono/client";
 import { describe, expect, it } from "vitest";
 import { getHost, updateHost, upsertHost } from "@bb/db";
 import {
   createTestDaemonHostKey,
   startTestServer,
 } from "../helpers/test-app.js";
+
+function createHostDaemonClient(baseUrl: string, hostKey: string) {
+  return hc<Hono<{}, HostDaemonInternalSchema, "/">>(`${baseUrl}/internal`, {
+    headers: { authorization: `Bearer ${hostKey}` },
+  });
+}
 
 describe("internal session protocol version", () => {
   it.each(["suspending", "suspended"] as const)(
@@ -38,6 +46,7 @@ describe("internal session protocol version", () => {
               localApiPort: 38_888,
               protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
               activeThreads: [],
+              undeliveredEventThreadIds: [],
               loadedEnvironments: [],
             }),
           },
@@ -79,6 +88,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         }),
       });
@@ -88,46 +98,6 @@ describe("internal session protocol version", () => {
       await server.close();
     }
   });
-
-  it.each([191, 203, 204])(
-    "requires a version %i daemon to upgrade before accepting its session",
-    async (protocolVersion) => {
-      const server = await startTestServer();
-      try {
-        const hostId = "host-pr2-only";
-        upsertHost(server.db, server.hub, { id: hostId, name: "PR 2 daemon" });
-        const daemon = createHostDaemonClient(
-          server.baseUrl,
-          createTestDaemonHostKey({ hostId }),
-        );
-        const response = await daemon.session.open.$post({
-          json: {
-            hostId,
-            instanceId: "instance-pr2",
-            hostName: "PR 2 daemon",
-            hasMachineCredential: true,
-            platform: "linux",
-            dataDir: "/tmp/pr2-machine",
-            localApiPort: 38888,
-            protocolVersion,
-            activeThreads: [],
-            loadedEnvironments: [],
-          },
-        });
-        expect(response.status).toBe(400);
-        expect(await response.json()).toMatchObject({
-          code: "protocol_version_mismatch",
-          details: { serverProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION },
-          message: `Daemon protocol version ${protocolVersion} does not match server protocol version ${HOST_DAEMON_PROTOCOL_VERSION}`,
-        });
-        expect(getHost(server.db, hostId)?.lastRejectedProtocolVersion).toBe(
-          protocolVersion,
-        );
-      } finally {
-        await server.close();
-      }
-    },
-  );
 
   it("rejects a session open whose protocol version does not match the server", async () => {
     const server = await startTestServer();
@@ -159,6 +129,7 @@ describe("internal session protocol version", () => {
             localApiPort: 38_888,
             protocolVersion: 188,
             activeThreads: [],
+            undeliveredEventThreadIds: [],
             loadedEnvironments: [],
           }),
         },
@@ -194,6 +165,7 @@ describe("internal session protocol version", () => {
             dataDir: "/tmp/host-protocol-data",
             protocolVersion: preLocalApiPortProtocolVersion,
             activeThreads: [],
+            undeliveredEventThreadIds: [],
             loadedEnvironments: [],
           }),
         },
@@ -222,6 +194,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -258,6 +231,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -276,6 +250,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: staleProtocolVersion,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });
@@ -294,6 +269,7 @@ describe("internal session protocol version", () => {
           localApiPort: 38_888,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
+          undeliveredEventThreadIds: [],
           loadedEnvironments: [],
         },
       });

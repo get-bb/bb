@@ -299,6 +299,7 @@ class SemanticProjectionBuilder {
         .map((message) => message.callId),
     );
 
+    const childIndexesByParentCallId = new Map<string, Map<string, number>>();
     for (const context of contexts) {
       const parentToolCallId = context.message.parentToolCallId;
       if (!parentToolCallId || !delegationCallIds.has(parentToolCallId)) {
@@ -306,7 +307,17 @@ class SemanticProjectionBuilder {
       }
 
       const children = this.childrenByParentCallId.get(parentToolCallId) ?? [];
-      children.push(context);
+      const childIndexes =
+        childIndexesByParentCallId.get(parentToolCallId) ??
+        new Map<string, number>();
+      const repeatedIndex = childIndexes.get(context.message.id);
+      if (repeatedIndex === undefined) {
+        childIndexes.set(context.message.id, children.length);
+        children.push(context);
+      } else {
+        children[repeatedIndex] = context;
+      }
+      childIndexesByParentCallId.set(parentToolCallId, childIndexes);
       this.childrenByParentCallId.set(parentToolCallId, children);
       this.attachedMessageIds.add(context.message.id);
     }

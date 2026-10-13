@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -38,6 +38,10 @@ function listSourceFiles(dir: string, out: string[]): string[] {
   return out;
 }
 
+function toMobileRelativePath(file: string): string {
+  return relative(MOBILE_ROOT, file).split(sep).join("/");
+}
+
 function isIosSibling(relPath: string): boolean {
   return /\.ios\.tsx?$/.test(relPath) && relPath.startsWith("src/");
 }
@@ -64,7 +68,7 @@ function unguardedOccurrences(): Occurrence[] {
     ...listSourceFiles(APP_ROOT, []),
   ];
   for (const file of files) {
-    const relPath = relative(MOBILE_ROOT, file);
+    const relPath = toMobileRelativePath(file);
     if (ALLOWED_FILES.has(relPath) || isIosSibling(relPath)) continue;
     const lines = readFileSync(file, "utf8").split("\n");
     lines.forEach((line, index) => {
@@ -103,7 +107,7 @@ describe("platform neutrality", () => {
       ...listSourceFiles(APP_ROOT, []),
     ];
     for (const file of files) {
-      const relPath = relative(MOBILE_ROOT, file);
+      const relPath = toMobileRelativePath(file);
       if (ALLOWED_FILES.has(relPath) || isIosSibling(relPath)) continue;
       readFileSync(file, "utf8")
         .split("\n")
@@ -119,7 +123,7 @@ describe("platform neutrality", () => {
 
   it("never puts platform siblings under app/ (expo-router would route them)", () => {
     const siblings = listSourceFiles(APP_ROOT, [])
-      .map((file) => relative(MOBILE_ROOT, file))
+      .map(toMobileRelativePath)
       .filter((relPath) => /\.(ios|android|native|web)\.tsx?$/.test(relPath));
     expect(siblings).toEqual([]);
   });
@@ -135,14 +139,14 @@ describe("platform neutrality", () => {
           return true;
         }
       })
-      .map((file) => relative(MOBILE_ROOT, file));
+      .map(toMobileRelativePath);
     expect(missing).toEqual([]);
   });
 
   it("no *.ios sibling imports its own basename (Metro resolves it to itself)", () => {
     const offenders: string[] = [];
     for (const file of listSourceFiles(SRC_ROOT, [])) {
-      const match = /([^/]+)\.ios\.tsx?$/.exec(file);
+      const match = /([^/]+)\.ios\.tsx?$/.exec(toMobileRelativePath(file));
       if (!match) continue;
       const base = match[1];
       const source = readFileSync(file, "utf8");
@@ -151,7 +155,7 @@ describe("platform neutrality", () => {
       );
       source.split("\n").forEach((line, index) => {
         if (selfImport.test(line)) {
-          offenders.push(`${relative(MOBILE_ROOT, file)}:${index + 1}`);
+          offenders.push(`${toMobileRelativePath(file)}:${index + 1}`);
         }
       });
     }
@@ -159,9 +163,7 @@ describe("platform neutrality", () => {
   });
 
   it("the scan sees the iOS adapters it exempts", () => {
-    const files = listSourceFiles(SRC_ROOT, []).map((file) =>
-      relative(MOBILE_ROOT, file),
-    );
+    const files = listSourceFiles(SRC_ROOT, []).map(toMobileRelativePath);
     expect(files).toContain("src/ui/Icon.ios.tsx");
     expect(files).toContain("src/ui/GlassSurface.ios.tsx");
     const iconSource = readFileSync(

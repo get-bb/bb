@@ -299,11 +299,18 @@ export type ThreadEventTokenUsageBreakdown = z.infer<
   typeof threadEventTokenUsageBreakdownSchema
 >;
 
+export const threadUsageCostSchema = z.object({
+  amount: z.number().nonnegative(),
+  currency: z.string().min(1),
+});
+export type ThreadUsageCost = z.infer<typeof threadUsageCostSchema>;
+
 const threadEventContextWindowUsageSchema = z.object({
   snapshot: contextSnapshotSchema.optional(),
   usedTokens: z.number().nullable(),
   modelContextWindow: z.number().nullable(),
   estimated: z.boolean(),
+  cost: threadUsageCostSchema.optional(),
 });
 export type ThreadEventContextWindowUsage = z.infer<
   typeof threadEventContextWindowUsageSchema
@@ -512,6 +519,7 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     threadId: z.string(),
     providerThreadId: z.string(),
     threadName: z.string(),
+    source: z.literal("agent").optional(),
   }),
   z.object({
     type: z.literal("thread/compacted"),
@@ -649,7 +657,13 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
             z.literal("shell"),
             z.object({ plugin: z.string() }).strict(),
             z
-              .object({ core: z.enum(["machine-git", "machine-environment"]) })
+              .object({
+                core: z.enum([
+                  "machine-git",
+                  "machine-environment",
+                  "project-environment",
+                ]),
+              })
               .strict(),
           ]),
           value: z.union([
@@ -784,60 +798,22 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
 ]);
 const systemEventSchema = unscopedSystemEventSchema.and(scopedEventDataSchema);
 
-const legacyClientRequestKey = ["clientRequest", "Sequence"].join("");
-
-function isEventPropertyBag(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const rejectLegacyClientRequestSequenceSchema = z
-  .unknown()
-  .superRefine((value, ctx) => {
-    if (!isEventPropertyBag(value)) {
+export const threadEventSchema = z
+  .union([providerEventSchema, systemEventSchema])
+  .superRefine((event, ctx) => {
+    const result = validateThreadEventScope({
+      type: event.type,
+      scope: event.scope,
+    });
+    if (!result.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.message ?? "Invalid thread event scope",
+        path: ["scope"],
+      });
       return;
     }
-
-    if (Object.hasOwn(value, legacyClientRequestKey)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "legacy request sequence field is no longer accepted",
-        path: [legacyClientRequestKey],
-      });
-    }
-
-    const item = value.item;
-    if (
-      isEventPropertyBag(item) &&
-      item.type === "userMessage" &&
-      Object.hasOwn(item, legacyClientRequestKey)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "legacy user-message request sequence field is no longer accepted",
-        path: ["item", legacyClientRequestKey],
-      });
-    }
   });
-
-export const threadEventSchema = rejectLegacyClientRequestSequenceSchema.pipe(
-  z
-    .union([providerEventSchema, systemEventSchema])
-    .superRefine((event, ctx) => {
-      const result = validateThreadEventScope({
-        type: event.type,
-        scope: event.scope,
-      });
-      if (!result.valid) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: result.message ?? "Invalid thread event scope",
-          path: ["scope"],
-        });
-        return;
-      }
-    }),
-);
 export type ThreadEvent = z.infer<typeof threadEventSchema>;
 export type ThreadEventType = ThreadEvent["type"];
 

@@ -35,17 +35,11 @@ function controller(
 ): ThreadTerminalController {
   return {
     activeSession: session,
-    canCreateTerminal: true,
     handleActiveTerminalSessionChange: () => undefined,
     handleActiveTerminalTitleChange: () => undefined,
-    handleActiveTerminalUserInput: () => undefined,
-    handleCreateTerminal: () => undefined,
-    handleSelectTerminal: () => undefined,
     hasTerminalQueryError: false,
-    isCreateTerminalPending: false,
     isPanelOpen,
     shouldMountTerminalView,
-    shouldRetainActiveTerminalView: false,
     terminalBodyMessage: "No terminals",
   };
 }

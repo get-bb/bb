@@ -1,0 +1,35 @@
+name: CI Cache Maintenance
+on:
+  schedule:
+    - cron: "43 6 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete obsolete pnpm caches (otherwise report only)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+concurrency:
+  group: ci-cache-maintenance
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.repository == 'get-bb/bb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Report and retire obsolete dependency caches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+        run: |
+          args=()
+          if [[ "$APPLY" == "true" ]]; then args+=(--apply); fi
+          node scripts/cleanup-actions-caches.mjs "${args[@]}"

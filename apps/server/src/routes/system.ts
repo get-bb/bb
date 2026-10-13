@@ -1,3 +1,8 @@
+import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
+import {
+  setMachineEnvironmentVariable,
+  deleteMachineEnvironmentVariable,
+} from "../services/machines/environment-storage.js";
 import {
   machineEnvironmentView,
   replaceMachineEnvironment,
@@ -51,6 +56,11 @@ import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
 import {
+  buildAiServicesView,
+  testAiService,
+  updateAiServiceSelection,
+} from "../services/ai/ai-services-view.js";
+import {
   resolveVoiceTranscriptionEnabled,
   transcribeVoiceInput,
 } from "../services/ai/voice-transcription.js";
@@ -58,6 +68,10 @@ import {
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
 } from "../services/system/execution-options.js";
+import {
+  providerManagementCatalog,
+  setProviderEnabled,
+} from "../services/system/provider-management.js";
 import { getProviderStates } from "../services/system/provider-states.js";
 import { getProviderUsageLimits } from "../services/system/usage-limits.js";
 import {
@@ -136,12 +150,18 @@ export function registerSystemRoutes(
   deps: ServerAppDeps,
   pluginService: PluginService,
 ): void {
-  const { get, post, put } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, put, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.system;
 
   const themeRoot = resolveThemeRootPath(deps.config.dataDir);
+
+  const mobileAppReleases = createMobileAppReleaseService();
+  get(routes.mobileAppReleases, async (context) => {
+    context.header("cache-control", "no-store");
+    return context.json(await mobileAppReleases());
+  });
 
   get(routes.attention, (context) =>
     context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
@@ -197,6 +217,8 @@ export function registerSystemRoutes(
       defaultKeybindings: DEFAULT_APP_KEYBINDINGS,
       keybindingOverrides,
       experiments: getExperiments(deps.db),
+      performanceDiagnosticsAvailable:
+        deps.config.performanceDiagnosticsAvailable,
       appearance: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),
@@ -213,17 +235,6 @@ export function registerSystemRoutes(
           ? null
           : deps.hub.getDaemonPlatformForHost(primaryHostId),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
-      aiServices: {
-        inference: deps.config.inferenceModel,
-        inferenceFallback: deps.config.inferenceFallbackModel,
-        transcription: deps.config.transcriptionModel,
-        services: deps.aiServices.list().map((service) => ({
-          id: service.id,
-          displayName: service.displayName,
-          kinds: [...service.kinds],
-          pluginId: service.pluginId,
-        })),
-      },
       dataDir: deps.config.dataDir,
     };
   }
@@ -240,8 +251,39 @@ export function registerSystemRoutes(
       showUnhandledProviderEvents: settings.showDiagnosticEvents,
     };
   }
+  post(routes.setMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await setMachineEnvironmentVariable(
+      deps.db,
+      deps.config.dataDir,
+      payload,
+      null,
+    );
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(await machineEnvironmentView(deps.db));
+  });
+
+  del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
+    if (getGateAuthKind(context) === "machine")
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Machine credentials cannot change global environment settings",
+      );
+    await deleteMachineEnvironmentVariable(deps.db, payload.name, null);
+    deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
+    deps.hub.notifySystem(["config-changed"]);
+    return context.json(await machineEnvironmentView(deps.db));
+  });
+
   get(routes.machineEnvironment, async (context) =>
-    context.json(await machineEnvironmentView(deps.db, deps.config.dataDir)),
+    context.json(await machineEnvironmentView(deps.db)),
   );
   put(routes.replaceMachineEnvironment, async (context, payload) => {
     if (getGateAuthKind(context) === "machine")
@@ -253,9 +295,7 @@ export function registerSystemRoutes(
     await replaceMachineEnvironment(deps.db, deps.config.dataDir, payload);
     deps.lifecycleDedupers.providerModelCatalogs.markAllStale();
     deps.hub.notifySystem(["config-changed"]);
-    return context.json(
-      await machineEnvironmentView(deps.db, deps.config.dataDir),
-    );
+    return context.json(await machineEnvironmentView(deps.db));
   });
 
   put(routes.generalSettings, (context, payload) => {
@@ -267,7 +307,19 @@ export function registerSystemRoutes(
         : undefined;
     const updatedSettings = appSettingsSchema.parse({
       ...settings,
+      allowFastServiceTier:
+        settings.allowFastServiceTier ?? current.allowFastServiceTier,
       telemetryEnabled: settings.telemetryEnabled ?? current.telemetryEnabled,
+      showGitChanges: settings.showGitChanges ?? current.showGitChanges,
+      keepHistoryAfterContextClear:
+        settings.keepHistoryAfterContextClear ??
+        current.keepHistoryAfterContextClear,
+      confirmThreadArchive:
+        settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      onboardingCompletedAt:
+        settings.onboardingCompletedAt === undefined
+          ? current.onboardingCompletedAt
+          : settings.onboardingCompletedAt,
       showDiagnosticEvents:
         diagnosticValue === undefined ||
         (showUnhandledProviderEvents !== undefined &&
@@ -276,9 +328,17 @@ export function registerSystemRoutes(
           : diagnosticValue,
     });
     setAppSettings(deps.db, updatedSettings);
+    if (current.telemetryEnabled && !updatedSettings.telemetryEnabled) {
+      deps.telemetry.capture({ name: "telemetry_disabled" });
+    }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(compatibleGeneralSettings());
+  });
+
+  post(routes.recordTelemetryEvent, (context, payload) => {
+    deps.telemetry.capture(payload);
+    return context.json({ ok: true });
   });
 
   put(routes.keyboardSettings, (context, payload) => {
@@ -288,7 +348,7 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    setExperiments(deps.db, { ...getExperiments(deps.db), ...payload });
+    setExperiments(deps.db, payload);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
   });
@@ -540,6 +600,21 @@ export function registerSystemRoutes(
     context.json(await listSystemProviderInfos(deps, query)),
   );
 
+  get(routes.providerCatalog, async (context) => {
+    await deps.providerRegistry.whenRegistrationsSettled();
+    return context.json(providerManagementCatalog(deps, pluginService));
+  });
+  put(routes.providerEnabled, async (context, payload) =>
+    context.json(
+      await setProviderEnabled(
+        deps,
+        pluginService,
+        context.req.param("id"),
+        payload.enabled,
+      ),
+    ),
+  );
+
   get(routes.providerLogo, async (context) => {
     const providerId = context.req.param("id");
     const registration = providerId.startsWith("environment:")
@@ -577,6 +652,23 @@ export function registerSystemRoutes(
     context.json(await resolveSystemExecutionOptions(deps, query)),
   );
 
+  get(routes.aiServices, async (context) =>
+    context.json(await buildAiServicesView(deps)),
+  );
+
+  put(routes.setAiServiceSelection, async (context, payload) =>
+    context.json(await updateAiServiceSelection(deps, payload)),
+  );
+
+  post(routes.testAiService, async (context, payload) =>
+    context.json(
+      await testAiService(deps, {
+        task: payload.task,
+        signal: context.req.raw.signal,
+      }),
+    ),
+  );
+
   post(routes.voiceTranscription, async (context) => {
     const formData = await context.req.formData();
     const file = formData.get("file");
@@ -590,6 +682,7 @@ export function registerSystemRoutes(
           typeof formData.get("prompt") === "string"
             ? String(formData.get("prompt"))
             : undefined,
+        signal: context.req.raw.signal,
       }),
     });
   });
@@ -601,4 +694,67 @@ export function registerSystemRoutes(
       }),
     ),
   );
+
+  get(routes.appUpdate, async (context, query) =>
+    context.json(
+      await deps.appUpdate.getStatus({
+        forceRefresh:
+          query.force === "true" && getGateAuthKind(context) !== "machine",
+      }),
+    ),
+  );
+
+  post(routes.applyAppUpdate, async (context, body) => {
+    assertAppUpdateAllowed(context);
+    return context.json(
+      await deps.appUpdate.apply({
+        confirmInterruptingThreads: body.confirmInterruptingThreads,
+      }),
+    );
+  });
+
+  post(routes.acknowledgeAppUpdate, async (context, body) => {
+    assertAppUpdateAllowed(context);
+    return context.json(
+      await deps.appUpdate.acknowledgeResult({ id: body.id }),
+    );
+  });
+
+  get(routes.cliCommand, async (context) =>
+    context.json(await deps.cliCommand.getStatus()),
+  );
+
+  post(routes.installCliCommand, async (context) => {
+    assertCliCommandChangeAllowed(context);
+    return context.json(await deps.cliCommand.install());
+  });
+
+  post(routes.removeCliCommand, async (context) => {
+    assertCliCommandChangeAllowed(context);
+    return context.json(await deps.cliCommand.remove());
+  });
+}
+
+function assertCliCommandChangeAllowed(
+  context: Parameters<typeof getGateAuthKind>[0],
+): void {
+  if (getGateAuthKind(context) === "machine") {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Machine credentials cannot change the bb command on the bb server's computer",
+    );
+  }
+}
+
+function assertAppUpdateAllowed(
+  context: Parameters<typeof getGateAuthKind>[0],
+): void {
+  if (getGateAuthKind(context) === "machine") {
+    throw new ApiError(
+      403,
+      "forbidden",
+      "Machine credentials cannot update the bb server",
+    );
+  }
 }

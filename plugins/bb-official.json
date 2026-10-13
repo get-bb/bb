@@ -3,6 +3,10 @@
     "category": "agents-and-providers",
     "screenshots": []
   },
+  "agent-annotations": {
+    "category": "code-and-reviews",
+    "screenshots": []
+  },
   "ask-user-question": {
     "category": "thread-content",
     "screenshots": []
@@ -13,6 +17,14 @@
       "https://getbb.app/marketplace/v2/screenshots/automations/automations-catalog.png",
       "https://getbb.app/marketplace/v2/screenshots/automations/automations-sidebar.png"
     ]
+  },
+  "bb-account": {
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
+  "bb-ai": {
+    "category": "cloud-and-remote",
+    "screenshots": []
   },
   "connect": {
     "category": "cloud-and-remote",
@@ -58,6 +70,10 @@
     "category": "agents-and-providers",
     "screenshots": []
   },
+  "provider-acp-next": {
+    "category": "agents-and-providers",
+    "screenshots": []
+  },
   "keep-awake": {
     "category": "utilities",
     "screenshots": []
@@ -90,6 +106,10 @@
     "category": "tasks-and-workflows",
     "screenshots": []
   },
+  "thread-list": {
+    "category": "thread-management",
+    "screenshots": []
+  },
   "concurrency-limit": {
     "category": "tasks-and-workflows",
     "screenshots": []
@@ -108,7 +128,14 @@
   },
   "docs": {
     "category": "file-viewers-and-editors",
-    "screenshots": []
+    "screenshots": [
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-inline-review-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-inline-editing-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-f4957b72f-ask-mobile.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-63b536e70-workspace-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-html-desktop.png",
+      "https://getbb.app/marketplace/v2/screenshots/docs/docs-21ddb6757-vault-desktop.png"
+    ]
   },
   "memory": {
     "category": "memory-and-context",
@@ -135,15 +162,15 @@
     "screenshots": []
   },
   "environment-project-checkout": {
-    "category": "environments",
+    "category": "cloud-and-remote",
     "screenshots": []
   },
   "environment-git-worktree": {
-    "category": "environments",
+    "category": "cloud-and-remote",
     "screenshots": []
   },
   "environment-personal-workspace": {
-    "category": "environments",
+    "category": "cloud-and-remote",
     "screenshots": []
   },
   "bb-guide": {
@@ -151,7 +178,19 @@
     "screenshots": []
   },
   "environment-modal-sandbox": {
-    "category": "environments",
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
+  "prompt-library": {
+    "category": "memory-and-context",
+    "screenshots": []
+  },
+  "mcp": {
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
+  "storage-retention": {
+    "category": "tasks-and-workflows",
     "screenshots": []
   }
 }

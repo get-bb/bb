@@ -4,6 +4,7 @@ import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { calculateExponentialBackoffDelay } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { execPortableFile } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
 import { usesSecureInternalFetchTransport } from "./server-client.js";
@@ -142,18 +143,28 @@ function responseArtifactDigest(response: Response): string | null {
     : null;
 }
 
-const defaultRunProcess: SelfUpdateProcessRunner = async (
+const SELF_UPDATE_PROCESS_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+
+export const defaultRunProcess: SelfUpdateProcessRunner = async (
   command,
   args,
   options,
 ) => {
+  if (process.platform === "win32") {
+    await execPortableFile(command, args, {
+      cwd: process.cwd(),
+      env: options.env,
+      maxBuffer: SELF_UPDATE_PROCESS_MAX_BUFFER_BYTES,
+    });
+    return;
+  }
   await execFileAsync(command, args, options);
 };
 
 const BB_APP_ALLOW_SCRIPTS_ARG =
   "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
 
-async function defaultInstallTarball(
+export async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
 ): Promise<void> {

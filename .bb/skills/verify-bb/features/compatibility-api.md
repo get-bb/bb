@@ -15,7 +15,6 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 
 - `packages/server-contract/src/public-api.ts`
 - `packages/client-core/src/routes/route-paths.ts`
-- `apps/cli/src/commands/manager.ts`
 - `apps/cli/src/commands/status.ts`
 - `apps/cli/src/commands/guide.ts`
 
@@ -28,7 +27,6 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 | Pagination and version conflicts | Page thread/history/file lists with bounded requests; update revisioned data from two clients. | No missing/duplicate records at page boundaries; stale writes conflict without data loss. |
 | Invalid IDs and malformed input | Send invalid IDs, schema-invalid values, missing required parameters, and unsupported enum variants through CLI/API. | Errors identify the boundary and cause; no partial unintended mutation occurs. |
 | Legacy routes | Open /tools, /skills, old automation/detail routes, project compose aliases, and projectless thread links from route-paths. | Redirects resolve to current screens with valid IDs preserved; aliases are not documented as separate new features. |
-| Removed manager commands | Run bb manager and its compatibility subcommands on isolated CLI. | Nonzero exit explains that parent threads replace managers; no obsolete manager is created. |
 | Guide and help | Use bb guide and nested --help for each command family and plugin command. | Discoverable descriptions, flags, and examples match runtime behavior. Do not treat a help listing as a live feature test. |
 | Authentication callback and reconnect | Exercise auth callback with a disposable server session and an invalid/expired response; reload a disconnected client. | Session setup is scoped to the right origin and failure is visible; credentials never enter evidence. |
 

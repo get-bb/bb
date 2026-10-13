@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.4.97",
+  "version": "0.6.43",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -26,12 +26,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./ai-services": {
-      "source": "./src/ai-services.ts",
-      "types": "./bundled-types/bb-plugin-sdk-ai-services.d.ts",
-      "import": "./dist/ai-services.js",
-      "default": "./dist/ai-services.js"
-    },
     "./provider-bridge": {
       "source": "./src/provider-bridge.ts",
       "types": "./bundled-types/bb-plugin-sdk-provider-bridge.d.ts",
@@ -49,6 +43,12 @@
       "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts",
       "import": "./dist/provider-bridge-acp.js",
       "default": "./dist/provider-bridge-acp.js"
+    },
+    "./provider-bridge/acp-next": {
+      "source": "./src/provider-bridge-acp-next.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp-next.d.ts",
+      "import": "./dist/provider-bridge-acp-next.js",
+      "default": "./dist/provider-bridge-acp-next.js"
     },
     "./environment-provider": {
       "source": "./src/environment-provider.ts",
@@ -79,6 +79,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-customization-validation.d.ts",
       "import": "./dist/internal/composer-customization-validation.js",
       "default": "./dist/internal/composer-customization-validation.js"
+    },
+    "./internal/composer-handle": {
+      "source": "./src/internal/composer-handle.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-composer-handle.d.ts",
+      "import": "./dist/internal/composer-handle.js",
+      "default": "./dist/internal/composer-handle.js"
     },
     "./internal/composer-view": {
       "source": "./src/internal/composer-view.ts",
@@ -133,10 +139,15 @@
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "cross-spawn": "^7.0.6",
+    "zod": "^4.6.5"
+  },
   "devDependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-acp": "workspace:*",
+    "@bb/provider-bridge-acp-next": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
@@ -156,8 +167,7 @@
     "rollup-plugin-dts": "^6.4.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.1",
-    "zod": "^4.3.6"
+    "vitest": "^4.1.1"
   },
   "peerDependencies": {
     "@testing-library/react": "^16.3.2",
@@ -167,8 +177,7 @@
     "cron-parser": "^5.5.0",
     "hono": "^4.11.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zod": "^4.3.6"
+    "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "@testing-library/react": {
@@ -193,9 +202,6 @@
       "optional": true
     },
     "react-dom": {
-      "optional": true
-    },
-    "zod": {
       "optional": true
     }
   }

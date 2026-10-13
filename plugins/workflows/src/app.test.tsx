@@ -134,7 +134,12 @@ describe("workflow composer banner", () => {
       },
     );
 
-    await slot.findByText("Review the release");
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    );
+    expect(slot.getByText("Review the release")).toBeTruthy();
     expect(slot.getByText("Queue release notes")).toBeTruthy();
     expect(slot.getByText("Review")).toBeTruthy();
     expect(slot.getByText("1/2 agents")).toBeTruthy();
@@ -146,7 +151,94 @@ describe("workflow composer banner", () => {
     ).toBeTruthy();
   });
 
-  it("matches the native collapsed summary and expands with an accessible toggle", async () => {
+  it("auto-collapses multiple active runs into a stack that expands to every run", async () => {
+    const runs = [1, 2, 3, 4].map((index) => ({
+      ...run,
+      id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
+      name: `Build ${index}`,
+    }));
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs }) },
+      },
+    );
+
+    const stack = await slot.findByRole("button", {
+      name: "4 workflows running. Show all",
+    });
+    expect(stack.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.getByText("+3")).toBeTruthy();
+    expect(
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
+    ).toHaveLength(2);
+    expect(slot.queryAllByRole("region", { name: "Workflow" })).toHaveLength(0);
+
+    fireEvent.click(stack);
+    expect(slot.getAllByRole("region", { name: "Workflow" })).toHaveLength(4);
+    const collapse = slot.getByRole("button", { name: "Collapse 4 workflows" });
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(collapse);
+    expect(
+      slot.container.querySelectorAll("[data-prompt-stack-peek]"),
+    ).toHaveLength(0);
+
+    fireEvent.click(collapse);
+    expect(slot.queryAllByRole("region", { name: "Workflow" })).toHaveLength(0);
+    expect(document.activeElement).toBe(
+      slot.getByRole("button", { name: "4 workflows running. Show all" }),
+    );
+  });
+
+  it("re-collapses the stack after every run finishes and new runs start", async () => {
+    const runs = [1, 2].map((index) => ({
+      ...run,
+      id: `wfr_${index}1111111-1111-4111-8111-111111111111`,
+      name: `Build ${index}`,
+    }));
+    let current: WorkflowRunView[] = runs;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_scope" },
+        },
+        rpc: { workflowActiveRuns: () => ({ runs: current }) },
+      },
+    );
+
+    fireEvent.click(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    );
+    expect(
+      slot.getByRole("button", { name: "Collapse 2 workflows" }),
+    ).toBeTruthy();
+
+    current = [];
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    await waitFor(() =>
+      expect(
+        slot.queryByRole("button", { name: "Collapse 2 workflows" }),
+      ).toBeNull(),
+    );
+
+    current = runs;
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+    expect(
+      await slot.findByRole("button", {
+        name: "2 workflows running. Show all",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("expands from the card and collapses from the chevron row with focus following", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -178,9 +270,16 @@ describe("workflow composer banner", () => {
     expect(body?.className).toContain("grid-rows-[1fr]");
     expect(slot.getByText("Adversarial review")).toBeTruthy();
     expect(slot.getByRole("button", { name: /Review0\/1/ })).toBeTruthy();
-    expect(
-      slot.container.querySelector('[data-icon="ChevronDown"].rotate-180'),
-    ).toBeTruthy();
+    const collapse = slot.getByRole("button", {
+      name: "Collapse workflow Review the release",
+    });
+    expect(document.activeElement).toBe(collapse);
+
+    fireEvent.click(collapse);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(body?.getAttribute("aria-hidden")).toBe("true");
+    expect(body?.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(toggle);
   });
 
   it("preserves each run's expansion state across polls", async () => {
@@ -209,7 +308,7 @@ describe("workflow composer banner", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(polls).toBe(2);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     slot.unmount();
@@ -231,7 +330,7 @@ describe("workflow composer banner", () => {
     expect(slot.container.childElementCount).toBe(0);
   });
 
-  it("does not poll an idle thread; a workflow-runs signal for the thread triggers one refresh", async () => {
+  it("does not poll an idle thread; a workflow-runs signal refreshes it and an active run falls back to a slow poll", async () => {
     vi.useFakeTimers();
     let runs: WorkflowRunView[] = [];
     const slot = renderSlot(
@@ -258,13 +357,15 @@ describe("workflow composer banner", () => {
     await act(async () => Promise.resolve());
     expect(slot.rpcCalls).toHaveLength(2);
     expect(slot.getByText("Review the release")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(14_000));
+    expect(slot.rpcCalls).toHaveLength(2);
     await act(async () => vi.advanceTimersByTimeAsync(1_000));
     expect(slot.rpcCalls).toHaveLength(3);
 
     runs = [];
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(slot.rpcCalls).toHaveLength(4);
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
     expect(slot.rpcCalls).toHaveLength(4);
     slot.unmount();
   });
@@ -291,13 +392,15 @@ describe("workflow composer banner", () => {
     try {
       await act(async () => Promise.resolve());
       expect(slot.rpcCalls).toHaveLength(1);
-      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
       expect(slot.rpcCalls).toHaveLength(2);
 
       await act(async () => {
         setVisibility("hidden");
       });
-      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      await act(async () => vi.advanceTimersByTimeAsync(60_000));
+      await slot.emitRealtime("workflow-runs", { threadId: "thr_scope" });
+      await act(async () => Promise.resolve());
       expect(slot.rpcCalls).toHaveLength(2);
 
       await act(async () => {
@@ -305,7 +408,7 @@ describe("workflow composer banner", () => {
       });
       await act(async () => Promise.resolve());
       expect(slot.rpcCalls).toHaveLength(3);
-      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
       expect(slot.rpcCalls).toHaveLength(4);
     } finally {
       slot.unmount();
@@ -540,25 +643,25 @@ describe("workflow-preview directive", () => {
     await act(async () => Promise.resolve());
     expect(slot.getByRole("alert").textContent).toMatch(/initial outage/i);
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
     expect(slot.getByText("Review the release")).toBeTruthy();
     expect(slot.queryByText("Complete")).toBeNull();
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(slot.getByRole("status").textContent).toMatch(
       /poll outage.*retrying/i,
     );
     expect(slot.getByText("Review the release")).toBeTruthy();
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
     expect(slot.getByText("Complete")).toBeTruthy();
     expect(slot.queryByRole("status")).toBeNull();
     expect(attempt).toBe(4);
 
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
     expect(attempt).toBe(4);
     slot.unmount();
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
     expect(attempt).toBe(4);
   });
 
@@ -606,9 +709,9 @@ describe("workflow-preview directive", () => {
     expect(slot.getByText("Review the release")).toBeTruthy();
     expect(slot.queryByText("Complete")).toBeNull();
 
-    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(attempt).toBe(2);
-    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
     expect(attempt).toBe(2);
 
     await act(async () => {
@@ -616,8 +719,89 @@ describe("workflow-preview directive", () => {
       await delayedPoll;
     });
     expect(slot.getByText("Complete")).toBeTruthy();
-    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
     expect(attempt).toBe(2);
+  });
+
+  it("refreshes a run view on workflow-runs signals and folds a burst into one follow-up request", async () => {
+    let attempt = 0;
+    let resolveFirstSignalLoad:
+      | ((value: { run: WorkflowRunView }) => void)
+      | null = null;
+    const firstSignalLoad = new Promise<{ run: WorkflowRunView }>((resolve) => {
+      resolveFirstSignalLoad = resolve;
+    });
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { run: run.id },
+        source: `::workflow-preview{run="${run.id}"}`,
+        message,
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          workflowRunView: () => {
+            attempt += 1;
+            if (attempt === 2) return firstSignalLoad;
+            return { run };
+          },
+        },
+      },
+    );
+    await slot.findByText("Review the release");
+    expect(attempt).toBe(1);
+
+    await slot.emitRealtime("workflow-runs", { threadId: "thr_other" });
+    expect(attempt).toBe(1);
+
+    await slot.emitRealtime("workflow-runs", { threadId: message.threadId });
+    await slot.emitRealtime("workflow-runs", { threadId: message.threadId });
+    await slot.emitRealtime("workflow-runs", { threadId: message.threadId });
+    expect(attempt).toBe(2);
+
+    await act(async () => {
+      resolveFirstSignalLoad?.({ run });
+      await firstSignalLoad;
+    });
+    await waitFor(() => expect(attempt).toBe(3));
+    await act(async () => Promise.resolve());
+    expect(attempt).toBe(3);
+    slot.unmount();
+  });
+
+  it("backs off while a run view keeps failing instead of retrying every second", async () => {
+    vi.useFakeTimers();
+    let attempt = 0;
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { run: run.id },
+        source: `::workflow-preview{run="${run.id}"}`,
+        message,
+        openWorkspaceFile: null,
+      },
+      {
+        rpc: {
+          workflowRunView: () => {
+            attempt += 1;
+            throw new Error(
+              "This workflow run is not available in this thread",
+            );
+          },
+        },
+      },
+    );
+
+    await act(async () => Promise.resolve());
+    expect(attempt).toBe(1);
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+    expect(attempt).toBe(2);
+    await act(async () => vi.advanceTimersByTimeAsync(4_000));
+    expect(attempt).toBe(3);
+    await act(async () => vi.advanceTimersByTimeAsync(10 * 60_000));
+    expect(attempt).toBe(15);
+    slot.unmount();
   });
 
   it("renders successful empty phases as settled", async () => {

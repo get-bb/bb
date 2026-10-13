@@ -1,8 +1,12 @@
+import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update-jobs.js";
+import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
+import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
 import { execFile } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -31,6 +35,7 @@ import {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
+import { createPluginInstallJobs } from "../../../src/services/plugins/plugin-install-jobs.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -39,6 +44,10 @@ import {
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import {
+  SERVER_MOVE_FROZEN_RETRY_MS,
+  setServerMoveFrozen,
+} from "../../../src/services/server-move/freeze-state.js";
 
 const logger = testLogger as unknown as Logger;
 const run = promisify(execFile);
@@ -112,6 +121,56 @@ describe("plugin update scheduling", () => {
     }
   });
 
+  it("defers a periodic update check while the server is moving", async () => {
+    const HOUR = 60 * 60 * 1_000;
+    const frozenDb = createConnection(":memory:");
+    migrate(frozenDb);
+    const scheduled: { delayMs: number; onElapsed: () => Promise<void> }[] = [];
+    const notifySystem = vi.fn();
+    const frozenService = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db: frozenDb,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem,
+      },
+      logger,
+      dataDir: join(tmpdir(), "bb-plugin-update-frozen-test"),
+      appVersion: "1.0.0",
+      stabilizationWindowMs: 0,
+      scheduleUpdateCheck: (delayMs, onElapsed) => {
+        scheduled.push({ delayMs, onElapsed });
+        return () => {};
+      },
+    });
+    const takeScheduled = () => {
+      const entry = scheduled.shift();
+      if (entry === undefined) throw new Error("missing scheduled check");
+      return entry;
+    };
+
+    try {
+      frozenService.startPeriodicUpdateChecks();
+      const initial = takeScheduled();
+      setServerMoveFrozen(frozenDb, true);
+      await initial.onElapsed();
+      expect(notifySystem).not.toHaveBeenCalled();
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([
+        SERVER_MOVE_FROZEN_RETRY_MS,
+      ]);
+
+      setServerMoveFrozen(frozenDb, false);
+      await takeScheduled().onElapsed();
+      expect(notifySystem).toHaveBeenCalledWith(["plugins-changed"]);
+      expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]);
+    } finally {
+      await frozenService.stop();
+      frozenDb.$client.close();
+    }
+  });
+
   it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
     const HOUR = 60 * 60 * 1_000;
     const schedulingDb = createConnection(":memory:");
@@ -181,6 +240,7 @@ describe("plugin update scheduling", () => {
         rootDir: join(schedulingWorkDir, id),
         version: "1.0.0",
         enabled: false,
+        enabledFollowsDefault: false,
       });
     };
     const restartWithScheduler = async () => {
@@ -306,7 +366,15 @@ describe("plugin update service and routes", () => {
     });
     await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
-    registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
+    const updateJobs = createPluginUpdateJobs({ notifyChanged: () => {} });
+    registerPluginUpdateJobRoutes(app, updateJobs);
+    registerPluginRoutes(
+      app,
+      { config: { serverPort: 3334 }, db },
+      service,
+      createPluginInstallJobs({ notifyChanged: () => {} }),
+      updateJobs,
+    );
   });
 
   afterEach(async () => {
@@ -349,6 +417,7 @@ describe("plugin update service and routes", () => {
         rootDir: join(workDir, id),
         version: "1.0.0",
         enabled: false,
+        enabledFollowsDefault: false,
       });
     }
     vi.stubGlobal(
@@ -441,6 +510,7 @@ describe("plugin update service and routes", () => {
       rootDir: join(workDir, "legacy-marketplace"),
       version: "0.2.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
     const fetched: string[] = [];
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
@@ -459,10 +529,67 @@ describe("plugin update service and routes", () => {
     expect(fetched.filter((url) => url.includes("api.github.com"))).toEqual([]);
   });
 
+  async function restorePhaseOneCloneHistory(
+    pluginId: string,
+    sourceRepo: string,
+  ): Promise<void> {
+    const rootDir = getInstalledPlugin(db, pluginId)?.rootDir;
+    if (rootDir === undefined) throw new Error(`missing ${pluginId}`);
+    const clone = join(workDir, `phase-one-clone-${pluginId}`);
+    await run("git", ["clone", "--quiet", "--no-checkout", sourceRepo, clone]);
+    await rename(join(clone, ".git"), join(rootDir, ".git"));
+  }
+
+  it("accepts an update before activation finishes and exposes its result after reconnect", async () => {
+    const nextCommit = await commitPlugin(repo, "1.1.0");
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    afterArtifactPromoted = async () => gate;
+    const pending = app.request("/plugins/updater/update", {
+      method: "POST",
+      headers: { "content-type": "application/json", prefer: "respond-async" },
+      body: "{}",
+    });
+    let response: Response | undefined;
+    try {
+      response = await Promise.race([
+        pending,
+        new Promise<undefined>((resolve) => setTimeout(resolve, 250)),
+      ]);
+      expect(response?.status).toBe(202);
+    } finally {
+      release();
+      await pending;
+    }
+    if (response === undefined) return;
+    const { job } = pluginUpdateJobResponseSchema.parse(await response.json());
+    await vi.waitFor(
+      async () => {
+        const got = await app.request(`/plugins/update-jobs/${job.id}`);
+        expect(await got.json()).toMatchObject({
+          job: {
+            state: "completed",
+            pluginId: "updater",
+            result: {
+              applied: true,
+              outcome: "updated",
+              to: { version: nextCommit },
+            },
+          },
+        });
+      },
+      { timeout: 10_000 },
+    );
+    expect(getInstalledPlugin(db, "updater")?.version).toBe("1.1.0");
+  });
+
   it("checks, reads persisted state, and updates through the exact HTTP contract", async () => {
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("updater");
+    await restorePhaseOneCloneHistory("updater", repo);
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const checkedResponse = await app.request("/plugins/updates/check", {
       method: "POST",
@@ -549,6 +676,7 @@ describe("plugin update service and routes", () => {
       sourceKind: "path",
       manifestUrl: workDir,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
       sourceGitCommit: null,
       statsJson: null,
       manifestJson: JSON.stringify({
@@ -636,7 +764,6 @@ describe("plugin update service and routes", () => {
     const before = getInstalledPluginRegistration(db, "updater");
     if (before === undefined) throw new Error("missing installed updater");
     const oldRoot = before.rootDir;
-    const oldPackage = await readFile(join(oldRoot, "package.json"), "utf8");
     const nextCommit = await commitPlugin(repo, "1.1.0");
     const results = await Promise.all([
       service.applyUpdate("updater"),
@@ -673,11 +800,8 @@ describe("plugin update service and routes", () => {
       activeArtifactId: expect.any(String),
     });
     expect(updated?.rootDir).not.toBe(oldRoot);
-    await stat(oldRoot);
-    expect(await readFile(join(oldRoot, "package.json"), "utf8")).toBe(
-      oldPackage,
-    );
-    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
+    await expect(stat(oldRoot)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(listPluginArtifacts(db, "updater")).toHaveLength(1);
   });
 
   it("rolls back when a background service crashes during stabilization", async () => {
@@ -915,6 +1039,7 @@ describe("plugin update service and routes", () => {
       rootDir: join(workDir, id),
       version: "1.0.0",
       enabled: false,
+      enabledFollowsDefault: false,
     });
   }
 
@@ -946,7 +1071,7 @@ describe("plugin update service and routes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("retains rollback state through the grace period and collects it afterward", async () => {
+  it("deletes the replaced version once the update settles and keeps rollback state through the grace period", async () => {
     await service.stop();
     let clock = Date.now();
     const makeService = () =>
@@ -980,14 +1105,6 @@ describe("plugin update service and routes", () => {
       result: { applied: true },
     });
     expect(listPluginStateSnapshots(db, "updater")).toHaveLength(1);
-    expect(listPluginArtifacts(db, "updater")).toHaveLength(2);
-    await stat(oldArtifact.path);
-
-    clock += 51;
-    await service.stop();
-    service = makeService();
-    await service.start();
-    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
     const remaining = listPluginArtifacts(db, "updater");
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).toBe(
@@ -997,6 +1114,13 @@ describe("plugin update service and routes", () => {
       code: "ENOENT",
     });
     await stat(remaining[0]!.path);
+
+    clock += 51;
+    await service.stop();
+    service = makeService();
+    await service.start();
+    expect(listPluginStateSnapshots(db, "updater")).toHaveLength(0);
+    expect(listPluginArtifacts(db, "updater")).toEqual(remaining);
   }, 60_000);
 
   it("orders removal after an in-flight update without resurrecting the plugin", async () => {
@@ -1193,6 +1317,7 @@ describe("plugin update service and routes", () => {
       rootDir: legacyRoot,
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     });
     await service.reload("updater");
     expect(service.list()).toMatchObject([
@@ -1356,6 +1481,7 @@ describe("plugin update service and routes", () => {
     db.$client
       .prepare("UPDATE plugins SET source_git_ref_kind = NULL WHERE id = ?")
       .run("tagged");
+    await restorePhaseOneCloneHistory("tagged", tagged);
 
     await git(tagged, ["tag", "-d", "v1.0.0"]);
     await writeFile(join(tagged, "release.txt"), "attacker code");
@@ -1367,7 +1493,7 @@ describe("plugin update service and routes", () => {
       {
         id: "tagged",
         outcome: "unavailable",
-        detail: expect.stringContaining("security check failed"),
+        detail: expect.stringContaining("recorded it as a tag"),
       },
     ]);
     expect(getInstalledPluginRegistration(db, "tagged")).toMatchObject({

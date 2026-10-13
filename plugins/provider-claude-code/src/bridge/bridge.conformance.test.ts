@@ -204,6 +204,7 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "handshake/initialize": "pass",
     "skills/configure-declared": "pass",
     "session/start-identity": "pass",
+    "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",
@@ -211,6 +212,7 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
     "session/fork-identity": "pass",
+    "session/fork-identity-announced": "pass",
     "turn/settles-without-activity": "pass",
   });
 

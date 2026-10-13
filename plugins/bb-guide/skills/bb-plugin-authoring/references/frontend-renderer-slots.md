@@ -21,9 +21,6 @@ Original }`. `experimental_fullFileContents` is either
   Every value is already resolved. Render `Original` (bb's
   renderer, bound to this call) to delegate without re-entering resolution —
   behind a plugin setting, by language, over a size threshold:
-  A bundle compiled against an SDK before 0.4.16 may still read
-  `experimental_Original`: every host passes the same component under that
-  name for one release (it warns once; removed in bb 0.42).
 
   ```tsx
   app.slots.experimental_diffRenderer({
@@ -68,16 +65,54 @@ openWorkspaceFile }` — register a leaf
   attributes as attacker-controlled even though the model emitted them;
   load workspace data through `bb.sdk.files` with root/host confinement
   rather than trusting paths. Reference implementation:
-  `plugins/inline-vis` (the sidebar's path-shaped, sandboxed worktree
-  iframe preview, including relative assets and normal web loading).
+  `plugins/inline-vis` (a workspace or thread-storage HTML file shown in a
+  borderless, sandboxed frame that follows the page's height and bb's theme,
+  including relative assets and normal web loading).
+- `experimental_codeFenceRenderer` → `{ code, language, status, index,
+message, Original }` — render fenced code blocks of chosen languages in
+  assistant-message Markdown with a plugin component (e.g. a ` ```ui `
+  block rendered live as the reply streams). Registration:
+  `{ id, languages, component }`; `id` uses letters, digits, `-`, `_` and is
+  unique within the plugin; `languages` is non-empty and each entry matches
+  `/^[a-z0-9][a-z0-9+#._-]*$/`. A plugin may claim a language once across its
+  registrations (duplicates are rejected at load). Props: `code` is the fence
+  body so far, without the delimiters; `status` is `"streaming"` while the
+  closing fence has not arrived and the reply is still being written,
+  `"closed"` once the closing fence is present (`code` is final), and
+  `"unclosed"` when the reply ended without one (for example an interrupted
+  reply); `index` is the zero-based ordinal among fences of the same language
+  in the message (other languages don't shift it); `message` matches
+  `messageDirective`'s; `Original` renders BB's code block (highlighting,
+  copy button, mermaid diagrams). BB mounts the component once per fence and
+  keeps that instance while the message stays on screen, so component state
+  survives the whole stream, including the fence closing and the reply
+  finishing. State that must outlive the mounted component (a reload, the
+  message scrolling out of the rendered window) belongs under
+  `${message.id}#${language}#${index}`. `useBbNavigate().openThreadPanel`
+  works inside it as for `messageDirective`. **Host behavior / fallbacks:**
+  activates only where `messageDirective` does (assistant and nested agent
+  Markdown); user messages, file previews, and plugin Markdown keep BB's code
+  block. BB's code block also renders when two plugins claim the same
+  language (BB logs a console warning naming them), when the plugin is
+  missing or disabled, and for a fence whose component throws. A throw
+  affects that fence only, and BB tries the component again when the fence's
+  `code` or `status` changes, so a renderer that fails on a half-streamed
+  body recovers on the next chunk. Treat `code` as attacker-controlled even
+  though the model emitted it: run generated markup or scripts in a sandboxed
+  frame, never in the bb page. Reference implementation:
+  `plugins/inline-vis` (a ` ```inline-vis ` block holding an HTML page).
+  Experimental: see `docs/api_to_audit.md`.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu. Host-rendered chrome, no plugin
+  assistant-message text-selection menu. Slot actions are limited to the main
+  timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
   component — registration: `{ id, title, icon?, run }`. Activating it calls
   `run(context)` with `{ threadId, message, selectedText?, openPanel }`:
   `message` is a narrow stable reference
-  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd }` (never
-  an internal timeline row); `selectedText` is present only for
+  `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
+  an internal timeline row); `experimental_messageSeq` is the recorded message
+  sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
+  while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
   `openPanel({ actionId, title?, params? })` opens one of the same plugin's
   registered `threadPanelAction` components in the current thread's side
@@ -112,6 +147,9 @@ openWorkspaceFile }` — register a leaf
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  A command that acts on the composer the user is typing in registers through
+  `app.composer.experimental_registerCommand` instead; see the composer
+  section of frontend-hooks-and-ui.
 - `experimental_timelineRenderer` → the expanded body of the timeline rows a
   provider plugin owns. Registration: `{ kind, component }`, where `kind` is
   one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as

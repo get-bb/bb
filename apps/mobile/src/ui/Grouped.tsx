@@ -14,7 +14,7 @@ import { Text } from "./Text";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
 
-export const GROUPED_CARD_RADIUS = 10;
+export const GROUPED_CARD_RADIUS = IS_IOS ? 10 : 16;
 export const GROUPED_ROW_PADDING_X = 16;
 const GROUPED_ROW_GAP = 12;
 export const ICON_BADGE_SIZE = 29;
@@ -57,6 +57,7 @@ export interface GroupedRowProps {
   onLongPress?: () => void;
   destructive?: boolean;
   disabled?: boolean;
+  selected?: boolean;
   titleLines?: number;
   testID?: string;
   accessibilityLabel?: string;
@@ -74,6 +75,7 @@ export function GroupedRow({
   onLongPress,
   destructive = false,
   disabled = false,
+  selected = trailing === "checkmark" ? true : undefined,
   titleLines = 1,
   testID,
   accessibilityLabel,
@@ -102,7 +104,7 @@ export function GroupedRow({
       trailing
     );
   const layoutClassName = cn(
-    "min-h-[44px] flex-row items-center gap-3 px-4 py-2.5",
+    "min-h-[44px] flex-row items-center gap-3 px-4 py-3",
     disabled && "opacity-50",
   );
   const content = (
@@ -110,21 +112,21 @@ export function GroupedRow({
       {leadingNode}
       <View className="min-w-0 flex-1">
         <Text
-          variant="bodyLarge"
+          variant={IS_IOS ? "bodyLarge" : "body"}
           numberOfLines={titleLines}
           style={{ color: titleColor }}
         >
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="caption" numberOfLines={3}>
+          <Text variant="caption" numberOfLines={IS_IOS ? 3 : 1}>
             {subtitle}
           </Text>
         ) : null}
       </View>
       {value ? (
         <Text
-          variant="bodyLarge"
+          variant={IS_IOS ? "bodyLarge" : "body"}
           numberOfLines={1}
           className="max-w-[55%] shrink"
           style={{ color: tokens.mutedForeground }}
@@ -150,7 +152,7 @@ export function GroupedRow({
       }
       accessibilityState={{
         disabled,
-        selected: trailing === "checkmark" ? true : undefined,
+        selected,
       }}
       disabled={disabled}
       onPress={onPress}
@@ -199,7 +201,12 @@ export function GroupedSection({
   return (
     <View className="gap-2" testID={testID}>
       {title ? (
-        <View className="flex-row items-end justify-between gap-3 px-4">
+        <View
+          className={cn(
+            "flex-row items-end justify-between gap-3",
+            IS_IOS && "px-4",
+          )}
+        >
           <Text variant="sectionLabel" numberOfLines={1} className="shrink">
             {title}
           </Text>
@@ -209,6 +216,8 @@ export function GroupedSection({
         className="overflow-hidden"
         style={{
           borderRadius: GROUPED_CARD_RADIUS,
+          borderWidth: IS_IOS ? 0 : 1,
+          borderColor: tokens.border,
           borderCurve: "continuous",
           backgroundColor: tokens.surfaceGroupedCell,
         }}
@@ -228,11 +237,15 @@ export function GroupedSection({
       </View>
       {footer ? (
         typeof footer === "string" ? (
-          <Text variant="footnote" tone="muted" className="px-4">
+          <Text
+            variant="footnote"
+            tone="muted"
+            className={IS_IOS ? "px-4" : undefined}
+          >
             {footer}
           </Text>
         ) : (
-          <View className="px-4">{footer}</View>
+          <View className={IS_IOS ? "px-4" : undefined}>{footer}</View>
         )
       ) : null}
     </View>

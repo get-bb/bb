@@ -219,7 +219,9 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.subagentType,
         row.description,
         row.completedAt,
-        timelineRowsSignature(row.childRows),
+        row.childRows === null
+          ? "deferred"
+          : timelineRowsSignature(row.childRows),
       ]);
     case "workflow":
       return joinSignatureParts([
@@ -272,6 +274,15 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.approvalKind === "permission-grant" ? row.statusReason : null,
         row.target.itemId,
         row.target.toolName,
+      ]);
+    case "form":
+      return joinSignatureParts([
+        ...baseParts,
+        row.interactionId,
+        row.lifecycle,
+        row.title,
+        row.statusReason,
+        JSON.stringify(row.payload),
       ]);
     case "question":
       return joinSignatureParts([

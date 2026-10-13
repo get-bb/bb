@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow } from "electron";
-import { escapeHtmlText } from "@bb/domain";
+import { escapeHtmlText } from "@bb/text-utils";
 import {
   createDesktopDialogWindow,
   DESKTOP_DIALOG_BASE_CSS,
@@ -10,6 +10,7 @@ import {
   existingServerDialogChooseRequestSchema,
 } from "./existing-server-dialog-ipc.js";
 import type { ForeignRuntimeDetails } from "./foreign-runtime.js";
+import { BUILTIN_SERVER_NAME } from "./server-target.js";
 
 type ExistingServerDialogChoice = "connect" | "quit" | "replace";
 
@@ -158,7 +159,7 @@ ${DESKTOP_DIALOG_BASE_CSS}
   </style>
 </head>
 <body>
-  <h1>bb is already running on this Mac</h1>
+  <h1>bb is already running on ${BUILTIN_SERVER_NAME}</h1>
   <p>${introText}</p>
   <div class="details">
       ${detailHtml}

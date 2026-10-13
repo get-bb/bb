@@ -21,6 +21,8 @@ const CONNECTED_HOST = makeHost({
   name: "build-box",
   status: "connected",
 });
+const WINDOWS_ENROLLMENT_COMMAND =
+  "irm -Headers @{ 'X-BB-Enrollment' = 'bbde_TZpKWsJpWiPulVIRKNENmEVtvNwnEwDobjPFlnlsyCUUzorssgdxmgxUblRIWAUA' } 'https://bb.example.com/install.ps1' | iex";
 const ENROLLMENT_COMMAND =
   "curl -fsSL -H 'X-BB-Enrollment: bbde_TZpKWsJpWiPulVIRKNENmEVtvNwnEwDobjPFlnlsyCUUzorssgdxmgxUblRIWAUA' 'https://bb.example.com/install.sh' | sh";
 
@@ -118,6 +120,7 @@ export function EnrollmentCommandState() {
             onRetry={noop}
             onRegenerate={noop}
             connectedHost={null}
+            serverMachineName="Mac mini"
             onOpenMachine={noop}
           />
         </DialogStage>
@@ -130,12 +133,15 @@ export function EnrollmentCommandState() {
           <ManualMachineSetupView
             command={{
               value: ENROLLMENT_COMMAND,
+              windowsValue: WINDOWS_ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 15 * 60_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
             onRegenerate={noop}
             connectedHost={null}
+            serverMachineName="Mac mini"
             onOpenMachine={noop}
           />
         </DialogStage>
@@ -148,12 +154,15 @@ export function EnrollmentCommandState() {
           <ManualMachineSetupView
             command={{
               value: ENROLLMENT_COMMAND,
+              windowsValue: WINDOWS_ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 40_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
             onRegenerate={noop}
             connectedHost={null}
+            serverMachineName="Mac mini"
             onOpenMachine={noop}
           />
         </DialogStage>
@@ -166,12 +175,15 @@ export function EnrollmentCommandState() {
           <ManualMachineSetupView
             command={{
               value: ENROLLMENT_COMMAND,
+              windowsValue: WINDOWS_ENROLLMENT_COMMAND,
               expiresAt: issuedAt - 1_000,
+              unavailable: false,
             }}
             errorMessage={null}
             onRetry={noop}
             onRegenerate={noop}
             connectedHost={null}
+            serverMachineName="Mac mini"
             onOpenMachine={noop}
           />
         </DialogStage>
@@ -184,9 +196,12 @@ export function EnrollmentCommandState() {
           <ManualMachineSetupView
             command={{
               value: ENROLLMENT_COMMAND,
+              windowsValue: WINDOWS_ENROLLMENT_COMMAND,
               expiresAt: issuedAt + 15 * 60_000,
+              unavailable: false,
             }}
             connectedHost={CONNECTED_HOST}
+            serverMachineName="Mac mini"
             errorMessage={null}
             onRetry={noop}
             onRegenerate={noop}
@@ -205,6 +220,7 @@ export function EnrollmentCommandState() {
             onRetry={noop}
             onRegenerate={noop}
             connectedHost={null}
+            serverMachineName="Mac mini"
             onOpenMachine={noop}
           />
         </DialogStage>

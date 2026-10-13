@@ -1,3 +1,7 @@
+import {
+  createAsyncTtlMemo,
+  type AsyncTtlMemo,
+} from "../lib/async-ttl-memo.js";
 import type { EnvironmentChangeKind } from "@bb/domain";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ServerChangedMessage } from "../../ws/hub.js";
@@ -5,17 +9,6 @@ import type { ServerChangedMessage } from "../../ws/hub.js";
 const IGNORED_ENVIRONMENT_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set(
   ["metadata-changed", "thread-storage-changed"],
 );
-
-interface CacheEntry<TValue> {
-  expiresAt: number;
-  hostId: string;
-  value: TValue;
-}
-
-interface InFlightEntry<TValue> {
-  hostId: string;
-  promise: Promise<TValue>;
-}
 
 interface EnvironmentReadCacheReadArgs<TValue> {
   environmentId: string;
@@ -37,71 +30,25 @@ interface EnvironmentReadCacheInvalidation {
 export class EnvironmentReadCache<
   TValue,
 > implements EnvironmentReadCacheInvalidation {
-  private readonly entries = new Map<string, CacheEntry<TValue>>();
-  private readonly inFlight = new Map<string, InFlightEntry<TValue>>();
+  private readonly cache: AsyncTtlMemo<string, TValue>;
 
-  constructor(private readonly options: EnvironmentReadCacheOptions) {}
+  constructor(options: EnvironmentReadCacheOptions) {
+    this.cache = createAsyncTtlMemo({ ...options, maxEntries: 1_024 });
+  }
 
   read(args: EnvironmentReadCacheReadArgs<TValue>): Promise<TValue> {
-    const cacheKey = `${args.environmentId} ${args.key}`;
-    const cached = this.entries.get(cacheKey);
-    if (cached && cached.expiresAt > this.options.now()) {
-      return Promise.resolve(cached.value);
-    }
-    if (cached) {
-      this.entries.delete(cacheKey);
-    }
-
-    const pending = this.inFlight.get(cacheKey);
-    if (pending) {
-      return pending.promise;
-    }
-
-    const promise = args.load().then(
-      (value) => {
-        if (this.inFlight.get(cacheKey)?.promise === promise) {
-          this.inFlight.delete(cacheKey);
-          this.entries.set(cacheKey, {
-            expiresAt: this.options.now() + this.options.ttlMs,
-            hostId: args.hostId,
-            value,
-          });
-        }
-        return value;
-      },
-      (error: unknown) => {
-        if (this.inFlight.get(cacheKey)?.promise === promise) {
-          this.inFlight.delete(cacheKey);
-        }
-        throw error;
-      },
+    return this.cache.run(
+      `${args.environmentId} ${args.hostId} ${args.key}`,
+      args.load,
     );
-    this.inFlight.set(cacheKey, { hostId: args.hostId, promise });
-    return promise;
   }
 
   invalidateEnvironment(environmentId: string): void {
-    const prefix = `${environmentId} `;
-    this.dropWhere((cacheKey) => cacheKey.startsWith(prefix));
+    this.cache.invalidateWhere((key) => key.startsWith(`${environmentId} `));
   }
 
   invalidateHost(hostId: string): void {
-    this.dropWhere((_cacheKey, entryHostId) => entryHostId === hostId);
-  }
-
-  private dropWhere(
-    predicate: (cacheKey: string, hostId: string) => boolean,
-  ): void {
-    for (const [cacheKey, entry] of this.entries) {
-      if (predicate(cacheKey, entry.hostId)) {
-        this.entries.delete(cacheKey);
-      }
-    }
-    for (const [cacheKey, entry] of this.inFlight) {
-      if (predicate(cacheKey, entry.hostId)) {
-        this.inFlight.delete(cacheKey);
-      }
-    }
+    this.cache.invalidateWhere((key) => key.split(" ")[1] === hostId);
   }
 }
 
@@ -158,13 +105,16 @@ export class WorkspaceReadCaches {
 
   private handleChangedMessage(message: ServerChangedMessage): void {
     if (message.entity === "environment") {
-      const relevant = message.changes.some(
+      const relevantChanges = message.changes.filter(
         (change) => !IGNORED_ENVIRONMENT_CHANGES.has(change),
       );
-      if (!relevant) {
+      if (relevantChanges.length === 0) {
         return;
       }
-      this.invalidateEnvironment(message.id);
+      this.status.invalidateEnvironment(message.id);
+      if (relevantChanges.some((change) => change !== "work-status-changed")) {
+        this.pullRequest.invalidateEnvironment(message.id);
+      }
       return;
     }
     if (

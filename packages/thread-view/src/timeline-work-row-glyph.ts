@@ -120,6 +120,8 @@ function fallbackGlyphForWorkRow(
       return "Lock";
     case "question":
       return "CircleQuestion";
+    case "form":
+      return "Puzzle";
     default:
       return assertNever(row);
   }

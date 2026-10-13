@@ -1,3 +1,4 @@
+import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import type { HostDaemonLogger } from "./logger.js";
 import { normalizeCaughtError } from "./error-utils.js";
 
@@ -24,10 +25,12 @@ interface CreateDaemonOptions {
   shutdownExitGraceMs?: number;
 }
 
+export type HostDaemonExitCode = 0 | 1 | typeof HOST_DAEMON_RESTART_EXIT_CODE;
+
 export interface HostDaemon {
   readonly identity: HostDaemonIdentity;
   start(): Promise<void>;
-  shutdown(reason: string, exitCode: 0 | 1): Promise<void>;
+  shutdown(reason: string, exitCode: HostDaemonExitCode): Promise<void>;
   waitUntilStopped(): Promise<void>;
 }
 
@@ -42,7 +45,7 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
   let stopFailure: Error | null = null;
   let shutdownExitWatchdog: ReturnType<typeof setTimeout> | null = null;
   let shutdownExitReason: string | null = null;
-  let shutdownExitCode: 0 | 1 = 0;
+  let shutdownExitCode: HostDaemonExitCode = 0;
 
   let resolveStopped: (() => void) | undefined;
   const stopped = new Promise<void>((resolve) => {
@@ -59,7 +62,10 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     listeners.clear();
   }
 
-  function requestProcessExit(reason: string, exitCode: 0 | 1): void {
+  function requestProcessExit(
+    reason: string,
+    exitCode: HostDaemonExitCode,
+  ): void {
     if (shutdownExitReason === null || exitCode > shutdownExitCode) {
       shutdownExitReason = reason;
       shutdownExitCode = exitCode;
@@ -101,7 +107,10 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     exitProcess(shutdownExitCode);
   }
 
-  async function stop(reason: string, exitCode: 0 | 1): Promise<void> {
+  async function stop(
+    reason: string,
+    exitCode: HostDaemonExitCode,
+  ): Promise<void> {
     requestProcessExit(reason, exitCode);
     if (stopPromise) {
       return stopPromise;
@@ -162,7 +171,10 @@ export function createDaemon(options: CreateDaemonOptions): HostDaemon {
     return stopPromise;
   }
 
-  async function shutdown(reason: string, exitCode: 0 | 1): Promise<void> {
+  async function shutdown(
+    reason: string,
+    exitCode: HostDaemonExitCode,
+  ): Promise<void> {
     return stop(reason, exitCode);
   }
 

@@ -24,13 +24,6 @@ describe("mapSkillScope", () => {
       manageable: true,
     },
     {
-      provider: "codex",
-      rootKind: "bb-project",
-      scope: "bb-project",
-      listedProvider: null,
-      manageable: true,
-    },
-    {
       provider: "claude-code",
       rootKind: "bb-data-dir",
       scope: "bb-user",
@@ -56,34 +49,6 @@ describe("mapSkillScope", () => {
       rootKind: "provider-user",
       scope: "provider-user",
       listedProvider: "claude-code",
-      manageable: true,
-    },
-    {
-      provider: "codex",
-      rootKind: "provider-project",
-      scope: "provider-project",
-      listedProvider: "codex",
-      manageable: true,
-    },
-    {
-      provider: "codex",
-      rootKind: "provider-user",
-      scope: "provider-user",
-      listedProvider: "codex",
-      manageable: true,
-    },
-    {
-      provider: "acp-cursor",
-      rootKind: "provider-project",
-      scope: "provider-project",
-      listedProvider: "acp-cursor",
-      manageable: true,
-    },
-    {
-      provider: "acp-cursor",
-      rootKind: "provider-user",
-      scope: "provider-user",
-      listedProvider: "acp-cursor",
       manageable: true,
     },
     {

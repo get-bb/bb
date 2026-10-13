@@ -9,6 +9,8 @@ import type { HostDaemonLogger } from "./logger.js";
 import { ServerResponseError } from "./server-client.js";
 
 const DEFAULT_DEBOUNCE_MS = 100;
+const INITIAL_RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 30_000;
 
 const QUEUE_DEPTH_WARN_THRESHOLD = 512;
 const QUEUE_DEPTH_WARN_MIN_AGE_MS = 5_000;
@@ -34,6 +36,7 @@ export interface CreateEventSinkOptions {
 export interface EventSink {
   emit(event: EventSinkInput): void;
   flush(): Promise<void>;
+  listUndeliveredThreadIds(): string[];
   dispose(): Promise<void>;
 }
 
@@ -111,6 +114,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
   let disposed = false;
   let backedUpSinceMs: number | null = null;
   let backpressureLogged = false;
+  let retryDelayMs = INITIAL_RETRY_DELAY_MS;
 
   function maybeLogQueuePressure(): void {
     if (backpressureLogged || backedUpSinceMs === null) {
@@ -145,7 +149,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       return;
     }
     if (flushTimer !== null) {
-      if (delayMs > 0) {
+      if (delayMs > 0 || retryDelayMs > INITIAL_RETRY_DELAY_MS) {
         return;
       }
       clearScheduledFlush();
@@ -172,7 +176,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       if (!isPermanentPostRejection(normalized)) {
         options.logger.error(
           runtimeErrorLogFields(normalized),
-          "Failed to post daemon events; will retry on the next flush",
+          "Failed to post daemon events; keeping events queued for retry",
         );
         return 0;
       }
@@ -219,6 +223,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       if (queue.length === 0) {
         backedUpSinceMs = null;
         backpressureLogged = false;
+        retryDelayMs = INITIAL_RETRY_DELAY_MS;
       }
       if (delivered < batch.length) {
         return;
@@ -238,6 +243,11 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       await flushPromise;
     } finally {
       flushPromise = null;
+      if (!disposed && queue.length > 0 && options.isSessionOpen()) {
+        const delayMs = Math.floor(retryDelayMs * (0.5 + Math.random() * 0.5));
+        retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_DELAY_MS);
+        scheduleFlush(delayMs);
+      }
     }
   }
 
@@ -261,6 +271,9 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       );
     },
     flush,
+    listUndeliveredThreadIds(): string[] {
+      return [...new Set(queue.map((envelope) => envelope.threadId))];
+    },
     async dispose(): Promise<void> {
       disposed = true;
       clearScheduledFlush();

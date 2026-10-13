@@ -10,7 +10,6 @@ import {
   assertPublicMarketplaceUrl,
   boundedResponseBytes,
   marketplaceErrorMessage,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
   type MarketplaceFetch,
 } from "./marketplace-http.js";
 import { brandingAssetHash } from "../plugins/app-bundle.js";
@@ -51,8 +50,6 @@ export async function readBoundedMarketplaceIconFile(
     await handle.close();
   }
 }
-
-const MARKETPLACE_ICON_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
 
 const MARKETPLACE_ICON_CONCURRENCY = 6;
 
@@ -137,22 +134,6 @@ export async function fetchMarketplaceIcons(args: {
   );
   const resolved = new Map<string, UpsertPluginMarketplaceIconInput>();
   const pending = [...wanted.entries()];
-  let totalBytes = 0;
-  let budgetError: Error | null = null;
-
-  const keep = (
-    entryId: string,
-    icon: UpsertPluginMarketplaceIconInput,
-  ): void => {
-    totalBytes += icon.bytes.byteLength;
-    if (totalBytes > MARKETPLACE_ICON_TOTAL_MAX_BYTES) {
-      budgetError ??= new Error(
-        `marketplace icons exceed the ${MARKETPLACE_ICON_TOTAL_MAX_BYTES} byte total limit`,
-      );
-      return;
-    }
-    resolved.set(entryId, icon);
-  };
 
   const runOne = async (
     entryId: string,
@@ -167,7 +148,7 @@ export async function fetchMarketplaceIcons(args: {
       cached !== undefined &&
       unchangedUrl
     ) {
-      keep(entryId, iconInputFromRow(cached));
+      resolved.set(entryId, iconInputFromRow(cached));
       return;
     }
     try {
@@ -187,23 +168,22 @@ export async function fetchMarketplaceIcons(args: {
               fetch: args.fetch,
             });
       if (refreshed !== null) {
-        keep(entryId, refreshed);
+        resolved.set(entryId, refreshed);
       } else if (cached !== undefined && unchangedUrl) {
-        keep(entryId, iconInputFromRow(cached));
+        resolved.set(entryId, iconInputFromRow(cached));
       }
     } catch (error) {
       args.warn?.(
         `marketplace ${args.marketplaceName} entry "${entryId}" icon ${sourceUrl} was rejected: ${marketplaceErrorMessage(error)}`,
       );
       if (cached !== undefined && unchangedUrl) {
-        keep(entryId, iconInputFromRow(cached));
+        resolved.set(entryId, iconInputFromRow(cached));
       }
     }
   };
 
   const worker = async (): Promise<void> => {
     for (;;) {
-      if (budgetError !== null) return;
       const next = pending.shift();
       if (next === undefined) return;
       await runOne(next[0], next[1]);
@@ -215,7 +195,6 @@ export async function fetchMarketplaceIcons(args: {
       worker,
     ),
   );
-  if (budgetError !== null) throw budgetError;
 
   return [...wanted.keys()]
     .map((entryId) => resolved.get(entryId))
@@ -283,7 +262,6 @@ async function fetchOneIcon(args: {
     method: "GET",
     headers,
     redirect: "error",
-    signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
   });
   if (response.status === 304 && unchangedUrl) {
     await response.body?.cancel();

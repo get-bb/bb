@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { Button } from "@bb/shared-ui/button";
 import {
   Command,
@@ -17,12 +18,14 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { useScrollOverflowState } from "../thread/timeline/useScrollOverflowState";
 import { searchPickerOptions } from "./picker-search";
 import { useResetPickerScroll } from "./useResetPickerScroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;
 const NO_HIGHLIGHT_VALUE = "__project-picker-idle__";
-const PROJECT_PICKER_ITEM_CLASS_NAME = "py-[0.3125rem] text-xs max-md:py-2";
+const PROJECT_PICKER_ITEM_CLASS_NAME =
+  "py-[0.3125rem] text-xs max-md:pointer-coarse:py-2";
 
 export interface ProjectSelectorOption {
   id: string;
@@ -40,6 +43,8 @@ interface ProjectSelectorProps {
   value: string | null;
   onChange: (projectId: string | null) => void;
   allowNoProject?: boolean;
+  allProjectsValue?: string;
+  variant?: "ghost" | "outline";
   createProject?: ProjectSelectorCreateProjectConfig;
   disabled?: boolean;
   isLoading?: boolean;
@@ -54,6 +59,8 @@ export function ProjectSelector({
   value,
   onChange,
   allowNoProject = false,
+  allProjectsValue,
+  variant = "ghost",
   createProject,
   disabled: disabledProp = false,
   isLoading = false,
@@ -66,8 +73,24 @@ export function ProjectSelector({
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedValue, setHighlightedValue] = useState(NO_HIGHLIGHT_VALUE);
   const commandRef = useRef<HTMLDivElement>(null);
+  const keyboardNavigationRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const [listElement, setListElement] = useState<HTMLDivElement | null>(null);
+  const { scrollRef, belowOverflow } = useScrollOverflowState<HTMLDivElement>({
+    enabled: listElement !== null,
+    measureOverflow: true,
+  });
+  const composedListRef = useComposedRefs(listRef, scrollRef, setListElement);
+  useLayoutEffect(() => {
+    if (!keyboardNavigationRef.current) return;
+    const items =
+      commandRef.current?.querySelectorAll<HTMLElement>("[cmdk-item]");
+    const highlightedItem = Array.from(items ?? []).find(
+      (item) => item.dataset.value === highlightedValue,
+    );
+    highlightedItem?.scrollIntoView({ block: "nearest" });
+  }, [highlightedValue]);
   const disabled = disabledProp || isLoading;
   const showSearch = projects.length > PROJECT_SEARCH_MIN_OPTIONS;
   const filteredProjects = useMemo(
@@ -82,21 +105,37 @@ export function ProjectSelector({
     [projects, searchQuery, showSearch],
   );
   const selected = value !== null ? projects.find((p) => p.id === value) : null;
-  const fallback = !allowNoProject && !selected ? projects[0] : null;
+  const allProjectsSelected =
+    allProjectsValue !== undefined && value === allProjectsValue;
+  const fallback =
+    !allowNoProject && !allProjectsSelected && !selected ? projects[0] : null;
+  const noProjectSelected = allowNoProject && value === null;
   const triggerLabel = isLoading
     ? "Loading projects…"
-    : (selected?.name ?? fallback?.name ?? "Work in a project");
+    : (selected?.name ??
+      fallback?.name ??
+      (allProjectsSelected ? "All projects" : undefined) ??
+      (noProjectSelected ? "No project" : "Work in a project"));
   const compactTriggerLabel = isLoading
     ? "Loading…"
-    : (selected?.name ?? fallback?.name ?? "No project");
+    : (selected?.name ??
+      fallback?.name ??
+      (allProjectsSelected ? "All projects" : "No project"));
   const triggerIcon =
-    isLoading || selected || fallback ? "Folder" : "FolderPlus";
+    isLoading || selected || fallback || allProjectsSelected
+      ? "Folder"
+      : noProjectSelected
+        ? "FolderMinus"
+        : "FolderPlus";
   const createProjectAction = createProject;
   const createProjectLabel = createProjectAction?.isCreating
     ? "Creating..."
     : "New project";
   const showActionSeparator =
-    projects.length > 0 && (Boolean(createProjectAction) || allowNoProject);
+    projects.length > 0 &&
+    (Boolean(createProjectAction) ||
+      allowNoProject ||
+      allProjectsValue !== undefined);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     setHighlightedValue(NO_HIGHLIGHT_VALUE);
@@ -114,7 +153,7 @@ export function ProjectSelector({
       <PopoverTrigger asChild disabled={disabled}>
         <Button
           type="button"
-          variant="ghost"
+          variant={variant}
           size="sm"
           aria-label={`Project: ${triggerLabel}`}
           aria-busy={isLoading || undefined}
@@ -122,9 +161,9 @@ export function ProjectSelector({
           data-promptbox-project-control=""
           className={cn(
             OPTION_BASE_CLASS_NAME,
-            !disabled && OPTION_INTERACTIVE_CLASS_NAME,
+            variant === "ghost" && !disabled && OPTION_INTERACTIVE_CLASS_NAME,
             disabled && "cursor-default disabled:opacity-100",
-            OPTION_MUTED_CLASS_NAME,
+            variant === "ghost" && OPTION_MUTED_CLASS_NAME,
             className,
           )}
         >
@@ -170,6 +209,12 @@ export function ProjectSelector({
           shouldFilter={false}
           value={highlightedValue}
           onValueChange={setHighlightedValue}
+          onKeyDownCapture={() => {
+            keyboardNavigationRef.current = true;
+          }}
+          onPointerMoveCapture={() => {
+            keyboardNavigationRef.current = false;
+          }}
           className="min-h-0"
         >
           {showSearch ? (
@@ -182,93 +227,124 @@ export function ProjectSelector({
               className="h-8 text-xs"
             />
           ) : null}
-          <CommandList
-            ref={listRef}
-            className="min-h-0 max-h-none flex-1 overscroll-contain"
-          >
+          <CommandList className="flex min-h-0 flex-1 flex-col overflow-hidden [&>[cmdk-list-sizer]]:flex [&>[cmdk-list-sizer]]:min-h-0 [&>[cmdk-list-sizer]]:flex-col">
             {projects.length > 0 ? (
-              <CommandGroup heading="Project">
-                {filteredProjects.map((project) => (
-                  <CommandItem
-                    key={project.id}
-                    value={project.id}
-                    keywords={[project.name]}
-                    aria-current={project.id === value ? "true" : undefined}
-                    onSelect={() => selectProject(project.id)}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="Folder"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1 truncate">
-                      {project.name}
-                    </span>
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto size-4",
-                        project.id === value ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
-                  </CommandItem>
-                ))}
-                {showSearch && filteredProjects.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:py-2">
-                    No projects found
-                  </div>
-                ) : null}
+              <CommandGroup
+                heading="Project"
+                className="flex min-h-0 flex-col pb-0 [&>[cmdk-group-heading]]:shrink-0 [&>[cmdk-group-items]]:flex [&>[cmdk-group-items]]:min-h-0 [&>[cmdk-group-items]]:flex-col"
+              >
+                <div
+                  ref={composedListRef}
+                  className={cn(
+                    "min-h-0 max-h-[calc(4.5*(1lh+0.625rem)+0.25rem)] overflow-y-auto overscroll-contain text-xs max-md:pointer-coarse:max-h-[calc(4.5*(1lh+1rem)+0.25rem)] md:max-h-[calc(7.5*1.625rem)]",
+                    belowOverflow &&
+                      "[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.25rem),transparent)] md:[mask-image:linear-gradient(to_bottom,black_calc(100%_-_0.5rem),transparent)]",
+                  )}
+                >
+                  {filteredProjects.map((project) => (
+                    <CommandItem
+                      key={project.id}
+                      value={project.id}
+                      keywords={[project.name]}
+                      aria-current={project.id === value ? "true" : undefined}
+                      onSelect={() => selectProject(project.id)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="Folder"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {project.name}
+                      </span>
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto size-4",
+                          project.id === value ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                    </CommandItem>
+                  ))}
+                  {showSearch && filteredProjects.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-muted-foreground max-md:pointer-coarse:py-2">
+                      No projects found
+                    </div>
+                  ) : null}
+                </div>
               </CommandGroup>
             ) : null}
-            {showActionSeparator ? <CommandSeparator /> : null}
-            {createProjectAction || allowNoProject ? (
-              <CommandGroup
-                heading={projects.length === 0 ? "Project" : undefined}
-              >
-                {createProjectAction ? (
-                  <CommandItem
-                    disabled={createProjectAction.disabled}
-                    value="new-project"
-                    onSelect={() => {
-                      createProjectAction.onCreate();
-                      handleOpenChange(false);
-                    }}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="FolderPlus"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    {createProjectLabel}
-                  </CommandItem>
-                ) : null}
-                {allowNoProject ? (
-                  <CommandItem
-                    value="no-project"
-                    aria-current={value === null ? "true" : undefined}
-                    onSelect={() => selectProject(null)}
-                    className={PROJECT_PICKER_ITEM_CLASS_NAME}
-                  >
-                    <Icon
-                      name="FolderMinus"
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    Don&apos;t work in a project
-                    <Icon
-                      name="Check"
-                      className={cn(
-                        "ml-auto size-4",
-                        value === null ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
-                  </CommandItem>
-                ) : null}
-              </CommandGroup>
+            {createProjectAction ||
+            allowNoProject ||
+            allProjectsValue !== undefined ? (
+              <div className="shrink-0">
+                {showActionSeparator ? <CommandSeparator /> : null}
+                <CommandGroup
+                  heading={projects.length === 0 ? "Project" : undefined}
+                >
+                  {allProjectsValue !== undefined ? (
+                    <CommandItem
+                      value={allProjectsValue}
+                      aria-current={allProjectsSelected ? "true" : undefined}
+                      onSelect={() => selectProject(allProjectsValue)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="Folder"
+                        className="text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">All projects</span>
+                      {allProjectsSelected ? (
+                        <Icon name="Check" aria-hidden />
+                      ) : null}
+                    </CommandItem>
+                  ) : null}
+                  {createProjectAction ? (
+                    <CommandItem
+                      disabled={createProjectAction.disabled}
+                      value="new-project"
+                      onSelect={() => {
+                        createProjectAction.onCreate();
+                        handleOpenChange(false);
+                      }}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="FolderPlus"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      {createProjectLabel}
+                    </CommandItem>
+                  ) : null}
+                  {allowNoProject ? (
+                    <CommandItem
+                      value="no-project"
+                      aria-current={value === null ? "true" : undefined}
+                      onSelect={() => selectProject(null)}
+                      className={PROJECT_PICKER_ITEM_CLASS_NAME}
+                    >
+                      <Icon
+                        name="FolderMinus"
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      Don&apos;t work in a project
+                      <Icon
+                        name="Check"
+                        className={cn(
+                          "ml-auto size-4",
+                          value === null ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden
+                      />
+                    </CommandItem>
+                  ) : null}
+                </CommandGroup>
+              </div>
             ) : null}
           </CommandList>
         </Command>

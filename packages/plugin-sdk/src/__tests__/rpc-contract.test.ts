@@ -1,7 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import { z } from "zod";
 import type { PluginRpcClient } from "../app-contract.js";
-import { defineRpcContract, type PluginRpcHandlers } from "../rpc-contract.js";
+import {
+  defineRpcContract,
+  type ExperimentalPluginRpcHandlersWithContext,
+  type PluginRpcHandlers,
+} from "../rpc-contract.js";
 
 const contract = defineRpcContract({
   lookup: {
@@ -30,6 +34,19 @@ const handlers: PluginRpcHandlers<typeof contract> = {
   },
 };
 
+const contextHandlers: ExperimentalPluginRpcHandlersWithContext<
+  typeof contract
+> = {
+  ...handlers,
+  ping(_input, context) {
+    expectTypeOf(context.experimental_caller).toEqualTypeOf<
+      | { readonly kind: "plugin"; readonly pluginId: string }
+      | { readonly kind: "client" }
+    >();
+    return { ok: true };
+  },
+};
+
 function assertFrontendInference(client: PluginRpcClient<typeof contract>) {
   expectTypeOf(client.call("lookup", { id: "issue-1" })).toEqualTypeOf<
     Promise<{ title: string; closed: boolean }>
@@ -52,5 +69,10 @@ describe("schema-driven rpc contract", () => {
       closed: true,
     });
     expectTypeOf(assertFrontendInference).toBeFunction();
+    expect(
+      contextHandlers.ping(null, {
+        experimental_caller: { kind: "plugin", pluginId: "other" },
+      }),
+    ).toEqual({ ok: true });
   });
 });

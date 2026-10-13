@@ -19,7 +19,7 @@ import {
   experimental_resolveExecutablePath as resolveExecutablePath,
   experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
-import { resolvePiLaunch } from "./rpc-child.js";
+import { resolvePiLaunch, resolvePiProcessLaunch } from "./rpc-child.js";
 
 const execFileAsync = promisify(execFile);
 export const PI_MINIMUM_SUPPORTED_VERSION = "0.84.0";
@@ -130,7 +130,7 @@ async function piGlobalInstallCommand(
 }
 
 export async function probePiVersion(): Promise<PiVersionProbe> {
-  const launch = resolvePiLaunch(process.env);
+  const launch = resolvePiProcessLaunch(process.env);
   const display = formatCommand(launch.command, [...launch.args, "--version"]);
   let stdout: string;
   try {
@@ -170,14 +170,18 @@ export function describePiVersionProbeFailure(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function getPiProviderInstallationStatus(): Promise<ProviderInstallationStatus> {
+export async function getPiProviderInstallationStatus(
+  checkUpdates = true,
+): Promise<ProviderInstallationStatus> {
   const launch = resolvePiLaunch(process.env);
   const [resolvedExecutable, probe, latestVersion, npmGlobal] =
     await Promise.all([
       resolveExecutablePath(launch.command),
       probePiVersion(),
-      npmLatestVersion(PI_NPM_PACKAGE),
-      probeNpmGlobalPackage(PI_NPM_PACKAGE),
+      checkUpdates ? npmLatestVersion(PI_NPM_PACKAGE) : null,
+      checkUpdates
+        ? probeNpmGlobalPackage(PI_NPM_PACKAGE)
+        : { npmBin: null, npmGlobalPackageVersion: null },
     ]);
   const currentVersion = probe.version;
   const installed = resolvedExecutable !== null || currentVersion !== null;
@@ -196,7 +200,7 @@ export async function getPiProviderInstallationStatus(): Promise<ProviderInstall
       ? "update"
       : null;
   const installAction: ProviderInstallationStatus["installAction"] =
-    actionKind === null
+    actionKind === null || !checkUpdates
       ? null
       : {
           kind: actionKind,

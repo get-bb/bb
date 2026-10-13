@@ -3,7 +3,7 @@ kind: prompt
 title: Commit Message Generator
 summary: Prompt for generating one conventional commit line from a git diff snapshot.
 intent: Produce a single concise conventional commit subject and nothing else.
-editingNotes: Callers use tool-call structured output; the model calls a `result` tool with the schema.
+editingNotes: Callers expect plain text. bb strips think blocks, quotes, labels, and extra lines, then clamps the subject to 72 columns.
 variables:
   diffDescription: Human-readable description of the diff snapshot being summarized.
   shortstat: Git shortstat summary for the diff.
@@ -11,7 +11,7 @@ variables:
   patch: Trimmed patch excerpt for extra context.
 ---
 Write a concise git commit message for {{diffDescription}}.
-Call the `result` tool with your answer.
+Reply with only the commit message line, without quotes or explanation.
 Rules:
 - Use conventional commit style (feat|fix|refactor|test|docs|chore|perf|build|ci|style).
 - Prefer specific types like feat/fix/refactor/test/docs/perf over chore.

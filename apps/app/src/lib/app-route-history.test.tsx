@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   cleanup,
@@ -15,8 +16,6 @@ import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHi
 import { useBbNavigate } from "./plugin-sdk-hooks";
 import {
   AUTOMATIONS_PLUGIN_ID,
-  AUTOMATIONS_PLUGIN_PANEL_PATH,
-  getPluginPanelRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
@@ -97,6 +96,8 @@ function SidebarControlsHarness() {
     </div>
   );
 }
+
+const AUTOMATIONS_PLUGIN_PANEL_PATH = "automations";
 
 const AUTOMATION_ROUTE = {
   projectId: "proj_standard",
@@ -192,8 +193,8 @@ async function expectSidebarButtonState(
 ) {
   await waitFor(() => {
     expect(
-      (screen.getByRole("button", { name: label }) as HTMLButtonElement)
-        .disabled,
+      screen.getByRole("button", { name: label }).getAttribute("aria-disabled") ===
+        "true",
     ).toBe(disabled);
   });
 }
@@ -284,9 +285,11 @@ describe("useRouteStateHistoryNavigation", () => {
 
   it("redirects remounted automation edit routes without duplicate history entries", async () => {
     render(
-      <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
-        <RemountablePluginNavigationHarness />
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[getAutomationsRoutePath()]}>
+          <RemountablePluginNavigationHarness />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
 
     const detailPath = getAutomationDetailRoutePath(AUTOMATION_ROUTE);
@@ -303,23 +306,5 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Remount plugin", editPath);
     await clickAndExpectPath("Redirect edit to compose", "/");
     await clickAndExpectPath("Native back", getAutomationsRoutePath());
-  });
-
-  it("keeps Automations on its plugin panel route", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <RemountablePluginNavigationHarness />
-      </MemoryRouter>,
-    );
-
-    const editSubPath = `${AUTOMATION_ROUTE.projectId}/${AUTOMATION_ROUTE.automationId}/edit`;
-    await clickAndExpectPath(
-      "Open direct edit",
-      getPluginPanelRoutePath({
-        pluginId: AUTOMATIONS_PLUGIN_ID,
-        path: AUTOMATIONS_PLUGIN_PANEL_PATH,
-        subPath: editSubPath,
-      }),
-    );
   });
 });

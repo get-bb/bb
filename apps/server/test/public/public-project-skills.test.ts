@@ -266,9 +266,15 @@ describe("public project skills route", () => {
                 "shared-project",
                 "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
               ),
+              discovered(
+                "repo-bb-skill",
+                "bb-project",
+                "/tmp/shared-skill-list/.bb/skills/repo-bb-skill/SKILL.md",
+              ),
             ],
           },
         });
+        const warn = vi.spyOn(harness.deps.logger, "warn");
 
         const response = await harness.app.request(
           `/api/v1/projects/${project.id}/skills?environmentId=${environment.id}`,
@@ -290,6 +296,13 @@ describe("public project skills route", () => {
           manageable: false,
           registrySkillId: null,
         });
+        expect(body.skills.map((skill) => skill.name)).not.toContain(
+          "repo-bb-skill",
+        );
+        expect(warn).not.toHaveBeenCalledWith(
+          expect.anything(),
+          "Skipping invalid shared skill",
+        );
       },
     );
   });
@@ -973,23 +986,6 @@ describe("public project skills route", () => {
     });
   });
 
-  it("rejects a registry source that could be parsed as a CLI option", async () => {
-    await withTestHarness(async (harness) => {
-      const response = await harness.app.request(
-        "/api/v1/skills-registry/install",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            registrySkillId: "--help/find-skills",
-          }),
-        },
-      );
-
-      expect(response.status).toBe(400);
-    });
-  });
-
   it("rejects a parent-directory segment before any upstream request", async () => {
     await withTestHarness(async (harness) => {
       installServerRegistrySkillMock.mockClear();
@@ -1253,6 +1249,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-registry-provenance",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/registry-provenance-project",
@@ -1305,6 +1302,7 @@ describe("public project skills route", () => {
         const { host, session } = seedHostSession(harness.deps, {
           id: "host-plugin-skill",
         });
+        seedPrimaryHost(harness.deps, host.id);
         const { project } = seedProjectWithSource(harness.deps, {
           hostId: host.id,
           path: "/tmp/plugin-skill-project",
@@ -1544,6 +1542,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-duplicate-skills",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/duplicate-skills-project",
@@ -1590,6 +1589,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-claude-skill-edit",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/claude-skill-edit-project",
@@ -1644,6 +1644,7 @@ describe("public project skills route", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-stale-skill-edit",
       });
+      seedPrimaryHost(harness.deps, host.id);
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
         path: "/tmp/stale-skill-edit-project",

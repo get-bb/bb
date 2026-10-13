@@ -66,3 +66,16 @@ the next action. The sidebar and main view both have Thread actions buttons;
 scope to `main`. Preserve provider errors as blocked evidence instead of
 silently switching to a mock. This recipe does not exercise tools, steering,
 cancellation, or reconnect.
+
+## Explicit lifecycle ownership
+
+In an isolated store, spawn/fork via CLI/SDK with `lifecycleOwnerThreadId` (CLI
+`--lifecycle-owner-thread`). Verify response ownership and independent null values.
+Archive the owner: nested dependents archive and stop, retained history remains.
+Unarchiving a dependent first returns 409; restoring the owner does not restore
+dependents automatically. Delete the owner: all dependents eventually disappear,
+including already archived intermediates. Inject storage RPC failure and reconnect
+the dependent host: tombstones and ownership remain until cleanup succeeds. Test
+different environments/hosts, archive/delete during asynchronous creation, and
+independent sidebar children/visible forks. Stop must not cascade. Use the server
+harness for deterministic failures and fresh CLI fixtures for observable APIs.

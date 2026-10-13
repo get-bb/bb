@@ -1,10 +1,12 @@
 import { z } from "zod";
 import {
+  canonicalizeHostPath,
   contextSnapshotSchema,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   changedMessageLenientSchema,
   changedMessageSchema,
   gitBranchNameSchema,
+  threadUsageCostSchema,
   gitBranchSelectionSchema,
   jsonValueSchema,
 } from "@bb/domain";
@@ -34,6 +36,7 @@ export const threadContextWindowUsageSchema = z.object({
   usedTokens: z.number(),
   modelContextWindow: z.number(),
   estimated: z.boolean(),
+  cost: threadUsageCostSchema.optional(),
 });
 export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema
@@ -61,7 +64,7 @@ export type UnmanagedBranchSpec = z.infer<typeof unmanagedBranchSpecSchema>;
 
 export const unmanagedWorkspaceSchema = z.object({
   type: z.literal("unmanaged"),
-  path: z.string().min(1).nullable(),
+  path: z.string().min(1).transform(canonicalizeHostPath).nullable(),
   branch: unmanagedBranchSpecSchema.optional(),
 });
 
@@ -166,7 +169,6 @@ export const branchListQuerySchema = z.object({
 });
 
 export const serverMessageSchema = changedMessageSchema;
-export type ServerMessage = z.infer<typeof serverMessageSchema>;
 
 export const serverMessageLenientSchema = changedMessageLenientSchema;
 

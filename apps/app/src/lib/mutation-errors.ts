@@ -1,14 +1,12 @@
 import { extractErrorMessage, toRecord } from "@bb/core-ui";
-import { BbHttpError } from "@bb/sdk/browser";
 import { appToast } from "@/components/ui/app-toast";
-import { HttpError } from "./api";
+import { asHttpError, getHttpErrorMessage } from "./http-error";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
   type LifecycleErrorOperation,
 } from "./lifecycle-errors";
 
-const HTTP_STATUS_PREFIX_PATTERN = /^HTTP \d{3}:\s*/u;
 const NETWORK_TRANSPORT_ERROR_MESSAGE =
   "Could not reach the server. Check that it is running and try again.";
 const GENERIC_REQUEST_FAILED_MESSAGE = "Request failed";
@@ -32,20 +30,12 @@ function normalizeMessage(message: string): string {
   return message.replace(/\s+/g, " ").trim();
 }
 
-function stripHttpStatusPrefix(message: string): string {
-  return message.replace(HTTP_STATUS_PREFIX_PATTERN, "");
-}
-
 export function isAbortLikeError(error: unknown): boolean {
   return toRecord(error)?.name === "AbortError";
 }
 
 function isNetworkTransportError(error: unknown): boolean {
-  if (
-    error instanceof HttpError ||
-    error instanceof BbHttpError ||
-    isAbortLikeError(error)
-  ) {
+  if (asHttpError(error) !== null || isAbortLikeError(error)) {
     return false;
   }
 
@@ -93,18 +83,6 @@ function toLifecycleErrorOperation(
   }
 }
 
-function getHttpErrorMessage(error: HttpError | BbHttpError): string | null {
-  const bodyMessage = extractErrorMessage(error.body);
-  if (bodyMessage) {
-    return normalizeMessage(bodyMessage);
-  }
-
-  const strippedMessage = stripHttpStatusPrefix(
-    normalizeMessage(error.message),
-  );
-  return strippedMessage.length > 0 ? strippedMessage : null;
-}
-
 export function getMutationErrorMeta(
   value: MutationErrorMetaInput,
 ): MutationErrorMeta {
@@ -144,8 +122,9 @@ export function getMutationErrorMessage({
     return formatLifecycleErrorDescription(lifecycleErrorDescription);
   }
 
-  if (error instanceof HttpError || error instanceof BbHttpError) {
-    return getHttpErrorMessage(error) ?? fallbackMessage;
+  const httpError = asHttpError(error);
+  if (httpError !== null) {
+    return getHttpErrorMessage(httpError) ?? fallbackMessage;
   }
 
   if (isNetworkTransportError(error)) {
@@ -157,9 +136,7 @@ export function getMutationErrorMessage({
     return fallbackMessage;
   }
 
-  const normalizedMessage = stripHttpStatusPrefix(
-    normalizeMessage(extractedMessage),
-  );
+  const normalizedMessage = normalizeMessage(extractedMessage);
   return normalizedMessage.length > 0 ? normalizedMessage : fallbackMessage;
 }
 

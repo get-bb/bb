@@ -104,6 +104,7 @@ describe("thread tab file-opener owner", () => {
 });
 
 const TERMINAL_TAB_BASE = {
+  colorTag: null,
   id: "terminal:term_abc:none",
   kind: "terminal",
   terminalId: "term_abc",

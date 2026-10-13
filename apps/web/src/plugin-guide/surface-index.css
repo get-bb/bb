@@ -1,0 +1,70 @@
+.surface-index {
+  margin-top: 72px;
+  padding-top: 40px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.surface-index > h2 {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--heading);
+}
+
+.surface-index-sub {
+  margin-top: 8px;
+  color: var(--dim);
+  font-size: 15px;
+}
+
+.surface-index-groups {
+  margin-top: 32px;
+  columns: 3 300px;
+  column-gap: 48px;
+}
+
+.surface-index-groups > section {
+  margin-bottom: 36px;
+}
+
+.surface-index h3 {
+  break-after: avoid;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--heading-sub);
+}
+
+.surface-index h3 a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 4px;
+}
+
+.surface-index h3 a:hover {
+  text-decoration-color: currentColor;
+}
+
+.surface-index ul {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.surface-index li {
+  break-inside: avoid;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.surface-index-name {
+  font-weight: 550;
+  color: var(--ink-strong);
+}
+
+.surface-index-description {
+  color: var(--dim);
+}

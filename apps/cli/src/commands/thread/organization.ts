@@ -15,6 +15,7 @@ import { describeQueueWait } from "./actions.js";
 import { formatQueueSendCountdown } from "./send-time.js";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   collectOption,
   confirmDestructiveAction,
@@ -48,12 +49,16 @@ interface QueueListOptions extends JsonOptions {
 }
 
 interface QueueCreateOptions extends JsonOptions {
+  file?: string[];
+  image?: string[];
+  messageFile?: string;
   model?: string;
 }
 
 interface QueueUpdateOptions extends JsonOptions {
   file?: string[];
   image?: string[];
+  messageFile?: string;
 }
 
 interface QueueSendOptions extends JsonOptions {
@@ -98,14 +103,6 @@ function printHumanJson(value: unknown): void {
 
 const MAX_QUEUE_TEXT_WIDTH = 40;
 
-/**
- * The queue as a table rather than raw JSON.
- *
- * `Waiting on` and `Send at` are the two columns that make a queued row
- * legible: without them a queued message and one blocked behind a rate-limit
- * window look identical, which is exactly the confusion the typed waits exist
- * to remove.
- */
 function printQueueTable(rows: ThreadQueuedMessagesResult): void {
   const now = Date.now();
   const table = rows.map((row) => [
@@ -117,7 +114,12 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
         ? "System"
         : (row.senderThreadId ?? "Agent"),
     truncateCell(queuedMessagePreview(row.content), MAX_QUEUE_TEXT_WIDTH),
-    truncateCell(describeQueueWait(row), MAX_QUEUE_TEXT_WIDTH),
+    truncateCell(
+      row.failureReason === null
+        ? describeQueueWait(row)
+        : `Failed: ${row.failureReason}`,
+      MAX_QUEUE_TEXT_WIDTH,
+    ),
     formatQueueSendCountdown(row.sendAt, now),
   ]);
   printBorderlessTable(
@@ -127,6 +129,11 @@ function printQueueTable(rows: ThreadQueuedMessagesResult): void {
     },
     table,
   );
+  for (const row of rows) {
+    if (row.failureReason === null) continue;
+    console.log(`Failed ${row.id}: ${row.failureReason}`);
+    console.log(`Retry: bb thread queue send ${row.threadId} ${row.id}`);
+  }
 }
 
 function queuedMessagePreview(content: PromptInput[]): string {
@@ -137,10 +144,6 @@ function queuedMessagePreview(content: PromptInput[]): string {
   return text.trim() === "" ? "(no text)" : text;
 }
 
-/**
- * Wait holders are a prefixed set, so a typo fails here with the shape spelled
- * out rather than as an opaque 400 from the list route.
- */
 function parseWaitHolder(value: string): QueuedMessageWaitHolder {
   const parsed = queuedMessageWaitHolderSchema.safeParse(value.trim());
   if (parsed.success) return parsed.data;
@@ -335,9 +338,6 @@ export function registerOrganizationCommands(
     .action(
       action(async (threadId: string | undefined, opts: QueueListOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        // A thread argument keeps the thread-scoped route, which is the one
-        // that returns queue ORDER; the cross-thread route answers "what is
-        // queued anywhere" and is ordered by age instead.
         const result =
           threadId === undefined
             ? await sdk.threads.queue.list({
@@ -355,18 +355,53 @@ export function registerOrganizationCommands(
       }),
     );
   queue
-    .command("create <threadId> <message>")
-    .description("Create a queued text message")
+    .command("create <threadId> [message]")
+    .description("Create a queued message with text and attachments")
     .option("--model <model>", "Model override for the queued message")
+    .option(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
+    .option(
+      "--file <path>",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
+      collectOption,
+      [],
+    )
+    .option(
+      "--image <path>",
+      "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
+      collectOption,
+      [],
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (threadId: string, message: string, opts: QueueCreateOptions) => {
-          const result = await createCliBbSdk(
-            getUrl(),
-          ).threads.queuedMessages.create({
+        async (
+          threadId: string,
+          inlineMessage: string | undefined,
+          opts: QueueCreateOptions,
+        ) => {
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: inlineMessage,
+            inlineLabel: "<message>",
+          });
+          const sdk = createCliBbSdk(getUrl());
+          const input = await uploadClientAttachmentInputs({
+            input: buildPromptInputs({
+              message,
+              files: opts.file,
+              images: opts.image,
+            }),
+            resolveProjectId: async () =>
+              (await sdk.threads.get({ threadId })).projectId,
+            sdk,
+          });
+          const result = await sdk.threads.queuedMessages.create({
             threadId,
-            input: [{ type: "text", text: message, mentions: [] }],
+            input,
             ...(opts.model ? { model: opts.model } : {}),
           });
           if (outputJson(opts, result)) return;
@@ -377,8 +412,12 @@ export function registerOrganizationCommands(
       ),
     );
   queue
-    .command("update <threadId> <messageId> <message>")
+    .command("update <threadId> <messageId> [message]")
     .description("Update a queued message in place")
+    .option(
+      "--message-file <path>",
+      `Read the message from a file instead of [message]; ${TEXT_FILE_HELP_SUFFIX}`,
+    )
     .option(
       "--file <path>",
       "Upload an absolute path or file: URL from this CLI machine or pass an uploaded attachment path (repeatable)",
@@ -397,9 +436,15 @@ export function registerOrganizationCommands(
         async (
           threadId: string,
           messageId: string,
-          message: string,
+          inlineMessage: string | undefined,
           opts: QueueUpdateOptions,
         ) => {
+          const message = await requireTextInput({
+            file: opts.messageFile,
+            fileLabel: "--message-file",
+            inline: inlineMessage,
+            inlineLabel: "<message>",
+          });
           const sdk = createCliBbSdk(getUrl());
           const queuedMessages = sdk.threads.queuedMessages;
           const existing = (await queuedMessages.list({ threadId })).find(

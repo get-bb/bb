@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { publishedMigrationWhensByTag } from "../src/migration-history.js";
+import {
+  dropPluginEnabledFollowsDefaultColumn,
+  dropIdleLifecycleIndexes,
+  rewindThreadPruningWork,
+  dropMarketplaceSourceGitSubdirectoryColumn,
+  dropQueuedMessageEditHeldUntilColumn,
+} from "./helpers/rewind.js";
 import { defaultAppSettings } from "@bb/domain";
 import {
   createQueuedThreadMessage,
@@ -106,24 +113,6 @@ interface MigratedThreadVisibilityRow {
   visibility: string;
 }
 
-interface MigratedTerminalSessionRow {
-  id: string;
-  threadId: string | null;
-  environmentId: string;
-  hostId: string;
-  daemonSessionId: string | null;
-  title: string;
-  initialCwd: string;
-  cols: number;
-  rows: number;
-  status: string;
-  exitCode: number | null;
-  closeReason: string | null;
-  createdAt: number;
-  updatedAt: number;
-  lastUserInputAt: number | null;
-}
-
 interface OperationBackfillProjectRow {
   deletedAt: number | null;
 }
@@ -164,10 +153,6 @@ interface MigratedExperimentRow {
   key: string;
   updatedAt: number;
   value: number;
-}
-
-interface MigratedThreadSearchSegmentRow {
-  threadId: string;
 }
 
 interface MigratedPendingInteractionStatusRow {
@@ -234,10 +219,6 @@ interface ReplaceAppliedMigrationHashArgs {
 interface RunMigrationFileArgs {
   db: DbConnection;
   migrationPath: string;
-}
-
-interface SeedPre0017TerminalSessionMigrationArgs {
-  db: DbConnection;
 }
 
 interface SeedEventLargeValueBackfillEventArgs {
@@ -402,17 +383,10 @@ function requirePublishedMigrationWhen(tag: string): number {
 
   return when;
 }
-
-const baselineWhen = requirePublishedMigrationWhen("0000_baseline");
-const publishedTerminalSessionUserInputWhen = requirePublishedMigrationWhen(
-  "0001_terminal_session_user_input",
-);
 const closedSessionPruneIndexesWhen = requirePublishedMigrationWhen(
   "0002_closed_session_prune_indexes",
 );
-const statusChangedAtMigrationWhen = 1790015589935;
-const threadDynamicContextFileStatesWhen = 1779139400002;
-const commandLookupIndexesWhen = 1779943370189;
+const statusChangedAtMigrationWhen = 1791926872103;
 const threadPinningMigrationWhen = 1779990051923;
 const operationStateBackfillMigrationWhen = 1780687798957;
 const eventProducerColumnsMigrationWhen = 1780692763264;
@@ -421,8 +395,6 @@ const hostDaemonSessionObservabilityMigrationWhen = 1780719536955;
 const threadTypeRemovalMigrationWhen = 1780973302146;
 const threadSearchMigrationWhen = 1781660000001;
 const threadSearchRowidFtsMigrationWhen = 1781660000002;
-const branchLocalThreadSearchMigrationWhen = 1781403656070;
-const branchLocalThreadSearchRowidFtsMigrationWhen = 1781403656071;
 const rowidThreadSearchMigrationHash =
   "025358fe89253aec7f5bd970dc3eb88d0e834f0d58fb9d75329a5d39899340f4";
 const legacyExperimentsMigrationWhen = 1781299832942;
@@ -434,13 +406,8 @@ const cleanupModeDropMigrationWhen = 1781557300000;
 const stopRequestedAtDropMigrationWhen = 1781557400000;
 const cleanupRequestedAtDropMigrationWhen = 1781557500000;
 const threadSourceOriginMigrationWhen = 1781660000000;
-const threadlessTerminalSessionsMigrationWhen = 1782173519934;
-const threadSectionsMigrationWhen = 1782252763916;
 const threadSectionsRepairMigrationWhen = 1784257485616;
-const queuedMessageGroupingMigrationWhen = 1782273194188;
-const pendingInteractionsMigrationWhen = 1783626227375;
 const permissionModesMigrationWhen = 1784311522462;
-const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
@@ -488,6 +455,12 @@ const steerOnEnterDefaultMigrationPath = resolve(
   "drizzle",
   "0112_steer_on_enter_default.sql",
 );
+const stampOnboardingMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0140_stamp_onboarding_existing_installs.sql",
+);
 const retainedEventOutputsMigrationPath = resolve(
   __dirname,
   "..",
@@ -523,6 +496,12 @@ const curatedMarketplaceRenameMigrationPath = resolve(
   "..",
   "drizzle",
   "0098_rename_curated_marketplace.sql",
+);
+const providerUsagePluginIdMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0135_rename_provider_usage_plugin_id.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -694,6 +673,7 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 
 function dropEventToolNameColumn(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS provider_model_catalogs").run();
+  db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
   db.$client.prepare("DROP TABLE IF EXISTS ui_preferences").run();
   db.$client.prepare("DROP TABLE IF EXISTS retained_event_outputs").run();
   dropThreadConversationOutlinesTable(db);
@@ -755,6 +735,25 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
  * 0108's, so the replay recreates the table before 0110 drops it again.
  */
 function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
+  dropIdleLifecycleIndexes(db);
+  rewindThreadPruningWork(db);
+  dropPluginEnabledFollowsDefaultColumn(db);
+  dropQueuedMessageEditHeldUntilColumn(db);
+  dropMarketplaceSourceGitSubdirectoryColumn(db);
+  db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
+  db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
+  db.$client.exec("DROP INDEX IF EXISTS threads_lifecycle_owner_idx");
+  db.$client.exec("DROP INDEX IF EXISTS environments_provider_lifecycle_idx");
+  if (
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+      .all()
+      .some((column) => column.name === "lifecycle_owner_thread_id")
+  ) {
+    db.$client.exec(
+      "ALTER TABLE threads DROP COLUMN lifecycle_owner_thread_id",
+    );
+  }
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
     .all();
@@ -785,7 +784,20 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
     );
 }
 
+function dropQueuedMessageAttemptColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of ["failure_count", "next_attempt_at"]) {
+    if (!columns.some((column) => column.name === name)) continue;
+    db.$client
+      .prepare(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`)
+      .run();
+  }
+}
+
 function dropQueueReworkSchema(db: DbConnection): void {
+  dropQueuedMessageAttemptColumns(db);
   rewindEnvironmentProvisioningMigration(db);
   // Indexes first: SQLite refuses to drop a column an existing index names.
   for (const index of [
@@ -807,6 +819,10 @@ function dropQueueReworkSchema(db: DbConnection): void {
     "retry_of_turn_request_id",
     "retry_attempt",
     "retry_reason",
+    "origin",
+    "origin_plugin_id",
+    "requested_by_initiator",
+    "requested_by_thread_id",
   ]) {
     if (!queuedColumns.some((column) => column.name === name)) continue;
     db.$client
@@ -819,21 +835,6 @@ function dropQueueReworkSchema(db: DbConnection): void {
   if (threadColumns.some((column) => column.name === "pending_start_context")) {
     db.$client
       .prepare("ALTER TABLE threads DROP COLUMN pending_start_context")
-      .run();
-  }
-}
-
-function dropEnvironmentNameColumn(db: DbConnection): void {
-  db.$client.prepare("ALTER TABLE environments DROP COLUMN name").run();
-}
-
-function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
-  const columns = db.$client
-    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
-    .all();
-  if (columns.some((column) => column.name === "destroy_attempt_id")) {
-    db.$client
-      .prepare("ALTER TABLE environments DROP COLUMN destroy_attempt_id")
       .run();
   }
 }
@@ -859,6 +860,28 @@ function rewindEnvironmentRowFactsMigration(db: DbConnection): void {
 }
 
 function rewindMachineProvidersMigration(db: DbConnection): void {
+  rewindThreadPruningWork(db);
+  dropQueuedMessageEditHeldUntilColumn(db);
+  dropMarketplaceSourceGitSubdirectoryColumn(db);
+  db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
+  const queuedDispatchOrigin = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of [
+    "origin",
+    "origin_plugin_id",
+    "requested_by_initiator",
+    "requested_by_thread_id",
+  ]) {
+    if (!queuedDispatchOrigin.some((column) => column.name === name)) continue;
+    db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+  }
+  db.$client.exec("DROP TABLE IF EXISTS thread_pruning_cursors");
+  db.$client.exec("DROP TABLE IF EXISTS project_attachment_threads");
+  db.$client.exec("DROP TABLE IF EXISTS project_attachments");
+  db.$client.exec("DROP TABLE IF EXISTS project_attachment_backfills");
+  db.$client.exec("DROP INDEX IF EXISTS threads_project_id_idx");
+  db.$client.exec("DROP TABLE IF EXISTS environment_variables");
   db.$client.exec("DROP TABLE IF EXISTS thread_plugin_metadata");
   db.$client.exec("DROP TABLE IF EXISTS provider_model_catalogs");
   db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
@@ -870,6 +893,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   ) {
     db.$client.exec("ALTER TABLE project_sources DROP COLUMN owns_path");
   }
+  dropIdleLifecycleIndexes(db);
   db.$client.exec("DROP INDEX IF EXISTS hosts_live_launch_key_idx");
   for (const column of [
     "machine_provider_id",
@@ -1079,12 +1103,6 @@ function restoreEnvironmentCleanupRequestedAtColumn(db: DbConnection): void {
 function restoreThreadStopRequestedAtColumn(db: DbConnection): void {
   db.$client
     .prepare("ALTER TABLE threads ADD COLUMN stop_requested_at integer")
-    .run();
-}
-
-function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
-  db.$client
-    .prepare("ALTER TABLE queued_thread_messages DROP COLUMN sender_thread_id")
     .run();
 }
 
@@ -1506,179 +1524,6 @@ function expectEventLargeValuesInline(
   ]);
 }
 
-function seedPre0017TerminalSessionMigration(
-  args: SeedPre0017TerminalSessionMigrationArgs,
-): void {
-  args.db.$client.pragma("foreign_keys = OFF");
-  try {
-    args.db.$client.exec(`
-      DROP TABLE terminal_sessions;
-      CREATE TABLE terminal_sessions (
-        id text PRIMARY KEY NOT NULL,
-        thread_id text NOT NULL,
-        environment_id text NOT NULL,
-        host_id text NOT NULL,
-        daemon_session_id text,
-        title text NOT NULL,
-        initial_cwd text NOT NULL,
-        current_cwd text,
-        cols integer NOT NULL,
-        rows integer NOT NULL,
-        status text NOT NULL,
-        exit_code integer,
-        close_reason text,
-        created_at integer NOT NULL,
-        updated_at integer NOT NULL,
-        last_user_input_at integer,
-        last_connected_at integer,
-        exited_at integer,
-        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE cascade,
-        FOREIGN KEY (environment_id) REFERENCES environments(id) ON DELETE cascade,
-        FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE cascade,
-        FOREIGN KEY (daemon_session_id) REFERENCES host_daemon_sessions(id) ON DELETE set null
-      );
-      CREATE INDEX terminal_sessions_thread_status_updated_idx
-        ON terminal_sessions (thread_id, status, updated_at);
-      CREATE INDEX terminal_sessions_environment_status_idx
-        ON terminal_sessions (environment_id, status);
-      CREATE INDEX terminal_sessions_host_status_idx
-        ON terminal_sessions (host_id, status);
-      CREATE INDEX terminal_sessions_daemon_session_idx
-        ON terminal_sessions (daemon_session_id);
-    `);
-  } finally {
-    args.db.$client.pragma("foreign_keys = ON");
-  }
-
-  args.db.$client.exec(`
-    INSERT INTO hosts (id, name, type, created_at, updated_at)
-    VALUES ('host_pre0017', 'pre-0017 host', 'persistent', 1000, 1000);
-
-    INSERT INTO projects (id, name, created_at, updated_at)
-    VALUES ('proj_pre0017', 'pre-0017 project', 1000, 1000);
-
-    INSERT INTO environments (
-      id,
-      project_id,
-      host_id,
-      path,
-      workspace_provision_type,
-      status,
-      created_at,
-      updated_at
-    )
-    VALUES (
-      'env_pre0017',
-      'proj_pre0017',
-      'host_pre0017',
-      '/tmp/pre0017',
-      'unmanaged',
-      'ready',
-      1000,
-      1000
-    );
-
-    INSERT INTO threads (
-      id,
-      project_id,
-      environment_id,
-      provider_id,
-      latest_attention_at,
-      created_at,
-      updated_at
-    )
-    VALUES (
-      'thr_pre0017',
-      'proj_pre0017',
-      'env_pre0017',
-      'codex',
-      1000,
-      1000,
-      1000
-    );
-
-    INSERT INTO host_daemon_sessions (
-      id,
-      host_id,
-      instance_id,
-      host_name,
-      host_type,
-      data_dir,
-      protocol_version,
-      heartbeat_interval_ms,
-      lease_timeout_ms,
-      status,
-      lease_expires_at,
-      created_at,
-      updated_at
-    )
-    VALUES (
-      'sess_pre0017',
-      'host_pre0017',
-      'inst_pre0017',
-      'pre-0017 host',
-      'persistent',
-      '/tmp/pre0017-data',
-      32,
-      10000,
-      30000,
-      'active',
-      9000,
-      1000,
-      1000
-    );
-
-    INSERT INTO terminal_sessions (
-      id,
-      thread_id,
-      environment_id,
-      host_id,
-      daemon_session_id,
-      title,
-      initial_cwd,
-      current_cwd,
-      cols,
-      rows,
-      status,
-      exit_code,
-      close_reason,
-      created_at,
-      updated_at,
-      last_user_input_at,
-      last_connected_at,
-      exited_at
-    )
-    VALUES (
-      'term_pre0017',
-      'thr_pre0017',
-      'env_pre0017',
-      'host_pre0017',
-      'sess_pre0017',
-      'Terminal 1',
-      '/tmp/pre0017',
-      '/tmp/derived-runtime-cwd',
-      120,
-      40,
-      'running',
-      NULL,
-      NULL,
-      1100,
-      1200,
-      1300,
-      1400,
-      NULL
-    );
-  `);
-}
-
-function addPre0017TerminalRuntimeColumns(db: DbConnection): void {
-  db.$client.exec(`
-    ALTER TABLE terminal_sessions ADD COLUMN current_cwd text;
-    ALTER TABLE terminal_sessions ADD COLUMN last_connected_at integer;
-    ALTER TABLE terminal_sessions ADD COLUMN exited_at integer;
-  `);
-}
-
 function runQueuedMessageSortKeyMigration(db: DbConnection): void {
   runMigrationFile({ db, migrationPath: queuedMessageSortKeyMigrationPath });
 }
@@ -1735,6 +1580,7 @@ describe("migrate", () => {
       const eventData = JSON.stringify({ message: "existing event" });
 
       db.$client.prepare("DROP TABLE provider_model_catalogs").run();
+      db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
       db.$client.prepare("DROP TABLE ui_preferences").run();
       db.$client.prepare("DROP TABLE retained_event_outputs").run();
       db.$client
@@ -1955,8 +1801,11 @@ describe("migrate", () => {
 
       expect(getAppSettings(db)).toEqual({
         showKeyboardHints: false,
+        showGitChanges: true,
         steerActiveThreadOnEnter: true,
+        confirmThreadArchive: true,
         showDiagnosticEvents: true,
+        keepHistoryAfterContextClear: false,
         providerOrder: [],
         defaultProviderId: null,
         providerCompletedTurnDisplay: {},
@@ -1964,8 +1813,10 @@ describe("migrate", () => {
         defaultMachineAccess: null,
         machineGitCredentialsEnabled: true,
         streamerMode: false,
+        allowFastServiceTier: true,
         telemetryEnabled: false,
         managedBranchPrefix: "bb/",
+        onboardingCompletedAt: "2026-08-01T00:00:00.000Z",
       });
       expect(
         db.$client
@@ -2274,6 +2125,94 @@ describe("migrate", () => {
           .get(),
       ).toEqual({ value: "true", updatedAt: 1234 });
       expect(getAppSettings(db).steerActiveThreadOnEnter).toBe(true);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  const ONBOARDING_STAMP_FIXTURE = `
+    CREATE TABLE app_settings_values (
+      key text PRIMARY KEY NOT NULL,
+      value text NOT NULL,
+      updated_at integer NOT NULL
+    );
+    CREATE TABLE projects (id text PRIMARY KEY NOT NULL, kind text NOT NULL);
+    CREATE TABLE threads (id text PRIMARY KEY NOT NULL);
+    INSERT INTO projects (id, kind) VALUES ('proj_personal', 'personal');
+  `;
+
+  it.each([
+    {
+      name: "a store with a real project",
+      seed: "INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');",
+    },
+    {
+      name: "a store whose only work is a personal thread",
+      seed: "INSERT INTO threads (id) VALUES ('thread-1');",
+    },
+    {
+      name: "a store whose earlier setup guide never finished",
+      seed: `
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+        INSERT INTO app_settings_values (key, value, updated_at)
+        VALUES ('onboardingCompletedAt', 'null', 1234);
+      `,
+    },
+  ])("marks $name as already set up", ({ seed }) => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+      db.$client.exec(seed);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      const completedAt = getAppSettings(db).onboardingCompletedAt;
+      expect(completedAt).not.toBeNull();
+      expect(Number.isNaN(Date.parse(completedAt ?? ""))).toBe(false);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("leaves the setup guide pending for a store that only holds the seeded personal project", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { count: number }
+          >("SELECT count(*) AS count FROM app_settings_values WHERE key = 'onboardingCompletedAt'")
+          .get(),
+      ).toEqual({ count: 0 });
+      expect(getAppSettings(db).onboardingCompletedAt).toBeNull();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("keeps the time an earlier setup guide was finished", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(ONBOARDING_STAMP_FIXTURE);
+      db.$client.exec(`
+        INSERT INTO projects (id, kind) VALUES ('project-1', 'standard');
+        INSERT INTO app_settings_values (key, value, updated_at)
+        VALUES ('onboardingCompletedAt', '"2026-08-01T00:00:00.000Z"', 1234);
+      `);
+
+      runMigrationFile({ db, migrationPath: stampOnboardingMigrationPath });
+
+      expect(getAppSettings(db).onboardingCompletedAt).toBe(
+        "2026-08-01T00:00:00.000Z",
+      );
     } finally {
       closeConnection(db);
     }
@@ -2629,339 +2568,6 @@ describe("migrate", () => {
             `,
           )
           .get(threadSearchRowidFtsMigrationWhen),
-      ).toEqual({ count: 1 });
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("replays canonical thread search migrations after branch-local thread search migrations", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      db.$client.exec(`
-        INSERT INTO projects (id, name, created_at, updated_at)
-        VALUES ('proj_branch_thread_search', 'Branch Thread Search', 1000, 1000);
-
-        INSERT INTO threads (
-          id,
-          project_id,
-          provider_id,
-          title,
-          latest_attention_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'thr_branch_thread_search',
-          'proj_branch_thread_search',
-          'codex',
-          'branchcompatneedle',
-          1000,
-          1000,
-          1000
-        );
-      `);
-      db.$client
-        .prepare<DeleteMigrationsParameters>(
-          `
-            DELETE FROM __drizzle_migrations
-            WHERE created_at IN (?, ?, ?, ?)
-          `,
-        )
-        .run(
-          threadSearchMigrationWhen,
-          threadSearchRowidFtsMigrationWhen,
-          branchLocalThreadSearchMigrationWhen,
-          branchLocalThreadSearchRowidFtsMigrationWhen,
-        );
-      db.$client
-        .prepare<InsertMigrationParameters>(
-          `
-            INSERT INTO __drizzle_migrations (hash, created_at)
-            VALUES (?, ?)
-          `,
-        )
-        .run(
-          "branch-local-thread-search-hash",
-          branchLocalThreadSearchMigrationWhen,
-        );
-      db.$client
-        .prepare<InsertMigrationParameters>(
-          `
-            INSERT INTO __drizzle_migrations (hash, created_at)
-            VALUES (?, ?)
-          `,
-        )
-        .run(
-          "branch-local-thread-search-rowid-fts-hash",
-          branchLocalThreadSearchRowidFtsMigrationWhen,
-        );
-      resetMigrationsAfterThreadSearch(db);
-
-      expect(() => migrate(db)).not.toThrow();
-
-      expect(
-        db.$client
-          .prepare<[], TableInfoRow>(
-            "PRAGMA table_info(thread_search_segments_fts)",
-          )
-          .all()
-          .map((row) => row.name),
-      ).toEqual(["text"]);
-      expect(
-        db.$client
-          .prepare<[], MigratedThreadSearchSegmentRow>(
-            `
-              SELECT s.thread_id AS threadId
-              FROM thread_search_segments_fts
-              JOIN thread_search_segments AS s
-                ON s.rowid = thread_search_segments_fts.rowid
-              WHERE thread_search_segments_fts MATCH 'branchcompatneedle'
-            `,
-          )
-          .get(),
-      ).toEqual({ threadId: "thr_branch_thread_search" });
-      expect(
-        db.$client
-          .prepare<[number], MigrationCountRow>(
-            `
-              SELECT COUNT(*) AS count
-              FROM __drizzle_migrations
-              WHERE created_at = ?
-            `,
-          )
-          .get(threadSearchMigrationWhen),
-      ).toEqual({ count: 1 });
-      expect(
-        db.$client
-          .prepare<[number], MigrationCountRow>(
-            `
-              SELECT COUNT(*) AS count
-              FROM __drizzle_migrations
-              WHERE created_at = ?
-            `,
-          )
-          .get(branchLocalThreadSearchMigrationWhen),
-      ).toEqual({ count: 0 });
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("replays pending-interactions migration after branch-local tab history", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      db.$client.exec(`
-        DROP TABLE pending_interactions;
-        CREATE TABLE pending_interactions (
-          id text PRIMARY KEY NOT NULL,
-          thread_id text NOT NULL,
-          turn_id text NOT NULL,
-          provider_id text NOT NULL,
-          provider_thread_id text NOT NULL,
-          provider_request_id text NOT NULL,
-          status text NOT NULL,
-          payload text NOT NULL,
-          resolution text,
-          status_reason text,
-          created_at integer NOT NULL,
-          resolved_at integer,
-          updated_at integer NOT NULL,
-          FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
-        );
-        CREATE UNIQUE INDEX pending_interactions_provider_request_idx
-          ON pending_interactions (provider_id, provider_thread_id, provider_request_id);
-        CREATE INDEX pending_interactions_thread_created_idx
-          ON pending_interactions (thread_id, created_at);
-        CREATE INDEX pending_interactions_thread_status_created_idx
-          ON pending_interactions (thread_id, status, created_at);
-        CREATE INDEX pending_interactions_status_created_idx
-          ON pending_interactions (status, created_at);
-      `);
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
-        )
-        .run(pendingInteractionsMigrationWhen);
-      db.$client
-        .prepare<InsertMigrationParameters>(
-          `
-            INSERT INTO __drizzle_migrations (hash, created_at)
-            VALUES (?, ?)
-          `,
-        )
-        .run("branch-local-thread-tabs", branchLocalThreadTabsMigrationWhen);
-
-      migrate(db);
-
-      const columns = db.$client
-        .prepare<[], TableNameRow>(
-          "SELECT name FROM pragma_table_info('pending_interactions') ORDER BY cid",
-        )
-        .all()
-        .map((row) => row.name);
-      expect(columns).toContain("origin_kind");
-      expect(columns).toContain("plugin_id");
-      expect(columns).toContain("renderer_id");
-      expect(columns).toContain("expires_at");
-      expect(readAppliedMigrationCreatedAts(db)).toContain(
-        pendingInteractionsMigrationWhen,
-      );
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("replays canonical thread search migrations when pre-canonical search tables exist without ledger rows", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      db.$client.exec(`
-        INSERT INTO projects (id, name, created_at, updated_at)
-        VALUES ('proj_precanonical_thread_search', 'Precanonical Thread Search', 1000, 1000);
-
-        INSERT INTO threads (
-          id,
-          project_id,
-          provider_id,
-          title,
-          latest_attention_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'thr_precanonical_thread_search',
-          'proj_precanonical_thread_search',
-          'codex',
-          'precanonicalneedle',
-          1000,
-          1000,
-          1000
-        );
-      `);
-      db.$client
-        .prepare<DeleteMigrationsParameters>(
-          `
-            DELETE FROM __drizzle_migrations
-            WHERE created_at IN (?, ?, ?, ?)
-          `,
-        )
-        .run(
-          threadSearchMigrationWhen,
-          threadSearchRowidFtsMigrationWhen,
-          branchLocalThreadSearchMigrationWhen,
-          branchLocalThreadSearchRowidFtsMigrationWhen,
-        );
-      resetMigrationsAfterThreadSearch(db);
-
-      expect(() => migrate(db)).not.toThrow();
-
-      expect(
-        db.$client
-          .prepare<[], MigratedThreadSearchSegmentRow>(
-            `
-              SELECT s.thread_id AS threadId
-              FROM thread_search_segments_fts
-              JOIN thread_search_segments AS s
-                ON s.rowid = thread_search_segments_fts.rowid
-              WHERE thread_search_segments_fts MATCH 'precanonicalneedle'
-            `,
-          )
-          .get(),
-      ).toEqual({ threadId: "thr_precanonical_thread_search" });
-      expect(
-        db.$client
-          .prepare<[number], MigrationCountRow>(
-            `
-              SELECT COUNT(*) AS count
-              FROM __drizzle_migrations
-              WHERE created_at = ?
-            `,
-          )
-          .get(threadSearchMigrationWhen),
-      ).toEqual({ count: 1 });
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("repairs branch-local queued grouping history that skipped thread sections", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      dropThreadSectionSchema(db);
-      restoreWideExperimentsTable(db);
-      db.$client
-        .prepare(
-          "ALTER TABLE system_experiments ADD COLUMN thread_splits integer DEFAULT false NOT NULL",
-        )
-        .run();
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at = ?",
-        )
-        .run(threadSectionsMigrationWhen);
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
-        )
-        .run(threadSectionsRepairMigrationWhen);
-      rewindEnvironmentRowFactsMigration(db);
-      rewindEnvironmentProvidersMigration(db);
-      dropSideChatPluginExperimentColumn(db);
-      dropToolsHubExperimentColumn(db);
-      restorePluginsExperimentColumn(db);
-      dropSteerActiveThreadOnEnterColumn(db);
-      dropOnboardingCompletedAtColumn(db);
-      dropAppSettingsValuesTable(db);
-      dropNewOnboardingExperimentColumn(db);
-      dropHostMaxPermissionModeColumn(db);
-      dropEnvironmentRetireRequestedAtColumn(db);
-      dropPluginArtifactGitCheckoutRootColumn(db);
-      dropMarketplaceCatalogSchema(db);
-      dropEventParentToolCallIdColumn(db);
-      dropQueueReworkSchema(db);
-
-      restoreLegacyThreadOriginColumn(db);
-      expect(
-        db.$client
-          .prepare<[number], MigrationCountRow>(
-            `
-              SELECT COUNT(*) AS count
-              FROM __drizzle_migrations
-              WHERE created_at = ?
-            `,
-          )
-          .get(queuedMessageGroupingMigrationWhen),
-      ).toEqual({ count: 1 });
-      expect(() => migrate(db)).not.toThrow();
-
-      expect(readTableNames(db)).toContain("thread_sections");
-      expect(
-        db.$client
-          .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
-          .all()
-          .map((row) => row.name),
-      ).toContain("section_id");
-      expect(readIndexNames({ db, tableName: "threads" })).toContain(
-        "threads_section_archived_deleted_idx",
-      );
-      expect(
-        db.$client
-          .prepare<[number], MigrationCountRow>(
-            `
-              SELECT COUNT(*) AS count
-              FROM __drizzle_migrations
-              WHERE created_at = ?
-            `,
-          )
-          .get(threadSectionsMigrationWhen),
       ).toEqual({ count: 1 });
     } finally {
       closeConnection(db);
@@ -3722,11 +3328,15 @@ describe("migrate", () => {
     }
   });
 
-  it("can defer destructive legacy cleanup while preserving state backfills", () => {
+  it("defers destructive legacy cleanup while preserving state backfills", () => {
     const db = createConnection(":memory:");
 
     try {
       migrate(db);
+      dropIdleLifecycleIndexes(db);
+      rewindThreadPruningWork(db);
+      dropQueuedMessageEditHeldUntilColumn(db);
+      dropMarketplaceSourceGitSubdirectoryColumn(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
       db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();
@@ -3914,7 +3524,7 @@ describe("migrate", () => {
       restoreEnvironmentCleanupRequestedAtColumn(db);
       restoreThreadStopRequestedAtColumn(db);
 
-      migrate(db, { deferDestructiveLegacyCleanup: true });
+      migrate(db);
 
       expect(readTableNames(db)).toEqual(
         expect.arrayContaining([
@@ -4045,742 +3655,6 @@ describe("migrate", () => {
           hostDaemonSessionObservabilityMigrationWhen,
         ]),
       );
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("applies 0002 after a database already applied main's 0001 timestamp", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      dropRewindAddedTables(db);
-      restorePre0022ThreadTypeSchema(db);
-      addPre0017TerminalRuntimeColumns(db);
-
-      db.$client
-        .prepare("DROP INDEX host_daemon_sessions_closed_prune_idx")
-        .run();
-      db.$client
-        .prepare(
-          "DROP INDEX thread_dynamic_context_file_states_thread_file_idx",
-        )
-        .run();
-      db.$client.prepare("DROP INDEX projects_sort_idx").run();
-      db.$client.prepare("DROP INDEX projects_personal_singleton_idx").run();
-      db.$client.prepare("DROP INDEX threads_project_type_sort_idx").run();
-      db.$client.prepare("DROP INDEX threads_pin_sort_idx").run();
-      db.$client.prepare("DROP TABLE IF EXISTS thread_schedules").run();
-      db.$client
-        .prepare(
-          `
-            CREATE TABLE manager_thread_nudges (
-              id text PRIMARY KEY NOT NULL,
-              project_id text NOT NULL,
-              thread_id text NOT NULL,
-              name text NOT NULL,
-              cron text NOT NULL,
-              timezone text NOT NULL,
-              enabled integer DEFAULT true NOT NULL,
-              next_fire_at integer NOT NULL,
-              last_fired_at integer,
-              created_at integer NOT NULL,
-              updated_at integer NOT NULL,
-              FOREIGN KEY (project_id) REFERENCES projects(id) ON UPDATE no action ON DELETE cascade,
-              FOREIGN KEY (thread_id) REFERENCES threads(id) ON UPDATE no action ON DELETE cascade
-            )
-          `,
-        )
-        .run();
-      db.$client.prepare("DROP TABLE thread_dynamic_context_file_states").run();
-      dropPost0023Tables(db);
-      db.$client.prepare("DELETE FROM projects WHERE kind = 'personal'").run();
-      db.$client.prepare("ALTER TABLE projects DROP COLUMN kind").run();
-      db.$client.prepare("ALTER TABLE projects DROP COLUMN sort_key").run();
-      db.$client.prepare("ALTER TABLE threads DROP COLUMN sort_key").run();
-      db.$client.prepare("ALTER TABLE threads DROP COLUMN pinned_at").run();
-      db.$client.prepare("ALTER TABLE threads DROP COLUMN pin_sort_key").run();
-      db.$client
-        .prepare("ALTER TABLE threads DROP COLUMN model_override")
-        .run();
-      db.$client
-        .prepare("ALTER TABLE threads DROP COLUMN reasoning_level_override")
-        .run();
-      db.$client.prepare("ALTER TABLE events ADD producer_event_id text").run();
-      db.$client
-        .prepare("ALTER TABLE events ADD producer_event_payload_hash text")
-        .run();
-      db.$client
-        .prepare(
-          "CREATE UNIQUE INDEX events_producer_event_id_idx ON events (producer_event_id)",
-        )
-        .run();
-      db.$client.prepare("DROP INDEX projects_deleted_idx").run();
-      db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
-      db.$client
-        .prepare(
-          "ALTER TABLE hosts ADD command_cursor integer DEFAULT 0 NOT NULL",
-        )
-        .run();
-      db.$client.exec(`
-        CREATE TABLE host_daemon_commands (
-          id text PRIMARY KEY NOT NULL,
-          host_id text NOT NULL,
-          session_id text,
-          cursor integer NOT NULL,
-          type text NOT NULL,
-          payload text NOT NULL,
-          state text NOT NULL,
-          retry_count integer DEFAULT 0 NOT NULL,
-          result_payload text,
-          created_at integer NOT NULL,
-          fetched_at integer,
-          completed_at integer,
-          FOREIGN KEY (host_id) REFERENCES hosts(id) ON UPDATE no action ON DELETE cascade,
-          FOREIGN KEY (session_id) REFERENCES host_daemon_sessions(id) ON UPDATE no action ON DELETE set null
-        );
-        CREATE TABLE environment_operations (
-          id text PRIMARY KEY NOT NULL,
-          environment_id text NOT NULL,
-          kind text NOT NULL,
-          state text NOT NULL,
-          payload text NOT NULL,
-          command_id text,
-          requested_at integer NOT NULL,
-          queued_at integer,
-          completed_at integer,
-          failure_reason text,
-          created_at integer NOT NULL,
-          updated_at integer NOT NULL,
-          FOREIGN KEY (environment_id) REFERENCES environments(id) ON UPDATE no action ON DELETE cascade,
-          FOREIGN KEY (command_id) REFERENCES host_daemon_commands(id) ON UPDATE no action ON DELETE set null
-        );
-        CREATE UNIQUE INDEX environment_operations_environment_kind_idx ON environment_operations (environment_id, kind);
-        CREATE UNIQUE INDEX environment_operations_command_idx ON environment_operations (command_id);
-        CREATE INDEX environment_operations_state_idx ON environment_operations (state);
-        CREATE INDEX environment_operations_environment_idx ON environment_operations (environment_id);
-        CREATE TABLE project_operations (
-          id text PRIMARY KEY NOT NULL,
-          project_id text NOT NULL,
-          kind text NOT NULL,
-          state text NOT NULL,
-          payload text NOT NULL,
-          command_id text,
-          requested_at integer NOT NULL,
-          queued_at integer,
-          completed_at integer,
-          failure_reason text,
-          created_at integer NOT NULL,
-          updated_at integer NOT NULL,
-          FOREIGN KEY (project_id) REFERENCES projects(id) ON UPDATE no action ON DELETE cascade,
-          FOREIGN KEY (command_id) REFERENCES host_daemon_commands(id) ON UPDATE no action ON DELETE set null
-        );
-        CREATE UNIQUE INDEX project_operations_project_kind_idx ON project_operations (project_id, kind);
-        CREATE UNIQUE INDEX project_operations_command_idx ON project_operations (command_id);
-        CREATE INDEX project_operations_state_idx ON project_operations (state);
-        CREATE INDEX project_operations_project_idx ON project_operations (project_id);
-        CREATE TABLE thread_operations (
-          id text PRIMARY KEY NOT NULL,
-          thread_id text NOT NULL,
-          kind text NOT NULL,
-          state text NOT NULL,
-          payload text NOT NULL,
-          provisioning_id text,
-          provisioning_stage text,
-          provisioning_environment_id text,
-          provision_event_sequence integer,
-          workspace_ready_event_sequence integer,
-          command_id text,
-          requested_at integer NOT NULL,
-          queued_at integer,
-          completed_at integer,
-          failure_reason text,
-          created_at integer NOT NULL,
-          updated_at integer NOT NULL,
-          FOREIGN KEY (thread_id) REFERENCES threads(id) ON UPDATE no action ON DELETE cascade,
-          FOREIGN KEY (provisioning_environment_id) REFERENCES environments(id) ON UPDATE no action ON DELETE set null,
-          FOREIGN KEY (command_id) REFERENCES host_daemon_commands(id) ON UPDATE no action ON DELETE set null
-        );
-        CREATE UNIQUE INDEX thread_operations_thread_kind_idx ON thread_operations (thread_id, kind);
-        CREATE UNIQUE INDEX thread_operations_command_idx ON thread_operations (command_id);
-        CREATE INDEX thread_operations_state_idx ON thread_operations (state);
-        CREATE INDEX thread_operations_thread_idx ON thread_operations (thread_id);
-      `);
-      db.$client.exec(`
-        INSERT INTO hosts (
-          id,
-          name,
-          type,
-          command_cursor,
-          destroyed_at,
-          last_seen_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'host_legacy_operation_backfill',
-          'Legacy operation backfill host',
-          'persistent',
-          0,
-          NULL,
-          NULL,
-          1000,
-          1000
-        );
-        INSERT INTO projects (
-          id,
-          name,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'proj_legacy_operation_backfill',
-          'Legacy operation backfill project',
-          1000,
-          1000
-        );
-        INSERT INTO environments (
-          id,
-          project_id,
-          host_id,
-          path,
-          managed,
-          is_git_repo,
-          is_worktree,
-          workspace_provision_type,
-          status,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'env_legacy_operation_backfill',
-          'proj_legacy_operation_backfill',
-          'host_legacy_operation_backfill',
-          '/tmp/legacy-operation-backfill',
-          1,
-          1,
-          1,
-          'managed-worktree',
-          'provisioning',
-          1000,
-          1000
-        );
-        INSERT INTO threads (
-          id,
-          project_id,
-          environment_id,
-          provider_id,
-          status,
-          latest_attention_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'thr_legacy_operation_backfill',
-          'proj_legacy_operation_backfill',
-          'env_legacy_operation_backfill',
-          'codex',
-          'provisioning',
-          1000,
-          1000,
-          1000
-        );
-        INSERT INTO threads (
-          id,
-          project_id,
-          environment_id,
-          provider_id,
-          status,
-          latest_attention_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'thr_legacy_bad_stop_reason',
-          'proj_legacy_operation_backfill',
-          'env_legacy_operation_backfill',
-          'codex',
-          'active',
-          1000,
-          1000,
-          1000
-        );
-        INSERT INTO thread_operations (
-          id,
-          thread_id,
-          kind,
-          state,
-          payload,
-          provisioning_id,
-          provisioning_stage,
-          provisioning_environment_id,
-          provision_event_sequence,
-          workspace_ready_event_sequence,
-          command_id,
-          requested_at,
-          queued_at,
-          completed_at,
-          failure_reason,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'top_legacy_provision_backfill',
-          'thr_legacy_operation_backfill',
-          'provision',
-          'queued',
-          '{"workspaceProvisionType":"managed-worktree"}',
-          'tpv_legacy_operation_backfill',
-          'workspace-ready',
-          'env_legacy_operation_backfill',
-          41,
-          42,
-          NULL,
-          2000,
-          2010,
-          NULL,
-          NULL,
-          2000,
-          2010
-        );
-        INSERT INTO thread_operations (
-          id,
-          thread_id,
-          kind,
-          state,
-          payload,
-          provisioning_id,
-          provisioning_stage,
-          provisioning_environment_id,
-          provision_event_sequence,
-          workspace_ready_event_sequence,
-          command_id,
-          requested_at,
-          queued_at,
-          completed_at,
-          failure_reason,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'top_legacy_stop_backfill',
-          'thr_legacy_operation_backfill',
-          'stop',
-          'requested',
-          '{"interruptionReason":"host-daemon-restarted"}',
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          2500,
-          NULL,
-          NULL,
-          NULL,
-          2500,
-          2500
-        );
-        INSERT INTO thread_operations (
-          id,
-          thread_id,
-          kind,
-          state,
-          payload,
-          provisioning_id,
-          provisioning_stage,
-          provisioning_environment_id,
-          provision_event_sequence,
-          workspace_ready_event_sequence,
-          command_id,
-          requested_at,
-          queued_at,
-          completed_at,
-          failure_reason,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'top_legacy_bad_stop_reason',
-          'thr_legacy_bad_stop_reason',
-          'stop',
-          'queued',
-          '{"interruptionReason":"legacy-freeform-reason"}',
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          NULL,
-          2550,
-          2560,
-          NULL,
-          NULL,
-          2550,
-          2560
-        );
-        INSERT INTO environment_operations (
-          id,
-          environment_id,
-          kind,
-          state,
-          payload,
-          command_id,
-          requested_at,
-          queued_at,
-          completed_at,
-          failure_reason,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'eop_legacy_provision_backfill',
-          'env_legacy_operation_backfill',
-          'provision',
-          'queued',
-          '{}',
-          NULL,
-          2600,
-          2610,
-          NULL,
-          NULL,
-          2600,
-          2610
-        );
-        INSERT INTO project_operations (
-          id,
-          project_id,
-          kind,
-          state,
-          payload,
-          command_id,
-          requested_at,
-          queued_at,
-          completed_at,
-          failure_reason,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          'pop_legacy_delete_backfill',
-          'proj_legacy_operation_backfill',
-          'delete',
-          'requested',
-          '{}',
-          NULL,
-          3000,
-          NULL,
-          NULL,
-          NULL,
-          3000,
-          3000
-        );
-      `);
-      db.$client
-        .prepare(
-          "ALTER TABLE host_daemon_sessions ADD COLUMN last_heartbeat_at integer",
-        )
-        .run();
-      db.$client
-        .prepare(
-          "ALTER TABLE pending_interactions ADD COLUMN session_id text NOT NULL DEFAULT 'legacy-session'",
-        )
-        .run();
-      db.$client.prepare("DELETE FROM __drizzle_migrations").run();
-      db.$client
-        .prepare<InsertMigrationParameters>(
-          `
-            INSERT INTO __drizzle_migrations (hash, created_at)
-            VALUES (?, ?)
-          `,
-        )
-        .run("baseline-hash", baselineWhen);
-      db.$client
-        .prepare<InsertMigrationParameters>(
-          `
-            INSERT INTO __drizzle_migrations (hash, created_at)
-            VALUES (?, ?)
-          `,
-        )
-        .run("main-0001-hash", publishedTerminalSessionUserInputWhen);
-      rewindEnvironmentRowFactsMigration(db);
-      rewindEnvironmentProvidersMigration(db);
-      dropEnvironmentNameColumn(db);
-      dropEnvironmentDestroyAttemptIdColumn(db);
-      restoreEnvironmentCleanupModeColumn(db);
-      restoreEnvironmentCleanupRequestedAtColumn(db);
-      restoreThreadStopRequestedAtColumn(db);
-      dropPost0023Tables(db);
-
-      expect(
-        readIndexNames({ db, tableName: "host_daemon_sessions" }),
-      ).not.toContain("host_daemon_sessions_closed_prune_idx");
-
-      migrate(db);
-
-      expect(
-        readIndexNames({ db, tableName: "host_daemon_sessions" }),
-      ).toContain("host_daemon_sessions_closed_prune_idx");
-      expect(readTableNames(db)).not.toEqual(
-        expect.arrayContaining([
-          "client_turn_requests",
-          "environment_operations",
-          "host_daemon_command_attempts",
-          "host_daemon_commands",
-          "project_operations",
-          "thread_operations",
-        ]),
-      );
-      expect(
-        db.$client
-          .prepare<[], TableInfoRow>("PRAGMA table_info(hosts)")
-          .all()
-          .map((row) => row.name),
-      ).not.toContain("command_cursor");
-      expect(
-        db.$client
-          .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
-          .all()
-          .map((row) => row.name),
-      ).toEqual([
-        "id",
-        "thread_id",
-        "environment_id",
-        "scope_kind",
-        "turn_id",
-        "provider_thread_id",
-        "sequence",
-        "type",
-        "item_id",
-        "item_kind",
-        "data",
-        "created_at",
-        "parent_tool_call_id",
-      ]);
-      const eventIndexNames = readIndexNames({
-        db,
-        tableName: "events",
-      }).filter((name) => !name.startsWith("sqlite_"));
-      expect(eventIndexNames).toEqual([
-        "events_background_task_thread_type_item_sequence_idx",
-        "events_completed_item_truncation_idx",
-        "events_delegating_item_lookup_idx",
-        "events_environment_idx",
-        "events_item_lifecycle_thread_item_sequence_idx",
-        "events_parent_tool_call_thread_parent_sequence_idx",
-        "events_plan_steps_thread_sequence_idx",
-        "events_thread_sequence_idx",
-        "events_thread_state_thread_sequence_idx",
-        "events_thread_turn_type_item_sequence_idx",
-        "events_thread_type_item_kind_sequence_idx",
-        "events_thread_type_sequence_idx",
-      ]);
-
-      const migrationCreatedAts = db.$client
-        .prepare<[], MigrationCreatedAtRow>(
-          `
-            SELECT created_at AS createdAt
-            FROM __drizzle_migrations
-            ORDER BY created_at
-          `,
-        )
-        .all()
-        .map((row) => row.createdAt);
-      expect(migrationCreatedAts).toContain(closedSessionPruneIndexesWhen);
-      expect(migrationCreatedAts).toContain(threadDynamicContextFileStatesWhen);
-      expect(migrationCreatedAts).toContain(commandLookupIndexesWhen);
-      expect(migrationCreatedAts).toContain(threadPinningMigrationWhen);
-      expect(
-        db.$client
-          .prepare<[], OperationBackfillThreadRow>(
-            `
-            SELECT status
-              FROM threads
-              WHERE id = 'thr_legacy_operation_backfill'
-            `,
-          )
-          .get(),
-      ).toEqual({
-        status: "error",
-      });
-      const interruptedEvent = db.$client
-        .prepare<[], MigratedEventRow>(
-          `
-            SELECT
-              id,
-              thread_id AS threadId,
-              environment_id AS environmentId,
-              scope_kind AS scopeKind,
-              turn_id AS turnId,
-              provider_thread_id AS providerThreadId,
-              sequence,
-              type,
-              item_id AS itemId,
-              item_kind AS itemKind,
-              data,
-              created_at AS createdAt
-            FROM events
-            WHERE id = 'evt_top_legacy_stop_backfill'
-          `,
-        )
-        .get();
-      expect(interruptedEvent).toEqual({
-        createdAt: 2_500,
-        data: '{"reason":"host-daemon-restarted"}',
-        environmentId: "env_legacy_operation_backfill",
-        id: "evt_top_legacy_stop_backfill",
-        itemId: null,
-        itemKind: null,
-        providerThreadId: null,
-        scopeKind: "thread",
-        sequence: 1,
-        threadId: "thr_legacy_operation_backfill",
-        turnId: null,
-        type: "system/thread/interrupted",
-      });
-      expect(
-        db.$client
-          .prepare<[], Pick<MigratedEventRow, "data">>(
-            `
-              SELECT data
-              FROM events
-              WHERE id = 'evt_top_legacy_bad_stop_reason'
-            `,
-          )
-          .get(),
-      ).toEqual({
-        data: '{"reason":"manual-stop"}',
-      });
-      expect(
-        db.$client
-          .prepare<[], OperationBackfillEnvironmentRow>(
-            `
-              SELECT status
-              FROM environments
-              WHERE id = 'env_legacy_operation_backfill'
-            `,
-          )
-          .get(),
-      ).toEqual({
-        status: "error",
-      });
-      expect(
-        db.$client
-          .prepare<[], OperationBackfillProjectRow>(
-            `
-              SELECT deleted_at AS deletedAt
-              FROM projects
-              WHERE id = 'proj_legacy_operation_backfill'
-            `,
-          )
-          .get(),
-      ).toEqual({
-        deletedAt: 3_000,
-      });
-    } finally {
-      closeConnection(db);
-    }
-  });
-
-  it("preserves durable terminal session data when applying 0017", () => {
-    const db = createConnection(":memory:");
-
-    try {
-      migrate(db);
-      dropRewindAddedTables(db);
-      restorePre0022ThreadTypeSchema(db);
-      seedPre0017TerminalSessionMigration({ db });
-      db.$client
-        .prepare(
-          "ALTER TABLE host_daemon_sessions ADD COLUMN last_heartbeat_at integer",
-        )
-        .run();
-      db.$client
-        .prepare<DeleteMigrationParameters>(
-          `
-            DELETE FROM __drizzle_migrations
-            WHERE created_at >= ?
-          `,
-        )
-        .run(terminalSessionRuntimeStateHonestyWhen);
-      rewindEnvironmentRowFactsMigration(db);
-      rewindEnvironmentProvidersMigration(db);
-      dropEnvironmentNameColumn(db);
-      dropEnvironmentDestroyAttemptIdColumn(db);
-      dropQueuedMessageSenderThreadIdColumn(db);
-      restoreEnvironmentCleanupModeColumn(db);
-      restoreEnvironmentCleanupRequestedAtColumn(db);
-      restoreThreadStopRequestedAtColumn(db);
-      dropPost0023Tables(db);
-
-      migrate(db);
-
-      expect(
-        db.$client
-          .prepare<[], MigratedTerminalSessionRow>(
-            `
-              SELECT
-                id,
-                thread_id AS threadId,
-                environment_id AS environmentId,
-                host_id AS hostId,
-                daemon_session_id AS daemonSessionId,
-                title,
-                initial_cwd AS initialCwd,
-                cols,
-                rows,
-                status,
-                exit_code AS exitCode,
-                close_reason AS closeReason,
-                created_at AS createdAt,
-                updated_at AS updatedAt,
-                last_user_input_at AS lastUserInputAt
-              FROM terminal_sessions
-              WHERE id = 'term_pre0017'
-            `,
-          )
-          .get(),
-      ).toEqual({
-        id: "term_pre0017",
-        threadId: "thr_pre0017",
-        environmentId: "env_pre0017",
-        hostId: "host_pre0017",
-        daemonSessionId: "sess_pre0017",
-        title: "Terminal 1",
-        initialCwd: "/tmp/pre0017",
-        cols: 120,
-        rows: 40,
-        status: "running",
-        exitCode: null,
-        closeReason: null,
-        createdAt: 1100,
-        updatedAt: 1200,
-        lastUserInputAt: 1300,
-      });
-
-      const terminalSessionColumns = db.$client
-        .prepare<[], TableInfoRow>("PRAGMA table_info(terminal_sessions)")
-        .all();
-      const terminalSessionColumnNames = terminalSessionColumns.map(
-        (column) => column.name,
-      );
-      expect(terminalSessionColumnNames).not.toContain("current_cwd");
-      expect(terminalSessionColumnNames).not.toContain("last_connected_at");
-      expect(terminalSessionColumnNames).not.toContain("exited_at");
-      expect(
-        terminalSessionColumns.find((column) => column.name === "thread_id")
-          ?.notnull,
-      ).toBe(0);
-      expect(readAppliedMigrationCreatedAts(db)).toContain(
-        threadlessTerminalSessionsMigrationWhen,
-      );
-
-      const hostDaemonSessionColumns = db.$client
-        .prepare<[], TableInfoRow>("PRAGMA table_info(host_daemon_sessions)")
-        .all()
-        .map((column) => column.name);
-      expect(hostDaemonSessionColumns).not.toContain("last_heartbeat_at");
     } finally {
       closeConnection(db);
     }
@@ -5422,6 +4296,89 @@ describe("migrate", () => {
     }
   });
 
+  it("moves the bundled provider usage plugin and its footer preferences to the bb-- id", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO plugins (id, source, root_dir, version, enabled, installed_at, updated_at, provenance, source_kind, source_builtin_name, removed_at)
+        VALUES
+          ('provider-usage', 'builtin:provider-usage', '/bundled/provider-usage', '0.1.0', 0, 1, 1, 'builtin', 'builtin', 'provider-usage', 7),
+          ('usage', 'git:https://example.com/usage.git', '/managed/usage', '0.3.1', 1, 1, 1, 'catalog', 'git', NULL, NULL);
+        INSERT INTO ui_preferences (key, value_json, revision, updated_at) VALUES
+          ('sidebar.footerOrder', '["builtin:settings","plugin:provider-usage/usage","plugin:usage/usage"]', 3, 1),
+          ('sidebar.hiddenFooterItems', '["plugin:provider-usage/usage"]', 5, 1),
+          ('sidebar.visiblePluginPanels', '["provider-usage/usage"]', 2, 1);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: providerUsagePluginIdMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { id: string; enabled: number; removedAt: number | null }
+          >("SELECT id, enabled, removed_at AS removedAt FROM plugins ORDER BY id")
+          .all(),
+      ).toEqual([
+        { id: "bb--provider-usage", enabled: 0, removedAt: 7 },
+        { id: "usage", enabled: 1, removedAt: null },
+      ]);
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { key: string; valueJson: string; revision: number }
+          >("SELECT key, value_json AS valueJson, revision FROM ui_preferences ORDER BY key")
+          .all(),
+      ).toEqual([
+        {
+          key: "sidebar.footerOrder",
+          valueJson:
+            '["builtin:settings","plugin:bb--provider-usage/usage","plugin:usage/usage"]',
+          revision: 4,
+        },
+        {
+          key: "sidebar.hiddenFooterItems",
+          valueJson: '["plugin:bb--provider-usage/usage"]',
+          revision: 6,
+        },
+        {
+          key: "sidebar.visiblePluginPanels",
+          valueJson: '["provider-usage/usage"]',
+          revision: 2,
+        },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("leaves a user-installed provider-usage plugin under its own id", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      db.$client.exec(`
+        INSERT INTO plugins (id, source, root_dir, version, enabled, installed_at, updated_at, provenance, source_kind)
+        VALUES ('provider-usage', 'git:https://github.com/braedonsaunders/bb-plugin-provider-usage.git', '/managed/provider-usage', '0.4.0', 1, 1, 1, 'catalog', 'git');
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: providerUsagePluginIdMigrationPath,
+      });
+
+      expect(db.$client.prepare("SELECT id FROM plugins").all()).toEqual([
+        { id: "provider-usage" },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("names only catalog provenance during the marketplace upgrade", () => {
     const db = createConnection(":memory:");
     try {
@@ -5697,10 +4654,12 @@ describe("environment providers migration", () => {
 
   function seedPreProviderEnvironments(db: DbConnection): void {
     db.$client.prepare("DROP TABLE provider_model_catalogs").run();
+    db.$client.prepare("DROP TABLE IF EXISTS ui_preference_defaults").run();
     db.$client.prepare("DROP TABLE ui_preferences").run();
     db.$client.prepare("DROP TABLE retained_event_outputs").run();
     rewindEnvironmentRowFactsMigration(db);
     rewindEnvironmentProvidersMigration(db);
+    dropQueuedMessageAttemptColumns(db);
     db.$client
       .prepare<
         [number]
@@ -6118,6 +5077,7 @@ describe("environment and thread startup ownership migration", () => {
         dropLateThreadColumns(db);
         rewindMachineProvidersMigration(db);
         rewindEnvironmentProvisioningMigration(db);
+        dropQueuedMessageAttemptColumns(db);
         const legacySchema = readFileSync(
           resolve(
             dirname(fileURLToPath(import.meta.url)),
@@ -6128,9 +5088,9 @@ describe("environment and thread startup ownership migration", () => {
         db.$client.exec(legacySchema);
         db.$client.exec("DROP TABLE IF EXISTS environment_hook_operations");
         db.$client
-          .prepare<[number]>(
-            "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
-          )
+          .prepare<
+            [number]
+          >("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
           .run(environmentProvisioningMigrationWhen);
         db.$client.exec(`
         INSERT INTO hosts (id, name, type, created_at, updated_at) VALUES ('host_ownership', 'test', 'persistent', 1, 1);
@@ -6210,9 +5170,10 @@ describe("environment and thread startup ownership migration", () => {
             .get(),
         ).toEqual({ resource: '{"new":"checkpoint"}' });
         const stored = db.$client
-          .prepare<[], { startup_context: string }>(
-            "SELECT startup_context FROM threads WHERE id = 'thr_creating'",
-          )
+          .prepare<
+            [],
+            { startup_context: string }
+          >("SELECT startup_context FROM threads WHERE id = 'thr_creating'")
           .get()!;
         expect(JSON.parse(stored.startup_context).state).not.toHaveProperty(
           "stage",
@@ -6263,25 +5224,29 @@ describe("thread status changed at migration", () => {
         providerId: "test-provider",
       });
       db.$client
-        .prepare<[number, string]>(
-          "UPDATE threads SET updated_at = ? WHERE id = ?",
-        )
+        .prepare<
+          [number, string]
+        >("UPDATE threads SET updated_at = ? WHERE id = ?")
         .run(4_242, thread.id);
       db.$client
         .prepare("ALTER TABLE threads DROP COLUMN status_changed_at")
         .run();
       db.$client
-        .prepare<[number]>(
-          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
-        )
+        .prepare("ALTER TABLE threads DROP COLUMN awaiting_user_reply")
+        .run();
+      db.$client
+        .prepare<
+          [number]
+        >("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
         .run(statusChangedAtMigrationWhen);
 
       migrate(db);
 
       const stored = db.$client
-        .prepare<[string], { status_changed_at: number; updated_at: number }>(
-          "SELECT status_changed_at, updated_at FROM threads WHERE id = ?",
-        )
+        .prepare<
+          [string],
+          { status_changed_at: number; updated_at: number }
+        >("SELECT status_changed_at, updated_at FROM threads WHERE id = ?")
         .get(thread.id);
       expect(stored).toEqual({ status_changed_at: 4_242, updated_at: 4_242 });
     } finally {

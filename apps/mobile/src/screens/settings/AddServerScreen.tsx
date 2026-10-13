@@ -29,7 +29,7 @@ function defaultLabel(serverUrl: string): string {
 }
 
 const URL_HELP =
-  "A LAN address, a Tailscale Serve URL, or http://127.0.0.1:<port> in the simulator.";
+  "Use your server’s LAN or Tailscale address. Your phone must be able to reach it.";
 
 export function AddServerScreen() {
   const router = useRouter();
@@ -95,7 +95,7 @@ export function AddServerScreen() {
         options={{ title: firstRun ? "Connect to a bb server" : "Add server" }}
       />
       <GroupedScreen testID="add-server-screen">
-        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Remote access.">
+        <SettingsSection footnote="Pair through getbb.app from anywhere: scan or type a pairing code from bb Settings → Mobile.">
           <GroupedRow
             title="Connect with bb connect"
             badge={{ icon: "Globe", symbol: "globe", color: colors.blue }}

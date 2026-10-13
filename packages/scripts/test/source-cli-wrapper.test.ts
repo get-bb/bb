@@ -34,6 +34,7 @@ function runSourceBb(args: string[]): Promise<SourceCliResult> {
     const child = spawn("pnpm", ["--silent", "bb", ...args], {
       cwd: repoRoot,
       env: buildCleanEnv(),
+      shell: process.platform === "win32",
     });
     spawnedChildren.push(child);
 

@@ -3,15 +3,13 @@ import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { PluginMarketplaceSourceKind } from "@bb/db";
 import {
+  normalizePluginSubdirectory,
   parsePluginSource,
+  pluginRootDir,
   realPathInside,
   runInstallCommand,
 } from "../plugins/install-sources.js";
-import {
-  boundedResponseBytes,
-  MARKETPLACE_FETCH_TIMEOUT_MS,
-  type MarketplaceFetch,
-} from "./marketplace-http.js";
+import type { MarketplaceFetch } from "./marketplace-http.js";
 import {
   entryScreenshotUrls,
   parseMarketplaceManifest,
@@ -22,11 +20,9 @@ import {
 
 const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
-const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
-
 type MarketplaceSource =
   | { kind: "https"; manifestUrl: string }
-  | { kind: "git"; url: string; ref: string }
+  | { kind: "git"; url: string; ref: string; subdirectory: string | null }
   | { kind: "path"; directory: string };
 
 const GIT_CLONE_ARGS = ["-c", "core.hooksPath=/dev/null"] as const;
@@ -34,7 +30,21 @@ const GIT_CLONE_ARGS = ["-c", "core.hooksPath=/dev/null"] as const;
 const SOURCE_FORMS =
   'expected "https://<manifest-url>", "git:<url>[@<ref>]", or "path:<directory>"';
 
-export function parseMarketplaceSource(raw: string): MarketplaceSource {
+function assertNoSubdirectory(
+  source: string,
+  subdirectory: string | null,
+): void {
+  if (subdirectory !== null) {
+    throw new Error(
+      `invalid marketplace source "${source}": a subdirectory applies to git: sources only`,
+    );
+  }
+}
+
+export function parseMarketplaceSource(
+  raw: string,
+  subdirectory: string | null,
+): MarketplaceSource {
   const source = raw.trim();
   if (source.length === 0) {
     throw new Error(`invalid marketplace source: ${SOURCE_FORMS}`);
@@ -44,6 +54,7 @@ export function parseMarketplaceSource(raw: string): MarketplaceSource {
     if (directory.length === 0) {
       throw new Error("marketplace source has an empty path");
     }
+    assertNoSubdirectory(source, subdirectory);
     return { kind: "path", directory: resolve(directory) };
   }
   if (source.startsWith("git:")) {
@@ -56,9 +67,21 @@ export function parseMarketplaceSource(raw: string): MarketplaceSource {
         `invalid marketplace git source "${source}": a marketplace ref names one branch, tag, or commit`,
       );
     }
-    return { kind: "git", url: parsed.url, ref: parsed.selector.ref };
+    return {
+      kind: "git",
+      url: parsed.url,
+      ref: parsed.selector.ref,
+      subdirectory:
+        subdirectory === null
+          ? null
+          : normalizePluginSubdirectory(
+              subdirectory,
+              "marketplace subdirectory",
+            ),
+    };
   }
   if (/^https:\/\//iu.test(source)) {
+    assertNoSubdirectory(source, subdirectory);
     return { kind: "https", manifestUrl: source };
   }
   if (/^http:\/\//iu.test(source)) {
@@ -79,6 +102,7 @@ export function marketplaceSourceFromRow(row: {
   sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
   sourceGitRef: string | null;
+  sourceGitSubdirectory: string | null;
 }): MarketplaceSource {
   if (row.sourceKind === "https") {
     return { kind: "https", manifestUrl: row.manifestUrl };
@@ -89,19 +113,26 @@ export function marketplaceSourceFromRow(row: {
   if (row.sourceGitRef === null) {
     throw new Error("git marketplace row has no ref");
   }
-  return { kind: "git", url: row.manifestUrl, ref: row.sourceGitRef };
+  return {
+    kind: "git",
+    url: row.manifestUrl,
+    ref: row.sourceGitRef,
+    subdirectory: row.sourceGitSubdirectory,
+  };
 }
 
 export function marketplaceSourceColumns(source: MarketplaceSource): {
   sourceKind: PluginMarketplaceSourceKind;
   manifestUrl: string;
   sourceGitRef: string | null;
+  sourceGitSubdirectory: string | null;
 } {
   if (source.kind === "https") {
     return {
       sourceKind: "https",
       manifestUrl: source.manifestUrl,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
     };
   }
   if (source.kind === "path") {
@@ -109,12 +140,14 @@ export function marketplaceSourceColumns(source: MarketplaceSource): {
       sourceKind: "path",
       manifestUrl: source.directory,
       sourceGitRef: null,
+      sourceGitSubdirectory: null,
     };
   }
   return {
     sourceKind: "git",
     manifestUrl: source.url,
     sourceGitRef: source.ref,
+    sourceGitSubdirectory: source.subdirectory,
   };
 }
 
@@ -199,7 +232,6 @@ async function materializeHttps(
       method: "GET",
       headers,
       redirect: "error",
-      signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
     });
   }
 
@@ -259,13 +291,7 @@ async function materializeHttps(
         warn,
       );
   } else {
-    const raw = new TextDecoder().decode(
-      await boundedResponseBytes(
-        response,
-        MARKETPLACE_MANIFEST_MAX_BYTES,
-        "marketplace manifest",
-      ),
-    );
+    const raw = await response.text();
     catalog = parseMarketplaceManifestJson(raw, "marketplace manifest", warn);
     manifestJson = JSON.stringify(catalog);
   }
@@ -305,12 +331,6 @@ async function materializeLocal(
       join(root, MARKETPLACE_MANIFEST_FILENAME),
       "marketplace manifest",
     );
-    const manifestSize = (await stat(manifestPath)).size;
-    if (manifestSize > MARKETPLACE_MANIFEST_MAX_BYTES) {
-      throw new Error(
-        `marketplace manifest exceeds ${MARKETPLACE_MANIFEST_MAX_BYTES} bytes`,
-      );
-    }
     const raw = await readFile(manifestPath, "utf8");
     const catalog = parseMarketplaceManifest(
       JSON.parse(raw) as unknown,
@@ -337,6 +357,23 @@ async function materializeLocal(
   }
 }
 
+async function gitMarketplaceRoot(
+  checkout: string,
+  subdirectory: string | null,
+): Promise<string> {
+  if (subdirectory === null) return checkout;
+  const directory = pluginRootDir(checkout, subdirectory);
+  const isDirectory = await stat(directory)
+    .then((entry) => entry.isDirectory())
+    .catch(() => false);
+  if (!isDirectory) {
+    throw new Error(
+      `marketplace subdirectory "${subdirectory}" is not a directory in the repository`,
+    );
+  }
+  return realPathInside(checkout, directory, "marketplace subdirectory");
+}
+
 async function materializeGit(
   source: Extract<MarketplaceSource, { kind: "git" }>,
   stagingDir: string,
@@ -354,6 +391,23 @@ async function materializeGit(
       source.url,
       checkout,
     ]);
+    const commit = await runInstallCommand("git", [
+      "-C",
+      checkout,
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `${source.ref}^{commit}`,
+    ]).catch(() =>
+      runInstallCommand("git", [
+        "-C",
+        checkout,
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        `refs/remotes/origin/${source.ref}^{commit}`,
+      ]),
+    );
     await runInstallCommand("git", [
       ...GIT_CLONE_ARGS,
       "-C",
@@ -361,16 +415,15 @@ async function materializeGit(
       "checkout",
       "--quiet",
       "--detach",
-      source.ref,
-    ]);
-    const commit = await runInstallCommand("git", [
-      "-C",
-      checkout,
-      "rev-parse",
-      "HEAD",
+      commit,
     ]);
     await rm(join(checkout, ".git"), { recursive: true, force: true });
-    return await materializeLocal(checkout, commit, dispose, warn);
+    return await materializeLocal(
+      await gitMarketplaceRoot(checkout, source.subdirectory),
+      commit,
+      dispose,
+      warn,
+    );
   } catch (error) {
     await dispose();
     throw error;

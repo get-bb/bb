@@ -1,19 +1,22 @@
-import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ClientTurnRequestId, PromptInput } from "@bb/domain";
+import {
+  PROMPT_ATTACHMENT_MAX_BYTES,
+  type ClientTurnRequestId,
+  type PromptInput,
+} from "@bb/domain";
 import { resolveContainedPath } from "@bb/process-utils";
 import {
   CommandDispatchError,
   type CommandDispatchOptions,
 } from "../command-dispatch-support.js";
+import { isFsErrorWithCode } from "../fs-errors.js";
 
 type AttachmentPromptInput = Extract<
   PromptInput,
   { type: "localFile" | "localImage" }
 >;
 
-const IMAGE_ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
-const FILE_ATTACHMENT_LIMIT_BYTES = 25 * 1024 * 1024;
 const STAGED_ATTACHMENT_MODE = 0o600;
 
 interface StagePromptAttachmentsArgs {
@@ -34,7 +37,9 @@ interface StagePromptAttachmentGroupsArgs extends Omit<
 
 interface StageAttachmentArgs extends StagePromptAttachmentsArgs {
   attachment: AttachmentPromptInput;
-  stagedPath: string;
+  createdPaths: string[];
+  stagedPaths: readonly string[];
+  stagingDir: string;
 }
 
 interface StagedPromptAttachments {
@@ -48,6 +53,7 @@ interface StagedPromptAttachmentGroups {
 }
 
 interface StagePromptInputListArgs extends StagePromptAttachmentsArgs {
+  createdPaths: string[];
   stagedPaths: string[];
   stagingDir: string;
 }
@@ -84,12 +90,6 @@ function attachmentFetchErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function attachmentSizeLimitBytes(attachment: AttachmentPromptInput): number {
-  return attachment.type === "localImage"
-    ? IMAGE_ATTACHMENT_LIMIT_BYTES
-    : FILE_ATTACHMENT_LIMIT_BYTES;
-}
-
 function expectedAttachmentSizeBytes(
   attachment: AttachmentPromptInput,
 ): number | undefined {
@@ -98,11 +98,13 @@ function expectedAttachmentSizeBytes(
 
 function validateExpectedAttachmentSize(args: StageAttachmentArgs): void {
   const expectedSizeBytes = expectedAttachmentSizeBytes(args.attachment);
-  const maxBytes = attachmentSizeLimitBytes(args.attachment);
-  if (expectedSizeBytes !== undefined && expectedSizeBytes > maxBytes) {
+  if (
+    expectedSizeBytes !== undefined &&
+    expectedSizeBytes > PROMPT_ATTACHMENT_MAX_BYTES
+  ) {
     throw new CommandDispatchError(
       "attachment_unavailable",
-      `Attachment ${args.attachment.path} exceeds ${maxBytes} byte limit`,
+      `Attachment ${args.attachment.path} exceeds ${PROMPT_ATTACHMENT_MAX_BYTES} byte limit`,
     );
   }
 }
@@ -122,11 +124,10 @@ function validateFetchedAttachmentSize(
     );
   }
 
-  const maxBytes = attachmentSizeLimitBytes(attachment);
-  if (bytes.byteLength > maxBytes) {
+  if (bytes.byteLength > PROMPT_ATTACHMENT_MAX_BYTES) {
     throw new CommandDispatchError(
       "attachment_unavailable",
-      `Attachment ${attachment.path} exceeds ${maxBytes} byte limit`,
+      `Attachment ${attachment.path} exceeds ${PROMPT_ATTACHMENT_MAX_BYTES} byte limit`,
     );
   }
 }
@@ -167,21 +168,37 @@ function appendFilenameSuffix(filename: string, suffix: string): string {
   return `${filename.slice(0, -extension.length)}${suffix}${extension}`;
 }
 
-function uniqueStagedPath(
-  stagingDir: string,
-  filename: string,
-  stagedPaths: readonly string[],
-): string {
-  let candidate = path.join(stagingDir, filename);
-  let suffix = 2;
-  while (stagedPaths.includes(candidate)) {
-    candidate = path.join(
-      stagingDir,
-      appendFilenameSuffix(filename, `-${suffix}`),
+async function hasContents(
+  filePath: string,
+  bytes: Uint8Array,
+): Promise<boolean> {
+  if ((await stat(filePath)).size !== bytes.byteLength) return false;
+  return Buffer.from(bytes).equals(await readFile(filePath));
+}
+
+async function writeStagedAttachment(
+  args: StageAttachmentArgs,
+  bytes: Uint8Array,
+): Promise<string> {
+  const filename = attachmentFilename(args.attachment);
+  for (let suffix = 1; ; suffix += 1) {
+    const candidate = path.join(
+      args.stagingDir,
+      suffix === 1 ? filename : appendFilenameSuffix(filename, `-${suffix}`),
     );
-    suffix += 1;
+    if (args.stagedPaths.includes(candidate)) continue;
+    try {
+      await writeFile(candidate, bytes, {
+        flag: "wx",
+        mode: STAGED_ATTACHMENT_MODE,
+      });
+      args.createdPaths.push(candidate);
+      return candidate;
+    } catch (error) {
+      if (!isFsErrorWithCode(error, "EEXIST")) throw error;
+    }
+    if (await hasContents(candidate, bytes)) return candidate;
   }
-  return candidate;
 }
 
 async function cleanupStagedAttachments(
@@ -203,7 +220,7 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   try {
     const attachment = await args.fetchProjectAttachment({
       expectedSizeBytes: expectedAttachmentSizeBytes(args.attachment),
-      maxBytes: attachmentSizeLimitBytes(args.attachment),
+      maxBytes: PROMPT_ATTACHMENT_MAX_BYTES,
       projectId: args.projectId,
       threadId: args.threadId,
       path: args.attachment.path,
@@ -217,8 +234,7 @@ async function stageAttachment(args: StageAttachmentArgs): Promise<string> {
   }
 
   validateFetchedAttachmentSize(args.attachment, bytes);
-  await writeFile(args.stagedPath, bytes, { mode: STAGED_ATTACHMENT_MODE });
-  return args.stagedPath;
+  return writeStagedAttachment(args, bytes);
 }
 
 async function stagePromptInputList(
@@ -230,19 +246,8 @@ async function stagePromptInputList(
       stagedInput.push(input);
       continue;
     }
-    const stagedPath = uniqueStagedPath(
-      args.stagingDir,
-      attachmentFilename(input),
-      args.stagedPaths,
-    );
-    stagedInput.push({
-      ...input,
-      path: await stageAttachment({
-        ...args,
-        attachment: input,
-        stagedPath,
-      }),
-    });
+    const stagedPath = await stageAttachment({ ...args, attachment: input });
+    stagedInput.push({ ...input, path: stagedPath });
     args.stagedPaths.push(stagedPath);
   }
   return stagedInput;
@@ -278,6 +283,7 @@ export async function stagePromptAttachmentGroups(
   const stagingDir = resolveStagingDir({ ...args, input: [] });
   await mkdir(stagingDir, { recursive: true });
 
+  const createdPaths: string[] = [];
   const stagedPaths: string[] = [];
   try {
     const inputGroups: PromptInput[][] = [];
@@ -285,6 +291,7 @@ export async function stagePromptAttachmentGroups(
       inputGroups.push(
         await stagePromptInputList({
           ...args,
+          createdPaths,
           input,
           stagedPaths,
           stagingDir,
@@ -292,11 +299,11 @@ export async function stagePromptAttachmentGroups(
       );
     }
     return {
-      cleanup: () => cleanupStagedAttachments(stagingDir, stagedPaths),
+      cleanup: () => cleanupStagedAttachments(stagingDir, createdPaths),
       inputGroups,
     };
   } catch (error) {
-    await cleanupStagedAttachments(stagingDir, stagedPaths);
+    await cleanupStagedAttachments(stagingDir, createdPaths);
     throw error;
   }
 }

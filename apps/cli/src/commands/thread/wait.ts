@@ -8,11 +8,12 @@ import {
 } from "@bb/sdk";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { durationHelp } from "../../duration.js";
 import { outputJson, requireThreadId } from "../helpers.js";
 import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitPollIntervalMs,
-  parseThreadWaitTimeoutSeconds,
+  parseThreadWaitTimeoutMs,
   THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
   THREAD_WAIT_EXIT_CODE_TIMEOUT,
   THREAD_WAIT_EXIT_CODE_UNREACHABLE,
@@ -41,12 +42,12 @@ export function registerWaitCommand(
       "Wait until the thread log includes this event type",
     )
     .option(
-      "--timeout <seconds>",
-      `Timeout in seconds (default: ${DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS})`,
+      "--timeout <duration>",
+      `Timeout as ${durationHelp("s")} (default: ${DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS}s)`,
     )
     .option(
-      "--poll-interval <ms>",
-      `Polling interval in milliseconds (default: ${DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS})`,
+      "--poll-interval <duration>",
+      `Polling interval as ${durationHelp("ms")} (default: ${DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS}ms)`,
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -54,11 +55,11 @@ export function registerWaitCommand(
         const sdk = createCliBbSdk(getUrl());
         const threadId = requireThreadId(id);
         const target = parseThreadWaitTarget(opts);
-        const timeoutSeconds = parseThreadWaitTimeoutSeconds(opts.timeout);
+        const timeoutMs = parseThreadWaitTimeoutMs(opts.timeout);
         const pollIntervalMs = parseThreadWaitPollIntervalMs(opts.pollInterval);
         const waitArgs = {
           threadId,
-          timeoutMs: timeoutSeconds * 1000,
+          timeoutMs,
           pollIntervalMs,
           ...(target.kind === "status"
             ? { status: target.status }

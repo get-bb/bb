@@ -78,14 +78,14 @@ Slot props contracts (versioned, additive-only):
   through `PluginSlotMount`, outside route-owned layout regions. The component
   can therefore call app-level SDK hooks, including the sidebar thread data and
   action hooks, and keep their React contexts through a portal. Hooks whose
-  contract requires a particular surface, including `useComposer` and
-  `useComposerView`, remain limited to that surface. BB supplies no chrome,
+  contract requires a particular surface, including `useComposer`, remain
+  limited to that surface. BB supplies no chrome,
   positioning, visibility, focus, or responsive behavior; render fixed UI
   directly or use the vendored responsive overlay primitives. A crash hides
   only that overlay. Use a content script instead for DOM enhancement that does
   not need React context. Experimental: see `docs/api_to_audit.md`.
 - `navPanel` → `{ subPath: string }` — owns the whole route at
-  `/plugins/<pluginId>/<path>/*` and gets its own sidebar entry. `subPath`
+  `/plugins/<pluginId>/<path>/*` and gets its own navigation rail destination. `subPath`
   is the route remainder after the panel root (`""` at the root), so deep
   links like `/plugins/notes/notes/work/ideas.md` land with
   `subPath: "work/ideas.md"`. Navigate within the panel via
@@ -106,7 +106,7 @@ Slot props contracts (versioned, additive-only):
   (when the desktop browser is available) and Terminal; it does not offer
   workspace file search because a generic plugin page has no implicit project,
   environment, or working directory. The Terminal row includes a compact
-  connected-machine selector, initially resolving the primary machine and then
+  connected-machine selector, initially resolving the server machine and then
   the first connected fallback. Changing the selector does not launch
   anything; activating Start terminal uses the selected machine. The selection
   is page-session UI state, not plugin storage.
@@ -146,15 +146,10 @@ target? })`. Inside the fixed-tab component,
   refresh. Invalid, unavailable, untargeted, or other-plugin references return
   false without changing valid panel state.
 
-  `experimental_sidebarAccessory` is a no-props, presentational component at
-  the trailing edge of the sidebar row. It can own SDK hooks for a live count
-  or short status without lifting state into the host sidebar. The host does
-  not mount it on compact viewports; on wider viewports it clips the component
-  to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
-  It shares the trailing action column and fades out for the host options
-  button on row hover or keyboard focus without unmounting. Do not render
-  controls or portalled content there. A throw hides only the accessory.
-  Experimental: see `docs/api_to_audit.md`.
+  `experimental_sidebarAccessory` is a no-props, presentational component for
+  a live count or short status beside the panel's navigation entry. The SDK
+  accepts it, but no host surface mounts it, because the navigation rail is
+  icon-only. Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
@@ -207,7 +202,7 @@ target? })`. Inside the fixed-tab component,
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger
   content to `banners`, and legacy `{ projectId, threadId }` prop reads to
-  `useComposerView().scope`.
+  `useComposer().scope`.
 - `pendingInteraction` → `{ interaction, submit, cancel }` — replaces the
   thread composer only while a matching plugin interaction is pending.
   Registration: `{ id, component }`; `id` must equal the backend request's
@@ -230,13 +225,6 @@ target? })`. Inside the fixed-tab component,
   `{ openSettings }`. New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
-- `experimental_sidebarNavigation` → replaces the bounded navigation controls
-  above the thread list. Registration:
-  `{ id, title, description?, component }`. The component receives semantic
-  host items, the active item id, the compact-viewport state,
-  `experimental_activate`, and `experimental_Original`. Search activation opens
-  the quick palette. No inline search field or query state exists. BB keeps the
-  drawer, thread list, footer, resize handle, and shortcut ownership.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order

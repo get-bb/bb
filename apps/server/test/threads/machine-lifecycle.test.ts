@@ -341,7 +341,7 @@ describe("composed machine thread lifecycle", () => {
         );
         expect(followup.row.hostId).toBe(hostId);
         await reportQueuedCommandSuccess(harness, followup, {
-          appliedAs: "new-turn",
+          trace: { spans: [] },
         });
         await reportEvents([
           {

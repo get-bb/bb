@@ -1,3 +1,4 @@
+import path from "node:path";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -280,19 +281,6 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
     });
   }
 
-  it("forwards Cursor's bare ACP model and reasoning level", () => {
-    expect(
-      cursorSessionParams({ model: "grok-4.6", reasoningLevel: "high" }),
-    ).toMatchObject({
-      agent: { command: "cursor-agent", args: ["acp"] },
-      modelSelection: {
-        modelId: "grok-4.6",
-        reasoningLevel: "high",
-      },
-      parameterizedModelPicker: true,
-    });
-  });
-
   it("omits the reasoning level when the session has none", () => {
     const selection = cursorSessionParams({ model: "grok-4.6" })
       .modelSelection as Record<string, unknown>;
@@ -352,15 +340,6 @@ gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-c
       expect(
         cursorSessionParams({ model, reasoningLevel }).modelSelection,
       ).toEqual({ modelId, reasoningLevel: expectedReasoningLevel });
-    },
-  );
-
-  it.each(["default", "fast"] as const)(
-    "forwards the %s service tier explicitly",
-    (serviceTier) => {
-      expect(
-        cursorSessionParams({ model: "grok-4.6", serviceTier }).modelSelection,
-      ).toMatchObject({ modelId: "grok-4.6", serviceTier });
     },
   );
 
@@ -450,8 +429,8 @@ describe("buildAcpSessionParams skill instructions", () => {
         SKILLS_PREAMBLE,
         "",
         "Available bb skills:",
-        "- release-notes: Use release-notes when /system_instructions tests run. (SKILL.md: /tmp/bb/runtime/global-skills/abc123/skills/release-notes/SKILL.md)",
-        "- copywriting: Use when writing customer copy. (SKILL.md: /tmp/bb/runtime/global-skills/abc123/skills/copywriting/SKILL.md)",
+        `- release-notes: Use release-notes when /system_instructions tests run. (SKILL.md: ${path.normalize("/tmp/bb/runtime/global-skills/abc123/skills/release-notes/SKILL.md")})`,
+        `- copywriting: Use when writing customer copy. (SKILL.md: ${path.normalize("/tmp/bb/runtime/global-skills/abc123/skills/copywriting/SKILL.md")})`,
       ].join("\n"),
     });
   });
@@ -478,7 +457,7 @@ describe("buildAcpSessionParams skill instructions", () => {
         SKILLS_PREAMBLE,
         "",
         "Available bb skills:",
-        "- debugging: Use when debugging runtime state. (SKILL.md: /tmp/bb/runtime/global-skills/def456/skills/debugging/SKILL.md)",
+        `- debugging: Use when debugging runtime state. (SKILL.md: ${path.normalize("/tmp/bb/runtime/global-skills/def456/skills/debugging/SKILL.md")})`,
       ].join("\n"),
     });
   });

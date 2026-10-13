@@ -609,7 +609,7 @@ function CollapsiblePhaseGroups({
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(
     () => new Map(),
   );
-  const defaultExpanded = (key: string, group: WorkflowPhaseGroup): boolean =>
+  const defaultExpanded = (group: WorkflowPhaseGroup): boolean =>
     workflowSettled
       ? group.agents.some(
           (agent) => agent.state !== "done" && agent.state !== "skipped",
@@ -619,10 +619,10 @@ function CollapsiblePhaseGroups({
             !isSettledAgentState(agent.state) || agent.state === "failed",
         );
   const isExpanded = (key: string, group: WorkflowPhaseGroup): boolean =>
-    overrides.get(key) ?? defaultExpanded(key, group);
+    overrides.get(key) ?? defaultExpanded(group);
   const toggle = (key: string, group: WorkflowPhaseGroup) =>
     setOverrides((current) => {
-      const wasExpanded = current.get(key) ?? defaultExpanded(key, group);
+      const wasExpanded = current.get(key) ?? defaultExpanded(group);
       const next = new Map(current);
       next.set(key, !wasExpanded);
       return next;

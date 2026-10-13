@@ -7,17 +7,17 @@ import type {
   PromptHistoryResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
+import type { FilePreview } from "@bb/client-core";
+import { loadFilePreview } from "@/lib/api";
 import {
-  buildFilePreview,
-  normalizeFilePreviewMimeType,
-  type FilePreview,
-} from "@bb/client-core";
-import { decodeBase64Bytes } from "@/lib/base64-bytes";
-import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
+  buildProjectAttachmentContentUrl,
+  buildProjectFileContentUrl,
+} from "@/lib/file-content-urls";
 import { readProjectBranchOptions } from "@/lib/project-branch-options";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
+  projectAttachmentPreviewQueryKey,
   projectCommandsQueryKey,
   projectFilePreviewQueryKey,
   projectPathsQueryKey,
@@ -25,6 +25,7 @@ import {
   projectSourceBranchesQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
+import { useDebouncedBranchSearchQuery } from "./branch-search-debounce";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
@@ -35,6 +36,7 @@ import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
   HEAVY_PAYLOAD_QUERY_POLICY,
   REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+  SESSION_STATIC_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
 
@@ -92,7 +94,7 @@ export function useProjectSourceBranches(
   const enabled =
     (options?.enabled ?? true) && Boolean(projectId) && Boolean(hostId);
   useProjectDetailRealtimeSubscription(projectId, { enabled });
-  const query = options?.query?.trim() ?? "";
+  const query = useDebouncedBranchSearchQuery(options?.query?.trim() ?? "");
   const limit = options?.limit ?? PROJECT_SOURCE_BRANCHES_LIMIT;
   const selectedBranch = options?.selectedBranch?.trim() ?? "";
   const remoteRefreshRef = useRef<{
@@ -229,10 +231,15 @@ export function useProjectPathSuggestions(args: UseProjectPathSuggestionsArgs) {
   });
 }
 
+interface ProjectFileRouting {
+  environmentId: string | null;
+  hostId: string | null;
+}
+
 export function useProjectFilePreview(
   projectId: string | undefined,
   path: string | null,
-  routing: { environmentId: string | null; hostId: string | null },
+  routing: ProjectFileRouting,
   options?: QueryOptions,
 ) {
   const enabled =
@@ -256,33 +263,18 @@ export function useProjectFilePreview(
         hookName: "useProjectFilePreview",
         argName: "path",
       });
-      const content = await sdk.projects.fileContent({
-        projectId: requiredProjectId,
-        path: requiredPath,
+      return loadFilePreview(
+        {
+          name: requiredPath.split("/").at(-1),
+          path: requiredPath,
+          url: buildProjectFileContentUrl(
+            requiredProjectId,
+            requiredPath,
+            routing,
+          ),
+        },
         signal,
-        ...(routing.environmentId !== null
-          ? { environmentId: routing.environmentId }
-          : routing.hostId !== null
-            ? { hostId: routing.hostId }
-            : {}),
-      });
-      const contentBytes =
-        content.contentEncoding === "base64"
-          ? decodeBase64Bytes(content.content)
-          : new TextEncoder().encode(content.content);
-      return buildFilePreview({
-        contentBytes,
-        mimeType: normalizeFilePreviewMimeType(content.mimeType),
-        name: requiredPath.split("/").at(-1),
-        path: requiredPath,
-        url: buildProjectFileContentUrl(requiredProjectId, requiredPath, {
-          ...(routing.environmentId !== null
-            ? { environmentId: routing.environmentId }
-            : routing.hostId !== null
-              ? { hostId: routing.hostId }
-              : {}),
-        }),
-      });
+      );
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
@@ -327,5 +319,28 @@ export function useProjectCommands(
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     staleTime: 0,
+  });
+}
+
+export function useProjectAttachmentPreview(
+  projectId: string,
+  path: string,
+  name: string,
+  options?: QueryOptions,
+) {
+  return useQuery<FilePreview>({
+    queryKey: projectAttachmentPreviewQueryKey(projectId, path),
+    queryFn: ({ signal }) =>
+      loadFilePreview(
+        {
+          name,
+          path: name,
+          url: buildProjectAttachmentContentUrl(projectId, path),
+        },
+        signal,
+      ),
+    enabled: options?.enabled ?? true,
+    ...SESSION_STATIC_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }

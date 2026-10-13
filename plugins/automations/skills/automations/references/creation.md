@@ -13,8 +13,9 @@ Agent mode flags:
 --prompt <prompt>              Prompt to run when due
 --provider <id>                Provider ID
 --model <model>                Model ID
---reasoning <level>            none, low, medium, high, xhigh, ultracode, max, or ultra
---service-tier <tier>          default or fast (update also accepts none to clear)
+--reasoning <level>            Level id the model lists, such as low, medium, or high
+--service-tier <tier>          Literal tier id the provider lists, including none
+--clear-service-tier           Clear the tier; cannot combine with --service-tier
 --permission-mode <mode>       accept-edits, auto, or full
 --target-thread <id>           Reuse/re-prompt an existing thread
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path
@@ -33,6 +34,8 @@ Script mode flags:
 --script-file <path>           Copy script content from a file on a host
 --host <name-or-id>            Host that owns --script-file (default: thread host or server)
 --interpreter <name>           bash, sh, node, or python3
---timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
+--timeout <duration>           Bare number of milliseconds or a duration with a
+                               unit (90s, 5m); default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
+--working-directory <value>    automation-storage, project, or an absolute server-host path
 ```

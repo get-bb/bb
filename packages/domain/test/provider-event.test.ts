@@ -84,33 +84,6 @@ describe("provider event schema", () => {
     });
   });
 
-  it("rejects old clientRequestSequence event shapes", () => {
-    expect(() =>
-      threadEventSchema.parse({
-        type: "turn/input/accepted",
-        threadId: "thr_123",
-        providerThreadId: "provider-thread-123",
-        clientRequestSequence: 1,
-        scope: turnScope("turn_123"),
-      }),
-    ).toThrow();
-
-    expect(() =>
-      threadEventSchema.parse({
-        type: "item/started",
-        threadId: "thr_123",
-        providerThreadId: "provider-thread-123",
-        item: {
-          type: "userMessage",
-          id: "item_123",
-          content: [{ type: "text", text: "hello" }],
-          clientRequestSequence: 1,
-        },
-        scope: turnScope("turn_123"),
-      }),
-    ).toThrow();
-  });
-
   it("allows provider turn starts to carry parent tool call ids", () => {
     expect(
       threadEventSchema.parse({

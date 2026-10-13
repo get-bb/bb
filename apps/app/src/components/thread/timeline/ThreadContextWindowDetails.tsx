@@ -129,7 +129,7 @@ function CategoryRow({
     </>
   );
   const summaryClassName = cn(
-    "flex w-full items-center gap-2 py-1.5 text-xs max-md:text-sm",
+    "flex w-full items-center gap-2 py-1.5 text-xs max-md:pointer-coarse:text-sm",
     category.kind === "used" ? "text-foreground" : "text-muted-foreground",
   );
 
@@ -155,7 +155,7 @@ function CategoryRow({
         <ContextWindowReveal id={contentId} open={expanded}>
           <div
             className={cn(
-              "space-y-1 pb-2 pl-5 pr-5 text-xs text-muted-foreground max-md:text-sm",
+              "space-y-1 pb-2 pl-5 pr-5 text-xs text-muted-foreground max-md:pointer-coarse:text-sm",
               inWindow && "pr-[4.75rem] @max-[20rem]/context-window:pr-5",
             )}
           >

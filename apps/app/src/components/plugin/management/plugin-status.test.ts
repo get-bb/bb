@@ -148,15 +148,14 @@ describe("pluginRuntimeStatusPresentation", () => {
     ).toMatchObject({
       label: "Failed",
       condition: "The plugin couldn't start.",
-      recovery: "Fix the plugin, then reload it.",
+      recovery: "Fix the plugin, then reload.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "error" })),
     ).toMatchObject({
       label: "Failed",
       condition: "The plugin couldn't start.",
-      recovery:
-        "Reload the plugin. If it still fails, remove it and install it again.",
+      recovery: "Try reloading it.",
     });
   });
 
@@ -173,12 +172,12 @@ describe("pluginRuntimeStatusPresentation", () => {
         ),
       ),
     ).toMatchObject({
-      recovery: "Restart bb. If the files are still missing, reinstall bb.",
+      recovery: "Update or reinstall bb.",
     });
     expect(
       pluginRuntimeStatusPresentation(plugin({}, { status: "missing" })),
     ).toMatchObject({
-      recovery: "Remove the plugin, then install it again from its source.",
+      recovery: "Reinstall from its source.",
     });
   });
 
@@ -189,9 +188,69 @@ describe("pluginRuntimeStatusPresentation", () => {
       ),
     ).toMatchObject({
       label: "Needs configuration",
-      condition: "Required settings are incomplete.",
-      recovery:
-        "Complete the Configuration section; bb reloads the plugin after you save.",
+      condition: "Complete the required settings.",
+      recovery: "",
     });
+  });
+  it("recovers missing local files without deleting the installation", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "missing",
+            source: "path:/plugins/linear",
+          },
+        ),
+      ),
+    ).toMatchObject({ recovery: "Restore the folder, then reload." });
+  });
+
+  it("directs configured path failures to the path instead of reinstalling", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "error",
+            statusDetail:
+              "Configured directory /workspace/traces does not exist",
+          },
+        ),
+      ),
+    ).toMatchObject({
+      condition: "Configured folder unavailable.",
+      recovery: "Check the path, then reload.",
+    });
+  });
+
+  it("keeps a running instance quiet after reload failure or a service restart", () => {
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "running",
+            statusDetail: "Reload failed; previous instance retained",
+          },
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      pluginRuntimeStatusPresentation(
+        plugin(
+          {},
+          {
+            status: "running",
+            services: [
+              {
+                name: "sync",
+                state: "backoff",
+              },
+            ],
+          },
+        ),
+      ),
+    ).toBeNull();
   });
 });

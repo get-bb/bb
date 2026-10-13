@@ -7,9 +7,9 @@
     "rootDir": ".",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["@cloudflare/workers-types"],
+    "types": ["@cloudflare/workers-types", "node"],
     "lib": ["ES2022"],
     "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

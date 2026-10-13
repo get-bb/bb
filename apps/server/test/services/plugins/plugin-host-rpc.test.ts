@@ -15,6 +15,41 @@ const contract = defineRpcContract({
 });
 
 describe("callPluginHostRpc", () => {
+  it("forwards a 20MB recording through the existing daemon wire contract", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const audioBase64 = Buffer.alloc(20 * 1024 * 1024).toString("base64");
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: async (request) => {
+          if (request.command.type !== "plugin.host.call")
+            throw new Error("Unexpected RPC");
+          expect(request.command.input).toEqual({ id: audioBase64 });
+          return { ok: true, result: { output: { path: "accepted" } } };
+        },
+      });
+      const args = {
+        pluginId: "environment-test",
+        contract,
+        method: "create",
+        input: { id: audioBase64 },
+        hostId: host.id,
+        artifact: stubHostArtifact("environment-test"),
+      };
+      await expect(callPluginHostRpc(harness.deps, args)).resolves.toEqual({
+        path: "accepted",
+      });
+      await expect(
+        callPluginHostRpc(harness.deps, {
+          ...args,
+          input: { id: "x".repeat(32 * 1024 * 1024) },
+        }),
+      ).rejects.toThrow("exceeds 33554432 bytes");
+      expect(responder.requests).toHaveLength(1);
+    });
+  });
+
   it("waits for host execution to stop after forwarding cancellation", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);

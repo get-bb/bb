@@ -7,10 +7,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { appToast, iconForTone } from "@/components/ui/app-toast";
-import { copyTextToClipboard } from "@/lib/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
   clearNotifications,
@@ -28,8 +29,10 @@ interface NotificationRowProps {
   now: number;
 }
 
-const ROW_ACTION_CLASS =
-  "rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/notification:opacity-100";
+const ROW_ACTION_CLASS = cn(
+  "rounded-sm p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/notification:opacity-100",
+  HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
+);
 
 function NotificationCopyButton({
   bodyRef,
@@ -56,7 +59,7 @@ function NotificationCopyButton({
         if (text.length === 0) {
           return;
         }
-        void copyTextToClipboard(text).then((success) => {
+        void copyToClipboard({ text }).then((success) => {
           if (success) {
             setCopied(true);
           }

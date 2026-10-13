@@ -21,7 +21,10 @@ const baseExtensionUiRequestSchema = z.object({
     (value) => value.trim().length > 0,
     "Extension UI title cannot be blank",
   ),
-  options: z.array(boundedText(512)).max(PI_EXTENSION_UI_MAX_OPTIONS).optional(),
+  options: z
+    .array(boundedText(512))
+    .max(PI_EXTENSION_UI_MAX_OPTIONS)
+    .optional(),
   message: boundedText(8192).optional(),
   placeholder: boundedText(1024).optional(),
   prefill: boundedText(65536).optional(),
@@ -29,7 +32,8 @@ const baseExtensionUiRequestSchema = z.object({
 });
 
 export const piExtensionUiRequestSchema = baseExtensionUiRequestSchema.refine(
-  (request) => request.method !== "select" || (request.options?.length ?? 0) > 0,
+  (request) =>
+    request.method !== "select" || (request.options?.length ?? 0) > 0,
   { message: "select requests require a non-empty options list" },
 );
 

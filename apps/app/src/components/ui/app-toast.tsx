@@ -5,7 +5,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { toast as sonnerToast, type Action, type ExternalToast } from "sonner";
+import type { Action, ExternalToast } from "sonner";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -13,6 +13,7 @@ import {
   openNotificationCenter,
   recordNotification,
 } from "@/lib/notifications/notification-store";
+import { withSonnerToast } from "./app-toast-runtime";
 
 export type AppToastTone =
   | "message"
@@ -102,7 +103,7 @@ function dismissToast(id: number | string | undefined): void {
   if (id === undefined) {
     return;
   }
-  sonnerToast.dismiss(id);
+  withSonnerToast((sonnerToast) => sonnerToast.dismiss(id));
 }
 
 function AppToastActionButton({
@@ -271,6 +272,8 @@ export function AppToastContent({
   );
 }
 
+let nextToastId = 0;
+
 function showAppToast({
   options,
   title,
@@ -298,26 +301,31 @@ function showAppToast({
           createdAt: Date.now(),
         });
 
-  return sonnerToast.custom(
-    (id) => (
-      <AppToastContent
-        action={action}
-        cancel={cancel}
-        description={description}
-        dismissible={dismissible}
-        id={id}
-        notificationId={notificationId}
-        title={title}
-        tone={tone}
-      />
+  const toastId = sonnerOptions.id ?? `app-toast-${(nextToastId += 1)}`;
+  withSonnerToast((sonnerToast) =>
+    sonnerToast.custom(
+      (id) => (
+        <AppToastContent
+          action={action}
+          cancel={cancel}
+          description={description}
+          dismissible={dismissible}
+          id={id}
+          notificationId={notificationId}
+          title={title}
+          tone={tone}
+        />
+      ),
+      {
+        ...sonnerOptions,
+        id: toastId,
+        className: cn("bb-app-toast", className),
+        dismissible,
+        duration: nextDuration,
+      },
     ),
-    {
-      ...sonnerOptions,
-      className: cn("bb-app-toast", className),
-      dismissible,
-      duration: nextDuration,
-    },
   );
+  return toastId;
 }
 
 const showMessageToast: AppToastMethod = (title, options) =>
@@ -335,8 +343,12 @@ const showErrorToast: AppToastMethod = (title, options) =>
 const showLoadingToast: AppToastMethod = (title, options) =>
   showAppToast({ options, title, tone: "loading" });
 
+function dismissAppToast(id?: number | string): void {
+  withSonnerToast((sonnerToast) => sonnerToast.dismiss(id));
+}
+
 export const appToast = {
-  dismiss: sonnerToast.dismiss,
+  dismiss: dismissAppToast,
   error: showErrorToast,
   loading: showLoadingToast,
   message: showMessageToast,

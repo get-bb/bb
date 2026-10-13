@@ -2,7 +2,6 @@ import type { WorkspaceStatus } from "@bb/domain";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { FilePathLink } from "@/components/ui/file-path-link.js";
-import { TruncatedList } from "@/components/ui/truncated-list.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { formatWorkspaceFileStatus } from "@/components/workspace/workspace-change-summary";
 
@@ -15,7 +14,6 @@ interface WorkspaceChangesListProps {
   files: readonly WorkspaceChangedFile[];
   className?: string;
   onFileClick?: WorkspaceChangedFileClickHandler;
-  limit?: number;
 }
 
 interface WorkspaceChangesListItemProps {
@@ -86,23 +84,9 @@ export function WorkspaceChangesList({
   files,
   className = "max-h-32",
   onFileClick,
-  limit,
 }: WorkspaceChangesListProps) {
   if (!files || files.length === 0) {
     return <EmptyState message="No changed files detected." />;
-  }
-
-  if (limit !== undefined) {
-    return (
-      <TruncatedList
-        items={files}
-        getKey={fileKey}
-        limit={limit}
-        renderItem={(file) => (
-          <WorkspaceChangesListItem file={file} onFileClick={onFileClick} />
-        )}
-      />
-    );
   }
 
   const visibleFiles =

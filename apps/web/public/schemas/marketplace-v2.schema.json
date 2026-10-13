@@ -40,7 +40,6 @@
     },
     "plugins": {
       "type": "array",
-      "maxItems": 256,
       "$comment": "Each plugin id must be unique.",
       "items": {
         "$ref": "#/$defs/entry"

@@ -1,5 +1,7 @@
 import { loadCliConfig, type CliConfig } from "@bb/config/cli";
 import { toOptionalString } from "@bb/config/strings";
+import { CliUsageError } from "./cli-usage-error.js";
+import { missingThreadIdHint } from "./context-hints.js";
 
 const VALID_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -92,7 +94,11 @@ export function requireThreadIdOrSelf(
   if (positionalId) {
     return validateId(positionalId, "<threadId> argument");
   }
-  throw new Error("Missing thread ID. Pass <threadId> or use --self.");
+  throw new CliUsageError({
+    code: "missing_required",
+    hint: missingThreadIdHint(),
+    message: "Missing thread ID. Pass <threadId> or use --self.",
+  });
 }
 
 export interface ContextSnapshot {

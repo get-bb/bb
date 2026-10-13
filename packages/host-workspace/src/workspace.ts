@@ -7,7 +7,6 @@ import type {
   WorkspaceFileStatusKind,
   WorkspaceStatus,
 } from "@bb/domain";
-import os from "node:os";
 import path from "node:path";
 import { pathExists } from "@bb/process-utils";
 import {
@@ -421,8 +420,9 @@ async function readEmptyTreeSha(
   workspacePath: string,
   options: Pick<RunGitOptions, "shellPath" | "timeoutMs"> = {},
 ): Promise<string> {
-  const emptyTree = await runGit(["hash-object", "-t", "tree", os.devNull], {
+  const emptyTree = await runGit(["hash-object", "-t", "tree", "--stdin"], {
     cwd: workspacePath,
+    input: "",
     ...options,
   });
   const emptyTreeSha = emptyTree.stdout.trim();

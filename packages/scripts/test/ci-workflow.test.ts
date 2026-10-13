@@ -25,7 +25,13 @@ it("limits concurrent Turbo test tasks to the CI runner CPU count", () => {
   expect(testStep).toContain("--concurrency=4");
 });
 
-it("rejects a pnpm version that disagrees with the root manifest", () => {
+it("rejects a pnpm version that disagrees with the root manifest", ({
+  skip,
+}) => {
+  skip(
+    process.platform === "win32",
+    "install-pnpm.sh runs only on Linux and macOS CI runners",
+  );
   const fixture = mkdtempSync(join(tmpdir(), "bb-pnpm-version-"));
   onTestFinished(() => rmSync(fixture, { force: true, recursive: true }));
   const fakeBin = resolve(fixture, "bin");

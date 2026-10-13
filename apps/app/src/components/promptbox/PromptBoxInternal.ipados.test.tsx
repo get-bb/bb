@@ -98,7 +98,7 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
               onQueryChange: vi.fn(),
             },
             command: {
-              trigger: "/",
+              triggers: ["/"],
               suggestions: [
                 {
                   kind: "command",

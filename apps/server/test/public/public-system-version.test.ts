@@ -19,6 +19,8 @@ describe("GET /api/v1/system/version", () => {
         appVersionService: createStubAppVersionService({
           currentVersion: "0.0.5",
           latestVersion: null,
+          currentCommit: null,
+          installKind: "npm",
           source: "npm",
           updateAvailable: false,
           isDevelopment: true,

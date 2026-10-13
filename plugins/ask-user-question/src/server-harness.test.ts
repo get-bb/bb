@@ -85,6 +85,20 @@ describe("provider gating", () => {
     },
   );
 
+  it.each(["codex", "pi", "acp-cursor"])(
+    "does not prescribe provider-specific plan tools to %s",
+    async (providerId) => {
+      const host = createHost();
+      const resolved = await host.harness.resolveAgentConfiguration(
+        configurationContext(providerId),
+      );
+      expect(resolved.tools).toHaveLength(1);
+      expect(resolved.tools[0]?.description).not.toMatch(
+        /EnterPlanMode|ExitPlanMode/,
+      );
+    },
+  );
+
   it("advertises multiSelect as optional and defaults it during execution", async () => {
     const host = createHost();
     const resolved = await host.harness.resolveAgentConfiguration(
@@ -209,6 +223,27 @@ describe("asking a question", () => {
       allowFreeText: true,
     });
 
+    expect(pending.presentation).toEqual({
+      label: { pending: "Asking a question", completed: "Asked" },
+      icon: { glyph: "MessageQuestion" },
+    });
+    expect(
+      await pending.describeSubmission?.({
+        answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
+      }),
+    ).toMatchObject({
+      title:
+        "Answered Which database should we use? — Postgres (Recommended); with pgbouncer",
+      detail:
+        "- Which database should we use? — Postgres (Recommended); with pgbouncer",
+      payload: expect.objectContaining({
+        answers: {
+          "Which database should we use?":
+            "Postgres (Recommended); with pgbouncer",
+        },
+      }),
+    });
+
     host.harness.submitInteraction(pending.id, {
       answers: { q0: { selected: ["q0o0"], freeText: "with pgbouncer" } },
     });
@@ -221,6 +256,28 @@ describe("asking a question", () => {
       preview: "CREATE TABLE users (id uuid primary key);",
       notes: "with pgbouncer",
     });
+  });
+
+  it("keeps a question open for the configured timeout", async () => {
+    const host = createHost();
+    const first = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(30 * 60 * 1000);
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await first;
+
+    await host.harness.setSettings({ questionTimeout: "7 days" });
+    const second = host.harness.callAgentTool(TOOL_NAME, { questions });
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    expect(host.harness.pendingInteractions[0]!.timeoutMs).toBe(
+      7 * 24 * 60 * 60 * 1000,
+    );
+    host.harness.cancelInteraction(host.harness.pendingInteractions[0]!.id);
+    await second;
   });
 
   it("tells the model to carry on when the user dismisses the question", async () => {
@@ -251,20 +308,18 @@ describe("asking a question", () => {
     expect(await resultText(result)).toContain("no answers");
   });
 
-  it("explains the collision when a second question races the first", async () => {
+  it("returns the reason when the question cannot be shown", async () => {
     const host = createFakePluginHost({ pluginId: "ask-user-question" });
     host.bb.ui.requestInput = () =>
-      Promise.reject(
-        new Error("Thread thr-test is already awaiting user interaction"),
-      );
+      Promise.reject(new Error("Thread does not exist"));
     plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
 
     const result = await host.harness.callAgentTool(TOOL_NAME, { questions });
 
     expect(result).toMatchObject({ isError: true });
     const text = await resultText(result);
-    expect(text).toContain("already awaiting user interaction");
-    expect(text).toContain("Only one prompt can await the user at a time");
+    expect(text).toContain("Thread does not exist");
+    expect(text).toContain("Continue with your best judgement");
   });
 
   it("rejects oversized previews before opening an interaction", async () => {

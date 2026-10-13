@@ -21,8 +21,8 @@ className?, leadingContent?, messageActions? }` —
   `leadingContent` is a `ReactNode` rendered above the conversation,
   scrolling with it; `messageActions` is a list of
   `ThreadChatMessageAction` entries `{ id, title, icon?, roles?, run }`
-  rendered in this instance's per-message action bar after the native and
-  slot-registered actions — `roles` limits the action to `"user"` and/or
+  rendered in this instance's per-message action bar after the native
+  actions (slot-registered `messageAction`s do not appear in `ThreadChat`) — `roles` limits the action to `"user"` and/or
   `"assistant"` messages (omitted = both), and `run(message)` receives the
   same narrow `ThreadChatMessageReference` as the `messageAction` slot;
   errors from `run` are contained and logged, never breaking the timeline.
@@ -41,7 +41,10 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   bb's composers. Provider switches wait for the target provider's verified
   catalog, then emit one coherent value with its default model and resolved
   reasoning without closing the picker; `serviceTier` is retained only when
-  that provider supports it.
+  that provider supports it. Tier ids are provider-defined strings
+  (`"default"`, `"fast"`, Codex `"ultrafast"`); the picker offers the tiers
+  the selected model reports and emits `"default"` when the value names a tier
+  that model does not offer.
   Failed or empty catalogs leave `value` unchanged. Alias it on import for JSX:
 
   ```tsx
@@ -63,7 +66,7 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   `align` optionally sets the popover to `"start"`, `"center"`, or `"end"`;
   it defaults to `"start"`.
 
-  Omit `routing` for primary-machine discovery. Route by host for a selected
+  Omit `routing` for server-machine discovery. Route by host for a selected
   machine or by environment when the catalog depends on an existing workspace.
   This is intended for settings and other compact forms that need an execution
   preference without a composer; do not fetch and reconcile provider catalogs
@@ -272,12 +275,13 @@ className?, draftKey? }` — the `default*` props are SEEDS, not controlled
   submit it calls `onSubmit(request)` with a JSON-serializable
   `NewThreadRequest`
   `{ projectId, providerId, model, reasoningLevel, permissionMode,
-serviceTier?, executionInputSources, environment, input }`. Forward it
-  verbatim to your backend rpc and hand it to `bb.sdk.threads.spawn`,
-  adding `sectionId` / `parentThreadId` / `title` / `visibility` yourself —
-  `spawn` fills in `origin: "plugin"` and `originPluginId`, so threads
-  created this way stay attributed to your plugin. The draft clears when
-  `onSubmit` resolves and is KEPT if it throws, so a failed create never
+serviceTier?, executionInputSources, environment, input }`. Hand it to
+  `useSdk().threads.spawn` from the frontend (or forward it verbatim to your
+  backend rpc and `bb.sdk.threads.spawn` when the create needs server-side
+  work), adding `sectionId` / `parentThreadId` / `title` / `visibility`
+  yourself — both clients fill in `origin: "plugin"` and `originPluginId`, so
+  threads created this way stay attributed to your plugin. The draft clears
+  when `onSubmit` resolves and is KEPT if it throws, so a failed create never
   loses what the user typed.
 
   Alias it on import — JSX reads a lowercase-initial name as an intrinsic
@@ -285,30 +289,37 @@ serviceTier?, executionInputSources, environment, input }`. Forward it
 
   ```tsx
   // app.tsx
-  import { experimental_NewThreadComposer as NewThreadComposer } from "@get-bb/plugin-sdk/app";
+  import {
+    experimental_NewThreadComposer as NewThreadComposer,
+    useSdk,
+  } from "@get-bb/plugin-sdk/app";
 
+  const sdk = useSdk();
   <NewThreadComposer
     defaultProjectId={projectId}
     onSubmit={async (request) => {
-      await rpc.call("createThread", { request, sectionId });
+      await sdk.threads.spawn({
+        ...request,
+        ...(sectionId ? { sectionId } : {}),
+      });
     }}
   />;
-  ```
-
-  ```ts create-thread-handler
-  // server.ts
-  async createThread({ request, sectionId }) {
-    const thread = await bb.sdk.threads.spawn({
-      ...request,
-      ...(sectionId ? { sectionId } : {}),
-    });
-    return { threadId: thread.id };
-  }
   ```
 
   Experimental: the `experimental_` prefix will drop once the entry in
   `docs/api_to_audit.md` is audited. Give it real width — the control row
   does not fit in a ~420px column.
+- `experimental_VoiceInputTextarea` — a controlled textarea with bb's voice
+  input (the prompt box's microphone preference, transcription service, and
+  errors). Props: `value`, `onValueChange(value)`, optional
+  `onVoiceInputActiveChange(active)`, and any other textarea attribute,
+  including `ref` and `className`, which reach the `<textarea>`. Style the
+  textarea yourself; bb adds bottom padding and the microphone controls when
+  voice input is supported and renders a plain textarea otherwise (also in
+  `renderSlot`). Transcripts append to `value` and are never submitted. Hold
+  submission while `onVoiceInputActiveChange` reports `true`. The registry's
+  `voice-input-textarea` item re-exports it, and `question-form` uses it for
+  free-text answers. Alias it on import like `experimental_NewThreadComposer`.
 
 
 ## Shared app and provider icons
@@ -320,6 +331,13 @@ render the name with `experimental_Icon`. Duplicate names within a plugin reject
 setup. Across plugins, the first plugin id in lexical order wins and bb warns.
 Registration returns `void`; reload replaces registrations and unload restores
 the next owner or built-in. A rejected setup preserves the previous generation.
+
+A registered name is a BB icon name everywhere one is accepted, not only in
+`experimental_Icon`: every host icon field resolves a registration first, then
+a built-in, then a manifest-declared `"<pluginId>/<name>"` glyph. Register for
+a component, colour, or to override a built-in; declare in the manifest for
+icons a server declaration must validate or that must work with no frontend
+bundle.
 
 `experimental_Icon` accepts `name`, optional `fallback` (default `Zap`),
 `className`, `style`, `aria-label`, and `aria-hidden`. Registered artwork receives

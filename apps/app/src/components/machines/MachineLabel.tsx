@@ -1,5 +1,5 @@
 import type { Host } from "@bb/domain";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon, type BuiltinIconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   MachineProviderIcon,
@@ -27,7 +27,7 @@ export function MachineIcon({
         : {
             id: host.machineProviderId,
             displayName: host.machineProviderId,
-            icon: "Server",
+            icon: "ComputerCloud" satisfies BuiltinIconName,
             logoUrl: null,
           }
       : null;

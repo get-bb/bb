@@ -126,35 +126,12 @@ describe("workflow QuickJS runtime", () => {
     expect(phase).toHaveBeenCalledWith("Inspect");
   });
 
-  it("rejects conflicting aliases and invalid phase values at runtime", async () => {
-    const capabilities: WorkflowCapabilities = {
-      agent: async () => null,
-      log: vi.fn(),
-      phase: vi.fn(),
-    };
-
-    await expect(
-      executeWorkflowScript({
-        args: null,
-        body: 'return await agent("x", { title: "A", label: "B" });',
-        capabilities,
-      }),
-    ).rejects.toThrow("must match");
-    await expect(
-      executeWorkflowScript({
-        args: null,
-        body: `return await agent("x", {
-          outputSchema: { type: "string" },
-          schema: { type: "number" },
-        });`,
-        capabilities,
-      }),
-    ).rejects.toThrow("must be structurally identical");
+  it("rejects invalid phase values at runtime", async () => {
     await expect(
       executeWorkflowScript({
         args: null,
         body: 'phase(""); return null;',
-        capabilities,
+        capabilities: { agent: async () => null, log: vi.fn(), phase: vi.fn() },
       }),
     ).rejects.toThrow("phase title must be a non-empty string");
   });
@@ -279,41 +256,6 @@ describe("workflow QuickJS runtime", () => {
       date: "undefined",
       arrowConstructor: true,
       asyncConstructor: true,
-    });
-  });
-
-  it("provides deterministic parallel, streaming pipeline, and budget helpers", async () => {
-    const result = await executeWorkflowScript({
-      args: null,
-      body: `
-        const values = await parallel([
-          () => agent("one"),
-          () => agent("two"),
-        ]);
-        const piped = await pipeline(values,
-          (text, original, index) => text + ":" + original + ":" + index,
-          (text) => text.toUpperCase(),
-        );
-        return { piped, budget: budget() };
-      `,
-      capabilities: {
-        agent: async (prompt) => prompt,
-        log: vi.fn(),
-        phase: vi.fn(),
-      },
-      limits: { maxAgentCalls: 7, maxConcurrentAgents: 3 },
-    });
-
-    expect(result).toEqual({
-      piped: ["ONE:ONE:0", "TWO:TWO:1"],
-      budget: {
-        agentCalls: 2,
-        activeAgents: 0,
-        queuedAgents: 0,
-        maxAgentCalls: 7,
-        maxConcurrentAgents: 3,
-        totalTokens: null,
-      },
     });
   });
 
@@ -714,54 +656,6 @@ describe("workflow QuickJS runtime", () => {
     expect(peak).toBe(2);
   });
 
-  it("reports parent calls from budget inside a child VM", async () => {
-    const capabilities: WorkflowCapabilities = {
-      agent: async (prompt) => prompt,
-      workflow: (_reference, childArgs, context) =>
-        executeWorkflowScript({
-          args: childArgs,
-          body: `
-            const before = budget();
-            await agent("child");
-            return { before, after: budget() };
-          `,
-          capabilities,
-          ...context,
-        }),
-      log: vi.fn(),
-      phase: vi.fn(),
-    };
-
-    const result = await executeWorkflowScript({
-      args: null,
-      body: `
-        await agent("parent");
-        return await workflow({ name: "child" });
-      `,
-      capabilities,
-      limits: { maxAgentCalls: 5, maxConcurrentAgents: 1 },
-    });
-
-    expect(result).toEqual({
-      before: {
-        agentCalls: 1,
-        activeAgents: 0,
-        queuedAgents: 0,
-        maxAgentCalls: 5,
-        maxConcurrentAgents: 1,
-        totalTokens: null,
-      },
-      after: {
-        agentCalls: 2,
-        activeAgents: 0,
-        queuedAgents: 0,
-        maxAgentCalls: 5,
-        maxConcurrentAgents: 1,
-        totalTokens: null,
-      },
-    });
-  });
-
   it("accepts native workflow references and rejects invalid or exotic ones", async () => {
     const references: unknown[] = [];
     const result = await executeWorkflowScript({
@@ -1024,18 +918,5 @@ describe("workflow QuickJS runtime", () => {
     expect(result).toBe("done");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fireAndForgetAborted).toBe(true);
-  });
-
-  it("blocks computed constructor access at the runtime boundary", async () => {
-    const result = await executeWorkflowScript({
-      args: null,
-      body: `
-        try {
-          return (() => {})["con" + "structor"]("return 1")();
-        } catch { return "blocked"; }
-      `,
-      capabilities: { agent: async () => null, log: vi.fn(), phase: vi.fn() },
-    });
-    expect(result).toBe("blocked");
   });
 });

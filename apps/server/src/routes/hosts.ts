@@ -1,5 +1,11 @@
+import { joinHostPathSegments } from "../services/lib/host-path.js";
 import { serverAccess } from "../services/machines/server-access.js";
-import { getNonDestroyedHost, updateHost } from "@bb/db";
+import {
+  getLatestSessionForHost,
+  getNonDestroyedHost,
+  getPublicProjectByLocalPathSource,
+  updateHost,
+} from "@bb/db";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -27,6 +33,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import {
   assertUsableHostId,
+  isServerMachineHost,
   resolvePrimaryHostId,
 } from "../services/hosts/primary-host.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
@@ -34,7 +41,10 @@ import {
   callHostOnlineRpcForWork,
   callHostRetryableOnlineRpc,
 } from "../services/hosts/online-rpc.js";
-import { handleHostRemoved } from "../internal/session-owner-side-effects.js";
+import {
+  handleHostRemoved,
+  settleRemovedHostWork,
+} from "../internal/session-owner-side-effects.js";
 import {
   submitMachine,
   requestMachineRemoval,
@@ -46,6 +56,12 @@ import {
 } from "../services/machines/provider-orchestration.js";
 import { getMachineEnrollmentService } from "../services/machines/machine-services.js";
 import { manualHostCommand } from "../services/machines/manual-provider.js";
+import { prepareReconnect } from "../services/machines/reconnect.js";
+import { emitPluginHostDeleted } from "../services/plugins/plugin-thread-events.js";
+
+const DISCOVERED_REPOS_MAX_DEPTH = 5;
+const DISCOVERED_REPOS_SINCE_DAYS = 30;
+const DISCOVERED_REPOS_LIMIT = 10;
 
 const PROVIDER_CLI_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
 const FOLDER_PICKER_TIMEOUT_MS = 10 * 60 * 1000;
@@ -72,6 +88,16 @@ function assertHostManagementAllowed(context: GateAuthHeaderReader): void {
   }
 }
 
+function assertNotServerMachine(deps: AppDeps, hostId: string): void {
+  if (isServerMachineHost(deps, hostId)) {
+    throw new ApiError(
+      400,
+      "server_host_lifecycle_refused",
+      "The server machine can't be suspended or resumed. Move the server to another machine first.",
+    );
+  }
+}
+
 async function revokeConnectMachineCredential(
   deps: AppDeps,
   plugins: PluginService,
@@ -91,6 +117,7 @@ async function revokeConnectMachineCredential(
       "revokeMachine",
       handler.value,
       { machineId },
+      { kind: "client" },
     );
     if (!result.ok) throw new Error(result.error.message);
   } catch (error) {
@@ -117,7 +144,7 @@ export function registerHostRoutes(
     return context.json(await submitMachine(deps, payload), 201);
   });
 
-  post(routes.createJoinCode, async (context, payload) => {
+  post(routes.createJoinCode, async (context) => {
     assertHostManagementAllowed(context);
     const issued = await issueHostEnrollKey(deps, {
       enrollSource: "public-multi-machine",
@@ -136,17 +163,24 @@ export function registerHostRoutes(
     context.json(
       listPublicHostsWithStatus(deps, {
         includeCreating: query.includeCreating === "true",
+        type: query.type,
       }),
     ),
   );
 
-  get(routes.get, (context) =>
-    context.json({
-      ...requireNonDestroyedHostWithStatus(deps, context.req.param("id")),
-      connectMachineId: requireMutableHost(deps, context.req.param("id"))
-        .connectMachineId,
-    }),
-  );
+  get(routes.get, (context) => {
+    const hostId = context.req.param("id");
+    const host = requireNonDestroyedHostWithStatus(deps, hostId);
+    const session = getLatestSessionForHost(deps.db, { hostId });
+    return context.json({
+      ...host,
+      connectMachineId: requireMutableHost(deps, hostId).connectMachineId,
+      threadStorageRootPath:
+        session === null
+          ? null
+          : joinHostPathSegments(session.dataDir, "thread-storage"),
+    });
+  });
 
   get(routes.enrollmentCommand, async (context) => {
     assertHostManagementAllowed(context);
@@ -157,6 +191,25 @@ export function registerHostRoutes(
         context.req.param("id"),
       ),
     );
+  });
+
+  post(routes.reconnect, async (context) => {
+    assertHostManagementAllowed(context);
+    const hostId = context.req.param("id");
+    const host = requireMutableHost(deps, hostId);
+    if (resolvePrimaryHostId(deps) === hostId || host.phase !== "active")
+      throw new ApiError(
+        409,
+        "machine_reconnect_unavailable",
+        "Only active machines other than the server's own can be reconnected",
+      );
+    if (deps.hub.hasDaemonForHost(hostId))
+      throw new ApiError(
+        409,
+        "machine_reconnect_not_needed",
+        "Machine is connected and doesn't need reconnecting",
+      );
+    return context.json(await prepareReconnect(deps, hostId), 201);
   });
 
   patch(routes.update, (context, payload) => {
@@ -219,6 +272,7 @@ export function registerHostRoutes(
   post(routes.suspend, (context) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
+    assertNotServerMachine(deps, hostId);
     startMachineSuspension(deps, hostId);
     return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
   });
@@ -226,6 +280,7 @@ export function registerHostRoutes(
   post(routes.resume, (context) => {
     assertHostManagementAllowed(context);
     const hostId = context.req.param("id");
+    assertNotServerMachine(deps, hostId);
     startMachineResume(deps, hostId);
     return context.json(requireNonDestroyedHostWithStatus(deps, hostId), 202);
   });
@@ -249,13 +304,8 @@ export function registerHostRoutes(
     }
 
     if (host.machineProviderId !== null) {
-      if (!requestMachineRemoval(deps, hostId)) {
-        throw new ApiError(
-          409,
-          "machine_has_live_threads",
-          "Archive or delete every thread on this machine before removing it",
-        );
-      }
+      requestMachineRemoval(deps, hostId);
+      settleRemovedHostWork(deps, { hostId });
       await sweepProviderMachine(deps, hostId);
       return context.json({ ok: true });
     }
@@ -268,8 +318,12 @@ export function registerHostRoutes(
     if (sessionId) {
       handleHostRemoved(deps, { hostId, sessionId });
     }
-    updateHost(deps.db, deps.hub, hostId, { destroyedAt: Date.now() });
+    settleRemovedHostWork(deps, { hostId });
+    const destroyed = updateHost(deps.db, deps.hub, hostId, {
+      destroyedAt: Date.now(),
+    });
     deps.lifecycleDedupers.providerModelCatalogs.forgetHost(deps, hostId);
+    if (destroyed !== null) emitPluginHostDeleted(destroyed);
     if (host.connectMachineId !== null) {
       await revokeConnectMachineCredential(
         deps,
@@ -278,6 +332,33 @@ export function registerHostRoutes(
       );
     }
     return context.json({ ok: true });
+  });
+
+  get(routes.discoveredRepos, async (context) => {
+    const hostId = context.req.param("id");
+    assertUsableHostId(deps, { hostId });
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "host.discover_repos",
+        maxDepth: DISCOVERED_REPOS_MAX_DEPTH,
+        sinceDays: DISCOVERED_REPOS_SINCE_DAYS,
+        limit: DISCOVERED_REPOS_LIMIT,
+      },
+    });
+    return context.json({
+      repos: result.repos.map((repo) => ({
+        ...repo,
+        projectId:
+          getPublicProjectByLocalPathSource(deps.db, {
+            type: "local_path",
+            hostId,
+            path: repo.path,
+          })?.id ?? null,
+      })),
+      truncated: result.truncated,
+    });
   });
 
   get(routes.directory, async (context, query) => {

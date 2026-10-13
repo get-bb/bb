@@ -22,7 +22,7 @@ export function validateToolInput(input: ToolInput): string | null {
 
 export const MAX_INTERACTION_PAYLOAD_BYTES = 60 * 1024;
 
-export class PreviewTooLargeError extends Error {
+class PreviewTooLargeError extends Error {
   constructor(byteLength: number) {
     super(
       `The questions are too large to display (${byteLength} bytes of option previews, limit ${MAX_INTERACTION_PAYLOAD_BYTES}). Shorten or drop the option previews and call the tool again.`,
@@ -76,6 +76,25 @@ export function assertInteractionPayloadFits(
   if (byteLength > MAX_INTERACTION_PAYLOAD_BYTES) {
     throw new PreviewTooLargeError(byteLength);
   }
+}
+
+export function describeAnswers(
+  payload: InteractionPayload,
+  result: ToolResult,
+): { title: string; detail: string; payload: ToolResult } {
+  const entries = Object.entries(result.answers);
+  const [first] = payload.questions;
+  const title =
+    payload.questions.length === 1 && first && entries[0]
+      ? `Answered ${first.prompt} — ${entries[0][1]}`
+      : `Answered ${entries.length} of ${payload.questions.length} questions`;
+  const detail = payload.questions
+    .map((question) => {
+      const answer = result.answers[question.prompt];
+      return `- ${question.prompt} — ${answer ?? "no answer"}`;
+    })
+    .join("\n");
+  return { title, detail, payload: result };
 }
 
 export function buildInteractionTitle(payload: InteractionPayload): string {

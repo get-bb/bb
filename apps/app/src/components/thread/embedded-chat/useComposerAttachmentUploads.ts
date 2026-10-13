@@ -1,4 +1,8 @@
 import { useCallback, useRef, useState } from "react";
+import {
+  usePendingAttachmentUploads,
+  type PendingAttachmentUpload,
+} from "@/components/promptbox/usePendingAttachmentUploads";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError } from "@/lib/sdk";
@@ -15,12 +19,14 @@ interface UseComposerAttachmentUploadsArgs {
 interface UseComposerAttachmentUploadsResult {
   bottomAttachmentError: string | null;
   setBottomAttachmentError: (error: string | null) => void;
-  handleAttachBottomFiles: (files: File[]) => Promise<void>;
+  handleAttachBottomFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingBottomFiles: boolean;
+  bottomPendingUploads: readonly PendingAttachmentUpload[];
   inlineAttachmentError: string | null;
   setInlineAttachmentError: (error: string | null) => void;
-  handleAttachInlineFiles: (files: File[]) => Promise<void>;
+  handleAttachInlineFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingInlineFiles: boolean;
+  inlinePendingUploads: readonly PendingAttachmentUpload[];
 }
 
 interface DraftAttachmentUploadTarget {
@@ -36,8 +42,9 @@ interface UseDraftAttachmentUploadsArgs {
 interface UseDraftAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
-  handleAttachFiles: (files: File[]) => Promise<void>;
+  handleAttachFiles: (files: File[]) => Promise<PromptDraftAttachment[]>;
   isAttachingFiles: boolean;
+  pendingUploads: readonly PendingAttachmentUpload[];
 }
 
 interface DraftAttachmentOperationState {
@@ -76,6 +83,10 @@ export function useDraftAttachmentUploads({
   });
   const targetKey = target?.key ?? null;
   const isCurrentOperation = operation.targetKey === targetKey;
+  const { pendingUploads, startUploads, finishUploads } =
+    usePendingAttachmentUploads(
+      targetKey === null ? null : `${projectId}\0${targetKey}`,
+    );
 
   const setAttachmentError = useCallback(
     (error: string | null) => {
@@ -91,7 +102,7 @@ export function useDraftAttachmentUploads({
   const handleAttachFiles = useCallback(
     async (files: File[]) => {
       const activeTarget = targetRef.current;
-      if (!activeTarget || files.length === 0) return;
+      if (!activeTarget || files.length === 0) return [];
       const capturedTargetKey = activeTarget.key;
       setOperation((current) => ({
         error: null,
@@ -101,22 +112,27 @@ export function useDraftAttachmentUploads({
             : 1,
         targetKey: capturedTargetKey,
       }));
+      const uploads = startUploads(files);
+      const added: PromptDraftAttachment[] = [];
       const failedFiles: string[] = [];
       let rejectionReason: string | null = null;
       try {
-        for (const file of files) {
+        for (const upload of uploads) {
           try {
             const uploaded = await uploadPromptAttachment.mutateAsync({
               projectId,
-              file,
+              file: upload.file,
             });
             const currentTarget = targetRef.current;
             if (currentTarget?.key === capturedTargetKey) {
               currentTarget.addAttachment(uploaded);
+              added.push(uploaded);
             }
           } catch (error) {
-            failedFiles.push(file.name);
+            failedFiles.push(upload.file.name);
             rejectionReason ??= uploadRejectionReason(error);
+          } finally {
+            finishUploads([upload]);
           }
         }
       } finally {
@@ -134,8 +150,9 @@ export function useDraftAttachmentUploads({
             : current,
         );
       }
+      return added;
     },
-    [projectId, uploadPromptAttachment],
+    [projectId, uploadPromptAttachment, startUploads, finishUploads],
   );
 
   return {
@@ -143,6 +160,7 @@ export function useDraftAttachmentUploads({
     setAttachmentError,
     handleAttachFiles,
     isAttachingFiles: isCurrentOperation && operation.pendingCount > 0,
+    pendingUploads,
   };
 }
 
@@ -157,6 +175,7 @@ export function useComposerAttachmentUploads({
     setAttachmentError: setBottomAttachmentError,
     handleAttachFiles: handleAttachBottomFiles,
     isAttachingFiles: isAttachingBottomFiles,
+    pendingUploads: bottomPendingUploads,
   } = useDraftAttachmentUploads({
     projectId,
     target: { key: "bottom", addAttachment: addDraftAttachment },
@@ -180,6 +199,7 @@ export function useComposerAttachmentUploads({
     setAttachmentError: setInlineAttachmentError,
     handleAttachFiles: handleAttachInlineFiles,
     isAttachingFiles: isAttachingInlineFiles,
+    pendingUploads: inlinePendingUploads,
   } = useDraftAttachmentUploads({
     projectId,
     target:
@@ -196,9 +216,11 @@ export function useComposerAttachmentUploads({
     setBottomAttachmentError,
     handleAttachBottomFiles,
     isAttachingBottomFiles,
+    bottomPendingUploads,
     inlineAttachmentError,
     setInlineAttachmentError,
     handleAttachInlineFiles,
     isAttachingInlineFiles,
+    inlinePendingUploads,
   };
 }

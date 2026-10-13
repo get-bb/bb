@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "@bb/shared-ui/icon";
+import { Icon } from "@/components/ui/icon";
 
 interface DetailToast {
   id: number;

@@ -1,5 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { renderTemplate } from "@bb/templates";
+import { introduction } from "./introduction.js";
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define({
@@ -47,9 +47,7 @@ export default async function plugin(bb: BbPluginApi) {
     current = next;
   });
   bb.agents.contributeInstructions(() =>
-    current.introduction
-      ? renderTemplate("standardAgentAppendInstructions", {})
-      : null,
+    current.introduction ? introduction : null,
   );
   bb.agents.configure(() => ({
     tools: [],

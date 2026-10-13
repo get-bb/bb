@@ -9,18 +9,20 @@ export function LightboxImage({
   alt,
   className,
   loading = "lazy",
+  size: knownSize,
 }: {
   src: string;
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  size?: { width: number; height: number };
 }) {
   const [open, setOpen] = useState(false);
   const labelId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const size = getImageSize(src);
+  const size = knownSize ?? getImageSize(src);
 
   const close = useCallback(() => {
     setOpen(false);

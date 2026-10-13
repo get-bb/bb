@@ -16,8 +16,8 @@ afterEach(() => {
 });
 
 describe("MarkdownPreview lazy KaTeX", () => {
-  it("does not load the KaTeX chunk for content without $$ math", async () => {
-    const { container } = render(
+  it("loads KaTeX only for math and shares it across mounted previews", async () => {
+    const plain = render(
       <MarkdownPreview
         content={"Plain prose with $5 and $x$ and \\$10 escaped."}
       />,
@@ -27,10 +27,9 @@ describe("MarkdownPreview lazy KaTeX", () => {
     });
 
     expect(katexChunkLoads.count).toBe(0);
-    expect(container.textContent).toContain("$5");
-  });
+    expect(plain.container.textContent).toContain("$5");
+    plain.unmount();
 
-  it("loads the chunk once and re-renders every mounted preview with KaTeX", async () => {
     const first = render(<MarkdownPreview content={"One: $$a^2$$"} />);
     const second = render(<MarkdownPreview content={"Two: $$b^2$$"} />);
     const mathPieces =

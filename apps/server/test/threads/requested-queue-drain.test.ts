@@ -5,6 +5,7 @@ import {
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageGroupBoundary,
 } from "@bb/db";
+import { turnRequestEventDataSchema } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -124,6 +125,149 @@ async function stopThread(harness: TestAppHarness, threadId: string) {
 }
 
 describe("the requested queue drain", () => {
+  it.each([
+    { finish: "save", sentText: "SAVED EDIT" },
+    { finish: "cancel", sentText: "ORIGINAL" },
+  ] as const)(
+    "holds a queued message through turn completion while it is edited, then sends it on $finish",
+    async ({ finish, sentText }) => {
+      await withTestHarness(async (harness) => {
+        const { thread } = seedRunnableThread(harness, {
+          hostId: `host-edit-hold-${finish}`,
+          status: "active",
+        });
+        const edited = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("ORIGINAL"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        const behind = seedQueuedMessage(harness.deps, {
+          threadId: thread.id,
+          content: textInput("BEHIND"),
+          waitingOn: { kind: "thread-busy" },
+        });
+        const editHoldPath = `/api/v1/threads/${thread.id}/queued-messages/${edited.id}/edit-hold`;
+        const holdResponse = await harness.app.request(editHoldPath, {
+          method: "POST",
+        });
+        expect(holdResponse.status).toBe(200);
+        const turnsBefore = turnRequests(harness, thread.id).length;
+
+        applyLoggedThreadLifecycleEvent(harness.deps, {
+          event: { type: "run.succeeded" },
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "thread-ready",
+          threadId: thread.id,
+        });
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "idle-recovery",
+          now: Date.now(),
+        });
+
+        expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore);
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual([edited.id, behind.id]);
+
+        const finishResponse =
+          finish === "save"
+            ? await harness.app.request(
+                `/api/v1/threads/${thread.id}/queued-messages/${edited.id}`,
+                {
+                  method: "PATCH",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    expectedUpdatedAt: edited.updatedAt,
+                    input: textInput("SAVED EDIT"),
+                  }),
+                },
+              )
+            : await harness.app.request(editHoldPath, { method: "DELETE" });
+        expect(finishResponse.status).toBe(200);
+
+        await vi.waitFor(() => {
+          expect(turnRequests(harness, thread.id)).toHaveLength(
+            turnsBefore + 1,
+          );
+        });
+        expect(turnRequests(harness, thread.id).at(-1)?.data).toContain(
+          sentText,
+        );
+        expect(
+          listQueuedThreadMessages(harness.db, thread.id).map((row) => row.id),
+        ).toEqual([behind.id]);
+      });
+    },
+  );
+
+  it("keeps child interruption details when an offline parent notice dispatches", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread, environment } = seedRunnableThread(harness, {
+        hostId: "host-child-outcome-notice",
+        status: "idle",
+      });
+      createQueuedThreadMessage(harness.db, harness.deps.hub, {
+        threadId: thread.id,
+        content: textInput(
+          "Child was interrupted because its host connection was lost.",
+        ),
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "auto",
+        serviceTier: "default",
+        senderThreadId: null,
+        waitingOn: { kind: "host-offline", hostName: "Test Host" },
+        sendAt: null,
+        payload: { kind: "inline" },
+        systemNotice: {
+          kind: "child-interrupted",
+          subject: {
+            kind: "thread",
+            threadId: "thr_child",
+            threadName: "Worker child",
+            outcomes: [
+              {
+                threadId: "thr_child",
+                status: "interrupted",
+                interruption: {
+                  reason: "host-daemon-restarted",
+                  cause: "host-connection-lost",
+                },
+              },
+            ],
+          },
+        },
+      });
+
+      await runQueuedMessageDispatch(harness.deps, {
+        kind: "host-connected",
+        hostId: environment.hostId,
+      });
+
+      const requests = turnRequests(harness, thread.id)
+        .map((event) =>
+          turnRequestEventDataSchema.parse(JSON.parse(event.data)),
+        )
+        .filter((event) => event.initiator === "system");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.systemMessageSubject).toMatchObject({
+        outcomes: [
+          {
+            threadId: "thr_child",
+            status: "interrupted",
+            interruption: {
+              reason: "host-daemon-restarted",
+              cause: "host-connection-lost",
+            },
+          },
+        ],
+      });
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
   it("preserves user, agent, and system senders in queue API responses", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedRunnableThread(harness, {
@@ -372,45 +516,6 @@ describe("the requested queue drain", () => {
     },
   );
 
-  it("re-attempts a plugin-queued row once the hook lets it through", async () => {
-    // The release path that replaced a plugin releasing its own wait: core
-    // re-attempts, the hook re-decides, and a row that is still blocked simply
-    // re-queues. No plugin has to work out which row deserves the freed slot.
-    await withTestHarness(async (harness) => {
-      let full = true;
-      const registry: HookRegistry = { "message.dispatch": [] };
-      registry["message.dispatch"].push({
-        pluginId: "limiter",
-        handler: () =>
-          full
-            ? ({
-                action: "wait",
-                reason: "1 of 1 running on all hosts",
-              } as const)
-            : ({ action: "proceed" } as const),
-      });
-      installHooks(registry);
-      const { thread } = seedRunnableThread(harness, {
-        hostId: "host-freed-drain",
-        status: "idle",
-      });
-
-      // Queued inline, so the re-queue pacing window never opens.
-      await acceptThreadSendRequest(harness.deps, {
-        payload: { input: textInput("held work"), mode: "auto" },
-        thread,
-      });
-      const turnsBefore = turnRequests(harness, thread.id).length;
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
-
-      full = false;
-      await runPluginWake(harness);
-
-      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
-      expect(turnRequests(harness, thread.id)).toHaveLength(turnsBefore + 1);
-    });
-  });
-
   it.each(["scheduled", "plugin"] as const)(
     "dispatches independently %s work after a manual stop",
     async (kind) => {
@@ -534,6 +639,8 @@ describe("the requested queue drain", () => {
           id: failed.id,
           threadId: thread.id,
           failureReason: "Terminal failure",
+          now: Date.now(),
+          retryDelaysMs: [],
         });
 
         if (drain === "scheduled") await runTimeWake(harness, Date.now());
@@ -781,6 +888,10 @@ describe("queue recovery", () => {
         hostId: "host-loaded-plugin",
         status: "idle",
       }).thread;
+      const pending = seedRunnableThread(harness, {
+        hostId: "host-pending-plugin",
+        status: "idle",
+      }).thread;
       seedQueuedMessage(harness.deps, {
         content: textInput("missing plugin work"),
         threadId: missing.id,
@@ -799,14 +910,26 @@ describe("queue recovery", () => {
           reason: "held",
         },
       });
+      seedQueuedMessage(harness.deps, {
+        content: textInput("pending plugin work"),
+        threadId: pending.id,
+        waitingOn: {
+          kind: "plugin",
+          pluginId: "pending",
+          reason: "held",
+        },
+      });
 
       await runQueuedMessageDispatch(harness.deps, {
         kind: "orphaned-plugin-recovery",
-        plugins: { isPluginLoaded: (pluginId) => pluginId === "loaded" },
+        plugins: {
+          isPluginExpectedToRun: (pluginId) => pluginId !== "missing",
+        },
       });
 
       expect(listQueuedThreadMessages(harness.db, missing.id)).toEqual([]);
       expect(listQueuedThreadMessages(harness.db, loaded.id)).toHaveLength(1);
+      expect(listQueuedThreadMessages(harness.db, pending.id)).toHaveLength(1);
     });
   });
 });

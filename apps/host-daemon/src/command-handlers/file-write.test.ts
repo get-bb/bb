@@ -265,18 +265,21 @@ describe("writeHostFile", () => {
     expect(result).toMatchObject({ outcome: "written" });
   });
 
-  it("uses mode for creation without chmodding an existing file", async () => {
-    const dir = await makeTempDir("bb-file-write-mode-");
-    const created = path.join(dir, "created.env");
-    await writeHostFile(writeCommand({ path: created, mode: 0o600 }));
-    expect((await fs.stat(created)).mode & 0o777).toBe(0o600);
+  it.skipIf(process.platform === "win32")(
+    "uses mode for creation without chmodding an existing file",
+    async () => {
+      const dir = await makeTempDir("bb-file-write-mode-");
+      const created = path.join(dir, "created.env");
+      await writeHostFile(writeCommand({ path: created, mode: 0o600 }));
+      expect((await fs.stat(created)).mode & 0o777).toBe(0o600);
 
-    const existing = path.join(dir, "existing.env");
-    await fs.writeFile(existing, "old", { mode: 0o644 });
-    await fs.chmod(existing, 0o644);
-    await writeHostFile(writeCommand({ path: existing, mode: 0o600 }));
-    expect((await fs.stat(existing)).mode & 0o777).toBe(0o644);
-  });
+      const existing = path.join(dir, "existing.env");
+      await fs.writeFile(existing, "old", { mode: 0o644 });
+      await fs.chmod(existing, 0o644);
+      await writeHostFile(writeCommand({ path: existing, mode: 0o600 }));
+      expect((await fs.stat(existing)).mode & 0o777).toBe(0o644);
+    },
+  );
 
   it("rejects directory targets", async () => {
     const dir = await makeTempDir("bb-file-write-");

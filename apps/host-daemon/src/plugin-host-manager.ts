@@ -51,7 +51,7 @@ interface WorkerState {
   readyAtMs: number | null;
   child: ChildProcess;
   closed: Promise<void>;
-  tempDir: string;
+  cleanup: Promise<void>;
   pending: Map<string, PendingCall>;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -478,14 +478,15 @@ export class PluginHostManager {
       throw error;
     }
     const closed = new Promise<void>((resolve) => child.once("close", resolve));
-    void closed
-      .then(() => rm(tempDir, { recursive: true, force: true }))
-      .catch((error) => {
-        this.options.logger.warn(
-          { pluginId: command.pluginId, err: error },
-          "Failed to remove host plugin temporary directory",
-        );
-      });
+    const cleanup = closed.then(() =>
+      rm(tempDir, { recursive: true, force: true }),
+    );
+    void cleanup.catch((error) => {
+      this.options.logger.warn(
+        { pluginId: command.pluginId, err: error },
+        "Failed to remove host plugin temporary directory",
+      );
+    });
     let resolveReady!: () => void;
     let rejectReady!: (error: Error) => void;
     const ready = new Promise<void>((resolve, reject) => {
@@ -500,7 +501,7 @@ export class PluginHostManager {
       readyAtMs: null,
       child,
       closed,
-      tempDir,
+      cleanup,
       pending: new Map(),
       ready,
       resolveReady,
@@ -969,7 +970,7 @@ export class PluginHostManager {
   }
 
   private async stopWorker(worker: WorkerState, reason: string): Promise<void> {
-    if (worker.disposing) return worker.closed;
+    if (worker.disposing) return worker.cleanup;
     worker.disposing = true;
     this.cancelWorkerIdleTimer(worker);
     if (this.workers.get(worker.pluginId) === worker) {
@@ -1001,7 +1002,7 @@ export class PluginHostManager {
       "Host plugin worker stopped",
     );
     this.rejectPendingCalls(worker, reason);
-    await rm(worker.tempDir, { recursive: true, force: true });
+    await worker.cleanup;
   }
 
   private cancelWorkerIdleTimer(worker: WorkerState): void {

@@ -4,9 +4,9 @@ import {
   useRpc,
   type StandardSchemaV1InferOutput,
 } from "@get-bb/plugin-sdk/app";
-import { Checkbox } from "@bb/shared-ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
-import { Switch } from "@bb/shared-ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import type { keepAwakeRpcContract } from "./server.js";
 
 type ConfigurationView = StandardSchemaV1InferOutput<
@@ -189,8 +189,8 @@ function KeepAwakeSettings() {
                 <span>
                   <span className="block text-sm font-medium">All hosts</span>
                   <span className="block text-xs text-muted-foreground">
-                    Include hosts added in the future. Only macOS hosts are
-                    supported.
+                    Include hosts added in the future. Only macOS and Windows
+                    hosts are supported.
                   </span>
                 </span>
               </label>

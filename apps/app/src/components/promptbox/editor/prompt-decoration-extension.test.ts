@@ -19,13 +19,11 @@ import {
 } from "./prompt-editor-serialization";
 
 function createEditor(
-  richTextEditing: boolean,
   content: object,
   options: PromptDecorationExtensionOptions = {},
 ): Editor {
   return new Editor({
     extensions: promptEditorExtensions({
-      richTextEditing,
       getPlaceholder: () => "",
       ...options,
     }),
@@ -64,60 +62,39 @@ describe("PromptDecorationExtension", () => {
     ]);
     expect(findUltracodeRanges("ultracodes myultracode supercode")).toEqual([]);
 
-    const editor = createEditor(false, paragraphContent("use ultracode now"));
+    const editor = createEditor(paragraphContent("use ultracode now"));
     expect(decorationClasses(editor)).toContain(ULTRACODE_HIGHLIGHT_CLASS);
     editor.destroy();
   });
 
-  it.each([false, true])(
-    "paints plugin rules in %s rich-text mode without changing serialization",
-    (richTextEditing) => {
-      const content = richTextEditing
-        ? {
-            type: "doc",
-            content: [
-              {
-                type: "heading",
-                attrs: { level: 2 },
-                content: [
-                  { type: "text", text: "alpha ", marks: [{ type: "bold" }] },
-                  { type: "text", text: "beta" },
-                ],
+  it("paints plugin rules without changing serialization", () => {
+    const editor = createEditor(paragraphContent("alpha beta"), {
+      getDecorationSources: () => [
+        {
+          id: "plugin:test",
+          generation: 1,
+          effects: [
+            {
+              id: "beta",
+              className: "plugin-beta",
+              match(text) {
+                const from = text.indexOf("beta");
+                return from === -1 ? [] : [{ from, to: from + "beta".length }];
               },
-            ],
-          }
-        : paragraphContent("alpha beta");
-      const editor = createEditor(richTextEditing, content, {
-        getDecorationSources: () => [
-          {
-            id: "plugin:test",
-            generation: 1,
-            effects: [
-              {
-                id: "beta",
-                className: "plugin-beta",
-                match(text) {
-                  const from = text.indexOf("beta");
-                  return from === -1
-                    ? []
-                    : [{ from, to: from + "beta".length }];
-                },
-              },
-            ],
-          },
-        ],
-      });
-      const before = promptEditorValueFromDoc(editor.state.doc);
+            },
+          ],
+        },
+      ],
+    });
+    const before = promptEditorValueFromDoc(editor.state.doc);
 
-      expect(decorationClasses(editor)).toContain("plugin-beta");
-      expect(promptEditorValueFromDoc(editor.state.doc)).toEqual(before);
-      editor.destroy();
-    },
-  );
+    expect(decorationClasses(editor)).toContain("plugin-beta");
+    expect(promptEditorValueFromDoc(editor.state.doc)).toEqual(before);
+    editor.destroy();
+  });
 
   it("maps serialized offsets across an atomic mention", () => {
     const editor = createEditor(
-      false,
       {
         type: "doc",
         content: [
@@ -181,7 +158,7 @@ describe("PromptDecorationExtension", () => {
 
   it("adds and removes content and whole-draft classes across edits", () => {
     let includeWholeDraftEffect = true;
-    const editor = createEditor(false, paragraphContent("tag"), {
+    const editor = createEditor(paragraphContent("tag"), {
       getDecorationSources: () => [
         {
           id: "plugin:tag",
@@ -226,7 +203,7 @@ describe("PromptDecorationExtension", () => {
 
   it("stacks overlapping host and plugin classes in composition order", () => {
     const wholeRange = (text: string) => [{ from: 0, to: text.length }];
-    const editor = createEditor(false, paragraphContent("ultracode"), {
+    const editor = createEditor(paragraphContent("ultracode"), {
       getDecorationSources: () => [
         {
           id: "host:extra",
@@ -272,7 +249,7 @@ describe("PromptDecorationExtension", () => {
       return [{ from: 0, to: text.length }];
     });
     const onRuleError = vi.fn();
-    const editor = createEditor(false, paragraphContent("paint me"), {
+    const editor = createEditor(paragraphContent("paint me"), {
       getDecorationSources: () => [
         {
           id: "plugin:thrower",
@@ -306,7 +283,6 @@ describe("PromptDecorationExtension", () => {
       run: { isRunning: false, isSubmitting: false },
     };
     const editor = createEditor(
-      false,
       {
         type: "doc",
         content: [
@@ -363,7 +339,7 @@ describe("PromptDecorationExtension", () => {
   it("defers rebuilds on large docs while mapping existing decorations", () => {
     vi.useFakeTimers();
     const bulk = "x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100);
-    const editor = createEditor(false, paragraphContent(`ultracode ${bulk}`));
+    const editor = createEditor(paragraphContent(`ultracode ${bulk}`));
     const ultracodeDecorations = () =>
       (getPromptDecorationSet(editor.state)?.find() ?? []).filter(
         (decoration) => decoration.spec.className === ULTRACODE_HIGHLIGHT_CLASS,
@@ -400,7 +376,6 @@ describe("PromptDecorationExtension", () => {
       run: { isRunning: false, isSubmitting: false },
     };
     const editor = createEditor(
-      false,
       paragraphContent("x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100)),
       {
         draftObserverDebounceMs: 25,
@@ -428,7 +403,6 @@ describe("PromptDecorationExtension", () => {
     vi.useFakeTimers();
     const match = vi.fn(() => []);
     const editor = createEditor(
-      false,
       paragraphContent("x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100)),
       {
         getDecorationSources: () => [

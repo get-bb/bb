@@ -6,6 +6,7 @@ import type {
   WorkflowProgressSnapshot,
 } from "@bb/domain";
 import { ThreadWorkflowCard } from "./ThreadWorkflowCard";
+import { ThreadWorkflowStack } from "./ThreadWorkflowStack";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { FauxComposer, ResponsiveStage } from "./banner-story-stages";
@@ -309,23 +310,68 @@ export function Overview() {
   );
 }
 
+function ToggleableStack({
+  workflows,
+}: {
+  workflows: readonly (typeof runningWorkflow)[];
+}) {
+  const [isStackExpanded, setIsStackExpanded] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  return (
+    <ThreadWorkflowStack
+      workflows={workflows}
+      isStackExpanded={isStackExpanded}
+      onToggleStack={() => setIsStackExpanded((value) => !value)}
+      expandedWorkflowIds={expandedIds}
+      onToggleWorkflow={(id) =>
+        setExpandedIds((current) => {
+          const next = new Set(current);
+          if (!next.delete(id)) next.add(id);
+          return next;
+        })
+      }
+    />
+  );
+}
+
+const concurrentWorkflows = [
+  secondRunningWorkflow,
+  runningWorkflow,
+  {
+    ...secondRunningWorkflow,
+    id: "thr_fixture:workflow:balance:running-2",
+    workflowName: "bb-balance-pass-2",
+  },
+  {
+    ...runningWorkflow,
+    id: "thr_fixture:workflow:investigation:running-2",
+    workflowName: "bb-plugin-investigation-2",
+  },
+];
+
 export function ConcurrentWorkflows() {
   return (
     <StoryCard>
       <StoryRow
         label="two running"
-        hint="one card per running workflow, newest first; each expands independently"
+        hint="two or more running workflows auto-collapse into a stack: the newest card in front with a +N count and peeking edges; tapping it fans out into individual cards with an up chevron below them to restack"
       >
         <ResponsiveStage>
           <div className="flex flex-col gap-2">
-            <ToggleableCard
-              workflow={secondRunningWorkflow}
-              initialExpanded={false}
-            />
-            <ToggleableCard
-              workflow={runningWorkflow}
-              initialExpanded={false}
-            />
+            <ToggleableStack workflows={concurrentWorkflows.slice(0, 2)} />
+            <FauxComposer />
+          </div>
+        </ResponsiveStage>
+      </StoryRow>
+      <StoryRow
+        label="four running"
+        hint="at most two peeking edges, however many workflows are running"
+      >
+        <ResponsiveStage>
+          <div className="flex flex-col gap-2">
+            <ToggleableStack workflows={concurrentWorkflows} />
             <FauxComposer />
           </div>
         </ResponsiveStage>

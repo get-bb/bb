@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  builtinServerName,
+  BUILTIN_SERVER_NAME,
   createServerTargetStore,
   normalizeCustomServerUrl,
   type ServerTargetFs,
 } from "../src/server-target.js";
+
+describe("builtinServerName", () => {
+  it("uses the operating system's local server label", () => {
+    expect(builtinServerName("darwin")).toBe("This Mac");
+    expect(builtinServerName("linux")).toBe("This Computer");
+    expect(BUILTIN_SERVER_NAME).toBe(builtinServerName(process.platform));
+  });
+});
 
 function createMemoryFs(initial: Record<string, string> = {}): {
   files: Map<string, string>;
@@ -75,6 +85,80 @@ describe("server target store", () => {
     expect(files.get("/tmp/t.json")).toContain("https://example.com:38886");
   });
 
+  it("keeps multiple servers across selections and restarts without duplicates", async () => {
+    const { fs } = createMemoryFs();
+    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
+    await store.load();
+    await store.setCustomServerUrl("https://first.example");
+    await store.setCustomServerUrl("https://second.example");
+    await store.setCustomServerUrl("https://first.example/#fragment");
+    const reloaded = createServerTargetStore({
+      fs,
+      storagePath: "/tmp/t.json",
+    });
+    await reloaded.load();
+    expect(reloaded.getCustomServerUrls()).toEqual([
+      "https://first.example",
+      "https://second.example",
+    ]);
+    expect(reloaded.getTarget()).toEqual({
+      kind: "custom",
+      url: "https://first.example",
+    });
+    await reloaded.setTarget("builtin");
+    expect(reloaded.getCustomServerUrls()).toHaveLength(2);
+  });
+
+  it("migrates the legacy custom server and preserves it when adding another", async () => {
+    const { fs } = createMemoryFs({
+      "/tmp/t.json": JSON.stringify({
+        customServerUrl: "https://old.example/",
+        target: "custom",
+      }),
+    });
+    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
+    await store.load();
+    expect(store.getTarget()).toEqual({
+      kind: "custom",
+      url: "https://old.example",
+    });
+    await store.setCustomServerUrl("https://new.example");
+    expect(store.getCustomServerUrls()).toEqual([
+      "https://old.example",
+      "https://new.example",
+    ]);
+  });
+
+  it("edits and removes one server while preserving other saved servers", async () => {
+    const { fs } = createMemoryFs();
+    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
+    await store.load();
+    await store.setCustomServerUrl("https://first.example");
+    await store.setCustomServerUrl("https://second.example");
+    await store.setCustomServerUrl(
+      "https://edited.example",
+      "https://second.example",
+    );
+    expect(store.getCustomServerUrls()).toEqual([
+      "https://first.example",
+      "https://edited.example",
+    ]);
+    await expect(
+      store.setCustomServerUrl("file:///bad", "https://edited.example"),
+    ).rejects.toThrow();
+    expect(store.getCustomServerUrls()).toHaveLength(2);
+    await store.setCustomServerUrl(null);
+    expect(store.getTarget()).toEqual({ kind: "builtin" });
+    expect(store.getCustomServerUrls()).toEqual(["https://first.example"]);
+    const reloaded = createServerTargetStore({
+      fs,
+      storagePath: "/tmp/t.json",
+    });
+    await reloaded.load();
+    expect(reloaded.getCustomServerUrls()).toEqual(["https://first.example"]);
+    expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
+  });
+
   it("switches back to builtin while keeping the custom URL", async () => {
     const { fs } = createMemoryFs();
     const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
@@ -96,23 +180,6 @@ describe("server target store", () => {
     await store.load();
     expect(await store.setTarget("custom")).toBe(false);
     expect(store.getTarget()).toEqual({ kind: "builtin" });
-  });
-
-  it("clears the custom URL and re-targets builtin on null", async () => {
-    const { fs } = createMemoryFs();
-    const store = createServerTargetStore({ fs, storagePath: "/tmp/t.json" });
-    await store.load();
-    await store.setCustomServerUrl("https://example.com");
-    await store.setCustomServerUrl(null);
-    expect(store.getTarget()).toEqual({ kind: "builtin" });
-    expect(store.getCustomServerUrl()).toBeNull();
-
-    const reloaded = createServerTargetStore({
-      fs,
-      storagePath: "/tmp/t.json",
-    });
-    await reloaded.load();
-    expect(reloaded.getTarget()).toEqual({ kind: "builtin" });
   });
 
   it("selects, persists, and refreshes a connect server target", async () => {

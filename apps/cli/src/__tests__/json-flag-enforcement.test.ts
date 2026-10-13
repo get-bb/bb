@@ -3,9 +3,10 @@ import { Command } from "commander";
 
 import { registerStatusCommand } from "../commands/status.js";
 import { registerProjectCommands } from "../commands/project.js";
+import { registerPromptHistoryCommands } from "../commands/prompt-history.js";
 import { registerProviderCommands } from "../commands/provider.js";
-import { registerManagerCommands } from "../commands/manager.js";
 import { registerMachineCommands } from "../commands/machine.js";
+import { registerServerCommands } from "../commands/server.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 const EXCLUDED_COMMANDS = new Set<string>();
 
@@ -33,9 +34,10 @@ describe("CLI --json flag enforcement", () => {
 
     registerStatusCommand(program, getUrl);
     registerProjectCommands(program, getUrl);
+    registerPromptHistoryCommands(program, getUrl);
     registerProviderCommands(program, getUrl);
-    registerManagerCommands(program);
     registerMachineCommands(program, getUrl);
+    registerServerCommands(program, getUrl);
     registerThreadCommands(program, getUrl);
 
     const commands = collectLeafCommands(program);

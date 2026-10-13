@@ -18,6 +18,7 @@ import {
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadIdentity,
   seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
@@ -243,6 +244,11 @@ describe("thread plugin metadata in agent configuration", () => {
       const source = seedThread(server.deps, {
         projectId: project.id,
         environmentId: environment.id,
+      });
+      seedThreadIdentity(server.deps, {
+        threadId: source.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-plugin-metadata-fork-source",
       });
       seedTurnStarted(server.deps, {
         threadId: source.id,

@@ -7,6 +7,10 @@ export {
 } from "./resource/atoms";
 export { useResourceRouteLabel } from "./resource-route-label";
 export {
+  ResourceControlButton,
+  ResourceMultiSelectMenuItems,
+  ResourceSortMenuItems,
+  type ResourceOption,
   ResourceCreateButton,
   type ResourceCreateMenuAction,
   type ResourceCreateTemplateGroup,
@@ -14,6 +18,7 @@ export {
   ResourceMultiSelectMenu,
   ResourceSortMenu,
   ResourceToolbar,
+  ResourceTabDescription,
 } from "./resource/toolbar";
 export {
   ResourceActionButton,
@@ -50,6 +55,7 @@ export {
   ResourceCollectionPage,
   ResourceCollectionViewport,
   ResourceShelfSeeAllAction,
+  ResourceShelfAction,
   ResourceSourceShelf,
   ResourceTemplateBrowseCard,
 } from "./resource/collection";

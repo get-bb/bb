@@ -27,6 +27,7 @@ export function createPublicMarketplaceCache(
   options: {
     now?: () => number;
     durationMs?: number;
+    withBundled?: (manifest: MarketplaceV2Manifest) => MarketplaceV2Manifest;
   } = {},
 ): () => Promise<PublicMarketplaceData> {
   const now = options.now ?? Date.now;
@@ -54,7 +55,8 @@ export function createPublicMarketplaceCache(
       manifest = cached.data.manifest;
     } else {
       try {
-        manifest = parseMarketplaceV2Manifest(manifestResource.value);
+        const community = parseMarketplaceV2Manifest(manifestResource.value);
+        manifest = options.withBundled?.(community) ?? community;
       } catch {
         return { status: "unavailable" };
       }

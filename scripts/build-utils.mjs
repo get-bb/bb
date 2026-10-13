@@ -1,6 +1,7 @@
 import { chmod, cp, readdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
+import { zodLocaleStubPlugin } from "../packages/plugin-build/src/zod-locale-stub.mjs";
 
 const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
@@ -22,11 +23,6 @@ const NATIVE_EXTERNAL_PACKAGES = [
   "pino-roll",
   "thread-stream",
   "utf-8-validate",
-  // jiti loads plugin server entries as TypeScript at runtime and lazily
-  // require()s its own transform files (babel.cjs); bundling it breaks that
-  // lazy resolution, so it must stay external + a shipped dependency unless a
-  // bundle target explicitly uses the bundle-safe `jiti/static` entry point.
-  "jiti",
 ];
 
 export function externalPackagePatterns(packageNames) {
@@ -204,6 +200,7 @@ export async function buildNodeEsmEntry({
     format: "esm",
     legalComments: "none",
     ...(split ? split.esbuild : { outfile }),
+    plugins: [zodLocaleStubPlugin()],
     platform: "node",
     sourcemap,
     target,

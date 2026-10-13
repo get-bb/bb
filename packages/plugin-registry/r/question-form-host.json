@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "question-form-host",
+  "type": "registry:ui",
+  "title": "question-form-host",
+  "description": "BB ui \"question-form-host\" — the plugin version of the BB app's question-form-host, drawing on the host app at runtime (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/question-form-host.tsx",
+      "content": "import {\n  experimental_useQuestionFormHost,\n  type ExperimentalQuestionFormHost,\n  type ExperimentalQuestionShortcut,\n} from \"@get-bb/plugin-sdk/app\";\n\nexport type QuestionFormHost = ExperimentalQuestionFormHost;\nexport type QuestionShortcut = ExperimentalQuestionShortcut;\nexport const useQuestionFormHost = experimental_useQuestionFormHost;\n",
+      "type": "registry:ui",
+      "target": "components/ui/question-form-host.tsx"
+    }
+  ]
+}

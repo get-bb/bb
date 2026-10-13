@@ -1,9 +1,22 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useRef } from "react";
-import { useOverflowMeasurement } from "./conversation-message-overflow";
+import {
+  BottomAnchorContext,
+  type BottomAnchorContextValue,
+} from "@/components/ui/bottom-anchored-scroll-body";
+import {
+  ConversationMessageOverflowToggle,
+  useOverflowMeasurement,
+} from "./conversation-message-overflow";
 
 afterEach(() => {
   cleanup();
@@ -89,5 +102,83 @@ describe("useOverflowMeasurement", () => {
     expect(clientWidth).toHaveBeenCalledOnce();
     expect(first.dataset.measurement).toBe("overflowing");
     expect(second.dataset.measurement).toBe("fits");
+  });
+});
+
+describe("ConversationMessageOverflowToggle", () => {
+  function renderToggle({
+    expanded,
+    rowTop,
+  }: {
+    expanded: boolean;
+    rowTop: number;
+  }) {
+    const scrollArea = document.createElement("div");
+    vi.spyOn(scrollArea, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 50, 100, 500),
+    );
+    const holdContentPosition = vi.fn<
+      BottomAnchorContextValue["holdContentPosition"]
+    >(({ update }) => update());
+    const onToggle = vi.fn();
+    const bottomAnchor: BottomAnchorContextValue = {
+      getScrollElement: () => scrollArea,
+      isAtBottom: true,
+      scrollToBottom: vi.fn(),
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      captureScrollAnchor: vi.fn(),
+      holdContentPosition,
+    };
+    render(
+      <BottomAnchorContext.Provider value={bottomAnchor}>
+        <div data-timeline-row-id="row" data-testid="row">
+          <ConversationMessageOverflowToggle
+            expanded={expanded}
+            onToggle={onToggle}
+          />
+        </div>
+      </BottomAnchorContext.Provider>,
+    );
+    const row = screen.getByTestId("row");
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, rowTop, 100, 1_000),
+    );
+    fireEvent.click(screen.getByRole("button"));
+    return { holdContentPosition, onToggle, row };
+  }
+
+  it("holds the row top when expanding, even if the top is offscreen", () => {
+    const { holdContentPosition, onToggle, row } = renderToggle({
+      expanded: false,
+      rowTop: -200,
+    });
+
+    expect(holdContentPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ edge: "top", element: row }),
+    );
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the row bottom when collapsing a row whose top is offscreen", () => {
+    const { holdContentPosition } = renderToggle({
+      expanded: true,
+      rowTop: -200,
+    });
+
+    expect(holdContentPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ edge: "bottom" }),
+    );
+  });
+
+  it("holds the row top when collapsing a row whose top is visible", () => {
+    const { holdContentPosition } = renderToggle({
+      expanded: true,
+      rowTop: 80,
+    });
+
+    expect(holdContentPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ edge: "top" }),
+    );
   });
 });

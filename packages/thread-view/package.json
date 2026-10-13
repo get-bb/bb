@@ -2,6 +2,7 @@
   "name": "@bb/thread-view",
   "version": "0.0.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -18,6 +19,7 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/server-contract": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "zod": "^4.3.6"
   },
   "devDependencies": {

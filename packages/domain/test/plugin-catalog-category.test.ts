@@ -34,7 +34,7 @@ describe("plugin catalog categories", () => {
         id: "file-viewers-and-editors",
         displayName: "File Viewers & Editors",
       },
-      { id: "cloud-and-remote", displayName: "Cloud & Remote" },
+      { id: "cloud-and-remote", displayName: "Environments & Cloud" },
       { id: "command-line", displayName: "Command Line" },
       { id: "utilities", displayName: "Utilities" },
       { id: "plugin-development", displayName: "Plugin Development" },

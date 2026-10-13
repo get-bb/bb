@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   definePluginApp,
+  experimental_Icon as Icon,
   type PluginFileOpenerProps,
 } from "@get-bb/plugin-sdk/app";
-import { loadPdfBlob, resolvePdfReadTarget } from "./pdf-source.js";
+import { loadPdfBlob, resolvePdfUrl } from "./pdf-source.js";
 
 type PreviewState =
   | { status: "loading" }
@@ -13,8 +14,9 @@ type PreviewState =
 function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [state, setState] = useState<PreviewState>({ status: "loading" });
-  const target = useMemo(
-    () => resolvePdfReadTarget(path, source),
+  const url = useMemo(
+    () => resolvePdfUrl(path, source),
+    // oxlint-disable-next-line react/exhaustive-deps
     [
       path,
       source.environmentId,
@@ -25,13 +27,13 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
   );
 
   useEffect(() => {
-    if (target === null) return;
+    if (url === null) return;
 
     const controller = new AbortController();
     let objectUrl: string | null = null;
     setState({ status: "loading" });
 
-    void loadPdfBlob(target, controller.signal)
+    void loadPdfBlob(url, controller.signal)
       .then((blob) => {
         if (controller.signal.aborted) return;
         objectUrl = URL.createObjectURL(blob);
@@ -49,9 +51,9 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
       controller.abort();
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
-  }, [reloadNonce, target]);
+  }, [reloadNonce, url]);
 
-  if (target === null) return <Original />;
+  if (url === null) return <Original />;
 
   if (state.status === "error") {
     return (
@@ -79,7 +81,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
         role="status"
         aria-label={`Loading ${path}`}
       >
-        <span className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+        <Icon name="Spinner" className="size-4 animate-spin" aria-hidden />
         Loading PDF…
       </div>
     );
@@ -93,7 +95,7 @@ function PdfFileOpener({ path, source, Original }: PluginFileOpenerProps) {
           role="status"
           aria-label={`Rendering ${path}`}
         >
-          <span className="size-4 animate-spin rounded-full border-2 border-border border-t-foreground" />
+          <Icon name="Spinner" className="size-4 animate-spin" aria-hidden />
           Rendering PDF…
         </div>
       )}

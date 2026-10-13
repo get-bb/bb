@@ -195,17 +195,30 @@ describe("WorkspaceReadCaches", () => {
     };
   }
 
-  it("drops both caches for an environment on work-status-changed and git-refs-changed", async () => {
-    for (const change of ["work-status-changed", "git-refs-changed"] as const) {
+  it("refreshes local status on file edits and refreshes pull requests only on ref or lifecycle changes", async () => {
+    for (const { changes, expectedPullRequestLoads } of [
+      { changes: ["work-status-changed"], expectedPullRequestLoads: 1 },
+      { changes: ["git-refs-changed"], expectedPullRequestLoads: 2 },
+      { changes: ["status-changed"], expectedPullRequestLoads: 2 },
+      {
+        changes: ["work-status-changed", "git-refs-changed"],
+        expectedPullRequestLoads: 2,
+      },
+      {
+        changes: ["work-status-changed", "metadata-changed"],
+        expectedPullRequestLoads: 1,
+      },
+    ] as const) {
       const hub = createFakeHub();
-      const caches = new WorkspaceReadCaches({ hub, now: () => 0 });
+      const clock = createClock();
+      const caches = new WorkspaceReadCaches({ hub, now: clock.now });
       const primed = await primeBoth(caches);
 
       hub.emit({
         type: "changed",
         entity: "environment",
         id: "env-2",
-        changes: [change],
+        changes: [...changes],
       });
       expect(await primed.readBoth()).toEqual({ status: 1, pullRequest: 1 });
 
@@ -213,9 +226,18 @@ describe("WorkspaceReadCaches", () => {
         type: "changed",
         entity: "environment",
         id: "env-1",
-        changes: [change],
+        changes: [...changes],
       });
-      expect(await primed.readBoth()).toEqual({ status: 2, pullRequest: 2 });
+      expect(await primed.readBoth()).toEqual({
+        status: 2,
+        pullRequest: expectedPullRequestLoads,
+      });
+
+      clock.advance(10_000);
+      expect(await primed.readBoth()).toEqual({
+        status: 3,
+        pullRequest: expectedPullRequestLoads + 1,
+      });
     }
   });
 

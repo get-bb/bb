@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -114,25 +115,36 @@ export const server = sqliteTable(
     createdAt: timestampMs("created_at").notNull(),
     revokedAt: timestampMs("revoked_at"),
   },
-  (table) => [uniqueIndex("server_user_name_idx").on(table.userId, table.name)],
+  (table) => [
+    uniqueIndex("server_user_name_idx").on(table.userId, table.name),
+    index("server_credential_hash_idx").on(table.credentialHash),
+  ],
 );
 
 export const connectCode = sqliteTable(
   "connect_code",
   {
     code: text("code").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
     serverId: text("server_id").references(() => server.id, {
       onDelete: "cascade",
     }),
     purpose: text("purpose").notNull(),
+    deviceCodeHash: text("device_code_hash"),
+    clientName: text("client_name"),
+    requestLocation: text("request_location"),
+    deliveredCredentialHash: text("delivered_credential_hash"),
+    polledAt: timestampMs("polled_at"),
+    approvedAt: timestampMs("approved_at"),
+    deniedAt: timestampMs("denied_at"),
     expiresAt: timestampMs("expires_at").notNull(),
     consumedAt: timestampMs("consumed_at"),
     createdAt: timestampMs("created_at").notNull(),
   },
-  (table) => [index("connect_code_user_id_idx").on(table.userId)],
+  (table) => [
+    index("connect_code_user_id_idx").on(table.userId),
+    uniqueIndex("connect_code_device_code_hash_idx").on(table.deviceCodeHash),
+  ],
 );
 
 export const machine = sqliteTable(
@@ -149,7 +161,10 @@ export const machine = sqliteTable(
     createdAt: timestampMs("created_at").notNull(),
     revokedAt: timestampMs("revoked_at"),
   },
-  (table) => [index("machine_user_id_idx").on(table.userId)],
+  (table) => [
+    index("machine_user_id_idx").on(table.userId),
+    index("machine_credential_hash_idx").on(table.credentialHash),
+  ],
 );
 
 export const auditLog = sqliteTable(
@@ -167,6 +182,122 @@ export const auditLog = sqliteTable(
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
 
+export const aiUsageDay = sqliteTable(
+  "ai_usage_day",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    day: text("day").notNull(),
+    spentMicros: integer("spent_micros").notNull().default(0),
+    reservedMicros: integer("reserved_micros").notNull().default(0),
+    requests: integer("requests").notNull().default(0),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.day] }),
+    index("ai_usage_day_day_idx").on(table.day),
+  ],
+);
+
+export const aiRequestOutcomes = [
+  "ok",
+  "invalid_request",
+  "budget_exhausted",
+  "rate_limited",
+  "unavailable",
+  "upstream_error",
+  "timeout",
+] as const;
+
+export type AiRequestOutcome = (typeof aiRequestOutcomes)[number];
+
+export const aiRequestLog = sqliteTable(
+  "ai_request_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id").references(() => server.id, {
+      onDelete: "set null",
+    }),
+    model: text("model"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    costMicros: integer("cost_micros").notNull().default(0),
+    latencyMs: integer("latency_ms").notNull(),
+    outcome: text("outcome", { enum: aiRequestOutcomes }).notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [
+    index("ai_request_log_created_at_idx").on(table.createdAt),
+    index("ai_request_log_user_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const oauthGrant = sqliteTable(
+  "oauth_grant",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => server.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name").notNull(),
+    resource: text("resource").notNull(),
+    scope: text("scope").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+    lastUsedAt: timestampMs("last_used_at"),
+    revokedAt: timestampMs("revoked_at"),
+  },
+  (table) => [
+    index("oauth_grant_user_id_idx").on(table.userId),
+    index("oauth_grant_server_id_idx").on(table.serverId),
+  ],
+);
+
+export const oauthCode = sqliteTable(
+  "oauth_code",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => server.id, { onDelete: "cascade" }),
+    clientId: text("client_id").notNull(),
+    clientName: text("client_name").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    resource: text("resource").notNull(),
+    scope: text("scope").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+  },
+  (table) => [index("oauth_code_expires_at_idx").on(table.expiresAt)],
+);
+
+export const oauthRefreshToken = sqliteTable(
+  "oauth_refresh_token",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    grantId: text("grant_id")
+      .notNull()
+      .references(() => oauthGrant.id, { onDelete: "cascade" }),
+    expiresAt: timestampMs("expires_at").notNull(),
+    createdAt: timestampMs("created_at").notNull(),
+    rotatedAt: timestampMs("rotated_at"),
+  },
+  (table) => [index("oauth_refresh_token_grant_id_idx").on(table.grantId)],
+);
+
 export const schema = {
   user,
   session,
@@ -178,4 +309,9 @@ export const schema = {
   machine,
   connectCode,
   auditLog,
+  aiUsageDay,
+  aiRequestLog,
+  oauthGrant,
+  oauthCode,
+  oauthRefreshToken,
 };

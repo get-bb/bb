@@ -1,7 +1,10 @@
 import { createProjectSource } from "@bb/db";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  EMPTY_WORKSPACE_AGENT_CONTEXT,
+} from "../helpers/host-rpc.js";
 import { declaredNativeRootSet } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -213,6 +216,9 @@ describe("public project workspace routing", () => {
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [primaryCommand] } };
           }
+          if (request.command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
           if (request.command.type === "plugin.host.call") {
             return {
               ok: true,
@@ -262,6 +268,9 @@ describe("public project workspace routing", () => {
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [remoteCommand] } };
           }
+          if (request.command.type === "host.read_workspace_agent_context") {
+            return { ok: true, result: EMPTY_WORKSPACE_AGENT_CONTEXT };
+          }
           if (request.command.type === "plugin.host.call") {
             return {
               ok: true,
@@ -298,12 +307,6 @@ describe("public project workspace routing", () => {
       await expect(readJson(primaryCommands)).resolves.toMatchObject({
         commands: expect.arrayContaining([primaryCommand]),
       });
-      const primaryContent = await harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?path=primary.txt`,
-      );
-      await expect(primaryContent.text()).resolves.toBe(
-        "content from /primary/project",
-      );
 
       const remotePaths = await harness.app.request(
         `/api/v1/projects/${project.id}/paths?hostId=${remoteHost.id}&includeFiles=true&includeDirectories=true`,
@@ -342,14 +345,6 @@ describe("public project workspace routing", () => {
           "codex",
         ),
       });
-
-      const content = await harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?hostId=${remoteHost.id}&path=remote.txt`,
-      );
-      expect(content.headers.get("x-bb-content-encoding")).toBe("utf8");
-      await expect(content.text()).resolves.toBe(
-        "content from /remote/project",
-      );
     });
   });
 
@@ -371,7 +366,6 @@ describe("public project workspace routing", () => {
         `/api/v1/projects/${project.id}/files?${selector}`,
         `/api/v1/projects/${project.id}/paths?${selector}&includeFiles=true&includeDirectories=true`,
         `/api/v1/projects/${project.id}/commands?${selector}&provider=codex`,
-        `/api/v1/projects/${project.id}/files/content?${selector}&path=file.txt`,
       ];
 
       for (const url of urls) {
@@ -381,51 +375,6 @@ describe("public project workspace routing", () => {
           message: expect.stringContaining("mutually exclusive"),
         });
       }
-    });
-  });
-
-  it("preserves binary project file bytes and declares base64 SDK encoding", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-project-routing-binary",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/binary/project",
-      });
-      registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: (request) => {
-          if (request.command.type !== "host.read_file") {
-            throw new Error(`Unexpected binary RPC ${request.command.type}`);
-          }
-          return {
-            ok: true,
-            result: {
-              path: request.command.path,
-              content: "AAH+/w==",
-              contentEncoding: "base64",
-              mimeType: "application/octet-stream",
-              sizeBytes: 4,
-              sha256: "1".repeat(64),
-            },
-          };
-        },
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/files/content?path=image.bin`,
-      );
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-type")).toContain(
-        "application/octet-stream",
-      );
-      expect(response.headers.get("x-bb-content-encoding")).toBe("base64");
-      expect(new Uint8Array(await response.arrayBuffer())).toEqual(
-        new Uint8Array([0, 1, 254, 255]),
-      );
     });
   });
 });

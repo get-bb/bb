@@ -22,7 +22,6 @@ export interface UpsertProjectExecutionDefaultsArgs extends GetProjectExecutionD
   reasoningLevel: ReasoningLevel;
   permissionMode: PermissionMode;
   serviceTier: ServiceTier;
-  updatedAt?: number;
 }
 
 export function getProjectExecutionDefaults(
@@ -77,7 +76,7 @@ export function upsertProjectExecutionDefaults(
   db: DbConnection,
   args: UpsertProjectExecutionDefaultsArgs,
 ): ProjectExecutionDefaults {
-  const updatedAt = args.updatedAt ?? Date.now();
+  const updatedAt = Date.now();
   const row = db
     .insert(projectExecutionDefaults)
     .values({

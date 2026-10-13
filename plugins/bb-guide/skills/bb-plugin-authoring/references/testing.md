@@ -154,9 +154,8 @@ import {
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 
-// The thunk matters: app.tsx binds the plugin runtime at module load, so
-// loadPluginApp installs the test runtime BEFORE importing it. (For static
-// imports, call installTestPluginRuntime() in a vitest setup file instead.)
+// loadPluginApp and renderSlot install the test runtime. The SDK looks it up
+// when a hook runs, so a static `import app from "./app"` works as well.
 const app = await loadPluginApp(() => import("./app"));
 const contentScripts = await mountPluginContentScripts(app, {
   pluginId: "my-plugin",
@@ -191,7 +190,8 @@ await contentScripts.lifecycle.dispose();
 
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path,
-fileOpener extensions, and content-script ids/mount functions) and returns
+fileOpener extensions, code-fence renderer languages (exposed as
+`app.codeFenceRenderers`), and content-script ids/mount functions) and returns
 them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
 mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
 per-window instances. Working examples:
@@ -286,6 +286,8 @@ Remaining reference examples in `examples/plugins/`:
   with host token classes, no custom `@theme` colors, no hand-set oklch.
 - `onDispose` hooks run LIFO; stale `bb` handles from before a reload throw
   on use.
+- `harness.lifecycle.install()` runs `bb.onInstall`
+  handlers as a fresh install does; a throwing handler is logged at warn.
 - Backend API imports normally remain type-only. The root runtime exports
   `defineRpcContract`, `experimental_defineHostEntry`, and
   `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are plugin dependencies. The

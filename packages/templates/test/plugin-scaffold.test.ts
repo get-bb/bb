@@ -1,4 +1,11 @@
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -6,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolvePluginSdkLayout,
   scaffoldPlugin,
-  syncPluginTypes,
 } from "../src/plugin-scaffold.js";
 
 describe("scaffoldPlugin SDK dependency", () => {
@@ -167,7 +173,7 @@ describe("resolvePluginSdkLayout", () => {
     });
   });
 
-  it("reports the vendored layout for a legacy plugin, which still refreshes", async () => {
+  it("reports the vendored layout for a legacy plugin", async () => {
     const targetDir = join(workDir, "bb-plugin-legacy");
     await scaffoldPlugin({
       targetDir,
@@ -189,16 +195,6 @@ describe("resolvePluginSdkLayout", () => {
       kind: "vendored",
       pin: null,
     });
-
-    const files = await syncPluginTypes({ rootDir: targetDir, app: false });
-    expect(files).toEqual([
-      { path: "types/bb-plugin-sdk.d.ts", outcome: "written" },
-    ]);
-    const vendored = await readFile(
-      join(targetDir, "types", "bb-plugin-sdk.d.ts"),
-      "utf8",
-    );
-    expect(vendored).toContain("interface BbPluginApi");
   });
 
   it("stays vendored while declarations exist but the path map is gone", async () => {
@@ -208,7 +204,8 @@ describe("resolvePluginSdkLayout", () => {
       packageName: "bb-plugin-half-migrated",
       bbVersion: "0.9.0",
     });
-    await syncPluginTypes({ rootDir: targetDir, app: false });
+    await mkdir(join(targetDir, "types"));
+    await writeFile(join(targetDir, "types", "bb-plugin-sdk.d.ts"), "legacy\n");
 
     const layout = await resolvePluginSdkLayout(targetDir);
     expect(layout.kind).toBe("vendored");

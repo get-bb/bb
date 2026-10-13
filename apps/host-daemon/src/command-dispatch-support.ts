@@ -1,18 +1,23 @@
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import {
+  CompetingTurnError,
+  type AgentRuntimeBridgeLaunch,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSink } from "./event-sink.js";
-import type {
-  EnvironmentHookProgressMessage,
-  HostDaemonCommand,
-  ProviderHealthResult,
-  ProviderUsageResult,
-  HostDaemonBridgeLaunch,
-  HostDaemonInjectedSkillSource,
-  HostDaemonOnlineRpcCommand,
-  HostDaemonConnectTunnelIdentity,
-  WorkspaceContext,
+import {
+  COMPETING_TURN_ERROR_CODE,
+  type EnvironmentHookProgressMessage,
+  type HostDaemonCommand,
+  type ProviderHealthResult,
+  type ProviderUsageResult,
+  type HostDaemonBridgeLaunch,
+  type HostDaemonInjectedSkillSource,
+  type HostDaemonOnlineRpcCommand,
+  type HostDaemonConnectTunnelIdentity,
+  type WorkspaceContext,
 } from "@bb/host-daemon-contract";
+import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import type {
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
@@ -24,6 +29,7 @@ import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type { ServerMoveService } from "./server-move/service.js";
 import {
   ensureCachedPluginHostArtifact,
   type FetchPluginHostArtifact,
@@ -35,11 +41,6 @@ export type CommandOf<TType extends DispatchCommand["type"]> = Extract<
   DispatchCommand,
   { type: TType }
 >;
-
-export const noopEventSink: Pick<EventSink, "emit" | "flush"> = {
-  emit: () => undefined,
-  flush: async () => undefined,
-};
 
 export interface CommandDispatchOptions {
   emitEnvironmentHookProgress?: (
@@ -76,6 +77,7 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
+    checkUpdates?: boolean;
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;
@@ -88,11 +90,12 @@ export interface CommandDispatchOptions {
     plan: ProviderInstallationCommand;
     env?: NodeJS.ProcessEnv;
   }) => ReadableStream<Uint8Array>;
-  refreshShellEnv: () => Promise<void>;
+  refreshShellEnv: (args: { allowStale: boolean }) => Promise<void>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
   ensureConnectTunnelIdentity?: () => Promise<HostDaemonConnectTunnelIdentity>;
+  serverMove?: ServerMoveService;
   threadStorageRootPath: string;
 }
 
@@ -184,6 +187,12 @@ export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
   }
+  if (error instanceof CompetingTurnError) {
+    return COMPETING_TURN_ERROR_CODE;
+  }
+  if (isBridgeMissingExecutableError(error)) {
+    return "missing_executable";
+  }
   if (isStructuredSpawnMissingExecutableError(error)) {
     return "missing_executable";
   }
@@ -198,6 +207,14 @@ export function getErrorCode(error: unknown): string {
     return "missing_executable";
   }
   return "command_failed";
+}
+
+function isBridgeMissingExecutableError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE
+  );
 }
 
 function isStructuredSpawnMissingExecutableError(error: unknown): boolean {

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { markThreadDeleted, threadPluginMetadata } from "@bb/db";
+import { markThreadDeleted, threadPluginMetadata, threads } from "@bb/db";
 import { jsonObjectSchema, PLUGIN_METADATA_MAX_BYTES } from "@bb/domain";
+import { pluginThreadMetadataListResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
@@ -43,6 +44,18 @@ async function patchMetadata(
     `/api/v1/threads/${threadId}/plugin-metadata`,
     {
       method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return { status: response.status, body: await readJson(response) };
+}
+
+async function listMetadata(harness: TestAppHarness, body: unknown) {
+  const response = await harness.app.request(
+    "/api/v1/threads/plugin-metadata",
+    {
+      method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     },
@@ -233,6 +246,85 @@ describe("public thread plugin metadata routes", () => {
         expect(JSON.stringify(warn.mock.calls)).not.toContain("sk-live");
       } finally {
         harness.deps.logger = previousLogger;
+      }
+    });
+  });
+
+  it("lists one plugin's metadata for the requested threads", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/public-thread-plugin-metadata-list",
+      });
+      const [live, archived, deleted, corrupt, unrequested, otherPlugin] = [
+        1, 2, 3, 4, 5, 6,
+      ].map(() => seedThread(harness.deps, { projectId: project.id }));
+      for (const thread of [live, archived, deleted, corrupt, unrequested]) {
+        await patchMetadata(harness, thread!.id, {
+          pluginId: "linear",
+          set: { thread: thread!.id },
+        });
+      }
+      await patchMetadata(harness, otherPlugin!.id, {
+        pluginId: "other",
+        set: { a: 1 },
+      });
+      harness.db
+        .update(threads)
+        .set({ archivedAt: 1 })
+        .where(eq(threads.id, archived!.id))
+        .run();
+      markThreadDeleted(harness.db, harness.hub, { threadId: deleted!.id });
+      harness.db
+        .update(threadPluginMetadata)
+        .set({ metadataJson: "not json" })
+        .where(eq(threadPluginMetadata.threadId, corrupt!.id))
+        .run();
+      const warn = vi.fn();
+      const previousLogger = harness.deps.logger;
+      harness.deps.logger = { ...previousLogger, warn };
+      try {
+        const requested = [live, archived, deleted, corrupt, otherPlugin].map(
+          (thread) => thread!.id,
+        );
+        const listed = await listMetadata(harness, {
+          pluginId: "linear",
+          threadIds: [...requested, "thr_missing"],
+        });
+        expect(listed.status).toBe(200);
+        const { threads: rows } = pluginThreadMetadataListResponseSchema.parse(
+          listed.body,
+        );
+        expect(
+          rows.sort((left, right) =>
+            left.threadId.localeCompare(right.threadId),
+          ),
+        ).toEqual(
+          [live, archived, deleted]
+            .map((thread) => ({
+              threadId: thread!.id,
+              metadata: { thread: thread!.id },
+            }))
+            .sort((left, right) => left.threadId.localeCompare(right.threadId)),
+        );
+        expect(warn.mock.calls).toEqual([
+          [
+            `Ignoring corrupt plugin metadata for thread ${corrupt!.id}, plugin linear`,
+          ],
+        ]);
+      } finally {
+        harness.deps.logger = previousLogger;
+      }
+      for (const body of [
+        { pluginId: "Bad", threadIds: [live!.id] },
+        { pluginId: "linear", threadIds: [] },
+        {
+          pluginId: "linear",
+          threadIds: Array.from({ length: 201 }, (_, index) => `thr_${index}`),
+        },
+      ]) {
+        expect((await listMetadata(harness, body)).status).toBe(400);
       }
     });
   });

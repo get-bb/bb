@@ -28,8 +28,10 @@ function createProcessOps(
   return {
     isRunning: vi.fn(() => true),
     kill: vi.fn(),
-    readCommand: vi.fn(async () => "node /opt/bb/bb-app.js start"),
-    readElapsedSeconds: vi.fn(async () => 30 * 60),
+    readIdentity: vi.fn(async () => ({
+      command: "node /opt/bb/bb-app.js start",
+      startedAt: Date.now() - 30 * 60_000,
+    })),
     waitForExit: vi.fn(async () => true),
     ...overrides,
   };
@@ -132,9 +134,10 @@ describe("stopForeignRuntime", () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps({
-      readCommand: vi.fn(
-        async () => "node packages/bb-app/dist/bb-app.js start",
-      ),
+      readIdentity: vi.fn(async () => ({
+        command: "node packages/bb-app/dist/bb-app.js start",
+        startedAt: Date.now() - 30 * 60_000,
+      })),
     });
 
     await expect(
@@ -152,7 +155,10 @@ describe("stopForeignRuntime", () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps({
-      readElapsedSeconds: vi.fn(async () => 5),
+      readIdentity: vi.fn(async () => ({
+        command: "node /opt/bb/bb-app.js start",
+        startedAt: Date.now() - 5_000,
+      })),
     });
 
     await expect(
@@ -225,9 +231,10 @@ describe("stopForeignRuntime", () => {
     const dataDir = await createDataDir();
     await writeRuntimeFile({ dataDir });
     const processOps = createProcessOps({
-      readCommand: vi.fn(
-        async () => "/Applications/Mail.app/Contents/MacOS/Mail",
-      ),
+      readIdentity: vi.fn(async () => ({
+        command: "/Applications/Mail.app/Contents/MacOS/Mail",
+        startedAt: Date.now() - 30 * 60_000,
+      })),
     });
 
     await expect(

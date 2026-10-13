@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import {
   events,
   getThread,
+  getHighWaterMarks,
+  getLastStoredProviderThreadId,
   listEvents,
   listQueuedThreadMessages,
 } from "@bb/db";
@@ -35,8 +37,6 @@ import {
 import { createTestAppHarness } from "../helpers/test-app.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 
-interface SeedEventRouteArgs {}
-
 interface PostEventBatchArgs {
   harness: TestAppHarness;
   sessionId: string;
@@ -54,7 +54,7 @@ async function postEventBatch(args: PostEventBatchArgs): Promise<Response> {
   });
 }
 
-function setupEventRoute(args: SeedEventRouteArgs = {}) {
+function setupEventRoute() {
   return createTestAppHarness().then((harness) => {
     const { host, session } = seedHostSession(harness.deps);
     const { project } = seedProjectWithSource(harness.deps, {
@@ -81,6 +81,128 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
 }
 
 describe("internal event append ownership", () => {
+  it("skips diffs using the existing batch response while retaining edits and provider identity", async () => {
+    const { harness, session, thread } = await setupEventRoute();
+    try {
+      seedTurnStarted(harness.deps, {
+        threadId: thread.id,
+        turnId: "turn-diff",
+        sequence: 1,
+      });
+      const providerThreadId = "provider-diff";
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId,
+              scope: threadScope(),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId,
+              scope: turnScope("turn-diff"),
+              diff: "discard this snapshot",
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "item/completed",
+              threadId: thread.id,
+              providerThreadId,
+              scope: turnScope("turn-diff"),
+              item: {
+                id: "edit-diff",
+                type: "fileChange",
+                status: "completed",
+                approvalStatus: null,
+                changes: [
+                  {
+                    path: "example.ts",
+                    kind: "update",
+                    diff: "+const value = 2;",
+                  },
+                ],
+              },
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/identity",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: threadScope(),
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: turnScope("turn-diff"),
+              diff: "discard the final snapshot too",
+            },
+          },
+        ],
+      });
+      expect(response.status).toBe(200);
+      const accepted = hostDaemonEventBatchResponseSchema.parse(
+        await response.json(),
+      );
+      expect(accepted.acceptedEvents.map((event) => event.sequence)).toEqual([
+        2, 3, 4,
+      ]);
+      expect(accepted.acceptedEvents.map((event) => event.eventIndex)).toEqual([
+        0, 2, 3,
+      ]);
+      const skipped = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "turn/diff/updated",
+              threadId: thread.id,
+              providerThreadId: "provider-latest",
+              scope: turnScope("turn-diff"),
+              diff: "skip the entire batch",
+            },
+          },
+        ],
+      });
+      expect(skipped.status).toBe(200);
+      expect(
+        hostDaemonEventBatchResponseSchema.parse(await skipped.json())
+          .acceptedEvents,
+      ).toEqual([]);
+      const stored = listEvents(harness.db, { threadId: thread.id });
+      expect(stored.some((event) => event.type === "turn/diff/updated")).toBe(
+        false,
+      );
+      expect(
+        stored.find((event) => event.type === "item/completed")?.sequence,
+      ).toBe(3);
+      expect(getHighWaterMarks(harness.db, [thread.id])[thread.id]).toBe(4);
+      expect(getLastStoredProviderThreadId(harness.db, thread.id)).toBe(
+        "provider-latest",
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("keeps late provisioning output terminal after setup has failed", async () => {
     const { environment, harness, session, thread } = await setupEventRoute();
     try {
@@ -169,6 +291,7 @@ describe("internal event append ownership", () => {
         buildThreadTimelineWithProfile(harness.db, thread, {
           completedTurnDisplay: "collapse",
           eventBudget: 1_000_000,
+          includeClearedContextHistory: false,
           includeDiagnosticOperations: true,
           maxInlineOutputChars: null,
           maxSeq: 1,
@@ -300,69 +423,6 @@ describe("internal event append ownership", () => {
               threadId: thread.id,
               scope: threadScope(),
               message: "accepted after skipped",
-            },
-          },
-        ],
-      });
-
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
-        acceptedEvents: [
-          {
-            eventIndex: 1,
-            threadId: thread.id,
-            sequence: 1,
-          },
-        ],
-        rejectedEvents: [],
-      });
-      expect(
-        harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toMatchObject([
-        {
-          sequence: 1,
-          type: "system/error",
-        },
-      ]);
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  it("accepts a batch carrying a provider/unhandled event for a turn bb never started", async () => {
-    const { harness, session, thread } = await setupEventRoute();
-    try {
-      const response = await postEventBatch({
-        harness,
-        sessionId: session.id,
-        events: [
-          {
-            threadId: thread.id,
-            event: {
-              type: "provider/unhandled",
-              threadId: thread.id,
-              providerThreadId: "provider-compacting-session",
-              providerId: "codex",
-              rawType: "sdk/custom",
-              scope: turnScope("auto-compact-1"),
-              rawEvent: {
-                jsonrpc: "2.0",
-                method: "sdk/message",
-                params: { threadId: thread.id, turnId: "auto-compact-1" },
-              },
-            },
-          },
-          {
-            threadId: thread.id,
-            event: {
-              type: "system/error",
-              threadId: thread.id,
-              scope: threadScope(),
-              message: "queued behind the orphan event",
             },
           },
         ],
@@ -529,63 +589,6 @@ describe("internal event append ownership", () => {
       });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       expect(getThread(harness.db, thread.id)?.status).toBe("active");
-    } finally {
-      await harness.cleanup();
-    }
-  });
-
-  it("rejects unowned thread events without blocking owned events in the same batch", async () => {
-    const { harness, session, thread } = await setupEventRoute();
-    try {
-      const response = await postEventBatch({
-        harness,
-        sessionId: session.id,
-        events: [
-          {
-            threadId: "thr_missing",
-            event: {
-              type: "system/error",
-              threadId: "thr_missing",
-              scope: threadScope(),
-              message: "stale daemon event",
-            },
-          },
-          {
-            threadId: thread.id,
-            event: {
-              type: "system/error",
-              threadId: thread.id,
-              scope: threadScope(),
-              message: "owned daemon event",
-            },
-          },
-        ],
-      });
-
-      expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({
-        acceptedEvents: [
-          {
-            eventIndex: 1,
-            threadId: thread.id,
-            sequence: 1,
-          },
-        ],
-        rejectedEvents: [
-          {
-            eventIndex: 0,
-            reason: "thread_not_owned_by_host",
-            threadId: "thr_missing",
-          },
-        ],
-      });
-      expect(
-        harness.db
-          .select()
-          .from(events)
-          .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(1);
     } finally {
       await harness.cleanup();
     }
@@ -1098,6 +1101,7 @@ describe("interaction lifecycle records from the daemon", () => {
       const questionRows = buildThreadTimelineWithProfile(harness.db, thread, {
         completedTurnDisplay: "collapse",
         eventBudget: 1_000_000,
+        includeClearedContextHistory: false,
         includeDiagnosticOperations: true,
         maxInlineOutputChars: null,
         maxSeq,

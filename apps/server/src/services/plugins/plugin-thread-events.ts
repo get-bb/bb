@@ -1,4 +1,5 @@
-import type { ApplyThreadLifecycleEventOutcome } from "@bb/db";
+import type { EnvironmentRemoval } from "@bb/domain";
+import type { ApplyThreadLifecycleEventOutcome, HostRow } from "@bb/db";
 import type { PendingInteraction, Thread } from "@bb/domain";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type { PluginThreadEventEmitter } from "./plugin-service.js";
@@ -29,6 +30,17 @@ export function emitPluginThreadArchived(thread: Thread): void {
 
 export function emitPluginThreadUnarchived(thread: Thread): void {
   emitter?.emitThreadUnarchived(thread);
+}
+
+/**
+ * Called after a thread's parent changed, from the ownership seam shared by
+ * `threads.update` and the release of an archived thread's children.
+ */
+export function emitPluginThreadParentChanged(
+  thread: Thread,
+  previousParentThreadId: string | null,
+): void {
+  emitter?.emitThreadParentChanged(thread, previousParentThreadId);
 }
 
 export function emitPluginThreadDeleted(thread: Thread): void {
@@ -107,4 +119,14 @@ export function emitPluginTerminalInput(
   terminal: import("@bb/server-contract").TerminalSession,
 ): void {
   emitter?.emitTerminalInput(terminal);
+}
+
+export function emitPluginHostDeleted(host: HostRow): void {
+  emitter?.emitHostDeleted(host);
+}
+
+export function emitPluginEnvironmentRemoved(
+  removal: EnvironmentRemoval,
+): void {
+  emitter?.emitEnvironmentRemoved(removal);
 }

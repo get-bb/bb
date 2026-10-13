@@ -1,3 +1,4 @@
+import { describeError } from "@/lib/describe-error";
 import {
   enablePushForProfile,
   syncPushRegistration,
@@ -51,6 +52,27 @@ export function createPushRegistrationController(
   >();
   let permission: PushPermissionState | null = null;
   let lastDeviceToken: string | null = null;
+  let operations: Promise<void> = Promise.resolve();
+
+  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = operations.then(operation);
+    operations = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  async function releaseUnusedDeviceToken(): Promise<void> {
+    if (deps.notifications.platform !== "android") return;
+    if (
+      deps.store.getSnapshot().enabledProfileIds.length === 0 ||
+      (await deps.notifications.getPermission()) === "denied"
+    ) {
+      await deps.notifications.unregisterDevicePushToken();
+      lastDeviceToken = null;
+    }
+  }
 
   function patch(profileId: string, next: Partial<PushProfileSyncState>): void {
     const current = snapshot.byProfileId[profileId] ?? IDLE;
@@ -75,9 +97,20 @@ export function createPushRegistrationController(
 
   async function runSync(profile: PushSyncProfile): Promise<PushSyncOutcome> {
     patch(profile.id, { syncing: true, permission });
-    const outcome = await syncPushRegistration(deps, profile);
-    patch(profile.id, { syncing: false, lastOutcome: outcome, permission });
-    return outcome;
+    return enqueue(async () => {
+      let outcome = await syncPushRegistration(deps, profile);
+      try {
+        await releaseUnusedDeviceToken();
+      } catch (error) {
+        outcome = {
+          action: "failed",
+          step: "unregister",
+          error: describeError(error),
+        };
+      }
+      patch(profile.id, { syncing: false, lastOutcome: outcome, permission });
+      return outcome;
+    });
   }
 
   function sync(profile: PushSyncProfile): Promise<PushSyncOutcome> {
@@ -126,12 +159,20 @@ export function createPushRegistrationController(
       return sync(profile);
     },
     async reconcileRemovedProfiles(currentProfileIds) {
-      const current = new Set(currentProfileIds);
-      for (const profileId of deps.store.registeredProfileIds()) {
-        if (current.has(profileId)) continue;
-        const outcome = await unregisterPushRegistration(deps, profileId);
-        if (outcome.action !== "failed") deps.store.forgetProfile(profileId);
-      }
+      await enqueue(async () => {
+        const current = new Set(currentProfileIds);
+        const known = new Set([
+          ...deps.store.registeredProfileIds(),
+          ...deps.store.getSnapshot().enabledProfileIds,
+        ]);
+        for (const profileId of known) {
+          if (current.has(profileId)) continue;
+          deps.store.setEnabled(profileId, false);
+          const outcome = await unregisterPushRegistration(deps, profileId);
+          if (outcome.action !== "failed") deps.store.forgetProfile(profileId);
+        }
+        await releaseUnusedDeviceToken();
+      });
     },
     async handleTokenRolled(profiles, deviceToken) {
       if (deviceToken === lastDeviceToken) return;

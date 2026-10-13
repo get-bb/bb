@@ -51,6 +51,7 @@ it("passes the canonical protocol suite", async () => {
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
     "session/start-identity": "pass",
+    "session/start-identity-announced": "pass",
     "turn/lifecycle": "pass",
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",

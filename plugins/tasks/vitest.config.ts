@@ -1,16 +1,17 @@
-import {
-  defineWorkspaceTestConfig,
-  sharedWorkerProjects,
-} from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
+export default defineConfig({
   resolve: {
+    tsconfigPaths: true,
     alias: {
       "tippy.js": "tippy.js/dist/tippy.esm.js",
     },
   },
   test: {
     silent: "passed-only",
+    name: "bb-plugin-tasks",
+    include: ["**/*.test.{ts,tsx}"],
+    exclude: ["node_modules/**"],
     testTimeout: 20_000,
     setupFiles: ["./vitest.setup.ts"],
     server: {
@@ -18,11 +19,5 @@ export default defineWorkspaceTestConfig({
         inline: ["@tiptap/extension-bubble-menu"],
       },
     },
-    projects: sharedWorkerProjects({
-      pkgDir: __dirname,
-      name: "bb-plugin-tasks",
-      include: ["**/*.test.{ts,tsx}"],
-      exclude: ["node_modules/**"],
-    }),
   },
 });

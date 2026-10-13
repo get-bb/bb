@@ -38,6 +38,32 @@ export function formatRelativeTime({
   });
 }
 
+export function formatCompactRelativeTime({
+  timestamp,
+  now,
+}: FormatRelativeTimeArgs): string {
+  const diffMs = now - timestamp;
+  if (diffMs < MINUTE_MS) {
+    return "now";
+  }
+  if (diffMs < HOUR_MS) {
+    return `${Math.floor(diffMs / MINUTE_MS)}m`;
+  }
+  if (diffMs < DAY_MS) {
+    return `${Math.floor(diffMs / HOUR_MS)}h`;
+  }
+  if (diffMs < WEEK_MS) {
+    return `${Math.floor(diffMs / DAY_MS)}d`;
+  }
+  if (diffMs < 5 * WEEK_MS) {
+    return `${Math.floor(diffMs / WEEK_MS)}w`;
+  }
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 interface FormatScheduledTimeArgs {
   timestamp: number;
   now: number;

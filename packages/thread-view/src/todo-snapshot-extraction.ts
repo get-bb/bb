@@ -6,6 +6,7 @@ import type {
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
 } from "@bb/domain";
+import { sliceUtf16Head } from "@bb/text-utils";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
 
@@ -14,7 +15,7 @@ const TODO_TEXT_MAX_LENGTH = 240;
 function trimAndTruncate(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length <= TODO_TEXT_MAX_LENGTH) return trimmed;
-  return trimmed.slice(0, TODO_TEXT_MAX_LENGTH);
+  return sliceUtf16Head(trimmed, TODO_TEXT_MAX_LENGTH);
 }
 
 interface SnapshotCandidate {

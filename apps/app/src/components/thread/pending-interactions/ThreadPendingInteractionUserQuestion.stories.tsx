@@ -2,7 +2,7 @@ import type {
   PendingInteraction,
   ProviderPendingInteraction,
 } from "@bb/domain";
-import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -118,8 +118,8 @@ export function Overview() {
         hint="one selectable answer with optional free text"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={singleQuestion}
+          <ThreadPendingInteractionBanners
+            interactions={[singleQuestion]}
             threadId={singleQuestion.threadId}
           />
         </PromptStage>
@@ -130,8 +130,8 @@ export function Overview() {
         hint="multiple questions must each be answered before submit"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={multiQuestion}
+          <ThreadPendingInteractionBanners
+            interactions={[multiQuestion]}
             threadId={multiQuestion.threadId}
           />
         </PromptStage>
@@ -142,8 +142,8 @@ export function Overview() {
         hint="answer submitted; provider resolution is in-flight"
       >
         <PromptStage>
-          <ThreadPendingInteractionBanner
-            interaction={resolvingQuestion}
+          <ThreadPendingInteractionBanners
+            interactions={[resolvingQuestion]}
             threadId={resolvingQuestion.threadId}
           />
         </PromptStage>

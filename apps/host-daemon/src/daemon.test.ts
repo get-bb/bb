@@ -1,3 +1,4 @@
+import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -269,7 +270,7 @@ describe("daemon lifecycle", () => {
     });
 
     await daemon.start();
-    await daemon.shutdown("self-update", 0);
+    await daemon.shutdown("self-update", HOST_DAEMON_RESTART_EXIT_CODE);
 
     expect(lifecycle).toEqual([
       "flushEvents",
@@ -277,7 +278,7 @@ describe("daemon lifecycle", () => {
       "releaseLock",
       "exitProcess",
     ]);
-    expect(exitProcess).toHaveBeenCalledWith(0);
+    expect(exitProcess).toHaveBeenCalledWith(HOST_DAEMON_RESTART_EXIT_CODE);
   });
 
   it("escalates an active clean shutdown after daemon lock loss", async () => {
@@ -310,26 +311,6 @@ describe("daemon lifecycle", () => {
     await Promise.all([signalShutdown, lockLossShutdown]);
 
     expect(exitProcess).toHaveBeenCalledOnce();
-    expect(exitProcess).toHaveBeenCalledWith(1);
-  });
-
-  it("preserves the requested failure status after daemon lock loss", async () => {
-    const logger = createLogger();
-    const exitProcess = vi.fn();
-    const daemon = createDaemon({
-      identity: {
-        hostId: "host-1",
-        hostName: "test-host",
-        instanceId: "instance-1",
-      },
-      logger,
-      releaseLock: async () => undefined,
-      exitProcess,
-    });
-
-    await daemon.start();
-    await daemon.shutdown("daemon-lock-lost", 1);
-
     expect(exitProcess).toHaveBeenCalledWith(1);
   });
 

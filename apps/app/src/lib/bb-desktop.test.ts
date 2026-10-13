@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
-  CHROME_ROW_HEIGHT_CLASS,
   MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS,
+  MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS,
   shouldReserveMacosTrafficLights,
 } from "./bb-desktop";
 
@@ -18,11 +18,15 @@ const desktopInfo: BbDesktopInfo = {
   version: "0.0.0-test",
 };
 
-describe("desktop chrome geometry", () => {
-  it("sizes chrome rows from the shared app chrome token", () => {
-    expect(CHROME_ROW_HEIGHT_CLASS).toBe("h-(--bb-app-chrome-row-height)");
-  });
+const px = (className: string): number => {
+  const match = /\[(\d+)px\]/.exec(className);
+  if (match === null) {
+    throw new Error(`no px token in "${className}"`);
+  }
+  return Number(match[1]);
+};
 
+describe("desktop chrome geometry", () => {
   it("reserves macOS traffic-light space only when lights are visible", () => {
     const desktopApi = createBbDesktopApi(desktopInfo);
 
@@ -47,14 +51,6 @@ describe("desktop chrome geometry", () => {
   });
 
   it("lands the collapsed reserve at the traffic-light-clearing target", () => {
-    const px = (className: string): number => {
-      const match = /\[(\d+)px\]/.exec(className);
-      if (match === null) {
-        throw new Error(`no px token in "${className}"`);
-      }
-      return Number(match[1]);
-    };
-
     const TRIGGER_OFFSET = px(MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS);
     const TRIGGER_BUTTON = 28;
     const TRIGGER_GAP = 8;
@@ -64,6 +60,12 @@ describe("desktop chrome geometry", () => {
 
     expect(BASE_INSET + px(MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS)).toBe(
       TARGET,
+    );
+  });
+
+  it("starts the framed title bar controls where the lone trigger sits", () => {
+    expect(px(MACOS_TRAFFIC_LIGHT_RESERVE_PADDING_CLASS)).toBe(
+      px(MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS),
     );
   });
 });

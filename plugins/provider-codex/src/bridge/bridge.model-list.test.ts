@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
 import { stubFakeCodexAppServer } from "./fake-codex-app-server-harness.js";
@@ -36,6 +37,70 @@ it("reuses one initialized app-server across model catalog requests", async () =
   expect(second.result).toEqual(first.result);
 });
 
+it.each([
+  {
+    name: "configured model",
+    configRead: { config: { model: "configured-model" } },
+    configReadError: false,
+    expectedDefaults: [false, true],
+  },
+  {
+    name: "unset model",
+    configRead: { config: { model: null } },
+    configReadError: false,
+    expectedDefaults: [true, false],
+  },
+  {
+    name: "model outside the catalog",
+    configRead: { config: { model: "unlisted-model" } },
+    configReadError: false,
+    expectedDefaults: [true, false],
+  },
+  {
+    name: "unavailable configuration API",
+    configRead: { config: { model: "configured-model" } },
+    configReadError: true,
+    expectedDefaults: [true, false],
+  },
+  {
+    name: "malformed configuration response",
+    configRead: { config: { model: 42 } },
+    configReadError: false,
+    expectedDefaults: [true, false],
+  },
+])("resolves catalog defaults with $name", async (scenario) => {
+  const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-default-"));
+  temporaryDirectories.push(workDir);
+  const scriptPath = join(workDir, "script.json");
+  const catalog = [
+    { id: "catalog-id", model: "catalog-model", isDefault: true },
+    { id: "configured-id", model: "configured-model", isDefault: false },
+  ];
+  await writeFile(
+    scriptPath,
+    JSON.stringify({
+      modelList: { data: catalog },
+      configRead: scenario.configRead,
+      configReadError: scenario.configReadError,
+      turns: [],
+    }),
+  );
+  stubFakeCodexAppServer(scriptPath);
+
+  harness.sendRequest(1, "model/list", {});
+  const response = await harness.waitForResponse(1);
+
+  expect(response.error).toBeUndefined();
+  expect(response.result).toMatchObject({
+    models: catalog.map((model, index) => ({
+      id: model.id,
+      model: model.model,
+      isDefault: scenario.expectedDefaults[index],
+    })),
+    selectedOnlyModels: [],
+  });
+});
+
 it("replaces the cached app-server after a model catalog failure", async () => {
   const workDir = await mkdtemp(join(tmpdir(), "bb-codex-model-list-"));
   temporaryDirectories.push(workDir);
@@ -65,4 +130,18 @@ it("replaces the cached app-server after a model catalog failure", async () => {
       },
     ],
   });
+});
+
+it("rejects a model catalog request with the missing-executable code when codex cannot be spawned", async () => {
+  vi.stubEnv(
+    "BB_CODEX_BRIDGE_APP_SERVER_COMMAND",
+    join(tmpdir(), "bb-codex-does-not-exist"),
+  );
+  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_ARGS", "[]");
+
+  harness.sendRequest(1, "model/list", {});
+  const response = await harness.waitForResponse(1);
+
+  expect(response.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE);
+  expect(response.error?.message).toContain("could not find the Codex CLI");
 });

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "delayed-loading",
+  "type": "registry:ui",
+  "title": "delayed-loading",
+  "description": "BB ui \"delayed-loading\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/delayed-loading.tsx",
+      "content": "import { useEffect, useState, type ReactNode } from \"react\";\n\nconst LOADING_REVEAL_DELAY_MS = 200;\n\nexport function DelayedLoading({ children }: { children: ReactNode }) {\n  const [visible, setVisible] = useState(false);\n\n  useEffect(() => {\n    const timeout = window.setTimeout(\n      () => setVisible(true),\n      LOADING_REVEAL_DELAY_MS,\n    );\n    return () => window.clearTimeout(timeout);\n  }, []);\n\n  return visible ? children : null;\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/delayed-loading.tsx"
+    }
+  ]
+}

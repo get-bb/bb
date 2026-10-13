@@ -1,6 +1,7 @@
 import {
   createThreadSection,
   deleteThreadSection,
+  listThreadSections,
   normalizeThreadSectionName,
   renameThreadSection,
 } from "@bb/db";
@@ -30,10 +31,12 @@ function throwDuplicateSectionName(): never {
 }
 
 export function registerThreadSectionRoutes(app: Hono, deps: AppDeps): void {
-  const { del, patch, post } = typedRoutes<PublicApiSchema>(app, {
+  const { del, get, patch, post } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threadSections;
+
+  get(routes.list, (context) => context.json(listThreadSections(deps.db)));
 
   post(routes.create, (context, payload) => {
     const result = createThreadSection(deps.db, deps.hub, {

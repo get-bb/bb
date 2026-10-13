@@ -9,7 +9,10 @@ import {
   PiRpcChild,
   PiRpcChildExitedError,
   buildPiChildEnv,
+  type PiRpcChildExitInfo,
 } from "./rpc-child.js";
+
+const REFRESH_MODELS_TIMEOUT_MS = 5_000;
 
 const EXTENDED_THINKING_LEVELS = [
   "off",
@@ -92,6 +95,9 @@ async function spawnCatalog(
   interface CatalogChildGeneration {
     child: PiRpcChild;
     ready: Promise<Record<string, unknown>>;
+    served: boolean;
+    refreshing: Promise<void> | null;
+    channelRequest(method: string, timeoutMs: number): Promise<unknown>;
     getModelScope():
       | { scopedModelIds: string[]; defaultModelId?: string }
       | undefined;
@@ -103,6 +109,12 @@ async function spawnCatalog(
       | { scopedModelIds: string[]; defaultModelId?: string }
       | undefined;
     let settleModelScopeRequest: (() => void) | undefined;
+    const pendingReplies = new Map<
+      string,
+      { resolve: (result: unknown) => void; reject: (error: Error) => void }
+    >();
+    let nextReplyId = 0;
+    let exitInfo: PiRpcChildExitInfo | null = null;
     const acceptModelScope = (value: Record<string, unknown>): void => {
       const scopedModelIds = Array.isArray(value.scopedModelIds)
         ? value.scopedModelIds.filter(
@@ -137,10 +149,57 @@ async function spawnCatalog(
           settleModelScopeRequest?.();
           settleModelScopeRequest = undefined;
         }
+        if (message.kind !== "reply" || typeof message.id !== "string") {
+          return;
+        }
+        const pending = pendingReplies.get(message.id);
+        if (pending === undefined) {
+          return;
+        }
+        pendingReplies.delete(message.id);
+        if (typeof message.error === "string") {
+          pending.reject(new Error(message.error));
+        } else {
+          pending.resolve(message.result);
+        }
       },
-      onExit: () => {},
+      onExit: (info) => {
+        exitInfo = info;
+        for (const [, pending] of pendingReplies) {
+          pending.reject(new PiRpcChildExitedError(info));
+        }
+        pendingReplies.clear();
+      },
       recordThreadId: null,
     });
+    const channelRequest = (
+      method: string,
+      timeoutMs: number,
+    ): Promise<unknown> => {
+      if (exitInfo !== null) {
+        return Promise.reject(new PiRpcChildExitedError(exitInfo));
+      }
+      nextReplyId += 1;
+      const id = `catalog-${nextReplyId}`;
+      return new Promise((resolveReply, rejectReply) => {
+        const timeout = setTimeout(() => {
+          pendingReplies.delete(id);
+          rejectReply(new Error(`pi did not answer ${method} in time`));
+        }, timeoutMs);
+        timeout.unref?.();
+        pendingReplies.set(id, {
+          resolve: (result) => {
+            clearTimeout(timeout);
+            resolveReply(result);
+          },
+          reject: (error) => {
+            clearTimeout(timeout);
+            rejectReply(error);
+          },
+        });
+        child.sendChannel({ kind: "request", id, method });
+      });
+    };
     const ready = (async (): Promise<Record<string, unknown>> => {
       const data = await child.requestOk({ type: "get_state" });
       await new Promise<void>((resolveScope) => {
@@ -160,7 +219,14 @@ async function spawnCatalog(
         ? (data as Record<string, unknown>)
         : {};
     })();
-    return { child, ready, getModelScope: () => modelScope };
+    return {
+      child,
+      ready,
+      served: false,
+      refreshing: null,
+      channelRequest,
+      getModelScope: () => modelScope,
+    };
   };
   const activeGeneration = (): CatalogChildGeneration => {
     if (generation === null || generation.child.exited) {
@@ -168,13 +234,47 @@ async function spawnCatalog(
     }
     return generation;
   };
+  const refreshModels = async (
+    active: CatalogChildGeneration,
+  ): Promise<void> => {
+    let reason: string;
+    try {
+      const reply = (await active.channelRequest(
+        "refresh-models",
+        REFRESH_MODELS_TIMEOUT_MS,
+      )) as { refreshed?: unknown; reason?: unknown } | null | undefined;
+      if (reply?.refreshed === true) {
+        return;
+      }
+      reason =
+        typeof reply?.reason === "string" ? reply.reason : "not refreshed";
+    } catch (error) {
+      reason = error instanceof Error ? error.message : String(error);
+    }
+    process.stderr.write(
+      `pi bridge: restarting the model catalog child: ${reason}\n`,
+    );
+    active.child.kill();
+    throw new PiRpcChildExitedError(await active.child.waitForExit());
+  };
+  const ensureFreshModels = (active: CatalogChildGeneration): Promise<void> => {
+    if (!active.served) {
+      return Promise.resolve();
+    }
+    active.refreshing ??= refreshModels(active).finally(() => {
+      active.refreshing = null;
+    });
+    return active.refreshing;
+  };
   const fetchRawFrom = async (
     active: CatalogChildGeneration,
   ): Promise<PiRpcModel[]> => {
     await active.ready;
+    await ensureFreshModels(active);
     const data = (await active.child.requestOk({
       type: "get_available_models",
     })) as { models?: unknown[] } | undefined;
+    active.served = true;
     touch();
     return (data?.models ?? []).filter(
       (entry): entry is PiRpcModel =>

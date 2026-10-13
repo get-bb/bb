@@ -41,3 +41,11 @@ export const BB_DESKTOP_BROWSER_IMPORT_COOKIES_CHANNEL =
   "bb-desktop:browser:import-cookies";
 export const BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL =
   "bb-desktop:browser:open-full-disk-access-settings";
+export const BB_DESKTOP_BROWSER_EVALUATE_CHANNEL =
+  "bb-desktop:browser:evaluate";
+export const BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL =
+  "bb-desktop:browser:page-message";
+export const BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL =
+  "bb-desktop:browser:guest-message";
+export const BB_DESKTOP_BROWSER_PAGE_WORLD_ID = 1717;
+export const BB_DESKTOP_BROWSER_PAGE_BRIDGE_KEY = "__bbBrowserPage";

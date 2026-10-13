@@ -1,4 +1,5 @@
-import { ArrowRight01Icon, Mail01Icon } from "@hugeicons/core-free-icons";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import Mail01Icon from "@hugeicons/core-free-icons/Mail01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
 

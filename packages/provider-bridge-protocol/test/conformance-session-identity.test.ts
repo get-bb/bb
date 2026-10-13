@@ -86,6 +86,7 @@ interface StubBridgeOptions {
   fork: "none" | "tip";
   blankResume?: boolean;
   blankFork?: boolean;
+  announceIdentity?: "match" | "none" | "other-id";
 }
 
 interface StubBridge {
@@ -110,9 +111,26 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
       params: { threadId, deltas },
     });
   };
-  const identity = (): { providerThreadId: string } => {
+  const identity = (
+    threadId: string | undefined,
+  ): { providerThreadId: string } => {
     sessions += 1;
-    return { providerThreadId: `prov-${sessions}` };
+    const providerThreadId = `prov-${sessions}`;
+    const announce = options.announceIdentity ?? "match";
+    if (announce !== "none") {
+      emitted.push({
+        jsonrpc: "2.0",
+        method: "thread/identity",
+        params: {
+          threadId,
+          providerThreadId:
+            announce === "match"
+              ? providerThreadId
+              : `${providerThreadId}-other`,
+        },
+      });
+    }
+    return { providerThreadId };
   };
   return {
     forks,
@@ -144,11 +162,12 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
             });
             return;
           case BRIDGE_REQUEST_METHODS.threadStart:
-            reply(message.id, { result: identity() });
+            reply(message.id, { result: identity(params.threadId) });
             return;
           case BRIDGE_REQUEST_METHODS.threadResume:
             reply(message.id, {
-              result: options.blankResume === true ? {} : identity(),
+              result:
+                options.blankResume === true ? {} : identity(params.threadId),
             });
             return;
           case BRIDGE_REQUEST_METHODS.threadFork:
@@ -163,7 +182,8 @@ function stubBridge(options: StubBridgeOptions): StubBridge {
               return;
             }
             reply(message.id, {
-              result: options.blankFork === true ? {} : identity(),
+              result:
+                options.blankFork === true ? {} : identity(params.threadId),
             });
             return;
           case BRIDGE_REQUEST_METHODS.threadStop:
@@ -289,6 +309,38 @@ describe("conformance session/start-identity", () => {
   });
 });
 
+describe("conformance session/start-identity-announced", () => {
+  it("fails a bridge that returns a session but never announces it", async () => {
+    const { report } = await runStub({ fork: "tip", announceIdentity: "none" });
+    const results = byId(report);
+    expect(results.get("session/start-identity")?.status).toBe("pass");
+    expect(results.get("session/start-identity-announced")).toMatchObject({
+      status: "fail",
+      detail: expect.stringContaining(
+        'thread/start returned providerThreadId "prov-1" for thread "thr_conformance_1", but no thread/identity notification or thread.identity delta announced it',
+      ),
+    });
+    expect(results.get("session/fork-identity")?.status).toBe("pass");
+    expect(results.get("session/fork-identity-announced")?.status).toBe("fail");
+    expect(failedIds(report)).toEqual([
+      "session/start-identity-announced",
+      "session/fork-identity-announced",
+    ]);
+    expect(report.passed).toBe(false);
+  });
+
+  it("fails a bridge whose thread/identity names a different session than the result", async () => {
+    const { report } = await runStub({
+      fork: "none",
+      announceIdentity: "other-id",
+    });
+    expect(
+      byId(report).get("session/start-identity-announced")?.detail,
+    ).toContain('(thread/identity named "prov-1-other")');
+    expect(failedIds(report)).toEqual(["session/start-identity-announced"]);
+  });
+});
+
 describe("conformance session/resume-identity", () => {
   it("names the missing providerThreadId when thread/resume answers without one", async () => {
     const { report } = await runStub({ fork: "none", blankResume: true });
@@ -308,9 +360,13 @@ describe("conformance session/resume-identity", () => {
     expect(failedIds(report)).toEqual(["session/resume-identity"]);
     expect(report.passed).toBe(false);
   });
+});
 
-  it("adopts the identity the resume returned for every later request", async () => {
+describe("conformance session/fork-identity", () => {
+  it("sends no thread/fork to a bridge whose handshake declares fork: none, and keeps using the identity the resume returned", async () => {
     const { report, bridge } = await runStub({ fork: "none" });
+    expect(bridge.forks).toEqual([]);
+    expect(byId(report).has("session/fork-identity")).toBe(false);
     expect(failedIds(report)).toEqual([]);
     expect(report.passed).toBe(true);
     expect(bridge.stops.at(-1)).toMatchObject({
@@ -319,19 +375,15 @@ describe("conformance session/resume-identity", () => {
       intent: "release",
     });
   });
-});
 
-describe("conformance session/fork-identity", () => {
-  it("sends no thread/fork to a bridge whose handshake declares fork: none", async () => {
-    const { report, bridge } = await runStub({ fork: "none" });
-    expect(bridge.forks).toEqual([]);
-    expect(byId(report).has("session/fork-identity")).toBe(false);
-    expect(report.passed).toBe(true);
-  });
-
-  it("forks the lifecycle session at its tip and releases the fork when fork is declared", async () => {
+  it("forks the lifecycle session at its tip, passes the announced-identity checks and releases the fork when fork is declared", async () => {
     const { report, bridge } = await runStub({ fork: "tip" });
-    expect(byId(report).get("session/fork-identity")?.status).toBe("pass");
+    const results = byId(report);
+    expect(results.get("session/fork-identity")?.status).toBe("pass");
+    expect(results.get("session/start-identity-announced")?.status).toBe(
+      "pass",
+    );
+    expect(results.get("session/fork-identity-announced")?.status).toBe("pass");
     expect(report.passed).toBe(true);
     expect(bridge.forks).toEqual([
       expect.objectContaining({

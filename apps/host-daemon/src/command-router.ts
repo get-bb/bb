@@ -30,6 +30,10 @@ import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
 import { runInSerialLane } from "./serial-lane.js";
+import {
+  markTurnSubmitTraceSpan,
+  runWithTurnSubmitTrace,
+} from "./turn-submit-trace.js";
 
 type CommandRouterLogger = Pick<HostDaemonLogger, "debug" | "warn">;
 
@@ -74,6 +78,7 @@ export interface CommandRouterOptions {
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
+  serverMove?: CommandDispatchOptions["serverMove"];
   threadStorageRootPath: string;
   logger: CommandRouterLogger;
 }
@@ -100,7 +105,9 @@ export class CommandRouter {
   ): Promise<HostDaemonOnlineRpcResponseMessage> {
     const handlerStartedAtMs = performance.now();
     try {
-      const result = await this.executeHostRpcCommand(message.command);
+      const result = await runWithTurnSubmitTrace(message.command, () =>
+        this.executeHostRpcCommand(message.command),
+      );
       this.logOnlineRpc({
         commandType: message.command.type,
         handlerMs: elapsedMs(handlerStartedAtMs),
@@ -209,9 +216,11 @@ export class CommandRouter {
   private async executeLiveDaemonCommandBody(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
+    markTurnSubmitTraceSpan("lanes.entered");
     const result = await dispatchCommand(command, this.createDispatchOptions());
     if (shouldFlushEventsBeforeReportingCommandResult(command)) {
       await this.options.eventSink.flush();
+      markTurnSubmitTraceSpan("events.flushed");
     }
     return parseHostDaemonCommandResultForCommand(command, result);
   }
@@ -280,6 +289,7 @@ export class CommandRouter {
       emitEnvironmentHookProgress: this.options.emitEnvironmentHookProgress,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
+      serverMove: this.options.serverMove,
       threadStorageRootPath: this.options.threadStorageRootPath,
       logger: this.options.logger,
     };

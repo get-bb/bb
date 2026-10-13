@@ -36,16 +36,12 @@ import {
   type PromptBoxAction,
   type TypeaheadConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import {
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
-} from "@/components/promptbox/PromptBoxActionsMenu";
 import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
-import {
-  QueuedMessagesList,
-  type QueuedMessageEditRequest,
-  type QueuedMessageInlineEditor,
-} from "@/components/promptbox/banner/QueuedMessagesList";
+import type {
+  QueuedMessageEditRequest,
+  QueuedMessageInlineEditor,
+} from "@/components/promptbox/banner/LazyQueuedMessagesList";
+import { QueuedMessagesList } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import {
   formatWorkspaceCheckoutDisplay,
@@ -88,6 +84,7 @@ const baseExecution = makeExecutionControlsProps({
 const codexModelLoadError = {
   providerId: "codex",
   code: "failed",
+  detail: "model list command_failed: codex exited before responding",
 } satisfies SystemExecutionOptionsModelLoadError;
 
 const permissionModeOptions: readonly PickerOption<PermissionMode>[] = [
@@ -115,8 +112,6 @@ const promptActions: readonly PromptBoxAction[] = [
     command: { trigger: "/", name: "goal", trailingText: " " },
     text: "/goal ",
   },
-  AUTOMATION_PROMPT_ACTION,
-  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 interface EnvironmentSummaryArgs {
@@ -152,7 +147,6 @@ function makeEnvironmentSummary({
   const chrome = getEnvironmentSummaryChrome({
     display,
     providerLookup,
-    environmentName: environment.name,
     hasMultipleMachines,
     host:
       machineName === undefined
@@ -302,8 +296,8 @@ const attachmentsBase: AttachmentsConfig = {
   projectId: "proj_demo",
   isAttaching: false,
   error: null,
-  onAttachFiles: noop,
-  onRemove: noop,
+  onAttachFiles: async () => [],
+  onUpdate: noop,
 };
 
 const historyEntries = [
@@ -507,6 +501,34 @@ const queuedMessages: readonly ThreadQueuedMessage[] = [
   makeStoryQueuedMessage("q_8", "Capture the final interaction states."),
 ];
 
+const STORY_NOW = Date.UTC(2026, 9, 8, 15, 0);
+
+const queuedMessagesWithReasons: readonly ThreadQueuedMessage[] = [
+  {
+    ...makeStoryQueuedMessage("q_failed", "Summarize the diff for the team."),
+    failureReason: "Workspace cleanup is pending. Try again shortly.",
+    createdAt: STORY_NOW - 30 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage(
+      "q_plain",
+      "Also run the tests when you're done.",
+    ),
+    createdAt: STORY_NOW - 20 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_scheduled", "Post the summary to the team."),
+    waitingOn: { kind: "time" },
+    sendAt: STORY_NOW + 2 * 60 * 60_000,
+    createdAt: STORY_NOW - 10 * 60_000,
+  },
+  {
+    ...makeStoryQueuedMessage("q_draft", "Draft: release notes outline."),
+    waitingOn: { kind: "plugin", pluginId: "drafts", reason: "Draft" },
+    createdAt: STORY_NOW - 5 * 60_000,
+  },
+];
+
 type RowPermission = Parameters<typeof FollowUpPromptBox>[0]["permission"];
 
 interface RowConfig {
@@ -568,6 +590,7 @@ function Row({
   readOnly = false,
 }: RowConfig) {
   const [message, setMessage] = useState(initialMessage);
+  const [queueExpanded, setQueueExpanded] = useState(true);
   const [mentionRanges, setMentionRanges] =
     useState<PromptTextMention[]>(initialMentions);
   const [storyQueuedMessages, setStoryQueuedMessages] = useState(
@@ -715,6 +738,8 @@ function Row({
         onReorder={noop}
         onSetGroupBoundary={noop}
         onEdit={handleEditQueuedMessage}
+        expanded={queueExpanded}
+        onExpandedChange={setQueueExpanded}
         onDelete={(id) =>
           setStoryQueuedMessages((current) =>
             current.filter((message) => message.id !== id),
@@ -897,8 +922,28 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
+        label="fitted queue above the composer"
+        hint="toggle the full Queue header in either direction, or collapse below the messages; hover the bottom row to inspect the composer corners"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessages.slice(0, 2)}
+        />
+      </StoryRow>
+      <StoryRow
+        label="queue with reasons"
+        hint="collapse the queue: the header names the failed send, which outranks the newer draft; delete it to see the newest reason (the draft). Open it to check the caret row and the gap above it; the count pill sits on the composer caret's axis"
+      >
+        <Row
+          submitMode={{ kind: "queue", onStop: noop }}
+          threadRuntimeDisplayStatus="active"
+          queuedMessages={queuedMessagesWithReasons}
+        />
+      </StoryRow>
+      <StoryRow
         label="stacked cards with Markdown + pills"
-        hint="collapse on mobile to verify the quoted prompt and pills truncate to one line"
+        hint="scroll the overflowing queue and toggle its header; edit a message to open the inline composer, or collapse the main composer on mobile"
       >
         <StackedCardsWithPillsRow />
       </StoryRow>
@@ -919,25 +964,46 @@ export function Overview() {
 export function EnvironmentSummary() {
   return (
     <StoryCard>
-      <StoryRow label="ready · one machine" hint="provider name; the machine is unambiguous so it stays hidden">
+      <StoryRow
+        label="ready · one machine"
+        hint="provider name; the machine is unambiguous so it stays hidden"
+      >
         {localEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · personal workspace" hint="no project chip, no branch; the provider names the environment">
+      <StoryRow
+        label="ready · personal workspace"
+        hint="no project chip, no branch; the provider names the environment"
+      >
         {personalEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · second machine" hint="machine name once more than one machine exists">
+      <StoryRow
+        label="ready · second machine"
+        hint="machine name once more than one machine exists"
+      >
         {multiMachineEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · worktree on a sandbox" hint="an ephemeral host is ambiguous, so it is named">
+      <StoryRow
+        label="ready · worktree on a sandbox"
+        hint="an ephemeral host is ambiguous, so it is named"
+      >
         {sandboxWorktreeEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · named environment" hint="a custom name wins over both machine and provider">
+      <StoryRow
+        label="ready · named environment"
+        hint="a custom name wins over both machine and provider"
+      >
         {namedLocalEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="ready · detached worktree" hint="provider icon · detached commit checkout">
+      <StoryRow
+        label="ready · detached worktree"
+        hint="provider icon · detached commit checkout"
+      >
         {detachedWorktreeEnvironmentSummary}
       </StoryRow>
-      <StoryRow label="destroyed environment" hint="lifecycle label replaces the provider name">
+      <StoryRow
+        label="destroyed environment"
+        hint="lifecycle label replaces the provider name"
+      >
         {destroyedEnvironmentSummary}
       </StoryRow>
     </StoryCard>

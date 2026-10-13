@@ -141,7 +141,9 @@ export async function preparePluginRuntime(args: {
     const manifest = pluginPackageJsonSchema.parse(
       JSON.parse(await readFile(path.join(buildRoot, "package.json"), "utf8")),
     );
-    await buildPluginServer(buildRoot, args.bbVersion, args.toolchain);
+    await buildPluginServer(buildRoot, args.bbVersion, args.toolchain, {
+      hostProvidedZod: true,
+    });
     if (manifest.bb.app !== undefined)
       await buildPluginApp(buildRoot, args.bbVersion, args.toolchain);
     if (manifest.bb.host !== undefined)

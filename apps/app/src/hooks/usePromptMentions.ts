@@ -14,6 +14,7 @@ import {
 import { useSidebarNavigation } from "./queries/sidebar-navigation-query";
 import { useThreadMentionCandidates } from "./queries/thread-queries";
 import { buildThreadMentionSuggestions } from "./threadMentionSuggestions";
+import { useResolveThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
@@ -188,6 +189,7 @@ export function usePromptMentions(
   );
 
   const currentThreadId = options.currentThreadId;
+  const resolveTitle = useResolveThreadTitle();
   const pathSuggestions = useMemo(
     () =>
       includeBuiltInSources
@@ -204,14 +206,18 @@ export function usePromptMentions(
       query: trimmedQuery,
       currentProjectId: projectId,
       currentThreadId,
+      currentEnvironmentId: options.environmentId,
       projectNamesById,
       limit: PROMPT_MENTION_SOURCE_LIMIT,
+      resolveTitle,
     });
   }, [
     currentThreadId,
     includeBuiltInSources,
+    options.environmentId,
     projectId,
     projectNamesById,
+    resolveTitle,
     threadsQuery.data,
     trimmedQuery,
   ]);

@@ -9,9 +9,10 @@ does not cover:
    syncs that plugin's SDK surface to the running bb — no server needed. For a
    plugin that depends on the npm package it repins the exact
    `@get-bb/plugin-sdk` devDependency to this bb's SDK version and brings the
-   runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
-   portal radix families, ...) to the versions this bb ships — adding any an
-   app plugin is missing and moving one out of `dependencies` (run
+   declared runtime-shimmed packages' type-only devDependencies (sonner, vaul, the
+   portal radix families, ...) to the versions this bb ships, moving them out
+   of `dependencies` when needed. Unused packages may be removed; neither
+   updates nor `--check` require undeclared shim packages (run
    `npm install` after); for an older plugin that still vendors `types/*.d.ts`
    it rewrites those declarations. Either way a cloned or older plugin can be
    thousands of lines behind. `--check` compares declared files and package
@@ -152,6 +153,7 @@ Host it three ways, and users add whichever fits:
 ```sh
 bb marketplace add https://plugins.acme.dev/marketplace.json
 bb marketplace add git:github.com/acme/bb-marketplace@main
+bb marketplace add git:github.com/acme/agent-plugins@main --subdirectory bb
 bb marketplace add path:/work/acme-marketplace
 bb marketplace list
 bb marketplace refresh acme-plugins
@@ -164,7 +166,10 @@ plugins continue as direct installs.
 
 An https marketplace is re-read with a conditional request; a git one is
 cloned into a throwaway checkout each refresh, with `marketplace.json` and any
-relative icons read from the repository root. Prefer git tag ranges over
+relative icons read from the repository root, or from the directory named by
+`--subdirectory <relative-path>` when the repository keeps its bb files apart
+from other content. `source.git.subdir` in an entry stays relative to the
+repository root. Prefer git tag ranges over
 pinned refs so a release reaches users without a catalog change. Before
 installing from a marketplace that is not `bb-community`, bb resolves and shows
 the true source — including the exact release tag and commit a range lands

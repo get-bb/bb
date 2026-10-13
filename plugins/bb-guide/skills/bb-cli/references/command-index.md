@@ -1,6 +1,6 @@
 # Core command index
 
-This index lists every command path that the core CLI registers. Read the task-specific reference before you use a command. Check live help for flags and defaults.
+This index lists every command path that the core CLI registers, including aliases: `thread get|view|status` run `thread show`, `thread message|send` run `thread tell`, `thread messages|timeline` run `thread log`, `thread create|new` run `thread spawn`, `terminal read` runs `terminal output`, `plugin uninstall` runs `plugin remove`, and `environment get` runs `environment show`. At the top level `bb host`, `bb hosts`, and `bb machines` run `bb machine`, `bb env` runs `bb environment`, and the plurals `threads`, `projects`, `terminals`, `providers`, `plugins`, and `skills` run their singular command, unless a plugin registers that name. `bb guide commands <group>` prints a group's commands with every option on one page. Read the task-specific reference before you use a command. Check live help for flags and defaults.
 
 ## status
 
@@ -10,8 +10,17 @@ This index lists every command path that the core CLI registers. Read the task-s
 
 - `bb settings`
 - `bb settings show`
+- `bb settings mobile-app`
 - `bb settings ai-services`
+- `bb settings ai-services show`
+- `bb settings ai-services set`
+- `bb settings ai-services test`
+- `bb settings cli-command`
+- `bb settings cli-command show`
+- `bb settings cli-command install`
+- `bb settings cli-command remove`
 - `bb settings general`
+- `bb settings replay-onboarding`
 - `bb settings completed-turns`
 - `bb settings experiment`
 - `bb settings keyboard`
@@ -28,6 +37,8 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb settings version`
 - `bb settings reload`
 
+`bb settings usage` accepts `--refresh` to fetch fresh provider usage.
+
 ## project
 
 - `bb project`
@@ -39,6 +50,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb project attachment upload`
 - `bb project attachment download`
 - `bb project list`
+- `bb project discover`
 - `bb project history`
 - `bb project reorder`
 - `bb project branches`
@@ -53,19 +65,18 @@ This index lists every command path that the core CLI registers. Read the task-s
 
 `bb project show <id>` accepts `proj_personal` to inspect Personal.
 
+## prompt-history
+
+- `bb prompt-history`
+- `bb prompt-history list`
+
 ## provider
 
 - `bb provider`
 - `bb provider list`
+- `bb provider enable`
+- `bb provider disable`
 - `bb provider models`
-
-## manager
-
-- `bb manager`
-- `bb manager hire`
-- `bb manager list`
-- `bb manager status`
-- `bb manager delete`
 
 ## machine
 
@@ -79,7 +90,7 @@ This index lists every command path that the core CLI registers. Read the task-s
 - `bb machine create`
 - `bb machine list`
 - `bb machine show`
-- `bb machine join-code`
+- `bb machine reconnect`
 - `bb machine rename`
 - `bb machine remove`
 - `bb machine suspend`
@@ -97,11 +108,36 @@ use `--environment-provider modal-sandbox` alone. `--machine-inputs <json>`
 configures the machine with optional configured `preset` and `image` names;
 `--environment-inputs <json>` configures the workspace. Neither carries secrets.
 
+## server
+
+- `bb server`
+- `bb server move`
+- `bb server move status`
+- `bb server move cancel`
+- `bb server export`
+- `bb server import`
+- `bb server unlock`
+- `bb server allow-connect`
+- `bb server delete-old-copy`
+- `bb server install-machine-service`
+
+`move`, `move status`, `move cancel`, and `export` call the running server.
+Server moves are experimental; agents run `move` (without `--check`),
+`move cancel`, and `unlock` only after the user explicitly confirms.
+`import`, `unlock`, `allow-connect`, and `delete-old-copy` act on a local data
+directory (`--data-dir`, else `BB_DATA_DIR`, else `~/.bb`) and never call a
+server. `install-machine-service` acts on the same local data directory after a
+move and downloads the new server's bb-app package for its service.
+
 ## updates
 
 - `bb updates`
 - `bb updates status`
 - `bb updates apply`
+- `bb updates app`
+- `bb updates app status`
+- `bb updates app apply`
+- `bb updates app dismiss`
 
 ## terminal
 
@@ -114,6 +150,7 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb terminal send`
 - `bb terminal resize`
 - `bb terminal output`
+- `bb terminal read`
 - `bb terminal blocks`
 - `bb terminal export`
 - `bb terminal wait`
@@ -127,10 +164,17 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb thread`
 - `bb thread wait`
 - `bb thread spawn`
+- `bb thread create`
+- `bb thread new`
 - `bb thread fork`
 - `bb thread list`
 - `bb thread show`
+- `bb thread get`
+- `bb thread view`
+- `bb thread status`
 - `bb thread log`
+- `bb thread messages`
+- `bb thread timeline`
 - `bb thread output`
 - `bb thread open`
 - `bb thread pane`
@@ -160,15 +204,20 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb thread update`
 - `bb thread archive`
 - `bb thread unarchive`
+- `bb thread restore-environment`
 - `bb thread pin`
 - `bb thread unpin`
 - `bb thread delete`
 - `bb thread edit-message`
 - `bb thread tell`
+- `bb thread message`
+- `bb thread send`
 - `bb thread retry`
 - `bb thread stop`
 - `bb thread compact`
 - `bb thread context`
+- `bb thread commands`
+- `bb thread options`
 - `bb thread clear`
 - `bb thread cancel-plan`
 - `bb thread clear-goal`
@@ -187,7 +236,9 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb environment providers`
 - `bb environment list`
 - `bb environment delete`
+- `bb environment cleanup`
 - `bb environment show`
+- `bb environment get`
 - `bb environment status`
 - `bb environment branches`
 - `bb environment paths`
@@ -234,8 +285,11 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb plugin list`
 - `bb plugin source`
 - `bb plugin install`
+- `bb plugin install-jobs`
+- `bb plugin cancel-install`
 - `bb plugin outdated`
 - `bb plugin update`
+- `bb plugin update-jobs`
 - `bb plugin new`
 - `bb plugin types`
 - `bb plugin migrate`
@@ -248,11 +302,14 @@ configures the machine with optional configured `preset` and `image` names;
 - `bb plugin rpc call`
 - `bb plugin enable`
 - `bb plugin disable`
+- `bb plugin safe-mode`
+- `bb plugin prune`
 - `bb plugin config`
 - `bb plugin token`
 - `bb plugin run`
 - `bb plugin logs`
 - `bb plugin remove`
+- `bb plugin uninstall`
 
 ## marketplace
 
@@ -281,6 +338,13 @@ configures the machine with optional configured `preset` and `image` names;
 
 - `bb guide`
 
+## diagnostics
+
+- `bb diagnostics`
+- `bb diagnostics cli-errors`
+
+`bb diagnostics cli-errors` tallies the failed `bb` invocations recorded in `<data dir>/logs/cli-errors.jsonl` on this machine. It records the command path, the error code, and the unknown command or flag, never argument values. `BB_CLI_ERROR_LOG=0` turns recording off.
+
 ## voice
 
 - `bb voice`
@@ -305,6 +369,13 @@ configures the machine with optional configured `preset` and `image` names;
 Machine lists and name/ID selectors include machines still being created. Machine creation is durable: `create --no-wait` returns the creating host ID. `machine show <host-id>` reads progress and `machine remove <host-id>` cancels it. SIGINT only stops following.
 
 Machine environment: `bb machine env list`, `bb machine env set NAME`
-(value from stdin), and `bb machine env unset NAME`; all accept `--json`.
+(value from stdin), and `bb machine env unset NAME`; all accept `--project <id>` for project overrides and `--json`. Omit `--project` for global settings.
 
 Standalone `bb machine create` machines remain until explicitly removed.
+
+To enroll an existing machine, run `bb machine create --provider manual`, then
+run its printed enrollment command on the target. The CLI waits until the daemon
+connects. With `--no-wait`, it returns the creating host ID immediately.
+
+- `bb plugin update <id> --yes --no-wait`: start a background update.
+- `bb plugin update-jobs [job-id] [--json]`: inspect update progress and recent results.

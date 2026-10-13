@@ -67,6 +67,14 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
   },
   {
     colorTag: null,
+    id: "attachment-file",
+    kind: "attachment-file-preview",
+    name: "Pasted text.txt",
+    path: "Pasted-text-1791431248908-krajcq.txt",
+    projectId: "prj_1",
+  },
+  {
+    colorTag: null,
     environmentId: "env_1",
     id: "browser",
     kind: "browser",

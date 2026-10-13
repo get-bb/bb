@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -6,11 +7,13 @@ import {
   MARKETPLACE_V2_FIXTURE,
 } from "./marketplace-v2.fixture.js";
 import {
+  MarketplaceRenderTimeProvider,
   PublicMarketplaceAuthorPage,
   PublicMarketplaceDetailPage,
   PublicMarketplacePage,
   PublicMarketplaceUnavailablePage,
 } from "./public-marketplace.js";
+import type { MarketplaceV2Entry } from "./marketplace-v2.js";
 
 describe("public marketplace route rendering", () => {
   it("renders the marketplace route with document shelves and controls", () => {
@@ -22,7 +25,7 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
-    expect(html).toContain("Make bb yours.");
+    expect(html).toContain('aria-label="Make bb yours"');
     expect(html).toContain(
       "Themes, providers, workflows, and tools, installed with one command.",
     );
@@ -31,25 +34,39 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("Featured");
     expect(html).toContain("Popular");
     expect(html).toContain("marketplace-shelf-notable");
-    expect(html).toContain("marketplace-new-chip");
+    expect(html).not.toContain("marketplace-new-chip");
     expect(html).toContain("https://github.com/get-bb.png?size=32");
     expect(html).toContain("https://getbb.app/marketplace/v1/icons");
-    expect(html).toContain('<select aria-label="Category">');
+    expect(html).toContain('aria-label="Category: All categories"');
+    expect(html).toContain('role="group" aria-label="Category"');
     expect(html).toContain(
-      '<option value="" selected="">All categories</option>',
+      '<span>Thread Content</span><span class="marketplace-count">1</span>',
     );
     expect(html).toContain(
-      '<option value="thread-content">Thread Content (1)</option>',
+      '<span>Code &amp; Reviews</span><span class="marketplace-count">2</span>',
     );
     expect(html).toContain(
-      '<option value="code-and-reviews">Code &amp; Reviews (2)</option>',
+      '<span>More plugins</span><span class="marketplace-count">1</span>',
     );
-    expect(html).toContain(
-      '<option value="uncategorized">More plugins (1)</option>',
-    );
-    expect(html).not.toContain("marketplace-category-pill");
     expect(html).not.toContain("marketplace-category-filters");
-    expect(html).not.toContain("mask-image");
+    expect(html).toContain("mask-image");
+    expect(html).toContain("marketplace-svg-icon");
+  });
+
+  it("keeps raster artwork as an image", () => {
+    const entry = {
+      ...MARKETPLACE_V2_FIXTURE.plugins[0]!,
+      icon: { url: "https://example.com/icon.png" },
+    };
+    const html = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={{ ...MARKETPLACE_V2_FIXTURE, plugins: [entry] }}
+        entry={entry}
+        stats={null}
+      />,
+    );
+    expect(html).toContain('<img src="https://example.com/icon.png"');
+    expect(html).not.toContain("marketplace-svg-icon");
   });
 
   it("filters the marketplace route to one selected category", () => {
@@ -61,15 +78,15 @@ describe("public marketplace route rendering", () => {
         onStateChange={() => {}}
       />,
     );
+    expect(html).toContain('aria-label="Category: Code &amp; Reviews"');
+    expect(html).toContain("<h2>Code &amp; Reviews");
     expect(html).toContain(
-      '<option value="code-and-reviews" selected="">Code &amp; Reviews (2)</option>',
+      "<span>2</span></h2><p>Work with code and reviews.</p>",
     );
-    expect(html).toContain("Filtered plugins");
-    expect(html).toContain("2 plugins");
+    expect(html).not.toContain("Filtered plugins");
     expect(html).toContain(
       '<span class="marketplace-card-category">Code &amp; Reviews</span>',
     );
-    expect(html).not.toContain("marketplace-category-pill");
     expect(html).toContain("Review Companion");
     expect(html).not.toContain("Prompt Library");
     expect(html).not.toContain("New &amp; notable");
@@ -95,7 +112,7 @@ describe("public marketplace route rendering", () => {
     expect(html).not.toContain("marketplace-install-command");
     expect(html).not.toContain("Don&#x27;t have bb?");
     expect(html).not.toContain("Runs in bb");
-    expect(html).toContain("Listed");
+    expect(html).not.toContain("Listed");
     expect(html).toContain(
       'href="https://www.npmjs.com/package/@get-bb/plugin-prompt-library"',
     );
@@ -107,8 +124,12 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain('loading="lazy"');
     expect(html).toContain('referrerPolicy="no-referrer"');
     expect(html).not.toContain("More from BB Labs");
-    expect(html).toContain("marketplace-overview-lead");
-    expect(html).not.toContain("marketplace-overview-rule");
+    expect(html).toContain(
+      `<p class="marketplace-overview-lead">${entry.description}</p>`,
+    );
+    expect(html.indexOf(entry.description)).toBeGreaterThan(
+      html.indexOf('class="marketplace-detail-install"'),
+    );
     expect(html.split(entry.description)).toHaveLength(2);
     expect(html).not.toContain("Version");
     expect(html).not.toContain("Updated");
@@ -177,7 +198,6 @@ describe("public marketplace route rendering", () => {
       html.indexOf("More in Code &amp; Reviews"),
     );
     expect(html).not.toContain("marketplace-screenshots");
-    expect(html).not.toContain("marketplace-overview-rule");
   });
 
   it("renders the category shelf alone when the author has no other plugins", () => {
@@ -228,6 +248,79 @@ describe("public marketplace route rendering", () => {
     expect(html).toContain("Featured");
     expect(html).toContain("Popular");
     expect(html).toContain("Review Companion");
+  });
+
+  it("badges new plugins from the route render time on cards only", () => {
+    const entry = MARKETPLACE_V2_FIXTURE.plugins.find(
+      (candidate) => candidate.id === "review-companion",
+    )!;
+    const render = (renderedAt: string, node: ReactNode) =>
+      renderToStaticMarkup(
+        <MarketplaceRenderTimeProvider renderedAt={Date.parse(renderedAt)}>
+          {node}
+        </MarketplaceRenderTimeProvider>,
+      );
+    const page = (
+      <PublicMarketplacePage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        stats={MARKETPLACE_STATS_FIXTURE}
+        state={{ category: "code-and-reviews" }}
+        onStateChange={() => {}}
+      />
+    );
+    expect(render("2026-08-25T00:00:00Z", page)).toContain(
+      'marketplace-card-installs is-new">New',
+    );
+    expect(render("2026-10-25T00:00:00Z", page)).not.toContain("is-new");
+    expect(
+      render(
+        "2026-08-25T00:00:00Z",
+        <PublicMarketplaceDetailPage
+          manifest={MARKETPLACE_V2_FIXTURE}
+          entry={entry}
+          stats={MARKETPLACE_STATS_FIXTURE}
+        />,
+      ),
+    ).not.toContain("marketplace-detail-installs");
+  });
+
+  it("labels only default-installed bundled plugins as built in", () => {
+    const bundled = (plugin: string): MarketplaceV2Entry => ({
+      id: plugin,
+      displayName: plugin,
+      description: `The ${plugin} plugin.`,
+      icon: "Puzzle",
+      category: "thread-content",
+      screenshots: [],
+      tags: [],
+      author: { name: "BB" },
+      source: { bundled: { plugin } },
+    });
+    const html = renderToStaticMarkup(
+      <PublicMarketplacePage
+        manifest={{
+          ...MARKETPLACE_V2_FIXTURE,
+          plugins: [
+            ...MARKETPLACE_V2_FIXTURE.plugins,
+            bundled("bb-guide"),
+            bundled("tasks"),
+          ],
+        }}
+        stats={{
+          ...MARKETPLACE_STATS_FIXTURE,
+          plugins: { "bb-guide": { installs: 2 }, tasks: { installs: 1357 } },
+        }}
+        state={{ category: "thread-content" }}
+        onStateChange={() => {}}
+      />,
+    );
+    const card = (name: string) =>
+      html
+        .split('<article class="marketplace-card">')
+        .find((segment) => segment.includes(`<strong>${name}</strong>`));
+    expect(card("bb-guide")).toContain("Built in");
+    expect(card("tasks")).toContain('aria-label="1,357 installs"');
+    expect(card("tasks")).not.toContain("Built in");
   });
 
   it("renders the unavailable route", () => {

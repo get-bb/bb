@@ -6,6 +6,7 @@ import {
   automationRunResponseSchema,
   automationTriggerSchema,
   legacyEmptyPromptAutomationResponseSchema,
+  persistedAutomationExecutionSchema,
   repairableAutomationExecutionSchema,
   type AutomationExecution,
   type AutomationOrigin,
@@ -284,7 +285,7 @@ export function parseAutomationTrigger(
 export function parseAutomationExecution(
   execution: string,
 ): AutomationExecution {
-  return automationExecutionSchema.parse(JSON.parse(execution));
+  return persistedAutomationExecutionSchema.parse(JSON.parse(execution));
 }
 
 function parseRepairableAutomationExecution(

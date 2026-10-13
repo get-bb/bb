@@ -7,6 +7,7 @@ export {
 export {
   resolveShellLoadPath,
   resolveShellScreenState,
+  revealsShellFailure,
   shouldReloadForSession,
   type ShellLoadPhase,
 } from "./shell-state";

@@ -12,13 +12,14 @@ function selectedSkillMention(
   name: string,
   start: number,
   source: "command" | "skill" = "skill",
+  trigger: "/" | "$" = "/",
 ) {
   return {
     start,
     end: start + name.length + 1,
     resource: {
       kind: "command" as const,
-      trigger: "/" as const,
+      trigger,
       name,
       source,
       origin: "user" as const,
@@ -34,7 +35,7 @@ function extractText(input: PromptInput[]): string | undefined {
 
 it("preserves local file paths with and without text", () => {
   const path = "/workspace/notes.md";
-  const marker = `[Attached file: ${path}]`;
+  const marker = `[Attached file "notes.md": ${path}]`;
   const file = {
     type: "localFile" as const,
     path,
@@ -74,6 +75,18 @@ it("invokes a selected skill without arguments", () => {
       },
     ]),
   ).toBe("/skill:inspect");
+});
+
+it("invokes an explicit skill through Pi's native command", () => {
+  expect(
+    extractText([
+      {
+        type: "text" as const,
+        text: "$inspect src",
+        mentions: [selectedSkillMention("inspect", 0, "skill", "$")],
+      },
+    ]),
+  ).toBe("/skill:inspect src");
 });
 
 it("moves a selected skill to Pi's command position and preserves its arguments", () => {
@@ -187,7 +200,7 @@ it.each([
     name: "text mismatch",
     mention: selectedSkillMention("other", 0),
   },
-])("keeps a $name skill mention unchanged", ({ mention }) => {
+])("keeps an invalid skill mention unchanged", ({ mention }) => {
   expect(
     extractText([{ type: "text", text: "/inspect src", mentions: [mention] }]),
   ).toBe("/inspect src");
@@ -215,16 +228,6 @@ it("rejects invalid skill mentions at the protocol boundary", () => {
       type: "text",
       text: "/inspect",
       mentions: [{ ...validMention, start: -1 }],
-    },
-    {
-      type: "text",
-      text: "$inspect",
-      mentions: [
-        {
-          ...validMention,
-          resource: { ...validMention.resource, trigger: "$" },
-        },
-      ],
     },
   ];
 

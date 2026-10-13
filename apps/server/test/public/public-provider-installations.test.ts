@@ -20,6 +20,7 @@ import {
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
+import { handleDaemonSessionSilent } from "../../src/internal/session-owner-side-effects.js";
 import { type TestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1";
@@ -149,6 +150,59 @@ function handleProviderInstallationRpc(
 }
 
 describe("public provider installation routes", () => {
+  it("shares concurrent status probes and invalidates after installation, reconnect and TTL expiry", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "cached-installations",
+      });
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        async handle(request) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return handleProviderInstallationRpc(request);
+        },
+      });
+      const url = `${API}/hosts/${host.id}/provider-clis/status`;
+      const read = async () => {
+        const response = await harness.app.request(url);
+        expect(response.status).toBe(200);
+        expect(Object.keys(await response.json())).toHaveLength(4);
+      };
+      const count = () =>
+        responder.requests.filter(
+          (request) => request.command.type === "provider.installation.status",
+        ).length;
+      await Promise.all(Array.from({ length: 8 }, read));
+      expect(count()).toBe(4);
+      await read();
+      expect(count()).toBe(4);
+      const installed = await harness.app.request(
+        `${API}/hosts/${host.id}/provider-clis/install`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "codex", actionKind: "update" }),
+        },
+      );
+      expect(installed.status).toBe(200);
+      await read();
+      expect(count()).toBe(8);
+      harness.hub.notifyHost(host.id, ["host-connected"]);
+      await read();
+      expect(count()).toBe(12);
+      const realNow = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(realNow + 30_001);
+      try {
+        await read();
+        expect(count()).toBe(16);
+      } finally {
+        clock.mockRestore();
+        responder.unregister();
+      }
+    });
+  });
+
   it("lists installation-capable registered providers in registry order", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -255,7 +309,8 @@ describe("public provider installation routes", () => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "provider-installation-offline-host",
       });
-      harness.hub.unregisterDaemon(session.id);
+      handleDaemonSessionSilent(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
 
       const response = await harness.app.request(
         `${API}/hosts/${host.id}/provider-clis/status`,

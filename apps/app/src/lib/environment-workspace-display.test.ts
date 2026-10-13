@@ -119,7 +119,6 @@ const containerProviderLookup = findEnvironmentDisplayProvider(
 interface SummaryDisplayOverrides {
   display?: EnvironmentDisplayInfo;
   providerLookup?: ReturnType<typeof findEnvironmentDisplayProvider>;
-  environmentName?: string | null;
   hasMultipleMachines?: boolean;
   hostName?: string | null;
   hostType?: Host["type"] | null;
@@ -128,7 +127,6 @@ interface SummaryDisplayOverrides {
 function getSummaryDisplay({
   display = makeDisplay(),
   providerLookup = noProviderLookup,
-  environmentName = null,
   hasMultipleMachines = false,
   hostName = "Michael-M4",
   hostType = "persistent",
@@ -136,7 +134,6 @@ function getSummaryDisplay({
   return getEnvironmentWorkspaceSummaryDisplay({
     display,
     providerLookup,
-    environmentName,
     hasMultipleMachines,
     hostName,
     hostType,
@@ -231,14 +228,17 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     expect(
       getSummaryDisplay({
         display: makeDisplay({
-          modeLabel: "Destroyed",
-          compactModeLabel: "Destroyed",
+          modeLabel: "Environment unavailable",
+          compactModeLabel: "Environment unavailable",
           lifecycle: "destroyed",
         }),
         providerLookup: worktreeProviderLookup,
         hasMultipleMachines: true,
       }),
-    ).toMatchObject({ label: "Destroyed", compactLabel: "Destroyed" });
+    ).toMatchObject({
+      label: "Environment unavailable",
+      compactLabel: "Environment unavailable",
+    });
   });
   it.each([
     {
@@ -261,39 +261,6 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     ).toBeNull();
   });
 
-  it.each([
-    {
-      name: "a worktree",
-      display: makeDisplay({
-        modeLabel: "Worktree",
-        compactModeLabel: "Worktree",
-        providerLabel: "Worktree",
-      }),
-      providerLookup: worktreeProviderLookup,
-      label: "Worktree",
-    },
-    {
-      name: "a personal workspace",
-      display: makeDisplay({
-        modeLabel: "Personal workspace",
-        compactModeLabel: "Personal workspace",
-        providerLabel: "Personal workspace",
-      }),
-      providerLookup: personalProviderLookup,
-      label: "Personal workspace",
-    },
-  ])("names $name by its provider on a single machine", (testCase) => {
-    expect(
-      getSummaryDisplay({
-        display: testCase.display,
-        providerLookup: testCase.providerLookup,
-      }),
-    ).toMatchObject({
-      label: testCase.label,
-      compactLabel: testCase.label,
-    });
-  });
-
   it("names a projectless thread by its provider on a lone persistent machine", () => {
     expect(
       getSummaryDisplay({ providerLookup: personalProviderLookup }),
@@ -301,15 +268,6 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
       label: "Personal workspace",
       compactLabel: "Personal workspace",
     });
-  });
-
-  it("shows the machine for a projectless thread once a second machine exists", () => {
-    expect(
-      getSummaryDisplay({
-        providerLookup: personalProviderLookup,
-        hasMultipleMachines: true,
-      }),
-    ).toMatchObject({ label: "Michael-M4", compactLabel: "Michael-M4" });
   });
 
   it("marks an unregistered provider as not installed on a single machine", () => {
@@ -345,7 +303,7 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
     ).toBeNull();
   });
 
-  it("keeps an explicit environment name when multiple machines exist", () => {
+  it("uses the machine when an environment has a custom name", () => {
     expect(
       getSummaryDisplay({
         display: makeDisplay({
@@ -353,13 +311,24 @@ describe("getEnvironmentWorkspaceSummaryDisplay", () => {
           compactModeLabel: "Design system polish",
         }),
         providerLookup: worktreeProviderLookup,
-        environmentName: "Design system polish",
         hasMultipleMachines: true,
       }),
     ).toMatchObject({
-      label: "Design system polish",
-      compactLabel: "Design system polish",
+      label: "Michael-M4",
+      compactLabel: "Michael-M4",
     });
+  });
+
+  it("uses the provider on one machine when an environment has a custom name", () => {
+    expect(
+      getSummaryDisplay({
+        display: makeDisplay({
+          modeLabel: "Design system polish",
+          compactModeLabel: "Design system polish",
+        }),
+        providerLookup: worktreeProviderLookup,
+      }),
+    ).toMatchObject({ label: "Worktree", compactLabel: "Worktree" });
   });
 });
 
@@ -367,10 +336,14 @@ describe("getEnvironmentWorkspaceInfoDisplay", () => {
   it("shows the environment label and machine for a provider that runs on one", () => {
     expect(
       getEnvironmentWorkspaceInfoDisplay({
-        display: makeDisplay({ providerLabel: "Worktree" }),
+        display: makeDisplay({
+          modeLabel: "Design system polish",
+          compactModeLabel: "Design system polish",
+          providerLabel: "Worktree",
+        }),
         providerLookup: worktreeProviderLookup,
-        environmentName: null,
         hostName: "Michael-M4",
+        locality: "local",
       }),
     ).toEqual({
       label: "Worktree",
@@ -384,12 +357,26 @@ describe("getEnvironmentWorkspaceInfoDisplay", () => {
       getEnvironmentWorkspaceInfoDisplay({
         display: makeDisplay({ compactModeLabel: "retired-cloud" }),
         providerLookup: findEnvironmentDisplayProvider([], "retired-cloud"),
-        environmentName: null,
         hostName: "Michael-M4",
+        locality: "local",
       }),
     ).toMatchObject({
       label: "retired-cloud (not installed)",
       machineName: "Michael-M4",
     });
+  });
+
+  it("uses locality for a named environment without a provider", () => {
+    expect(
+      getEnvironmentWorkspaceInfoDisplay({
+        display: makeDisplay({
+          modeLabel: "Design system polish",
+          compactModeLabel: "Design system polish",
+        }),
+        providerLookup: noProviderLookup,
+        hostName: "Michael-M4",
+        locality: "local",
+      }),
+    ).toMatchObject({ label: "Local", machineName: "Michael-M4" });
   });
 });

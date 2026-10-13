@@ -352,12 +352,6 @@ const forkedFromFixture: ThreadPromptParentThreadSection = {
   relationship: "fork",
 };
 
-const sideChatFromFixture: ThreadPromptParentThreadSection = {
-  parentThreadTitle: "Investigate flaky test",
-  href: "/projects/proj-1/threads/thr_source_demo",
-  relationship: "side-chat",
-};
-
 const childThreadsFixture: ThreadPromptChildThreadsSection = {
   items: [
     {
@@ -424,6 +418,8 @@ function buildPullRequestFixture(
     baseRefName: "main",
     headRefName: "bb/pr-context-banner",
     updatedAt: "2026-06-16T12:30:00Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "failing",
       totalCount: 3,
@@ -724,6 +720,11 @@ const destroyedEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
   status: "destroyed",
 };
 
+const restorableEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
+  status: "destroyed",
+  onRestore: noop,
+};
+
 export function Overview() {
   return (
     <StoryCard>
@@ -767,6 +768,12 @@ export function Overview() {
         <Row environmentGone={destroyedEnvironmentFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
+        label="environment archived (restorable)"
+        hint="the workspace can be rebuilt on its branch, so a filled restore action is pinned to the far right"
+      >
+        <Row environmentGone={restorableEnvironmentFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
         label="environment archived + child thread"
         hint="archived-environment row plus parent context"
       >
@@ -795,12 +802,6 @@ export function Overview() {
         hint={'renders "Forked from …" instead of "Parent …"'}
       >
         <Row parentThread={forkedFromFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="side-chat thread (alone)"
-        hint={'renders "Side chat of …"'}
-      >
-        <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="parent thread with a child waiting for approval"
@@ -947,3 +948,17 @@ export function Overview() {
     </StoryCard>
   );
 }
+
+export const MachineRemovalHistory = () => (
+  <StoryCard>
+    <StoryRow label="Machine removed">
+      <Row environmentGone={{ status: "removed" }} mergeBase={null} />
+    </StoryRow>
+    <StoryRow label="Removal in progress">
+      <Row environmentGone={{ status: "removing" }} mergeBase={null} />
+    </StoryRow>
+    <StoryRow label="Cleanup failed">
+      <Row environmentGone={{ status: "cleanup-failed" }} mergeBase={null} />
+    </StoryRow>
+  </StoryCard>
+);

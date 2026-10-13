@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { console as inspectorConsole } from "node:inspector";
+import { createConnection, migrate, setExperiments } from "@bb/db";
+import { startGatedPerformanceDiagnostics } from "../../src/services/system/performance-diagnostics.js";
+import { NotificationHub } from "../../src/ws/hub.js";
 
 interface MockEventLoopDelayHistogram {
   disable: () => void;
@@ -71,11 +78,12 @@ function installHistogram(
 }
 
 const EMPTY_WORK_SNAPSHOT = {
-  currentWork: null,
-  lastWork: null,
-  lastWorkMs: null,
-  slowestWork: null,
-  slowestWorkMs: null,
+  inFlightWorkAtObservation: null,
+  lastCompletedWork: null,
+  lastCompletedWorkWallMs: null,
+  longestSynchronousWork: null,
+  longestSynchronousWorkWallMs: null,
+  longestSynchronousWorkCpuMs: null,
 };
 
 describe("event loop stall monitor", () => {
@@ -91,36 +99,58 @@ describe("event loop stall monitor", () => {
     vi.useRealTimers();
   });
 
-  it("logs and resets when the max event loop delay reaches the threshold", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 500,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
-    const logger = { info: vi.fn() };
-
-    const monitor = startEventLoopStallMonitor({ logger });
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
-
-    expect(perfHooksMock.monitorEventLoopDelay).toHaveBeenCalledWith({
-      resolution: 20,
-    });
-    expect(histogram.enable).toHaveBeenCalledTimes(1);
-    expect(histogram.percentile).toHaveBeenCalledWith(99);
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
-    expect(logger.info).toHaveBeenCalledWith(
-      {
-        intervalMs: 5_000,
-        maxDelayMs: 500,
+  it.each([undefined, 100])(
+    "logs and resets at the configured threshold %s",
+    (thresholdMs) => {
+      const expectedThreshold = thresholdMs ?? 500;
+      const histogram = installHistogram({
+        maxDelayMs: expectedThreshold,
         meanDelayMs: 25,
         p99DelayMs: 450,
-        resolutionMs: 20,
-        thresholdMs: 500,
-        ...EMPTY_WORK_SNAPSHOT,
-      },
-      "Event loop stalled",
-    );
+      });
+      const logger = { info: vi.fn() };
 
+      const monitor = startEventLoopStallMonitor({ logger, thresholdMs });
+      vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+      expect(perfHooksMock.monitorEventLoopDelay).toHaveBeenCalledWith({
+        resolution: 20,
+      });
+      expect(histogram.enable).toHaveBeenCalledTimes(1);
+      expect(histogram.percentile).toHaveBeenCalledWith(99);
+      expect(histogram.reset).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenCalledWith(
+        {
+          intervalMs: 5_000,
+          maxDelayMs: expectedThreshold,
+          meanDelayMs: 25,
+          p99DelayMs: 450,
+          resolutionMs: 20,
+          thresholdMs: expectedThreshold,
+          stallAttribution: "unattributed",
+          stallCauseCandidate: null,
+          ...EMPTY_WORK_SNAPSHOT,
+        },
+        "Event loop stalled",
+      );
+
+      monitor.stop();
+    },
+  );
+
+  it("restores the normal threshold without restarting the sampler", () => {
+    installHistogram({ maxDelayMs: 150, meanDelayMs: 25, p99DelayMs: 100 });
+    const logger = { info: vi.fn() };
+    let enabled = true;
+    const monitor = startEventLoopStallMonitor({
+      logger,
+      thresholdMs: () => (enabled ? 100 : 500),
+    });
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    enabled = false;
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+    expect(logger.info).toHaveBeenCalledTimes(1);
     monitor.stop();
   });
 
@@ -133,25 +163,6 @@ describe("event loop stall monitor", () => {
     const logger = { info: vi.fn() };
 
     const monitor = startEventLoopStallMonitor({ logger });
-    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
-
-    expect(logger.info).not.toHaveBeenCalled();
-    expect(histogram.reset).toHaveBeenCalledTimes(1);
-
-    monitor.stop();
-  });
-
-  it("suppresses histogram delays accumulated while the system was suspended", () => {
-    const histogram = installHistogram({
-      maxDelayMs: 300_000,
-      meanDelayMs: 25,
-      p99DelayMs: 450,
-    });
-    const logger = { info: vi.fn() };
-    let now = 0;
-
-    const monitor = startEventLoopStallMonitor({ logger, now: () => now });
-    now = 300_000;
     vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
 
     expect(logger.info).not.toHaveBeenCalled();
@@ -198,11 +209,13 @@ describe("event loop stall monitor", () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentWork: "GET /api/v1/threads/thr_example/timeline",
-        lastWork: null,
-        lastWorkMs: null,
-        slowestWork: null,
-        slowestWorkMs: null,
+        inFlightWorkAtObservation: "GET /api/v1/threads/thr_example/timeline",
+        lastCompletedWork: null,
+        lastCompletedWorkWallMs: null,
+        longestSynchronousWork: null,
+        longestSynchronousWorkWallMs: null,
+        stallAttribution: "unattributed",
+        stallCauseCandidate: null,
       }),
       "Event loop stalled",
     );
@@ -226,15 +239,15 @@ describe("event loop stall monitor", () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentWork: null,
-        lastWork: "sweep:database-maintenance",
+        inFlightWorkAtObservation: null,
+        lastCompletedWork: "sweep:database-maintenance",
       }),
       "Event loop stalled",
     );
     const fields = logger.info.mock.calls[0]?.[0] as {
-      lastWorkMs: number | null;
+      lastCompletedWorkWallMs: number | null;
     };
-    expect(fields.lastWorkMs).toEqual(expect.any(Number));
+    expect(fields.lastCompletedWorkWallMs).toEqual(expect.any(Number));
 
     monitor.stop();
   });
@@ -264,7 +277,7 @@ describe("event loop stall monitor", () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentWork:
+        inFlightWorkAtObservation:
           "GET /api/v1/threads/thr_example/timeline > timeline-build thr_example",
       }),
       "Event loop stalled",
@@ -306,8 +319,8 @@ describe("event loop stall monitor", () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentWork: "GET /api/v1/second",
-        lastWork: "GET /api/v1/first",
+        inFlightWorkAtObservation: "GET /api/v1/second",
+        lastCompletedWork: "GET /api/v1/first",
       }),
       "Event loop stalled",
     );
@@ -317,7 +330,7 @@ describe("event loop stall monitor", () => {
     monitor.stop();
   });
 
-  it("keeps the slowest work from the stall window after later short work", () => {
+  it("reports synchronous wall and CPU separately after later short work", () => {
     installHistogram({
       maxDelayMs: 500,
       meanDelayMs: 25,
@@ -325,6 +338,11 @@ describe("event loop stall monitor", () => {
     });
     const logger = { info: vi.fn() };
     const nowSpy = vi.spyOn(nodePerformance, "now");
+    const cpuSpy = vi.spyOn(process, "threadCpuUsage");
+    cpuSpy.mockReturnValueOnce({ user: 1000, system: 0 });
+    cpuSpy.mockReturnValueOnce({ user: 2000, system: 0 });
+    cpuSpy.mockReturnValueOnce({ user: 10000, system: 0 });
+    cpuSpy.mockReturnValueOnce({ user: 100, system: 0 });
     nowSpy.mockReturnValueOnce(0);
     nowSpy.mockReturnValueOnce(650);
     runEventLoopWorkSync("sweep:database-maintenance", () => undefined);
@@ -332,20 +350,126 @@ describe("event loop stall monitor", () => {
     nowSpy.mockReturnValueOnce(651);
     runEventLoopWorkSync("ws:daemon heartbeat", () => undefined);
     nowSpy.mockRestore();
+    cpuSpy.mockRestore();
 
     const monitor = startEventLoopStallMonitor({ logger });
     vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({
-        lastWork: "ws:daemon heartbeat",
-        lastWorkMs: 1,
-        slowestWork: "sweep:database-maintenance",
-        slowestWorkMs: 650,
+        lastCompletedWork: "ws:daemon heartbeat",
+        lastCompletedWorkWallMs: 1,
+        longestSynchronousWork: "sweep:database-maintenance",
+        longestSynchronousWorkWallMs: 650,
+        longestSynchronousWorkCpuMs: 2,
+        stallAttribution: "candidate",
+        stallCauseCandidate: "sweep:database-maintenance",
       }),
       "Event loop stalled",
     );
 
     monitor.stop();
   });
+
+  it("leaves a two-second stall unattributed when measured work took one millisecond", () => {
+    installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
+    const logger = { info: vi.fn() };
+    const nowSpy = vi.spyOn(nodePerformance, "now");
+    try {
+      nowSpy.mockReturnValueOnce(0).mockReturnValueOnce(1);
+      runEventLoopWorkSync("ws:daemon heartbeat", () => undefined);
+    } finally {
+      nowSpy.mockRestore();
+    }
+    const monitor = startEventLoopStallMonitor({ logger });
+    try {
+      vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          maxDelayMs: 2_000,
+          longestSynchronousWork: "ws:daemon heartbeat",
+          longestSynchronousWorkWallMs: 1,
+          stallAttribution: "unattributed",
+          stallCauseCandidate: null,
+        }),
+        "Event loop stalled",
+      );
+    } finally {
+      monitor.stop();
+    }
+  });
+
+  it.each(["start", "finish", "serialize"] as const)(
+    "identifies a slow CPU profile %s as a candidate in stall logs",
+    async (phase) => {
+      installHistogram({ maxDelayMs: 2_000, meanDelayMs: 25, p99DelayMs: 450 });
+      const db = createConnection(":memory:");
+      migrate(db);
+      setExperiments(db, { performanceDiagnostics: true });
+      const dataDir = await mkdtemp(join(tmpdir(), "bb-profile-attribution-"));
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const monitor = startEventLoopStallMonitor({ logger });
+      let clock = 0;
+      const nowSpy = vi
+        .spyOn(nodePerformance, "now")
+        .mockImplementation(() => clock);
+      const start = inspectorConsole.profile;
+      const finish = inspectorConsole.profileEnd;
+      const stringify = JSON.stringify;
+      const startSpy = vi
+        .spyOn(inspectorConsole, "profile")
+        .mockImplementation((title) => {
+          start(title);
+          if (phase === "start") clock += 2_000;
+        });
+      const finishSpy = vi
+        .spyOn(inspectorConsole, "profileEnd")
+        .mockImplementation((title) => {
+          finish(title);
+          if (phase === "finish") clock += 2_000;
+        });
+      const stringifySpy = vi
+        .spyOn(JSON, "stringify")
+        .mockImplementation((value, replacer, space) => {
+          const result = stringify(value, replacer, space);
+          if (phase === "serialize" && value && Array.isArray(value.nodes))
+            clock += 2_000;
+          return result;
+        });
+      let recorder:
+        | Awaited<ReturnType<typeof startGatedPerformanceDiagnostics>>
+        | undefined;
+      try {
+        recorder = await startGatedPerformanceDiagnostics({
+          allowed: true,
+          dataDir,
+          db,
+          hub: new NotificationHub(),
+          logger,
+        });
+        await recorder.stop();
+        vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).toHaveBeenCalledWith(
+          expect.objectContaining({
+            maxDelayMs: 2_000,
+            longestSynchronousWork: `cpu-profile:${phase}`,
+            longestSynchronousWorkWallMs: 2_000,
+            stallAttribution: "candidate",
+            stallCauseCandidate: `cpu-profile:${phase}`,
+          }),
+          "Event loop stalled",
+        );
+      } finally {
+        await recorder?.stop();
+        monitor.stop();
+        nowSpy.mockRestore();
+        startSpy.mockRestore();
+        finishSpy.mockRestore();
+        stringifySpy.mockRestore();
+        db.$client.close();
+        await rm(dataDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

@@ -14,8 +14,8 @@ import {
 } from "./markdown-mermaid-render-cache";
 
 const mermaidRender = vi.hoisted(() =>
-  vi.fn(async (_id: string, source: string) => ({
-    svg: `<svg data-source="${source}"></svg>`,
+  vi.fn(async (id: string, source: string) => ({
+    svg: `<svg id="${id}" data-source="${source}"></svg>`,
     bindFunctions: undefined,
   })),
 );
@@ -166,6 +166,174 @@ describe("MarkdownMermaidDiagram render gating", () => {
       view.container.querySelector('svg[data-source="graph TD; A-->B"]'),
     ).not.toBeNull();
   });
+
+  it("does not let Mermaid remove the displayed SVG while rendering an update", async () => {
+    const view = render(
+      <MarkdownMermaidDiagram preferredTheme="light" source="graph TD; A" />,
+    );
+    act(() => {
+      enterViewport(diagramContainer(view.container));
+    });
+    await flushRenders();
+    const previousSvg = view.container.querySelector("svg[data-source]");
+    expect(previousSvg).not.toBeNull();
+
+    let finishRender: (() => void) | undefined;
+    mermaidRender.mockImplementationOnce((id, source) => {
+      document.getElementById(id)?.remove();
+      return new Promise((resolve) => {
+        finishRender = () =>
+          resolve({
+            svg: `<svg id="${id}" data-source="${source}"></svg>`,
+            bindFunctions: undefined,
+          });
+      });
+    });
+    view.rerender(
+      <MarkdownMermaidDiagram
+        preferredTheme="light"
+        source="graph TD; A-->B"
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+    });
+    await flushRenders();
+    expect(mermaidRender).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector("svg[data-source]")?.outerHTML).toBe(
+      previousSvg?.outerHTML,
+    );
+
+    await act(async () => finishRender?.());
+    await flushRenders();
+    expect(
+      view.container.querySelector('svg[data-source="graph TD; A-->B"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps the last successful diagram when a streaming source update cannot render", async () => {
+    const view = render(
+      <MarkdownMermaidDiagram preferredTheme="light" source="graph TD; A" />,
+    );
+    act(() => {
+      enterViewport(diagramContainer(view.container));
+    });
+    await flushRenders();
+    const previousSvg = view.container.querySelector("svg[data-source]");
+    expect(previousSvg).not.toBeNull();
+
+    mermaidRender.mockRejectedValueOnce(new Error("Incomplete Mermaid input"));
+    view.rerender(
+      <MarkdownMermaidDiagram preferredTheme="light" source="graph TD; A-->" />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+    });
+    await flushRenders();
+    expect(mermaidRender).toHaveBeenCalledTimes(2);
+    expect(view.container.querySelector("svg[data-source]")?.outerHTML).toBe(
+      previousSvg?.outerHTML,
+    );
+
+    view.rerender(
+      <MarkdownMermaidDiagram
+        preferredTheme="light"
+        source="graph TD; A-->B"
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+    });
+    await flushRenders();
+    expect(
+      view.container.querySelector('svg[data-source="graph TD; A-->B"]'),
+    ).not.toBeNull();
+  });
+
+  it("shows source when no diagram has rendered successfully and recovers on valid input", async () => {
+    mermaidRender.mockRejectedValueOnce(new Error("Incomplete Mermaid input"));
+    const view = render(
+      <MarkdownMermaidDiagram preferredTheme="light" source="graph TD; A[" />,
+    );
+    act(() => {
+      enterViewport(diagramContainer(view.container));
+    });
+    await flushRenders();
+    expect(view.container.querySelector("code")?.textContent).toBe(
+      "graph TD; A[",
+    );
+    expect(view.queryByText("Rendering diagram...")).toBeNull();
+
+    view.rerender(
+      <MarkdownMermaidDiagram
+        preferredTheme="light"
+        source="graph TD; A[Start]"
+      />,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+    });
+    await flushRenders();
+    expect(view.container.querySelector("svg[data-source]")).not.toBeNull();
+    expect(view.container.querySelector("code")).toBeNull();
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a superseded render that later %ss",
+    async (outcome) => {
+      const view = render(
+        <MarkdownMermaidDiagram preferredTheme="light" source="graph TD; A" />,
+      );
+      act(() => {
+        enterViewport(diagramContainer(view.container));
+      });
+      await flushRenders();
+
+      let finishRender: (() => void) | undefined;
+      mermaidRender.mockImplementationOnce(
+        (id, source) =>
+          new Promise((resolve, reject) => {
+            finishRender = () => {
+              if (outcome === "reject") {
+                reject(new Error("Superseded render"));
+              } else {
+                resolve({
+                  svg: `<svg id="${id}" data-source="${source}"></svg>`,
+                  bindFunctions: undefined,
+                });
+              }
+            };
+          }),
+      );
+      view.rerender(
+        <MarkdownMermaidDiagram
+          preferredTheme="light"
+          source="graph TD; A-->B"
+        />,
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+      });
+      await flushRenders();
+      view.rerender(
+        <MarkdownMermaidDiagram
+          preferredTheme="light"
+          source="graph TD; A-->B-->C"
+        />,
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(MERMAID_SOURCE_RENDER_DEBOUNCE_MS);
+      });
+      await flushRenders();
+      const currentSvg = view.container.querySelector(
+        'svg[data-source="graph TD; A-->B-->C"]',
+      );
+      expect(currentSvg).not.toBeNull();
+      await act(async () => finishRender?.());
+      await flushRenders();
+      expect(view.container.querySelector("svg[data-source]")).toBe(currentSvg);
+    },
+  );
 
   it("serves a remounted diagram from the render cache without calling mermaid again", async () => {
     const view = render(

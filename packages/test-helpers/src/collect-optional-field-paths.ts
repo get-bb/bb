@@ -23,9 +23,22 @@ function unwrapSchema(schema: ZodSchema): ZodSchema {
 
 export function collectOptionalFieldPaths(schemas: ZodSchemaMap): string[] {
   const paths = new Set<string>();
+  const onStack = new Set<ZodSchema>();
 
   function walk(schema: ZodSchema, prefix: string): void {
     const unwrapped = unwrapSchema(schema);
+    if (onStack.has(unwrapped)) {
+      return;
+    }
+    onStack.add(unwrapped);
+    try {
+      walkUnwrapped(unwrapped, prefix);
+    } finally {
+      onStack.delete(unwrapped);
+    }
+  }
+
+  function walkUnwrapped(unwrapped: ZodSchema, prefix: string): void {
     if (unwrapped instanceof z.ZodObject) {
       const shape = unwrapped.shape;
       for (const key in shape) {
@@ -56,6 +69,14 @@ export function collectOptionalFieldPaths(schemas: ZodSchemaMap): string[] {
     if (unwrapped instanceof z.ZodIntersection) {
       walk(unwrapped.def.left, prefix);
       walk(unwrapped.def.right, prefix);
+      return;
+    }
+    if (unwrapped instanceof z.ZodArray) {
+      walk(unwrapped.element, prefix);
+      return;
+    }
+    if (unwrapped instanceof z.ZodLazy) {
+      walk(unwrapped.unwrap(), prefix);
     }
   }
 

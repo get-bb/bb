@@ -228,6 +228,7 @@ function finalizeReasoningLifecycleByKey(
       `reasoning:${lifecycle.messageKey}`,
     ),
     threadId: lifecycle.threadId,
+    sourceEvent: { seq: lifecycle.sourceSeqStart, part: 0 },
     sourceSeqStart: lifecycle.sourceSeqStart,
     sourceSeqEnd: args.meta.seq,
     createdAt: args.meta.createdAt,

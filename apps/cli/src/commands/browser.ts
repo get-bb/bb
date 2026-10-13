@@ -40,18 +40,6 @@ function instanceScoped(command: Command) {
     .requiredOption("--generation <id>", "Desktop connection generation")
     .option("--json", "Print machine-readable JSON output");
 }
-function parseImportTarget(
-  value: string | undefined,
-): { kind: "personal" } | { kind: "automation"; id: string } {
-  if (value === undefined || value === "personal") return { kind: "personal" };
-  const match = /^automation:(.+)$/.exec(value);
-  if (!match) {
-    throw new Error(
-      "Expected --into personal or --into automation:<profile-id>",
-    );
-  }
-  return { kind: "automation", id: match[1] };
-}
 export function formatImportSources(
   result: ExperimentalDesktopBrowserImportSources,
 ): string {
@@ -144,7 +132,7 @@ export function registerBrowserCommands(
   scoped(
     browser
       .command("create")
-      .description("Create a tab with a separate automation profile"),
+      .description("Create a tab in the BB browser profile"),
   )
     .option("--url <url>", "Initial HTTP(S) URL; defaults to about:blank")
     .option("--reveal", "Show the new native tab")
@@ -170,10 +158,6 @@ export function registerBrowserCommands(
       "--ttl-ms <ms>",
       "Lease duration; defaults to five minutes, maximum thirty",
     )
-    .option(
-      "--allow-personal",
-      "Explicitly hand off an existing personal browser profile",
-    )
     .action(
       action(
         async (
@@ -181,7 +165,6 @@ export function registerBrowserCommands(
           options: ScopeOptions & {
             controller: string;
             ttlMs?: string;
-            allowPersonal?: boolean;
           },
         ) => {
           const result = await api().acquireControl({
@@ -191,7 +174,6 @@ export function registerBrowserCommands(
             ...(options.ttlMs === undefined
               ? {}
               : { ttlMs: Number(options.ttlMs) }),
-            ...(options.allowPersonal ? { allowPersonal: true } : {}),
           });
           print(
             result,
@@ -322,17 +304,12 @@ export function registerBrowserCommands(
       "--profile <directory>",
       "Source profile directory as printed by `bb browser import-sources`",
     )
-    .option(
-      "--into <target>",
-      "Target profile: personal (default) or automation:<profile-id>",
-    )
     .action(
       action(
         async (
           options: InstanceOptions & {
             from: string;
             profile: string;
-            into?: string;
           },
         ) => {
           const outcome = await api().importCookies({
@@ -341,7 +318,6 @@ export function registerBrowserCommands(
             generation: options.generation,
             sourceId: desktopBrowserImportSourceIdSchema.parse(options.from),
             sourceProfileDirectory: options.profile,
-            profile: parseImportTarget(options.into),
           });
           print(outcome, options, formatImportOutcome(outcome));
           if (!outcome.ok) process.exitCode = 1;

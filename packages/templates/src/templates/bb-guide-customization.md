@@ -52,24 +52,41 @@ Packaged launcher settings
 but the CLI identifies server and launcher settings that are startup-only,
 including binding/ports, data and the dev-app port, telemetry, inherited skill
 roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
-`bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
-`BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
-change, run `bb-app stop && bb-app start` or restart the desktop app. Until
-then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
-`0.0.0.0` listener.
+`bb-app config`, not `bb-app env`, to change `BB_APP_URL` live. After a
+startup-only change, run `bb-app stop && bb-app start` or restart the desktop
+app. Until then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a
+previous `0.0.0.0` listener.
+
+Settings → General → Command line installs the bb CLI for use outside bb: it
+puts the `bb` command on PATH on the computer that runs the bb server, so the
+user, a script, or an agent running outside bb (such as Claude Code or Codex)
+can control bb. Threads in bb already have `bb`. `bb settings cli-command` shows the state and
+`bb settings cli-command install` or `remove` changes it.
+Install links the launcher bb keeps at `~/.bb/bin/bb` into a PATH folder such
+as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user PATH). bb never
+replaces another `bb`: install is refused while one runs first in a new
+terminal. Only an installed bb (`npx bb-app` or the desktop app) offers this;
+a source checkout does not.
 
 With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
 `http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
 through loopback; this does not narrow the IPv4 wildcard listener. Containers
 must also publish the port to the host.
 
-Server helper completions use `BB_INFERENCE` first, then
-`BB_INFERENCE_FALLBACK` after a transient timeout, rate limit, or
-service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
-`codex/gpt-5.4-mini`, respectively.
+BB accepts request hosts that are `localhost`, IP addresses (including LAN and
+Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or reverse
+proxy, set `npx bb-app config set BB_APP_URL https://bb.example.com` before
+connecting, including from the CLI or SDK. A matching `Host` and `Origin`, or
+`X-Forwarded-Host`, cannot authorize an unconfigured DNS name. A proxy can
+preserve the configured host or forward to localhost. BB Connect rewrites
+requests to the local server address and needs no additional configuration.
+`BB_SERVER_BIND_HOST=0.0.0.0` remains supported for direct remote access.
 
-  bb-app config set BB_INFERENCE <provider/model>
-  bb-app config set BB_INFERENCE_FALLBACK <provider/model>
+Thread titles, commit messages, and voice transcripts come from AI services
+that plugins register, chosen per task with `bb settings ai-services` (see
+Server-backed General settings below). `BB_INFERENCE`,
+`BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION` were removed: bb ignores them
+in `~/.bb/config.json` with a warning, and `bb-app config set` refuses them.
 
 Server-backed General settings
 
@@ -87,6 +104,36 @@ uses an automatic per-host limit of one thread per available processor. Use
 `bb concurrency-limit global [unlimited|<limit>]` and `bb
 concurrency-limit host <host-id> [auto|<limit>]`; 0 pauses new work.
 
+The sidebar thread list is owned by the Thread list builtin plugin. Its
+layout preferences (active/archived filter, organization mode, sort, section order, hidden and
+collapsed groups) live in the plugin and sync to every window:
+`bb thread-list prefs list [--json]`, `prefs get <key>`,
+`prefs set <key> <value>`, and `prefs reset <key>`. `set` takes JSON; a bare
+word is a string. On first load the plugin copies non-default `sidebar.*`
+values from `bb settings ui` once. `showProviderIcons` defaults to `true`;
+Organize → Rows → Provider icons toggles the icon before each title, and
+`bb thread-list prefs set showProviderIcons false` turns it off from the CLI.
+`groupByReadStatus` defaults to `false`; Organize → Groups → By read status or
+`bb thread-list prefs set groupByReadStatus true` lists unread threads above
+read ones, keeping the selected sort within each group.
+The `threadLifecycles` preference defaults
+to `["active"]`; `bb thread-list prefs set threadLifecycles '["archived"]'`
+shows archived threads, and `'["active","archived"]'` shows both.
+
+A vertical rail of destinations sits on the left edge of the sidebar on every
+screen size. Home is at the top and returns to the last thread; the visible
+destinations (Plugins, Skills, and plugin panels) follow; More holds hidden
+destinations and Customize rail; Settings is at the bottom. New thread sits in
+the sidebar header and cannot be hidden. The list beside the rail swaps between the thread list,
+Plugins, Skills, and Settings, and collapsing the sidebar hides that list and
+leaves the rail. Rail order and visibility are `bb settings ui` keys
+(`sidebar.pluginPanelOrder`, `sidebar.visiblePluginPanels`). In the macOS
+desktop app, wide windows add a title bar holding the window controls, Back
+and Forward, and the sidebar toggle; it shares the rail's background, and the
+sidebar and page sit in a card below it. On narrow windows and phones the rail
+sits inside the drawer: Home, Plugins, Skills, and Settings swap the list
+beside it and leave the drawer open, and a plugin page closes it.
+
 Settings → Keyboard also includes `showKeyboardHints`, which defaults to true.
 Turn it off to hide the delayed shortcut badges shown while holding Command or
 Control on macOS, or Control on Windows/Linux. Shortcut commands continue to
@@ -98,6 +145,22 @@ provider events. Warnings, errors, and model fallback stay visible. Existing
 unhandled-event preferences are preserved. Set it with
 `bb settings general showDiagnosticEvents <true|false>`.
 
+Settings → General → Show Git changes and Commit button controls the git
+summary, expanded file list, pull-request status and actions above the composer,
+and Commit action in the thread header and overflow menu.
+`showGitChanges` defaults to true; use
+`bb settings general showGitChanges false` to hide them, or true to restore them.
+The server saves this preference across reloads and shares it across connected
+clients. Thread relationships and workspace warnings remain visible. SDK callers can update
+`showGitChanges` through `sdk.system.updateGeneralSettings` with the current settings.
+
+Settings → General → Show messages from before a context clear controls whether a
+cleared thread still shows its earlier messages above the `Context cleared`
+boundary. `keepHistoryAfterContextClear` defaults to false; use
+`bb settings general keepHistoryAfterContextClear true` to keep them in the
+timeline, outline, and message lookups. The next prompt still starts a fresh
+provider conversation.
+
 Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 true for a new install. An earlier install with saved settings or work keeps
 false. Outside an open typeahead menu, enabling it makes Enter steer a running
@@ -106,10 +169,24 @@ reversed. Shift+Enter inserts a newline. On coarse-pointer touch devices, the
 software-keyboard Return path inserts a newline. iPadOS WebKit preserves these
 Enter shortcuts for a connected Magic Keyboard.
 
+Settings → General includes `confirmThreadArchive`, which defaults to true.
+Set `bb settings general confirmThreadArchive false` to archive parent and
+child threads without the confirmation popup. The toast still offers Undo.
+The setting applies to all connected app clients; CLI and SDK archive calls
+remain non-interactive.
+
 Settings → General also includes `streamerMode`, which defaults to false. Turn
 it on to hide every `customModels` entry from `~/.bb/config.json` in all model
 lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
+
+Settings → Providers includes `allowFastServiceTier`, which defaults to true.
+Set it to false with `bb settings general allowFastServiceTier false` to hide
+the service tier control and run new turns at the default service tier. This
+also applies to explicit requests for any other tier (fast, Codex ultrafast),
+saved project defaults, automations, and messages queued before the setting
+changed. Turn it back on to choose a faster tier again; project
+defaults saved while it was off retain the default tier.
 
 Settings → General includes `managedBranchPrefix`, which defaults to
 `bb/`. bb puts it in front of every branch name it creates for a worktree, so
@@ -120,21 +197,39 @@ branches bb creates after the change.
 
   bb settings show
   bb settings ai-services
+  bb settings ai-services set <thread-title|commit-message|voice> <automatic|off|service-id> [--plugin <plugin-id>]
+  bb settings ai-services test <thread-title|commit-message>
   bb settings general <key> <value>
+  bb settings replay-onboarding
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
-  bb settings usage [--machine <id-or-name>]
+  bb settings usage [--machine <id-or-name>] [--refresh]
+  bb settings cli-command [install|remove]
   bb settings version [--force]
   bb settings reload
 
-`bb settings ai-services` shows the helper-inference and voice-transcription
-settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
-`bb-app config`) and the plugin-registered AI services they may name as
-`<service>/<model>`.
+Use `--refresh` to fetch fresh provider usage; ordinary reads may reuse results
+for 10 seconds. The SDK equivalent is `bb.sdk.system.usageLimits({ refresh: true })`.
+
+`bb settings ai-services` shows which AI service writes thread titles (and so
+branch names), commit messages, and voice transcripts, plus every service a
+plugin registers and whether it is ready. `set` picks `automatic` (bb cloud first,
+then all other compatible services by plugin id and service id in
+lexicographic order, including third-party plugins), `off`, or one service id; a picked
+service is never swapped for another. A service is identified by its plugin
+and its id, so two plugins may use the same id; pass `--plugin <plugin-id>`
+when they do. `test` runs a sample title or commit message through the current
+choice. Settings → AI services has the same controls. Each plugin chooses its
+own model.
 
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset.
+
+`bb settings replay-onboarding` clears `onboardingCompletedAt`, so the first-run
+setup guide (connect an agent, add projects, pick plugins, set up devices) shows
+again in every open client. Settings → General → Setup guide has the same
+button.
 
 `bb settings completed-turns` lists how each provider shows a finished turn:
 `collapse` folds the turn's work into one "Worked for" row and keeps the final
@@ -157,21 +252,11 @@ BB releases restorable provider sessions after 30 idle minutes. The daemon
 checks for these sessions every five minutes. Active turns, commands, agents,
 workflows, and monitors keep their sessions loaded.
 
-The default-off `sidebarProgressiveDisclosure` experiment shows the first five
-groups in the current sort order in **By project** and **By machine**, keeps
-attention groups visible, and reveals ten more per **Show more** click. Revealed
-groups stay visible through activity and sort-order changes.
-**Manually** is unchanged. Enable it with `bb settings experiment
-sidebarProgressiveDisclosure true`.
+The default-off `serverMove` experiment enables Move server here in Settings →
+Machines and the server-backed `bb server move` and `bb server export`
+commands. Enable it with `bb settings experiment serverMove true`.
 
-The default-off `timelineWindowing` experiment mounts only nearby rows in long
-timelines and large expanded timeline details. Enable it with
-`bb settings experiment timelineWindowing true`.
-
-The default-off `multiMachinePicker` experiment uses a searchable, target-first
-environment picker for projects with at least three machines and adds search to
-machine-only pickers with more than five machines. Enable it with
-`bb settings experiment multiMachinePicker true`.
+Long timelines and large expanded timeline details mount only nearby rows.
 
 Thread timeline pages select complete conversation groups using
 `BB_FF_TIMELINE_WINDOW_EVENT_BUDGET` (default 1500) as a selection budget.
@@ -194,8 +279,47 @@ same resolved bindings. The complete default table is in docs/configuration.md.
 
   bb settings keyboard list
   bb settings keyboard hints <true|false>
-  bb settings keyboard set <command> <shortcut|disabled>
-  bb settings keyboard reset [command]
+  bb settings keyboard set <command> <shortcut|disabled> [--platform mac|windows|linux]
+  bb settings keyboard reset [command] [--platform mac|windows|linux]
+
+On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Command+Control+ArrowUp` / `Command+Control+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
+The initially unassigned `panel.fullScreen.toggle` command runs the right
+panel's Full Screen / Exit Full Screen control while the panel is open. In a
+split right panel it maximizes the focused group.
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows, moving through the pages opened in
+the current window like browser history: `Mod+[` / `Mod+]` on desktop and
+the web. `thread.previous` / `thread.next`
+(`Mod+Shift+[` / `Mod+Shift+]` on desktop, `Control+Shift+[` / `Control+Shift+]`
+on the web) follow the sidebar order instead.
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. On Windows/Linux, these arrow navigation
+commands start unassigned to preserve native Control-arrow editing shortcuts.
+Rebind any of these commands in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
+Use `bb settings keyboard reset <command>` to adopt the current default.
+Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
+on all platforms. A platform-specific override takes precedence over a general one,
+including when disabled. UI edits and clears apply only to the current platform;
+UI resets remove overrides for the current platform so web and desktop each use
+their own defaults. Shared overrides become explicit bindings on the other platforms
+to preserve their behavior. Explicit overrides remain resettable even when they match
+a default shortcut.
+CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
+other platforms. Unscoped `set` updates the general override; unscoped `reset`
+clears all scopes for the selected command (or every command if omitted).
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
@@ -213,6 +337,19 @@ bindings in the same update; plugin defaults yield to explicit bindings.
 
 Push notifications
 
+For a standalone development APK from a source checkout, run
+`pnpm mobile:apk:dev`. It writes `apps/mobile/build-output/bb-dev.apk`, named
+**bb dev** with orange icons and separate package `app.getbb.mobile.dev`.
+Append `-- x86_64` for an Intel emulator. The command sets
+`BB_MOBILE_VARIANT=dev`; direct Expo commands default to `production`.
+The dev variant skips production Firebase and HTTPS app-link registration.
+See `apps/mobile/README.md` for prerequisites and per-thread artifact delivery.
+
+Android source builds accept `GOOGLE_SERVICES_JSON` (path to Firebase Android
+configuration), with `apps/mobile/google-services.json` as a local fallback.
+It is optional for building the app, required for Android push delivery.
+See `apps/mobile/README.md` for EAS file variables, signing, and Play uploads.
+
 The built-in Push notifications plugin sends mobile updates through Expo and
 system notifications to connected web and desktop clients. Web tabs or desktop
 windows must stay open; browser permission is requested in the plugin settings.
@@ -223,7 +360,10 @@ windows must stay open; browser permission is requested in the plugin settings.
   bb push-notifications remove <id>
   bb push-notifications status
   bb push-notifications test <web|desktop>
+  bb push-notifications thread <thread> [--level inherit|all|input-only|muted]
   bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
+  bb plugin config push-notifications set defaultLevel <all|input-only|muted>
+  bb plugin config push-notifications set childLevel <inherit|all|input-only|muted>
 
 `add` is an upsert by token: a known token refreshes its label and last-seen
 time and keeps its id. Expo tokens that are no longer registered are removed
@@ -234,15 +374,24 @@ config push-notifications set expoPushUrl <url>`. Add `--json` to `list` or
 The three channel switches default to true and apply immediately across this
 server. `test` broadcasts to all connected clients of the selected type with
 permission; OS notification settings still control whether a banner appears.
+`thread` prints a thread's resolved notification level and its source; with
+`--level` it sets the thread's own level. A thread uses its own level, else
+`childLevel` if it has a parent (default `input-only`; `inherit` follows
+`defaultLevel`), else `defaultLevel` (default `all`). A thread's level also
+limits its child threads: every ancestor's own level caps the result. `all` notifies on finished turns too, `input-only` keeps
+questions, approvals, and errors only, and `muted` sends nothing.
 
 Host files and voice transcription
 
   bb file read|write|list|paths|mkdir|move|remove ...
   bb voice transcribe <audio-file> [--prompt <context>]
 
-Voice transcription uses the `BB_TRANSCRIPTION` model, which defaults to
-`codex/gpt-transcribe`. Override it with
-`bb-app config set BB_TRANSCRIPTION <provider/model>`.
+Voice transcription uses the Voice input service chosen with
+`bb settings ai-services set voice <automatic|off|service-id>`. bb accepts
+recordings up to 25 MB, and each service may set a lower limit; Codex takes up
+to 20 MB. These limits apply to the app, SDK, and CLI. If transcription fails
+in the app, the error toast offers a download of the original recording until
+dismissed.
 
 `bb file` supports `--host` for remote machines and `--root` on mutating
 commands to confine access beneath an absolute directory. `bb file list` and
@@ -253,19 +402,35 @@ Both skip a default set of dependency and cache directories such as
 or exact root-relative paths using `/` separators. Use
 `--json` for metadata and machine-readable results.
 
+`bb file remove --recursive` and `sdk.files.remove({ recursive: true, ... })`
+stop processes whose working directories are inside the directory before
+deleting it, including processes in nested checkouts. This uses the same
+SIGTERM grace period and SIGKILL fallback as worktree removal on macOS and
+Linux; Windows does not enumerate process working directories.
+
 Server-backed sidebar preferences
 
 Sidebar layout lives on the server in a keyed, revisioned registry so every
 window, device, and the CLI share it: organization mode, chronological sort,
 section orders, collapsed rows and sections, navigation entry order and
-visibility, and the navigation and thread-list provider pickers. The sidebar
-waits for them alongside the project list, and an upgrade uploads the old
-browser-stored layout once.
+visibility, hidden thread-list groups, and the navigation and thread-list
+provider pickers. The same registry stores which thread Info panel sections
+are collapsed (`infoPanel.collapsedSections`). The sidebar waits for them alongside the project list, and
+an upgrade uploads the old browser-stored layout once.
 
   bb settings ui list [--json]
   bb settings ui get <key> [--json]
   bb settings ui set <key> <value> [--json]
   bb settings ui reset <key> [--json]
+
+The sidebar thread list defaults to `__automatic__`: the first installed thread list
+plugin other than the bundled Thread list plugin (`thread-list/thread-list`), or the
+bundled plugin when there is none. Installing a thread list plugin therefore switches
+to it. Legacy `__builtin__` selections resolve to the bundled plugin; other plugin
+selections are preserved.
+Use `bb settings ui reset sidebar.threadListProvider` to restore Automatic, or
+`bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>` to select
+another plugin. The SDK exposes the same setting through `uiPreferences`.
 
 `bb settings ui list` prints every key with its value, revision, and a short
 description. `set` takes plain strings for enum and provider keys and JSON for
@@ -273,15 +438,59 @@ lists and `null`; it reads the current revision, writes with it, and retries
 once on a conflict. `reset` writes the default. The SDK offers
 `sdk.system.uiPreferences.list()`, `.set()`, and `.reset()`.
 
-Custom (`chronological`) is the default for `sidebar.organizationMode` when no
-value is saved. Existing server and legacy browser choices are preserved.
+New installations default to Custom (`chronological`) for `sidebar.organizationMode`.
+Migrated installations with existing projects, threads, or UI preferences fall back
+to By project (`project`). Explicit server choices take precedence over legacy
+browser choices, which take precedence over this installation fallback. Reset
+saves the installation fallback as an explicit choice.
+
+The built-in sidebar's Filter selects Active and Archived, defaulting to Active.
+The selection is browser-local, not a server-backed preference or SDK/CLI setting.
+Active includes threads with saved messages; there is no separate
+Drafts section or filter. Archived threads use their preserved placement and a
+restore action. Archived pages load only while selected.
+Plugin sidebar replacements own their filters.
+
+The palette's Filter uses Active and Archived independently of the
+sidebar, defaulting to Active. Its selection is browser-local, not configurable
+through SDK/CLI. Active includes threads with saved messages; Search threads retains
+the existing title and conversation search behavior. Archived fetches bounded recent rows only when
+selected.
 
 Every thread-list header's actions menu offers New project, New section,
-Organize, and Sort by. Organize selects By project, By machine, or Custom;
+Organize, Sort by, and Filter. Organize selects By project,
+By machine, or Custom and retains Groups → By environment.
+The separate `sidebar.threadGrouping.environment` preference
+decides whether sibling threads sharing one worktree collapse into a single row.
+It defaults to `auto`, which groups them
+everywhere except Custom: `bb settings ui set sidebar.threadGrouping.environment
+false` keeps every thread on its own row, and `true` groups them in every mode.
 Sort by selects a field, and selecting it again reverses its arrow/direction.
 `sidebar.sortDirection` accepts `ascending`, `descending`, or `default`.
 The default preserves each field's original order (newest first for dates,
 A–Z for titles). For example: `bb settings ui set sidebar.sortDirection ascending`.
+
+Thread-list visibility
+
+Threads, a project, custom section, or machine's menu offers Hide from list;
+its menu inside More offers Add to list. Customize list manages visibility and
+order for the current organization. Hiding preserves the group's threads, order,
+and collapse state. Pinned threads remain in Pinned; More carries hidden activity.
+
+The Thread list plugin's `hiddenGroups` preference defaults to `[]`. Its keys
+are `threads`, `project:<projectId>`, `section:<sectionId>`, and
+`machine:<hostId>` (`machine:no-machine` for the unassigned group). Each
+organization uses its own keys, while `threads` applies to every organization.
+Pinned cannot be hidden. Duplicate keys are deduplicated, and unavailable IDs
+remain saved without producing rows. New groups default visible.
+
+  bb thread-list prefs get hiddenGroups
+  bb thread-list prefs set hiddenGroups '["threads","project:proj_example","section:sec_example"]'
+  bb thread-list prefs reset hiddenGroups
+
+`set` replaces the entire list across organizations; include existing keys you
+want to keep hidden. `reset` shows all groups. The plugin's `setPreference` and
+`resetPreference` RPCs expose the same operations to its app client.
 
 Sidebar footer actions
 
@@ -290,23 +499,120 @@ Right-click an action and choose Hide to move it into the More menu. Hidden
 shortcuts remain actionable; hiding an open disclosure closes it. The More menu
 appears only when hidden actions are available and links back to customization.
 `sidebar.footerOrder` and `sidebar.hiddenFooterItems` are string lists. Keys are
-`builtin:settings`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
+`builtin:mobile`, `builtin:report-bug`, or `plugin:<encoded pluginId>/<encoded registrationId>`.
 Preferences survive plugin reloads and temporarily unavailable plugins; new items
 are visible by default. Example:
 
-  bb settings ui set sidebar.hiddenFooterItems '["plugin:provider-usage/usage"]'
+  bb settings ui set sidebar.hiddenFooterItems '["plugin:bb--provider-usage/usage"]'
   bb settings ui reset sidebar.hiddenFooterItems
 
 Client-local UI preferences
 
+Open microphone preferences by right-clicking the composer microphone, pressing
+Shift+F10 while it is focused, or clicking the Microphone control in Settings →
+Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
+preferences starts a local microphone preview with the recording waveform and
+a list of inputs. Closing preferences releases the preview. The recording controls
+contain only cancel, stop, and send; microphone preferences are available while idle.
+
+Recording tries the preferred device, then the system default, then other
+available inputs for missing or unreadable devices. Permission denials do not
+trigger fallback. A disconnect during recording switches the input into the
+same recorder, preserving audio captured before the disconnect. Reconnecting
+the preferred microphone makes it available for the next recording; it does not
+interrupt the current fallback recording.
+
+A missing preferred microphone alone does not block recording or show a warning.
+Capture failures, interrupted input, or no available inputs after access was
+granted show a decorative warning badge on the idle microphone. During capture,
+five seconds of near-silent audio produces a warning in the open preview or an
+accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
+stop recording or switch microphones automatically. While idle, a warning opens
+preferences on click. Audio preview runs only while microphone preferences are
+open; it is not saved or transcribed.
+
 Some Settings values live only in the current browser/client. Sidebar width
-and open state stay local because they depend on the window size. The Voice Input
+and open state stay local because they depend on the window size, and each tab
+or desktop window keeps its own: collapsing or resizing the sidebar in one tab
+leaves the others alone, and a newly opened tab starts from the most recent
+choice made anywhere in that browser. The Voice Input
 microphone picker stores the selected browser MediaDevices device id in
 localStorage as `bb.voiceInput.audioInputDeviceId`; it does not have a `bb`
-command and does not change the server-side transcription model.
+command and does not change the server-side transcription model. When the preferred
+microphone is disconnected, recording tries the system default and then other available inputs. The saved preference is used again when it
+reconnects. Select System default to follow system microphone changes.
 
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
 `system.updateGeneralSettings` with `telemetryEnabled`. `BB_TELEMETRY=false`
 always disables telemetry, even when the saved preference is enabled.
+
+
+Mobile app downloads are always available in Settings → Mobile (`/settings/mobile`).
+**Join iOS TestFlight** opens https://testflight.apple.com/join/T9MayTMb.
+**Download Android APK** downloads directly from the public `get-bb/bb` GitHub
+`android-testing` release's `bb-android.apk` asset. The APK does not pass through
+the bb server or bb connect. No experiment or Android developer tools are needed.
+Pair either app through Settings → Mobile → **Add mobile device**.
+
+Use `bb settings mobile-app --json` or SDK `system.mobileAppDownloads()` to get
+both public links. Add `--details --json` or call `system.mobileAppReleases()`
+(GET `/api/v1/system/mobile-app-releases`) for Android version/build, size, and
+upload date. The server fetches only public metadata, caches it for five minutes,
+and returns `android: null` if unavailable or inconsistent. Download links remain
+usable during metadata failures. iOS version and release date are shown in TestFlight.
+Inside the Android app, this page compares the installed native build number
+with the published APK and shows whether an update is available. Older apps
+without build-number reporting cannot determine update status. Installed version
+and build are device-local; CLI and SDK release metadata report the published APK.
+Publish updates with **Mobile Android (EAS)**, profile `preview`, **publish** on.
+
+Storage & retention is a default-disabled bundled plugin. Enable it
+with `bb plugin enable bb--storage-retention`.
+Its sidebar panel and `bb storage` commands own retention policies and machine
+cleanup. All retention settings in the panel save immediately. Enable **Delete thread storage on archive** with
+`bb storage retention --delete-storage-on-archive true --save --yes` (default:
+false). Future archives clear storage once stopped and online, keeping history
+and uploaded attachments and skipping pinned threads. Pending cleanup survives
+reloads and retries every minute; unarchiving cancels it.
+Separately, `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
+(default: false) scans online persistent machines hourly and removes `~/.bb-dev`
+folders with missing checkouts after successful scans, including manual scans
+and existing data. It rechecks absence, stops servers in removed checkouts,
+keeps unidentified sources, and retries failures on later scans.
+Use `bb storage clear-archived-files --machine HOST_ID --yes` to clear
+all stored files from archived, stopped, unpinned threads on that machine.
+`bb storage usage --machine HOST_ID` also reports worktree counts by project
+and, after a scan, a separate `~/.bb-dev` breakdown when that folder exists,
+including recovered source paths, checkout existence, and links to known threads.
+`bb storage remove-dev-instances --machine HOST_ID --yes` removes development
+instances whose checkout no longer exists, stopping servers still running from it;
+add `--instance NAME` to remove one entry of any kind, stopping its dev server
+first if it is running.
+See the plugin’s storage-retention skill for commands and limitations.
+
+### Opt-in server performance diagnostics
+
+Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,
+or `bb-app --perf-diagnostics` to permit detailed performance logs and rolling
+CPU profiles when the experiment is on. `BB_PERF_DIAGNOSTICS=1` is the equivalent startup environment
+setting (off by default; restart required). Server logs include five-second
+CPU/GC/loop/memory summaries and lower slow-operation thresholds. Profiles
+are saved every 30 seconds under `$BB_DATA_DIR/logs/performance/`, in ten
+rotating slots of at most 12 MiB each. Copy a relevant `.cpuprofile` promptly
+and open it in Chrome DevTools' JavaScript profiler. This adds overhead;
+remove the setting and restart to disable. No inspector network port is
+opened. Profile files contain local paths/function names; inspect before sharing.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.
+
+Storage cleanup can run in the background with `bb storage cleanup --machine HOST_ID --kind orphans|development|worktrees --yes`. Inspect `maintenance` with `bb storage usage`; failures release the machine lock and can be retried. Archived storage cleanup waits through the archive undo grace and rechecks eligibility before each batch.

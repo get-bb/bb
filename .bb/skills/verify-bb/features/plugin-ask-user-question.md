@@ -20,13 +20,15 @@ SKILL.md. Inspect nested `--help` before selecting flags and IDs.
 
 ## Feature recipes
 
-| Feature | Drive | Observable success |
-| --- | --- | --- |
-| Fallback tool availability | Ask the agent to request a preference and inspect its actual tool call. | Fallback tool appears only where required; a native provider keeps its native question flow. |
-| Single and multiple selection | Ask for single-choice and multi-select questions, select answers, and submit. | Returned selection matches the card and arrives once in the waiting turn. |
-| Other and previews | Enter a freeform Other response and inspect an option with a multiline preview. | Typed response and selected preview belong to the correct question; keyboard input remains usable. |
-| Multiple questions and bounds | Request a multi-question card; exercise schema boundaries from src/server.ts and malformed tool input. | Valid grouped answers retain their question IDs; invalid counts/options fail at the boundary. |
-| Dismissal and timeout | Dismiss one question and leave another to its documented timeout; navigate away/back with a third pending. | Resolution allows the agent to continue under the specified empty-answer policy; no duplicate pending card remains. |
+| Feature                       | Drive                                                                                                  | Observable success                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Fallback tool availability    | Ask the agent to request a preference and inspect its actual tool call.                                | Fallback tool appears only where required; a native provider keeps its native question flow.                                                                       |
+| Single and multiple selection | Request single-choice and multi-select questions, then submit answers.                                 | The tool returns a waiting notice immediately. Answers reach the agent once and appear in an "Answered … — …" timeline row, without a duplicate tool row or error. |
+| Other and previews            | Enter a freeform Other response and inspect an option with a multiline preview.                        | Typed response and selected preview belong to the correct question; keyboard input remains usable.                                                                 |
+| Multiple questions and bounds | Request a multi-question card; exercise schema boundaries from src/server.ts and malformed tool input. | Valid grouped answers retain their question IDs; invalid counts/options fail at the boundary.                                                                      |
+| Dismissal and timeout         | Test dismissal and timeout with active and idle agents; navigate away and back with a card pending.    | Active agents receive the cancellation; idle agents stay idle. Navigation preserves pending cards; dismissal and timeout clear them.                               |
+| Answer outlives the turn      | Let the agent finish with a card open, then answer.                                                    | The card remains usable. Answering starts a new turn with the answer, without a duplicate delivery row.                                                            |
+| Sending past an open card     | Send a CLI message while a card is open on an idle thread.                                             | The message dispatches immediately; the card remains answerable.                                                                                                   |
 
 ## Evidence and cleanup
 

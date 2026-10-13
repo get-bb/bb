@@ -340,6 +340,50 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
     });
   });
 
+  it("answers every viewer of a compacted thread with a full window at the unchanged sequence", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "before compaction" },
+      });
+      const before = await getTimeline(harness, thread.id);
+      expect(JSON.stringify(before.rows)).toContain("before compaction");
+
+      harness.deps.db.$client
+        .prepare(
+          "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = 1",
+        )
+        .run(JSON.stringify({ text: "after compaction" }), thread.id);
+      harness.deps.hub.notifyThread(thread.id, ["history-compacted"]);
+
+      const firstViewer = await getTimeline(harness, thread.id, before.maxSeq);
+      const secondViewer = await getTimeline(harness, thread.id, before.maxSeq);
+      for (const after of [firstViewer, secondViewer]) {
+        expect(after.maxSeq).toBe(before.maxSeq);
+        expect(after.delta).toBeUndefined();
+        expect(JSON.stringify(after.rows)).toContain("after compaction");
+      }
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "next" },
+      });
+      const caughtUp = await getTimeline(harness, thread.id, before.maxSeq);
+      expect(caughtUp.delta).toBeUndefined();
+      const next = await getTimeline(harness, thread.id, caughtUp.maxSeq);
+      expect(next.delta).toEqual({ upsertRows: [] });
+    });
+  });
+
   it("a no-op delta (no new events) returns an empty patch and merges to the same rows", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

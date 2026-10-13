@@ -150,6 +150,16 @@ export const threadTabSchema = z.discriminatedUnion("kind", [
   z
     .object({
       colorTag: threadTabColorTagSchema.nullable().default(null),
+      id: threadTabIdSchema,
+      kind: z.literal("attachment-file-preview"),
+      name: z.string().min(1).max(THREAD_TAB_TITLE_MAX_LENGTH),
+      path: threadTabPathSchema,
+      projectId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      colorTag: threadTabColorTagSchema.nullable().default(null),
       environmentId: z.string().min(1).nullable(),
       id: threadTabIdSchema,
       kind: z.literal("browser"),

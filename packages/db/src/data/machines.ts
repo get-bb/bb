@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { environments, hosts, threads } from "../schema.js";
 
@@ -14,7 +14,13 @@ export function listProviderMachines(db: Connection, providerId: string) {
   return db
     .select()
     .from(hosts)
-    .where(eq(hosts.machineProviderId, providerId))
+    .where(
+      and(
+        eq(hosts.machineProviderId, providerId),
+        isNull(hosts.destroyedAt),
+        ne(hosts.phase, "destroyed"),
+      ),
+    )
     .all();
 }
 

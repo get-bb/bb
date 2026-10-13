@@ -55,13 +55,16 @@ function Row({
         now={now}
         isPrimary={false}
         isThisMachine={false}
-        showPrimaryBadge={false}
+        showServerBadge={false}
         lifecycleNotice={null}
         lifecycleActionPending={false}
         onSuspend={noop}
         onResume={noop}
         onRetryCleanup={noop}
         onRename={noop}
+        onReconnect={noop}
+        canMoveServerHere={false}
+        onMoveServerHere={noop}
         {...overrides}
       />
     </div>
@@ -86,7 +89,7 @@ export function Header() {
           platformLabel="macOS"
           isPrimary
           isThisMachine
-          showPrimaryBadge
+          showServerBadge
         />
       </StoryRow>
       <StoryRow
@@ -99,6 +102,22 @@ export function Header() {
             name: "michael-build-box",
             machineProviderId: MANUAL_MACHINE_PROVIDER.id,
             createdAt: now - 18 * 24 * 60 * 60_000,
+          })}
+          machineProvider={MANUAL_MACHINE_PROVIDER}
+        />
+      </StoryRow>
+      <StoryRow
+        label="offline"
+        hint="an active machine that stopped connecting, for example after its access was revoked; reconnecting is offered in the menu"
+      >
+        <Row
+          host={makeHost({
+            id: "host_offline",
+            name: "michael-old-laptop",
+            machineProviderId: MANUAL_MACHINE_PROVIDER.id,
+            status: "disconnected",
+            lastSeenAt: now - 2 * 24 * 60 * 60_000,
+            createdAt: now - 90 * 24 * 60 * 60_000,
           })}
           machineProvider={MANUAL_MACHINE_PROVIDER}
         />

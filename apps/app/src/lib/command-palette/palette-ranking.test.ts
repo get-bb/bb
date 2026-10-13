@@ -3,7 +3,14 @@ import type { PaletteAction } from "./palette-action";
 import { rankPaletteActions } from "./palette-ranking";
 
 function action(id: string, title: string, group: string): PaletteAction {
-  return { id, title, group, shortcut: null, run: () => {} };
+  return {
+    id,
+    bucket: group === "Threads" ? "Threads" : "Actions",
+    title,
+    group,
+    shortcut: null,
+    run: () => {},
+  };
 }
 
 const ACTIONS: readonly PaletteAction[] = [
@@ -17,15 +24,7 @@ const titlesOf = (ranked: ReturnType<typeof rankPaletteActions>) =>
   ranked.map((entry) => entry.action.title);
 
 describe("rankPaletteActions", () => {
-  it("keeps build order with no query and no history", () => {
-    expect(
-      titlesOf(
-        rankPaletteActions({ actions: ACTIONS, query: "", recentIds: [] }),
-      ),
-    ).toEqual(["New thread", "Next thread", "Toggle panel", "Reload page"]);
-  });
-
-  it("floats recently run actions to the top, most recent first", () => {
+  it("keeps the default catalog stable even with usage history", () => {
     expect(
       titlesOf(
         rankPaletteActions({
@@ -34,19 +33,19 @@ describe("rankPaletteActions", () => {
           recentIds: ["app:browser.reload", "app:panel.toggle"],
         }),
       ),
-    ).toEqual(["Reload page", "Toggle panel", "New thread", "Next thread"]);
+    ).toEqual(["New thread", "Next thread", "Toggle panel", "Reload page"]);
   });
 
-  it("ignores history entries for actions that are not listed", () => {
+  it("keeps the full catalog browsable while limiting search results", () => {
+    const actions = Array.from({ length: 60 }, (_, index) =>
+      action(`plugin:${index}`, `Plugin action ${index}`, "Plugins"),
+    );
     expect(
-      titlesOf(
-        rankPaletteActions({
-          actions: ACTIONS,
-          query: "",
-          recentIds: ["plugin:gone/vanished", "app:thread.next"],
-        }),
-      ),
-    ).toEqual(["Next thread", "New thread", "Toggle panel", "Reload page"]);
+      rankPaletteActions({ actions, query: " ", recentIds: [] }),
+    ).toHaveLength(60);
+    expect(
+      rankPaletteActions({ actions, query: "Plugin action", recentIds: [] }),
+    ).toHaveLength(50);
   });
 
   it("matches the group so a query can name a section", () => {

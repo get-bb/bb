@@ -45,23 +45,10 @@ export function createProviderInstallationGate({
   const pendingByKey = new Map<string, Promise<ProviderInstallationStatus>>();
   let generation = 0;
 
-  function pruneExpired(currentTime: number): void {
-    for (const [key, entry] of settledByKey) {
-      if (entry.expiresAt <= currentTime) {
-        settledByKey.delete(key);
-      }
-    }
-  }
-
-  const run: ProviderInstallationGate["run"] = (key, probe) => {
-    const currentTime = now();
-    const settled = settledByKey.get(key);
-    if (settled !== undefined) {
-      if (settled.expiresAt > currentTime) {
-        return Promise.resolve(settled.status);
-      }
-      settledByKey.delete(key);
-    }
+  function probeInstallation(
+    key: string,
+    probe: () => Promise<ProviderInstallationStatus>,
+  ): Promise<ProviderInstallationStatus> {
     const pending = pendingByKey.get(key);
     if (pending !== undefined) {
       return pending;
@@ -71,22 +58,23 @@ export function createProviderInstallationGate({
       .then(
         (status) => {
           if (startedGeneration !== generation) {
-            return run(key, probe);
+            return probeInstallation(key, probe);
           }
-          const settledAt = now();
-          pruneExpired(settledAt);
           if (
             (status.installed || status.minimumSupportedVersion === null) &&
             !status.versionUnsupported
           ) {
-            settledByKey.set(key, { status, expiresAt: settledAt + ttlMs });
+            settledByKey.set(key, { status, expiresAt: now() + ttlMs });
+          } else {
+            settledByKey.delete(key);
           }
           return status;
         },
         (error: unknown) => {
           if (startedGeneration !== generation) {
-            return run(key, probe);
+            return probeInstallation(key, probe);
           }
+          settledByKey.delete(key);
           throw error;
         },
       )
@@ -97,6 +85,17 @@ export function createProviderInstallationGate({
       });
     pendingByKey.set(key, started);
     return started;
+  }
+
+  const run: ProviderInstallationGate["run"] = (key, probe) => {
+    const settled = settledByKey.get(key);
+    if (settled === undefined) {
+      return probeInstallation(key, probe);
+    }
+    if (settled.expiresAt <= now()) {
+      probeInstallation(key, probe).catch(() => {});
+    }
+    return Promise.resolve(settled.status);
   };
 
   return {

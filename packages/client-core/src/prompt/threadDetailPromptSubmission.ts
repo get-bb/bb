@@ -84,7 +84,6 @@ interface CanSubmitFollowUpShortcutArgs {
 interface BuildFollowUpSubmitModeArgs {
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
-  isPendingInteractionsInitialLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -94,7 +93,6 @@ interface BuildSideChatSubmitModeArgs {
   childThreadId: string | null;
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
-  isPendingInteractionsInitialLoading: boolean;
   isStopRequested: boolean;
   onStop: () => void;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
@@ -124,7 +122,6 @@ export function shouldQueueFollowUpMessage(
 ): boolean {
   return (
     displayStatus === "active" ||
-    displayStatus === "host-reconnecting" ||
     displayStatus === "provisioning" ||
     displayStatus === "starting" ||
     displayStatus === "stopping" ||
@@ -135,16 +132,12 @@ export function shouldQueueFollowUpMessage(
 export function buildFollowUpSubmitMode({
   hasPendingInteraction,
   isDefaultExecutionOptionsLoading,
-  isPendingInteractionsInitialLoading,
   isStopRequested,
   onStop,
   runtimeDisplayStatus,
 }: BuildFollowUpSubmitModeArgs): FollowUpSubmitMode {
   if (isStopRequested) {
     return { kind: "queue-while-stopping" };
-  }
-  if (isPendingInteractionsInitialLoading) {
-    return { kind: "blocked", reason: "loading-pending-interactions" };
   }
   if (hasPendingInteraction) {
     return { kind: "blocked", reason: "pending-interaction" };
@@ -162,7 +155,6 @@ export function buildSideChatSubmitMode({
   childThreadId,
   hasPendingInteraction,
   isDefaultExecutionOptionsLoading,
-  isPendingInteractionsInitialLoading,
   isStopRequested,
   onStop,
   runtimeDisplayStatus,
@@ -175,7 +167,6 @@ export function buildSideChatSubmitMode({
   return buildFollowUpSubmitMode({
     hasPendingInteraction,
     isDefaultExecutionOptionsLoading,
-    isPendingInteractionsInitialLoading,
     isStopRequested,
     onStop,
     runtimeDisplayStatus,
@@ -199,7 +190,11 @@ export function canSubmitFollowUpShortcut({
       runtimeDisplayStatus === "starting") &&
     submitModeKind === "queue";
   if (hasPromptDraftInput) {
-    return canSteerActiveWork;
+    return (
+      canSteerActiveWork ||
+      (runtimeDisplayStatus === "waiting-for-host" &&
+        submitModeKind === "queue")
+    );
   }
   return (
     queuedMessageCount > 0 &&

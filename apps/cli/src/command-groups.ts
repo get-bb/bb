@@ -47,19 +47,25 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     (m) => (program, deps) => m.registerProjectCommands(program, deps.getUrl),
   ),
   group(
+    "prompt-history",
+    () => import("./commands/prompt-history.js"),
+    (m) => (program, deps) =>
+      m.registerPromptHistoryCommands(program, deps.getUrl),
+  ),
+  group(
     "provider",
     () => import("./commands/provider.js"),
     (m) => (program, deps) => m.registerProviderCommands(program, deps.getUrl),
   ),
   group(
-    "manager",
-    () => import("./commands/manager.js"),
-    (m) => (program) => m.registerManagerCommands(program),
-  ),
-  group(
     "machine",
     () => import("./commands/machine.js"),
     (m) => (program, deps) => m.registerMachineCommands(program, deps.getUrl),
+  ),
+  group(
+    "server",
+    () => import("./commands/server.js"),
+    (m) => (program, deps) => m.registerServerCommands(program, deps.getUrl),
   ),
   group(
     "updates",
@@ -113,6 +119,11 @@ export const CORE_COMMAND_GROUPS: readonly CommandGroup[] = [
     "guide",
     () => import("./commands/guide.js"),
     (m) => (program) => m.registerGuideCommand(program),
+  ),
+  group(
+    "diagnostics",
+    () => import("./commands/diagnostics.js"),
+    (m) => (program) => m.registerDiagnosticsCommands(program),
   ),
   group(
     "voice",

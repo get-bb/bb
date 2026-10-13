@@ -16,6 +16,10 @@ import {
 import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
+import type {
+  ProjectsSdk,
+  ScriptWorkingDirectoryResolver,
+} from "./working-directory.js";
 
 type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
@@ -31,6 +35,9 @@ type AgentThreadsSdk = {
 };
 export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
+};
+export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: { projects: ProjectsSdk };
 };
 
 const sdkThreadSchema = z
@@ -114,7 +121,10 @@ export async function executeAgentRun(
       await bb.sdk.threads.spawn({
         projectId: args.automation.projectId,
         environment: args.execution.environment,
-        prompt: args.execution.prompt,
+        prompt: renderAutomationDueMessage({
+          automationId: args.automation.id,
+          prompt: args.execution.prompt,
+        }),
         title: args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
@@ -247,7 +257,7 @@ function closeRunForUnusableTargetThread(
 }
 
 export async function executeScriptRun(
-  bb: Pick<BbPluginApi, "realtime" | "log">,
+  bb: ScriptRunApi,
   db: Db,
   args: {
     pluginDataDir: string;
@@ -256,6 +266,7 @@ export async function executeScriptRun(
     execution: Extract<AutomationExecution, { mode: "script" }>;
     onFailure: RunFailureHandler;
     serverUrl: string;
+    resolveWorkingDirectory: ScriptWorkingDirectoryResolver;
   },
 ): Promise<void> {
   try {
@@ -269,6 +280,15 @@ export async function executeScriptRun(
       });
       return;
     }
+    const workingDir = await args.resolveWorkingDirectory(
+      args.automation.projectId,
+      args.execution.workingDirectory,
+    );
+    if (workingDir === null) {
+      throw new Error(
+        `Project ${args.automation.projectId} has no source on the bb server host`,
+      );
+    }
     const result = await executeStoredScript({
       pluginDataDir: args.pluginDataDir,
       automationId: args.automation.id,
@@ -279,6 +299,7 @@ export async function executeScriptRun(
       timeoutMs: args.execution.timeoutMs,
       env: args.execution.env,
       serverUrl: args.serverUrl,
+      workingDir,
     });
     const mapped = mapScriptResultToRun(result);
     closeAutomationRun(db, {
@@ -421,9 +442,6 @@ async function reconcileOutcome(
         status: "failed",
         error: "Turn failed while the automations plugin was not running",
       };
-    // Still going somewhere: leave the run marked running and re-check later.
-    // `pending` belongs here — the thread's first dispatch is queued, not
-    // failed, so the run has neither succeeded nor finished.
     case "pending":
     case "starting":
     case "active":

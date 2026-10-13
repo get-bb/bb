@@ -102,9 +102,9 @@ export const PLUGIN_CATALOG_CATEGORIES = [
   },
   {
     id: "cloud-and-remote",
-    displayName: "Cloud & Remote",
+    displayName: "Environments & Cloud",
     description:
-      "Run bb work in cloud environments or access bb from elsewhere.",
+      "Create and manage where threads run, locally or in the cloud.",
   },
   {
     id: "command-line",
@@ -128,18 +128,8 @@ export const PLUGIN_CATALOG_CATEGORIES = [
     description: "Plan, track, route, schedule, or automate work.",
   },
 ] as const;
-
-export type PluginCatalogCategoryId = z.infer<
-  typeof pluginCatalogCategoryIdSchema
->;
 export type PluginMarketplaceCategory = z.infer<
   typeof pluginMarketplaceCategorySchema
->;
-export type PluginMarketplaceCollectionId = z.infer<
-  typeof pluginMarketplaceCollectionIdSchema
->;
-export type PluginMarketplaceCollectionPluginId = z.infer<
-  typeof pluginMarketplaceCollectionPluginIdSchema
 >;
 export type PluginMarketplaceCollection = z.infer<
   typeof pluginMarketplaceCollectionSchema

@@ -54,11 +54,6 @@ export const bundleTargets = [
     // The CLI `import()`s each command group on demand; chunks land in
     // dist/bb-chunks, which packages/bb-app ships next to this entry.
     splitting: true,
-    // The packaged CLI has no workspace on disk, so `bb plugin types` for a
-    // vendored-layout plugin gets the SDK declarations inlined (see
-    // packages/templates/src/plugin-sdk-dts.ts). Dev bundles read them from
-    // packages/plugin-sdk/bundled-types instead.
-    inlinePluginSdkDeclarations: true,
   },
   {
     // Forked child that runs @parcel/watcher in isolation (BB_WATCHER_SUBPROCESS=1).

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
-import { uiPreferences } from "../schema.js";
+import { uiPreferenceDefaults, uiPreferences } from "../schema.js";
 
 export interface StoredUiPreference {
   key: string;
@@ -23,6 +23,23 @@ export function listStoredUiPreferences(
     })
     .from(uiPreferences)
     .all();
+}
+
+export function listStoredUiPreferenceDefaults(
+  db: DbConnection,
+): { key: string; valueJson: string }[] {
+  return db.select().from(uiPreferenceDefaults).all();
+}
+
+export function getStoredUiPreferenceDefault(
+  db: DbConnection,
+  key: string,
+): string | undefined {
+  return db
+    .select({ valueJson: uiPreferenceDefaults.valueJson })
+    .from(uiPreferenceDefaults)
+    .where(eq(uiPreferenceDefaults.key, key))
+    .get()?.valueJson;
 }
 
 function upsertStoredUiPreference(

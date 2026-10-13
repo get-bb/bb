@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ChangelogInline } from "../landing/changelog-inline";
+import { LazyPluginGuide } from "../plugin-guide/lazy-plugin-guide";
 import { getImageSize } from "./image-sizes";
 import { LightboxImage } from "./lightbox";
 import type { Post, PostBlock } from "./parse-post";
@@ -10,6 +11,8 @@ function Block({ block }: { block: PostBlock }): ReactNode {
   switch (block.kind) {
     case "heading":
       return <h2>{block.text}</h2>;
+    case "subheading":
+      return <h3>{block.text}</h3>;
     case "paragraph":
       return (
         <p>
@@ -45,9 +48,42 @@ function Block({ block }: { block: PostBlock }): ReactNode {
           href={block.href}
         />
       );
+    case "video":
+      return (
+        <figure className="post-figure">
+          <video controls playsInline preload="metadata" poster={block.poster}>
+            <source src={block.src} type="video/mp4" />
+          </video>
+          <figcaption>
+            <ChangelogInline text={block.caption} />
+          </figcaption>
+        </figure>
+      );
     case "tweet":
       return <TweetEmbed href={block.href} id={block.id} />;
+    case "component":
+      return <PluginGuideEmbed slide={block.slide} />;
   }
+}
+
+function PluginGuideEmbed({ slide }: { slide?: string }) {
+  return (
+    <figure className="post-figure post-embed">
+      <LazyPluginGuide initialSlideId={slide} />
+      <figcaption>
+        <a
+          className="release-link"
+          href={
+            slide
+              ? `/plugin-guide?slide=${encodeURIComponent(slide)}`
+              : "/plugin-guide"
+          }
+        >
+          Open the full Guide
+        </a>
+      </figcaption>
+    </figure>
+  );
 }
 
 function XMark() {

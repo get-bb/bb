@@ -52,7 +52,9 @@ body:
     id: ruled-out
     attributes:
       label: What you ruled out
-      description: One line each. "Not #N because …", "still happens on main at <sha>", "does not happen with provider X", "clean data dir does not help".
+      description: >-
+        One line each. "Not #N because …", "still happens on main at <sha>",
+        "does not happen with provider X", "clean data dir does not help".
   - type: input
     id: priority
     attributes:

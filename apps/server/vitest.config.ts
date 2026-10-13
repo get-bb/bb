@@ -6,7 +6,11 @@ import {
 export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
-    setupFiles: ["test/setup/stored-event-decode-freeze.ts"],
+    testTimeout: 15_000,
+    setupFiles: [
+      "test/setup/stored-event-decode-freeze.ts",
+      "test/setup/warm-test-harness.ts",
+    ],
     env: {
       BB_DATA_DIR: "/tmp/bb-server-test",
       BB_SERVER_PORT: "49161",

@@ -25,41 +25,4 @@ describe("QA runbook contracts", () => {
       );
     },
   );
-
-  it("uses a deterministic outside-workspace target for interaction probes", async () => {
-    const runbook = await readRunbook("manual-runbook.md");
-
-    expect(runbook).toContain(
-      'mktemp -d "${HOME:?}/.bb-approval-smoke.XXXXXX"',
-    );
-    expect(runbook).toContain('mktemp -d "${HOME:?}/.bb-denial-smoke.XXXXXX"');
-    expect(runbook).not.toMatch(/mktemp -d \/tmp\/bb-(?:approval|denial)/);
-  });
-
-  it("documents provisioning retry only after a completed failure", async () => {
-    const runbook = await readRunbook("manual-runbook.md");
-
-    expect(runbook).toContain("Provisioning failure and next-message retry");
-    expect(runbook).toContain(
-      'bb thread wait "$PROVISION_RETRY_THREAD_ID" --status error',
-    );
-    expect(runbook).toContain(
-      'bb thread tell "$PROVISION_RETRY_THREAD_ID" "Say exactly: provisioning retry ok" --mode auto',
-    );
-    expect(runbook).not.toContain(
-      "Server restart during environment provisioning",
-    );
-    expect(runbook).not.toMatch(/active[_ -]provisioning[_ -]id/i);
-  });
-
-  it("recovers when daemon disconnect settlement races an active-state snapshot", async () => {
-    const runbook = await readRunbook("manual-runbook.md");
-
-    expect(runbook).toContain(
-      'bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 180 || true',
-    );
-    expect(runbook).toContain(
-      'if [ "$THREAD_STATE" != "idle" ]; then\n  bb thread tell "$SMOKE_THREAD_ID" "Say exactly: recovery ok" --mode auto',
-    );
-  });
 });

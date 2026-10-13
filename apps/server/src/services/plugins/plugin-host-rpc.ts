@@ -13,7 +13,7 @@ import { callHostOnlineRpc } from "../hosts/online-rpc.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 
 const HOST_RPC_TRANSPORT_GRACE_MS = 6_000;
-const HOST_RPC_PAYLOAD_MAX_BYTES = 8 * 1024 * 1024;
+const HOST_RPC_PAYLOAD_MAX_BYTES = 32 * 1024 * 1024;
 
 async function validateValue(
   schema: StandardSchemaV1,

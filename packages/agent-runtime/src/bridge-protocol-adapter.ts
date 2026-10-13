@@ -110,6 +110,7 @@ function toBridgeWireOptions(
     serviceTier,
     reasoningLevel,
     promptMode,
+    sessionOptions,
     instructions,
     envVars,
     permissionMode,
@@ -126,6 +127,7 @@ function toBridgeWireOptions(
     ...(serviceTier !== undefined ? { serviceTier } : {}),
     ...(reasoningLevel !== undefined ? { reasoningLevel } : {}),
     ...(promptMode !== undefined ? { promptMode } : {}),
+    ...(sessionOptions !== undefined ? { sessionOptions } : {}),
     ...(instructions !== undefined ? { instructions } : {}),
     ...(envVars !== undefined ? { envVars } : {}),
     permissionMode,
@@ -186,9 +188,6 @@ export function createBridgeProtocolAdapter(
       ...(command.dynamicTools !== undefined
         ? { dynamicTools: command.dynamicTools }
         : {}),
-      ...(command.disallowedTools !== undefined
-        ? { disallowedTools: command.disallowedTools }
-        : {}),
       instructionMode: command.instructionMode,
     };
   }
@@ -233,6 +232,7 @@ export function createBridgeProtocolAdapter(
             method: BRIDGE_REQUEST_METHODS.providerInstallationStatus,
             params: {
               providerId: options.id,
+              checkUpdates: command.checkUpdates,
               ...(command.requirement !== undefined
                 ? { requirement: command.requirement }
                 : {}),

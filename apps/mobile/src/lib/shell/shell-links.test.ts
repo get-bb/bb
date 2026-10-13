@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isNativeOnlyShellPath,
-  resolveShellIncomingLink,
-  shellHref,
-} from "./shell-links";
+import { resolveShellIncomingLink } from "./shell-links";
 
 const profiles = [
   { id: "p_bee", serverUrl: "https://bee.getbb.app" },
@@ -17,57 +13,21 @@ const context = {
   developerRoutesEnabled: false,
 };
 
-describe("shellHref", () => {
-  it("carries the page path and only names a profile when switching", () => {
-    expect(shellHref({ profileId: null, path: "/" })).toBe("/webview");
-    expect(shellHref({ profileId: null, path: "/threads/thr_1" })).toBe(
-      "/webview?path=%2Fthreads%2Fthr_1",
-    );
-    expect(shellHref({ profileId: "p_lan", path: "/" })).toBe(
-      "/webview?profileId=p_lan",
-    );
-  });
-});
-
-describe("isNativeOnlyShellPath", () => {
-  it("keeps the screens the shell still owns", () => {
-    expect(isNativeOnlyShellPath("/connect")).toBe(true);
-    expect(isNativeOnlyShellPath("/connect?code=ABCD")).toBe(true);
-    expect(isNativeOnlyShellPath("/settings/servers/add")).toBe(true);
-    expect(isNativeOnlyShellPath("/settings")).toBe(false);
-    expect(isNativeOnlyShellPath("/settings/device")).toBe(true);
-    expect(isNativeOnlyShellPath("/settings/notifications")).toBe(true);
-    expect(isNativeOnlyShellPath("/settings/general")).toBe(false);
-    expect(isNativeOnlyShellPath("/threads/x")).toBe(false);
-    expect(isNativeOnlyShellPath("/connections")).toBe(false);
-  });
-});
-
 describe("resolveShellIncomingLink", () => {
-  it("sends a scheme link to the page", () => {
-    expect(resolveShellIncomingLink("bb://threads/thr_1", context)).toEqual({
+  it.each([
+    ["bb://", "/webview"],
+    ["bb://threads/thr_1", "/webview?path=%2Fthreads%2Fthr_1"],
+    ["bb://connect?code=ABCD-EFGH", "/connect?code=ABCD-EFGH"],
+    ["bb://settings/servers/add", "/settings/servers/add"],
+    ["bb://settings/device", "/settings/device"],
+    ["bb://settings/notifications", "/settings/notifications"],
+    ["bb://settings", "/webview?path=%2Fsettings"],
+    ["bb://settings/general", "/webview?path=%2Fsettings%2Fgeneral"],
+    ["bb://connections", "/webview?path=%2Fconnections"],
+  ])("routes the scheme link %s to %s", (url, path) => {
+    expect(resolveShellIncomingLink(url, context)).toEqual({
       kind: "navigate",
-      path: "/webview?path=%2Fthreads%2Fthr_1",
-      profileId: null,
-    });
-  });
-
-  it("keeps connect enrolment native", () => {
-    expect(
-      resolveShellIncomingLink("bb://connect?code=ABCD-EFGH", context),
-    ).toEqual({
-      kind: "navigate",
-      path: "/connect?code=ABCD-EFGH",
-      profileId: null,
-    });
-  });
-
-  it("keeps notification settings native", () => {
-    expect(
-      resolveShellIncomingLink("bb://settings/notifications", context),
-    ).toEqual({
-      kind: "navigate",
-      path: "/settings/notifications",
+      path,
       profileId: null,
     });
   });
@@ -108,6 +68,16 @@ describe("resolveShellIncomingLink", () => {
       path: "/webview?profileId=p_lan&path=%2Fthreads%2Fx",
       profileId: "p_lan",
     });
+  });
+
+  it("names only the profile when a link switches servers at the root", () => {
+    expect(resolveShellIncomingLink("http://10.0.0.7:38886/", context)).toEqual(
+      {
+        kind: "navigate",
+        path: "/webview?profileId=p_lan",
+        profileId: "p_lan",
+      },
+    );
   });
 
   it("strips a profile's mount prefix from the page path", () => {

@@ -2,6 +2,7 @@ import type {
   PromptInput,
   SystemMessageSubject,
   ThreadEventTurnStatus,
+  ChildThreadOutcome,
 } from "@bb/domain";
 import { listActiveBackgroundTaskCountsByThreadIds } from "@bb/db";
 import { renderTemplate } from "@bb/templates";
@@ -29,6 +30,8 @@ export interface ChildThreadTurnNotificationBatchItem {
   childThread: ChildThreadNotificationSource;
   terminalOutput: string | null;
   turnStatus: ThreadEventTurnStatus;
+  failureContext?: string;
+  interruption?: ChildThreadOutcome["interruption"];
 }
 
 interface ChildThreadTurnNotificationBatch {
@@ -62,6 +65,8 @@ interface QueueChildThreadTurnNotificationArgs {
   childThread: ChildThreadNotificationSource;
   parentThreadId: string;
   turnStatus: ThreadEventTurnStatus;
+  failureContext?: string;
+  interruption?: ChildThreadOutcome["interruption"];
 }
 
 interface QueueChildThreadNeedsAttentionNotificationArgs {
@@ -78,10 +83,6 @@ const CHILD_THREAD_TERMINAL_OUTPUT_EXCERPT_CHAR_LIMIT = 4_000;
 const CHILD_THREAD_OUTPUT_TRUNCATION_MARKER = "\n\n[... output truncated ...]";
 const CHILD_THREAD_INSPECTION_GUIDANCE =
   "Review the thread before deciding next steps.";
-const CHILD_THREAD_INTERRUPTED_GUIDANCE =
-  "If the user stopped it manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
-const CHILD_THREAD_BATCH_INTERRUPTED_GUIDANCE =
-  "If the user stopped any interrupted thread manually, do not resume, restart, retry, replace, or continue the work unless the user explicitly asks.";
 const CHILD_THREAD_NEEDS_ATTENTION_FALLBACK_SUMMARY =
   "It is blocked on a pending interaction.";
 const CHILD_THREAD_RUNNING_WORKFLOW_GUIDANCE =
@@ -93,18 +94,40 @@ const childThreadTurnNotificationBatches = new Map<
   ChildThreadTurnNotificationBatch
 >();
 
-function childThreadTurnStatusLabel(turnStatus: ThreadEventTurnStatus): string {
+function childThreadTurnStatusLabel(
+  item: ChildThreadTurnNotificationBatchItem,
+): string {
+  if (item.failureContext) return item.failureContext;
+  const { turnStatus } = item;
   switch (turnStatus) {
     case "completed":
       return "completed";
     case "failed":
       return "failed";
     case "interrupted":
-      return "was interrupted";
+      return `was interrupted${childThreadInterruptionCauseText(item.interruption)}`;
     default: {
       const exhaustiveCheck: never = turnStatus;
       return exhaustiveCheck;
     }
+  }
+}
+
+function childThreadInterruptionCauseText(
+  interruption: ChildThreadOutcome["interruption"],
+): string {
+  if (!interruption) return "";
+  if (interruption.cause === "host-connection-lost")
+    return " because its host connection was lost";
+  switch (interruption.reason) {
+    case "host-daemon-restarted":
+      return " because its host daemon restarted";
+    case "host-removed":
+      return " because its host was removed";
+    case "provider-turn-idle":
+      return " because its provider turn went idle";
+    case "manual-stop":
+      return "";
   }
 }
 
@@ -181,7 +204,7 @@ function buildSingleChildThreadTurnStatusSegments(
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` failed.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
+          text: ` ${line.item.failureContext ?? "failed"}.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
         },
       ];
     case "interrupted":
@@ -189,7 +212,7 @@ function buildSingleChildThreadTurnStatusSegments(
         { kind: "mention", mention: line.mention },
         {
           kind: "text",
-          text: ` was interrupted.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}\n\n${CHILD_THREAD_INTERRUPTED_GUIDANCE}`,
+          text: ` ${childThreadTurnStatusLabel(line.item)}.\n\n${CHILD_THREAD_INSPECTION_GUIDANCE}`,
         },
       ];
     default: {
@@ -210,7 +233,7 @@ function buildChildThreadBatchStatusLineSegments(
     { kind: "mention", mention: line.mention },
     {
       kind: "text",
-      text: ` ${childThreadTurnStatusLabel(line.item.turnStatus)}${workflowClause}.`,
+      text: ` ${childThreadTurnStatusLabel(line.item)}${workflowClause}.`,
     },
   ];
 }
@@ -250,12 +273,6 @@ function buildChildThreadTurnStatusBatchSegments(
     segments.push({ kind: "text", text: index === 0 ? "\n\n- " : "\n- " });
     segments.push(...buildChildThreadBatchStatusLineSegments({ line }));
   });
-  if (args.lines.some((line) => line.item.turnStatus === "interrupted")) {
-    segments.push({
-      kind: "text",
-      text: `\n\n${CHILD_THREAD_BATCH_INTERRUPTED_GUIDANCE}`,
-    });
-  }
   if (args.lines.some((line) => line.item.activeWorkflowCount > 0)) {
     segments.push({
       kind: "text",
@@ -289,16 +306,30 @@ function childThreadSubject(
 function childThreadTurnStatusBatchTaxonomy(
   items: ChildThreadTurnNotificationBatchItem[],
 ): ParentSystemMessageTaxonomy {
+  const outcomes: ChildThreadOutcome[] = items.map((item) => ({
+    threadId: item.childThread.id,
+    status: item.turnStatus,
+    ...(item.interruption ? { interruption: item.interruption } : {}),
+  }));
   const single = items.length === 1 ? items[0] : undefined;
   if (single) {
     return {
       systemMessageKind: childOutcomeSystemMessageKind(single.turnStatus),
-      systemMessageSubject: childThreadSubject(single.childThread),
+      systemMessageSubject: {
+        kind: "thread",
+        threadId: single.childThread.id,
+        threadName: parentSystemThreadLabel(single.childThread),
+        outcomes,
+      },
     };
   }
   return {
     systemMessageKind: "child-outcome-batch",
-    systemMessageSubject: { kind: "thread-batch", count: items.length },
+    systemMessageSubject: {
+      kind: "thread-batch",
+      count: items.length,
+      outcomes,
+    },
   };
 }
 
@@ -406,18 +437,29 @@ function queueChildThreadTurnNotificationBatchItem(
     childThread: args.childThread,
     terminalOutput: getChildThreadCompletionOutput(deps, args),
     turnStatus: args.turnStatus,
+    ...(args.failureContext ? { failureContext: args.failureContext } : {}),
+    ...(args.interruption ? { interruption: args.interruption } : {}),
   };
   const existingBatch = childThreadTurnNotificationBatches.get(
     args.parentThreadId,
   );
   if (existingBatch) {
     const existingIndex = existingBatch.items.findIndex(
-      (entry) => entry.childThread.id === args.childThread.id,
+      (entry) =>
+        entry.childThread.id === args.childThread.id &&
+        entry.failureContext === args.failureContext,
     );
     if (existingIndex === -1) {
       existingBatch.items.push(item);
     } else {
-      existingBatch.items[existingIndex] = item;
+      const previous = existingBatch.items[existingIndex];
+      existingBatch.items[existingIndex] =
+        item.turnStatus === "interrupted" &&
+        !item.interruption &&
+        previous?.turnStatus === "interrupted" &&
+        previous.interruption
+          ? { ...item, interruption: previous.interruption }
+          : item;
     }
     clearTimeout(existingBatch.timer);
     existingBatch.timer = scheduleChildThreadTurnNotificationBatchFlush(

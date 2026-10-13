@@ -16,6 +16,6 @@ Type `@` in the composer and choose **Tasks** to send a task as context. Agents 
 
 ## For agents
 
-The `bb tasks` CLI covers the full tracker: `create`, `list`, `show`, `update`, `comment`, `attachment`, `preset`, `delegate`, `attach`, `detach`, `threads`, `label`, `project`, and `folder`. Add `--json` for machine-readable output. The bundled `tasks` skill tells workers to read the task, comment at milestones, attach artifacts, and move finished work to `in_review`.
+The `bb tasks` CLI covers the full tracker: `create`, `list`, `show`, `update`, `move`, `comment`, `attachment`, `preset`, `delegate`, `attach`, `detach`, `threads`, `label`, `project`, and `folder`. Add `--json` for machine-readable output. The bundled `tasks` skill tells workers to read the task, comment at milestones, attach artifacts, and move finished work to `in_review`.
 
 Presets are user-defined. Create at least one before you delegate.

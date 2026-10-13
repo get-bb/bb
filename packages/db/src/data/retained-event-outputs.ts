@@ -4,7 +4,7 @@ import {
   type ThreadEventItemType,
   type ThreadEventType,
 } from "@bb/domain";
-import { sliceUtf16HeadAndTail } from "@bb/domain/utf16";
+import { sliceUtf16HeadAndTail } from "@bb/text-utils";
 import type { DbQueryConnection } from "../connection.js";
 import {
   COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
@@ -16,10 +16,10 @@ import {
   type RetainedEventOutputTarget,
 } from "../retained-event-output.js";
 import { events, retainedEventOutputs } from "../schema.js";
+import { queryInSqliteVariableBatches } from "./sqlite-variable-batches.js";
 
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
   "\n\n[... output truncated by retention policy; showing beginning and end ...]\n\n";
-const RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE = 100;
 
 interface PreparedRetainedEventOutput {
   expiresAt: number;
@@ -134,9 +134,7 @@ function prepareRetainedOutputData(args: {
   }
 
   const expiresAt = args.createdAt + COMPLETED_EVENT_OUTPUT_RETENTION_MS;
-  const truncation = isJsonObject(existingTruncation)
-    ? existingTruncation
-    : {};
+  const truncation = isJsonObject(existingTruncation) ? existingTruncation : {};
   const preview = truncateOutput(value);
   args.item[args.outputPath] = preview.value;
   truncation[args.outputPath] = {
@@ -311,15 +309,13 @@ export function hydrateRetainedEventOutputRows<
   if (rows.length === 0) {
     return [];
   }
-  const eventIds = [...new Set(rows.map((row) => row.id))];
-  const outputs: RetainedEventOutputHydrationRow[] = [];
-  for (
-    let start = 0;
-    start < eventIds.length;
-    start += RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE
-  ) {
-    outputs.push(
-      ...db
+  const outputs = queryInSqliteVariableBatches({
+    dedupeKey: (eventId) => eventId,
+    fixedVariableCount: 1,
+    variableCountPerValue: 1,
+    values: rows.map((row) => row.id),
+    queryBatch: (batch) =>
+      db
         .select({
           encodedValue: retainedEventOutputs.value,
           eventId: retainedEventOutputs.eventId,
@@ -328,19 +324,12 @@ export function hydrateRetainedEventOutputRows<
         .from(retainedEventOutputs)
         .where(
           and(
-            inArray(
-              retainedEventOutputs.eventId,
-              eventIds.slice(
-                start,
-                start + RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE,
-              ),
-            ),
+            inArray(retainedEventOutputs.eventId, [...batch]),
             gt(retainedEventOutputs.expiresAt, now),
           ),
         )
         .all(),
-    );
-  }
+  });
   if (outputs.length === 0) {
     return [...rows];
   }
@@ -358,14 +347,13 @@ function listRetainedEventOutputSizes(
   eventIds: readonly string[],
   now: number,
 ): RetainedEventOutputSizeRow[] {
-  const sizes: RetainedEventOutputSizeRow[] = [];
-  for (
-    let start = 0;
-    start < eventIds.length;
-    start += RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE
-  ) {
-    sizes.push(
-      ...db
+  return queryInSqliteVariableBatches({
+    dedupeKey: (eventId) => eventId,
+    fixedVariableCount: 1,
+    variableCountPerValue: 1,
+    values: eventIds,
+    queryBatch: (batch) =>
+      db
         .select({
           eventId: retainedEventOutputs.eventId,
           outputPath: retainedEventOutputs.outputPath,
@@ -374,20 +362,12 @@ function listRetainedEventOutputSizes(
         .from(retainedEventOutputs)
         .where(
           and(
-            inArray(
-              retainedEventOutputs.eventId,
-              eventIds.slice(
-                start,
-                start + RETAINED_EVENT_OUTPUT_LOOKUP_BATCH_SIZE,
-              ),
-            ),
+            inArray(retainedEventOutputs.eventId, [...batch]),
             gt(retainedEventOutputs.expiresAt, now),
           ),
         )
         .all(),
-    );
-  }
-  return sizes;
+  });
 }
 
 function retainedOutputSizeTotal(
@@ -426,9 +406,7 @@ function projectedHydratedDataBytes<TRow extends HydratableStoredEventRow>(
       return total + Buffer.byteLength(row.data);
     }
     return (
-      total +
-      hydratedEventDataBaseBytes(row, size.outputPath) +
-      size.valueBytes
+      total + hydratedEventDataBaseBytes(row, size.outputPath) + size.valueBytes
     );
   }, 0);
 }

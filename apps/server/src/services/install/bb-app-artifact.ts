@@ -16,6 +16,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { resolveBundledNpmCli } from "@bb/plugin-build";
+import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
 
 const execFileAsync = promisify(execFile);
 const HOST_DEPENDENCIES = [
@@ -28,6 +30,7 @@ const HOST_DEPENDENCIES = [
 ] as const;
 const HOST_DAEMON_FILES = [
   "bb",
+  "bb.cmd",
   "bb-parcel-watcher-child.mjs",
   "bb-plugin-host-worker.mjs",
   "bb-provider-bridge-worker.mjs",
@@ -64,15 +67,21 @@ interface BbAppPackageJson {
   version: string;
 }
 
-async function defaultCommandRunner(
+export async function defaultCommandRunner(
   command: string,
   args: readonly string[],
   cwd: string,
 ): Promise<string> {
-  const result = await execFileAsync(command, [...args], {
-    cwd,
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  const npmCliPath = command === "npm" ? resolveBundledNpmCli() : null;
+  const result = await execFileAsync(
+    npmCliPath === null ? command : process.execPath,
+    npmCliPath === null ? [...args] : [npmCliPath, ...args],
+    {
+      cwd,
+      env: omitNpmScriptPolicyEnv(process.env),
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
   return result.stdout;
 }
 
@@ -164,7 +173,7 @@ function hostPackageJson(packageJson: BbAppPackageJson): object {
     version: packageJson.version,
     description: "bb enrolled host runtime",
     type: "module",
-    os: packageJson.os,
+    os: [...new Set([...packageJson.os, "win32"])],
     bin: {
       bb: "dist/bb.js",
       "bb-app": "dist/bb-app.js",

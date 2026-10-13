@@ -3,6 +3,7 @@ import {
   definePluginApp,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
+  experimental_copyToClipboard,
   UrlLink,
   useBbNavigate,
   useRealtime,
@@ -24,9 +25,9 @@ import {
 } from "./app-logic.js";
 import type { githubRpcContract } from "./server.js";
 import { toast } from "sonner";
-import { Badge } from "@bb/shared-ui/badge";
-import { Button } from "@bb/shared-ui/button";
-import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DelayedLoading } from "@/components/ui/delayed-loading";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,20 +36,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
-import { Input } from "@bb/shared-ui/input";
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bb/shared-ui/select";
-import { Skeleton } from "@bb/shared-ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@bb/shared-ui/tabs";
-import { Textarea } from "@bb/shared-ui/textarea";
-import { EmptyState } from "@/components/empty-state";
-import { Markdown } from "@/components/markdown-lite";
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "./components/empty-state.js";
+import { Markdown } from "./components/markdown-lite.js";
 
 type IssueDetail = PluginRpcResult<
   (typeof githubRpcContract)["getIssue"]
@@ -627,9 +628,11 @@ function RowMenu({ item }: { item: Item }) {
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {
-            navigator.clipboard.writeText(item.url).then(
-              () => toast.success("Link copied"),
-              () => toast.error("Could not copy the link"),
+            void experimental_copyToClipboard({ text: item.url }).then(
+              (copied) => {
+                if (copied) toast.success("Link copied");
+                else toast.error("Could not copy the link");
+              },
             );
           }}
         >
@@ -1065,7 +1068,7 @@ function IssueDetailView({
 
   const issueLinks = links[`issue:${repo}#${number}`];
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container/github-detail flex flex-col gap-4">
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onBack}>
           ← Issues
@@ -1095,7 +1098,7 @@ function IssueDetailView({
         </Button>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="flex flex-col gap-6 @min-[56rem]/github-detail:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           <div className="overflow-hidden rounded-lg border border-border bg-card">
             <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
@@ -1158,7 +1161,7 @@ function IssueDetailView({
           </div>
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-56">
+        <aside className="flex w-full shrink-0 flex-col gap-5 @min-[56rem]/github-detail:w-56">
           <div className="flex flex-col gap-2">
             <SidebarHeading>Status</SidebarHeading>
             <Select
@@ -1687,7 +1690,7 @@ function PullDetailView({
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container/github-detail flex flex-col gap-4">
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
         {onBack !== undefined ? (
           <Button
@@ -1751,9 +1754,9 @@ function PullDetailView({
       {compact ? (
         mainColumn
       ) : (
-        <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex flex-col gap-6 @min-[56rem]/github-detail:flex-row">
           {mainColumn}
-          <aside className="flex w-full shrink-0 flex-col gap-5 lg:w-56">
+          <aside className="flex w-full shrink-0 flex-col gap-5 @min-[56rem]/github-detail:w-56">
             <div className="flex flex-col gap-1">
               <SidebarHeading>Reviewers</SidebarHeading>
               <PullReviewersList pull={pull} />
@@ -1818,7 +1821,7 @@ function PullPickerList({
     return <EmptyState message="No open pull requests in the tracked repos." />;
   }
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className="@container/github-picker overflow-hidden rounded-lg border border-border bg-card">
       <div className="divide-y divide-border">
         {open.map((item) => (
           <button
@@ -1833,7 +1836,7 @@ function PullPickerList({
             <span className="min-w-0 flex-1 truncate text-sm text-foreground">
               {item.title}
             </span>
-            <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">
+            <span className="hidden shrink-0 text-xs text-muted-foreground @min-[32rem]/github-picker:block">
               {item.repo}
             </span>
           </button>
@@ -1998,7 +2001,7 @@ function PanelHeader() {
   }, [rpc]);
   return (
     <>
-      <span className="hidden text-xs text-muted-foreground sm:inline">
+      <span className="hidden text-xs text-muted-foreground @min-[40rem]/page-header:inline">
         {failed ? (
           "Sync failed — check `gh auth status`"
         ) : status === null ? (
@@ -2018,13 +2021,13 @@ function PanelHeader() {
       <Button
         size="sm"
         variant="outline"
-        className="size-8 gap-1.5 px-0 sm:h-8 sm:w-auto sm:px-3"
+        className="size-8 gap-1.5 px-0 @min-[32rem]/page-header:h-8 @min-[32rem]/page-header:w-auto @min-[32rem]/page-header:px-3"
         disabled={syncing}
         onClick={refresh}
         aria-label={syncing ? "Syncing GitHub data" : "Refresh GitHub data"}
       >
         <RefreshIcon className={syncing ? "animate-spin" : undefined} />
-        <span className="hidden sm:inline">
+        <span className="hidden @min-[32rem]/page-header:inline">
           {syncing ? "Syncing…" : "Refresh"}
         </span>
       </Button>

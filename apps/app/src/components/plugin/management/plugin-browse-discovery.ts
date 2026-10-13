@@ -1,4 +1,7 @@
-import { PLUGIN_CATALOG_CATEGORIES, pluginCatalogCategory } from "@bb/domain";
+import {
+  PLUGIN_CATALOG_CATEGORIES,
+  type PluginMarketplaceCategory,
+} from "@bb/domain";
 import type { PluginCatalogCollection } from "@bb/server-contract";
 import type {
   PluginCatalogSearchEntry,
@@ -7,7 +10,7 @@ import type {
 
 export const UNCATEGORIZED_PLUGIN_CATEGORY_ID = "uncategorized";
 
-export type PluginBrowseSort = "recently-added" | "most-installed";
+export type PluginBrowseSort = "name" | "recently-added" | "most-installed";
 export type PluginBrowseSortDirection = "asc" | "desc";
 
 export interface PluginBrowseShelf {
@@ -19,7 +22,64 @@ export interface PluginBrowseShelf {
   kind: "collection" | "category" | "uncategorized";
 }
 
-function isCategorized(entry: PluginCatalogSearchEntry): boolean {
+export interface PluginBrowseCategoryOption {
+  id: string;
+  label: string;
+  count: number;
+}
+
+function orderedCategories(
+  categories: readonly PluginMarketplaceCategory[],
+): Map<string, PluginMarketplaceCategory> {
+  const ordered = new Map<string, PluginMarketplaceCategory>();
+  for (const category of [...categories, ...PLUGIN_CATALOG_CATEGORIES]) {
+    if (!ordered.has(category.id)) ordered.set(category.id, category);
+  }
+  return ordered;
+}
+
+export function pluginCategoryFilterOptions(
+  entries: readonly Pick<PluginCatalogSearchEntry, "categoryId" | "category">[],
+  selected: readonly string[],
+  categories: readonly PluginMarketplaceCategory[] = [],
+): PluginBrowseCategoryOption[] {
+  const knownCategories = orderedCategories(categories);
+  const labels = new Map<string, string>();
+  const counts = new Map<string, number>();
+  const unknownIds: string[] = [];
+  for (const entry of entries) {
+    const id = pluginCategoryFilterId(entry);
+    if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID) continue;
+    if (!labels.has(id)) {
+      labels.set(id, entry.category ?? id);
+      if (!knownCategories.has(id)) {
+        unknownIds.push(id);
+      }
+    }
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  for (const id of selected) {
+    if (id === UNCATEGORIZED_PLUGIN_CATEGORY_ID || labels.has(id)) continue;
+    const category = knownCategories.get(id);
+    labels.set(id, category?.displayName ?? id);
+    if (category === undefined) {
+      unknownIds.push(id);
+    }
+  }
+  const orderedIds = [
+    ...[...knownCategories.keys()].filter((id) => labels.has(id)),
+    ...unknownIds,
+  ];
+  return orderedIds.map((id) => ({
+    id,
+    label: labels.get(id) ?? id,
+    count: counts.get(id) ?? 0,
+  }));
+}
+
+function isCategorized(
+  entry: Pick<PluginCatalogSearchEntry, "categoryId" | "category">,
+): boolean {
   return entry.categoryId !== undefined && entry.category !== undefined;
 }
 
@@ -46,7 +106,9 @@ function collectionEntries(
 export function pluginBrowseShelves({
   entries,
   collections,
+  categories,
 }: PluginCatalogSearchData): PluginBrowseShelf[] {
+  const knownCategories = orderedCategories(categories);
   const shelves: PluginBrowseShelf[] = collections.flatMap((collection) => {
     const shelfEntries = collectionEntries(entries, collection);
     return shelfEntries.length === 0
@@ -72,31 +134,28 @@ export function pluginBrowseShelves({
     if (categoryEntries === undefined) {
       entriesByCategory.set(categoryId, [entry]);
       categoryLabels.set(categoryId, categoryLabel);
-      if (pluginCatalogCategory(categoryId) === undefined) {
+      if (!knownCategories.has(categoryId)) {
         unknownCategoryOrder.push(categoryId);
       }
     } else {
       categoryEntries.push(entry);
     }
   }
-  const categoryOrder = [
-    ...PLUGIN_CATALOG_CATEGORIES.map((category) => category.id),
-    ...unknownCategoryOrder,
-  ];
+  const categoryOrder = [...knownCategories.keys(), ...unknownCategoryOrder];
   for (const categoryId of categoryOrder) {
     const shelfEntries = entriesByCategory.get(categoryId);
     if (shelfEntries === undefined || shelfEntries.length === 0) continue;
-    const builtInCategory = pluginCatalogCategory(categoryId);
+    const knownCategory = knownCategories.get(categoryId);
     shelves.push({
       key: `category:${categoryId}`,
       categoryId,
       label:
-        builtInCategory?.displayName ??
+        knownCategory?.displayName ??
         categoryLabels.get(categoryId) ??
         categoryId,
-      ...(builtInCategory === undefined
+      ...(knownCategory === undefined
         ? {}
-        : { description: builtInCategory.description }),
+        : { description: knownCategory.description }),
       entries: shelfEntries,
       kind: "category",
     });
@@ -115,7 +174,7 @@ export function pluginBrowseShelves({
 }
 
 export function pluginCategoryFilterId(
-  entry: PluginCatalogSearchEntry,
+  entry: Pick<PluginCatalogSearchEntry, "categoryId" | "category">,
 ): string {
   return isCategorized(entry)
     ? (entry.categoryId ?? UNCATEGORIZED_PLUGIN_CATEGORY_ID)
@@ -133,28 +192,36 @@ function compareOptionalNumbers(
   return direction === "asc" ? result : -result;
 }
 
-export function sortPluginEntries(
-  entries: readonly PluginCatalogSearchEntry[],
+export function sortPluginEntries<
+  Entry extends Pick<
+    PluginCatalogSearchEntry,
+    "displayName" | "entryId" | "publishedAt" | "installs"
+  >,
+>(
+  entries: readonly Entry[],
   sort: PluginBrowseSort,
   direction: PluginBrowseSortDirection = "desc",
-): PluginCatalogSearchEntry[] {
+): Entry[] {
   return [...entries].sort((left, right) => {
     const sortResult =
-      sort === "recently-added"
-        ? compareOptionalNumbers(
-            left.publishedAt === undefined
-              ? undefined
-              : Date.parse(left.publishedAt),
-            right.publishedAt === undefined
-              ? undefined
-              : Date.parse(right.publishedAt),
-            direction,
-          )
-        : compareOptionalNumbers(
-            left.installs ?? undefined,
-            right.installs ?? undefined,
-            direction,
-          );
+      sort === "name"
+        ? left.displayName.localeCompare(right.displayName) *
+          (direction === "asc" ? 1 : -1)
+        : sort === "recently-added"
+          ? compareOptionalNumbers(
+              left.publishedAt === undefined
+                ? undefined
+                : Date.parse(left.publishedAt),
+              right.publishedAt === undefined
+                ? undefined
+                : Date.parse(right.publishedAt),
+              direction,
+            )
+          : compareOptionalNumbers(
+              left.installs ?? undefined,
+              right.installs ?? undefined,
+              direction,
+            );
     if (sortResult !== 0) return sortResult;
     const nameResult = left.displayName.localeCompare(right.displayName);
     return nameResult || left.entryId.localeCompare(right.entryId);

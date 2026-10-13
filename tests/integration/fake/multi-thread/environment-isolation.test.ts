@@ -8,6 +8,7 @@ import {
   deleteThread,
   getEnvironment,
   getThreadOutput,
+  restoreThreadEnvironment,
   runEnvironmentAction,
   sendTextMessage,
   unarchiveThread,
@@ -40,7 +41,7 @@ const REBUILD_TEST_TIMEOUT_MS = scaleTimeoutMs(120_000);
 
 describe.sequential("fake provider environment-isolation multi-thread integration", () => {
   it(
-    "asks the worktree provider again on unarchive",
+    "refuses sends to a destroyed worktree until the thread restores it",
     () =>
       withHarness(
         { builtinPlugins: ["environment-git-worktree"] },
@@ -112,6 +113,25 @@ describe.sequential("fake provider environment-isolation multi-thread integratio
           );
 
           await unarchiveThread(harness.api, worktreeThread.thread.id);
+          const refused = await harness.api.threads[":id"].send.$post({
+            param: { id: worktreeThread.thread.id },
+            json: {
+              input: [{ type: "text", text: "too early", mentions: [] }],
+              mode: "auto",
+            },
+          });
+          expect(refused.status).toBe(409);
+          expect(await refused.json()).toMatchObject({
+            code: "thread_environment_unavailable",
+          });
+
+          await restoreThreadEnvironment(harness.api, worktreeThread.thread.id);
+          await waitForThreadStatus(
+            harness.api,
+            worktreeThread.thread.id,
+            "idle",
+            REBUILD_TIMEOUT_MS,
+          );
           await sendTextMessage(harness.api, worktreeThread.thread.id, {
             text: "rebuild after archive",
           });

@@ -50,6 +50,9 @@ export function toProviderExecutionContext(
     ...(args.execOpts.promptMode !== undefined
       ? { promptMode: args.execOpts.promptMode }
       : {}),
+    ...(args.execOpts.sessionOptions !== undefined
+      ? { sessionOptions: args.execOpts.sessionOptions }
+      : {}),
     providerOptions: args.execOpts.providerOptions,
     ...permissionPolicy,
     instructions: args.instructions,

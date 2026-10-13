@@ -6,8 +6,8 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { CONTEXT_SELECTION_SURFACE_CLASS } from "@/components/ui/context-selection";
-import { CompactLongPressMenu } from "@/components/ui/compact-long-press-menu";
+import { CONTEXT_SELECTION_SURFACE_CLASS } from "@bb/shared-ui/context-selection";
+import { CompactLongPressMenu } from "@bb/shared-ui/compact-long-press-menu";
 import {
   FIXED_PANEL_TAB_COLOR_TAGS,
   TAB_COLOR_TAG_LABELS,

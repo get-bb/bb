@@ -146,11 +146,14 @@ const DropdownMenuContent = React.forwardRef<
           open={open}
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Menu"}
+          onEscapeKeyDown={props.onEscapeKeyDown}
+          onPointerDownOutside={props.onPointerDownOutside}
+          onInteractOutside={props.onInteractOutside}
         >
           <div
             ref={ref}
             className={cn(
-              "flex flex-col gap-0.5 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+              "flex flex-col gap-0.5 overflow-y-auto p-2",
               className,
             )}
             {...domProps}
@@ -169,7 +172,10 @@ const DropdownMenuContent = React.forwardRef<
           {...scopeProps}
           sideOffset={sideOffset}
           onCloseAutoFocus={(event) => {
-            if (!isLastInputKeyboard()) {
+            const focusTaken =
+              document.activeElement !== null &&
+              document.activeElement !== document.body;
+            if (!isLastInputKeyboard() || focusTaken) {
               event.preventDefault();
             }
             onCloseAutoFocus?.(event);
@@ -221,15 +227,23 @@ const DropdownMenuItem = React.forwardRef<
       onKeyDown: callerKeyDown,
       onFocus: callerFocus,
       onBlur: callerBlur,
+      onPointerMove: callerPointerMove,
+      onPointerLeave: callerPointerLeave,
       ...domProps
     },
     ref,
   ) => {
-    const { isCompactViewport, onOpenChange } = useResponsiveMenu();
+    const { isCompactViewport, open, onOpenChange } = useResponsiveMenu();
     const { hoverProps } = useMenuItemHover({
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
     });
+    const keepFocusWhileClosing =
+      (handler: React.PointerEventHandler<HTMLDivElement> | undefined) =>
+      (event: React.PointerEvent<HTMLDivElement>) => {
+        handler?.(event);
+        if (!open) event.preventDefault();
+      };
 
     if (isCompactViewport) {
       return (
@@ -241,7 +255,7 @@ const DropdownMenuItem = React.forwardRef<
           aria-disabled={disabled || undefined}
           aria-checked={ariaChecked}
           className={cn(
-            "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
+            "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] max-md:pointer-coarse:py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
             inset && "pl-8",
             variant === "destructive" && MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS,
             className,
@@ -282,6 +296,8 @@ const DropdownMenuItem = React.forwardRef<
         textValue={_textValue}
         onFocus={callerFocus}
         onBlur={callerBlur}
+        onPointerMove={keepFocusWhileClosing(callerPointerMove)}
+        onPointerLeave={keepFocusWhileClosing(callerPointerLeave)}
         {...domProps}
         {...hoverProps}
       >
@@ -329,7 +345,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
           disabled={disabled}
           aria-disabled={disabled || undefined}
           className={cn(
-            "relative flex w-full cursor-default select-none items-center rounded-sm py-2 pl-2 pr-8 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+            "relative flex w-full cursor-default select-none items-center rounded-sm py-[0.3125rem] max-md:pointer-coarse:py-2 pl-2 pr-8 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
             className,
           )}
           data-disabled={disabled ? "" : undefined}
@@ -470,7 +486,7 @@ const DropdownMenuLabel = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "px-2 py-1.5 text-xs font-medium text-muted-foreground",
+          "px-2 py-[0.3125rem] max-md:pointer-coarse:py-1.5 text-xs font-medium text-muted-foreground",
           inset && "pl-8",
           className,
         )}

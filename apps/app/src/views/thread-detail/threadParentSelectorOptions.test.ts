@@ -23,27 +23,6 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
 }
 
 describe("thread parent selector options", () => {
-  it("allows threads as parent candidates", () => {
-    const options = buildParentSelectorOptions({
-      currentThreadId: "thr_child",
-      parentThreadDisplayName: null,
-      parentThreadId: null,
-      parentThreads: [
-        makeThread({ id: "thr_standard_parent", title: "Standard parent" }),
-        makeThread({
-          id: "thr_review_parent",
-          title: "Review parent",
-        }),
-      ],
-    });
-
-    expect(options).toEqual([
-      { value: "none", label: "None" },
-      { value: "thr_standard_parent", label: "Standard parent" },
-      { value: "thr_review_parent", label: "Review parent" },
-    ]);
-  });
-
   it("prioritizes threads with children while preserving group order", () => {
     const options = buildParentSelectorOptions({
       currentThreadId: "thr_current",

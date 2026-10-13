@@ -81,3 +81,25 @@ it("omits absent and explicitly undefined discovery filters", async () => {
     { pluginId: "pool" },
   ]);
 });
+
+it("cancels an in-flight discovery request when its signal aborts", async () => {
+  const sdk = createBbSdk({
+    transport: createHttpTransport({
+      baseUrl: "http://bb.test",
+      runtime: "node",
+      fetch: (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    }),
+  });
+  const controller = new AbortController();
+  const discovery = sdk.plugins.experimental_discoverRpc({
+    method: "usage.v1.get",
+    signal: controller.signal,
+  });
+  controller.abort(new Error("unmounted"));
+  await expect(discovery).rejects.toThrow("unmounted");
+});

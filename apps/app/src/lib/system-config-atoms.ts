@@ -1,5 +1,4 @@
 import { atom } from "jotai";
-import { DEFAULTS } from "@bb/config/defaults";
 import { defaultAppSettings, defaultAppTheme } from "@bb/domain";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
@@ -28,12 +27,11 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindings: [],
   defaultKeybindings: [],
   keybindingOverrides: [],
+  performanceDiagnosticsAvailable: false,
   experiments: {
     changelogPreview: false,
-    mobileApp: false,
-    multiMachinePicker: false,
-    sidebarProgressiveDisclosure: false,
-    timelineWindowing: false,
+    serverMove: false,
+    performanceDiagnostics: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
@@ -45,12 +43,6 @@ const unavailableSystemConfig: SystemConfigResponse = {
   primaryHostId: null,
   primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,
-  aiServices: {
-    inference: DEFAULTS.inferenceModel,
-    inferenceFallback: DEFAULTS.inferenceFallbackModel,
-    transcription: DEFAULTS.transcriptionModel,
-    services: [],
-  },
   dataDir: "",
 };
 

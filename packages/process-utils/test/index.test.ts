@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
@@ -255,25 +255,28 @@ describe("process utils", () => {
   });
 
   it("resolves paths that stay within the configured root", () => {
+    const rootPath = join(tmpdir(), "root");
+    const candidatePath = join(rootPath, "child", "file.txt");
     expect(
       resolveContainedPath({
-        rootPath: "/tmp/root",
-        candidatePath: "/tmp/root/child/file.txt",
+        rootPath,
+        candidatePath,
       }),
-    ).toBe("/tmp/root/child/file.txt");
+    ).toBe(resolve(candidatePath));
   });
 
   it("rejects root and escaped paths", () => {
+    const rootPath = join(tmpdir(), "root");
     expect(
       resolveContainedPath({
-        rootPath: "/tmp/root",
-        candidatePath: "/tmp/root",
+        rootPath,
+        candidatePath: rootPath,
       }),
     ).toBeNull();
     expect(
       resolveContainedPath({
-        rootPath: "/tmp/root",
-        candidatePath: "/tmp/root/../escape",
+        rootPath,
+        candidatePath: join(rootPath, "..", "escape"),
       }),
     ).toBeNull();
   });

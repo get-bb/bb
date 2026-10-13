@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type FocusEvent,
@@ -14,6 +15,7 @@ import {
   COLLAPSIBLE_HEADER_STATIC_TONE_CLASS,
   ExpandablePanel,
   getCollapsibleHeaderToneClass,
+  type ExpandablePanelIntentHandlers,
 } from "../../ui/disclosure.js";
 import type { IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -28,7 +30,6 @@ import {
 import {
   TimelineTitleView,
   type TimelineTitleActionResolver,
-  type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 
 interface ExpandableTimelineRowProps {
@@ -49,7 +50,7 @@ interface ExpandableTimelineRowProps {
   headerClassName?: string;
   summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
-  resolveSegmentLinkHref?: TimelineTitleLinkResolver;
+  onIntent?: () => void;
 }
 
 type CollapsedPreviewClickEvent = MouseEvent<HTMLDivElement>;
@@ -78,6 +79,49 @@ function isInteractivePreviewTarget({
   return target.closest("a,button,input,select,textarea") !== null;
 }
 
+const HOVER_INTENT_DELAY_MS = 80;
+
+function useRowIntentHandlers(
+  onIntent: (() => void) | undefined,
+): ExpandablePanelIntentHandlers | undefined {
+  const hoverTimerRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    },
+    [],
+  );
+  if (onIntent === undefined) {
+    return undefined;
+  }
+  const cancelHover = (): void => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+  return {
+    onPointerEnter: (event) => {
+      if (event.pointerType !== "mouse") {
+        return;
+      }
+      cancelHover();
+      hoverTimerRef.current = window.setTimeout(() => {
+        hoverTimerRef.current = null;
+        onIntent();
+      }, HOVER_INTENT_DELAY_MS);
+    },
+    onPointerLeave: cancelHover,
+    onPointerDown: () => {
+      cancelHover();
+      onIntent();
+    },
+    onFocus: onIntent,
+  };
+}
+
 function ExpandableTimelineRowComponent({
   autoExpanded = false,
   collapsedPreview,
@@ -85,6 +129,7 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   headerClassName,
   horizontalPadding = "default",
+  onIntent,
   leadingIcon,
   leadingIconFallback,
   leadingIconUrl,
@@ -92,7 +137,6 @@ function ExpandableTimelineRowComponent({
   onTitleAction,
   renderBody,
   reasoningExpansionKey,
-  resolveSegmentLinkHref,
   summaryClassName,
   terminalAutoExpanded = false,
   title,
@@ -118,6 +162,7 @@ function ExpandableTimelineRowComponent({
       setCollapsedPreviewActive(false);
     }
   }, [isExpanded]);
+  const intentHandlers = useRowIntentHandlers(onIntent);
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
@@ -165,6 +210,7 @@ function ExpandableTimelineRowComponent({
 
   return (
     <ExpandablePanel
+      intentHandlers={intentHandlers}
       isExpanded={isExpanded}
       onToggle={expandable ? handleToggle : undefined}
       headerToneClass={
@@ -214,11 +260,7 @@ function ExpandableTimelineRowComponent({
             style={leadingIconStyle}
           />
           {titleContent ?? (
-            <TimelineTitleView
-              title={title}
-              onTitleAction={onTitleAction}
-              resolveSegmentLinkHref={resolveSegmentLinkHref}
-            />
+            <TimelineTitleView title={title} onTitleAction={onTitleAction} />
           )}
         </span>
       }

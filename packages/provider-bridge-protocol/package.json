@@ -42,12 +42,14 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "lint": "oxlint --ignore-pattern \"**/*.mjs\" src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@bb/text-utils": "workspace:*",
     "semver": "^7.7.4",
     "zod": "^4.3.6"
   },

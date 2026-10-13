@@ -1,0 +1,31 @@
+{
+  "name": "@bb/server-archive",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/config": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "tar": "7.5.22",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

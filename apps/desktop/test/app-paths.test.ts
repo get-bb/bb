@@ -1,7 +1,9 @@
+import { normalize } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   resolveDesktopBridgePath,
   resolveDesktopIconPath,
+  resolveDesktopMachineInstallerPath,
   type DesktopPathContext,
 } from "../src/app-paths.js";
 
@@ -14,7 +16,9 @@ describe("desktop app paths", () => {
     };
 
     expect(resolveDesktopBridgePath({ paths })).toBe(
-      "/Applications/bb.app/Contents/Resources/app.asar.unpacked/dist/bb-app-bridge.mjs",
+      normalize(
+        "/Applications/bb.app/Contents/Resources/app.asar.unpacked/dist/bb-app-bridge.mjs",
+      ),
     );
   });
 
@@ -26,7 +30,21 @@ describe("desktop app paths", () => {
     };
 
     expect(resolveDesktopBridgePath({ paths })).toBe(
-      "/Applications/bb.app/Contents/Resources/app-arm64.asar.unpacked/dist/bb-app-bridge.mjs",
+      normalize(
+        "/Applications/bb.app/Contents/Resources/app-arm64.asar.unpacked/dist/bb-app-bridge.mjs",
+      ),
+    );
+  });
+
+  it("resolves the machine installer inside the bb-app package beside the bridge", () => {
+    expect(
+      resolveDesktopMachineInstallerPath(
+        "/Applications/bb.app/Contents/Resources/app.asar.unpacked/dist/bb-app-bridge.mjs",
+      ),
+    ).toBe(
+      normalize(
+        "/Applications/bb.app/Contents/Resources/app.asar.unpacked/node_modules/bb-app/server/dist/assets/install-machine.sh",
+      ),
     );
   });
 
@@ -43,7 +61,9 @@ describe("desktop app paths", () => {
         paths,
       }),
     ).toBe(
-      "/Applications/bb Nightly.app/Contents/Resources/app.asar/assets/icon-nightly.png",
+      normalize(
+        "/Applications/bb Nightly.app/Contents/Resources/app.asar/assets/icon-nightly.png",
+      ),
     );
   });
 
@@ -59,6 +79,6 @@ describe("desktop app paths", () => {
         packagedIconFileName: "icon-nightly.png",
         paths,
       }),
-    ).toBe("/checkout/apps/desktop/assets/icon-dev.png");
+    ).toBe(normalize("/checkout/apps/desktop/assets/icon-dev.png"));
   });
 });

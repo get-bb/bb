@@ -1,92 +1,34 @@
 #!/usr/bin/env node
 
-/**
- * Scripted `pi --mode rpc` for hermetic pi-bridge tests: the subset of pi's
- * RPC dialect the bridge drives, with the REAL bb extension loaded the way
- * pi loads it. Commands in on stdin, responses and raw AgentSessionEvent
- * lines out on stdout, exactly pi's framing (LF-delimited JSON; U+2028 and
- * U+2029 stay raw inside strings, as pi writes them).
- *
- * - `--version` prints FAKE_PI_VERSION (default 0.84.0) and exits;
- *   FAKE_PI_VERSION=crash exits 1 with a version only on stderr.
- * - `--model <provider>/<id>` and `--thinking <level>` pin the session at
- *   spawn (an unknown model falls back to the default, as pi's CLI does
- *   with a diagnostic); `set_model` / `set_thinking_level` are answered but
- *   the bridge must never send them (they persist into the user's settings
- *   in real pi) — FAKE_PI_COMMAND_LOG records every command type.
- * - FAKE_PI_TOOLS_DUMP records every registered tool (name, description,
- *   parameters as JSON Schema) for the schema-conversion test.
- * - `--extension <path>` loads the module through a resolve hook that maps
- *   `@earendil-works/pi-coding-agent` and `typebox` onto this package's
- *   copies (pi's loader aliases them the same way); under runtimes without
- *   `module.registerHooks` (Bun) a staged copy beside this package's
- *   node_modules resolves the same bare imports natively. It hands a minimal
- *   extension API (registerTool, on, get/setActiveTools), and emits
- *   `session_start`, `agent_start`, `agent_end` to it in pi's order — the
- *   extension's `ready`, tool calls, `agent-end-leaf`, and fork replies all
- *   travel the real fd 3 / fd 4 channel.
- * - `--session <file>` is the `sessionFile` get_state reports; the file is
- *   created with pi's session header (the first entry real pi writes), so
- *   the bridge's fork precondition holds and a tip fork of the session
- *   reads a valid source the way it would from pi. `--no-session` runs
- *   without one.
- * - `get_state` / `get_available_models` / `get_session_stats`.
- * - `prompt`: the response is the preflight (sent before any event), then a
- *   scripted run: agent_start, turn_start, streamed assistant text, turn_end,
- *   agent_end. `/tool <name> <json>` runs the named extension tool first
- *   (tool_execution_start/end). A prompt while a run is live is queued and
- *   surfaces through `queue_update`, the way pi's follow-up queue does; it
- *   runs after the live run ends. `/hold` opens a run that never ends until
- *   `abort`; `/fail-run` ends the run with an assistant error.
- * - `abort`: ends a live run with stopReason "aborted".
- * - `--version` prints FAKE_PI_VERSION (default 0.84.0) and exits.
- * - `compact`: compaction_start/end {reason: "manual"}; before any turn ran
- *   it refuses like pi does for a too-small session (compaction_end with
- *   `errorMessage`, then a failed response).
- * - stdin EOF exits the process; SIGTERM exits. FAKE_PI_PROCESS_LOG gets
- *   `spawn:<pid>:<ppid>` and `exit:<pid>:<ppid>` lines (the lifecycle tests
- *   read it); FAKE_PI_HANG_ON_CLOSE=1 makes the fake ignore stdin EOF and
- *   SIGTERM so the bridge's SIGKILL escalation can be observed.
- * - Fault knobs for the bridge's own tests: FAKE_PI_SPAWN_COUNTER_FILE counts
- *   spawns across processes and FAKE_PI_MISMATCH_FIRST_SPAWN=1 makes only the
- *   first spawn ignore `--model` (a transient model mismatch);
- *   FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE=1 exits after recording the spawn but
- *   before importing the extension or reading a command;
- *   FAKE_PI_NO_SESSION_START=1 never emits session_start to the extension (so
- *   no `ready`); FAKE_PI_DROP_STEER_AT_END=1 ends a run with a queued steer
- *   still queued; FAKE_PI_STREAMING_AFTER_END=1 reports isStreaming after a
- *   run ended (a continuation pi is still finishing);
- *   FAKE_PI_BATCH_STEER_REPLY=1 writes a steer's `prompt` response and the
- *   resumed run's first event in one stdout write (one read on the bridge's
- *   side). The prompt `/die` exits the process mid-run without answering.
- * - `prompt` with `streamingBehavior: "steer"` during a `/hold` run is queued
- *   (`queue_update.steering`), consumed when the run resumes, and the run's
- *   reply names it.
- */
-
 import { randomUUID } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 const args = process.argv.slice(2);
-// `pi --version`, answered the way the real CLI does (the bridge's install
-// gate runs it through the same launch); FAKE_PI_VERSION picks the version.
-// FAKE_PI_VERSION=crash: the way a broken install answers — a stack trace
-// on stderr that happens to name a supported version, exit 1, nothing on
-// stdout. FAKE_PI_PROCESS_LOG records each `--version` spawn as `version:`.
 if (args.includes("--version")) {
   if (process.env.FAKE_PI_PROCESS_LOG) {
     try {
-      appendFileSync(process.env.FAKE_PI_PROCESS_LOG, `version:${process.pid}:${process.ppid}\n`);
-    } catch {
-      // The test's directory is already gone; nothing to record.
-    }
+      appendFileSync(
+        process.env.FAKE_PI_PROCESS_LOG,
+        `version:${process.pid}:${process.ppid}\n`,
+      );
+    } catch {}
   }
   if (process.env.FAKE_PI_VERSION === "crash") {
-    process.stderr.write("Error: pi 0.84.0 failed to start\n    at main (pi.js:1:1)\n");
+    process.stderr.write(
+      "Error: pi 0.84.0 failed to start\n    at main (pi.js:1:1)\n",
+    );
     process.exit(1);
   }
   process.stdout.write(`${process.env.FAKE_PI_VERSION ?? "0.84.0"}\n`);
@@ -96,10 +38,13 @@ function flag(name) {
   const index = args.indexOf(name);
   return index === -1 ? undefined : args[index + 1];
 }
-const sessionFile = args.includes("--no-session") ? undefined : flag("--session");
+const sessionFile = args.includes("--no-session")
+  ? undefined
+  : flag("--session");
 const extensionPath = flag("--extension");
 const processLogPath = process.env.FAKE_PI_PROCESS_LOG;
 const commandLogPath = process.env.FAKE_PI_COMMAND_LOG;
+const supportsSettlement = process.env.FAKE_PI_SETTLEMENT !== "0";
 const promptDumpPath = process.env.FAKE_PI_PROMPT_DUMP;
 if (process.env.FAKE_PI_ENV_LOG) {
   appendFileSync(
@@ -110,9 +55,6 @@ if (process.env.FAKE_PI_ENV_LOG) {
 if (sessionFile !== undefined) {
   mkdirSync(dirname(sessionFile), { recursive: true });
   if (!existsSync(sessionFile)) {
-    // The header pi's SessionManager writes (CURRENT_SESSION_VERSION 3, a
-    // UUID id), hand-written so the fake answers get_state without first
-    // loading the pi package: the bridge's readiness gate is timed.
     const header = {
       type: "session",
       version: 3,
@@ -128,9 +70,7 @@ function logProcessStep(step) {
   if (!processLogPath) return;
   try {
     appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
-  } catch {
-    // The test's directory is already gone; nothing to record.
-  }
+  } catch {}
 }
 logProcessStep("spawn");
 let exiting = false;
@@ -140,8 +80,6 @@ function exit() {
   logProcessStep("exit");
   process.exit(0);
 }
-// FAKE_PI_HANG_ON_CLOSE=1: a wedged pi that ignores stdin EOF and SIGTERM,
-// so only the bridge's SIGKILL escalation ends it.
 const hangOnClose = process.env.FAKE_PI_HANG_ON_CLOSE === "1";
 process.on("SIGTERM", () => {
   if (hangOnClose) return;
@@ -168,24 +106,62 @@ const MODELS = [
     reasoning: false,
     contextWindow: 32_000,
   },
+  ...[
+    ["fake-gateway", "vendor/slash-model"],
+    ["fake-gateway", "fake-provider/fake-model"],
+    ["fake-gateway", "vendor/shared-model"],
+    ["other-gateway", "vendor/shared-model"],
+  ].map(([provider, id]) => ({
+    id,
+    name: id,
+    provider,
+    input: ["text"],
+    reasoning: false,
+    contextWindow: 64_000,
+  })),
 ];
+
+function loadAvailableModels() {
+  const modelsPath = process.env.FAKE_PI_MODELS_FILE;
+  if (!modelsPath) return MODELS;
+  try {
+    const parsed = JSON.parse(readFileSync(modelsPath, "utf8"));
+    return Array.isArray(parsed) ? parsed : MODELS;
+  } catch {
+    return MODELS;
+  }
+}
+let availableModels = loadAvailableModels();
 
 let model = MODELS[0];
 const requestedModel = flag("--model");
 let spawnIndex = 1;
 if (process.env.FAKE_PI_SPAWN_COUNTER_FILE) {
   try {
-    spawnIndex = Number(readFileSync(process.env.FAKE_PI_SPAWN_COUNTER_FILE, "utf8")) + 1;
+    spawnIndex =
+      Number(readFileSync(process.env.FAKE_PI_SPAWN_COUNTER_FILE, "utf8")) + 1;
   } catch {
     spawnIndex = 1;
   }
-  writeFileSync(process.env.FAKE_PI_SPAWN_COUNTER_FILE, String(spawnIndex), "utf8");
+  writeFileSync(
+    process.env.FAKE_PI_SPAWN_COUNTER_FILE,
+    String(spawnIndex),
+    "utf8",
+  );
 }
 const ignoreRequestedModel =
   process.env.FAKE_PI_MISMATCH_FIRST_SPAWN === "1" && spawnIndex === 1;
 if (requestedModel !== undefined && !ignoreRequestedModel) {
-  const [provider, id] = requestedModel.split("/");
-  model = MODELS.find((entry) => entry.provider === provider && entry.id === id) ?? MODELS[0];
+  const requestedProvider = flag("--provider");
+  const candidates = MODELS.filter(
+    (entry) => !requestedProvider || entry.provider === requestedProvider,
+  );
+  model =
+    candidates.find(
+      (entry) => `${entry.provider}/${entry.id}` === requestedModel,
+    ) ??
+    candidates.find((entry) => entry.id === requestedModel) ??
+    MODELS[0];
 }
 let thinkingLevel = flag("--thinking") ?? "medium";
 let isStreaming = false;
@@ -195,15 +171,11 @@ let leafId = null;
 let turnCounter = 0;
 let tokens = 0;
 let holdAbort = null;
-/** Follow-up queue: prompts that arrived while a run was live. */
 const followUp = [];
-/** Steering queue: steers that arrived while a run was live. */
 const steering = [];
-/** Extension UI dialogs awaiting the host's extension_ui_response. */
 const extensionUiWaiters = new Map();
 let endedWithStreamingFlag = false;
 
-/** A line held back to go out in one write with the next one. */
 let heldLine = null;
 
 function send(message) {
@@ -212,7 +184,6 @@ function send(message) {
     process.stdout.write(line);
     return;
   }
-  // One write, so the bridge reads both lines in one chunk.
   process.stdout.write(`${heldLine}${line}`);
   heldLine = null;
 }
@@ -220,21 +191,34 @@ function holdUntilNextSend(message) {
   heldLine = `${JSON.stringify(message)}\n`;
 }
 function respond(id, command, data) {
-  send({ id, type: "response", command, success: true, ...(data === undefined ? {} : { data }) });
+  send({
+    id,
+    type: "response",
+    command,
+    success: true,
+    ...(data === undefined ? {} : { data }),
+  });
 }
 function respondError(id, command, error) {
   send({ id, type: "response", command, success: false, error });
 }
 function event(payload) {
-  // Pi writes each AgentSessionEvent unwrapped on its own line.
+  if (process.env.FAKE_PI_EVENT_LOG) {
+    appendFileSync(
+      process.env.FAKE_PI_EVENT_LOG,
+      `${JSON.stringify(payload)}\n`,
+    );
+  }
   send(payload);
 }
 function queueUpdate() {
-  event({ type: "queue_update", steering: [...steering], followUp: [...followUp] });
+  event({
+    type: "queue_update",
+    steering: [...steering],
+    followUp: [...followUp],
+  });
 }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ---- the extension, loaded like pi loads it ----
 
 const extensionTools = new Map();
 const extensionHandlers = new Map();
@@ -243,11 +227,30 @@ const scopedModel =
   process.env.FAKE_PI_SCOPE_BY_SPAWN === "1"
     ? MODELS[spawnIndex === 1 ? 0 : 1]
     : undefined;
+const modelRegistry = {
+  async refresh(options) {
+    if (process.env.FAKE_PI_REFRESH_LOG) {
+      appendFileSync(
+        process.env.FAKE_PI_REFRESH_LOG,
+        `${JSON.stringify(options ?? null)}\n`,
+      );
+    }
+    if (process.env.FAKE_PI_REFRESH_FAILURE === "hang") {
+      return new Promise(() => undefined);
+    }
+    if (process.env.FAKE_PI_REFRESH_FAILURE === "reject") {
+      throw new Error("scripted refresh failure");
+    }
+    availableModels = loadAvailableModels();
+    return { aborted: false, errors: new Map() };
+  },
+};
 const extensionContext = {
   cwd: process.cwd(),
   sessionManager: { getLeafId: () => leafId },
   model: scopedModel,
   scopedModels: scopedModel ? [{ model: scopedModel }] : [],
+  ...(process.env.FAKE_PI_NO_MODEL_REGISTRY === "1" ? {} : { modelRegistry }),
 };
 
 async function emitExtensionEvent(type, payload = {}) {
@@ -257,8 +260,10 @@ async function emitExtensionEvent(type, payload = {}) {
 }
 
 async function loadExtension(path) {
+  const runtimeUrl = import.meta.resolve("@earendil-works/pi-coding-agent");
+  const runtimeShim = `data:text/javascript,${encodeURIComponent(`export * from ${JSON.stringify(runtimeUrl)}; export const VERSION = ${JSON.stringify(supportsSettlement ? (process.env.FAKE_PI_VERSION ?? "0.84.0") : "0.83.0")};`)}`;
   const aliases = new Map([
-    ["@earendil-works/pi-coding-agent", import.meta.resolve("@earendil-works/pi-coding-agent")],
+    ["@earendil-works/pi-coding-agent", runtimeShim],
     ["typebox", import.meta.resolve("typebox")],
   ]);
   let hooksRegistered = false;
@@ -269,7 +274,9 @@ async function loadExtension(path) {
         registerHooks({
           resolve(specifier, context, nextResolve) {
             const url = aliases.get(specifier);
-            return url ? { url, shortCircuit: true } : nextResolve(specifier, context);
+            return url
+              ? { url, shortCircuit: true }
+              : nextResolve(specifier, context);
           },
         });
         hooksRegistered = true;
@@ -280,15 +287,20 @@ async function loadExtension(path) {
   }
   let loadPath = path;
   if (!hooksRegistered) {
-    // Bun has no registerHooks: stage the extension copy inside this
-    // package's (gitignored) node_modules so its bare imports
-    // (@earendil-works/pi-coding-agent, typebox) resolve natively.
     const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
     const staging = mkdtempSync(join(pkgRoot, "node_modules", ".fake-pi-ext-"));
-    copyFileSync(path, staging + "/extension.mjs");
+    writeFileSync(
+      staging + "/extension.mjs",
+      readFileSync(path, "utf8").replaceAll(
+        '"@earendil-works/pi-coding-agent"',
+        JSON.stringify(runtimeShim),
+      ),
+    );
     loadPath = staging + "/extension.mjs";
     process.on("exit", () => {
-      try { rmSync(staging, { recursive: true, force: true }); } catch {}
+      try {
+        rmSync(staging, { recursive: true, force: true });
+      } catch {}
     });
   }
   const module = await import(pathToFileURL(loadPath).href);
@@ -296,7 +308,6 @@ async function loadExtension(path) {
     registerTool(tool) {
       extensionTools.set(tool.name, tool);
       if (process.env.FAKE_PI_TOOLS_DUMP) {
-        // TypeBox schemas are plain JSON Schema objects: what pi's model sees.
         appendFileSync(
           process.env.FAKE_PI_TOOLS_DUMP,
           `${JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters })}\n`,
@@ -321,7 +332,12 @@ async function loadExtension(path) {
 async function runExtensionTool(name, toolArgs) {
   const tool = extensionTools.get(name);
   const toolCallId = `call-${turnCounter}`;
-  event({ type: "tool_execution_start", toolCallId, toolName: name, args: toolArgs });
+  event({
+    type: "tool_execution_start",
+    toolCallId,
+    toolName: name,
+    args: toolArgs,
+  });
   let result;
   let isError = false;
   try {
@@ -330,9 +346,22 @@ async function runExtensionTool(name, toolArgs) {
       : { content: [{ type: "text", text: `no tool ${name}` }], details: {} };
   } catch (error) {
     isError = true;
-    result = { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }] };
+    result = {
+      content: [
+        {
+          type: "text",
+          text: error instanceof Error ? error.message : String(error),
+        },
+      ],
+    };
   }
-  event({ type: "tool_execution_end", toolCallId, toolName: name, result, isError });
+  event({
+    type: "tool_execution_end",
+    toolCallId,
+    toolName: name,
+    result,
+    isError,
+  });
   return result;
 }
 
@@ -342,19 +371,45 @@ async function runPrompt(text) {
   await emitExtensionEvent("agent_start");
   event({ type: "agent_start" });
   event({ type: "turn_start" });
-  if (text === "/hold") {
-    // Open until abort, or until a steer arrives (the steer is consumed by
-    // this run and named in its reply, like pi's one-at-a-time steering).
+  if (text === "/hold" || text === "/wait-hold") {
+    if (text === "/wait-hold")
+      event({
+        type: "tool_execution_start",
+        toolCallId: "wait-1",
+        toolName: "subagent_wait",
+        args: {},
+      });
     const released = await new Promise((resolve) => {
       holdAbort = resolve;
     });
     holdAbort = null;
+    if (text === "/wait-hold") {
+      event({
+        type: "tool_execution_end",
+        toolCallId: "wait-1",
+        toolName: "subagent_wait",
+        result: {
+          content: [
+            {
+              type: "text",
+              text:
+                released === "steer" ? "Subagent finished" : "Wait interrupted",
+            },
+          ],
+        },
+        isError: released !== "steer",
+      });
+    }
     if (released === "steer") {
-      const steerText = process.env.FAKE_PI_DROP_STEER_AT_END === "1" ? null : steering.shift();
+      const steerText =
+        process.env.FAKE_PI_DROP_STEER_AT_END === "1" ? null : steering.shift();
       if (steerText !== null && steerText !== undefined) {
         queueUpdate();
       }
-      const reply = steerText === null || steerText === undefined ? "Held run ended" : `Steered: ${steerText}`;
+      const reply =
+        steerText === null || steerText === undefined
+          ? "Held run ended"
+          : `Steered: ${steerText}`;
       const steered = {
         role: "assistant",
         content: [{ type: "text", text: reply }],
@@ -363,8 +418,19 @@ async function runPrompt(text) {
         model: model.id,
         usage: { input: 12, output: 5, totalTokens: 17 },
       };
-      event({ type: "message_start", message: { role: "assistant", content: [] } });
-      event({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: reply, contentIndex: 0 }, message: steered });
+      event({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      });
+      event({
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: reply,
+          contentIndex: 0,
+        },
+        message: steered,
+      });
       event({ type: "message_end", message: steered });
       event({ type: "turn_end", message: steered, toolResults: [] });
       leafCounter += 1;
@@ -391,7 +457,6 @@ async function runPrompt(text) {
     return;
   }
   if (text === "/die") {
-    // Mid-run death without an answer: the bridge's next write hits EPIPE.
     process.exit(0);
   }
   const uiMatch = text.match(/^\/ui (\{.*\})$/su);
@@ -429,8 +494,19 @@ async function runPrompt(text) {
       usage: { input: 12, output: 5, totalTokens: 17 },
       stopReason: "stop",
     };
-    event({ type: "message_start", message: { role: "assistant", content: [] } });
-    event({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: reply, contentIndex: 0 }, message: assistant });
+    event({
+      type: "message_start",
+      message: { role: "assistant", content: [] },
+    });
+    event({
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: reply,
+        contentIndex: 0,
+      },
+      message: assistant,
+    });
     event({ type: "message_end", message: assistant });
     event({ type: "turn_end", message: assistant, toolResults: [] });
     tokens += 17;
@@ -457,23 +533,77 @@ async function runPrompt(text) {
       .map((block) => block.text)
       .join("\n");
   }
-  const failed = text === "/fail-run";
-  const reply = failed ? "" : toolMatch ? `Tool said: ${toolResultText}` : `Response to: ${text}`;
+  if (text === "/failed-then-queued") {
+    const messages = [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "scripted unrecovered failure",
+      },
+    ];
+    await emitExtensionEvent("agent_end", { messages });
+    event({ type: "agent_end", messages, willRetry: false });
+    queueUpdate();
+    await emitExtensionEvent("agent_start");
+    event({ type: "agent_start" });
+  }
+  if (text === "/native-retry" || text === "/native-overflow") {
+    const messages = [
+      {
+        role: "assistant",
+        content: [],
+        stopReason: "error",
+        errorMessage: "scripted recoverable failure",
+      },
+    ];
+    await emitExtensionEvent("agent_end", { messages });
+    event({ type: "agent_end", messages, willRetry: text === "/native-retry" });
+    if (text === "/native-retry") {
+      event({ type: "auto_retry_start", attempt: 1, maxAttempts: 3 });
+      event({ type: "auto_retry_end", success: true, attempt: 1 });
+    } else {
+      event({ type: "compaction_start", reason: "overflow" });
+      event({
+        type: "compaction_end",
+        reason: "overflow",
+        aborted: false,
+        willRetry: true,
+      });
+    }
+    await emitExtensionEvent("agent_start");
+    event({ type: "agent_start" });
+  }
+  const aborted = text === "/unexpected-abort";
+  const overflowFailure =
+    text === "/overflow-failed" || text === "/overflow-aborted";
+  const failed = text === "/fail-run" || text === "/retry-exhausted" || aborted;
+  const reply = failed
+    ? ""
+    : toolMatch
+      ? `Tool said: ${toolResultText}`
+      : `Response to: ${text}`;
   const assistant = {
     role: "assistant",
     content: [{ type: "text", text: reply }],
     provider: model.provider,
     model: model.id,
     usage: { input: 12, output: 5, totalTokens: 17 },
-    ...(failed
-      ? { stopReason: "error", errorMessage: "scripted run failure" }
-      : { stopReason: "stop" }),
+    ...(aborted
+      ? { stopReason: "aborted" }
+      : failed
+        ? { stopReason: "error", errorMessage: "scripted run failure" }
+        : { stopReason: overflowFailure ? "length" : "stop" }),
   };
   event({ type: "message_start", message: { role: "assistant", content: [] } });
   if (!failed) {
     event({
       type: "message_update",
-      assistantMessageEvent: { type: "text_delta", delta: reply, contentIndex: 0 },
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: reply,
+        contentIndex: 0,
+      },
       message: assistant,
     });
   }
@@ -483,11 +613,50 @@ async function runPrompt(text) {
   leafCounter += 1;
   leafId = `leaf-${leafCounter}`;
   const messages = [{ role: "user", content: text }, assistant];
-  // Extensions see agent_end first (they read the leaf in-process); the RPC
-  // stream gets it after, exactly pi's order.
   await emitExtensionEvent("agent_end", { messages });
   event({ type: "agent_end", messages });
+  if (text === "/retry-exhausted")
+    event({
+      type: "auto_retry_end",
+      success: false,
+      attempt: 3,
+      finalError: "scripted run failure",
+    });
+  const optionalOverflow =
+    text === "/stop-overflow-cancel" || text === "/stop-overflow-error";
+  const compactionError =
+    text === "/overflow-failed" || text === "/stop-overflow-error";
+  if (overflowFailure || optionalOverflow || text === "/threshold-cancel") {
+    event({
+      type: "compaction_start",
+      reason: overflowFailure || optionalOverflow ? "overflow" : "threshold",
+    });
+    event({
+      type: "compaction_end",
+      reason: overflowFailure || optionalOverflow ? "overflow" : "threshold",
+      willRetry: false,
+      aborted: !compactionError,
+      ...(compactionError
+        ? { errorMessage: "overflow recovery exhausted" }
+        : {}),
+    });
+  }
   isStreaming = false;
+}
+
+async function emitSettlement() {
+  if (!supportsSettlement) return;
+  if (process.env.FAKE_PI_FINAL_LEAF) leafId = process.env.FAKE_PI_FINAL_LEAF;
+  const payload =
+    process.env.FAKE_PI_SETTLED_ABORTED === undefined
+      ? {}
+      : { aborted: JSON.parse(process.env.FAKE_PI_SETTLED_ABORTED) };
+  await emitExtensionEvent("agent_settled", payload);
+  event({ type: "agent_settled", ...payload });
+  if (process.env.FAKE_PI_DUPLICATE_SETTLED === "1") {
+    await emitExtensionEvent("agent_settled", payload);
+    event({ type: "agent_settled", ...payload });
+  }
 }
 
 async function drainFollowUps() {
@@ -520,7 +689,7 @@ async function handle(command) {
       });
       return;
     case "get_available_models":
-      respond(id, "get_available_models", { models: MODELS });
+      respond(id, "get_available_models", { models: availableModels });
       if (
         process.env.FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE === "1" &&
         spawnIndex === 1
@@ -530,10 +699,15 @@ async function handle(command) {
       return;
     case "set_model": {
       const found = MODELS.find(
-        (entry) => entry.provider === command.provider && entry.id === command.modelId,
+        (entry) =>
+          entry.provider === command.provider && entry.id === command.modelId,
       );
       if (!found) {
-        respondError(id, "set_model", `Model not found: ${command.provider}/${command.modelId}`);
+        respondError(
+          id,
+          "set_model",
+          `Model not found: ${command.provider}/${command.modelId}`,
+        );
         return;
       }
       model = found;
@@ -553,9 +727,19 @@ async function handle(command) {
         toolCalls: 0,
         toolResults: 0,
         totalMessages: turnCounter * 2,
-        tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: tokens },
+        tokens: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: tokens,
+        },
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        contextUsage: { tokens, contextWindow: model.contextWindow, percent: 0 },
+        contextUsage: {
+          tokens,
+          contextWindow: model.contextWindow,
+          percent: 0,
+        },
       });
       return;
     case "prompt": {
@@ -563,15 +747,15 @@ async function handle(command) {
         writeFileSync(promptDumpPath, JSON.stringify(command), "utf8");
       }
       if (isStreaming && command.streamingBehavior === "steer") {
-        // A steer into a live run: pi reports the queue BEFORE it answers the
-        // preflight (recorded order), then hands it to the run (a held run
-        // resumes on it) — or leaves it queued when the run is told to drop
-        // it at its end.
         steering.push(command.message);
         queueUpdate();
         if (process.env.FAKE_PI_BATCH_STEER_REPLY === "1" && holdAbort) {
-          // The response goes out with the resumed run's first event.
-          holdUntilNextSend({ id, type: "response", command: "prompt", success: true });
+          holdUntilNextSend({
+            id,
+            type: "response",
+            command: "prompt",
+            success: true,
+          });
         } else {
           respond(id, "prompt");
         }
@@ -581,8 +765,6 @@ async function handle(command) {
         return;
       }
       if (isStreaming) {
-        // Queued: pi reports the queue, then answers the preflight; the run
-        // picks it up after the live run ends.
         followUp.push(command.message);
         queueUpdate();
         respond(id, "prompt");
@@ -591,6 +773,7 @@ async function handle(command) {
       respond(id, "prompt");
       await runPrompt(command.message);
       await drainFollowUps();
+      await emitSettlement();
       return;
     }
     case "steer":
@@ -610,8 +793,15 @@ async function handle(command) {
       event({ type: "compaction_start", reason: "manual" });
       await sleep(5);
       if (turnCounter === 0) {
-        const errorMessage = "Compaction failed: Nothing to compact (session too small)";
-        event({ type: "compaction_end", reason: "manual", aborted: false, willRetry: false, errorMessage });
+        const errorMessage =
+          "Compaction failed: Nothing to compact (session too small)";
+        event({
+          type: "compaction_end",
+          reason: "manual",
+          aborted: false,
+          willRetry: false,
+          errorMessage,
+        });
         isCompacting = false;
         respondError(id, "compact", "Nothing to compact (session too small)");
         return;
@@ -620,7 +810,11 @@ async function handle(command) {
       isCompacting = false;
       leafCounter += 1;
       leafId = `leaf-${leafCounter}`;
-      respond(id, "compact", { summary: "scripted summary", tokensBefore: tokens, firstKeptEntryId: leafId });
+      respond(id, "compact", {
+        summary: "scripted summary",
+        tokensBefore: tokens,
+        firstKeptEntryId: leafId,
+      });
       return;
     }
     default:
@@ -628,7 +822,6 @@ async function handle(command) {
   }
 }
 
-// Newline-only framing, like pi's own jsonl reader.
 function readLines(input, onLine) {
   const decoder = new StringDecoder("utf8");
   let pending = "";
@@ -670,13 +863,12 @@ readLines(process.stdin, (line) => {
     waiter?.(command);
     return;
   }
-  // Commands are handled in order, but `prompt` runs its scripted turn
-  // asynchronously so `abort` — and a steer into a held run — can reach it.
   if (
     command.type === "abort" ||
     command.type === "get_state" ||
     command.type === "get_session_stats" ||
-    (command.type === "prompt" && command.streamingBehavior === "steer")
+    (command.type === "prompt" &&
+      (supportsSettlement || command.streamingBehavior === "steer"))
   ) {
     void loaded.then(() => handle(command));
     return;

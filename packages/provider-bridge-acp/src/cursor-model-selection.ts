@@ -1,4 +1,4 @@
-import { reasoningLevelValues } from "@bb/domain";
+import { compareReasoningLevels } from "@bb/domain";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import { agentModelFamilyId } from "./bridge/model-catalog.js";
 
@@ -67,16 +67,32 @@ function cursorCatalogModel(model: AvailableModel): {
       ...model,
       id: selection.modelId,
       model: selection.modelId,
-      supportedReasoningEfforts: [...efforts.values()].sort(
-        (a, b) =>
-          reasoningLevelValues.indexOf(a.reasoningEffort) -
-          reasoningLevelValues.indexOf(b.reasoningEffort),
+      supportedReasoningEfforts: [...efforts.values()].sort((a, b) =>
+        compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
       ),
       defaultReasoningEffort:
         selection.reasoningLevel ?? model.defaultReasoningEffort,
     },
     directFamily: bareCursorFamilyId(model.id) === selection.modelId,
   };
+}
+
+function mergeSupportedServiceTiers(
+  current: AvailableModel,
+  candidate: AvailableModel,
+): AvailableModel["supportedServiceTiers"] {
+  if (
+    current.supportedServiceTiers === undefined ||
+    candidate.supportedServiceTiers === undefined
+  ) {
+    return undefined;
+  }
+  const tiers = new Map(
+    [...current.supportedServiceTiers, ...candidate.supportedServiceTiers].map(
+      (tier) => [tier.id, tier],
+    ),
+  );
+  return [...tiers.values()];
 }
 
 export function buildCursorParameterizedModelCatalog(
@@ -109,14 +125,19 @@ export function buildCursorParameterizedModelCatalog(
         efforts.set(effort.reasoningEffort, effort);
       }
     }
+    const serviceTiers = mergeSupportedServiceTiers(
+      current.model,
+      candidate.model,
+    );
     normalized.set(candidate.model.id, {
       model: {
         ...preferred.model,
-        supportedReasoningEfforts: [...efforts.values()].sort(
-          (a, b) =>
-            reasoningLevelValues.indexOf(a.reasoningEffort) -
-            reasoningLevelValues.indexOf(b.reasoningEffort),
+        supportedReasoningEfforts: [...efforts.values()].sort((a, b) =>
+          compareReasoningLevels(a.reasoningEffort, b.reasoningEffort),
         ),
+        ...(serviceTiers === undefined
+          ? {}
+          : { supportedServiceTiers: serviceTiers }),
         isDefault: current.model.isDefault || candidate.model.isDefault,
       },
       directFamily: preferred.directFamily,

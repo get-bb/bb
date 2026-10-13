@@ -4,24 +4,29 @@ import type { DiffPresentation } from "@/components/code/code-rendering";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { DiffLoadingSkeleton } from "@/components/code/code-loading-skeletons";
+import { BbDiffSplit } from "@/components/code/BbDiffSplit";
+import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   useEnvironmentDiffFiles,
   useEnvironment,
   useEnvironmentFilePreview,
 } from "@/hooks/queries/environment-queries";
-import { useProjectFilePreview } from "@/hooks/queries/project-queries";
+import {
+  useProjectAttachmentPreview,
+  useProjectFilePreview,
+} from "@/hooks/queries/project-queries";
 import {
   useThreadHostFilePreview,
   useThreadStorageFilePreview,
 } from "@/hooks/queries/thread-queries";
 import { useHostFilePreview } from "@/hooks/queries/host-file-preview-query";
 import {
+  buildEnvironmentFileContentUrl,
   buildProjectFileContentUrl,
-  buildRawFilesystemHtmlContentUrl,
   buildThreadHostFileContentUrl,
   buildThreadStorageRawContentUrl,
-  buildThreadWorktreeRawContentUrl,
 } from "@/lib/file-content-urls";
 import type {
   EnvironmentFilePreviewSource,
@@ -38,7 +43,7 @@ import { useDiffFileContentsRequester } from "./git-diff/useDiffFileContentsRequ
 import { SecondaryPanelFilePreview } from "./ThreadStorageFilePreview";
 import {
   buildMarkdownFileImageRouting,
-  buildMarkdownLeaseImageRouting,
+  buildMarkdownHostFileImageRouting,
 } from "@/components/ui/markdown-file-image-routing";
 import { getAbsoluteDirname } from "@/lib/absolute-file-path";
 
@@ -49,6 +54,7 @@ interface GitDiffTabContentProps {
   target: WorkspaceDiffTarget | undefined;
   isPanelOpen: boolean;
   gitDiffPresentation: DiffPresentation;
+  fileFilter: string;
   onClearPendingGitDiffIntent?: () => void;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -106,6 +112,14 @@ interface HostScopedFilePreviewTabContentProps {
   onOpenInEditor?: (path: string) => void;
 }
 
+interface AttachmentFilePreviewTabContentProps {
+  isPanelOpen: boolean;
+  name: string;
+  onSelectionAddToChat?: (text: string) => void;
+  path: string;
+  projectId: string;
+}
+
 interface ThreadStorageFilePreviewTabContentProps {
   activePath: string;
   isPanelOpen: boolean;
@@ -133,32 +147,27 @@ function GitDiffMessageSlot({ children }: { children: ReactNode }) {
   );
 }
 
-function ThreadDiffSkeleton() {
+export function GitDiffLoadingSkeleton() {
   return (
-    <div className="space-y-2 pt-2">
+    <GitDiffMessageSlot>
+      <div className="space-y-2 pt-2" role="status" aria-label="Loading diff">
       {Array.from({ length: GIT_DIFF_SKELETON_FILE_COUNT }).map((_, index) => (
         <div
           key={`git-diff-skeleton-${index}`}
-          className="rounded-lg border border-border bg-surface-raised"
+          className="overflow-clip rounded-lg border border-border bg-background"
         >
-          <div className="border-b border-border bg-surface-recessed px-3 py-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                <Skeleton className="size-4 shrink-0 rounded-sm" />
-                <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
-              </div>
-              <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
+          <div className="flex h-8 items-center justify-between gap-2 py-1.5 pl-2 pr-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <Skeleton className="size-4 shrink-0 rounded-sm" />
+              <Skeleton className="h-3 w-48 max-w-full rounded-sm" />
             </div>
+            <Skeleton className="h-3 w-14 shrink-0 rounded-sm" />
           </div>
-          <div className="space-y-1.5 px-2.5 py-2">
-            <Skeleton className="h-3 w-full rounded-sm" />
-            <Skeleton className="h-3 w-[94%] rounded-sm" />
-            <Skeleton className="h-3 w-[90%] rounded-sm" />
-            <Skeleton className="h-3 w-[86%] rounded-sm" />
-          </div>
+          <DiffLoadingSkeleton />
         </div>
       ))}
-    </div>
+      </div>
+    </GitDiffMessageSlot>
   );
 }
 
@@ -167,6 +176,7 @@ export function GitDiffTabContent({
   target,
   isPanelOpen,
   gitDiffPresentation,
+  fileFilter,
   onClearPendingGitDiffIntent,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -205,6 +215,12 @@ export function GitDiffTabContent({
   useEffect(() => {
     clearDiffFileCardStates(diffIdentity);
   }, [diffIdentity]);
+  const requestDiffWorkers = useRequestPierreWorkerPool();
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    void BbDiffSplit.preload();
+    requestDiffWorkers();
+  }, [isPanelOpen, requestDiffWorkers]);
 
   const isPreparing =
     isQueryEnabled &&
@@ -212,14 +228,10 @@ export function GitDiffTabContent({
       (diffFilesResponse === undefined && diffFilesError === null));
 
   if (isPreparing) {
-    return (
-      <GitDiffMessageSlot>
-        <ThreadDiffSkeleton />
-      </GitDiffMessageSlot>
-    );
+    return <GitDiffLoadingSkeleton />;
   }
 
-  if (diffFilesError) {
+  if (diffFilesError && diffFilesResponse === undefined) {
     return (
       <GitDiffMessageSlot>
         <div className="rounded-lg border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive">
@@ -294,6 +306,7 @@ export function GitDiffTabContent({
         target={target}
         diffIdentity={diffIdentity}
         files={diffFilesResponse.files}
+        fileFilter={fileFilter}
         initialPatches={diffFilesResponse.initialPatches}
         filesUpdatedAt={diffFilesUpdatedAt}
         presentation={gitDiffPresentation}
@@ -338,14 +351,8 @@ export function WorkspaceFilePreviewTabContent({
     { enabled: isPanelOpen },
   );
   const environmentRootPath = environmentQuery.data?.path ?? null;
-  const environmentProjectId = environmentQuery.data?.projectId;
   const resolvedMarkdownLinkRouting = useMemo(() => {
-    if (
-      source === null ||
-      environmentId === null ||
-      environmentId === undefined ||
-      (!threadId && environmentProjectId === undefined)
-    ) {
+    if (source === null || !environmentId) {
       return markdownLinkRouting;
     }
     return buildMarkdownFileImageRouting({
@@ -353,21 +360,12 @@ export function WorkspaceFilePreviewTabContent({
       rootPath: environmentRootPath,
       threadId: threadId ?? null,
       linkRouting: markdownLinkRouting,
-      resolveRelativeSrc: (path) => {
-        if (threadId && source.kind === "working-tree") {
-          return buildThreadWorktreeRawContentUrl(threadId, path);
-        }
-        return environmentProjectId === undefined
-          ? path
-          : buildProjectFileContentUrl(environmentProjectId, path, {
-              environmentId,
-            });
-      },
+      resolveRelativeSrc: (path) =>
+        buildEnvironmentFileContentUrl(environmentId, source, path),
     });
   }, [
     activePath,
     environmentId,
-    environmentProjectId,
     environmentRootPath,
     markdownLinkRouting,
     source,
@@ -380,8 +378,8 @@ export function WorkspaceFilePreviewTabContent({
       activePath={activePath}
       copyPath={copyPath}
       htmlPreviewUrl={
-        threadId && source?.kind === "working-tree"
-          ? buildThreadWorktreeRawContentUrl(threadId, activePath)
+        environmentId && source?.kind === "working-tree"
+          ? buildEnvironmentFileContentUrl(environmentId, source, activePath)
           : null
       }
       lineRange={lineRange}
@@ -420,13 +418,7 @@ export function ProjectFilePreviewTabContent({
       threadId,
       linkRouting: markdownLinkRouting,
       resolveRelativeSrc: (path) =>
-        buildProjectFileContentUrl(projectId, path, {
-          ...(environmentId !== null
-            ? { environmentId }
-            : hostId !== null
-              ? { hostId }
-              : {}),
-        }),
+        buildProjectFileContentUrl(projectId, path, { environmentId, hostId }),
     });
   }, [
     activePath,
@@ -443,6 +435,10 @@ export function ProjectFilePreviewTabContent({
       {...filePreviewQueryProps(projectFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
+      htmlPreviewUrl={buildProjectFileContentUrl(projectId, activePath, {
+        environmentId,
+        hostId,
+      })}
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
@@ -487,7 +483,7 @@ export function HostFilePreviewTabContent({
       {...filePreviewQueryProps(hostFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
-      htmlPreviewUrl={buildRawFilesystemHtmlContentUrl(threadId, activePath)}
+      htmlPreviewUrl={buildThreadHostFileContentUrl(threadId, activePath)}
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
@@ -507,20 +503,19 @@ export function HostScopedFilePreviewTabContent({
   const hostFilePreviewQuery = useHostFilePreview(hostId, activePath, {
     enabled: isPanelOpen,
   });
-  const hostFilePreviewUrl = hostFilePreviewQuery.data?.url;
   const markdownLinkRouting = useMemo(() => {
-    return buildMarkdownLeaseImageRouting({
+    return buildMarkdownHostFileImageRouting({
       path: activePath,
       rootPath: getAbsoluteDirname({ path: activePath }),
-      previewUrl: hostFilePreviewUrl,
+      hostId,
     });
-  }, [activePath, hostFilePreviewUrl]);
+  }, [activePath, hostId]);
   return (
     <SecondaryPanelFilePreview
       {...filePreviewQueryProps(hostFilePreviewQuery)}
       activePath={activePath}
       copyPath={activePath}
-      htmlPreviewUrl={hostFilePreviewUrl ?? null}
+      htmlPreviewUrl={hostFilePreviewQuery.data?.url ?? null}
       lineRange={lineRange}
       markdownLinkRouting={markdownLinkRouting}
       onOpenInEditor={onOpenInEditor}
@@ -565,6 +560,32 @@ export function ThreadStorageFilePreviewTabContent({
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}
       onOpenInEditor={onOpenInEditor}
+      statusLabel={null}
+    />
+  );
+}
+
+export function AttachmentFilePreviewTabContent({
+  isPanelOpen,
+  name,
+  onSelectionAddToChat,
+  path,
+  projectId,
+}: AttachmentFilePreviewTabContentProps) {
+  const attachmentPreviewQuery = useProjectAttachmentPreview(
+    projectId,
+    path,
+    name,
+    { enabled: isPanelOpen },
+  );
+
+  return (
+    <SecondaryPanelFilePreview
+      {...filePreviewQueryProps(attachmentPreviewQuery)}
+      activePath={name}
+      copyPath={null}
+      lineRange={null}
+      onSelectionAddToChat={onSelectionAddToChat}
       statusLabel={null}
     />
   );

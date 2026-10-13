@@ -5,7 +5,8 @@ Start a thread, pick Claude Code, and let it work in your repository from bb. Th
 - Permission modes `accept-edits`, `auto`, and `full`, plus a plan action in the composer.
 - Reasoning levels from Low to Max, plus Ultracode, which turns on multi-agent workflow orchestration.
 - Checkpoint forks, manual compaction, and native questions from the agent.
-- Claude Code skills and CLAUDE.md files from your home directory and project.
+- Claude Code skills and provider-native CLAUDE.md or supported AGENTS.md files
+  from your home directory and project.
 - Health, usage, and install status for Claude Code on each host, with an install or update action.
 
 ## Settings

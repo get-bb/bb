@@ -1,25 +1,12 @@
-import type { ReactNode } from "react";
-import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
-import {
-  NewTabActions,
-  type OpenBrowserHandler,
-  type StartTerminalHandler,
-} from "./NewTabActions";
+import { useNewTabActions, type UseNewTabActionsArgs } from "./NewTabActions";
 import {
   NewTabFileSearch,
   type NewTabFileSearchProps,
 } from "./NewTabFileSearch";
 
-type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
+type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "actions">;
 
-interface NewTabPageProps extends NewTabPageFileSearchProps {
-  onOpenBrowser?: OpenBrowserHandler;
-  onStartTerminal?: StartTerminalHandler;
-  pluginActions?: readonly PluginPanelActionEntry[];
-  startTerminalDisabled?: boolean;
-  startTerminalLabel?: string;
-  startTerminalTrailing?: ReactNode;
-}
+type NewTabPageProps = NewTabPageFileSearchProps & UseNewTabActionsArgs;
 
 export function NewTabPage({
   autoFocus,
@@ -39,24 +26,27 @@ export function NewTabPage({
   startTerminalLabel,
   startTerminalTrailing,
 }: NewTabPageProps) {
+  const actions = useNewTabActions({
+    onOpenBrowser,
+    onStartTerminal,
+    pluginActions,
+    startTerminalDisabled,
+    startTerminalLabel,
+    startTerminalTrailing,
+  });
+
   return (
-    <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
+    <div
+      data-panel-new-tab-page=""
+      className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1"
+    >
       <NewTabFileSearch
         projectId={projectId}
         environmentId={environmentId}
         hostId={hostId}
         currentThreadId={currentThreadId}
         autoFocus={autoFocus}
-        idleActions={
-          <NewTabActions
-            onOpenBrowser={onOpenBrowser}
-            onStartTerminal={onStartTerminal}
-            pluginActions={pluginActions}
-            startTerminalDisabled={startTerminalDisabled}
-            startTerminalLabel={startTerminalLabel}
-            startTerminalTrailing={startTerminalTrailing}
-          />
-        }
+        actions={actions}
         initialQuery={initialQuery}
         onAutoFocusHandled={onAutoFocusHandled}
         onSelect={onSelect}

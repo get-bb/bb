@@ -17,9 +17,10 @@ describe("resolveClaudeModelContextWindowHint", () => {
     expect(resolveClaudeModelContextWindowHint("default")).toBeNull();
   });
 
-  it("uses the default Claude context window for non-1M models", () => {
-    expect(resolveClaudeModelContextWindowHint("claude-sonnet-5")).toBe(
-      200_000,
-    );
-  });
+  it.each(["claude-sonnet-5", "claude-opus-5-5", "claude-sonnet-5-5"])(
+    "keeps routing-dependent capacity unknown for %s",
+    (model) => {
+      expect(resolveClaudeModelContextWindowHint(model)).toBeNull();
+    },
+  );
 });

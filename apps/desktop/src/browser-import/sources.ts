@@ -13,6 +13,8 @@ export type BrowserImportEngine = "chromium" | "firefox" | "safari";
 export interface BrowserImportPathContext {
   platform: NodeJS.Platform;
   home: string;
+  configHome?: string;
+  excludedDirectories?: readonly string[];
 }
 
 export interface BrowserImportSourceDefinition {
@@ -26,6 +28,7 @@ export interface BrowserImportSourceDefinition {
   linuxSecretApplication?: string;
   macAppNames?: readonly string[];
   processNames: readonly string[];
+  discoveredProfiles?: readonly DesktopBrowserImportSourceProfile[];
 }
 
 function macApplicationSupport(
@@ -33,6 +36,14 @@ function macApplicationSupport(
   ...segments: string[]
 ): string {
   return join(context.home, "Library", "Application Support", ...segments);
+}
+
+export function linuxConfigDirectory(
+  context: BrowserImportPathContext,
+): string {
+  return context.configHome && isAbsolute(context.configHome)
+    ? context.configHome
+    : join(context.home, ".config");
 }
 
 function chromiumSource(input: {
@@ -62,7 +73,7 @@ function chromiumSource(input: {
       if (context.platform === "darwin")
         return macApplicationSupport(context, ...input.macSegments);
       if (context.platform === "linux" && input.linuxSegments)
-        return join(context.home, ".config", ...input.linuxSegments);
+        return join(linuxConfigDirectory(context), ...input.linuxSegments);
       return undefined;
     },
   };
@@ -91,6 +102,15 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       macSegments: ["Chromium"],
       linuxSegments: ["chromium"],
       linuxSecretApplication: "chromium",
+    }),
+    chromiumSource({
+      id: "helium",
+      processNames: ["Helium"],
+      macAppNames: ["Helium.app"],
+      name: "Helium",
+      keychainService: "Helium Storage Key",
+      keychainAccount: "Helium",
+      macSegments: ["net.imput.helium"],
     }),
     chromiumSource({
       id: "edge",
@@ -145,6 +165,15 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
       keychainAccount: "Arc",
       macSegments: ["Arc", "User Data"],
     }),
+    chromiumSource({
+      id: "dia",
+      processNames: ["Dia"],
+      macAppNames: ["Dia.app"],
+      name: "Dia",
+      keychainService: "Dia Safe Storage",
+      keychainAccount: "Dia",
+      macSegments: ["Dia", "User Data"],
+    }),
     {
       id: "firefox",
       name: "Firefox",
@@ -156,6 +185,20 @@ export const BROWSER_IMPORT_SOURCES: readonly BrowserImportSourceDefinition[] =
         context.platform === "darwin"
           ? macApplicationSupport(context, "Firefox")
           : join(context.home, ".mozilla", "firefox"),
+    },
+    {
+      id: "zen",
+      name: "Zen",
+      engine: "firefox",
+      platforms: ["darwin", "linux"],
+      macAppNames: ["Zen.app", "Zen Browser.app"],
+      processNames: ["zen"],
+      userDataDirectory: (context) =>
+        context.platform === "darwin"
+          ? macApplicationSupport(context, "zen")
+          : context.platform === "linux"
+            ? join(context.home, ".zen")
+            : undefined,
     },
     {
       id: "safari",
@@ -186,7 +229,7 @@ export function findBrowserImportSource(
 }
 
 export function resolveProfilePath(
-  definition: BrowserImportSourceDefinition,
+  definition: Pick<BrowserImportSourceDefinition, "userDataDirectory">,
   context: BrowserImportPathContext,
   profileDirectory: string,
 ): string | undefined {
@@ -198,7 +241,10 @@ export function resolveProfilePath(
 }
 
 export function cookieDatabaseCandidatePaths(
-  definition: BrowserImportSourceDefinition,
+  definition: Pick<
+    BrowserImportSourceDefinition,
+    "engine" | "userDataDirectory"
+  >,
   context: BrowserImportPathContext,
   profileDirectory: string,
 ): string[] {
@@ -460,20 +506,26 @@ async function listSourceProfilesInDirectory(
     localState === undefined ? [] : parseChromiumLocalStateProfiles(localState);
   if (declared.length > 0)
     return withCookieCounts(definition, context, declared);
-  return withCookieCounts(
-    definition,
-    context,
-    await scanForProfiles(definition, context, root, (entry) => entry),
-  );
+  const direct = await resolveCookieDatabase(definition, context, ".");
+  return withCookieCounts(definition, context, [
+    ...(direct === undefined
+      ? []
+      : [{ directory: ".", name: definition.name }]),
+    ...(await scanForProfiles(definition, context, root, (entry) => entry)),
+  ]);
 }
 
 export async function listSourceProfiles(
   definition: BrowserImportSourceDefinition,
   context: BrowserImportPathContext,
 ): Promise<DesktopBrowserImportSourceProfile[]> {
+  if (definition.discoveredProfiles)
+    return withCookieCounts(definition, context, [
+      ...definition.discoveredProfiles,
+    ]);
   const root = definition.userDataDirectory(context);
   if (root === undefined) return [];
-  if (definition.engine !== "firefox" || context.platform !== "linux")
+  if (definition.id !== "firefox" || context.platform !== "linux")
     return listSourceProfilesInDirectory(definition, context, root);
   const roots = [
     root,
@@ -542,6 +594,7 @@ function matchesBrowser(
   command: string,
   processNames: readonly string[],
 ): boolean {
+  if (processNames.length === 0) return true;
   const haystack = command.toLowerCase();
   return processNames.some((name) => haystack.includes(name.toLowerCase()));
 }

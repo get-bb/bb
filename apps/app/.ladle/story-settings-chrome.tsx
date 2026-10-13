@@ -7,6 +7,7 @@ import {
   type SettingsSectionId,
 } from "@/components/settings/settings-sections";
 import {
+  Sidebar,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -65,18 +66,19 @@ export function SettingsStoryChrome({
       className="h-screen min-h-[640px] bg-background"
       style={{ "--bb-shell-height": "100vh" } as CSSProperties}
     >
-      <SettingsSidebarContent
-        appRoutePath="/"
-        isResizing={false}
-        navigation={{
-          activePluginId: null,
-          activeSection: resolvedActiveSection,
-          pluginEntries: [],
-          sections: SETTINGS_NAV_SECTIONS,
-        }}
-        onResizeMouseDown={() => {}}
-        testIdPrefix="settings-story"
-      />
+      <Sidebar>
+        <SettingsSidebarContent
+          isResizing={false}
+          navigation={{
+            activePluginId: null,
+            activeSection: resolvedActiveSection,
+            pluginEntries: [],
+            sections: SETTINGS_NAV_SECTIONS,
+          }}
+          onResizeMouseDown={() => {}}
+          testIdPrefix="settings-story"
+        />
+      </Sidebar>
       <SidebarInset>
         <div className="relative flex h-full min-h-0 min-w-0 flex-col">
           <AppPageHeader

@@ -1,4 +1,4 @@
-import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
+import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
@@ -10,6 +10,7 @@ import { SubscribeSection } from "../landing/cta";
 import { pageMeta, siteHeadLinks } from "../landing/page-head";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import blogCss from "../blog/blog.css?url";
+import pluginGuideCss from "../plugin-guide/plugin-guide.css?url";
 
 export const Route = createFileRoute("/blog_/$slug")({
   loader: ({ params }) => {
@@ -28,7 +29,12 @@ export const Route = createFileRoute("/blog_/$slug")({
     const title = `${post.title} — bb`;
     return {
       meta: pageMeta(title, description, `/blog/${post.slug}`),
-      links: siteHeadLinks(blogCss),
+      links: post.blocks.some((block) => block.kind === "component")
+        ? [
+            { rel: "stylesheet", href: pluginGuideCss },
+            ...siteHeadLinks(blogCss),
+          ]
+        : siteHeadLinks(blogCss),
     };
   },
   component: BlogPostRoute,

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ThreadConversationOutlineItem,
+  ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
   TimelineConversationRow,
   TimelineRow,
 } from "@bb/server-contract";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+import { revealTimelineRow } from "@/components/thread/timeline/reveal-timeline-row.js";
 import { useThreadConversationOutline } from "@/hooks/queries/thread-queries";
 import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
@@ -253,18 +255,26 @@ function TocItemPreview({
   );
 }
 
-function useConversationTocItems({
-  outlineItems,
-  timelineRows,
-}: {
-  outlineItems: readonly ThreadConversationOutlineItem[] | undefined;
-  timelineRows: readonly TimelineRow[];
-}) {
-  const outlineTocItems = useMemo(() => {
-    if (!outlineItems || outlineItems.length === 0) return null;
-    return partitionTocItems(outlineItems.map(outlineItemToTocItem));
-  }, [outlineItems]);
+function mergeOutlineTocItems(
+  outlineItems: readonly ThreadConversationOutlineItem[] | undefined,
+  timelineItems: readonly TocItem[],
+): TocItem[] {
+  if (!outlineItems || outlineItems.length === 0) return [...timelineItems];
+  return mergeLiveTocItems(
+    outlineItems.map(outlineItemToTocItem),
+    timelineItems,
+  );
+}
 
+function useConversationTocItems({
+  agentOutlineItems,
+  timelineRows,
+  userOutlineItems,
+}: {
+  agentOutlineItems: readonly ThreadConversationOutlineItem[] | undefined;
+  timelineRows: readonly TimelineRow[];
+  userOutlineItems: readonly ThreadConversationOutlineItem[] | undefined;
+}) {
   const timelineTocItems = useMemo(
     () =>
       partitionTocItems(
@@ -274,20 +284,25 @@ function useConversationTocItems({
       ),
     [timelineRows],
   );
+  const userItems = useMemo(
+    () => mergeOutlineTocItems(userOutlineItems, timelineTocItems.userItems),
+    [timelineTocItems.userItems, userOutlineItems],
+  );
+  const agentItems = useMemo(
+    () => mergeOutlineTocItems(agentOutlineItems, timelineTocItems.agentItems),
+    [agentOutlineItems, timelineTocItems.agentItems],
+  );
+  return { agentItems, userItems };
+}
 
-  return useMemo(() => {
-    if (!outlineTocItems) return timelineTocItems;
-    return {
-      agentItems: mergeLiveTocItems(
-        outlineTocItems.agentItems,
-        timelineTocItems.agentItems,
-      ),
-      userItems: mergeLiveTocItems(
-        outlineTocItems.userItems,
-        timelineTocItems.userItems,
-      ),
-    };
-  }, [outlineTocItems, timelineTocItems]);
+function currentOutlineItems(
+  data: ThreadConversationOutlineResponse | undefined,
+  contextBoundarySeq: number | null,
+): readonly ThreadConversationOutlineItem[] | undefined {
+  return contextBoundarySeq !== null &&
+    (data?.maxSeq ?? -1) < contextBoundarySeq
+    ? undefined
+    : data?.items;
 }
 
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
@@ -501,21 +516,29 @@ export function ThreadTableOfContents({
   const bottomAnchor = useBottomAnchoredScroll();
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
   const tocVisible = useThreadTocVisible(rootElement);
-  const outlineQuery = useThreadConversationOutline(threadId, {
-    enabled: tocVisible && timelineRows.length > 0,
-  });
-  const outlineItems =
-    contextBoundarySeq !== null &&
-    (outlineQuery.data?.maxSeq ?? -1) < contextBoundarySeq
-      ? undefined
-      : outlineQuery.data?.items;
-  const senderThreadMetadataById = useSenderThreadMetadataById();
-  const { agentItems, userItems } = useConversationTocItems({
-    outlineItems,
-    timelineRows,
-  });
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TocTab>("user");
+  const outlineEnabled = tocVisible && timelineRows.length > 0;
+  const userOutlineQuery = useThreadConversationOutline(threadId, "user", {
+    enabled: outlineEnabled,
+  });
+  const agentOutlineQuery = useThreadConversationOutline(
+    threadId,
+    "assistant",
+    { enabled: outlineEnabled && open && tab === "agent" },
+  );
+  const senderThreadMetadataById = useSenderThreadMetadataById();
+  const { agentItems, userItems } = useConversationTocItems({
+    agentOutlineItems: currentOutlineItems(
+      agentOutlineQuery.data,
+      contextBoundarySeq,
+    ),
+    timelineRows,
+    userOutlineItems: currentOutlineItems(
+      userOutlineQuery.data,
+      contextBoundarySeq,
+    ),
+  });
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
@@ -619,16 +642,13 @@ export function ThreadTableOfContents({
           container.scrollTop + (elRect.bottom - (containerRect.bottom - pad)),
       });
     }
-  }, [activeId, open, scrollRef, tocVisible]);
+  }, [activeId, items, open, scrollRef, tocVisible]);
 
   const handleSelect = useCallback(
     async (id: string) => {
       const getScrollElement = () => bottomAnchor?.getScrollElement() ?? null;
       const scrollToRow = (element: HTMLElement) => {
-        bottomAnchor?.scrollElementIntoView({
-          element,
-          options: { block: "start", inline: "nearest" },
-        });
+        revealTimelineRow(element, bottomAnchor);
       };
       onNavigateToRow?.(id);
 
@@ -640,7 +660,20 @@ export function ThreadTableOfContents({
       if (jumpInProgressRef.current) return;
       jumpInProgressRef.current = true;
       setPendingJumpId(id);
+      const waitForRenderedRow = async () => {
+        for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES; frame++) {
+          await waitForAnimationFrame();
+          if (!mountedRef.current) return null;
+          const renderedRow = findTimelineRowElement(getScrollElement(), id);
+          if (renderedRow) return renderedRow;
+        }
+        return null;
+      };
       try {
+        if (timelineRows.some((timelineRow) => timelineRow.id === id)) {
+          row = await waitForRenderedRow();
+          if (!mountedRef.current) return;
+        }
         let loads = 0;
         while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
           loads += 1;
@@ -650,11 +683,8 @@ export function ThreadTableOfContents({
             break;
           }
           if (!mountedRef.current) return;
-          for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
-            await waitForAnimationFrame();
-            if (!mountedRef.current) return;
-            row = findTimelineRowElement(getScrollElement(), id);
-          }
+          row = await waitForRenderedRow();
+          if (!mountedRef.current) return;
         }
         if (!row) row = findTimelineRowElement(getScrollElement(), id);
         if (row) scrollToRow(row);
@@ -663,7 +693,7 @@ export function ThreadTableOfContents({
         setPendingJumpId(null);
       }
     },
-    [bottomAnchor, onNavigateToRow],
+    [bottomAnchor, onNavigateToRow, timelineRows],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {

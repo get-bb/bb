@@ -39,3 +39,17 @@ export const machineEnvironmentListSchema = z.object({
 export type MachineEnvironmentList = z.infer<
   typeof machineEnvironmentListSchema
 >;
+
+export const machineEnvironmentDeleteSchema = machineEnvironmentSetSchema.pick({
+  name: true,
+});
+export type MachineEnvironmentDelete = z.infer<
+  typeof machineEnvironmentDeleteSchema
+>;
+export const projectMachineEnvironmentListSchema =
+  machineEnvironmentListSchema.extend({
+    inheritedVariables: z.array(machineEnvironmentVariableSchema),
+  });
+export type ProjectMachineEnvironmentList = z.infer<
+  typeof projectMachineEnvironmentListSchema
+>;

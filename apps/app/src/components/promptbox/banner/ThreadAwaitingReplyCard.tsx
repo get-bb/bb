@@ -115,7 +115,7 @@ export function ThreadAwaitingReplyCard({
   return (
     <PendingInteractionShell
       label="Waiting on your reply"
-      initiallyExpanded
+      expandedByDefault
       testId="awaiting-reply-banner"
     >
       {() => (

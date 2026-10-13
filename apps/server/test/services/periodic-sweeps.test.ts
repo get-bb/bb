@@ -2,13 +2,17 @@ import { eq } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
-  DESTROYED_ENVIRONMENT_TTL_MS,
   environments,
   events,
+  insertEvents,
+  noopNotifier,
+  getEnvironment,
   hostDaemonSessions,
   listQueuedThreadMessages,
   RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
+  threads,
+  threadPruningCursors,
 } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import type { PluginHookName } from "@get-bb/plugin-sdk";
@@ -18,14 +22,15 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import {
-  hasCompletedEventLoopWorkForTests,
-  resetEventLoopWorkForTests,
-} from "../../src/services/system/event-loop-work.js";
-import {
+  createThreadEventPruningJob,
   type PeriodicSweepJob,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
+import {
+  THREAD_PRUNING_SWEEP_LIMITS,
+  type ThreadPruningSweepLimits,
+} from "../../src/services/system/thread-pruning-sweep.js";
 import {
   seedEnvironment,
   seedEvent,
@@ -36,6 +41,7 @@ import {
   seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   testLogger,
@@ -95,6 +101,11 @@ function releaseRunningJob(release: ReleaseCallback | null): void {
   }
   release();
 }
+
+const UNTIMED_SWEEP_LIMITS: ThreadPruningSweepLimits = {
+  elapsedBudgetMs: Number.POSITIVE_INFINITY,
+  maxAdvances: THREAD_PRUNING_SWEEP_LIMITS.maxAdvances,
+};
 
 describe("runPeriodicSweeps", () => {
   it("deletes expired retained outputs across yielded advances without changing previews", async () => {
@@ -173,7 +184,7 @@ describe("runPeriodicSweeps", () => {
       ).toEqual(previews);
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });
@@ -252,7 +263,7 @@ describe("runPeriodicSweeps", () => {
       expect(observedCounts).toContain(1);
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });
@@ -327,7 +338,7 @@ describe("runPeriodicSweeps", () => {
       );
       expect(
         changes.filter((threadChanges) =>
-          threadChanges.includes("history-rewritten"),
+          threadChanges.includes("history-compacted"),
         ),
       ).toHaveLength(1);
     });
@@ -473,66 +484,7 @@ describe("runPeriodicSweeps", () => {
     });
   });
 
-  it("prunes expired destroyed environments one per event-loop turn", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const expiredAt = Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000;
-      for (const path of [
-        "/tmp/destroyed-a",
-        "/tmp/destroyed-b",
-        "/tmp/destroyed-c",
-      ]) {
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-          path,
-          status: "destroyed",
-          environmentProviderId: "personal-workspace",
-          isGitRepo: false,
-        });
-        harness.db
-          .update(environments)
-          .set({ updatedAt: expiredAt, teardownStatus: "removed" })
-          .where(eq(environments.id, environment.id))
-          .run();
-      }
-      const countDestroyedEnvironments = () =>
-        harness.db
-          .select({ id: environments.id })
-          .from(environments)
-          .where(eq(environments.status, "destroyed"))
-          .all().length;
-
-      const observedCounts: number[] = [];
-      let sweepSettled = false;
-      const probe = () => {
-        if (sweepSettled) {
-          return;
-        }
-        observedCounts.push(countDestroyedEnvironments());
-        setImmediate(probe);
-      };
-      setImmediate(probe);
-
-      const deps = {
-        ...harness.deps,
-        pluginSchedules: harness.pluginService,
-        plugins: harness.pluginService,
-        pluginService: harness.pluginService,
-        pluginCatalogService: harness.pluginCatalogService,
-      };
-      await runPeriodicSweeps(deps);
-      sweepSettled = true;
-
-      expect(countDestroyedEnvironments()).toBe(0);
-      expect(observedCounts).toEqual(expect.arrayContaining([2, 1]));
-    });
-  });
-
-  it("clears a large environment event set across event-loop turns", async () => {
+  it("keeps a long-destroyed environment so deleting its thread still removes host storage", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -541,149 +493,147 @@ describe("runPeriodicSweeps", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        path: "/tmp/destroyed-with-large-history",
-        status: "destroyed",
+        environmentProviderId: "personal-workspace",
+        isGitRepo: false,
       });
       const thread = seedThread(harness.deps, {
         environmentId: environment.id,
         projectId: project.id,
+        status: "idle",
       });
-      const eventCount = 150;
-      for (let sequence = 1; sequence <= eventCount; sequence += 1) {
-        seedEvent(harness.deps, {
-          data: { text: `event ${sequence}` },
-          environmentId: environment.id,
-          scope: threadScope(),
-          sequence,
-          threadId: thread.id,
-          type: "system/manager/user_message",
-        });
-      }
+      seedEvent(harness.deps, {
+        data: { text: "history" },
+        environmentId: environment.id,
+        scope: threadScope(),
+        sequence: 1,
+        threadId: thread.id,
+        type: "system/manager/user_message",
+      });
+      const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60_000;
+      harness.db
+        .update(threads)
+        .set({ archivedAt: eightDaysAgo })
+        .where(eq(threads.id, thread.id))
+        .run();
       harness.db
         .update(environments)
-        .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
+        .set({
+          status: "destroyed",
+          teardownStatus: "removed",
+          updatedAt: eightDaysAgo,
+        })
         .where(eq(environments.id, environment.id))
         .run();
 
-      const countReferences = () =>
-        harness.db
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.environmentId, environment.id))
-          .all().length;
-      const observedReferenceCounts: number[] = [];
-      let sweepSettled = false;
-      const probe = () => {
-        if (sweepSettled) {
-          return;
-        }
-        observedReferenceCounts.push(countReferences());
-        setImmediate(probe);
-      };
-      setImmediate(probe);
-
-      const deps = {
+      await runPeriodicSweeps({
         ...harness.deps,
         pluginSchedules: harness.pluginService,
         plugins: harness.pluginService,
-        pluginService: harness.pluginService,
-        pluginCatalogService: harness.pluginCatalogService,
-      };
-      await runPeriodicSweeps(deps);
-      sweepSettled = true;
-
-      expect(
-        observedReferenceCounts.some(
-          (count) => count > 0 && count < eventCount,
-        ),
-      ).toBe(true);
-    });
-  });
-
-  it("attributes each destroyed-environment prune to a blocking work frame", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
       });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/destroyed-attributed",
-        status: "destroyed",
-        environmentProviderId: "personal-workspace",
-        isGitRepo: false,
-      });
-      harness.db
-        .update(environments)
-        .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
-        .where(eq(environments.id, environment.id))
-        .run();
-      const deps = {
-        ...harness.deps,
-        pluginSchedules: harness.pluginService,
-        plugins: harness.pluginService,
-        pluginService: harness.pluginService,
-        pluginCatalogService: harness.pluginCatalogService,
-      };
-      resetEventLoopWorkForTests();
-      try {
-        await runPeriodicSweeps(deps);
-        expect(
-          hasCompletedEventLoopWorkForTests(
-            "sweep:destroyed-environment-prune:advance",
-          ),
-        ).toBe(true);
-      } finally {
-        resetEventLoopWorkForTests();
-      }
-    });
-  });
 
-  it("isolates job failures in the generic runner", async () => {
-    await withTestHarness(async (harness) => {
-      const logger = {
-        ...testLogger,
-        error: vi.fn(),
-      };
-      const deps = {
-        ...harness.deps,
-        logger,
-        pluginSchedules: harness.pluginService,
-        plugins: harness.pluginService,
-        pluginService: harness.pluginService,
-        pluginCatalogService: harness.pluginCatalogService,
-      };
-      let laterJobRuns = 0;
-      const jobs: PeriodicSweepJob[] = [
-        {
-          cadenceMs: 0,
-          category: "retention",
-          name: "test-failing-sweep",
-          run() {
-            throw new Error("synthetic sweep failure");
-          },
-        },
-        {
-          cadenceMs: 0,
-          category: "retention",
-          name: "test-later-sweep",
-          run() {
-            laterJobRuns += 1;
-          },
-        },
-      ];
-
-      await runPeriodicSweepJobs(deps, jobs, Date.now());
-
-      expect(laterJobRuns).toBe(1);
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sweepJob: "test-failing-sweep",
-          sweepJobCategory: "retention",
-        }),
-        "Periodic sweep job failed",
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroyed",
       );
+      expect(
+        harness.db
+          .select({ environmentId: events.environmentId })
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toEqual([{ environmentId: environment.id }]);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(
+        listQueuedThreadCommands(harness, "thread.storage.delete", thread.id),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("retries pruning on the next tick after a busy skip and continues without an hourly delay", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        plugins: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      insertEvents(
+        harness.db,
+        noopNotifier,
+        [1, 2].map((sequence) => ({
+          threadId: thread.id,
+          sequence,
+          type: "turn/diff/updated",
+          scope: { kind: "turn", turnId: "turn" },
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: "{}",
+          createdAt: 1,
+        })),
+      );
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const pruningJobs = [createThreadEventPruningJob(UNTIMED_SWEEP_LIMITS)];
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      try {
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
+        expect(harness.db.select().from(threadPruningCursors).all()).toEqual(
+          [],
+        );
+        harness.db
+          .update(threads)
+          .set({ status: "idle" })
+          .where(eq(threads.id, thread.id))
+          .run();
+        clock.mockReturnValue(now + 10_000);
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 2 }]);
+        insertEvents(harness.db, noopNotifier, [
+          {
+            threadId: thread.id,
+            sequence: 3,
+            type: "turn/completed",
+            scope: { kind: "turn", turnId: "turn" },
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
+            data: "{}",
+            createdAt: now,
+          },
+        ]);
+        clock.mockReturnValue(now + 20_000);
+        await runPeriodicSweepJobs(deps, pruningJobs, Date.now());
+        expect(
+          harness.db
+            .select({ sequence: events.sequence })
+            .from(events)
+            .where(eq(events.threadId, thread.id))
+            .all(),
+        ).toEqual([{ sequence: 3 }]);
+      } finally {
+        clock.mockRestore();
+      }
     });
   });
 

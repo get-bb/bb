@@ -41,7 +41,7 @@ export const threadForkDescriptorSchema = z.object({
 export const threadProvisionCommonPayloadSchema = z.object({
   clientRequestId: clientTurnRequestIdSchema,
   environmentIntent: threadProvisionEnvironmentIntentSchema,
-  execution: resolvedThreadExecutionOptionsSchema,
+  execution: resolvedThreadExecutionOptionsSchema.nullable(),
   fork: threadForkDescriptorSchema.nullable().default(null),
   input: z.array(promptInputSchema),
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),

@@ -6,9 +6,11 @@ import type {
 } from "@bb/host-daemon-contract";
 import type { ProviderCliInstallLogDialogState } from "@/components/dialogs/ProviderCliInstallLogDialog";
 import type { ProviderCliActionableIssue } from "@/components/provider-cli/provider-cli-install";
+import { BbRequestTimeoutError } from "@bb/sdk/browser";
 import { appToast } from "@/components/ui/app-toast";
 import { invalidateHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";
 import { invalidateSystemExecutionOptions } from "@/hooks/cache-owners/system-cache-effects";
+import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
 import { sdk } from "@/lib/sdk";
 
 type ProviderCliInstallCompletedEvent = Extract<
@@ -29,8 +31,19 @@ interface ProviderCliInstallJob {
   issue: ProviderCliActionableIssue;
 }
 
+export type ProviderCliInstallFailureKind = "command" | "interrupted";
+
+export const PROVIDER_CLI_FAILURE_SUMMARIES: Record<
+  ProviderCliInstallFailureKind,
+  string
+> = {
+  command: "Update failed",
+  interrupted: "Connection lost during update",
+};
+
 export interface ProviderCliInstallFailure {
   issueFingerprint: string;
+  kind: ProviderCliInstallFailureKind;
   logDialogState: ProviderCliInstallLogDialogState;
 }
 
@@ -134,6 +147,31 @@ function exitDescription(event: ProviderCliInstallCompletedEvent): string {
   return `Command exited after signal ${event.signal ?? "unknown"}`;
 }
 
+const CONNECTION_LOST_HTTP_STATUSES: ReadonlySet<number> = new Set([
+  502, 503, 504,
+]);
+
+function describeInstallRequestFailure(error: unknown): {
+  kind: ProviderCliInstallFailureKind;
+  message: string;
+} {
+  const httpError = asHttpError(error);
+  const connectionLost =
+    httpError === null
+      ? error instanceof TypeError || error instanceof BbRequestTimeoutError
+      : CONNECTION_LOST_HTTP_STATUSES.has(httpError.status);
+  if (connectionLost) {
+    return {
+      kind: "interrupted",
+      message: PROVIDER_CLI_FAILURE_SUMMARIES.interrupted,
+    };
+  }
+  const message =
+    (httpError === null ? null : getHttpErrorMessage(httpError)) ??
+    (error instanceof Error ? error.message : String(error));
+  return { kind: "command", message };
+}
+
 function getProviderCliTitle(args: {
   issue: ProviderCliActionableIssue;
   phase: ProviderCliTitlePhase;
@@ -186,6 +224,7 @@ function setProviderCliInstallFailure(args: {
 function showProviderCliInstallFailureToast(args: {
   jobKey: string;
   issue: ProviderCliActionableIssue;
+  kind: ProviderCliInstallFailureKind;
   log: string;
   message: string;
   toastId: string;
@@ -200,6 +239,7 @@ function showProviderCliInstallFailureToast(args: {
     jobKey: args.jobKey,
     failure: {
       issueFingerprint: args.issue.fingerprint,
+      kind: args.kind,
       logDialogState,
     },
   });
@@ -269,6 +309,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       showProviderCliInstallFailureToast({
         jobKey,
         issue,
+        kind: "command",
         log: installLogChunks.join(""),
         message: failureMessage,
         toastId: failureToastId,
@@ -280,8 +321,8 @@ function runInstall(job: ProviderCliInstallJob): void {
       showProviderCliInstallFailureToast({
         jobKey,
         issue,
+        ...describeInstallRequestFailure(error),
         log: installLogChunks.join(""),
-        message,
         toastId: failureToastId,
       });
     })

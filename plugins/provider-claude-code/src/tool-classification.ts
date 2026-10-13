@@ -160,7 +160,6 @@ export function parseClaudeMcpToolName(
 }
 
 function mcpTool(
-  toolName: string,
   server: string,
   tool: string,
   args: unknown,
@@ -458,7 +457,7 @@ export function classifyClaudeToolUse(args: {
       if (mcp.server === BB_BRIDGE_MCP_SERVER_NAME) {
         return bbTool(mcp.tool, input, args.injectedTools.get(mcp.tool));
       }
-      return mcpTool(toolName, mcp.server, mcp.tool, input);
+      return mcpTool(mcp.server, mcp.tool, input);
     }
   }
 }

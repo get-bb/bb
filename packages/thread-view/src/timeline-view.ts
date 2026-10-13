@@ -12,6 +12,7 @@ import type {
   TimelineWorkRow,
 } from "@bb/server-contract";
 import { assertNever } from "./assert-never.js";
+import { parseSentThreadMessage } from "./tool-call-parsing.js";
 import {
   getFileChangeAction,
   type FileChangeAction,
@@ -28,7 +29,7 @@ export interface TimelineViewDelegationWorkRow extends Omit<
   TimelineDelegationWorkRow,
   "childRows"
 > {
-  childRows: ThreadTimelineViewRow[];
+  childRows: ThreadTimelineViewRow[] | null;
   inClosedStep?: boolean;
 }
 
@@ -294,6 +295,7 @@ function summarizeTimelineWork(
         counts.delegations += 1;
         break;
       case "question":
+      case "form":
       case "approval":
       case "workflow":
         break;
@@ -369,6 +371,7 @@ function approvalStatusSummaryLabel(
         break;
       case "approval":
       case "question":
+      case "form":
       case "delegation":
       case "extension":
       case "file-read":
@@ -435,6 +438,7 @@ function getTimelineWorkSummaryCategory(
       return "delegations";
     case "approval":
     case "question":
+    case "form":
     case "workflow":
       return null;
     default:
@@ -741,7 +745,8 @@ function isSummarizableActivityRow(
     row.kind === "work" &&
     row.workKind !== "approval" &&
     row.workKind !== "question" &&
-    row.workKind !== "workflow"
+    row.workKind !== "workflow" &&
+    (row.workKind !== "command" || parseSentThreadMessage(row) === null)
   );
 }
 
@@ -779,6 +784,7 @@ function rowConcept(row: TimelineViewWorkRow): TimelineWorkSummaryCategory {
       return "imageViews";
     case "approval":
     case "question":
+    case "form":
     case "workflow":
       return "tools";
     default:
@@ -937,7 +943,10 @@ function toTimelineViewWorkRow(
   const closedScope = row.status !== "pending";
   return {
     ...row,
-    childRows: buildTimelineViewRows(row.childRows, { cache, closedScope }),
+    childRows:
+      row.childRows === null
+        ? null
+        : buildTimelineViewRows(row.childRows, { cache, closedScope }),
   };
 }
 

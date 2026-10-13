@@ -94,35 +94,6 @@ describe("skills/configure handshake capability", () => {
     expect(runtime.hasThread("t1")).toBe(true);
   });
 
-  it("sends skills/configure before thread/start to a bridge that declares it", async () => {
-    const record = createScriptedEchoRequestRecord();
-    const runtime = withBridgeLaunch(
-      createAgentRuntime({
-        workspacePath,
-        env: record.env,
-        skillRoots: [
-          { id: "global-skills:builtin", path: stageSkillRoot(), skills: [] },
-        ],
-        onEvent: () => {},
-        onToolCall: async () => ({ contentItems: [], success: true }),
-      }),
-      createScriptedEchoLaunch(),
-    );
-    runtimes.push(runtime);
-    await runtime.startThread({
-      environmentId: "env-1",
-      projectId: "p1",
-      providerId: "fake",
-      threadId: "t1",
-      options: fullRuntimeOptions,
-    });
-    const methods = record.read().map((entry) => entry.method);
-    expect(methods.indexOf("skills/configure")).toBeGreaterThan(-1);
-    expect(methods.indexOf("skills/configure")).toBeLessThan(
-      methods.indexOf("thread/start"),
-    );
-  });
-
   it("rejects a relative skill root path", () => {
     expect(() =>
       createAgentRuntime({
@@ -132,5 +103,77 @@ describe("skills/configure handshake capability", () => {
         onToolCall: async () => ({ contentItems: [], success: true }),
       }),
     ).toThrow(/must use an absolute path: staged\/skills/);
+  });
+
+  it("selects a bridge by the session's skill snapshot without replacing sibling sessions", async () => {
+    const events: ThreadEvent[] = [];
+    const record = createScriptedEchoRequestRecord();
+    const originalRoots = [
+      { id: "original", path: stageSkillRoot(), skills: [] },
+    ];
+    const currentRoots = [
+      {
+        id: "current",
+        path: join(workspacePath, "current-skills"),
+        skills: [],
+      },
+    ];
+    mkdirSync(currentRoots[0]!.path);
+    const runtime = withBridgeLaunch(
+      createAgentRuntime({
+        workspacePath,
+        env: record.env,
+        skillRoots: originalRoots,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({ contentItems: [], success: true }),
+      }),
+      createScriptedEchoLaunch({ scripted: { identifyProcess: true } }),
+    );
+    runtimes.push(runtime);
+    const startArgs = {
+      environmentId: "env-1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    };
+    const original = await runtime.startThread({
+      ...startArgs,
+      threadId: "original",
+    });
+    const currentArgs = { ...startArgs, skillRoots: currentRoots };
+    const current = await runtime.startThread({
+      ...currentArgs,
+      threadId: "current",
+    });
+    const reused = await runtime.startThread({
+      ...currentArgs,
+      threadId: "reused",
+    });
+
+    expect(
+      record
+        .read()
+        .filter((entry) => entry.method === "skills/configure")
+        .map((entry) => entry.params),
+    ).toEqual([{ roots: originalRoots }, { roots: currentRoots }]);
+    expect(current.providerThreadId.split("-")[1]).not.toBe(
+      original.providerThreadId.split("-")[1],
+    );
+    expect(reused.providerThreadId.split("-")[1]).toBe(
+      current.providerThreadId.split("-")[1],
+    );
+    await runtime.runTurn({
+      clientRequestId: "creq_skcapab223",
+      threadId: "original",
+      input: [promptTextInput({ text: "original session still works" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      text: "original session still works",
+      threadId: "original",
+    });
   });
 });

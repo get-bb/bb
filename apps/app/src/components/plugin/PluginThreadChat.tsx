@@ -1,5 +1,6 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   ThreadChatMessageAction,
   ThreadChatProps,
@@ -9,7 +10,6 @@ import {
   type EnvironmentDisplayHostContext,
 } from "@bb/core-ui";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
-import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
@@ -22,6 +22,7 @@ import { useThreadTimelineNavigation } from "@/components/thread/timeline/Thread
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
+import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -34,6 +35,7 @@ import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provi
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
+import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 import {
   getProjectComposeRoutePath,
   getThreadRoutePath,
@@ -89,6 +91,9 @@ function PluginThreadChatBody({
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
+  const projectName = useProjectDisplayName(
+    thread?.projectId === PERSONAL_PROJECT_ID ? undefined : thread?.projectId,
+  );
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -202,13 +207,13 @@ function PluginThreadChatBody({
     const chrome = getEnvironmentSummaryChrome({
       display,
       providerLookup,
-      environmentName: environment.name,
       hasMultipleMachines,
       host: environmentHost,
       machineProviders,
     });
     return (
       <ThreadEnvironmentSummary
+        projectName={projectName}
         environmentLabel={chrome.environmentLabel}
         environmentCompactLabel={chrome.environmentCompactLabel}
         environmentHost={chrome.environmentHost}
@@ -235,6 +240,7 @@ function PluginThreadChatBody({
     hasMultipleMachines,
     isLocalDaemonHost,
     machineProviders,
+    projectName,
   ]);
 
   const isThreadMissing =
@@ -249,11 +255,7 @@ function PluginThreadChatBody({
   }
   if (thread === undefined) {
     return (
-      <div className="space-y-2 px-4 pt-4">
-        <Skeleton className="h-4 w-3/4 rounded-sm" />
-        <Skeleton className="h-4 w-2/3 rounded-sm" />
-        <Skeleton className="h-4 w-1/2 rounded-sm" />
-      </div>
+      <ThreadChatLoadingBody leadingContent={leadingContent} variant={variant} />
     );
   }
 

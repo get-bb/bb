@@ -8,7 +8,7 @@ import {
 import { siteHeadLinks } from "../landing/page-head.js";
 import marketplaceCss from "../marketplace/marketplace.css?url";
 import {
-  marketplaceIndexMeta,
+  marketplaceIndexHead,
   validateMarketplaceSearch,
 } from "../marketplace/marketplace-route-data.js";
 import { getPublicMarketplace } from "../marketplace/marketplace-server.js";
@@ -17,13 +17,17 @@ import {
   PublicMarketplacePage,
   PublicMarketplaceUnavailablePage,
   MarketplaceNavigationProvider,
+  MarketplaceRenderTimeProvider,
 } from "../marketplace/public-marketplace.js";
 
 export const Route = createFileRoute("/marketplace_")({
+  staticData: { ownsCanonical: true },
   validateSearch: validateMarketplaceSearch,
-  loader: () => getPublicMarketplace(),
+  loader: async () => ({
+    ...(await getPublicMarketplace()),
+    renderedAt: Date.now(),
+  }),
   head: ({ loaderData, match, matches }) => {
-    const available = loaderData?.status === "available";
     const lastMatch = matches.at(-1);
     const isIndex = lastMatch?.routeId === match.routeId;
     const notFound = matches.some(
@@ -40,13 +44,8 @@ export const Route = createFileRoute("/marketplace_")({
       };
     }
     if (!isIndex) return { links: sharedLinks };
-    return {
-      meta: marketplaceIndexMeta(available),
-      links: [
-        ...sharedLinks,
-        { rel: "canonical", href: "https://getbb.app/marketplace" },
-      ],
-    };
+    const head = marketplaceIndexHead(loaderData, match.search.category);
+    return { meta: head.meta, links: [...sharedLinks, head.canonical] };
   },
   notFoundComponent: PublicMarketplaceNotFoundPage,
   component: MarketplaceRoute,
@@ -62,22 +61,24 @@ function MarketplaceRoute() {
     <MarketplaceNavigationProvider
       navigate={(href) => void router.navigate({ href })}
     >
-      {path !== "/marketplace" && path !== "/marketplace/" ? (
-        <Outlet />
-      ) : marketplace.status === "unavailable" ? (
-        <PublicMarketplaceUnavailablePage />
-      ) : (
-        <PublicMarketplacePage
-          manifest={marketplace.manifest}
-          stats={marketplace.stats}
-          state={{ category: search.category, sort: search.sort }}
-          onStateChange={(next) =>
-            void navigate({
-              search: { category: next.category, sort: next.sort },
-            })
-          }
-        />
-      )}
+      <MarketplaceRenderTimeProvider renderedAt={marketplace.renderedAt}>
+        {path !== "/marketplace" && path !== "/marketplace/" ? (
+          <Outlet />
+        ) : marketplace.status === "unavailable" ? (
+          <PublicMarketplaceUnavailablePage />
+        ) : (
+          <PublicMarketplacePage
+            manifest={marketplace.manifest}
+            stats={marketplace.stats}
+            state={{ category: search.category, sort: search.sort }}
+            onStateChange={(next) =>
+              void navigate({
+                search: { category: next.category, sort: next.sort },
+              })
+            }
+          />
+        )}
+      </MarketplaceRenderTimeProvider>
     </MarketplaceNavigationProvider>
   );
 }

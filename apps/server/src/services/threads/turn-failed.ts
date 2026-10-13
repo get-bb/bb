@@ -1,6 +1,6 @@
 import {
   getLastStoredTurnRequestEvent,
-  getLatestStoredRateLimitsEventForProvider,
+  getLatestStoredRateLimitsEvent,
   getLatestStoredThreadEventOfTypes,
   getThread,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
@@ -205,9 +205,8 @@ function latestRateLimits(
   db: DbConnection,
   thread: Thread,
 ): ProviderRateLimitState | null {
-  const row = getLatestStoredRateLimitsEventForProvider(db, {
+  const row = getLatestStoredRateLimitsEvent(db, {
     threadId: thread.id,
-    providerId: thread.providerId,
   });
   if (row === null) return null;
   return (

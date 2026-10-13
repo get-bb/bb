@@ -50,16 +50,6 @@ function systemSteerRequest(): ClientTurnRequestedEventRow {
   });
 }
 
-function systemMessageRequest(): ClientTurnRequestedEventRow {
-  const event = createTimelineEventFactory({ threadId: "thread-1" });
-  return event.clientTurnRequested({
-    initiator: "system",
-    senderThreadId: null,
-    target: { kind: "new-turn" },
-    text: "[bb system] Maintenance notice.",
-  });
-}
-
 function userMessageRequest(): ClientTurnRequestedEventRow {
   const event = createTimelineEventFactory({ threadId: "thread-1" });
   return event.clientTurnRequested({
@@ -101,6 +91,29 @@ function acceptedClientRequest(
 }
 
 describe("user message parsing", () => {
+  it("retains original file names and byte sizes for compact history after reload", () => {
+    const input = [
+      { type: "text" as const, text: "inspect errors", mentions: [] },
+      {
+        type: "localFile" as const,
+        path: "Pasted-text-unique.txt",
+        name: "Pasted text.txt",
+        sizeBytes: 3_638_577,
+        mimeType: "text/plain; charset=utf-8",
+      },
+    ];
+    expect(parsePromptInput(input)).toMatchObject({
+      text: "inspect errors",
+      localFilePaths: ["Pasted-text-unique.txt"],
+      localFileDetails: [
+        {
+          path: "Pasted-text-unique.txt",
+          name: "Pasted text.txt",
+          sizeBytes: 3_638_577,
+        },
+      ],
+    });
+  });
   it("omits agent-only prompt input parts from timeline text and attachments", () => {
     const parsed = parsePromptInput([
       {
@@ -127,6 +140,7 @@ describe("user message parsing", () => {
       imageUrls: [],
       localImagePaths: [],
       localFilePaths: ["/tmp/visible.md"],
+      localFileDetails: [],
     });
   });
 
@@ -288,24 +302,6 @@ describe("user message parsing", () => {
       initiator: "agent",
       senderThreadId: "thr_legacy",
       text: "[bb message from thread:thr_legacy; reply later]\n\nLegacy handoff",
-    });
-  });
-
-  it("populates initiator for system-initiated messages with a turnRequest", () => {
-    const { event, meta } = decodeThreadEventRow(systemMessageRequest());
-
-    const message =
-      parseUsersFromClientRequest({
-        decoded: event,
-        meta,
-        options: standardProjectionOptions,
-      })[0] ?? null;
-
-    expect(message).toMatchObject({
-      kind: "user",
-      initiator: "system",
-      senderThreadId: null,
-      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
   });
 
@@ -587,23 +583,6 @@ describe("user message parsing", () => {
     ).toMatchObject({
       kind: "user",
       text: "Fallback message",
-      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
-    });
-  });
-
-  it("renders system-originated turns as user messages", () => {
-    const { event, meta } = decodeThreadEventRow(systemMessageRequest());
-
-    expect(
-      parseUsersFromClientRequest({
-        decoded: event,
-        meta,
-        options: standardProjectionOptions,
-      })[0] ?? null,
-    ).toMatchObject({
-      initiator: "system",
-      kind: "user",
-      text: "[bb system] Maintenance notice.",
       turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
   });

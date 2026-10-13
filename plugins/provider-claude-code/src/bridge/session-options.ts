@@ -1,6 +1,7 @@
 import {
   type InstructionMode,
   type ReasoningLevel,
+  type ServiceTier,
   type RuntimePermissionScope,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { accessSync, constants, statSync } from "node:fs";
@@ -17,17 +18,27 @@ export interface BuildSessionOptionsArgs {
   additionalWorkspaceWriteRoots?: readonly string[];
   baseInstructions?: string;
   cwd: string;
-  disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
+  serviceTier: ServiceTier;
   workflowsEnabled: boolean;
   chromeEnabled: boolean;
+  disable1MContext: boolean;
+  sandboxEnabled: boolean;
   memoryEnabled?: boolean;
 }
+
+type WorkspaceWriteSandboxArgs = Pick<
+  BuildSessionOptionsArgs,
+  | "additionalWorkspaceWriteRoots"
+  | "permissionMode"
+  | "permissionScope"
+  | "sandboxEnabled"
+>;
 
 export interface PermissionEscalationWorkContext {
   agentId?: string;
@@ -57,11 +68,23 @@ const WORKSPACE_SANDBOX_EXCLUDED_COMMANDS = [
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
-): ClaudeSdkReasoningEffort {
-  if (reasoningLevel === "ultracode") return "xhigh";
-  if (reasoningLevel === "none") return "low";
-  if (reasoningLevel === "ultra") return "max";
-  return reasoningLevel;
+): ClaudeSdkReasoningEffort | undefined {
+  switch (reasoningLevel) {
+    case "ultracode":
+      return "xhigh";
+    case "none":
+      return "low";
+    case "ultra":
+      return "max";
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max":
+      return reasoningLevel;
+    default:
+      return undefined;
+  }
 }
 
 function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
@@ -69,6 +92,7 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     autoMemoryEnabled: params.memoryEnabled ?? true,
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
+    fastMode: params.serviceTier === "fast",
   };
 }
 
@@ -82,14 +106,18 @@ export function buildMutableFlagSettings(args: {
   memoryEnabled: boolean;
   reasoningLevel: ReasoningLevel | undefined;
   workflowsEnabled: boolean;
+  serviceTier: ServiceTier;
 }): ClaudeMutableFlagSettings {
+  const effortLevel =
+    args.reasoningLevel === undefined
+      ? undefined
+      : toSdkEffort(args.reasoningLevel);
   return {
     autoMemoryEnabled: args.memoryEnabled,
     enableWorkflows: args.workflowsEnabled,
-    ...(args.reasoningLevel !== undefined
-      ? { effortLevel: toSdkEffort(args.reasoningLevel) }
-      : {}),
+    ...(effortLevel !== undefined ? { effortLevel } : {}),
     ultracode: args.reasoningLevel === "ultracode",
+    fastMode: args.serviceTier === "fast",
   };
 }
 
@@ -101,7 +129,7 @@ export function buildWorkspaceWriteDenialMessage(): string {
   return "bb's workspace sandbox allows work inside the current workspace only. Stay inside the workspace or explain why extra access is needed.";
 }
 
-function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
+function isWorkspaceWriteSession(params: WorkspaceWriteSandboxArgs): boolean {
   return (
     params.permissionScope === "workspace" &&
     (params.permissionMode === "acceptEdits" ||
@@ -109,10 +137,10 @@ function usesWorkspaceSandbox(params: BuildSessionOptionsArgs): boolean {
   );
 }
 
-function buildWorkspaceWriteSandbox(
-  params: BuildSessionOptionsArgs,
+export function buildWorkspaceWriteSandbox(
+  params: WorkspaceWriteSandboxArgs,
 ): Options["sandbox"] | undefined {
-  if (!usesWorkspaceSandbox(params)) {
+  if (!params.sandboxEnabled || !isWorkspaceWriteSession(params)) {
     return undefined;
   }
 
@@ -129,6 +157,8 @@ function buildWorkspaceWriteSandbox(
       : {}),
   };
 }
+
+const CLAUDE_WINDOWS_EXECUTABLE_NAME = "claude.exe";
 
 function isExecutableFile(candidatePath: string): boolean {
   try {
@@ -163,6 +193,12 @@ function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
   if (process.getuid?.() === 0) {
     return [];
   }
+  if (process.platform === "win32") {
+    const userProfile = env.USERPROFILE?.trim();
+    return userProfile
+      ? [join(userProfile, ".local", "bin", CLAUDE_WINDOWS_EXECUTABLE_NAME)]
+      : [];
+  }
   const candidatePaths: string[] = [];
   const home = env.HOME?.trim();
   if (home) {
@@ -192,8 +228,9 @@ export function resolveClaudeCodeExecutable(
   }
 
   const executableOnPath = resolveExecutableOnPath({
-    executableName: "claude",
-    pathEnv: args.env.PATH,
+    executableName:
+      process.platform === "win32" ? CLAUDE_WINDOWS_EXECUTABLE_NAME : "claude",
+    pathEnv: args.env.PATH ?? args.env.Path,
   });
   if (executableOnPath) {
     return executableOnPath;
@@ -224,25 +261,29 @@ export function buildSessionOptions(
         };
   const model = params.model;
   const sandbox = buildWorkspaceWriteSandbox(params);
-  const additionalDirectories = usesWorkspaceSandbox(params)
+  const additionalDirectories = isWorkspaceWriteSession(params)
     ? (params.additionalWorkspaceWriteRoots ?? [])
     : [];
   const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable({ env });
   const flagSettings = buildFlagSettings(params);
+  const effort =
+    params.reasoningLevel === undefined
+      ? undefined
+      : toSdkEffort(params.reasoningLevel);
   const extraArgs = buildChromeExtraArgs(params.chromeEnabled);
 
   return {
     cwd: params.cwd,
     systemPrompt,
     model,
-    env,
+    env: {
+      ...env,
+      CLAUDE_CODE_DISABLE_1M_CONTEXT: params.disable1MContext ? "1" : "0",
+    },
     permissionMode: params.permissionMode,
-    ...(params.reasoningLevel
-      ? { effort: toSdkEffort(params.reasoningLevel) }
-      : {}),
-    ...(params.reasoningLevel
-      ? { thinking: SUMMARIZED_ADAPTIVE_THINKING }
-      : {}),
+    allowBypassPermissions: params.permissionScope === "full",
+    ...(effort !== undefined ? { effort } : {}),
+    ...(effort !== undefined ? { thinking: SUMMARIZED_ADAPTIVE_THINKING } : {}),
     settings: flagSettings,
     ...(extraArgs ? { extraArgs } : {}),
     ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
@@ -250,9 +291,6 @@ export function buildSessionOptions(
     ...(sandbox ? { sandbox } : {}),
     ...(additionalDirectories.length > 0
       ? { additionalDirectories: [...additionalDirectories] }
-      : {}),
-    ...(params.disallowedTools && params.disallowedTools.length > 0
-      ? { disallowedTools: [...params.disallowedTools] }
       : {}),
   };
 }

@@ -21,6 +21,7 @@ import {
 } from "./theme-preference";
 import { buildThemeVars } from "./theme-vars";
 import {
+  androidThemes,
   nativeRadii,
   nativeThemes,
   type NativeThemeTokens,
@@ -67,7 +68,9 @@ export function ThemeProvider({
     [store],
   );
 
-  const tokens = nativeThemes[palette][mode];
+  const tokens = (process.env.EXPO_OS === "ios" ? nativeThemes : androidThemes)[
+    palette
+  ][mode];
   const vars = useMemo(() => buildThemeVars(tokens), [tokens]);
   const theme = useMemo<Theme>(
     () => ({

@@ -1,5 +1,11 @@
-import Placeholder from "@tiptap/extension-placeholder";
-import StarterKit from "@tiptap/starter-kit";
+import { Placeholder } from "@tiptap/extensions/placeholder";
+import Blockquote from "@tiptap/extension-blockquote";
+import Document from "@tiptap/extension-document";
+import HardBreak from "@tiptap/extension-hard-break";
+import Paragraph from "@tiptap/extension-paragraph";
+import Text from "@tiptap/extension-text";
+import { UndoRedo } from "@tiptap/extensions/undo-redo";
+import { TrailingNode } from "@tiptap/extensions/trailing-node";
 import type { AnyExtension } from "@tiptap/react";
 import {
   PromptDecorationExtension,
@@ -8,12 +14,10 @@ import {
 import { PromptMentionExtension } from "./prompt-mention-extension";
 
 interface PromptEditorExtensionsOptions extends PromptDecorationExtensionOptions {
-  richTextEditing: boolean;
   getPlaceholder: () => string;
 }
 
 export function promptEditorExtensions({
-  richTextEditing,
   getPlaceholder,
   getDecorationSources,
   getDraftObservers,
@@ -21,23 +25,13 @@ export function promptEditorExtensions({
   onRuleError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
   return [
-    StarterKit.configure({
-      blockquote: {},
-      bold: richTextEditing ? {} : false,
-      bulletList: richTextEditing ? {} : false,
-      code: richTextEditing ? {} : false,
-      codeBlock: false,
-      dropcursor: false,
-      gapcursor: false,
-      heading: richTextEditing ? {} : false,
-      horizontalRule: false,
-      italic: richTextEditing ? {} : false,
-      link: false,
-      listItem: richTextEditing ? {} : false,
-      orderedList: richTextEditing ? {} : false,
-      strike: false,
-      underline: false,
-    }),
+    Blockquote,
+    Document,
+    HardBreak,
+    UndoRedo,
+    Paragraph,
+    Text,
+    TrailingNode,
     Placeholder.configure({
       placeholder: () => getPlaceholder(),
     }),

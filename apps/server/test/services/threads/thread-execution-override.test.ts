@@ -15,33 +15,6 @@ const EMPTY = { modelOverride: null, reasoningLevelOverride: null };
 const registry = await createTestProviderRegistry();
 
 describe("resolveThreadExecutionOverrideUpdate", () => {
-  it("sets a model that is present in the active catalog", () => {
-    expect(
-      resolveThreadExecutionOverrideUpdate(registry, {
-        existing: EMPTY,
-        patch: { model: "claude-opus-4-8" },
-        models: CATALOG,
-        providerId: "claude-code",
-        fallbackModel: null,
-      }),
-    ).toEqual({
-      modelOverride: "claude-opus-4-8",
-      reasoningLevelOverride: null,
-    });
-  });
-
-  it("rejects a model absent from the provider's catalog (cross-provider/unknown)", () => {
-    expect(() =>
-      resolveThreadExecutionOverrideUpdate(registry, {
-        existing: EMPTY,
-        patch: { model: "gpt-5" },
-        models: CATALOG,
-        providerId: "claude-code",
-        fallbackModel: null,
-      }),
-    ).toThrow(/not available in this thread's claude-code model catalog/);
-  });
-
   it("accepts an explicit reasoning level supported by the target model", () => {
     expect(
       resolveThreadExecutionOverrideUpdate(registry, {

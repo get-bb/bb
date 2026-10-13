@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
+import { PluginCardAuthor } from "./PluginCard";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
-import {
-  PluginMarketplaceHeaderMetadata,
-  PluginMoreFromAuthorSection,
-} from "./PluginMarketplaceListing";
+import { PluginMoreFromAuthorSection } from "./PluginMarketplaceListing";
 
 function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
   return {
@@ -33,6 +32,8 @@ function catalogEntry(pluginId: string): PluginCatalogSearchEntry {
       url: "https://github.com/patlee",
     },
     installed: false,
+    conflictingInstallSource: null,
+    installedByDefault: false,
     installs: null,
     compatible: true,
     incompatibleReason: null,
@@ -44,13 +45,12 @@ afterEach(cleanup);
 describe("plugin marketplace author links", () => {
   it("routes the detail author name to the author page", () => {
     render(
-      <MemoryRouter
-        initialEntries={["/plugins/Current?category=security"]}
-      >
-        <PluginMarketplaceHeaderMetadata entry={catalogEntry("Current")} />
+      <MemoryRouter initialEntries={["/plugins/Current?category=security"]}>
+        <PluginCardAuthor entry={catalogEntry("Current")} />
       </MemoryRouter>,
     );
 
+    expect(screen.queryByText(/^By/u)).toBeNull();
     expect(
       screen.getByRole("link", { name: "Pat Lee" }).getAttribute("href"),
     ).toBe(

@@ -4,9 +4,13 @@ import {
   type FilePreviewState,
   type TextFilePreviewKind,
 } from "./FilePreview";
+import { useEffect } from "react";
+import { BbSourceCodeSplit } from "@/components/code/SourceCodeHost";
 import { hashSourceContents } from "@/components/code/source-code-budget";
+import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
 import type { MarkdownLinkRouting } from "@/components/ui/markdown-link-routing.js";
-import { HttpError } from "@/lib/api";
+import { asHttpError, getHttpErrorMessage } from "@/lib/http-error";
+import { extractErrorMessage } from "@bb/core-ui";
 import type {
   FilePreview,
   FilePreviewLineRange,
@@ -14,6 +18,7 @@ import type {
   WorkspaceFilePreviewStatusLabel,
 } from "@bb/client-core";
 import {
+  FILE_PREVIEW_HTML_MAX_BYTES,
   isCsvFilePreview,
   isHtmlFilePreviewPath,
   isMarkdownFilePreview,
@@ -79,6 +84,13 @@ function getTextPreviewKind(
   return null;
 }
 
+function resolveFilePreviewErrorMessage(error: Error): string | null {
+  const httpError = asHttpError(error);
+  return httpError === null
+    ? extractErrorMessage(error.message)
+    : getHttpErrorMessage(httpError);
+}
+
 interface ResolveSecondaryPanelFilePreviewStateArgs {
   activePath: string;
   error: Error | null | undefined;
@@ -96,25 +108,26 @@ function resolveSecondaryPanelFilePreviewState({
   isLoading,
   lineRange,
 }: ResolveSecondaryPanelFilePreviewStateArgs): FilePreviewState {
-  if (error) {
-    const isNotFound = error instanceof HttpError && error.status === 404;
-    return { kind: isNotFound ? "not-found" : "error" };
+  const hasCurrentPreview = filePreview?.path === activePath;
+  if (asHttpError(error)?.status === 404) {
+    return { kind: "not-found" };
+  }
+  if (error && !hasCurrentPreview) {
+    const message = resolveFilePreviewErrorMessage(error);
+    return message === null ? { kind: "error" } : { kind: "error", message };
   }
 
-  if (isLoading || !filePreview || filePreview.path !== activePath) {
+  if (isLoading || !filePreview || !hasCurrentPreview) {
     return { kind: "loading" };
   }
 
-  if (htmlPreviewUrl !== null && isHtmlFilePreviewPath(activePath)) {
-    if (filePreview.kind !== "text") {
-      return {
-        kind: "iframe",
-        sandbox: GENERIC_HTML_IFRAME_SANDBOX,
-        title: activePath,
-        url: htmlPreviewUrl,
-      };
-    }
-
+  if (
+    htmlPreviewUrl !== null &&
+    isHtmlFilePreviewPath(activePath) &&
+    filePreview.kind === "text" &&
+    new TextEncoder().encode(filePreview.content).byteLength <=
+      FILE_PREVIEW_HTML_MAX_BYTES
+  ) {
     return {
       kind: "html",
       file: buildTextPreviewFile({ activePath, filePreview }),
@@ -148,8 +161,14 @@ function resolveSecondaryPanelFilePreviewState({
   }
 
   return {
-    kind: "error",
-    message: `Preview not available for ${filePreview.mimeType}.`,
+    kind: "unsupported",
+    file: {
+      mimeType: filePreview.mimeType,
+      name: filePreview.name ?? activePath.split("/").at(-1) ?? activePath,
+      reason: filePreview.reason,
+      sizeBytes: filePreview.sizeBytes,
+      url: filePreview.url,
+    },
   };
 }
 
@@ -168,6 +187,11 @@ export function SecondaryPanelFilePreview({
   onRefresh,
   statusLabel = null,
 }: SecondaryPanelFilePreviewProps) {
+  const requestCodeWorkers = useRequestPierreWorkerPool();
+  useEffect(() => {
+    void BbSourceCodeSplit.preload();
+    requestCodeWorkers();
+  }, [requestCodeWorkers]);
   const state = resolveSecondaryPanelFilePreviewState({
     activePath,
     error,

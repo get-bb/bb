@@ -1,6 +1,13 @@
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useCloseMobileSidebar } from "@/components/ui/sidebar.js";
+import {
+  useCloseMobileSidebar,
+  useIsSidebarFramed,
+} from "@/components/ui/sidebar.js";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -10,26 +17,41 @@ import {
 } from "@/lib/bb-desktop";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 
-export function SidebarTopReserveRow({ testId }: { testId: string }) {
+export function SidebarTopReserveRow({
+  testId,
+  headerSlot,
+}: {
+  testId: string;
+  headerSlot?: ReactNode;
+}) {
   const closeOnMobile = useCloseMobileSidebar();
+  const isFramed = useIsSidebarFramed();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
+
+  if (isFramed && headerSlot === undefined) {
+    return <div data-testid={testId} className="h-2 shrink-0" />;
+  }
 
   return (
     <div
       data-testid={testId}
       className={cn(
         CHROME_ROW_CLASS,
-        "shrink-0 justify-end px-2",
-        usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+        "shrink-0 justify-end gap-1 px-2",
+        usesDesktopChrome && !isFramed && MACOS_WINDOW_DRAG_CLASS,
       )}
     >
-      <SidebarHistoryNavigationControls
-        onNavigate={closeOnMobile}
-        className={
-          usesDesktopChrome ? MACOS_CHROME_CONTROL_NO_DRAG_CLASS : undefined
-        }
-      />
+      {headerSlot}
+      {isFramed ? null : (
+        <SidebarHistoryNavigationControls
+          onNavigate={closeOnMobile}
+          className={cn(
+            "shrink-0",
+            usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+          )}
+        />
+      )}
     </div>
   );
 }

@@ -111,8 +111,8 @@ describe("parseCustomAcpAgents", () => {
   it.each([
     ["an absolute skill root", { nativeSkillRoots: { user: ["/etc/skills"] } }],
     [
-      "a level outside bb's ladder",
-      { reasoningCli: { flag: "-e", supportedLevels: ["turbo"] } },
+      "an empty level id",
+      { reasoningCli: { flag: "-e", supportedLevels: [""] } },
     ],
     [
       "a default level it does not support",
@@ -169,28 +169,50 @@ describe("customAcpAgentDefinition", () => {
   });
 });
 
-describe("acpProviderDeclaration", () => {
-  it("declares a configured agent's native skill roots", () => {
+describe("custom agents that report usage", () => {
+  const parse = (entry: Record<string, unknown>) => {
     const [agent] = parseCustomAcpAgents({
-      entries: [
-        {
-          id: "amp",
-          displayName: "Amp",
-          command: "amp",
-          nativeSkillRoots: { user: [".amp/skills"], project: [".amp"] },
-        },
-      ],
+      entries: [entry],
       reservedProviderIds: reserved,
     }).agents;
     if (agent === undefined) throw new Error("expected the agent to parse");
+    return agent;
+  };
 
-    const declaration = acpProviderDeclaration(customAcpAgentDefinition(agent));
-    expect(declaration.experimental_nativeSkillRoots).toEqual({
-      user: [".amp/skills"],
-      project: [".amp"],
+  it("declares the usage capability when the entry asks for it", () => {
+    const agent = parse({
+      id: "cursor-pooled",
+      displayName: "Cursor (pooled)",
+      command: "cursor-route",
+      args: ["acp"],
+      dialect: "cursor",
+      providerUsage: true,
     });
+
+    expect(customAcpAgentDefinition(agent).providerUsage).toBe(true);
+    expect(
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
+        ?.usage,
+    ).toBe(true);
   });
 
+  it("stays out of the usage surface by default", () => {
+    const agent = parse({
+      id: "amp-plain",
+      displayName: "Amp",
+      command: "amp",
+      args: ["acp"],
+    });
+
+    expect(customAcpAgentDefinition(agent).providerUsage).toBeUndefined();
+    expect(
+      acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
+        ?.usage,
+    ).toBe(false);
+  });
+});
+
+describe("acpProviderDeclaration", () => {
   it("declares no skill roots for an agent that names none", () => {
     for (const agent of KNOWN_ACP_AGENTS) {
       if (agent.launch.nativeSkillRoots !== undefined) continue;
@@ -240,9 +262,29 @@ describe("acpProviderDeclaration", () => {
     });
     expect(byId.get("acp-grok")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "grok",
+      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
+      acpLaunchSpec: {
+        command: "grok",
+        args: ["agent", "stdio"],
+        permissionCli: {
+          full: ["--always-approve"],
+          insertAfterArgs: 1,
+        },
+      },
     });
+    expect(
+      byId.get("acp-grok")?.experimental_bridgeOptions?.["acpLaunchSpec"],
+    ).not.toHaveProperty("modelCli");
+    expect(
+      byId.get("acp-grok")?.experimental_bridgeOptions?.["acpLaunchSpec"],
+    ).not.toHaveProperty("reasoningCli");
     expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "opencode",
+    });
+    expect(byId.get("acp-opencode")?.maintenance).toEqual({
+      health: true,
+      usage: true,
+      installation: false,
     });
     expect(
       byId.get("acp-opencode")?.capabilities.supportsManualCompaction,
@@ -260,6 +302,8 @@ describe("acpProviderDeclaration", () => {
       "low",
       "medium",
       "high",
+      "xhigh",
+      "max",
     ]);
     expect(grok.experimental_visibility).toBe("installed");
 

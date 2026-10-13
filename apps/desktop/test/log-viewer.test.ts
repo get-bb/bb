@@ -216,28 +216,31 @@ describe("log viewer", () => {
     });
   });
 
-  it("kills tail child processes when stopped", async () => {
-    const tempDir = await createTempDir();
-    await writeFile(join(tempDir.path, "server.1.log"), "");
-    await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
-    const tailer = createLogTailer({
-      logDir: tempDir.path,
-      onLines() {},
-    });
-    tailers.push(tailer);
-    await tailer.start();
+  it.skipIf(process.platform === "win32")(
+    "kills tail child processes when stopped",
+    async () => {
+      const tempDir = await createTempDir();
+      await writeFile(join(tempDir.path, "server.1.log"), "");
+      await writeFile(join(tempDir.path, "host-daemon.1.log"), "");
+      const tailer = createLogTailer({
+        logDir: tempDir.path,
+        onLines() {},
+      });
+      tailers.push(tailer);
+      await tailer.start();
 
-    const processIds = tailer.processIds();
-    expect(processIds).toHaveLength(2);
-    expect(processIds.every(isProcessRunning)).toBe(true);
+      const processIds = tailer.processIds();
+      expect(processIds).toHaveLength(2);
+      expect(processIds.every(isProcessRunning)).toBe(true);
 
-    tailer.stop();
-    await waitFor({
-      predicate() {
-        return processIds.every((pid) => !isProcessRunning(pid));
-      },
-    });
-  });
+      tailer.stop();
+      await waitFor({
+        predicate() {
+          return processIds.every((pid) => !isProcessRunning(pid));
+        },
+      });
+    },
+  );
 
   it("caps the in-memory line buffer to the configured line limit", () => {
     const buffer = createLogLineBuffer({

@@ -36,7 +36,7 @@ export function HugeIcon({
       icon={ICON_MAP[name]}
       size={size}
       color={color ?? tokens.foreground}
-      strokeWidth={strokeWidth}
+      strokeWidth={name === "CircleCheckFilled" ? undefined : strokeWidth}
       style={style}
       accessible={accessibilityLabel !== undefined}
       accessibilityLabel={accessibilityLabel}

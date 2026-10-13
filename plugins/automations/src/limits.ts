@@ -1,6 +1,10 @@
 export const AUTOMATION_NAME_MAX_LENGTH = 200;
 export const AUTOMATION_SCRIPT_MAX_LENGTH = 262_144;
 export const AUTOMATION_SCRIPT_FILE_MAX_LENGTH = 200;
+export const AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH = 4096;
+export function isPrintableWorkingDirectoryPath(value: string): boolean {
+  return !/\p{Cc}/u.test(value);
+}
 export const SCHEDULE_CRON_MAX_LENGTH = 100;
 export const SCHEDULE_TIMEZONE_MAX_LENGTH = 100;
 export const AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH = 200;

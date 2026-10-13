@@ -80,6 +80,54 @@ describe("builtin Keep Awake host entry", () => {
     await harness.experimental_dispose();
   });
 
+  it("holds a Windows execution state for the worker's lifetime", async () => {
+    const spawn = vi.fn(() => createChild());
+    const harness = experimental_createHostEntryHarness(
+      createKeepAwakeHostEntry({ platform: "win32", pid: 4321, spawn }),
+    );
+
+    await expect(
+      harness.experimental_call("setEnabled", { enabled: true }),
+    ).resolves.toEqual({ enabled: true, supported: true });
+    expect(spawn).toHaveBeenCalledExactlyOnceWith(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        expect.stringMatching(
+          /SetThreadExecutionState\(2147483649\).*Wait-Process -Id 4321$/u,
+        ),
+      ],
+      { stdio: "ignore" },
+    );
+    await harness.experimental_dispose();
+  });
+
+  it("waits longer between restarts while the child keeps exiting at once", async () => {
+    vi.useFakeTimers();
+    const children = [createChild(), createChild(), createChild()];
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce(children[0])
+      .mockReturnValueOnce(children[1])
+      .mockReturnValueOnce(children[2]);
+    const harness = experimental_createHostEntryHarness(
+      createKeepAwakeHostEntry({ platform: "win32", pid: 4321, spawn }),
+    );
+
+    await harness.experimental_call("setEnabled", { enabled: true });
+    children[0]?.emit("exit");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    children[1]?.emit("exit");
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(spawn).toHaveBeenCalledTimes(3);
+    await harness.experimental_dispose();
+  });
+
   it("never spawns on unsupported hosts", async () => {
     const spawn = vi.fn(() => createChild());
     const harness = experimental_createHostEntryHarness(

@@ -14,7 +14,6 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import semverCompare from "semver/functions/compare.js";
 import minVersion from "semver/ranges/min-version.js";
 import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
-import { loadPluginSdkDeclarations } from "./plugin-sdk-dts.js";
 import {
   PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
   PLUGIN_STARTER_DEPENDENCIES,
@@ -25,57 +24,6 @@ interface ScaffoldPluginArgs {
   targetDir: string;
   packageName: string;
   bbVersion: string;
-}
-
-interface SyncPluginTypesArgs {
-  rootDir: string;
-  app: boolean;
-  check?: boolean;
-}
-
-interface SyncedPluginTypeFile {
-  path: string;
-  outcome: "written" | "unchanged" | "stale";
-}
-
-export async function syncPluginTypes(
-  args: SyncPluginTypesArgs,
-): Promise<SyncedPluginTypeFile[]> {
-  const { rootDir, app, check = false } = args;
-  const typesDir = join(rootDir, "types");
-  const declarations = await loadPluginSdkDeclarations();
-  const candidates: { name: string; content: string; optional: boolean }[] = [
-    { name: "bb-plugin-sdk.d.ts", content: declarations.root, optional: false },
-    {
-      name: "bb-plugin-sdk-app.d.ts",
-      content: declarations.app,
-      optional: !app,
-    },
-  ];
-  await assertWritableTypesDir(rootDir, typesDir);
-  const results: SyncedPluginTypeFile[] = [];
-  for (const candidate of candidates) {
-    const filePath = join(typesDir, candidate.name);
-    const relativePath = `types/${candidate.name}`;
-    const existing = await statNoFollow(filePath, relativePath);
-    if (existing !== null && !existing.isFile()) {
-      throw new Error(`${relativePath} is not a regular file`);
-    }
-    const current = existing === null ? null : await readFile(filePath, "utf8");
-    if (current === null && candidate.optional) continue;
-    if (current === candidate.content) {
-      results.push({ path: relativePath, outcome: "unchanged" });
-      continue;
-    }
-    if (check) {
-      results.push({ path: relativePath, outcome: "stale" });
-      continue;
-    }
-    await mkdir(typesDir, { recursive: true });
-    await writeFileAtomically(filePath, relativePath, candidate.content);
-    results.push({ path: relativePath, outcome: "written" });
-  }
-  return results;
 }
 
 interface PluginSdkLayout {
@@ -296,7 +244,6 @@ async function assertInsidePlugin(
 interface SetPluginSdkPinArgs {
   rootDir: string;
   sdkVersion: string;
-  app: boolean;
   dryRun?: boolean;
 }
 
@@ -316,10 +263,10 @@ interface PluginSdkPinChange {
 export async function setPluginSdkPin(
   args: SetPluginSdkPinArgs,
 ): Promise<PluginSdkPinChange | null> {
-  const { rootDir, sdkVersion, app, dryRun = false } = args;
+  const { rootDir, sdkVersion, dryRun = false } = args;
   const plan = await planManifest(rootDir, sdkVersion, {
     raiseFloor: false,
-    shimmedTypePins: app ? "all" : "declared",
+    shimmedTypePins: "declared",
   });
   if (plan.text === null) return null;
   if (!dryRun) {
@@ -340,7 +287,7 @@ interface ManifestPlan {
   text: string | null;
 }
 
-type ShimmedTypePinPolicy = "none" | "declared" | "all";
+type ShimmedTypePinPolicy = "none" | "declared";
 
 async function planManifest(
   rootDir: string,
@@ -453,7 +400,7 @@ function applyShimmedTypePins(
         : inDependencies
           ? runtimeDeclared
           : null;
-    if (declared === null && policy === "declared") continue;
+    if (declared === null) continue;
     if (declared === hostVersion && !inDependencies) continue;
     changes.push({
       name,
@@ -1365,7 +1312,7 @@ reaches BB's own toaster), are provided by the BB app at runtime and never
 bundled. Every shimmed package is declared in \`devDependencies\` at the
 host's version so those imports typecheck; keep them there (never in
 \`dependencies\`, which would bundle a second copy), and \`bb plugin types\`
-repins them alongside the SDK. Ship \`dist/\` (npm tarball or committed for
+repins declared packages alongside the SDK; unused packages may be removed. Ship \`dist/\` (npm tarball or committed for
 git installs) so people installing your plugin never need npm.
 
 ## Manifest
@@ -1503,7 +1450,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         },
         dependencies: {
           ...PLUGIN_STARTER_DEPENDENCIES,
-          zod: "^4.3.6",
+          zod: "^4.6.5",
         },
         devDependencies: {
           "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,

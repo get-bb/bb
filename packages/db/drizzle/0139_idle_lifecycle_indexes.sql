@@ -1,0 +1,2 @@
+CREATE INDEX `hosts_pending_provider_idx` ON `hosts` (`machine_provider_id`) WHERE "hosts"."destroyed_at" IS NULL AND "hosts"."phase" <> 'destroyed';--> statement-breakpoint
+CREATE INDEX `threads_deleted_cleanup_idx` ON `threads` (`deleted_at`) WHERE "threads"."deleted_at" IS NOT NULL;

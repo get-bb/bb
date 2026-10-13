@@ -4,6 +4,7 @@ import { useState } from "react";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Icon, preloadExtendedIcons } from "@bb/shared-ui/icon";
+import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import type { ExperimentalIconRegistration } from "@get-bb/plugin-sdk/app";
 import {
@@ -13,6 +14,11 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { PromptMentionIcon } from "@/components/promptbox/mentions/PromptMentionIcon";
+import {
+  setPluginLogoUrls,
+  resetPluginLogoStoreForTest,
+} from "@/lib/plugin-logos";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 
 function Mark({ className }: { className?: string }) {
@@ -38,7 +44,9 @@ function registrations(...icons: ExperimentalIconRegistration[]) {
 
 afterEach(() => {
   cleanup();
+  setPluginAssetIcons(new Map());
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   vi.restoreAllMocks();
 });
 
@@ -221,3 +229,83 @@ it("remounts plugin artwork on a new generation even when the component function
     "2",
   );
 });
+
+it("resolves a manifest-declared glyph, and lets an app registration of the same name win", () => {
+  setPluginAssetIcons(
+    new Map([["acme/declared", "/api/v1/plugins/acme/assets/icons/d.svg?h=1"]]),
+  );
+  const view = render(<Icon name="acme/declared" fallback="Check" />);
+  const asset = view.container.querySelector("[data-plugin-icon-asset]");
+  expect(asset?.getAttribute("data-icon")).toBe("acme/declared");
+  expect(view.container.querySelector('[data-icon="Check"]')).toBeNull();
+
+  act(() =>
+    setPluginSlotRegistrations(
+      "acme",
+      registrations({ name: "acme/declared", component: Mark }),
+    ),
+  );
+  expect(view.container.querySelector('[data-mark="one"]')).not.toBeNull();
+  expect(view.container.querySelector("[data-plugin-icon-asset]")).toBeNull();
+
+  act(() => removePluginSlotRegistrations("acme"));
+  expect(
+    view.container.querySelector("[data-plugin-icon-asset]"),
+  ).not.toBeNull();
+});
+
+it.each(["/acme.svg", null])(
+  "resolves mention icons before branding and reacts to icon registration (%s)",
+  (compactIconUrl) => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "acme",
+          {
+            displayName: "Acme",
+            icon: "Check",
+            compactIconUrl,
+            logoUrl: null,
+            logoDarkUrl: null,
+            icons: new Map(),
+          },
+        ],
+      ]),
+    );
+    const resource = {
+      kind: "plugin",
+      pluginId: "acme",
+      itemId: "receipt:1",
+      label: "Receipt",
+    } as const;
+    const view = render(<PromptMentionIcon resource={resource} />);
+    const branding = view.container.innerHTML;
+    expect(branding).not.toBe("");
+    view.rerender(
+      <PromptMentionIcon resource={{ ...resource, icon: "acme/receipt" }} />,
+    );
+    expect(view.container.innerHTML).toBe(branding);
+    act(() =>
+      setPluginSlotRegistrations(
+        "acme",
+        registrations({ name: "acme/receipt", component: Mark }),
+      ),
+    );
+    expect(view.container.querySelector('[data-mark="one"]')).not.toBeNull();
+    act(() => removePluginSlotRegistrations("acme"));
+    expect(view.container.innerHTML).toBe(branding);
+    act(() => setPluginAssetIcons(new Map([["acme/receipt", "/receipt.svg"]])));
+    expect(
+      view.container.querySelector('[data-icon="acme/receipt"]'),
+    ).not.toBeNull();
+    act(() => setPluginAssetIcons(new Map()));
+    expect(view.container.innerHTML).toBe(branding);
+    view.rerender(
+      <PromptMentionIcon resource={{ ...resource, icon: "Zap" }} />,
+    );
+    expect(view.container.querySelector('[data-icon="Zap"]')).not.toBeNull();
+    act(() => resetPluginLogoStoreForTest());
+    view.rerender(<PromptMentionIcon resource={resource} />);
+    expect(view.container.querySelector('[data-icon="Zap"]')).not.toBeNull();
+  },
+);

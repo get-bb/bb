@@ -84,7 +84,7 @@ async function runGit(
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   tempDirs.push(dir);
-  return dir;
+  return fs.realpath(dir);
 }
 
 async function initRepo(): Promise<string> {
@@ -868,110 +868,6 @@ describe.sequential("watchWorkspaceStatus", () => {
         cwd: repoPath,
       });
       expect(branchOutput.stdout.trim()).toBe("feature");
-    } finally {
-      stopWatching();
-    }
-  });
-
-  it("detects repeated edits to an already dirty file", async () => {
-    const repoPath = await initRepo();
-    const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
-      await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
-    const calls: number[] = [];
-    const stopWatching = watchWorkspaceStatus(repoPath, {
-      onChange: () => {
-        calls.push(Date.now());
-      },
-      onWatchError: ignoreWatchError,
-    });
-
-    try {
-      await ready;
-      await fs.writeFile(
-        path.join(repoPath, "README.md"),
-        "first edit\n",
-        "utf8",
-      );
-      emitWorkspaceRootEvents([
-        {
-          path: path.join(repoPath, "README.md"),
-          type: "update",
-        },
-      ]);
-      await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
-
-      await fs.writeFile(
-        path.join(repoPath, "README.md"),
-        "second edit\n",
-        "utf8",
-      );
-      emitWorkspaceRootEvents([
-        {
-          path: path.join(repoPath, "README.md"),
-          type: "update",
-        },
-      ]);
-      await waitForCallCount(() => calls.length, 2, WATCH_TEST_TIMEOUT_MS);
-
-      const diffOutput = await runGit({
-        args: ["diff", "HEAD", "--"],
-        cwd: repoPath,
-      });
-      expect(diffOutput.stdout).toContain("second edit");
-    } finally {
-      stopWatching();
-    }
-  });
-
-  it("detects repeated edits to dirty files with spaced file names", async () => {
-    const repoPath = await initRepo();
-    await fs.writeFile(path.join(repoPath, "a b.txt"), "base\n", "utf8");
-    await runGit({ args: ["add", "a b.txt"], cwd: repoPath });
-    await runGit({ args: ["commit", "-m", "Add spaced file"], cwd: repoPath });
-
-    const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
-      await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
-    const calls: number[] = [];
-    const stopWatching = watchWorkspaceStatus(repoPath, {
-      onChange: () => {
-        calls.push(Date.now());
-      },
-      onWatchError: ignoreWatchError,
-    });
-
-    try {
-      await ready;
-      await fs.writeFile(
-        path.join(repoPath, "a b.txt"),
-        "first edit\n",
-        "utf8",
-      );
-      emitWorkspaceRootEvents([
-        {
-          path: path.join(repoPath, "a b.txt"),
-          type: "update",
-        },
-      ]);
-      await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
-
-      await fs.writeFile(
-        path.join(repoPath, "a b.txt"),
-        "second edit\n",
-        "utf8",
-      );
-      emitWorkspaceRootEvents([
-        {
-          path: path.join(repoPath, "a b.txt"),
-          type: "update",
-        },
-      ]);
-      await waitForCallCount(() => calls.length, 2, WATCH_TEST_TIMEOUT_MS);
-
-      const diffOutput = await runGit({
-        args: ["diff", "HEAD", "--"],
-        cwd: repoPath,
-      });
-      expect(diffOutput.stdout).toContain("second edit");
     } finally {
       stopWatching();
     }

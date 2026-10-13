@@ -1,0 +1,1 @@
+ALTER TABLE `plugins` ADD `enabled_follows_default` integer DEFAULT false NOT NULL;

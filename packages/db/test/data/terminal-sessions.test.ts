@@ -3,7 +3,6 @@ import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
-  getTerminalSession,
   listTerminalSessions,
   updateTerminalSession,
   updateTerminalSessions,
@@ -53,52 +52,13 @@ function listThreadlessTerminalSessionsByEnvironment(
   });
 }
 
-function listVisibleThreadlessTerminalSessionsByEnvironment(
-  db: TestDb,
-  environmentId: string,
-) {
-  return listTerminalSessions(db, {
-    scope: { environmentId, kind: "threadless-environment" },
-    visible: true,
-  });
-}
-
-function getThreadlessTerminalSessionForEnvironment(
-  db: TestDb,
-  args: { environmentId: string; terminalId: string },
-) {
-  return getTerminalSession(db, {
-    ...args,
-    kind: "threadless-environment",
-  });
-}
-
-function markThreadlessTerminalSessionUserInput(
-  db: TestDb,
-  args: { environmentId: string; now: number; terminalId: string },
-) {
-  return updateTerminalSession(db, {
-    now: args.now,
-    scope: {
-      environmentId: args.environmentId,
-      kind: "threadless-environment",
-      terminalId: args.terminalId,
-    },
-    update: { kind: "user-input" },
-  });
-}
-
 function markTerminalSessionUserInput(
   db: TestDb,
   args: { now: number; terminalId: string; threadId: string },
 ) {
   return updateTerminalSession(db, {
     now: args.now,
-    scope: {
-      kind: "thread",
-      terminalId: args.terminalId,
-      threadId: args.threadId,
-    },
+    scope: { kind: "terminal", terminalId: args.terminalId },
     update: { kind: "user-input" },
   });
 }
@@ -170,7 +130,7 @@ function markDaemonTerminalSessionsDisconnected(
       kind: "daemon",
       statuses: ["starting", "running"],
     },
-    update: { kind: "disconnect" },
+    update: { kind: "disconnect", retainDaemonSession: false },
   });
 }
 
@@ -197,7 +157,7 @@ function setup(): TerminalSessionFixture {
     source: { type: "local_path", hostId: host.id, path: "/tmp/project" },
   });
   const environment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
+    providerOwnsPath: false,
     projectId: project.id,
     hostId: host.id,
     path: "/tmp/workspace",
@@ -257,55 +217,15 @@ describe("terminal sessions", () => {
     const threadTerminal = createStartingTerminal(fixture);
     const threadlessTerminal = createStartingThreadlessTerminal(fixture);
 
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({ id: threadTerminal.id }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [expect.objectContaining({ id: threadTerminal.id })],
+    );
     expect(
       listThreadlessTerminalSessionsByEnvironment(
         fixture.db,
         fixture.environment.id,
       ),
     ).toEqual([expect.objectContaining({ id: threadlessTerminal.id })]);
-    expect(
-      getThreadlessTerminalSessionForEnvironment(fixture.db, {
-        environmentId: fixture.environment.id,
-        terminalId: threadTerminal.id,
-      }),
-    ).toBeNull();
-  });
-
-  it("marks a threadless terminal dirty on first user input only", () => {
-    const fixture = setup();
-    const terminal = createStartingThreadlessTerminal(fixture);
-
-    const firstInput = markThreadlessTerminalSessionUserInput(fixture.db, {
-      environmentId: fixture.environment.id,
-      terminalId: terminal.id,
-      now: 10,
-    });
-    const secondInput = markThreadlessTerminalSessionUserInput(fixture.db, {
-      environmentId: fixture.environment.id,
-      terminalId: terminal.id,
-      now: 20,
-    });
-
-    expect(firstInput).toMatchObject({
-      id: terminal.id,
-      lastUserInputAt: 10,
-      updatedAt: 10,
-    });
-    expect(secondInput).toBeNull();
-    expect(
-      listVisibleThreadlessTerminalSessionsByEnvironment(
-        fixture.db,
-        fixture.environment.id,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        lastUserInputAt: 10,
-      }),
-    ]);
   });
 
   it("marks only the expected starting daemon session running", () => {
@@ -349,14 +269,16 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        closeReason: "thread-deleted",
-        daemonSessionId: null,
-        status: "exited",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          closeReason: "thread-deleted",
+          daemonSessionId: null,
+          status: "exited",
+        }),
+      ],
+    );
   });
 
   it("marks a terminal dirty on first user input only", () => {
@@ -380,12 +302,14 @@ describe("terminal sessions", () => {
       updatedAt: 10,
     });
     expect(secondInput).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        lastUserInputAt: 10,
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          lastUserInputAt: 10,
+        }),
+      ],
+    );
   });
 
   it("does not resurrect a terminal exited by environment destruction", () => {
@@ -406,14 +330,16 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        closeReason: "environment-destroyed",
-        daemonSessionId: null,
-        status: "exited",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          closeReason: "environment-destroyed",
+          daemonSessionId: null,
+          status: "exited",
+        }),
+      ],
+    );
   });
 
   it("does not resurrect a terminal disconnected from its daemon session", () => {
@@ -433,13 +359,15 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        daemonSessionId: null,
-        status: "disconnected",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          daemonSessionId: null,
+          status: "disconnected",
+        }),
+      ],
+    );
   });
 
   it("lists starting, running, and disconnected terminals as visible", () => {
@@ -527,12 +455,14 @@ describe("terminal sessions", () => {
     });
 
     expect(running).toBeNull();
-    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual([
-      expect.objectContaining({
-        id: terminal.id,
-        daemonSessionId: fixture.session.id,
-        status: "starting",
-      }),
-    ]);
+    expect(listTerminalSessionsByThread(fixture.db, fixture.thread.id)).toEqual(
+      [
+        expect.objectContaining({
+          id: terminal.id,
+          daemonSessionId: fixture.session.id,
+          status: "starting",
+        }),
+      ],
+    );
   });
 });

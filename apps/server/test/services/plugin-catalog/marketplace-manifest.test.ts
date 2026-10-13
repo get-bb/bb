@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -16,7 +17,6 @@ import {
   resolvedEntrySource,
   type MarketplaceEntry,
 } from "../../../src/services/plugin-catalog/marketplace-manifest.js";
-import { BUNDLED_CURATED_MARKETPLACE } from "../../../src/services/plugin-catalog/curated-marketplace.js";
 
 const MANIFEST_URL = "https://getbb.app/marketplace/v1/marketplace.json";
 const MANIFEST_V2_URL = "https://getbb.app/marketplace/v2/marketplace.json";
@@ -400,7 +400,7 @@ describe("marketplace manifest schema", () => {
         ),
       ).toEqual({
         kind: "local",
-        path: "/checkout/icons/widgets.svg",
+        path: join("/checkout", "icons", "widgets.svg"),
         relativePath: "icons/widgets.svg",
       });
       expect(
@@ -689,11 +689,5 @@ describe("marketplace manifest schema", () => {
         expect(() => parse([entry({ engines })])).toThrow(/engines/u);
       }
     });
-  });
-
-  it("validates the bundled seed snapshot", () => {
-    expect(() =>
-      parseMarketplaceManifest(BUNDLED_CURATED_MARKETPLACE, "bundled snapshot"),
-    ).not.toThrow();
   });
 });

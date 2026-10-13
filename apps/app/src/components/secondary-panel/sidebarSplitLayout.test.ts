@@ -7,6 +7,7 @@ import {
   getFixedPanelTabsStateStorageKey,
 } from "@/lib/fixed-panel-tabs-state";
 import {
+  adjacentSidebarTab,
   SIDEBAR_FIXED_INFO_TAB_ID,
   createSidebarSplitState,
   getSidebarTabPlacement,
@@ -21,7 +22,6 @@ import {
   removeSidebarSplit,
   reorderSidebarTab,
   restoreSidebarTabPlacement,
-  replaceSidebarTab,
   resizeSidebarSplit,
   selectSidebarTab,
   serializeSidebarSplitState,
@@ -381,28 +381,6 @@ describe("sidebar split layout", () => {
     ).toEqual([SIDEBAR_FIXED_INFO_TAB_ID, firstTabId, secondTabId]);
   });
 
-  it("keeps a New Tab replacement in its existing split pane", () => {
-    const newTabId = "new-tab:launcher";
-    const terminalTabId = "terminal:term-a:none";
-    const split = splitOff(
-      createSidebarSplitState([SIDEBAR_FIXED_INFO_TAB_ID, newTabId], newTabId),
-      newTabId,
-      "bottom",
-    );
-    const replaced = replaceSidebarTab(split, newTabId, terminalTabId);
-    const reconciled = reconcileSidebarSplitState(
-      replaced,
-      [SIDEBAR_FIXED_INFO_TAB_ID, terminalTabId],
-      terminalTabId,
-    );
-
-    expect(countPanes(reconciled.layout.root)).toBe(2);
-    expect(
-      getSidebarGroupForPane(reconciled, reconciled.layout.focusedPaneId)
-        ?.tabIds,
-    ).toEqual([terminalTabId]);
-  });
-
   it("preserves browser, terminal, and plugin tabs across persistence", () => {
     const liveTabIds = [
       SIDEBAR_FIXED_INFO_TAB_ID,
@@ -692,5 +670,103 @@ describe("sidebar split layout", () => {
     expect(
       (resized.layout.root.sizes[0] ?? 0) / pairTotal,
     ).toBeGreaterThanOrEqual(0.15);
+  });
+});
+
+describe("adjacentSidebarTab", () => {
+  it("includes the new-tab control between pane groups without changing the selected tab", () => {
+    const initial = createSidebarSplitState(["a", "b"], "a");
+    const left = initial.layout.focusedPaneId;
+    const state = moveSidebarTab(
+      initial,
+      left,
+      "b",
+      { paneId: left, zone: "right" },
+      { groupId: "right" },
+    );
+    const right = state.layout.focusedPaneId;
+    expect(adjacentSidebarTab(state, 1, [], { focused: false })).toEqual({
+      paneId: right,
+      tabId: null,
+    });
+    expect(adjacentSidebarTab(state, -1, [], { focused: true })).toEqual({
+      paneId: right,
+      tabId: "b",
+    });
+    expect(adjacentSidebarTab(state, 1, [], { focused: true })).toEqual({
+      paneId: left,
+      tabId: "a",
+    });
+    expect(adjacentSidebarTab(state, -1, [], { focused: false })).toEqual({
+      paneId: left,
+      tabId: null,
+    });
+    const maximized = setSidebarPaneMaximized(state, right);
+    expect(adjacentSidebarTab(maximized, 1, [], { focused: true })).toEqual({
+      paneId: right,
+      tabId: "b",
+    });
+    expect(getSidebarGroupForPane(state, right)?.activeTabId).toBe("b");
+  });
+
+  it("follows fixed headers before reordered movable tabs and wraps both ways", () => {
+    const initial = createSidebarSplitState(
+      ["file-a", "info", "file-b", "diff"],
+      "info",
+    );
+    const paneId = initial.layout.focusedPaneId;
+    const state = reorderSidebarTab(initial, paneId, "file-b", "file-a");
+    const fixed = ["info", "diff"];
+    expect(adjacentSidebarTab(state, -1, fixed)?.tabId).toBe("file-a");
+    expect(adjacentSidebarTab(state, 1, fixed)?.tabId).toBe("diff");
+    const diff = selectSidebarTab(state, paneId, "diff");
+    expect(adjacentSidebarTab(diff, 1, fixed)?.tabId).toBe("file-b");
+    const last = selectSidebarTab(state, paneId, "file-a");
+    expect(adjacentSidebarTab(last, 1, fixed)?.tabId).toBe("info");
+  });
+
+  it("crosses nested groups in visual reading order and excludes maximized-away panes", () => {
+    let state = createSidebarSplitState(["a", "b", "c"], "a");
+    const left = state.layout.focusedPaneId;
+    state = moveSidebarTab(
+      state,
+      left,
+      "b",
+      { paneId: left, zone: "right" },
+      { groupId: "right" },
+    );
+    const right = state.layout.focusedPaneId;
+    state = moveSidebarTab(
+      state,
+      left,
+      "c",
+      { paneId: left, zone: "bottom" },
+      { groupId: "bottom" },
+    );
+    const bottom = state.layout.focusedPaneId;
+    state = selectSidebarTab(state, left, "a");
+    expect(adjacentSidebarTab(state, 1, [])).toEqual({
+      paneId: right,
+      tabId: "b",
+    });
+    expect(adjacentSidebarTab(state, -1, [])).toEqual({
+      paneId: bottom,
+      tabId: "c",
+    });
+    state = setSidebarPaneMaximized(state, left);
+    expect(adjacentSidebarTab(state, 1, [])).toEqual({
+      paneId: left,
+      tabId: "a",
+    });
+    expect(adjacentSidebarTab(state, -1, [])).toEqual({
+      paneId: left,
+      tabId: "a",
+    });
+  });
+
+  it("does nothing when no tabs are available", () => {
+    expect(
+      adjacentSidebarTab(createSidebarSplitState([], ""), 1, []),
+    ).toBeNull();
   });
 });

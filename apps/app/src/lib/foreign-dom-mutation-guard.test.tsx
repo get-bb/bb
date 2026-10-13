@@ -16,50 +16,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function unmountAfterForeignReparent(): Error[] {
-  const errors: Error[] = [];
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container, {
-    onUncaughtError: (error) => {
-      errors.push(error instanceof Error ? error : new Error(String(error)));
-    },
-  });
-
-  function Tree({ mounted }: { mounted: boolean }) {
-    return <div>{mounted ? <p data-moved="">body</p> : null}</div>;
-  }
-
-  act(() => root.render(<Tree mounted />));
-  const moved = container.querySelector("[data-moved]");
-  expect(moved).not.toBeNull();
-  document.createElement("section").appendChild(moved!);
-
-  const run = (work: () => void): void => {
-    try {
-      act(work);
-    } catch (error) {
-      errors.push(error instanceof Error ? error : new Error(String(error)));
-    }
-  };
-  run(() => root.render(<Tree mounted={false} />));
-  run(() => root.unmount());
-  container.remove();
-  return errors;
-}
-
 describe("foreign DOM mutation guard", () => {
-  it("keeps a foreign reparent from escalating to a root teardown", () => {
-    const unguarded = unmountAfterForeignReparent();
-    expect(unguarded).toHaveLength(1);
-    expect(unguarded[0]?.message).toMatch(/not a child of this node/);
-
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    installForeignDomMutationGuard();
-    expect(unmountAfterForeignReparent()).toEqual([]);
-    expect(foreignDomMutationCount()).toBe(1);
-  });
-
   it("suppresses the removeChild that a foreign reparent turns into a throw", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const reactParent = document.createElement("div");

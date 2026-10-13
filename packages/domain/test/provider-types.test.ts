@@ -55,13 +55,16 @@ describe("provider info schema", () => {
     ]);
   });
 
-  it("validates action-specific fields", () => {
-    expect(() =>
+  it("accepts the explicit skill trigger", () => {
+    expect(
       providerInfoSchema.parse({
         ...baseProviderInfo,
         composerActions: [{ kind: "skills", trigger: "$" }],
-      }),
-    ).toThrow();
+      }).composerActions,
+    ).toEqual([{ kind: "skills", trigger: "$" }]);
+  });
+
+  it("validates action-specific fields", () => {
     expect(() =>
       providerInfoSchema.parse({
         ...baseProviderInfo,

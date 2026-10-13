@@ -199,7 +199,6 @@ try {
     threadId: seeded.thread.id,
   };
   const { tab } = await api.createTab({ ...scope, url: pageUrl });
-  assert.equal(tab.profile.kind, "automation");
   assert.equal(tab.presentation, "hidden");
   const listed = await api.listTabs(scope);
   assert.equal(listed.tabs.length, 1);

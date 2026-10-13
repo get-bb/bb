@@ -19,6 +19,7 @@ import type {
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 import type { EventProjection } from "./event-projection.js";
 
 const eventProjectionMessageStatusValues = [
@@ -55,8 +56,16 @@ const eventProjectionUserQuestionLifecycleValues = [
 ] as const;
 export type EventProjectionUserQuestionLifecycle =
   (typeof eventProjectionUserQuestionLifecycleValues)[number];
+const eventProjectionPluginFormLifecycleValues = [
+  "pending",
+  "submitted",
+  "cancelled",
+] as const;
+export type EventProjectionPluginFormLifecycle =
+  (typeof eventProjectionPluginFormLifecycleValues)[number];
 
 export interface EventProjectionMessageBase {
+  sourceEvent: { seq: number; part: number };
   id: string;
   threadId: string;
   sourceSeqStart: number;
@@ -91,6 +100,7 @@ export interface EventProjectionTurnRequest {
 
 export interface EventProjectionUserMessage extends EventProjectionMessageBase {
   kind: "user";
+  messageSeq: number;
   initiator: ThreadTurnInitiator;
   senderThreadId: string | null;
   systemMessageKind: SystemMessageKind;
@@ -105,6 +115,7 @@ export interface EventProjectionUserMessage extends EventProjectionMessageBase {
     imageUrls?: string[];
     localImagePaths?: string[];
     localFilePaths?: string[];
+    localFileDetails?: TimelineConversationAttachments["localFileDetails"];
   };
 }
 
@@ -417,6 +428,22 @@ export interface EventProjectionUserQuestionLifecycleMessage extends EventProjec
   statusReason: string | null;
 }
 
+export interface EventProjectionPluginFormLifecycleMessage extends EventProjectionMessageBase {
+  kind: "plugin-form-lifecycle";
+  interactionId: string;
+  lifecycle: EventProjectionPluginFormLifecycle;
+  status: Extract<
+    EventProjectionMessageStatus,
+    "pending" | "completed" | "error" | "interrupted"
+  >;
+  pluginId: string;
+  rendererId: string;
+  title: string;
+  statusReason: string | null;
+  presentation: ThreadEventItemPresentation;
+  payload: JsonValue | null;
+}
+
 export interface EventProjectionDelegationMessage
   extends
     EventProjectionMessageBase,
@@ -463,9 +490,8 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   message: string;
   detail: string | null;
   rawType: string;
+  systemErrorCode: string | null;
   providerErrorInfo?: ProviderErrorInfo;
-  reconnectAttempt?: number;
-  reconnectTotal?: number;
   willRetry?: boolean;
 }
 
@@ -486,6 +512,7 @@ export type EventProjectionMessage =
   | EventProjectionOperationMessage
   | EventProjectionPermissionGrantLifecycleMessage
   | EventProjectionUserQuestionLifecycleMessage
+  | EventProjectionPluginFormLifecycleMessage
   | EventProjectionDelegationMessage
   | EventProjectionWorkflowMessage
   | EventProjectionErrorMessage;

@@ -140,6 +140,17 @@ describe("parsePageToShellMessage", () => {
 describe("parseNativeShellHandshake", () => {
   it("accepts the handshake the shell injects", () => {
     expect(parseNativeShellHandshake(handshake)).toEqual(handshake);
+    const android = {
+      ...handshake,
+      platform: "android",
+      androidVersionCode: 4,
+    };
+    expect(parseNativeShellHandshake(android)).toEqual(android);
+    for (const androidVersionCode of [0, -1, 1.5, "4"]) {
+      expect(
+        parseNativeShellHandshake({ ...android, androidVersionCode }),
+      ).toBeNull();
+    }
   });
 
   it("reads a malformed or absent bridge as no bridge", () => {

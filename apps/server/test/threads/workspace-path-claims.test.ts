@@ -1,6 +1,9 @@
 import { createEnvironment } from "@bb/db";
 import { describe, expect, it } from "vitest";
-import { foreignProviderOwnedPathRefusal } from "../../src/services/threads/workspace-path-claims.js";
+import {
+  foreignProjectOwnedPathRefusal,
+  suppliedWorkspacePathRefusal,
+} from "../../src/services/threads/workspace-path-claims.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -10,7 +13,7 @@ import { withTestHarness } from "../helpers/test-app.js";
 
 const HOST_DATA_DIR = "/home/agent/.bb";
 
-describe("foreignProviderOwnedPathRefusal", () => {
+describe("suppliedWorkspacePathRefusal", () => {
   it("still refuses a foreign managed workspace when the host data dir is unknown", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, { id: "host-claims" });
@@ -32,7 +35,7 @@ describe("foreignProviderOwnedPathRefusal", () => {
       });
 
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
+        suppliedWorkspacePathRefusal(harness.deps.db, {
           dataDir: null,
           hostId: host.id,
           path: "/tmp/owned-worktree",
@@ -53,7 +56,7 @@ describe("foreignProviderOwnedPathRefusal", () => {
       });
 
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
+        suppliedWorkspacePathRefusal(harness.deps.db, {
           dataDir: null,
           hostId: host.id,
           path: `${HOST_DATA_DIR}/worktrees/env_other/repo`,
@@ -80,7 +83,7 @@ describe("foreignProviderOwnedPathRefusal", () => {
       });
 
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
+        suppliedWorkspacePathRefusal(harness.deps.db, {
           dataDir: HOST_DATA_DIR,
           hostId: host.id,
           path: ownPath,
@@ -89,9 +92,31 @@ describe("foreignProviderOwnedPathRefusal", () => {
       ).toBeNull();
     });
   });
+  it("refuses a path inside a plugin's managed storage that this project has no environment for", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-claims-plugin-storage",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owner",
+      });
+
+      expect(
+        suppliedWorkspacePathRefusal(harness.deps.db, {
+          dataDir: HOST_DATA_DIR,
+          hostId: host.id,
+          path: `${HOST_DATA_DIR}/plugins/environment-git-worktree/host-data/worktrees/thr_orphan-1/repo`,
+          projectId: project.id,
+        }),
+      ).toBe(
+        "Workspace path is inside bb-managed storage but is not a workspace of this project",
+      );
+    });
+  });
 });
 
-describe("foreignProviderOwnedPathRefusal for provider-produced environments", () => {
+describe("foreignProjectOwnedPathRefusal for provider-produced environments", () => {
   it("refuses another project attaching at or inside a provider's worktree", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -128,8 +153,7 @@ describe("foreignProviderOwnedPathRefusal for provider-produced environments", (
         "/plugins/environment-git-worktree/worktrees/thr_1/repo/packages/app",
       ]) {
         expect(
-          foreignProviderOwnedPathRefusal(harness.deps.db, {
-            dataDir: null,
+          foreignProjectOwnedPathRefusal(harness.deps.db, {
             hostId: host.id,
             path,
             projectId: other.id,
@@ -139,16 +163,14 @@ describe("foreignProviderOwnedPathRefusal for provider-produced environments", (
         );
       }
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
-          dataDir: null,
+        foreignProjectOwnedPathRefusal(harness.deps.db, {
           hostId: host.id,
           path: "/plugins/environment-git-worktree/worktrees/thr_1/repo",
           projectId: owner.id,
         }),
       ).toBeNull();
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
-          dataDir: null,
+        foreignProjectOwnedPathRefusal(harness.deps.db, {
           hostId: host.id,
           path: "/plugins/environment-git-worktree/worktrees/thr_10/repo",
           projectId: other.id,
@@ -181,19 +203,39 @@ describe("foreignProviderOwnedPathRefusal for provider-produced environments", (
       });
 
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
-          dataDir: null,
+        foreignProjectOwnedPathRefusal(harness.deps.db, {
           hostId: host.id,
           path: "/tmp/shared-checkout",
           projectId: second.id,
         }),
       ).toBeNull();
       expect(
-        foreignProviderOwnedPathRefusal(harness.deps.db, {
-          dataDir: null,
+        foreignProjectOwnedPathRefusal(harness.deps.db, {
           hostId: host.id,
           path: "/tmp/shared-checkout/packages/app",
           projectId: second.id,
+        }),
+      ).toBeNull();
+    });
+  });
+});
+
+describe("foreignProjectOwnedPathRefusal for freshly created workspaces", () => {
+  it("accepts a path a provider just created inside its own plugin storage", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-claims-fresh",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owner",
+      });
+
+      expect(
+        foreignProjectOwnedPathRefusal(harness.deps.db, {
+          hostId: host.id,
+          path: `${HOST_DATA_DIR}/plugins/environment-git-worktree/host-data/worktrees/thr_new-1/repo`,
+          projectId: project.id,
         }),
       ).toBeNull();
     });

@@ -1,14 +1,8 @@
+import { useState, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Popover, PopoverTrigger } from "@bb/shared-ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   SettingsSection,
@@ -19,20 +13,18 @@ import {
   type AudioInputDeviceOption,
 } from "@/hooks/useAudioInputDevices";
 import {
-  useAudioInputDevicePreference,
+  useAudioInputDevicePreferenceValue,
   type PreferredAudioInputDeviceId,
 } from "@/lib/audio-input-device-preference";
-import {
-  SETTINGS_DROPDOWN_CONTENT_CLASS,
-  SETTINGS_DROPDOWN_TRIGGER_CLASS,
-} from "./settings-dropdown";
+import { MicrophonePreferencesSplit } from "@/components/promptbox/MicrophonePreferencesSplit";
+import { MicrophonePreferencesPopoverContent } from "@/components/promptbox/MicrophonePreferencesPopoverContent";
+import { SETTINGS_DROPDOWN_TRIGGER_CLASS } from "./settings-dropdown";
 
 interface VoiceInputSettingsSectionContentProps {
   devices: readonly AudioInputDeviceOption[];
   errorMessage: string | null;
   isLoading: boolean;
   isSupported: boolean;
-  onDeviceChange: (deviceId: PreferredAudioInputDeviceId) => void;
   onRefresh: (requestPermission: boolean) => void;
   preferredDeviceId: PreferredAudioInputDeviceId;
 }
@@ -57,7 +49,7 @@ function selectedMicrophoneLabel({
   }
   return (
     devices.find((device) => device.deviceId === preferredDeviceId)?.label ??
-    "Unavailable microphone"
+    SYSTEM_DEFAULT_MICROPHONE_LABEL
   );
 }
 
@@ -67,13 +59,15 @@ function microphoneSettingDescription({
   isLoading,
   isSupported,
   preferredDeviceId,
+  onRequestAccess,
 }: {
   devices: readonly AudioInputDeviceOption[];
+  onRequestAccess: () => void;
   errorMessage: string | null;
   isLoading: boolean;
   isSupported: boolean;
   preferredDeviceId: PreferredAudioInputDeviceId;
-}): string {
+}): ReactNode {
   if (!isSupported) {
     return "This browser does not expose microphone devices.";
   }
@@ -83,14 +77,25 @@ function microphoneSettingDescription({
   if (errorMessage !== null) {
     return errorMessage;
   }
+  if (devices.length === 0) {
+    return (
+      <>
+        <button
+          type="button"
+          className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={onRequestAccess}
+        >
+          Check microphone access
+        </button>{" "}
+        to see available devices.
+      </>
+    );
+  }
   if (
     preferredDeviceId !== null &&
     devices.every((device) => device.deviceId !== preferredDeviceId)
   ) {
-    return "Selected microphone is unavailable.";
-  }
-  if (devices.length === 0) {
-    return "No microphones found.";
+    return "Preferred microphone is disconnected. Using another input until it reconnects.";
   }
   return "Used for prompt voice input.";
 }
@@ -100,10 +105,10 @@ export function VoiceInputSettingsSectionContent({
   errorMessage,
   isLoading,
   isSupported,
-  onDeviceChange,
   onRefresh,
   preferredDeviceId,
 }: VoiceInputSettingsSectionContentProps) {
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const triggerLabel = selectedMicrophoneLabel({
     devices,
     isSupported,
@@ -140,6 +145,7 @@ export function VoiceInputSettingsSectionContent({
       <SettingsWithControl
         label={MICROPHONE_SETTING_LABEL}
         description={microphoneSettingDescription({
+          onRequestAccess: () => onRefresh(true),
           devices,
           errorMessage,
           isLoading,
@@ -147,18 +153,19 @@ export function VoiceInputSettingsSectionContent({
           preferredDeviceId,
         })}
       >
-        <DropdownMenu
+        <Popover
+          open={preferencesOpen}
           onOpenChange={(open) => {
-            if (open) {
-              onRefresh(false);
-            }
+            setPreferencesOpen(open);
+            onRefresh(false);
           }}
         >
-          <DropdownMenuTrigger asChild>
+          <PopoverTrigger asChild>
             <Button
               variant="outline"
               size="sm"
               className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+              {...MicrophonePreferencesSplit.intentProps}
               aria-label={MICROPHONE_SETTING_LABEL}
               disabled={!isSupported}
             >
@@ -171,50 +178,22 @@ export function VoiceInputSettingsSectionContent({
                 className="size-3.5 text-muted-foreground"
               />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
+          </PopoverTrigger>
+          <MicrophonePreferencesPopoverContent
+            open={preferencesOpen}
+            onClose={() => setPreferencesOpen(false)}
+            warning={null}
             align="end"
-            className={SETTINGS_DROPDOWN_CONTENT_CLASS}
-            mobileTitle="Microphone"
-          >
-            <DropdownMenuItem onSelect={() => onDeviceChange(null)}>
-              {SYSTEM_DEFAULT_MICROPHONE_LABEL}
-              <Icon
-                name="Check"
-                className={cn(
-                  "ml-auto",
-                  preferredDeviceId !== null && "opacity-0",
-                  COARSE_POINTER_ICON_SIZE_CLASS,
-                )}
-              />
-            </DropdownMenuItem>
-            {devices.length > 0 ? <DropdownMenuSeparator /> : null}
-            {devices.map((device) => (
-              <DropdownMenuItem
-                key={device.deviceId}
-                onSelect={() => onDeviceChange(device.deviceId)}
-              >
-                <span className="min-w-0 truncate">{device.label}</span>
-                <Icon
-                  name="Check"
-                  className={cn(
-                    "ml-auto",
-                    preferredDeviceId !== device.deviceId && "opacity-0",
-                    COARSE_POINTER_ICON_SIZE_CLASS,
-                  )}
-                />
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            side="bottom"
+          />
+        </Popover>
       </SettingsWithControl>
     </SettingsSection>
   );
 }
 
 export function VoiceInputSettingsSection() {
-  const [preferredDeviceId, setPreferredDeviceId] =
-    useAudioInputDevicePreference();
+  const preferredDeviceId = useAudioInputDevicePreferenceValue();
   const { devices, errorMessage, isLoading, isSupported, refresh } =
     useAudioInputDevices();
 
@@ -224,7 +203,6 @@ export function VoiceInputSettingsSection() {
       errorMessage={errorMessage}
       isLoading={isLoading}
       isSupported={isSupported}
-      onDeviceChange={setPreferredDeviceId}
       onRefresh={(requestPermission) => {
         void refresh({ requestPermission });
       }}

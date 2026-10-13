@@ -12,12 +12,13 @@ interface BundleBootChunk {
 }
 
 export interface BundleChunk extends BundleBootChunk {
+  appModules: string[];
   imports: string[];
   facade: string | null;
 }
 
 interface BundleRouteClosure {
-  entry: string;
+  entries: string[];
   chunks: BundleBootChunk[];
 }
 
@@ -28,8 +29,16 @@ export interface BundleStats {
   routeClosures: Record<string, BundleRouteClosure>;
 }
 
-const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
-  SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx",
+const MEASURED_ROUTE_CLOSURES: Record<string, readonly string[]> = {
+  PluginFrontend: ["/src/lib/plugin-frontend.ts"],
+  ThreadPage: [
+    "/src/views/SplitWorkspaceRoute.tsx",
+    "/src/views/thread-detail/ThreadDetailView.tsx",
+  ],
+  NewThreadPage: [
+    "/src/views/SplitWorkspaceRoute.tsx",
+    "/src/views/RootComposeView.tsx",
+  ],
 };
 
 export interface BundleStatsChunkInput {
@@ -43,7 +52,7 @@ export interface BundleStatsChunkInput {
 
 export function computeBundleStats(
   chunks: readonly BundleStatsChunkInput[],
-  measuredRouteClosures: Record<string, string>,
+  measuredRouteClosures: Record<string, readonly string[]>,
   warn: (message: string) => void,
 ): BundleStats | null {
   const byFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
@@ -101,6 +110,10 @@ export function computeBundleStats(
     allChunks.push({
       ...describeChunk(chunk),
       imports: [...chunk.imports].sort(),
+      appModules: chunk.moduleIds
+        .map((id) => relative(appDir, id).split(sep).join("/"))
+        .filter((id) => id.startsWith("src/"))
+        .sort(),
       facade:
         chunk.facadeModuleId === null
           ? null
@@ -109,22 +122,36 @@ export function computeBundleStats(
   }
 
   const routeClosures: Record<string, BundleRouteClosure> = {};
-  for (const [name, sourceSuffix] of Object.entries(measuredRouteClosures)) {
-    const routeChunk = chunks.find(
-      (chunk) =>
-        chunk.facadeModuleId !== null &&
-        chunk.facadeModuleId.endsWith(sourceSuffix),
-    );
-    if (routeChunk === undefined) {
-      warn(
-        `no chunk has facadeModuleId ending in ${sourceSuffix}; the ${name} route closure is not recorded`,
+  for (const [name, sourceSuffixes] of Object.entries(measuredRouteClosures)) {
+    const entries: string[] = [];
+    for (const sourceSuffix of sourceSuffixes) {
+      const routeChunk = chunks.find(
+        (chunk) =>
+          chunk.facadeModuleId?.endsWith(sourceSuffix) ||
+          chunk.moduleIds.some((id) => id.endsWith(sourceSuffix)),
       );
-      continue;
+      if (routeChunk === undefined) {
+        warn(
+          `no chunk contains ${sourceSuffix}; the ${name} route closure is not recorded`,
+        );
+        break;
+      }
+      if (bootFileNames.has(routeChunk.fileName)) {
+        warn(
+          `${sourceSuffix} is in the boot payload (${routeChunk.fileName}); the ${name} route closure is not recorded`,
+        );
+        break;
+      }
+      entries.push(routeChunk.fileName);
     }
-    routeClosures[name] = {
-      entry: routeChunk.fileName,
-      chunks: describeChunks(staticClosure(routeChunk.fileName, bootFileNames)),
-    };
+    if (entries.length !== sourceSuffixes.length) continue;
+    const closure = new Set<string>();
+    for (const fileName of entries) {
+      for (const member of staticClosure(fileName, bootFileNames)) {
+        closure.add(member);
+      }
+    }
+    routeClosures[name] = { entries, chunks: describeChunks(closure) };
   }
 
   return {

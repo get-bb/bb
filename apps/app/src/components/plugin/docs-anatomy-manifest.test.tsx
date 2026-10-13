@@ -28,7 +28,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
 const manifest = JSON.parse(
   readFileSync(
-    resolve(REPO_ROOT, "packages/plugin-api-map/src/anatomy-manifest.json"),
+    resolve(REPO_ROOT, "plugins/plugin-api-docs/src/anatomy-manifest.json"),
     "utf8",
   ),
 ) as {
@@ -139,7 +139,10 @@ function renderAppSidebar() {
                       <AppSidebar
                         onResizeMouseDown={() => {}}
                         isResizing={false}
-                        settingsRoutePath="/settings"
+                        isBodyHidden={false}
+                        renderRail={() => null}
+                        railFooter={null}
+                        alternateBody={null}
                       />
                     </SidebarProvider>
                   </ThreadActionsProvider>
@@ -173,13 +176,28 @@ describe("docs anatomy manifest", () => {
     }
   });
 
+  it("keeps the Info tab before the Diff tab, as the Plugin Guide's right-panel fixture draws them", () => {
+    const source = readFileSync(
+      resolve(
+        import.meta.dirname,
+        "../../views/thread-detail/ThreadDetailView.tsx",
+      ),
+      "utf8",
+    );
+    const info = source.indexOf("createThreadInfoFixedPanelTab()");
+    const diff = source.indexOf("createGitDiffFixedPanelTab()");
+
+    expect(info).toBeGreaterThan(-1);
+    expect(diff).toBeGreaterThan(-1);
+    expect(info).toBeLessThan(diff);
+  });
+
   it("matches AppSidebar's section order", () => {
     registerTestPlugin();
     const { container } = renderAppSidebar();
 
     const sectionSelectors: Record<string, string> = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
-      "sidebar-navigation": '[data-testid="sidebar-navigation-region"]',
       "thread-list": '[data-sidebar="content"]',
       footer: '[data-sidebar="footer"]',
     };
@@ -202,7 +220,6 @@ describe("docs anatomy manifest", () => {
     expect(footer).not.toBeNull();
 
     const footerSelectors: Record<string, () => Element | null> = {
-      settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
       "plugin-footer-items": () =>
         footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
@@ -223,13 +240,13 @@ describe("docs anatomy manifest", () => {
     render(
       <TooltipProvider delayDuration={0}>
         <MessageActionBar
+          timestamp={0}
           messageText="hello"
           alignment="start"
           mobileActionDisplay="inline"
           onAddToChat={() => {}}
           onEdit={() => {}}
           onFork={() => {}}
-          onSendToMain={() => {}}
           pluginActions={[
             {
               key: "anatomy-plugin-action",
@@ -246,10 +263,8 @@ describe("docs anatomy manifest", () => {
     const actionLabels: Record<string, string> = {
       copy: "Copy message",
       edit: "Edit message",
-      "add-to-chat": "Add to chat",
-      "send-to-main-thread": "Send to main thread",
-      fork: "Fork into new thread",
       "plugin-actions": "Anatomy message action",
+      "message-menu": "Message actions",
     };
     expect(Object.keys(actionLabels).sort()).toEqual(
       [...manifest.messageActionBar].sort(),

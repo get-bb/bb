@@ -539,6 +539,32 @@ describe("machine retirement", () => {
       expect(getStoredProviderModelCatalog(harness.db, key)).toBeNull();
     }));
 
+  it("announces the removed machine to plugins once", async () =>
+    withTestHarness(async (harness) => {
+      installMachineProvider();
+      const { host } = seedHostSession(harness.deps);
+      updateHost(harness.db, harness.hub, host.id, {
+        machineProviderId: "test-machine",
+        resource: { allocation: "cancelled" },
+        phase: "active",
+      });
+      const announced = vi.spyOn(
+        harness.pluginService.events,
+        "emitHostDeleted",
+      );
+
+      expect(requestMachineRemoval(harness.deps, host.id)).toBe(true);
+      await sweepProviderMachine(harness.deps, host.id);
+      await sweepProviderMachine(harness.deps, host.id);
+
+      expect(announced).toHaveBeenCalledOnce();
+      expect(announced.mock.calls[0]?.[0]).toMatchObject({
+        id: host.id,
+        phase: "destroyed",
+        destroyedAt: expect.any(Number),
+      });
+    }));
+
   it("retries failed teardown at removeRetryAt", async () =>
     withTestHarness(async (harness) => {
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -580,6 +606,56 @@ describe("machine retirement", () => {
 });
 
 describe("machine suspension", () => {
+  it("requests removal during an in-flight sweep when the last ephemeral thread is archived", async () =>
+    withTestHarness(async (harness) => {
+      const started = createDeferredPromise<void>();
+      const release = createDeferredPromise<void>();
+      installMachineProvider({
+        suspend: async () => ({ resource: { id: "owned" } }),
+        resume: async () => {
+          started.resolve();
+          await release.promise;
+          return { resource: { id: "owned" } };
+        },
+      });
+      const target = seedHostSession(harness.deps, { id: "sweeping-resume" });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: target.host.id,
+      });
+      const environment = createEnvironment(harness.db, harness.hub, {
+        projectId: project.id,
+        hostId: target.host.id,
+        path: "/tmp/sweeping-resume",
+        providerOwnsPath: false,
+        status: "ready",
+        environmentProvider: null,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      updateHost(harness.db, harness.hub, target.host.id, {
+        machineProviderId: "test-machine",
+        type: "ephemeral",
+        phase: "resuming",
+        resource: { id: "owned" },
+        suspendedAt: Date.now(),
+      });
+      harness.hub.unregisterDaemon(target.session.id);
+      const first = sweepMachineLifecycles(harness.deps);
+      await started.promise;
+      try {
+        archiveThread(harness.db, harness.hub, thread.id);
+        await sweepMachineLifecycles(harness.deps, { background: true });
+        expect(getHost(harness.db, target.host.id)?.phase).toBe("removing");
+      } finally {
+        release.resolve();
+        await first;
+      }
+      await sweepMachineLifecycles(harness.deps);
+      expect(getHost(harness.db, target.host.id)?.phase).toBe("destroyed");
+    }));
+
   it("returns the durable resuming phase from an explicit resume request", async () =>
     withTestHarness(async (harness) => {
       const started = createDeferredPromise<void>();

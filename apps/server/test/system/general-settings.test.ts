@@ -4,8 +4,30 @@ import { appSettingsSchema, defaultAppSettings } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 
 describe("general settings", () => {
+  it("reports only the server's local host in /system/config", async () => {
+    await withTestHarness(async (harness) => {
+      seedHostSession(harness.deps, { name: "remote" });
+      const before = await harness.app.request("/api/v1/system/config");
+      const uninitialized = systemConfigResponseSchema.parse(
+        await readJson(before),
+      );
+      expect(uninitialized.primaryHostId).toBeNull();
+      expect(uninitialized.primaryHostPlatform).toBeNull();
+
+      const { host: local } = seedHostSession(harness.deps, { name: "local" });
+      seedPrimaryHost(harness.deps, local.id);
+      const after = await harness.app.request("/api/v1/system/config");
+      const initialized = systemConfigResponseSchema.parse(
+        await readJson(after),
+      );
+      expect(initialized.primaryHostId).toBe(local.id);
+      expect(initialized.primaryHostPlatform).toBe("darwin");
+    });
+  });
+
   it("defaults general settings in /system/config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
@@ -13,6 +35,7 @@ describe("general settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.generalSettings).toEqual({
         ...defaultAppSettings,
+        machineGitCredentialsEnabled: false,
         showUnhandledProviderEvents: false,
       });
       expect(body.primaryHostId).toBeNull();
@@ -27,6 +50,7 @@ describe("general settings", () => {
         body: JSON.stringify({
           ...defaultAppSettings,
           showKeyboardHints: false,
+          allowFastServiceTier: false,
           steerActiveThreadOnEnter: true,
           providerOrder: ["pi", "codex"],
           defaultProviderId: "pi",
@@ -43,6 +67,7 @@ describe("general settings", () => {
       ).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -51,6 +76,7 @@ describe("general settings", () => {
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -64,6 +90,7 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showUnhandledProviderEvents: false,
         showKeyboardHints: false,
+        allowFastServiceTier: false,
         steerActiveThreadOnEnter: true,
         providerOrder: ["pi", "codex"],
         defaultProviderId: "pi",
@@ -158,3 +185,36 @@ it("preserves telemetry opt-in when older clients update other settings", async 
     expect(config.generalSettings.showKeyboardHints).toBe(false);
   });
 });
+
+it.each(["confirmThreadArchive", "showGitChanges"] as const)(
+  "persists %s opt-out and preserves it for older clients",
+  async (key) => {
+    await withTestHarness(async (harness) => {
+      const put = (settings: object) =>
+        harness.app.request("/api/v1/settings/general", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(settings),
+        });
+      expect(getAppSettings(harness.db)[key]).toBe(true);
+      expect((await put({ ...defaultAppSettings, [key]: false })).status).toBe(
+        200,
+      );
+      expect(getAppSettings(harness.db)[key]).toBe(false);
+      const { [key]: omitted, ...legacy } = defaultAppSettings;
+      expect(omitted).toBe(true);
+      expect((await put({ ...legacy, showKeyboardHints: false })).status).toBe(
+        200,
+      );
+      const config = systemConfigResponseSchema.parse(
+        await readJson(await harness.app.request("/api/v1/system/config")),
+      );
+      expect(config.generalSettings[key]).toBe(false);
+      expect(config.generalSettings.showKeyboardHints).toBe(false);
+      expect((await put({ ...defaultAppSettings, [key]: true })).status).toBe(
+        200,
+      );
+      expect(getAppSettings(harness.db)[key]).toBe(true);
+    });
+  },
+);

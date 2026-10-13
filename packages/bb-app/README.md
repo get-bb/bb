@@ -45,8 +45,8 @@ Run all `bb` commands inside WSL2, install Node.js, Git, and your provider CLIs
 inside that WSL2 distro, and use Linux-style paths such as `/home/me/repo` or
 `/mnt/c/Users/me/repo`.
 
-Native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-supported product paths. Repos inside the WSL filesystem are recommended;
+Inside WSL2, use Linux paths rather than drive-letter or UNC paths. Repos
+inside the WSL filesystem are recommended;
 `/mnt/c/...` is intentionally supported so you can keep an existing Windows
 checkout, but it is slower and less reliable for file watching.
 
@@ -118,6 +118,44 @@ npx bb-app stop
 recorded process really is that launcher, then stops it. Pass `--data-dir` when
 the bb you want to stop does not use the default `~/.bb/`.
 
+### The `bb` command
+
+To control bb from outside bb, open **Settings → General → Command line** and
+choose **Install** next to **bb CLI**. Threads in bb already have `bb`; this
+is for your own terminals, scripts, and agents running outside bb, such as
+Claude Code or Codex. bb links a launcher from `~/.bb/bin/bb` into a folder on
+your PATH (`~/.local/bin` on Linux; `/opt/homebrew/bin`, `/usr/local/bin`, or
+`~/.local/bin` on macOS). On Windows it adds `~/.bb/bin` to your user PATH;
+open a new terminal afterwards. **Remove** takes it off again. bb leaves any
+other `bb` you already have in place.
+
+From a terminal, before `bb` is on your PATH:
+
+```bash
+npx --package bb-app bb settings cli-command install
+```
+
+### Updating from the app
+
+When bb has an update, Settings → Updates shows an **Update** button (or run
+`bb updates app apply`). bb downloads the new version into
+`~/.bb/app-versions/`, restarts into it, and reconnects the page. bb does not
+roll back: if the new version fails to start, run a newer release
+(`npx bb-app@latest`) or fix the cause. Later `npx bb-app` runs use the newer
+installed version; pass `--bundled` to run the copy npx downloaded instead.
+Start bb with `--no-in-app-updates` to turn in-app updates off.
+
+After the server moves to another machine, the old data directory keeps
+`server-moved.json`. `bb-app` there starts no server: it runs this computer's
+host daemon against the new server address in `config.json`, restarting it when
+it exits, and answers the old server port. API requests get `410 server_moved`
+with the new address; browser pages redirect to it for a direct address or link
+to it for bb connect. While a move back to this computer is in progress
+(`server-import.json`), it frees that port for the incoming server. When
+`server-moved.json` goes away, after that move completes or `bb server unlock`,
+it starts the server and co-located daemon again. `bb-server` exits with status
+`3` instead of starting, except for the incoming server of a move back.
+
 From the app, add or open a project, start a thread, and choose the provider
 you want that thread to use.
 
@@ -160,15 +198,15 @@ targets (see the remote-access note below). Scripts launched by bb already recei
 
 bb uses whichever providers you have configured. Common providers:
 
-| Provider       | Setup                                                                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                     |
-| `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                      |
-| `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`cursor-agent`) and authenticate per Cursor's docs.                                                                                 |
-| `pi`           | Install [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) with `npm install -g @earendil-works/pi-coding-agent` (0.84.0 or newer) and authenticate per its docs; BB can run the install from Settings.          |
-| `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                   |
-| `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                               |
-| `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.    |
+| Provider       | Setup                                                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                                                           |
+| `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                                                            |
+| `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`cursor-agent`) and authenticate per Cursor's docs.                                                                                                                       |
+| `pi`           | Install [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) with `npm install -g @earendil-works/pi-coding-agent` (0.84.0 or newer) and authenticate per its docs; BB can run the install from Settings. |
+| `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                                                         |
+| `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                                                                     |
+| `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.                                          |
 
 BB indexes the documented native skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. It includes user roots,
@@ -192,9 +230,7 @@ Custom ACP agents are configured through the ACP providers plugin's
 `reasoningCli` or `nativeReasoning` reasoning settings. The optional
 `nativeSkillRoots` field adds provider-native skills to the composer. Its
 `user` paths resolve from the target host home directory. Its `project` paths
-resolve from the selected workspace. The `customAcpAgents` array in
-`~/.bb/config.json` is the deprecated form of the same list; bb reads it, warns
-about each entry, and stops reading it in 0.41.
+resolve from the selected workspace.
 Top-level `sharedSkillRoots` uses the same `user` and `project` path format.
 BB lists these sources as read-only skills. BB injects them into Codex, Claude,
 Pi, and ACP threads. This permits one physical skill collection for BB and a
@@ -207,9 +243,6 @@ Use `bb-app config` for persistent non-secret package settings under
 
 ```bash
 npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
-npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
-npx bb-app config set BB_INFERENCE_FALLBACK codex/gpt-5.4-mini
-npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
 npx bb-app config refresh
 ```

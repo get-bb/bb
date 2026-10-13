@@ -9,6 +9,7 @@ export interface PluginCliContribution {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  rendersHelp: boolean;
 }
 
 const SKILL_NAME = "plugin-commands";

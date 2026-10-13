@@ -61,6 +61,7 @@ export type ServerChangedMessage =
 type ChangedMessageListener = (message: ServerChangedMessage) => void;
 
 interface PendingThreadListEventsAppended {
+  timelineSequence: number | undefined;
   eventTypes: Set<ThreadEventType>;
   merged: boolean;
   timeout: ReturnType<typeof setTimeout>;
@@ -68,10 +69,24 @@ interface PendingThreadListEventsAppended {
 
 type ThreadChangedMessage = Extract<ServerChangedMessage, { entity: "thread" }>;
 
+function isThreadDetailOnlyChange(
+  message: Pick<ThreadChangedMessage, "changes">,
+): boolean {
+  return (
+    message.changes.length > 0 &&
+    message.changes.every((change) => change === "history-compacted")
+  );
+}
+
 function isThreadListRelevantChange(
   message: Pick<ThreadChangedMessage, "changes" | "metadata">,
 ): boolean {
-  if (message.changes.some((change) => change !== "events-appended")) {
+  if (
+    message.changes.some(
+      (change) =>
+        change !== "events-appended" && change !== "history-compacted",
+    )
+  ) {
     return true;
   }
   const metadata = message.metadata;
@@ -209,9 +224,11 @@ export class NotificationHub implements DbNotifier {
   private readonly daemonSessions = new Map<
     string,
     {
+      heardSinceLivenessCheck: boolean;
       hostId: string;
       localApiPort: number | null;
       platform: HostPlatform;
+      quietLivenessChecks: number;
       socket: HubSocket;
     }
   >();
@@ -239,10 +256,6 @@ export class NotificationHub implements DbNotifier {
   private readonly hostProtocolUpdateRetryRequests = new Set<string>();
   private readonly changedMessageListeners = new Set<ChangedMessageListener>();
   private readonly pendingDaemonDisconnects = new Map<
-    string,
-    ReturnType<typeof setTimeout>
-  >();
-  private readonly pendingDaemonActiveWorkDisconnects = new Map<
     string,
     ReturnType<typeof setTimeout>
   >();
@@ -392,6 +405,10 @@ export class NotificationHub implements DbNotifier {
       socket,
       JSON.stringify(terminalServerMessageSchema.parse(message)),
     );
+  }
+
+  hasTerminalClients(terminalId: string): boolean {
+    return (this.terminalClientSocketsById.get(terminalId)?.size ?? 0) > 0;
   }
 
   sendTerminalClientMessage(
@@ -545,11 +562,13 @@ export class NotificationHub implements DbNotifier {
       this.unregisterDaemon(existingSessionId);
     }
     this.daemonSessions.set(sessionId, {
+      heardSinceLivenessCheck: true,
       hostId,
       localApiPort:
         this.daemonSessionLocalApiPortsBySessionId.get(sessionId) ?? null,
       platform:
         this.daemonSessionPlatformsBySessionId.get(sessionId) ?? "unknown",
+      quietLivenessChecks: 0,
       socket,
     });
     this.daemonSessionIdsByHost.set(hostId, sessionId);
@@ -577,6 +596,29 @@ export class NotificationHub implements DbNotifier {
         waiter.resolve(true);
       }
     }
+  }
+
+  recordDaemonActivity(sessionId: string): void {
+    const entry = this.daemonSessions.get(sessionId);
+    if (entry) {
+      entry.heardSinceLivenessCheck = true;
+    }
+  }
+
+  takeSilentDaemonSessionIds(maxQuietChecks: number): string[] {
+    const silentSessionIds: string[] = [];
+    for (const [sessionId, entry] of this.daemonSessions) {
+      if (entry.heardSinceLivenessCheck) {
+        entry.heardSinceLivenessCheck = false;
+        entry.quietLivenessChecks = 0;
+        continue;
+      }
+      entry.quietLivenessChecks += 1;
+      if (entry.quietLivenessChecks >= maxQuietChecks) {
+        silentSessionIds.push(sessionId);
+      }
+    }
+    return silentSessionIds;
   }
 
   hasDaemonForHost(hostId: string): boolean {
@@ -706,22 +748,8 @@ export class NotificationHub implements DbNotifier {
     scheduleTimer(this.pendingDaemonDisconnects, sessionId, delayMs, callback);
   }
 
-  scheduleDaemonActiveWorkDisconnect(
-    sessionId: string,
-    delayMs: number,
-    callback: () => void,
-  ): void {
-    scheduleTimer(
-      this.pendingDaemonActiveWorkDisconnects,
-      sessionId,
-      delayMs,
-      callback,
-    );
-  }
-
   cancelPendingDaemonDisconnect(sessionId: string): void {
     cancelTimer(this.pendingDaemonDisconnects, sessionId);
-    cancelTimer(this.pendingDaemonActiveWorkDisconnects, sessionId);
   }
 
   requestHostOnlineRpc(args: {
@@ -816,7 +844,9 @@ export class NotificationHub implements DbNotifier {
       ...(metadata ? { metadata } : {}),
       changes,
     };
-    if (isThreadListRelevantChange(message)) {
+    if (isThreadDetailOnlyChange(message)) {
+      this.notifyThreadDetailSubscribers(threadId, message);
+    } else if (isThreadListRelevantChange(message)) {
       this.notifyClients(message);
     } else {
       this.notifyThreadEventsAppendedCoalesced(threadId, message);
@@ -1003,13 +1033,13 @@ export class NotificationHub implements DbNotifier {
     this.daemonRegistrationWaiters.delete(hostId);
   }
 
-  private notifyThreadEventsAppendedCoalesced(
+  private notifyThreadDetailSubscribers(
     threadId: string,
     message: ThreadChangedMessage,
-  ): void {
+  ): string | null {
     const payload = serializeServerMessage(message);
     if (payload === null) {
-      return;
+      return null;
     }
     const detailSockets = this.clientSocketsByKey.get(
       subscriptionKey({ kind: "thread-detail", threadId }),
@@ -1018,12 +1048,29 @@ export class NotificationHub implements DbNotifier {
       this.notifyClientsByKeySet(detailSockets, payload);
     }
     this.notifyChangedMessageListeners(message);
+    return payload;
+  }
+
+  private notifyThreadEventsAppendedCoalesced(
+    threadId: string,
+    message: ThreadChangedMessage,
+  ): void {
+    const payload = this.notifyThreadDetailSubscribers(threadId, message);
+    if (payload === null) {
+      return;
+    }
 
     const eventTypes = message.metadata?.eventTypes ?? [];
     const pending = this.pendingThreadListEventsAppendedByThread.get(threadId);
     if (pending) {
       for (const eventType of eventTypes) {
         pending.eventTypes.add(eventType);
+      }
+      if (message.metadata?.timelineSequence !== undefined) {
+        pending.timelineSequence = Math.max(
+          pending.timelineSequence ?? 0,
+          message.metadata.timelineSequence,
+        );
       }
       pending.merged = true;
       return;
@@ -1036,6 +1083,7 @@ export class NotificationHub implements DbNotifier {
     timeout.unref?.();
     this.pendingThreadListEventsAppendedByThread.set(threadId, {
       eventTypes: new Set(eventTypes),
+      timelineSequence: message.metadata?.timelineSequence,
       merged: false,
       timeout,
     });
@@ -1054,8 +1102,17 @@ export class NotificationHub implements DbNotifier {
       type: "changed",
       entity: "thread",
       id: threadId,
-      ...(pending.eventTypes.size > 0
-        ? { metadata: { eventTypes: [...pending.eventTypes] } }
+      ...(pending.eventTypes.size > 0 || pending.timelineSequence !== undefined
+        ? {
+            metadata: {
+              ...(pending.eventTypes.size > 0
+                ? { eventTypes: [...pending.eventTypes] }
+                : {}),
+              ...(pending.timelineSequence !== undefined
+                ? { timelineSequence: pending.timelineSequence }
+                : {}),
+            },
+          }
         : {}),
       changes: ["events-appended"],
     };

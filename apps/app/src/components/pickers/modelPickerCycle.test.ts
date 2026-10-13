@@ -51,6 +51,26 @@ describe("cycleReasoningValue", () => {
     { value: "high", label: "High" },
   ] satisfies readonly { value: ReasoningLevel; label: string }[];
 
+  it("cycles in the provider's own order once any level is provider-specific", () => {
+    const providerSpecific = [
+      { value: "off", label: "Off" },
+      { value: "minimal", label: "Minimal" },
+      { value: "high", label: "High" },
+    ];
+    expect(cycleReasoningValue(providerSpecific, "off", "forward")).toBe(
+      "minimal",
+    );
+    expect(cycleReasoningValue(providerSpecific, "minimal", "forward")).toBe(
+      "high",
+    );
+    expect(cycleReasoningValue(providerSpecific, "high", "forward")).toBe(
+      "off",
+    );
+    expect(cycleReasoningValue(providerSpecific, "minimal", "backward")).toBe(
+      "off",
+    );
+  });
+
   it("cycles in canonical rank rather than provider response order", () => {
     expect(cycleReasoningValue(unorderedOptions, "low", "forward")).toBe(
       "high",

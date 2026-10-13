@@ -51,6 +51,16 @@ const RUNTIME_SOURCE_MODULES = {
     "ui",
     "question-form-host.tsx",
   ),
+  "@bb/shared-ui/voice-input-textarea": path.join(
+    scriptDir,
+    "..",
+    "..",
+    "shared-ui",
+    "src",
+    "components",
+    "ui",
+    "voice-input-textarea.tsx",
+  ),
   "@bb/shared-ui/icon": path.join(
     scriptDir,
     "..",

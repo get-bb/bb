@@ -14,6 +14,7 @@ import {
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
+import { BUILTIN_SERVER_NAME } from "../src/server-target.js";
 
 function menuArgs(
   reloadWindow: InstallApplicationMenuArgs["reloadWindow"],
@@ -39,10 +40,12 @@ function menuArgs(
     openSettings: () => {},
     reopenClosedTab: () => {},
     reloadWindow,
+    zoomFocusedPage: () => {},
     selectServer: () => {},
     serverDaemonLogsMenuEnabled: false,
-    servers: [{ checked: true, id: "builtin", name: "This Mac" }],
+    servers: [{ checked: true, id: "builtin", name: BUILTIN_SERVER_NAME }],
     setServerUrl: () => {},
+    addServer: () => {},
     ...overrides,
   };
 }
@@ -53,6 +56,21 @@ function findServerSubmenu(
   const windowMenu = template.find((item) => item.label === "Window");
   const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
   const serverMenu = windowSubmenu.find((item) => item.label === "Server");
+  return serverMenu?.submenu as MenuItemConstructorOptions[];
+}
+
+function findDesktopSettingsServerSubmenu(
+  template: MenuItemConstructorOptions[],
+): MenuItemConstructorOptions[] {
+  const appSubmenu = template[0]?.submenu as MenuItemConstructorOptions[];
+  const desktopSettingsMenu = appSubmenu.find(
+    (item) => item.label === "Desktop Settings",
+  );
+  const desktopSettingsSubmenu =
+    desktopSettingsMenu?.submenu as MenuItemConstructorOptions[];
+  const serverMenu = desktopSettingsSubmenu.find(
+    (item) => item.label === "Server",
+  );
   return serverMenu?.submenu as MenuItemConstructorOptions[];
 }
 
@@ -115,6 +133,26 @@ describe("application menu", () => {
     expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 
+  it("routes zoom shortcuts to the focused page's clamped zoom", () => {
+    const zoomFocusedPage = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(vi.fn(), { zoomFocusedPage }),
+    );
+    const viewMenu = template.find((item) => item.label === "View");
+    const submenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+
+    for (const [label, accelerator] of [
+      ["Actual Size", "CommandOrControl+0"],
+      ["Zoom In", "CommandOrControl+Plus"],
+      ["Zoom Out", "CommandOrControl+-"],
+    ]) {
+      const item = submenu.find((entry) => entry.label === label);
+      expect(item?.accelerator).toBe(accelerator);
+      item?.click?.({} as never, undefined, {} as never);
+    }
+    expect(zoomFocusedPage.mock.calls).toEqual([["reset"], ["in"], ["out"]]);
+  });
+
   it("shows reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
     const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
@@ -134,32 +172,103 @@ describe("application menu", () => {
     expect(reloadWindow).toHaveBeenNthCalledWith(2, focusedWindow, true);
   });
 
-  it("builds a Window ▸ Server radio submenu with a Set Server URL item", () => {
+  it("builds a Server menu with multiple custom targets and separate add/edit actions", () => {
     const selectServer = vi.fn();
     const setServerUrl = vi.fn();
+    const addServer = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, {
         selectServer,
         servers: [
-          { checked: false, id: "builtin", name: "This Mac" },
-          { checked: true, id: "custom", name: "example.com" },
+          { checked: false, id: "builtin", name: BUILTIN_SERVER_NAME },
+          {
+            checked: true,
+            id: "custom:https://first.example",
+            name: "first.example",
+          },
+          {
+            checked: false,
+            id: "custom:https://second.example",
+            name: "second.example",
+          },
         ],
         setServerUrl,
+        addServer,
       }),
     );
     const serverSubmenu = findServerSubmenu(template);
 
-    expect(serverSubmenu).toHaveLength(4);
-    expect(serverSubmenu[0]?.type).toBe("radio");
-    expect(serverSubmenu[0]?.checked).toBe(false);
-    expect(serverSubmenu[1]?.type).toBe("radio");
-    expect(serverSubmenu[1]?.checked).toBe(true);
-    expect(serverSubmenu[2]?.type).toBe("separator");
-    expect(serverSubmenu[3]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
+    expect(serverSubmenu).toHaveLength(6);
+    expect(
+      serverSubmenu.slice(0, 3).map((item) => [item.type, item.checked]),
+    ).toEqual([
+      ["radio", false],
+      ["radio", true],
+      ["radio", false],
+    ]);
+    expect(serverSubmenu[3]?.type).toBe("separator");
+    expect(serverSubmenu[4]?.label).toBe("Add Server…");
+    expect(serverSubmenu[5]?.label).toBe(SET_SERVER_URL_MENU_LABEL);
     serverSubmenu[1]?.click?.({} as never, undefined, {} as never);
-    expect(selectServer).toHaveBeenCalledWith("custom");
-    serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
+    serverSubmenu[2]?.click?.({} as never, undefined, {} as never);
+    expect(selectServer).toHaveBeenNthCalledWith(
+      1,
+      "custom:https://first.example",
+    );
+    expect(selectServer).toHaveBeenNthCalledWith(
+      2,
+      "custom:https://second.example",
+    );
+    serverSubmenu[4]?.click?.({} as never, undefined, {} as never);
+    expect(addServer).toHaveBeenCalledTimes(1);
+    serverSubmenu[5]?.click?.({} as never, undefined, {} as never);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the Server menu under Desktop Settings with Window → Server as an alias", () => {
+    const selectServer = vi.fn();
+    const addServer = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        addServer,
+        selectServer,
+        servers: [
+          { checked: true, id: "builtin", name: "This Mac" },
+          {
+            checked: false,
+            id: "custom:https://first.example",
+            name: "first.example",
+          },
+        ],
+      }),
+    );
+    const desktopSettingsServerSubmenu =
+      findDesktopSettingsServerSubmenu(template);
+    const labels = (items: MenuItemConstructorOptions[]) =>
+      items.map((item) => item.label ?? `<${item.type}>`);
+
+    expect(labels(desktopSettingsServerSubmenu)).toEqual([
+      "This Mac",
+      "first.example",
+      "<separator>",
+      "Add Server…",
+      SET_SERVER_URL_MENU_LABEL,
+    ]);
+    expect(labels(findServerSubmenu(template))).toEqual(
+      labels(desktopSettingsServerSubmenu),
+    );
+    desktopSettingsServerSubmenu[1]?.click?.(
+      {} as never,
+      undefined,
+      {} as never,
+    );
+    desktopSettingsServerSubmenu[3]?.click?.(
+      {} as never,
+      undefined,
+      {} as never,
+    );
+    expect(selectServer).toHaveBeenCalledWith("custom:https://first.example");
+    expect(addServer).toHaveBeenCalledTimes(1);
   });
 
   it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
@@ -167,7 +276,7 @@ describe("application menu", () => {
       menuArgs(() => {}, {
         connectServersSkipReason: "no-credential",
         servers: [
-          { checked: false, id: "builtin", name: "This Mac" },
+          { checked: false, id: "builtin", name: BUILTIN_SERVER_NAME },
           {
             checked: true,
             id: "custom",
@@ -180,10 +289,11 @@ describe("application menu", () => {
 
     expect(serverSubmenu.map((item) => item.label ?? `<${item.type}>`)).toEqual(
       [
-        "This Mac",
+        BUILTIN_SERVER_NAME,
         "old-host.tailnet.ts.net:38886",
         CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
         "<separator>",
+        "Add Server…",
         SET_SERVER_URL_MENU_LABEL,
       ],
     );

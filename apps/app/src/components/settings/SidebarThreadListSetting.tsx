@@ -1,4 +1,7 @@
-import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
+import {
+  BUNDLED_THREAD_LIST_PROVIDER,
+  threadListProviderAtom,
+} from "@/components/sidebar/threadListProvider";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { ReplacementProviderSetting } from "./ReplacementProviderSetting";
 
@@ -8,8 +11,8 @@ export function SidebarThreadListSetting() {
     <ReplacementProviderSetting
       label="Sidebar"
       triggerAriaLabel="Sidebar thread list"
-      description="Choose automatic activation, BB's list, or a specific plugin on this device."
-      builtInDescription="Projects, sections, and nested threads."
+      description="Choose the plugin that renders your sidebar thread list."
+      bundledProvider={BUNDLED_THREAD_LIST_PROVIDER}
       preferenceAtom={threadListProviderAtom}
       slots={threadLists}
     />

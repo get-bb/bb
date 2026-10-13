@@ -28,7 +28,7 @@ describe("internal skill tree routes", () => {
         entries: [
           {
             path: "SKILL.md",
-            mode: 0o644,
+            mode: process.platform === "win32" ? 0o666 : 0o644,
             contentBase64: Buffer.from("tree route bytes\n").toString("base64"),
           },
         ],

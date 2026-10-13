@@ -1,4 +1,5 @@
 import type { PromptInput } from "@bb/domain";
+import type { TimelineConversationAttachments } from "@bb/server-contract";
 
 interface PromptAttachmentCounts {
   webImages: number;
@@ -7,6 +8,7 @@ interface PromptAttachmentCounts {
   imageUrls?: string[];
   localImagePaths?: string[];
   localFilePaths?: string[];
+  localFileDetails?: TimelineConversationAttachments["localFileDetails"];
 }
 
 export function collectPromptAttachments(
@@ -18,6 +20,8 @@ export function collectPromptAttachments(
   const imageUrls: string[] = [];
   const localImagePaths: string[] = [];
   const localFilePaths: string[] = [];
+  const localFileDetails: TimelineConversationAttachments["localFileDetails"] =
+    [];
 
   for (const entry of input) {
     switch (entry.type) {
@@ -34,6 +38,12 @@ export function collectPromptAttachments(
       case "localFile":
         localFiles += 1;
         localFilePaths.push(entry.path);
+        if (entry.name)
+          localFileDetails.push({
+            path: entry.path,
+            name: entry.name,
+            sizeBytes: entry.sizeBytes ?? null,
+          });
         break;
     }
   }
@@ -49,5 +59,6 @@ export function collectPromptAttachments(
     ...(imageUrls.length > 0 ? { imageUrls } : {}),
     ...(localImagePaths.length > 0 ? { localImagePaths } : {}),
     ...(localFilePaths.length > 0 ? { localFilePaths } : {}),
+    ...(localFileDetails.length > 0 ? { localFileDetails } : {}),
   };
 }

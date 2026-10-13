@@ -5,8 +5,6 @@ import type {
   WorkspaceDiffTarget,
 } from "@bb/domain";
 import type {
-  EnvironmentDiffFileQuery,
-  EnvironmentDiffFileResponse,
   EnvironmentDiffBranchesResponse,
   EnvironmentDiffFilesResponse,
   EnvironmentPullRequestResponse,
@@ -14,14 +12,12 @@ import type {
   WorkspacePathListResponse,
 } from "@bb/server-contract";
 import type { EnvironmentDiffArgs } from "@bb/sdk/browser";
-import {
-  buildFilePreview,
-  normalizeFilePreviewMimeType,
-  type EnvironmentFilePreviewSource,
-  type FilePreview,
+import type {
+  EnvironmentFilePreviewSource,
+  FilePreview,
 } from "@bb/client-core";
-import { decodeBase64Bytes, encodeBase64Bytes } from "@/lib/base64-bytes";
-import { buildEnvironmentDiffFileContentUrl } from "@/lib/file-content-urls";
+import { loadFilePreview } from "@/lib/api";
+import { buildEnvironmentFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useEnvironmentDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
@@ -34,6 +30,7 @@ import {
   environmentQueryKey,
   environmentWorkStatusQueryKey,
 } from "./query-keys";
+import { useDebouncedBranchSearchQuery } from "./branch-search-debounce";
 import {
   resolveEnvironmentDiffFilesPlaceholder,
   resolveEnvironmentMergeBaseBranchesPlaceholder,
@@ -157,6 +154,8 @@ export function getEnvironmentPullRequestRefetchInterval(
     return false;
   }
   if (
+    pullRequest.autoMerge ||
+    pullRequest.inMergeQueue === true ||
     pullRequest.checks.state === "pending" ||
     pullRequest.mergeability.state === "unknown"
   ) {
@@ -183,7 +182,7 @@ export function useEnvironmentPullRequest(
         signal,
       }),
     enabled,
-    refetchOnMount: true,
+    refetchOnMount: "always",
     refetchOnWindowFocus: true,
     refetchInterval: (query) =>
       getEnvironmentPullRequestRefetchInterval(
@@ -200,7 +199,7 @@ export function useEnvironmentMergeBaseBranches(
   environmentId: string,
   options?: BranchQueryOptions,
 ) {
-  const query = options?.query?.trim() ?? "";
+  const query = useDebouncedBranchSearchQuery(options?.query?.trim() ?? "");
   const selectedBranch = options?.selectedBranch?.trim();
   const limit = options?.limit ?? MERGE_BASE_BRANCHES_LIMIT;
   const enabled = (options?.enabled ?? true) && Boolean(environmentId);
@@ -266,23 +265,18 @@ export function useEnvironmentFilePreview(
         environmentId,
         "useEnvironmentFilePreview",
       );
-      const query = buildEnvironmentFilePreviewQuery(
-        resolvedPath,
-        resolvedSource,
-      );
-      const response = await sdk.environments.diffFile({
-        environmentId: resolvedEnvironmentId,
+      return loadFilePreview(
+        {
+          name: resolvedPath.split("/").at(-1),
+          path: resolvedPath,
+          url: buildEnvironmentFileContentUrl(
+            resolvedEnvironmentId,
+            resolvedSource,
+            resolvedPath,
+          ),
+        },
         signal,
-        ...query,
-      });
-      return buildEnvironmentFilePreview({
-        contentUrl: buildEnvironmentDiffFileContentUrl(
-          resolvedEnvironmentId,
-          query,
-        ),
-        path: resolvedPath,
-        response,
-      });
+      );
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
@@ -394,45 +388,4 @@ function buildEnvironmentDiffArgs(
     case "commit":
       return { environmentId, sha: target.sha, target: target.type };
   }
-}
-
-function buildEnvironmentFilePreviewQuery(
-  path: string,
-  source: EnvironmentFilePreviewSource,
-): EnvironmentDiffFileQuery {
-  const side = source.kind === "working-tree" ? "new" : "old";
-  return source.kind === "merge-base"
-    ? { target: "branch_committed", mergeBaseRef: source.ref, path, side }
-    : { target: "uncommitted", path, side };
-}
-
-export function buildEnvironmentFilePreview({
-  contentUrl,
-  path,
-  response,
-}: {
-  contentUrl: string;
-  path: string;
-  response: EnvironmentDiffFileResponse;
-}): FilePreview {
-  const contentBytes =
-    response.contentEncoding === "base64"
-      ? decodeBase64Bytes(response.content)
-      : new TextEncoder().encode(response.content);
-  const mimeType = normalizeFilePreviewMimeType(response.mimeType ?? null);
-  const preview = buildFilePreview({
-    contentBytes,
-    mimeType,
-    name: path.split("/").at(-1),
-    path,
-    url: contentUrl,
-  });
-  if (preview.kind !== "image" && preview.kind !== "video") {
-    return preview;
-  }
-  const base64Content =
-    response.contentEncoding === "base64"
-      ? response.content
-      : encodeBase64Bytes(contentBytes);
-  return { ...preview, url: `data:${mimeType};base64,${base64Content}` };
 }

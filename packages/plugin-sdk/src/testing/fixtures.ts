@@ -36,7 +36,7 @@ type MessageDispatchHookContextOverrides = Omit<
   | "input"
   | "requestedExecution"
   | "executionSources"
-  | "queuedMessage"
+  | "queuedMessages"
 > & {
   thread?: Partial<MessageDispatchHookContext["thread"]>;
   project?: Partial<MessageDispatchHookContext["project"]>;
@@ -49,9 +49,9 @@ type MessageDispatchHookContextOverrides = Omit<
     MessageDispatchHookContext["requestedExecution"]
   >;
   executionSources?: Partial<MessageDispatchHookContext["executionSources"]>;
-  queuedMessage?: Partial<
-    NonNullable<MessageDispatchHookContext["queuedMessage"]>
-  > | null;
+  queuedMessages?: Partial<
+    MessageDispatchHookContext["queuedMessages"][number]
+  >[];
 };
 
 /**
@@ -104,6 +104,7 @@ export function makeThreadResponse(
     sectionId: null,
     status: "idle",
     parentThreadId: null,
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
@@ -117,8 +118,9 @@ export function makeThreadResponse(
     awaitingUserReply: false,
     createdAt: 0,
     updatedAt: 0,
-    runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    runtime: { displayStatus: "idle" },
     activeBackgroundAgentCount: 0,
+    canRestoreEnvironment: false,
     canSpawnChild: true,
     queuedMessageCount: 0,
     ...overrides,
@@ -218,11 +220,12 @@ export function makeMessageDispatchHookContext(
       permissionMode: null,
     },
     attempt: "start-turn",
-    queuedMessage: null,
+    initiator: "user",
+    senderThreadId: null,
+    queuedMessages: [],
     experimental_submission: null,
     origin: null,
     originPluginId: null,
-    startedOnBehalfOf: null,
     parentThreadId: null,
     environmentIntent: null,
   };
@@ -244,6 +247,7 @@ export function makeMessageDispatchHookContext(
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: false,
     workspaceProvisionType: null,
     status: "ready",
@@ -291,15 +295,9 @@ export function makeMessageDispatchHookContext(
       ...context.executionSources,
       ...overrides.executionSources,
     },
-    queuedMessage:
-      overrides.queuedMessage === undefined
-        ? context.queuedMessage
-        : overrides.queuedMessage === null
-          ? null
-          : makeQueueEntry({
-              threadId: thread.id,
-              ...overrides.queuedMessage,
-            }),
+    queuedMessages: (overrides.queuedMessages ?? context.queuedMessages).map(
+      (message) => makeQueueEntry({ threadId: thread.id, ...message }),
+    ),
   };
 }
 
@@ -315,6 +313,8 @@ export function makeQueueEntry(
 ): QueueEntry {
   return {
     id: "queued_1",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thread-1",

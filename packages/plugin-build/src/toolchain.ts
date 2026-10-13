@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
-import { resolvePluginNpmCli } from "./npm-cli.js";
+import { resolveBundledNpmCli } from "./npm-cli.js";
 
 const run = promisify(execFile);
 
@@ -163,7 +163,7 @@ export async function resolvePluginBuildToolchain(
     await run(
       process.execPath,
       [
-        resolvePluginNpmCli(),
+        resolveBundledNpmCli(),
         "install",
         "--prefix",
         staging,

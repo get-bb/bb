@@ -140,18 +140,38 @@ describe("machine Git environment", () => {
     await exec("git", ["add", "."], { cwd: source, env });
     await exec("git", ["commit", "-m", "seed"], { cwd: source, env });
     await exec("git", ["clone", "--bare", source, bare], { env });
-    const helper = `#!/usr/bin/env python3
-import os, subprocess, sys
-assert sys.argv[2] == "https://github.com/octocat/private.git"
-auth = subprocess.run(["git", "credential", "fill"], input="protocol=https\\nhost=github.com\\n\\n", text=True, capture_output=True, check=True).stdout
-assert "username=x-access-token\\n" in auth
-assert "password=" + os.environ["GH_TOKEN"] + "\\n" in auth
-for line in sys.stdin:
-    if line.strip() == "capabilities":
-        print("connect\\n", flush=True)
-    elif line.startswith("connect "):
-        print("", flush=True)
-        os.execlp("git", "git", "upload-pack", os.environ["FAKE_BARE"])
+    const helper = `#!/usr/bin/env node
+const assert = require("node:assert");
+const { execFileSync, spawnSync } = require("node:child_process");
+const { readSync, writeSync } = require("node:fs");
+assert.strictEqual(process.argv[3], "https://github.com/octocat/private.git");
+const auth = execFileSync("git", ["credential", "fill"], { input: "protocol=https\\nhost=github.com\\n\\n", encoding: "utf8" });
+assert.ok(auth.includes("username=x-access-token\\n"));
+assert.ok(auth.includes("password=" + process.env.GH_TOKEN + "\\n"));
+function readLine() {
+  const byte = Buffer.alloc(1);
+  let line = "";
+  for (;;) {
+    let count = 0;
+    try {
+      count = readSync(0, byte, 0, 1, null);
+    } catch (error) {
+      if (error.code !== "EOF") throw error;
+    }
+    if (count === 0) return line === "" ? null : line;
+    if (byte[0] === 10) return line;
+    line += String.fromCharCode(byte[0]);
+  }
+}
+for (let line = readLine(); line !== null; line = readLine()) {
+  if (line.trim() === "capabilities") {
+    writeSync(1, "connect\\n\\n");
+  } else if (line.startsWith("connect ")) {
+    writeSync(1, "\\n");
+    const result = spawnSync("git", ["upload-pack", process.env.FAKE_BARE], { stdio: "inherit" });
+    process.exit(result.status ?? 1);
+  }
+}
 `;
     await writeFile(join(helpers, "git-remote-https"), helper, { mode: 0o755 });
     const target = join(home, "cloned");
@@ -184,5 +204,99 @@ for line in sys.stdin:
     });
     expect(result.stdout).not.toContain("credential");
     expect(result.stdout).not.toContain("test-private-token");
+  });
+});
+
+describe("server Git credential refresh", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("shares concurrent and repeated lookups, isolates returned entries, and serves expired credentials while refreshing rotated ones in the background", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const run = gh();
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => resolveGitCredentials(run)),
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+    results[0]!.find((entry) => entry.name === "GH_TOKEN")!.value = "mutated";
+    results[0]!.push({
+      name: "EXTRA",
+      value: "mutated",
+      source: { core: "machine-git" },
+      reason: "mutation",
+    });
+    run.mockImplementation(async (args) =>
+      args[0] === "auth"
+        ? "rotated-token"
+        : JSON.stringify({ login: "new-user", id: 456, email: null }),
+    );
+    vi.advanceTimersByTime(59_999);
+    const cached = await resolveGitCredentials(run);
+    expect(cached.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "test-private-token",
+    );
+    expect(cached.some((entry) => entry.name === "EXTRA")).toBe(false);
+    expect(run).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1);
+    const expired = await resolveGitCredentials(run);
+    expect(expired.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+      "test-private-token",
+    );
+    await vi.waitFor(async () => {
+      const refreshed = await resolveGitCredentials(run);
+      expect(refreshed.find((entry) => entry.name === "GH_TOKEN")?.value).toBe(
+        "rotated-token",
+      );
+      expect(
+        refreshed.find((entry) => entry.name === "GIT_AUTHOR_NAME")?.value,
+      ).toBe("new-user");
+    });
+    expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it("retries unavailable credentials in the background after five seconds and lets health checks observe logout and login immediately", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const run = gh();
+    run.mockRejectedValue(new Error("unavailable"));
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    expect(run).toHaveBeenCalledTimes(1);
+    run.mockImplementation(gh());
+    vi.advanceTimersByTime(5_000);
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    await vi.waitFor(async () =>
+      expect(await resolveGitCredentials(run)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+      ),
+    );
+    run.mockRejectedValue(new Error("logged out"));
+    expect((await machineGitHealth(run)).status).toBe("not configured");
+    expect(await resolveGitCredentials(run)).toEqual([]);
+    run.mockImplementation(gh());
+    expect((await machineGitHealth(run)).status).toBe("ready");
+    expect(await resolveGitCredentials(run)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "GH_TOKEN" })]),
+    );
+  });
+
+  it("keeps a slow lookup shared and starts its cache lifetime when it completes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let complete!: (token: string) => void;
+    const token = new Promise<string>((resolve) => {
+      complete = resolve;
+    });
+    const run = vi.fn(async (args: string[]) =>
+      args[0] === "auth"
+        ? token
+        : JSON.stringify({ login: "octocat", id: 123, email: null }),
+    );
+    const first = resolveGitCredentials(run);
+    vi.advanceTimersByTime(60_000);
+    const second = resolveGitCredentials(run);
+    complete("delayed-token");
+    const entries = await first;
+    expect(await second).toEqual(entries);
+    vi.advanceTimersByTime(59_999);
+    expect(await resolveGitCredentials(run)).toEqual(entries);
+    expect(run).toHaveBeenCalledTimes(2);
   });
 });

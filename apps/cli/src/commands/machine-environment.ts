@@ -43,67 +43,89 @@ export function registerMachineEnvironmentCommands(
 ): void {
   const env = machine
     .command("env")
-    .description("Configure the global environment for machine hosts");
+    .description("Configure global or project machine environment variables");
   env
     .command("list")
+    .option(
+      "--project <id>",
+      "Show this project's overrides and inherited global variables",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (options: { json?: boolean }) => {
-        printEnvironment(
-          await createCliBbSdk(getUrl()).system.machineEnvironment(),
-          options,
-        );
+      action(async (options: { project?: string; json?: boolean }) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = options.project
+          ? await sdk.projects.machineEnvironment({
+              projectId: options.project,
+            })
+          : {
+              ...(await sdk.system.machineEnvironment()),
+              inheritedVariables: [],
+            };
+        printEnvironment(result, options);
+        if (!options.json && options.project) {
+          for (const row of result.inheritedVariables) {
+            const overridden = result.variables.some(
+              (variable) => variable.name === row.name,
+            );
+            console.log(
+              `${row.name}=[secret] (Global${overridden ? "; overridden by project" : "; inherited"})`,
+            );
+          }
+        }
       }),
     );
   env
     .command("set <NAME>")
     .description("Read a value from stdin; remove one trailing newline")
+    .option("--project <id>", "Set an override for this project")
     .option("--note <text>", "Describe this variable")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
-        async (name: string, options: { note?: string; json?: boolean }) => {
-          const system = createCliBbSdk(getUrl()).system;
-          const current = await system.machineEnvironment();
-          const result = await system.replaceMachineEnvironment({
-            variables: [
-              ...current.variables
-                .filter((variable) => variable.name !== name)
-                .map((variable) => ({
-                  name: variable.name,
-                  value: null,
-                  note: variable.note,
-                })),
-              {
-                name,
-                value: await readValue(),
-                note: options.note ?? null,
-              },
-            ],
-          });
-          printEnvironment(result, options);
+        async (
+          name: string,
+          options: { project?: string; note?: string; json?: boolean },
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const input = {
+            name,
+            value: await readValue(),
+            note: options.note ?? null,
+          };
+          printEnvironment(
+            options.project
+              ? await sdk.projects.setMachineEnvironmentVariable({
+                  ...input,
+                  projectId: options.project,
+                })
+              : await sdk.system.setMachineEnvironmentVariable(input),
+            options,
+          );
         },
       ),
     );
   env
     .command("unset <NAME>")
+    .option(
+      "--project <id>",
+      "Remove this project's override and restore inheritance",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (name: string, options: { json?: boolean }) => {
-        const system = createCliBbSdk(getUrl()).system;
-        const current = await system.machineEnvironment();
-        printEnvironment(
-          await system.replaceMachineEnvironment({
-            variables: current.variables
-              .filter((variable) => variable.name !== name)
-              .map((variable) => ({
-                name: variable.name,
-                value: null,
-                note: variable.note,
-              })),
-          }),
-          options,
-        );
-      }),
+      action(
+        async (name: string, options: { project?: string; json?: boolean }) => {
+          const sdk = createCliBbSdk(getUrl());
+          printEnvironment(
+            options.project
+              ? await sdk.projects.deleteMachineEnvironmentVariable({
+                  projectId: options.project,
+                  name,
+                })
+              : await sdk.system.deleteMachineEnvironmentVariable({ name }),
+            options,
+          );
+        },
+      ),
     );
 }

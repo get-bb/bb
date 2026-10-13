@@ -18,7 +18,7 @@
   "dependencies": {
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
-    "zod": "4.3.6"
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "context-selection",
+  "type": "registry:ui",
+  "title": "context-selection",
+  "description": "BB ui \"context-selection\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/context-selection.ts",
+      "content": "export const CONTEXT_SELECTION_SURFACE_CLASS = \"bg-state-active\";\n\nexport const CONTEXT_INACTIVE_TEXT_CLASS = \"text-muted-foreground/60\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/context-selection.ts"
+    }
+  ]
+}

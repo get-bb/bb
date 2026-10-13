@@ -13,8 +13,11 @@ import {
   threadStoragePathsForThreadQueryKeyPrefix,
   threadTimelineQueryKeyPrefix,
   threadTimelineTurnSummaryDetailsQueryKeyPrefix,
+  threadPendingInteractionsQueryKey,
 } from "../queries/query-keys";
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
+import type { PendingInteraction } from "@bb/domain";
+import type { ThreadPendingInteractionsResponse } from "@bb/server-contract";
 import type {
   ProjectArg,
   QueryClientArg,
@@ -32,6 +35,7 @@ import {
   getThreadQueueContentInvalidationQueryKeys,
   getThreadTimelineInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
+import { forgetThreadOpenCache } from "./thread-open-cache-owner";
 
 interface ProjectSourceInvalidationArg extends QueryClientArg {
   projectId: string | undefined;
@@ -254,6 +258,23 @@ export function invalidateThreadBannerQueries({
   });
 }
 
+export function applyResolvedThreadPendingInteraction({
+  interaction,
+  queryClient,
+}: QueryClientArg & { interaction: PendingInteraction }): void {
+  queryClient.setQueryData<ThreadPendingInteractionsResponse>(
+    threadPendingInteractionsQueryKey(interaction.threadId),
+    (current) =>
+      current?.flatMap((entry) => {
+        if (entry.id !== interaction.id) return [entry];
+        return interaction.status === "pending" ||
+          interaction.status === "resolving"
+          ? [interaction]
+          : [];
+      }),
+  );
+}
+
 export function invalidateThreadPendingInteractionResolutionQueries({
   queryClient,
   threadId,
@@ -276,6 +297,7 @@ export function removeThreadScopedQueries({
   queryClient,
   threadId,
 }: ThreadArg): void {
+  forgetThreadOpenCache(queryClient, threadId);
   queryClient.removeQueries({ queryKey: threadQueryKey(threadId) });
   queryClient.removeQueries({
     queryKey: threadTimelineQueryKeyPrefix(threadId),

@@ -1,28 +1,37 @@
-import { closeSession, getThread, listEvents } from "@bb/db";
+import {
+  closeSession,
+  getThread,
+  hostDaemonSessions,
+  listEvents,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import { eq } from "drizzle-orm";
+import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
+  groupHostDaemonEvents,
   hostDaemonServerWsMessageSchema,
 } from "@bb/host-daemon-contract";
-import { threadScope, turnScope } from "@bb/domain";
+import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { settleDanglingBackgroundTasks } from "../../src/services/threads/background-task-reconciliation.js";
 import { handleDaemonSocketClosed } from "../../src/internal/session-owner-side-effects.js";
-import {
-  DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS,
-  DAEMON_DISCONNECT_GRACE_MS,
-} from "../../src/constants.js";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import {
   seedEnvironment,
   seedHost,
+  seedHostSession,
   seedProjectWithSource,
   seedStoredEvent,
   seedThread,
   seedThreadFixture,
+  seedThreadRuntimeState,
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+
+const HOST_DISCONNECTED_FOR_MS = 10 * 60_000;
 
 function backgroundTaskItemData(args: {
   itemId: string;
@@ -109,6 +118,28 @@ function seedActiveTurnThread(harness: TestAppHarness) {
     turnId: "turn-live-1",
   });
   return fixture;
+}
+
+async function reopenSessionWithoutThreads(
+  harness: TestAppHarness,
+  session: { hostId: string; instanceId: string },
+): Promise<void> {
+  const response = await harness.app.request("/internal/session/open", {
+    method: "POST",
+    headers: internalAuthHeaders(harness, { hostId: session.hostId }),
+    body: JSON.stringify({
+      hostId: session.hostId,
+      instanceId: session.instanceId,
+      hostName: "Test Host",
+      hasMachineCredential: false,
+      platform: "darwin",
+      dataDir: "/tmp/host-daemon-reopened",
+      localApiPort: null,
+      protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+      activeThreads: [],
+    }),
+  });
+  expect(response.status).toBe(201);
 }
 
 function listSettledBackgroundTaskItems(
@@ -446,19 +477,16 @@ describe("background-task lifecycle reconciliation triggers", () => {
     });
   });
 
-  it("settles open tasks after the disconnect grace elapses without a reconnect", async () => {
+  it("keeps open tasks while the host stays disconnected", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedOpenBackgroundTaskThread(harness);
 
       vi.useFakeTimers();
       handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      vi.advanceTimersByTime(HOST_DISCONNECTED_FOR_MS);
 
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
-
-      vi.advanceTimersByTime(DAEMON_DISCONNECT_GRACE_MS + 1);
-      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
-        { status: "interrupted", taskStatus: "stopped" },
-      ]);
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
     });
   });
 });
@@ -559,53 +587,327 @@ describe("active thread disconnect reconciliation triggers", () => {
     },
   );
 
-  it("records a lost host connection after the live event window elapses without a reconnect", async () => {
+  it("queues the parent notice when a reconnect interrupts a child and the parent shares the host", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        session,
+        project,
+        environment,
+        thread: parent,
+      } = seedThreadFixture(harness);
+      seedThreadRuntimeState(harness.deps, {
+        threadId: parent.id,
+        environmentId: environment.id,
+        providerThreadId: "parent-provider-thread",
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        parentThreadId: parent.id,
+        status: "active",
+        title: "Worker child",
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      vi.useFakeTimers();
+      await reopenSessionWithoutThreads(harness, session);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      const parentNotices = listQueuedThreadMessages(
+        harness.deps.db,
+        parent.id,
+      );
+      expect(parentNotices).toHaveLength(1);
+      expect(JSON.parse(parentNotices[0]!.waitingOn!)).toEqual({
+        kind: "host-offline",
+        hostName: "Test Host",
+      });
+      expect(JSON.parse(parentNotices[0]!.systemNotice!)).toEqual({
+        kind: "child-interrupted",
+        subject: {
+          kind: "thread",
+          threadId: child.id,
+          threadName: "Worker child",
+          outcomes: [
+            {
+              threadId: child.id,
+              status: "interrupted",
+              interruption: {
+                reason: "host-daemon-restarted",
+                cause: "host-connection-lost",
+              },
+            },
+          ],
+        },
+      });
+      expect(JSON.stringify(parentNotices[0]!.content)).toContain(
+        "because its host connection was lost",
+      );
+    });
+  });
+
+  it("notifies a parent on another host when a reconnect interrupts its child", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        project,
+        environment: parentEnvironment,
+        thread: parent,
+      } = seedThreadFixture(harness);
+      seedThreadRuntimeState(harness.deps, {
+        threadId: parent.id,
+        environmentId: parentEnvironment.id,
+        providerThreadId: "parent-provider-thread",
+      });
+      const { host, session } = seedHostSession(harness.deps);
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const child = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: childEnvironment.id,
+        parentThreadId: parent.id,
+        status: "active",
+        title: "Worker child",
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: childEnvironment.id,
+        threadId: child.id,
+        turnId: "child-turn",
+      });
+
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      vi.useFakeTimers();
+      await reopenSessionWithoutThreads(harness, session);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      const parentNotices = listEvents(harness.deps.db, {
+        threadId: parent.id,
+      })
+        .filter((row) => row.type === "client/turn/requested")
+        .map((row) => turnRequestEventDataSchema.parse(JSON.parse(row.data)))
+        .filter((data) => data.initiator === "system");
+      expect(parentNotices).toHaveLength(1);
+      expect(parentNotices[0]).toMatchObject({
+        systemMessageKind: "child-interrupted",
+        systemMessageSubject: {
+          kind: "thread",
+          threadId: child.id,
+          threadName: "Worker child",
+          outcomes: [
+            {
+              threadId: child.id,
+              status: "interrupted",
+              interruption: {
+                reason: "host-daemon-restarted",
+                cause: "host-connection-lost",
+              },
+            },
+          ],
+        },
+      });
+      expect(JSON.stringify(parentNotices[0]?.input)).toContain(
+        "because its host connection was lost",
+      );
+    });
+  });
+
+  it("finishes a turn that ended while the host was away once the reconnected daemon delivers its held events", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedActiveTurnThread(harness);
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-held-events",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+          undeliveredEventThreadIds: [thread.id],
+        }),
+      });
+      expect(response.status).toBe(201);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      const providerThreadId = "provider-turn-live-1";
+      const eventsResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness, { hostId: host.id }),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              {
+                threadId: thread.id,
+                event: {
+                  type: "item/completed",
+                  threadId: thread.id,
+                  providerThreadId,
+                  scope: turnScope("turn-live-1"),
+                  item: {
+                    id: "msg-final",
+                    type: "agentMessage",
+                    text: "done",
+                  },
+                },
+              },
+              {
+                threadId: thread.id,
+                event: {
+                  type: "turn/completed",
+                  threadId: thread.id,
+                  providerThreadId,
+                  scope: turnScope("turn-live-1"),
+                  status: "completed",
+                },
+              },
+            ]),
+          }),
+        },
+      );
+
+      expect(eventsResponse.status).toBe(200);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.deps.db, { threadId: thread.id }).map(
+          (row) => row.type,
+        ),
+      ).toEqual(["turn/started", "item/completed", "turn/completed"]);
+    });
+  });
+
+  it("settles a stop requested while the host is offline and stops the run when the same daemon reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedActiveTurnThread(harness);
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+      harness.deps.db
+        .update(hostDaemonSessions)
+        .set({ closedAt: Date.now() - HOST_RECONNECT_GRACE_MS - 1 })
+        .where(eq(hostDaemonSessions.id, session.id))
+        .run();
+
+      await harness.app.request(`/api/v1/threads/${thread.id}/stop`, {
+        method: "POST",
+      });
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+      expect(
+        listEvents(harness.deps.db, { threadId: thread.id })
+          .filter((row) => row.type === "turn/completed")
+          .map((row) => JSON.parse(row.data).status),
+      ).toEqual(["interrupted"]);
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-stop-after-reconnect",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [{ threadId: thread.id }],
+        }),
+      });
+      expect(response.status).toBe(201);
+      const { sessionId } = (await response.json()) as { sessionId: string };
+      const commandTypes: string[] = [];
+      harness.hub.registerDaemon(sessionId, host.id, {
+        close() {},
+        send(data) {
+          const message = hostDaemonServerWsMessageSchema.parse(
+            JSON.parse(data),
+          );
+          if (message.type === "host-rpc.request") {
+            commandTypes.push(message.command.type);
+          }
+        },
+      });
+
+      await vi.waitFor(() => expect(commandTypes).toContain("thread.stop"));
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("idle");
+    });
+  });
+
+  it("revives rather than stops a thread that started a new turn after its last stop", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, host, session, thread } = seedThreadFixture(
+        harness,
+        { thread: { status: "idle" } },
+      );
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/thread/interrupted",
+        scope: threadScope(),
+        data: { reason: "manual-stop" },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope("turn-after-stop"),
+        providerThreadId: "provider-thread-after-stop",
+        data: { providerThreadId: "provider-thread-after-stop" },
+      });
+      handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, { hostId: host.id }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-revive-after-new-turn",
+          localApiPort: null,
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [{ threadId: thread.id }],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
+    });
+  });
+
+  it("keeps an active turn running while the host stays disconnected", async () => {
     await withTestHarness(async (harness) => {
       const { session, thread } = seedActiveTurnThread(harness);
 
       vi.useFakeTimers();
       handleDaemonSocketClosed(harness.deps, { sessionId: session.id });
+      await vi.advanceTimersByTimeAsync(HOST_DISCONNECTED_FOR_MS);
 
-      await vi.advanceTimersByTimeAsync(DAEMON_DISCONNECT_GRACE_MS + 1);
       expect(getThread(harness.deps.db, thread.id)?.status).toBe("active");
       expect(
         listEvents(harness.deps.db, { threadId: thread.id })
           .filter((row) => row.type !== "turn/started")
           .map((row) => row.type),
       ).toEqual([]);
-
-      await vi.advanceTimersByTimeAsync(
-        DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS - DAEMON_DISCONNECT_GRACE_MS,
-      );
-      expect(getThread(harness.deps.db, thread.id)?.status).toBe("error");
-      expect(
-        listEvents(harness.deps.db, { threadId: thread.id })
-          .filter((row) => row.type !== "turn/started")
-          .map((row) => ({
-            data: JSON.parse(row.data),
-            type: row.type,
-          })),
-      ).toEqual([
-        expect.objectContaining({
-          type: "turn/completed",
-        }),
-        expect.objectContaining({
-          data: expect.objectContaining({
-            code: "thread_command_failed",
-            message:
-              "Thread interrupted because the connection to the host was lost",
-            detail: "Please retry the thread to continue.",
-          }),
-          type: "system/error",
-        }),
-        expect.objectContaining({
-          data: {
-            reason: "host-daemon-restarted",
-            cause: "host-connection-lost",
-          },
-          type: "system/thread/interrupted",
-        }),
-      ]);
+      harness.hub.cancelPendingDaemonDisconnect(session.id);
     });
   });
 });

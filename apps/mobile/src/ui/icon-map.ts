@@ -1,27 +1,25 @@
 import type { IconSvgElement } from "@hugeicons/react-native";
-import {
-  Alert02Icon,
-  ArrowReloadHorizontalIcon,
-  ArrowRight01Icon,
-  ArrowRight02Icon,
-  CancelCircleIcon,
-  CheckmarkCircle02Icon,
-  CloudIcon,
-  Delete02Icon,
-  GridViewIcon,
-  InformationCircleIcon,
-  InternetIcon,
-  LaptopIcon,
-  Loading03Icon,
-  LockIcon,
-  PlusSignIcon,
-  Refresh01Icon,
-  Settings01Icon,
-  SmartPhone01Icon,
-  Tick02Icon,
-  ViewIcon,
-  ZapIcon,
-} from "@hugeicons/core-free-icons";
+import Alert02Icon from "@hugeicons/core-free-icons/Alert02Icon";
+import ArrowReloadHorizontalIcon from "@hugeicons/core-free-icons/ArrowReloadHorizontalIcon";
+import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
+import ArrowRight02Icon from "@hugeicons/core-free-icons/ArrowRight02Icon";
+import CancelCircleIcon from "@hugeicons/core-free-icons/CancelCircleIcon";
+import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
+import CloudIcon from "@hugeicons/core-free-icons/CloudIcon";
+import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
+import GridViewIcon from "@hugeicons/core-free-icons/GridViewIcon";
+import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
+import InternetIcon from "@hugeicons/core-free-icons/InternetIcon";
+import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
+import Loading03Icon from "@hugeicons/core-free-icons/Loading03Icon";
+import LockIcon from "@hugeicons/core-free-icons/LockIcon";
+import PlusSignIcon from "@hugeicons/core-free-icons/PlusSignIcon";
+import Refresh01Icon from "@hugeicons/core-free-icons/Refresh01Icon";
+import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
+import SmartPhone01Icon from "@hugeicons/core-free-icons/SmartPhone01Icon";
+import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
+import Notification01Icon from "@hugeicons/core-free-icons/Notification01Icon";
+import Camera01Icon from "@hugeicons/core-free-icons/Camera01Icon";
 
 const PaletteStrokeRoundedIcon: IconSvgElement = [
   [
@@ -109,12 +107,38 @@ const ICON_MAP = {
   AlertTriangle: Alert02Icon,
   ArrowRight: ArrowRight02Icon,
   ArrowReloadHorizontal: ArrowReloadHorizontalIcon,
+  Bell: Notification01Icon,
+  Camera: Camera01Icon,
   Check: Tick02Icon,
   ChevronRight: ArrowRight01Icon,
   CircleCheck: CheckmarkCircle02Icon,
+  CircleCheckFilled: [
+    [
+      "circle",
+      {
+        cx: "12",
+        cy: "12",
+        r: "10",
+        fill: "currentColor",
+        stroke: "none",
+        key: "circle",
+      },
+    ],
+    [
+      "path",
+      {
+        d: "m7.5 12 3 3 6-6",
+        fill: "none",
+        stroke: "#ffffff",
+        strokeWidth: "2",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        key: "check",
+      },
+    ],
+  ],
   CircleX: CancelCircleIcon,
   Cloud: CloudIcon,
-  Eye: ViewIcon,
   Globe: InternetIcon,
   GridView: GridViewIcon,
   Info: InformationCircleIcon,
@@ -127,7 +151,6 @@ const ICON_MAP = {
   Settings: Settings01Icon,
   Smartphone: SmartPhone01Icon,
   Trash2: Delete02Icon,
-  Zap: ZapIcon,
 } as const satisfies Record<string, IconSvgElement>;
 
 export type IconName = keyof typeof ICON_MAP;

@@ -115,7 +115,6 @@ export interface Preset {
 }
 
 export interface CreateFolderInput {
-  id?: string;
   name: string;
   parentFolderId?: string | null;
 }
@@ -132,7 +131,6 @@ export interface DeleteFolderResult {
 }
 
 export interface CreateProjectInput {
-  id?: string;
   name: string;
   prefix: string;
   color: string;
@@ -149,7 +147,6 @@ export interface UpdateProjectInput {
 }
 
 export interface CreateTaskInput {
-  id?: string;
   projectId: string;
   title: string;
   description?: string;
@@ -166,6 +163,11 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   dueDate?: string | null;
   parentTaskId?: string | null;
+}
+
+export interface MoveTaskToProjectResult {
+  task: Task;
+  moved: Array<{ previousKey: string; task: Task }>;
 }
 
 export interface ListTasksFilters {
@@ -193,7 +195,6 @@ export interface UpdateTaskPositionInput {
 }
 
 export interface CreateLabelInput {
-  id?: string;
   projectId: string;
   name: string;
   color: string;
@@ -205,23 +206,19 @@ export interface UpdateLabelInput {
 }
 
 export interface CreateCommentInput {
-  id?: string;
   taskId: string;
   kind: CommentKind;
   authorName: string;
   presetName?: string | null;
   threadId?: string | null;
   body: string;
-  notifiedCount?: number;
 }
 
 export interface UpdateCommentInput {
-  body?: string;
-  notifiedCount?: number;
+  notifiedCount: number;
 }
 
 export interface CreateAttachmentInput {
-  id?: string;
   taskId?: string | null;
   commentId?: string | null;
   fileName: string;
@@ -232,15 +229,10 @@ export interface CreateAttachmentInput {
 }
 
 export interface UpdateAttachmentInput {
-  fileName?: string;
-  mime?: string;
-  sizeBytes?: number;
-  blobPath?: string;
-  isImage?: boolean;
+  blobPath: string;
 }
 
 export interface UpsertTaskThreadInput {
-  id?: string;
   taskId: string;
   threadId: string;
   presetName: string;
@@ -249,7 +241,6 @@ export interface UpsertTaskThreadInput {
 }
 
 export interface CreatePresetInput {
-  id?: string;
   name: string;
   providerId: string;
   modelId: string;

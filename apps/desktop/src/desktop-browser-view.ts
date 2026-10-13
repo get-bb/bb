@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { captureDesktopBrowserPage } from "./desktop-browser-capture.js";
 import {
   BrowserWindow,
@@ -13,7 +13,12 @@ import {
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  bbDesktopBrowserEvaluateResultSchema,
+  bbDesktopBrowserPageMessageSchema,
   clampBbDesktopBrowserViewBounds,
+  type BbDesktopBrowserEvaluateRequest,
+  type BbDesktopBrowserEvaluateResult,
+  type BbDesktopBrowserPageMessage,
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserFindInPageRequest,
   type BbDesktopBrowserFindResult,
@@ -31,9 +36,17 @@ import {
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
-import type { AppCommandId, AppShortcutInput } from "@bb/domain";
+import {
+  PANE_DIRECTION_APP_COMMAND_IDS,
+  type AppCommandId,
+  type AppShortcutInput,
+} from "@bb/domain";
 import {
   BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+  BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_PAGE_BRIDGE_KEY,
+  BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_PAGE_WORLD_ID,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
@@ -137,14 +150,9 @@ const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 const ERR_ABORTED = -3;
 
-export type DesktopBrowserTabProfile =
-  | { kind: "personal" }
-  | { kind: "automation"; id: string };
-
 export interface DesktopBrowserNativeTab extends BbDesktopBrowserState {
   threadId: string;
   generation: string;
-  profile: DesktopBrowserTabProfile;
   presentation: "hidden" | "reveal";
 }
 
@@ -165,8 +173,6 @@ interface BrowserViewEntry {
   hostWindow: DesktopBrowserHostWindow;
   threadId: string;
   generation: string;
-  profile: DesktopBrowserTabProfile;
-  partition: string;
   lastErrorText: string | null;
   desiredBounds: BbDesktopBrowserViewBounds;
   popupTimestamps: number[];
@@ -187,7 +193,8 @@ export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserScopedOpenTabRequest
   | BbDesktopBrowserSnapshot
   | BbDesktopBrowserTabRef
-  | BbDesktopBrowserFindResult;
+  | BbDesktopBrowserFindResult
+  | BbDesktopBrowserPageMessage;
 
 export interface DesktopBrowserHostContentBounds {
   height: number;
@@ -209,6 +216,8 @@ export interface DesktopBrowserHostWindow {
   contentView: DesktopBrowserHostContentView;
   getContentBounds(): DesktopBrowserHostContentBounds;
   isDestroyed(): boolean;
+  isFocused(): boolean;
+  once(event: "focus", listener: () => void): unknown;
   webContents: DesktopBrowserHostWebContents;
 }
 
@@ -220,8 +229,12 @@ interface DispatchDesktopBrowserAppCommandArgs {
 export interface CreateDesktopBrowserViewManagerArgs {
   dispatchAppCommand: (args: DispatchDesktopBrowserAppCommandArgs) => void;
   focusHostWebContents: (hostWebContentsId: number) => void;
+  pagePreloadPath: string | null;
   partition?: string;
-  resolveAppCommand: (input: AppShortcutInput) => AppCommandId | null;
+  resolveAppCommand: (
+    input: AppShortcutInput,
+    hostWebContentsId: number,
+  ) => AppCommandId | null;
 }
 
 interface HostScopedRequestArgs<TRequest> {
@@ -239,7 +252,7 @@ interface CreateEntryArgs {
   hostWindow: DesktopBrowserHostWindow;
   tabId: string;
   threadId: string;
-  profile: DesktopBrowserTabProfile;
+  backgroundThrottling: boolean;
 }
 
 interface HostWindowViewportBoundsArgs {
@@ -258,7 +271,6 @@ export interface DesktopBrowserViewManager {
     tabId: string;
     threadId: string;
     url: string;
-    profile: DesktopBrowserTabProfile;
     viewport: BbDesktopBrowserViewportBounds;
   }): DesktopBrowserNativeTab;
   listTabs(args: NativeTabScope): DesktopBrowserNativeTab[];
@@ -275,7 +287,8 @@ export interface DesktopBrowserViewManager {
     threadId: string;
   }): Array<{ tabId: string; webContents: WebContents }>;
   subscribeAutomationTabs(listener: () => void): () => void;
-  profileSession(profile: DesktopBrowserTabProfile): Session;
+  setAutomationControlled(webContents: WebContents, controlled: boolean): void;
+  session(): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
   focus(args: HostScopedTabArgs): void;
@@ -299,6 +312,9 @@ export interface DesktopBrowserViewManager {
   stopFindInPage(
     args: HostScopedRequestArgs<BbDesktopBrowserStopFindInPageRequest>,
   ): void;
+  evaluate(
+    args: HostScopedRequestArgs<BbDesktopBrowserEvaluateRequest>,
+  ): Promise<BbDesktopBrowserEvaluateResult>;
   beginWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   endWindowResize(hostWindow: DesktopBrowserHostWindow): void;
   prepareWindowReload(hostWindow: DesktopBrowserHostWindow): void;
@@ -311,6 +327,31 @@ function browserViewKey(
   tabId: string,
 ): string {
   return `${hostWindow.webContents.id}:${tabId}`;
+}
+
+const BB_DESKTOP_BROWSER_MAX_PAGE_MESSAGE_LENGTH = 1_000_000;
+
+const guestPageMessageSchema = bbDesktopBrowserPageMessageSchema.omit({
+  tabId: true,
+});
+
+export function browserPageEvaluationSource(
+  request: BbDesktopBrowserEvaluateRequest,
+): string {
+  const bridge =
+    request.world === "isolated"
+      ? `{ postMessage: (data) => globalThis[${JSON.stringify(BB_DESKTOP_BROWSER_PAGE_BRIDGE_KEY)}].postMessage(${JSON.stringify(request.channel)}, data) }`
+      : "null";
+  return [
+    "(async (bb) => {",
+    "  try {",
+    `    const json = JSON.stringify(await (${request.expression}\n));`,
+    "    return { ok: true, value: json === undefined ? null : JSON.parse(json) };",
+    "  } catch (error) {",
+    "    return { ok: false, error: error instanceof Error ? String(error.stack || error.message) : String(error) };",
+    "  }",
+    `})(${bridge})`,
+  ].join("\n");
 }
 
 function send(
@@ -376,7 +417,7 @@ function buildBrowserState(
   };
 }
 
-export function isAllowedBrowserPermission(permission: string): boolean {
+function isAllowedBrowserPermission(permission: string): boolean {
   return permission === "clipboard-sanitized-write";
 }
 
@@ -384,11 +425,14 @@ export function createDesktopBrowserViewManager(
   args: CreateDesktopBrowserViewManagerArgs,
 ): DesktopBrowserViewManager {
   const partition = args.partition ?? BB_BROWSER_PARTITION;
+  const pagePreloadPath = args.pagePreloadPath;
   const entries = new Map<string, BrowserViewEntry>();
   const automationTabListeners = new Set<() => void>();
   const popupWindows = new Set<BrowserWindow>();
   const resizingHostIds = new Set<number>();
-  const hardenedSessions = new Map<string, Session>();
+  let hardenedSession: Session | null = null;
+  const automationControlled = new WeakSet<WebContents>();
+  const pendingHostFocusReturns = new WeakSet<DesktopBrowserHostWindow>();
 
   function notifyAutomationTabs(): void {
     for (const listener of automationTabListeners) {
@@ -400,6 +444,32 @@ export function createDesktopBrowserViewManager(
     return resizingHostIds.has(hostWindow.webContents.id);
   }
 
+  function pauseHiddenMedia(entry: BrowserViewEntry): void {
+    if (
+      entry.visible ||
+      entry.webContents.isDestroyed() ||
+      entry.rendererRecoveryState !== "healthy"
+    ) {
+      return;
+    }
+    for (const frame of entry.webContents.mainFrame.framesInSubtree) {
+      if (frame.detached) continue;
+      frame
+        .executeJavaScript(
+          `(() => {
+            const roots = [document];
+            for (const root of roots) {
+              root.querySelectorAll("video, audio").forEach((media) => media.pause());
+              for (const element of root.querySelectorAll("*")) {
+                if (element.shadowRoot) roots.push(element.shadowRoot);
+              }
+            }
+          })()`,
+        )
+        .catch(() => {});
+    }
+  }
+
   function applyEntryVisibility(
     entry: BrowserViewEntry,
     hostWindow: DesktopBrowserHostWindow,
@@ -407,6 +477,8 @@ export function createDesktopBrowserViewManager(
     if (entry.webContents.isDestroyed()) {
       return;
     }
+    entry.webContents.setAudioMuted(!entry.visible);
+    pauseHiddenMedia(entry);
     entry.view.setVisible(
       entry.visible &&
         entry.rendererRecoveryState === "healthy" &&
@@ -492,28 +564,18 @@ export function createDesktopBrowserViewManager(
       });
   }
 
-  function partitionForProfile(profile: DesktopBrowserTabProfile): string {
-    return profile.kind === "personal"
-      ? partition
-      : `persist:bb-browser-automation-${createHash("sha256").update(profile.id).digest("hex")}`;
-  }
-
-  function ensureHardenedSession(tabPartition: string): Session {
-    const existing = hardenedSessions.get(tabPartition);
-    if (existing !== undefined) {
-      return existing;
+  function ensureHardenedSession(): Session {
+    if (hardenedSession !== null) {
+      return hardenedSession;
     }
-    const browserSession = session.fromPartition(tabPartition);
+    const browserSession = session.fromPartition(partition);
     browserSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(isAllowedBrowserPermission(permission));
     });
     browserSession.setPermissionCheckHandler((_wc, permission) =>
       isAllowedBrowserPermission(permission),
     );
-    browserSession.on("will-download", (event) => {
-      event.preventDefault();
-    });
-    hardenedSessions.set(tabPartition, browserSession);
+    hardenedSession = browserSession;
     return browserSession;
   }
 
@@ -532,9 +594,9 @@ export function createDesktopBrowserViewManager(
     );
   }
 
-  function hardenedWebPreferences(tabPartition: string): WebPreferences {
+  function hardenedWebPreferences(): WebPreferences {
     return {
-      partition: tabPartition,
+      partition,
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -560,7 +622,7 @@ export function createDesktopBrowserViewManager(
       show: true,
       transparent: false,
       webContents: options.webContents,
-      webPreferences: hardenedWebPreferences(entry.partition),
+      webPreferences: hardenedWebPreferences(),
       width: clampPopupDimension(
         options.width,
         POPUP_DEFAULT_WIDTH,
@@ -614,9 +676,34 @@ export function createDesktopBrowserViewManager(
     webContents.on("did-navigate-in-page", notifyAutomationTabs);
     webContents.on("page-title-updated", notifyAutomationTabs);
 
+    if (pagePreloadPath !== null) {
+      webContents.ipc.on(
+        BB_DESKTOP_BROWSER_GUEST_MESSAGE_CHANNEL,
+        (_event, payload: unknown) => {
+          const parsed = guestPageMessageSchema.safeParse(payload);
+          if (
+            !parsed.success ||
+            JSON.stringify(parsed.data.data).length >
+              BB_DESKTOP_BROWSER_MAX_PAGE_MESSAGE_LENGTH
+          ) {
+            return;
+          }
+          send(hostWindow, BB_DESKTOP_BROWSER_PAGE_MESSAGE_CHANNEL, {
+            tabId,
+            channel: parsed.data.channel,
+            data: parsed.data.data,
+          });
+        },
+      );
+    }
+
     webContents.on("focus", () => {
       if (entry.suppressNextFocusNotification) {
         entry.suppressNextFocusNotification = false;
+        return;
+      }
+      if (automationControlled.has(webContents) || !entry.visible) {
+        setTimeout(() => returnFocusToHost(hostWindow), 0);
         return;
       }
       send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
@@ -626,17 +713,28 @@ export function createDesktopBrowserViewManager(
       if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
         return;
       }
-      const command = args.resolveAppCommand({
-        altKey: input.alt,
-        code: input.code,
-        ctrlKey: input.control,
-        key: input.key,
-        metaKey: input.meta,
-        shiftKey: input.shift,
-      });
+      const command = args.resolveAppCommand(
+        {
+          altKey: input.alt,
+          code: input.code,
+          ctrlKey: input.control,
+          key: input.key,
+          metaKey: input.meta,
+          shiftKey: input.shift,
+        },
+        hostWindow.webContents.id,
+      );
       if (command === null) return;
       event.preventDefault();
-      if (command === "browser.focusLocation" || command === "browser.find") {
+      if (
+        command === "browser.focusLocation" ||
+        command === "browser.find" ||
+        command === "panel.previousTab" ||
+        command === "panel.nextTab" ||
+        PANE_DIRECTION_APP_COMMAND_IDS.some((id) => id === command) ||
+        command === "pane.focus.previous" ||
+        command === "pane.focus.next"
+      ) {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
       args.dispatchAppCommand({
@@ -747,6 +845,8 @@ export function createDesktopBrowserViewManager(
       scheduleEntryRendererRecovery(entry, hostWindow, tabId);
     });
 
+    webContents.on("media-started-playing", () => pauseHiddenMedia(entry));
+
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-finish-load", () => {
       resetEntryRendererRecovery(entry);
@@ -783,12 +883,12 @@ export function createDesktopBrowserViewManager(
   }
 
   function createEntry(args: CreateEntryArgs): BrowserViewEntry {
-    const tabPartition = partitionForProfile(args.profile);
-    ensureHardenedSession(tabPartition);
+    ensureHardenedSession();
     const view = new WebContentsView({
       webPreferences: {
-        ...hardenedWebPreferences(tabPartition),
-        backgroundThrottling: args.profile.kind === "personal",
+        ...hardenedWebPreferences(),
+        backgroundThrottling: args.backgroundThrottling,
+        ...(pagePreloadPath === null ? {} : { preload: pagePreloadPath }),
       },
     });
     const entry: BrowserViewEntry = {
@@ -797,8 +897,6 @@ export function createDesktopBrowserViewManager(
       hostWindow: args.hostWindow,
       threadId: args.threadId,
       generation: randomUUID(),
-      profile: { ...args.profile },
-      partition: tabPartition,
       lastErrorText: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
@@ -889,7 +987,6 @@ export function createDesktopBrowserViewManager(
       ...buildBrowserState(tabId, entry),
       threadId: entry.threadId,
       generation: entry.generation,
-      profile: { ...entry.profile },
       presentation: entry.visible ? "reveal" : "hidden",
     };
   }
@@ -906,6 +1003,41 @@ export function createDesktopBrowserViewManager(
       }
     }
     return false;
+  }
+
+  function controlledViewHasFocus(
+    hostWindow: DesktopBrowserHostWindow,
+  ): boolean {
+    const hostPrefix = `${hostWindow.webContents.id}:`;
+    for (const [key, entry] of entries) {
+      if (
+        key.startsWith(hostPrefix) &&
+        (automationControlled.has(entry.webContents) || !entry.visible) &&
+        !entry.webContents.isDestroyed() &&
+        entry.webContents.isFocused()
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function returnFocusToHost(hostWindow: DesktopBrowserHostWindow): void {
+    if (hostWindow.isDestroyed() || hostWindow.webContents.isDestroyed()) {
+      return;
+    }
+    if (!hostWindow.isFocused()) {
+      if (pendingHostFocusReturns.has(hostWindow)) return;
+      pendingHostFocusReturns.add(hostWindow);
+      hostWindow.once("focus", () => {
+        pendingHostFocusReturns.delete(hostWindow);
+        returnFocusToHost(hostWindow);
+      });
+      return;
+    }
+    if (controlledViewHasFocus(hostWindow)) {
+      args.focusHostWebContents(hostWindow.webContents.id);
+    }
   }
 
   function focusEntryWithoutNotifying(entry: BrowserViewEntry): void {
@@ -956,6 +1088,7 @@ export function createDesktopBrowserViewManager(
       const entry = createEntry({
         ...request,
         desiredBounds: { x: 0, y: 0, ...request.viewport },
+        backgroundThrottling: false,
       });
       applyEntryDesiredBounds(entry, request.hostWindow);
       applyEntryVisibility(entry, request.hostWindow);
@@ -985,8 +1118,8 @@ export function createDesktopBrowserViewManager(
         browserViewKey(entry.hostWindow, ref.tabId),
       );
     },
-    profileSession(profile) {
-      return ensureHardenedSession(partitionForProfile(profile));
+    session() {
+      return ensureHardenedSession();
     },
     async captureTab(request) {
       const entry = requireNativeEntry(request);
@@ -1044,6 +1177,10 @@ export function createDesktopBrowserViewManager(
         automationTabListeners.delete(listener);
       };
     },
+    setAutomationControlled(webContents, controlled) {
+      if (controlled) automationControlled.add(webContents);
+      else automationControlled.delete(webContents);
+    },
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
       const existing = entries.get(key) ?? null;
@@ -1059,7 +1196,7 @@ export function createDesktopBrowserViewManager(
           hostWindow,
           tabId: request.tabId,
           threadId: request.threadId,
-          profile: { kind: "personal" },
+          backgroundThrottling: true,
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       entry.visible = request.visible;
@@ -1083,6 +1220,34 @@ export function createDesktopBrowserViewManager(
     },
     focus({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, focusEntryWithoutNotifying);
+    },
+    async evaluate({ hostWindow, request }) {
+      const entry = entries.get(browserViewKey(hostWindow, request.tabId));
+      if (!entry || entry.webContents.isDestroyed()) {
+        return { ok: false, error: "Browser tab is not available" };
+      }
+      if (request.world === "isolated" && pagePreloadPath === null) {
+        return { ok: false, error: "Browser page scripts are not available" };
+      }
+      const source = browserPageEvaluationSource(request);
+      try {
+        const result: unknown =
+          request.world === "main"
+            ? await entry.webContents.executeJavaScript(source)
+            : await entry.webContents.executeJavaScriptInIsolatedWorld(
+                BB_DESKTOP_BROWSER_PAGE_WORLD_ID,
+                [{ code: source }],
+              );
+        const parsed = bbDesktopBrowserEvaluateResultSchema.safeParse(result);
+        return parsed.success
+          ? parsed.data
+          : { ok: false, error: "Browser page script returned no result" };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
@@ -1128,13 +1293,10 @@ export function createDesktopBrowserViewManager(
     },
     findInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        entry.activeFindRequestId = entry.webContents.findInPage(
-          request.text,
-          {
-            forward: request.forward,
-            findNext: request.newSession,
-          },
-        );
+        entry.activeFindRequestId = entry.webContents.findInPage(request.text, {
+          forward: request.forward,
+          findNext: request.newSession,
+        });
       });
     },
     stopFindInPage({ hostWindow, request }) {

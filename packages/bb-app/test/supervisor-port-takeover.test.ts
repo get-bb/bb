@@ -93,7 +93,11 @@ describe("full-stack supervisor port takeover", () => {
         throw new Error("Unexpected server restart delay");
       },
       isShutdownRequested: () => false,
+      onServerMoved: async () => {
+        throw new Error("Unexpected server move");
+      },
       processes,
+      readServerMovedFile: async () => null,
       startDaemon: async () => daemonRun,
       startServer: async () => {
         restartAttempts += 1;

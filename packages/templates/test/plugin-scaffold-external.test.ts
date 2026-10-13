@@ -27,12 +27,28 @@ import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import { scaffoldPlugin } from "../src/plugin-scaffold.js";
 
 const execFileAsync = promisify(execFile);
+const npmCommand =
+  process.platform === "win32"
+    ? {
+        file: process.execPath,
+        args: [
+          join(
+            dirname(process.execPath),
+            "node_modules",
+            "npm",
+            "bin",
+            "npm-cli.js",
+          ),
+        ],
+      }
+    : { file: "npm", args: [] };
 const pluginSdkRoot = resolve(process.cwd(), "../plugin-sdk");
 const dependencyRequire = createRequire(join(pluginSdkRoot, "package.json"));
 
 const EXTERNAL_DEPENDENCIES = [
   "@hugeicons/core-free-icons",
   "@hugeicons/react",
+  "@radix-ui/react-checkbox",
   "@radix-ui/react-dialog",
   "@radix-ui/react-slot",
   "@testing-library/react",
@@ -249,8 +265,15 @@ async function linkExternalDependencies(targetDir: string): Promise<void> {
 async function packPluginSdk(packDir: string): Promise<string> {
   await mkdir(packDir, { recursive: true });
   await execFileAsync(
-    "npm",
-    ["pack", "--silent", "--ignore-scripts", "--pack-destination", packDir],
+    npmCommand.file,
+    [
+      ...npmCommand.args,
+      "pack",
+      "--silent",
+      "--ignore-scripts",
+      "--pack-destination",
+      packDir,
+    ],
     {
       cwd: pluginSdkRoot,
     },
@@ -266,18 +289,34 @@ async function installPackedSdk(
   targetDir: string,
   tarball: string,
 ): Promise<void> {
+  const manifest: unknown = JSON.parse(
+    await readFile(join(pluginSdkRoot, "package.json"), "utf8"),
+  );
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    !("dependencies" in manifest) ||
+    typeof manifest.dependencies !== "object" ||
+    manifest.dependencies === null
+  ) {
+    throw new Error("SDK manifest is missing runtime dependencies");
+  }
   await execFileAsync(
-    "npm",
+    npmCommand.file,
     [
+      ...npmCommand.args,
       "install",
+      "--offline",
+      "--cache",
+      join(targetDir, ".npm-cache"),
       "--ignore-scripts",
       "--legacy-peer-deps",
       "--no-package-lock",
       "--no-save",
       "--no-audit",
       "--no-fund",
-      "--prefer-offline",
       tarball,
+      ...Object.keys(manifest.dependencies).map(packageRoot),
     ],
     { cwd: targetDir },
   );
@@ -344,12 +383,12 @@ describe("external plugin scaffold types", () => {
   beforeAll(async () => {
     packRoot = await mkdtemp(join(tmpdir(), "bb-external-pack-"));
     tarball = await packPluginSdk(join(packRoot, "pack"));
-    const templateDir = join(packRoot, "template");
-    await scaffoldPlugin({
-      targetDir: templateDir,
-      packageName: "bb-plugin-external-template",
-      bbVersion: "0.9.0",
-    });
+    const templateDir = join(packRoot, "installed");
+    await mkdir(templateDir);
+    await writeFile(
+      join(templateDir, "package.json"),
+      JSON.stringify({ name: "bb-plugin-external-fixture", private: true }),
+    );
     await installPackedSdk(templateDir, tarball);
     await linkExternalDependencies(templateDir);
     installedNodeModules = join(templateDir, "node_modules");
@@ -411,7 +450,7 @@ describe("external plugin scaffold types", () => {
   it("installs the packed testing runtimes and executes scaffold backend and frontend tests", async () => {
     const packedListing = (
       await execFileAsync("tar", ["-tzf", tarball])
-    ).stdout.split("\n");
+    ).stdout.split(/\r?\n/);
     expect(packedListing).toContain("package/dist/testing/index.js");
     expect(packedListing).toContain("package/dist/testing/app.js");
     expect(packedListing).toContain(

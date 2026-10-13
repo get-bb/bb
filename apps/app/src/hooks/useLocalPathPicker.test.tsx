@@ -125,17 +125,6 @@ describe("useLocalPathPicker openPathEntry", () => {
     expect(mocks.pickFolder).not.toHaveBeenCalled();
   });
 
-  it("uses the native picker with one machine", () => {
-    const { result } = renderHook(() =>
-      useLocalPathPicker({ isPending: false, submit: vi.fn() }),
-    );
-
-    act(() => result.current.openPathEntry({ kind: "create" }));
-
-    expect(mocks.pickFolder).toHaveBeenCalled();
-    expect(result.current.projectPathDialog.isOpen).toBe(false);
-  });
-
   it("keeps the native picker when the only other machine is offline", () => {
     mocks.hosts = [atum, host("host_dead", "Old laptop", "disconnected")];
     const { result } = renderHook(() =>

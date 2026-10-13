@@ -162,11 +162,6 @@ describe("parseOperationMessage operation titles", () => {
         "Provisioning thread interrupted",
       );
     });
-
-    it("does not depend on whether the thread is named", () => {
-      expect(provisioningTitle("active", "")).toBe("Provisioning thread");
-      expect(provisioningTitle("completed", "")).toBe("Provisioned thread");
-    });
   });
 
   describe("thread-interrupted", () => {
@@ -187,12 +182,12 @@ describe("parseOperationMessage operation titles", () => {
     });
   });
 
-  it("renders a context clear as a concise completed boundary", () => {
+  it("renders a completed context clear with current detail text over the stored message", () => {
     const row = factory().systemOperation({
       operation: "context_clear",
       status: "completed",
       message:
-        "New prompts won’t include messages above. Thread history and workspace are unchanged.",
+        "Earlier chat is hidden from the active timeline. Durable history and workspace are unchanged.",
     });
     const { event, meta } = decodeThreadEventRow(row);
 
@@ -283,4 +278,8 @@ describe("parseOperationMessage operation titles", () => {
       expect(message.title).toBe("Provisioning thread failed");
     });
   });
+});
+
+it("explains an intentional machine removal without suggesting a daemon failure", () => {
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
 });

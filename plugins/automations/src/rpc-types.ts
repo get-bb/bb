@@ -8,30 +8,22 @@ import {
   AUTOMATION_SCRIPT_MAX_LENGTH,
   AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+  AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH,
+  isPrintableWorkingDirectoryPath,
   SCHEDULE_CRON_MAX_LENGTH,
   SCHEDULE_TIMEZONE_MAX_LENGTH,
 } from "./limits.js";
 
 export {
   AUTOMATION_RUNS_LIMIT_MAX,
-  AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
 } from "./limits.js";
 
 export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;
-export const reasoningLevelSchema = z.enum([
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "ultracode",
-  "max",
-  "ultra",
-]);
+export const reasoningLevelSchema = z.string().min(1);
 export type ReasoningLevel = z.infer<typeof reasoningLevelSchema>;
-export const serviceTierSchema = z.enum(["default", "fast"]);
+export const serviceTierSchema = z.string().min(1);
 export type ServiceTier = z.infer<typeof serviceTierSchema>;
 
 export const unmanagedBranchSpecSchema = z.discriminatedUnion("kind", [
@@ -118,6 +110,30 @@ export const automationScriptInterpreterSchema = z.enum([
 export type AutomationScriptInterpreter = z.infer<
   typeof automationScriptInterpreterSchema
 >;
+export const WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE =
+  "A script working directory path must not contain control characters";
+export const automationScriptWorkingDirectorySchema = z.discriminatedUnion(
+  "type",
+  [
+    z.object({ type: z.literal("automation-storage") }).strict(),
+    z.object({ type: z.literal("project") }).strict(),
+    z
+      .object({
+        type: z.literal("path"),
+        path: z
+          .string()
+          .min(1)
+          .max(AUTOMATION_SCRIPT_WORKING_DIRECTORY_MAX_LENGTH)
+          .refine(isPrintableWorkingDirectoryPath, {
+            message: WORKING_DIRECTORY_CONTROL_CHARACTER_MESSAGE,
+          }),
+      })
+      .strict(),
+  ],
+);
+export type AutomationScriptWorkingDirectory = z.infer<
+  typeof automationScriptWorkingDirectorySchema
+>;
 
 const automationScheduleTriggerSchema = z
   .object({
@@ -152,23 +168,48 @@ const automationAgentExecutionSchema = z
   })
   .strict();
 
+const automationScriptExecutionFields = {
+  mode: z.literal("script"),
+  script: z.string().min(1).max(AUTOMATION_SCRIPT_MAX_LENGTH).optional(),
+  scriptFile: z
+    .string()
+    .min(1)
+    .max(AUTOMATION_SCRIPT_FILE_MAX_LENGTH)
+    .optional(),
+  interpreter: automationScriptInterpreterSchema.optional(),
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(AUTOMATION_SCRIPT_TIMEOUT_MAX_MS)
+    .default(AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS),
+  env: z.record(z.string(), z.string()).optional(),
+};
+
 const automationScriptExecutionSchema = z
   .object({
-    mode: z.literal("script"),
-    script: z.string().min(1).max(AUTOMATION_SCRIPT_MAX_LENGTH).optional(),
-    scriptFile: z
-      .string()
-      .min(1)
-      .max(AUTOMATION_SCRIPT_FILE_MAX_LENGTH)
-      .optional(),
-    interpreter: automationScriptInterpreterSchema.optional(),
-    timeoutMs: z
-      .number()
-      .int()
-      .positive()
-      .max(AUTOMATION_SCRIPT_TIMEOUT_MAX_MS)
-      .default(AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS),
-    env: z.record(z.string(), z.string()).optional(),
+    ...automationScriptExecutionFields,
+    workingDirectory: automationScriptWorkingDirectorySchema,
+  })
+  .strict();
+
+const storedAutomationScriptExecutionSchema = z
+  .object({
+    ...automationScriptExecutionFields,
+    workingDirectory: automationScriptWorkingDirectorySchema.optional(),
+  })
+  .strict()
+  .transform((execution) => ({
+    ...execution,
+    workingDirectory: execution.workingDirectory ?? {
+      type: "automation-storage" as const,
+    },
+  }));
+
+const automationScriptExecutionRequestSchema = z
+  .object({
+    ...automationScriptExecutionFields,
+    workingDirectory: automationScriptWorkingDirectorySchema.optional(),
   })
   .strict();
 
@@ -180,13 +221,17 @@ export type AutomationExecution = z.infer<typeof automationExecutionSchema>;
 
 const legacyEmptyPromptAgentExecutionSchema =
   automationAgentExecutionSchema.extend({ prompt: z.literal("") });
-export const repairableAutomationExecutionSchema = z.union([
+export const persistedAutomationExecutionSchema = z.union([
   automationExecutionSchema,
+  storedAutomationScriptExecutionSchema,
+]);
+export const repairableAutomationExecutionSchema = z.union([
+  persistedAutomationExecutionSchema,
   legacyEmptyPromptAgentExecutionSchema,
 ]);
 
 function requireExactlyOneScriptSource(
-  exec: z.infer<typeof automationExecutionSchema>,
+  exec: z.infer<typeof automationExecutionRequestBaseSchema>,
   ctx: z.RefinementCtx,
 ): void {
   if (
@@ -201,14 +246,32 @@ function requireExactlyOneScriptSource(
   }
 }
 
-const automationExecutionRequestSchema = automationExecutionSchema.superRefine(
-  requireExactlyOneScriptSource,
-);
+const automationExecutionRequestBaseSchema = z.discriminatedUnion("mode", [
+  automationAgentExecutionSchema,
+  automationScriptExecutionRequestSchema,
+]);
+
+const automationExecutionRequestSchema =
+  automationExecutionRequestBaseSchema.superRefine(
+    requireExactlyOneScriptSource,
+  );
+export type AutomationExecutionRequest = z.output<
+  typeof automationExecutionRequestSchema
+>;
+
+const automationScriptResponseExecutionSchema = automationScriptExecutionSchema
+  .extend({ storedScriptPath: z.string().min(1).optional() })
+  .strict();
 
 const automationResponseExecutionSchema = z.discriminatedUnion("mode", [
   automationAgentExecutionSchema,
-  automationScriptExecutionSchema
-    .extend({ storedScriptPath: z.string().min(1).optional() })
+  automationScriptResponseExecutionSchema,
+]);
+
+const automationDetailExecutionSchema = z.discriminatedUnion("mode", [
+  automationAgentExecutionSchema,
+  automationScriptResponseExecutionSchema
+    .extend({ resolvedWorkingDirectory: z.string().min(1).nullable() })
     .strict(),
 ]);
 
@@ -251,6 +314,12 @@ const agentExecutionUpdateSchema = z
   );
 export type AgentExecutionUpdate = z.infer<typeof agentExecutionUpdateSchema>;
 
+const scriptExecutionUpdateSchema = z
+  .object({
+    workingDirectory: automationScriptWorkingDirectorySchema,
+  })
+  .strict();
+
 export const automationResponseSchema = z
   .object({
     id: z.string(),
@@ -273,13 +342,17 @@ export const automationResponseSchema = z
   .strict();
 export type AutomationResponse = z.infer<typeof automationResponseSchema>;
 
+export const automationDetailResponseSchema = automationResponseSchema.extend({
+  execution: automationDetailExecutionSchema,
+});
+export type AutomationDetailResponse = z.infer<
+  typeof automationDetailResponseSchema
+>;
+
 export const legacyEmptyPromptAutomationResponseSchema =
   automationResponseSchema.extend({
     execution: legacyEmptyPromptAgentExecutionSchema,
   });
-export type LegacyEmptyPromptAutomationResponse = z.infer<
-  typeof legacyEmptyPromptAutomationResponseSchema
->;
 
 const invalidStoredAutomationReadProblemSchema = z
   .object({
@@ -303,6 +376,13 @@ export const automationReadResultSchema = z.union([
   automationReadProblemSchema,
 ]);
 export type AutomationReadResult = z.infer<typeof automationReadResultSchema>;
+export const automationDetailReadResultSchema = z.union([
+  automationDetailResponseSchema,
+  automationReadProblemSchema,
+]);
+export type AutomationDetailReadResult = z.infer<
+  typeof automationDetailReadResultSchema
+>;
 
 export const automationRunResponseSchema = z
   .object({
@@ -358,6 +438,7 @@ export const updateAutomationInputSchema = z
     trigger: automationTriggerSchema.optional(),
     execution: automationExecutionRequestSchema.optional(),
     agent: agentExecutionUpdateSchema.optional(),
+    script: scriptExecutionUpdateSchema.optional(),
   })
   .strict()
   .refine(
@@ -365,13 +446,17 @@ export const updateAutomationInputSchema = z
       value.name !== undefined ||
       value.trigger !== undefined ||
       value.execution !== undefined ||
-      value.agent !== undefined,
+      value.agent !== undefined ||
+      value.script !== undefined,
     { message: "at least one field is required" },
   )
   .refine(
-    (value) => value.execution === undefined || value.agent === undefined,
+    (value) =>
+      [value.execution, value.agent, value.script].filter(
+        (entry) => entry !== undefined,
+      ).length <= 1,
     {
-      message: "execution and agent updates cannot be combined",
+      message: "execution, agent, and script updates cannot be combined",
     },
   );
 export type UpdateAutomationInput = z.infer<typeof updateAutomationInputSchema>;
@@ -403,9 +488,6 @@ export type ResolvedAutomationRunsInput = z.output<
 >;
 
 export const automationListResponseSchema = z.array(automationReadResultSchema);
-export type AutomationListResponse = z.infer<
-  typeof automationListResponseSchema
->;
 
 export const automationRunListResponseSchema = z
   .object({

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { defaultAppSettings } from "@bb/domain";
-import { getHost, setAppSettings } from "@bb/db";
+import { getHost, openSession, setAppSettings } from "@bb/db";
 import { withTestHarness } from "../../helpers/test-app.js";
 import { seedHost, seedPrimaryHost } from "../../helpers/seed.js";
 
@@ -51,6 +51,15 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
       token: credential!,
     });
     expect(enrolled).not.toBeNull();
+    openSession(harness.db, {
+      hostId: created.id,
+      instanceId: "manual-instance",
+      hostName: "Studio Mac",
+      dataDir: "/tmp/studio-mac",
+      protocolVersion: 1,
+      heartbeatIntervalMs: 5_000,
+      leaseTimeoutMs: 30_000,
+    });
     harness.hub.registerDaemon("manual-session", created.id, {
       close() {},
       send() {},
@@ -61,6 +70,7 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
     expect(getHost(harness.db, created.id)).toMatchObject({
       launchKey: "manual-host",
       machineProviderId: "manual",
+      name: "Studio Mac",
       resource: { key: "manual-host" },
     });
     expect(

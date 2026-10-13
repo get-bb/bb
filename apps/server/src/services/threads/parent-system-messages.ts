@@ -1,5 +1,7 @@
 import {
+  getLatestThreadSequence,
   getEnvironment,
+  getHost,
   getThread,
   requireThreadLifecycleEventApplied,
   type DbTransaction,
@@ -42,6 +44,7 @@ import {
 } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
@@ -265,6 +268,9 @@ async function queueActiveParentSystemMessage(
         execution: args.execution,
         payload: { kind: "inline" },
         senderThreadId: null,
+        origin: null,
+        originPluginId: null,
+        requestedBy: null,
         systemNotice: {
           kind: args.systemMessageKind,
           subject: args.systemMessageSubject,
@@ -326,6 +332,9 @@ async function queueActiveParentSystemMessage(
   }
 
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, {
+      threadId: args.thread.id,
+    }),
     eventTypes: ["client/turn/requested"],
   });
   startLiveHostCommand(deps, {
@@ -394,6 +403,9 @@ async function queueReadyParentSystemMessage(
     { behavior: "immediate" },
   );
   deps.hub.notifyThread(args.thread.id, ["events-appended"], {
+    timelineSequence: getLatestThreadSequence(deps.db, {
+      threadId: args.thread.id,
+    }),
     eventTypes: ["client/turn/requested"],
   });
   startLiveHostCommand(deps, {
@@ -430,7 +442,10 @@ export async function queueParentSystemMessage(
     return false;
   }
   const hasPendingInteraction =
-    deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id);
+    deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(
+      parentThread.id,
+    );
+  let hostUnavailable = false;
   if (!hasPendingInteraction) {
     try {
       return await deliverParentSystemMessage(deps, {
@@ -440,7 +455,13 @@ export async function queueParentSystemMessage(
         systemMessageSubject: args.systemMessageSubject,
       });
     } catch (error) {
-      if (!(error instanceof ThreadContextClearInProgressError)) throw error;
+      hostUnavailable = isHostUnavailableApiError(error);
+      if (
+        !(error instanceof ThreadContextClearInProgressError) &&
+        !hostUnavailable
+      ) {
+        throw error;
+      }
     }
   }
 
@@ -451,15 +472,28 @@ export async function queueParentSystemMessage(
       threadId: parentThread.id,
     },
   );
+  const host = hostUnavailable
+    ? getHost(
+        deps.db,
+        requireThreadEnvironment(deps.db, parentThread.id).environment.hostId,
+      )
+    : null;
+  if (hostUnavailable && !host) {
+    throw new Error("Parent host disappeared while queueing a system message");
+  }
   createQueuedThreadMessage(deps.db, deps.hub, {
     threadId: parentThread.id,
     content: args.input,
     senderThreadId: null,
+    origin: null,
+    originPluginId: null,
     model: execution.model,
     reasoningLevel: execution.reasoningLevel,
     permissionMode: execution.permissionMode,
     serviceTier: execution.serviceTier,
-    waitingOn: { kind: hasPendingInteraction ? "interaction" : "thread-busy" },
+    waitingOn: host
+      ? { kind: "host-offline", hostName: host.name }
+      : { kind: hasPendingInteraction ? "interaction" : "thread-busy" },
     sendAt: null,
     payload: { kind: "inline" },
     systemNotice: {
@@ -467,7 +501,7 @@ export async function queueParentSystemMessage(
       subject: args.systemMessageSubject,
     },
   });
-  if (!hasPendingInteraction) {
+  if (!hasPendingInteraction && !hostUnavailable) {
     requestQueuedMessageDispatch(deps, {
       kind: "thread-ready",
       threadId: parentThread.id,

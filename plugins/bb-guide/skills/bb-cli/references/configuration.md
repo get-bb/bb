@@ -25,14 +25,40 @@
 - Read `references/app-settings.md` for every general key, experiment, default,
   and effect.
 - Use `bb settings show` and `bb settings ai-services` for current values.
+- Use `bb settings ai-services set <thread-title|commit-message|voice>
+<automatic|off|service-id>` to choose which plugin AI service writes titles,
+  commit messages, or voice transcripts, and `bb settings ai-services test
+<thread-title|commit-message>` to try the current choice. Add
+  `--plugin <plugin-id>` to `set` when two plugins register the same service
+  id.
 - Use `bb settings general <key> <value>` or
   `bb settings experiment <key> <value>` for updates.
 - Use `bb settings keyboard list`, `set`, and `reset` for shortcut overrides.
-- Use `bb settings usage [--machine <id-or-name>]` for provider limits.
+- Use `bb settings usage [--machine <id-or-name>] [--refresh]` for provider limits. `--refresh` bypasses completed cached results; ordinary reads may reuse results for 10 seconds.
   `--host` is an alias for `--machine`.
 - Use `bb settings version [--force]` for release information.
 - Use `bb settings reload` to reload BB-managed configuration.
 - These commands support `--json`.
+
+BB accepts request hosts that are `localhost`, IP addresses (including LAN and
+Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name or reverse
+proxy, set `npx bb-app config set BB_APP_URL https://bb.example.com` before
+connecting, including from the CLI or SDK. A matching `Host` and `Origin`, or
+`X-Forwarded-Host`, cannot authorize an unconfigured DNS name. A proxy can
+preserve the configured host or forward to localhost. BB Connect rewrites
+requests to the local server address and needs no additional configuration.
+`BB_SERVER_BIND_HOST=0.0.0.0` remains supported for direct remote access.
+
+Settings → General → Command line installs the bb CLI for use outside bb: it
+puts the `bb` command on PATH on the computer that runs the bb server, so the
+user, a script, or an agent running outside bb (such as Claude Code or Codex)
+can control bb. Threads in bb already have `bb`. `bb settings cli-command` shows the state and
+`bb settings cli-command install` or `remove` changes it.
+Install links the launcher bb keeps at `~/.bb/bin/bb` into a PATH folder such
+as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user PATH). bb never
+replaces another `bb`: install is refused while one runs first in a new
+terminal. Only an installed bb (`npx bb-app` or the desktop app) offers this;
+a source checkout does not.
 
 ## Agent Instructions
 
@@ -113,11 +139,31 @@ with `bb settings show --json` and change them with `bb settings general`.
 treat it as an ownership assertion and refuse the default BB installation; see
 thread-creation.md and docs/configuration.md for the directory constraints.
 
+The `bb` CLI appends every failed invocation to
+`<data dir>/logs/cli-errors.jsonl` on the machine that ran it: command path,
+error code, and the unknown command or flag, never argument values.
+`bb diagnostics cli-errors [--since 7d] [--json]` tallies it; `--clear` deletes
+it. `BB_CLI_ERROR_LOG=0` turns recording off.
+
 Machine enrollment v2 stores private `serverHeaders` in machine `config.json`.
 The launcher transports these through `BB_SERVER_HEADERS` (JSON string map) for
 all server requests. Do not print these headers; they can contain access tokens.
 
 ## Machine environment
+
+Use `--project <id>` on `bb machine env list|set|unset` for project overrides;
+omit it for global settings. Project overrides follow the project across
+machines and worktrees, including the primary host. Empty strings override;
+unset restores inheritance. List masks all values and includes inherited global
+rows for project scope. Set and unset update a single variable atomically.
+
+Settings → Environment variables edits machine variables and has a scope
+selector under its header. Project settings → Advanced settings opens the same editor for that
+project. Changes apply
+to the next agent turn and new terminals/commands. Project values are passed per
+operation and never installed into the daemon's global environment. They override
+global values; provider contributions retain precedence. All scopes share an
+encrypted database table and the existing machine-environment encryption key.
 
 Repository setup receives freshly resolved machine variables on each dispatch,
 including recovery. Values are sent transiently to the setup process and are
@@ -130,20 +176,58 @@ output is forwarded as-is, so commands and providers can print contributed
 values. `bb machine env unset NAME --json` removes an override. All values are
 encrypted in the database and omitted from settings responses.
 
-These settings apply globally to enrolled machines, excluding local hosts. The
-server synchronizes them into the daemon environment on connection and settings
-changes, so background commands and new child processes inherit them. Removing
-an override restores the original daemon value. User values override built-ins;
-agent-provider entries override host values. Environment synchronization does
-not restart cached provider runtimes; they retain their launch environment until
-recreated. Reopen existing terminals after a change. The server gh login provides GitHub Git/gh authentication and commit
-identity by default; a user GH_TOKEN replaces it. See Settings → Machines →
+These settings apply globally to every connected machine, including the primary
+host. The server synchronizes them into the daemon environment on connection and
+settings changes, so background commands and new child processes inherit them.
+Removing an override restores the original daemon value. User values override
+built-ins; agent-provider entries override host values. Environment synchronization
+does not restart cached provider runtimes; they retain their launch environment until
+recreated. Reopen existing terminals after a change. The server gh login provides
+GitHub Git/gh authentication and commit identity to non-primary hosts by default;
+the primary host uses its local Git authentication. A user GH_TOKEN replaces it.
+See Settings → Machines →
 Machine environment, and `bb machine env list` for builtInGit readiness.
 
 Plugin host calls start immediately using the current environment while any calls
 are active in that plugin worker. Changed or removed machine variables take
 effect on the next call after all active calls finish. Continuous overlapping
 calls can keep the previous values until the worker becomes idle.
+
+On macOS, right-panel tabs use `panel.previousTab` / `panel.nextTab` with
+`Command+Control+ArrowLeft` / `Command+Control+ArrowRight`. They wrap through visible
+tabs and each pane's New tab button in displayed order across the active
+chat's right-panel groups. Press Enter or Space on New tab to open the picker.
+On the selected New tab page, `panel.previousNewTabItem` /
+`panel.nextNewTabItem` use `Command+Control+ArrowUp` / `Command+Control+ArrowDown` to
+move through search, enabled actions, and recent items in displayed order.
+Search results replace actions and recents while searching. Enter activates
+the focused item.
+`history.back` / `history.forward` (Go back / Go forward) do the same thing
+as the sidebar's back and forward arrows, moving through the pages opened in
+the current window like browser history: `Mod+[` / `Mod+]` on desktop and
+the web. `thread.previous` / `thread.next`
+(`Mod+Shift+[` / `Mod+Shift+]` on desktop, `Control+Shift+[` / `Control+Shift+]`
+on the web) follow the sidebar order instead.
+Chat splits use `pane.focus.left` / `right` / `up` / `down` with
+`Command+Control+Shift+ArrowLeft` / `ArrowRight` / `ArrowUp` / `ArrowDown` on macOS. These move
+spatially to the adjacent chat pane, including stacked splits, and stop at the
+layout edge. The initially unassigned `pane.focus.previous` / `pane.focus.next`
+commands still cycle in reading order. On Windows/Linux, these arrow navigation
+commands start unassigned to preserve native Control-arrow editing shortcuts.
+Rebind any of these commands in Settings → Keyboard, via
+`bb settings keyboard set <command> <shortcut|disabled>`, or SDK
+`system.updateKeyboardSettings`; read bindings with `system.config`.
+Use `bb settings keyboard reset <command>` to adopt the current default.
+Overrides can specify `platform: "mac"`, `"windows"`, or `"linux"`; omission applies
+on all platforms. A platform-specific override takes precedence over a general one,
+including when disabled. UI edits and clears apply only to the current platform;
+UI resets remove overrides for the current platform so web and desktop each use
+their own defaults. Shared overrides become explicit bindings on the other platforms
+to preserve their behavior. Explicit overrides remain resettable even when they match
+a default shortcut.
+CLI `set` and `reset` accept `--platform mac|windows|linux`; scoped operations retain
+other platforms. Unscoped `set` updates the general override; unscoped `reset`
+clears all scopes for the selected command (or every command if omitted).
 
 Plugin commands use `plugin:<plugin-id>/<command-id>` as their stable binding
 ID. For example: `bb settings keyboard set plugin:example/open-issue Mod+Shift+I`.
@@ -158,3 +242,26 @@ The UI offers Replace binding or Cancel when assigning an occupied shortcut.
 plugin defaults and availability are resolved in each app window, where the
 plugin frontend runs. CLI/SDK callers should clear conflicting explicit
 bindings in the same update; plugin defaults yield to explicit bindings.
+
+### Opt-in server performance diagnostics
+
+Start with `pnpm start --perf-diagnostics`, `pnpm start:worktree --perf-diagnostics`,
+or `bb-app --perf-diagnostics` to permit detailed performance logs and rolling
+CPU profiles when the experiment is on. `BB_PERF_DIAGNOSTICS=1` is the equivalent startup environment
+setting (off by default; restart required). Server logs include five-second
+CPU/GC/loop/memory summaries and lower slow-operation thresholds. Profiles
+are saved every 30 seconds under `$BB_DATA_DIR/logs/performance/`, in ten
+rotating slots of at most 12 MiB each. Copy a relevant `.cpuprofile` promptly
+and open it in Chrome DevTools' JavaScript profiler. This adds overhead;
+remove the setting and restart to disable. No inspector network port is
+opened. Profile files contain local paths/function names; inspect before sharing.
+
+Diagnostics require **both** startup permission (`--perf-diagnostics` or
+`BB_PERF_DIAGNOSTICS=1`) and the **Server performance diagnostics** toggle in
+Settings → Experiments. The toggle is only shown when startup permission is present; a saved experiment value does not make it visible. The experiment defaults to off. Use
+`bb settings experiment performanceDiagnostics true` to enable it, or `false`
+to stop it; SDK clients use the existing experiments update endpoint. The
+experiment takes effect live on that server. Without startup permission it
+cannot start collection. Turning it off restores normal logging thresholds,
+stops the sampler and flushes the in-flight profile; existing files remain.
+The launch flag only grants permission and still requires a restart to change.

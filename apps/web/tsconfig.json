@@ -4,6 +4,7 @@
     "rootDir": "../..",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["@cloudflare/workers-types", "vite/client"],
@@ -11,6 +12,7 @@
     "declaration": false,
     "declarationMap": false,
     "noUnusedLocals": false,
+    "resolveJsonModule": true,
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts"]

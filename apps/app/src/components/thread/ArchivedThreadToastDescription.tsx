@@ -1,3 +1,9 @@
+import {
+  ThreadTitle,
+  useThreadTitleDisplayText,
+} from "@/components/thread/ThreadTitleMentions";
+import { formatChildThreadCount } from "@/lib/child-thread-copy";
+
 interface ArchivedThreadToastDescriptionProps {
   archivedThreadCount: number;
   onOpenThread: () => void;
@@ -5,9 +11,7 @@ interface ArchivedThreadToastDescriptionProps {
 }
 
 function formatArchivedChildThreadLabel(childThreadCount: number): string {
-  return childThreadCount === 1
-    ? "and 1 child thread"
-    : `and ${childThreadCount} child threads`;
+  return `and ${formatChildThreadCount(childThreadCount)}`;
 }
 
 export function ArchivedThreadToastDescription({
@@ -16,16 +20,17 @@ export function ArchivedThreadToastDescription({
   threadTitle,
 }: ArchivedThreadToastDescriptionProps) {
   const childThreadCount = archivedThreadCount - 1;
+  const displayTitle = useThreadTitleDisplayText(threadTitle);
 
   return (
     <span className="flex min-w-0 items-baseline gap-1">
       <button
         type="button"
-        className="min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        title={threadTitle}
+        className="min-w-0 flex-1 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        title={displayTitle}
         onClick={onOpenThread}
       >
-        {threadTitle}
+        <ThreadTitle title={threadTitle} />
       </button>
       {childThreadCount > 0 ? (
         <>

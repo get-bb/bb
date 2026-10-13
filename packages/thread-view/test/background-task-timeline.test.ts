@@ -28,7 +28,6 @@ function buildTimeline(
   events: ThreadEventWithMeta[],
   options: {
     includeNestedRows?: boolean;
-    turnMessageDetail?: "summary" | "full";
   } = {},
 ): ThreadTimelineFromEventsResult {
   return buildThreadTimelineFromEvents({
@@ -42,7 +41,6 @@ function buildTimeline(
       isLatestPage: true,
       threadStatus: "idle",
       threadName: "",
-      turnMessageDetail: options.turnMessageDetail ?? "full",
       workspaceRoot: null,
     },
   });
@@ -465,7 +463,7 @@ describe("background task timeline projection", () => {
           4,
         ),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(findWorkflowRows(timeline.rows)).toHaveLength(0);
@@ -550,7 +548,7 @@ describe("background task timeline projection", () => {
           4,
         ),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeWorkflows).toHaveLength(0);
@@ -598,7 +596,7 @@ describe("background task timeline projection", () => {
         ),
         turnCompleted("turn-1", 4),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeWorkflows.map((row) => row.workflowName)).toEqual([
@@ -658,7 +656,7 @@ describe("background task timeline projection", () => {
         ),
         turnCompleted("turn-1", 5),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeWorkflows.map((row) => row.workflowName)).toEqual([
@@ -727,7 +725,7 @@ describe("background task timeline projection", () => {
         ),
         turnCompleted("turn-1", 6),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeWorkflows[0]).toMatchObject({
@@ -781,7 +779,7 @@ describe("background task timeline projection", () => {
           3,
         ),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeBackgroundCommands).toMatchObject([
@@ -828,7 +826,7 @@ describe("background task timeline projection", () => {
           5,
         ),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeBackgroundCommands).toMatchObject([
@@ -879,7 +877,7 @@ describe("background task timeline projection", () => {
           5,
         ),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeBackgroundCommands).toMatchObject([
@@ -1023,7 +1021,7 @@ describe("background task timeline projection", () => {
         ),
         turnCompleted("turn-1", 6),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([
@@ -1118,7 +1116,7 @@ describe("background task timeline projection", () => {
         ),
         turnCompleted("turn-1", 7),
       ],
-      { includeNestedRows: false, turnMessageDetail: "summary" },
+      { includeNestedRows: false },
     );
 
     expect(timeline.activeBackgroundCommands.map((row) => row.itemId)).toEqual([

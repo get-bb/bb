@@ -1,26 +1,33 @@
-import { Toaster, type ToasterProps } from "sonner";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { usePreferredTheme } from "@/hooks/useTheme";
+import { useEffect, useSyncExternalStore } from "react";
+import { defineSplit } from "@/lib/define-split";
+import { queueSplitPreload } from "@/lib/split-prefetch";
+import {
+  isToasterRequested,
+  markToasterUnavailable,
+  requestToaster,
+  subscribeToasterRequest,
+} from "./ui/app-toast-runtime";
 
-const COMPACT_TOAST_OFFSET: NonNullable<ToasterProps["offset"]> = {
-  top: "calc(env(safe-area-inset-top) + var(--bb-app-chrome-row-height) + 16px)",
-};
-const COMPACT_TOAST_SWIPE_DIRECTIONS: NonNullable<
-  ToasterProps["swipeDirections"]
-> = ["top", "left", "right"];
+function ToasterUnavailable() {
+  useEffect(() => markToasterUnavailable(), []);
+  return null;
+}
+
+const AppToasterSplit = defineSplit({
+  id: "app-toaster",
+  load: () =>
+    import("./AppToasterView").then((module) => module.AppToasterView),
+  loading: () => null,
+  error: ToasterUnavailable,
+  tier: "intent",
+});
+
+queueSplitPreload(async () => requestToaster());
 
 export function AppToaster() {
-  const theme = usePreferredTheme();
-  const isCompactViewport = useIsCompactViewport();
-  return (
-    <Toaster
-      theme={theme}
-      position={isCompactViewport ? "top-center" : "bottom-right"}
-      offset={isCompactViewport ? COMPACT_TOAST_OFFSET : undefined}
-      mobileOffset={isCompactViewport ? COMPACT_TOAST_OFFSET : undefined}
-      swipeDirections={
-        isCompactViewport ? COMPACT_TOAST_SWIPE_DIRECTIONS : undefined
-      }
-    />
+  const requested = useSyncExternalStore(
+    subscribeToasterRequest,
+    isToasterRequested,
   );
+  return requested ? <AppToasterSplit /> : null;
 }

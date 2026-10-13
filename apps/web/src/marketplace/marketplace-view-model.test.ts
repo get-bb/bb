@@ -9,7 +9,6 @@ import {
   filterMarketplaceEntries,
   marketplaceAuthorEntries,
   marketplaceCategoryOptions,
-  marketplaceInstallCommand,
   marketplaceRepositoryUrl,
   marketplaceShelves,
   moreInMarketplaceCategory,
@@ -138,12 +137,6 @@ describe("public marketplace view model", () => {
     );
   });
 
-  it("builds the install command", () => {
-    expect(marketplaceInstallCommand("prompt-library")).toBe(
-      "bb plugin install prompt-library",
-    );
-  });
-
   it("builds the source repository link", () => {
     const npmEntry = MARKETPLACE_V2_FIXTURE.plugins[0];
     const gitEntry = MARKETPLACE_V2_FIXTURE.plugins[1];
@@ -167,6 +160,12 @@ describe("public marketplace view model", () => {
     expect(marketplaceRepositoryUrl(gitEntry)).toBe(
       "https://github.com/acme/bb-plugins",
     );
+    expect(
+      marketplaceRepositoryUrl({
+        ...npmEntry,
+        source: { bundled: { plugin: "docs" } },
+      }),
+    ).toBe("https://github.com/get-bb/bb/tree/main/plugins/docs");
   });
 
   it("orders category recommendations by install count", () => {

@@ -1,5 +1,5 @@
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type Db,
   deleteTerminalRuns,
@@ -8,6 +8,7 @@ import {
   getRunRequired,
   listExpiredTerminalRuns,
   migrations,
+  ownWorker,
 } from "./data.js";
 import plugin from "./server.js";
 import {
@@ -70,6 +71,7 @@ function setup(
 ) {
   let childCount = 0;
   let originDeleted = false;
+  let originArchived = false;
   const workers = new Map<string, WorkerState>();
   const archived: string[] = [];
   const archiveFailures = new Set<string>();
@@ -90,6 +92,7 @@ function setup(
               environmentId: "environment-1",
               providerId: "codex",
               status: "idle",
+              archivedAt: originArchived ? Date.now() : null,
             } as never;
           }
           const worker = workers.get(threadId);
@@ -106,6 +109,7 @@ function setup(
             status: worker?.status ?? "active",
           } as never;
         },
+        list: async () => [],
         output: async ({ threadId }) => ({
           output: workers.get(threadId)?.output ?? null,
         }),
@@ -116,7 +120,8 @@ function setup(
           serviceTier: "default",
           source: "default",
         }),
-        spawn: async () => {
+        spawn: async (args) => {
+          expect(args.lifecycleOwnerThreadId).toBe("origin");
           childCount += 1;
           const id = `child-${childCount}`;
           workers.set(id, { status: "active", output: null, deleted: false });
@@ -203,6 +208,10 @@ function setup(
     start,
     archived,
     failArchive: (threadId: string) => archiveFailures.add(threadId),
+    allowArchive: (threadId: string) => archiveFailures.delete(threadId),
+    archiveOrigin: () => {
+      originArchived = true;
+    },
     childCount: () => childCount,
     deleteOrigin: () => {
       originDeleted = true;
@@ -235,6 +244,7 @@ function expiredRunWithWorkers(
     finishedAt,
   );
   threadIds.forEach((threadId, index) => {
+    ownWorker(db, threadId, runId, `${runId}-call-${index}`, "origin");
     db.prepare(
       `INSERT INTO workflow_calls (
         id, run_id, call_index, cache_key, prompt, options_json,
@@ -387,53 +397,25 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
-  it("keeps nested inline, named, and path workflows durable after the origin thread is deleted", async () => {
-    const inline = source("return { kind: 'inline', args };", "inline-child");
-    const named = source("return { kind: 'named', args };", "named-child");
-    const path = source("return { kind: 'path', args };", "path-child");
-    const test = setup(DEFAULT_WORKFLOW_SETTINGS, {
-      "/workspace/.bb/workflows/named-child.js": named,
-      "/workspace/child.js": path,
-    });
+  it("cancels queued workflows when their origin was deleted while offline", async () => {
+    const test = setup();
     harnesses.push(test.harness);
-    const run = await test.start(
-      source(
-        `return [
-          await workflow({ script: ${JSON.stringify(inline)} }, { value: 1 }),
-          await workflow("named-child", { value: 2 }),
-          await workflow({ scriptPath: "child.js" }, { value: 3 }),
-        ];`,
-        "deleted-origin-nesting",
-      ),
-    );
+    const run = await test.start(source(`return await agent("never launch");`));
     test.deleteOrigin();
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
-    await eventually(() =>
-      expect(getRunRequired(test.db, run.id)).toMatchObject({
-        status: "succeeded",
-        resultJson:
-          '[{"kind":"inline","args":{"value":1}},{"kind":"named","args":{"value":2}},{"kind":"path","args":{"value":3}}]',
-      }),
-    );
-    expect(test.harness.sdk.callsTo("files.read")).toEqual([
-      [
-        {
-          hostId: "host-1",
-          path: "/workspace/.bb/workflows/named-child.js",
-          rootPath: "/workspace",
-        },
-      ],
-      [
-        {
-          hostId: "host-1",
-          path: "/workspace/child.js",
-          rootPath: "/workspace",
-        },
-      ],
-    ]);
-    controller.abort();
-    await worker;
+    try {
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id)).toMatchObject({
+          status: "cancelled",
+          notificationOutcome: "abandoned",
+        }),
+      );
+      expect(test.childCount()).toBe(0);
+    } finally {
+      controller.abort();
+      await worker;
+    }
   });
 
   it("serializes parallel nested preparation but launches child agents concurrently", async () => {
@@ -972,6 +954,39 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
+  it("publishes a workflow-runs signal for phase and call progress, not only run lifecycle", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const signalCount = () =>
+      test.harness.realtimeSignals.filter(
+        (signal) =>
+          signal.channel === "workflow-runs" &&
+          (signal.payload as { threadId?: unknown }).threadId === "origin",
+      ).length;
+    const run = await test.start(
+      source(`phase("Review"); return await agent("one");`, "progress-run"),
+    );
+    const afterStart = signalCount();
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    await eventually(() =>
+      expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+    );
+    expect(signalCount()).toBeGreaterThanOrEqual(afterStart + 4);
+
+    const beforeSettle = signalCount();
+    test.service.onThreadIdle("child-1", "done");
+    await eventually(() =>
+      expect(getCall(test.db, run.id, 0)?.status).toBe("succeeded"),
+    );
+    expect(signalCount()).toBeGreaterThan(beforeSettle);
+    await eventually(() =>
+      expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+    );
+    controller.abort();
+    await worker;
+  });
+
   it("does not create or orphan a call when cancellation wins catalog or spawn", async () => {
     const catalogBlocked = setup();
     harnesses.push(catalogBlocked.harness);
@@ -1120,97 +1135,77 @@ describe("workflow service policy integration", () => {
     ).rejects.toThrow("different environment or workspace");
   });
 
-  it("reconciles missed idle and deleted events from persisted running calls", async () => {
-    const idle = setup();
-    harnesses.push(idle.harness);
-    const idleRun = await idle.start(source(`return await agent("idle");`));
-    const idleController = new AbortController();
-    const idleWorker = idle.service.runWorker(idleController.signal);
-    await eventually(() => expect(idle.childCount()).toBe(1));
-    idle.workers.set("child-1", {
-      status: "idle",
-      output: "reconciled",
-      deleted: false,
-    });
-    idle.db
-      .prepare(
-        `UPDATE workflow_calls SET last_activity_at = ? WHERE run_id = ?`,
-      )
-      .run(Date.now() - 2_000_000, idleRun.id);
-    await eventually(() =>
-      expect(getRunRequired(idle.db, idleRun.id).status).toBe("succeeded"),
-    );
-    idleController.abort();
-    await idleWorker;
-
-    const deleted = setup();
-    harnesses.push(deleted.harness);
-    const deletedRun = await deleted.start(
-      source(`return await agent("deleted");`),
-    );
-    const deletedController = new AbortController();
-    const deletedWorker = deleted.service.runWorker(deletedController.signal);
-    await eventually(() => expect(deleted.childCount()).toBe(1));
-    deleted.workers.get("child-1")!.deleted = true;
-    await eventually(() => {
-      const run = getRunRequired(deleted.db, deletedRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("deleted");
-    });
-    deletedController.abort();
-    await deletedWorker;
-
-    const errored = setup();
-    harnesses.push(errored.harness);
-    const erroredRun = await errored.start(
-      source(`return await agent("errored");`),
-    );
-    const errorController = new AbortController();
-    const errorWorker = errored.service.runWorker(errorController.signal);
-    await eventually(() => expect(errored.childCount()).toBe(1));
-    errored.workers.get("child-1")!.status = "error";
-    await eventually(() => {
-      const run = getRunRequired(errored.db, erroredRun.id);
-      expect(run.status).toBe("failed");
-      expect(run.error).toContain("error state");
-    });
-    errorController.abort();
-    await errorWorker;
-  });
-
   it("keeps quiet workers alive until the total run timeout", async () => {
     const test = setup();
     harnesses.push(test.harness);
     const run = await test.start(source(`return await agent("quiet");`));
     const controller = new AbortController();
+    vi.useFakeTimers();
     const worker = test.service.runWorker(controller.signal);
-    await eventually(() => expect(test.childCount()).toBe(1));
-    test.db
-      .prepare(
-        `UPDATE workflow_calls SET last_activity_at = ? WHERE run_id = ?`,
-      )
-      .run(Date.now() - 2_000_000, run.id);
-    await new Promise((resolve) => setTimeout(resolve, 1_200));
-    expect(getRunRequired(test.db, run.id)).toMatchObject({
-      status: "running",
-      error: null,
-    });
-    expect(getCall(test.db, run.id, 0)).toMatchObject({
-      status: "running",
-      error: null,
-    });
+    try {
+      await vi.waitFor(() => expect(test.childCount()).toBe(1), {
+        timeout: 4_000,
+      });
+      test.db
+        .prepare(
+          `UPDATE workflow_calls SET last_activity_at = ? WHERE run_id = ?`,
+        )
+        .run(Date.now() - 2_000_000, run.id);
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "running",
+        error: null,
+      });
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "running",
+        error: null,
+      });
 
-    test.db
-      .prepare(`UPDATE workflow_runs SET started_at = ? WHERE id = ?`)
-      .run(Date.now() - 90_000_000, run.id);
-    await eventually(() => {
-      const timedOutRun = getRunRequired(test.db, run.id);
-      expect(timedOutRun.status).toBe("failed");
-      expect(timedOutRun.error).toContain("run timed out");
-      expect(timedOutRun.error).not.toContain("Cancelled");
-    });
-    controller.abort();
-    await worker;
+      test.db
+        .prepare(`UPDATE workflow_runs SET started_at = ? WHERE id = ?`)
+        .run(Date.now() - 90_000_000, run.id);
+      await vi.waitFor(
+        () => {
+          const timedOutRun = getRunRequired(test.db, run.id);
+          expect(timedOutRun.status).toBe("failed");
+          expect(timedOutRun.error).toContain("run timed out");
+          expect(timedOutRun.error).not.toContain("Cancelled");
+        },
+        { timeout: 4_000 },
+      );
+    } finally {
+      controller.abort();
+      try {
+        await worker;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  it("fails an archived worker once when its lifecycle event arrives", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("work");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      test.service.onThreadArchived("child-1");
+      test.service.onThreadArchived("child-1");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+      );
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "failed",
+        error: "Workflow worker was archived",
+      });
+    } finally {
+      controller.abort();
+      await worker;
+    }
   });
 
   it("leaves clean shutdown state recoverable without a false notification", async () => {
@@ -1307,6 +1302,578 @@ describe("workflow service policy integration", () => {
     });
   });
 
+  it.each([1, 2])(
+    "retries a transient origin lookup before execution check %s",
+    async (failingCheck) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      const run = await test.start(source('return await agent("work");'));
+      let checks = 0;
+      test.harness.sdk.stub("threads.get", async ({ threadId }) => {
+        if (threadId === "origin") {
+          checks++;
+          if (checks === failingCheck)
+            throw Object.assign(new Error("connection reset"), {
+              code: "ECONNRESET",
+            });
+        }
+        return { id: threadId, archivedAt: null, status: "active" } as never;
+      });
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() => expect(test.childCount()).toBe(1));
+        expect(getRunRequired(test.db, run.id).status).toBe("running");
+        test.service.onThreadIdle("child-1", "done");
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it("discovers workers once and skips origins of backed-off notifications", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source('return "done";'));
+    test.db
+      .prepare(
+        "UPDATE workflow_runs SET status = 'succeeded', notification_next_attempt_at = ? WHERE id = ?",
+      )
+      .run(Date.now() + 60_000, run.id);
+    test.harness.sdk.stub(
+      "threads.list",
+      async () => [{ id: "legacy-worker" }] as never,
+    );
+    test.harness.sdk.stub("threads.getPluginMetadata", async () => ({}));
+    const originCallsBefore = test.harness.sdk.callsTo("threads.get").length;
+    const controller = new AbortController();
+    vi.useFakeTimers();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await vi.waitFor(
+        () =>
+          expect(
+            test.harness.sdk.callsTo("threads.getPluginMetadata"),
+          ).toHaveLength(1),
+        { timeout: 4_000 },
+      );
+      await vi.advanceTimersByTimeAsync(2_200);
+      expect(test.harness.sdk.callsTo("threads.list")).toHaveLength(1);
+      expect(
+        test.harness.sdk.callsTo("threads.getPluginMetadata"),
+      ).toHaveLength(1);
+      expect(test.harness.sdk.callsTo("threads.get")).toHaveLength(
+        originCallsBefore,
+      );
+      expect(getRunRequired(test.db, run.id).notificationSent).toBe(false);
+    } finally {
+      controller.abort();
+      try {
+        await worker;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  it("waits without claim transactions and wakes immediately for a new run", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const controller = new AbortController();
+    vi.useFakeTimers();
+    const transactions = vi.spyOn(test.db, "transaction");
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      transactions.mockClear();
+      await vi.advanceTimersByTimeAsync(2_200);
+      expect(transactions).not.toHaveBeenCalled();
+      const run = await test.start(source('return "awake";'));
+      await vi.waitFor(
+        () => expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+        { timeout: 200, interval: 10 },
+      );
+      await vi.waitFor(
+        () =>
+          expect(getRunRequired(test.db, run.id).notificationSent).toBe(true),
+        { timeout: 200, interval: 10 },
+      );
+    } finally {
+      controller.abort();
+      await worker;
+      transactions.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["settings", "completion", "cancellation"] as const)(
+    "wakes queued runs when %s frees capacity",
+    async (change) => {
+      const test = setup({ ...DEFAULT_WORKFLOW_SETTINGS, maxActiveRuns: 1 });
+      harnesses.push(test.harness);
+      const first = await test.start(source('return await agent("held");'));
+      const second = await test.start(source('return "next";'));
+      const controller = new AbortController();
+      vi.useFakeTimers();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await vi.waitFor(() => expect(test.childCount()).toBe(1), {
+          timeout: 200,
+          interval: 1,
+        });
+        await vi.advanceTimersByTimeAsync(100);
+        expect(getRunRequired(test.db, second.id).status).toBe("queued");
+        if (change === "settings") {
+          test.service.updateSettings({
+            ...DEFAULT_WORKFLOW_SETTINGS,
+            maxActiveRuns: 2,
+          });
+        } else if (change === "completion") {
+          test.service.onThreadIdle("child-1", "done");
+        } else {
+          await test.service.stop(first.id);
+        }
+        await vi.waitFor(
+          () =>
+            expect(getRunRequired(test.db, second.id).status).toBe("succeeded"),
+          { timeout: 20, interval: 1 },
+        );
+      } finally {
+        controller.abort();
+        await worker;
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("reconciles origins at startup without polling", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("work");`));
+    const originGets = () =>
+      test.harness.sdk.callsTo("threads.get").filter((args) => {
+        const first = args[0];
+        return (
+          typeof first === "object" &&
+          first !== null &&
+          "threadId" in first &&
+          first.threadId === "origin"
+        );
+      }).length;
+    const controller = new AbortController();
+    vi.useFakeTimers();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await vi.waitFor(
+        () =>
+          expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+        { timeout: 4_000 },
+      );
+      const before = originGets();
+      await vi.advanceTimersByTimeAsync(2_200);
+      expect(getRunRequired(test.db, run.id).status).toBe("running");
+      expect(originGets() - before).toBeLessThanOrEqual(1);
+    } finally {
+      controller.abort();
+      try {
+        await worker;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  it("keeps cleanup pending after stop fails and completes it after restart", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    expiredRunWithWorkers(test.db, "stop-failure", ["worker-stop"]);
+    test.harness.sdk.stub("threads.stop", async () => {
+      throw new Error("Host disconnected");
+    });
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(test.harness.sdk.callsTo("threads.stop").length).toBeGreaterThan(
+          0,
+        ),
+      );
+      expect(test.archived).toEqual([]);
+      expect(
+        test.db.prepare(`SELECT archived_at FROM workflow_workers`).get(),
+      ).toEqual({ archived_at: null });
+    } finally {
+      controller.abort();
+      await worker;
+    }
+    test.harness.sdk.stub("threads.stop", async () => ({ ok: true }));
+    const restarted = createWorkflowService(test.bb, test.db);
+    const restartController = new AbortController();
+    const restartWorker = restarted.runWorker(restartController.signal);
+    try {
+      await eventually(() => expect(test.archived).toContain("worker-stop"));
+    } finally {
+      restartController.abort();
+      await restartWorker;
+    }
+  });
+
+  it("owns and archives every retry attempt before history expires", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("retry");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      test.service.onThreadFailed("child-1", "HTTP 500: Internal server error");
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-2"),
+      );
+      test.service.onThreadIdle("child-2", "done");
+      await eventually(() =>
+        expect(test.archived).toEqual(
+          expect.arrayContaining(["child-1", "child-2"]),
+        ),
+      );
+      expect(getRunRequired(test.db, run.id).status).toBe("succeeded");
+      expect(
+        test.db
+          .prepare(`SELECT thread_id FROM workflow_workers ORDER BY thread_id`)
+          .all(),
+      ).toEqual([{ thread_id: "child-1" }, { thread_id: "child-2" }]);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("cancels in-flight work and retains history when the origin is archived", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(source(`return await agent("work");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+      );
+      test.archiveOrigin();
+      await test.service.onOriginUnavailable("origin");
+      await eventually(() => expect(test.archived).toContain("child-1"));
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "cancelled",
+        notificationOutcome: "abandoned",
+      });
+      expect(test.harness.sdk.callsTo("threads.send")).toHaveLength(0);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("does not retire a discovered worker while its spawn response is pending", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let metadata: NonNullable<
+      Parameters<typeof test.bb.sdk.threads.spawn>[0]["pluginMetadata"]
+    > = {};
+    test.harness.sdk.stub(
+      "threads.spawn",
+      async (args: Parameters<typeof test.bb.sdk.threads.spawn>[0]) => {
+        metadata = args.pluginMetadata!;
+        await gate;
+        return { id: "spawning-worker" } as never;
+      },
+    );
+    test.harness.sdk.stub("threads.list", async () =>
+      metadata.workflowWorker ? ([{ id: "spawning-worker" }] as never) : [],
+    );
+    test.harness.sdk.stub("threads.getPluginMetadata", async () => metadata);
+    const run = await test.start(
+      source(`return await agent("pending spawn");`),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(metadata.workflowWorker).toBe(1));
+      expect(
+        test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
+      ).toBeUndefined();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(test.archived).toEqual([]);
+      release();
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)?.childThreadId).toBe(
+          "spawning-worker",
+        ),
+      );
+      expect(test.harness.sdk.callsTo("threads.stop")).toHaveLength(0);
+      test.service.onThreadIdle("spawning-worker", "done");
+      await eventually(() =>
+        expect(test.archived).toContain("spawning-worker"),
+      );
+    } finally {
+      release();
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("does not retire a worker that attaches while cleanup archives an earlier one", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let releaseSpawn = () => {};
+    const spawnGate = new Promise<void>((resolve) => {
+      releaseSpawn = resolve;
+    });
+    let releaseStop = () => {};
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    let metadata: NonNullable<
+      Parameters<typeof test.bb.sdk.threads.spawn>[0]["pluginMetadata"]
+    > = {};
+    test.harness.sdk.stub(
+      "threads.spawn",
+      async (args: Parameters<typeof test.bb.sdk.threads.spawn>[0]) => {
+        metadata = args.pluginMetadata!;
+        await spawnGate;
+        return { id: "zz-live-worker" } as never;
+      },
+    );
+    test.harness.sdk.stub("threads.list", async () =>
+      metadata.workflowWorker ? ([{ id: "zz-live-worker" }] as never) : [],
+    );
+    test.harness.sdk.stub("threads.getPluginMetadata", async () => metadata);
+    test.harness.sdk.stub(
+      "threads.stop",
+      async ({ threadId }: { threadId: string }) => {
+        if (threadId === "aa-retired-worker") await stopGate;
+        return { ok: true } as never;
+      },
+    );
+    const stoppedThreads = () =>
+      test.harness.sdk
+        .callsTo("threads.stop")
+        .map(([args]) => (args as { threadId: string }).threadId);
+    const run = await test.start(source(`return await agent("live work");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(metadata.workflowWorker).toBe(1));
+      expect(
+        test.db.prepare(`SELECT thread_id FROM workflow_workers`).get(),
+      ).toBeUndefined();
+      expiredRunWithWorkers(test.db, "retired-run", ["aa-retired-worker"]);
+      await eventually(() =>
+        expect(stoppedThreads()).toContain("aa-retired-worker"),
+      );
+      releaseSpawn();
+      await eventually(() =>
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "running",
+          childThreadId: "zz-live-worker",
+        }),
+      );
+      releaseStop();
+      await eventually(() =>
+        expect(test.archived).toContain("aa-retired-worker"),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(stoppedThreads()).not.toContain("zz-live-worker");
+      expect(test.archived).not.toContain("zz-live-worker");
+      expect(getCall(test.db, run.id, 0)?.status).toBe("running");
+      test.service.onThreadIdle("zz-live-worker", "done");
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      );
+      await eventually(() => expect(test.archived).toContain("zz-live-worker"));
+    } finally {
+      releaseSpawn();
+      releaseStop();
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("still archives an orphaned worker listed behind a slow stop", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let releaseStop = () => {};
+    const stopGate = new Promise<void>((resolve) => {
+      releaseStop = resolve;
+    });
+    test.harness.sdk.stub(
+      "threads.stop",
+      async ({ threadId }: { threadId: string }) => {
+        if (threadId === "aa-retired-worker") await stopGate;
+        return { ok: true } as never;
+      },
+    );
+    expiredRunWithWorkers(test.db, "retired-run", ["aa-retired-worker"]);
+    ownWorker(
+      test.db,
+      "zz-orphan-worker",
+      "missing-run",
+      "missing-call",
+      "origin",
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(
+          test.harness.sdk
+            .callsTo("threads.stop")
+            .map(([args]) => (args as { threadId: string }).threadId),
+        ).toContain("aa-retired-worker"),
+      );
+      expect(test.archived).toEqual([]);
+      releaseStop();
+      await eventually(() =>
+        expect(test.archived).toEqual([
+          "aa-retired-worker",
+          "zz-orphan-worker",
+        ]),
+      );
+    } finally {
+      releaseStop();
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("owns a worker returned after cancellation wins the spawn race", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    test.harness.sdk.stub("threads.spawn", async () => {
+      await gate;
+      return { id: "late-worker" } as never;
+    });
+    const run = await test.start(source(`return await agent("late");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(test.harness.sdk.callsTo("threads.spawn")).toHaveLength(1),
+      );
+      test.archiveOrigin();
+      await test.service.onOriginUnavailable("origin");
+      release();
+      await eventually(() => expect(test.archived).toContain("late-worker"));
+      expect(getRunRequired(test.db, run.id).status).toBe("cancelled");
+    } finally {
+      release();
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("recovers metadata ownership after a spawn response is lost and the service restarts", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const metadata = new Map<
+      string,
+      NonNullable<
+        Parameters<typeof test.bb.sdk.threads.spawn>[0]["pluginMetadata"]
+      >
+    >();
+    test.harness.sdk.stub(
+      "threads.spawn",
+      async (args: Parameters<typeof test.bb.sdk.threads.spawn>[0]) => {
+        metadata.set("lost-worker", args.pluginMetadata!);
+        throw new Error("Spawn response lost");
+      },
+    );
+    const run = await test.start(source(`return await agent("lost");`));
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+      );
+      expect(test.db.prepare(`SELECT * FROM workflow_workers`).all()).toEqual(
+        [],
+      );
+    } finally {
+      controller.abort();
+      await worker;
+    }
+    test.harness.sdk.stub(
+      "threads.list",
+      async () => [{ id: "lost-worker" }] as never,
+    );
+    test.harness.sdk.stub(
+      "threads.getPluginMetadata",
+      async ({ threadId }: { threadId: string }) => metadata.get(threadId)!,
+    );
+    const restarted = createWorkflowService(test.bb, test.db);
+    const restartController = new AbortController();
+    const restartWorker = restarted.runWorker(restartController.signal);
+    try {
+      await eventually(() => expect(test.archived).toContain("lost-worker"));
+      expect(
+        test.db
+          .prepare(
+            `SELECT archived_at FROM workflow_workers WHERE thread_id = 'lost-worker'`,
+          )
+          .get(),
+      ).toEqual({ archived_at: expect.any(Number) });
+    } finally {
+      restartController.abort();
+      await restartWorker;
+    }
+  });
+
+  it.each([true, false])(
+    "handles a notification 409 with archived origin = %s",
+    async (archived) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      test.harness.sdk.stub("threads.send", async () => {
+        if (archived) test.archiveOrigin();
+        throw Object.assign(
+          new Error(archived ? "Thread is archived" : "Unrelated conflict"),
+          { status: 409 },
+        );
+      });
+      const run = await test.start(source(`return "done";`));
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id)).toMatchObject({
+            status: "succeeded",
+            notificationAttemptCount: 1,
+            notificationOutcome: archived ? "abandoned" : "pending",
+            notificationError: expect.any(String),
+          }),
+        );
+        expect(
+          getRunRequired(test.db, run.id).notificationNextAttemptAt,
+        ).toEqual(archived ? null : expect.any(Number));
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
   it("permanently settles a missing-origin notification", async () => {
     const test = setup();
     harnesses.push(test.harness);
@@ -1353,7 +1920,7 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
-  it("keeps an expired run when one of its workers does not archive", async () => {
+  it("retains cleanup ownership after expired history is deleted and retries after restart", async () => {
     const test = setup();
     harnesses.push(test.harness);
     const expired = expiredRunWithWorkers(test.db, "sweep-retry", [
@@ -1365,10 +1932,29 @@ describe("workflow service policy integration", () => {
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     await eventually(() => expect(test.archived).toContain("worker-ok"));
-    expect(getRunRequired(test.db, expired).id).toBe(expired);
-
+    await eventually(() => expect(getRun(test.db, expired)).toBeNull());
     controller.abort();
     await worker;
+    expect(
+      test.db
+        .prepare(
+          `SELECT thread_id FROM workflow_workers WHERE archived_at IS NULL`,
+        )
+        .all(),
+    ).toEqual([{ thread_id: "worker-broken" }]);
+    test.allowArchive("worker-broken");
+    const restarted = createWorkflowService(test.bb, test.db);
+    const restartController = new AbortController();
+    const restartWorker = restarted.runWorker(restartController.signal);
+    try {
+      await eventually(() => expect(test.archived).toContain("worker-broken"));
+      expect(test.db.prepare(`SELECT * FROM workflow_workers`).all()).toEqual(
+        [],
+      );
+    } finally {
+      restartController.abort();
+      await restartWorker;
+    }
   });
 
   it("deletes expired resume chains leaf-first across bounded batches", () => {

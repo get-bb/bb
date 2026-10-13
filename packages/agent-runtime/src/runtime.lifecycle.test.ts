@@ -33,85 +33,100 @@ describe("createAgentRuntime lifecycle", () => {
   });
 
   describe("thread setup and configuration", () => {
-    it("starts a thread and receives a providerThreadId", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          onEvent: (e) => events.push(e),
-        },
-      });
-
-      const { providerThreadId } = await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-
-      expect(providerThreadId).toBe("prov-1");
-      await wait(50);
-      expect(events.some((e) => e.type === "thread/identity")).toBe(true);
-      await runtime.shutdown();
-    });
-
-    it("allows thread/start to outlive the generic JSON-RPC timeout", async () => {
-      const realSetTimeout = setTimeout;
-      const sleepReal = (ms: number): Promise<void> =>
-        new Promise((resolve) => {
-          realSetTimeout(resolve, ms);
+    it.each([
+      {
+        method: "start",
+        requestTimeoutMs: undefined,
+        advanceMs: 30_001,
+        timesOut: false,
+      },
+      {
+        method: "resume",
+        requestTimeoutMs: undefined,
+        advanceMs: 30_001,
+        timesOut: false,
+      },
+      {
+        method: "resume",
+        requestTimeoutMs: 500,
+        advanceMs: 501,
+        timesOut: true,
+      },
+    ] as const)(
+      "uses the construction deadline for thread/$method (requestTimeoutMs=$requestTimeoutMs)",
+      async ({ method, requestTimeoutMs, advanceMs, timesOut }) => {
+        const realSetTimeout = setTimeout;
+        const sleepReal = (ms: number): Promise<void> =>
+          new Promise((resolve) => {
+            realSetTimeout(resolve, ms);
+          });
+        vi.useFakeTimers();
+        const record = createScriptedEchoRequestRecord();
+        const runtime = createScriptedEchoRuntime({
+          runtime: {
+            workspacePath: tmpDir,
+            env: record.env,
+            onEvent: () => undefined,
+            threadCreation: { requestTimeoutMs },
+          },
+          launch: { scripted: { startDelayMs: 1_500 } },
         });
-      vi.useFakeTimers();
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => undefined,
-        },
-        launch: { scripted: { startDelayMs: 1_500 } },
-      });
-      let settled = false;
-      const startOutcome = runtime
-        .startThread({
+        let settled = false;
+        const threadArgs = {
           environmentId: "env-1",
           threadId: "t1",
           projectId: "p1",
           providerId: "fake",
           options: fullRuntimeOptions,
-        })
-        .then(
+        };
+        const construction =
+          method === "start"
+            ? runtime.startThread(threadArgs)
+            : runtime.resumeThread({
+                ...threadArgs,
+                providerThreadId: "prov-1",
+              });
+        const constructionOutcome = construction.then(
           (result) => ({ status: "resolved" as const, result }),
           (error: unknown) => ({ status: "rejected" as const, error }),
         );
-      void startOutcome.then(() => {
-        settled = true;
-      });
-
-      try {
-        for (
-          let attempt = 0;
-          record.last("thread/start") === undefined;
-          attempt += 1
-        ) {
-          if (attempt >= 1_000) {
-            throw new Error("The bridge never received thread/start");
-          }
-          await sleepReal(10);
-        }
-        await vi.advanceTimersByTimeAsync(30_001);
-        expect(settled).toBe(false);
-
-        expect(await startOutcome).toEqual({
-          status: "resolved",
-          result: { providerThreadId: "prov-1" },
+        void constructionOutcome.then(() => {
+          settled = true;
         });
-      } finally {
-        vi.useRealTimers();
-        await runtime.shutdown();
-      }
-    });
+
+        try {
+          for (
+            let attempt = 0;
+            record.last(`thread/${method}`) === undefined;
+            attempt += 1
+          ) {
+            if (attempt >= 1_000) {
+              throw new Error(`The bridge never received thread/${method}`);
+            }
+            await sleepReal(10);
+          }
+          await vi.advanceTimersByTimeAsync(advanceMs);
+
+          if (timesOut) {
+            expect(await constructionOutcome).toEqual({
+              status: "rejected",
+              error: new Error(`JSON-RPC request timed out: thread/${method}`),
+            });
+            expect(runtime.hasThread("t1")).toBe(false);
+            expect(runtime.getProviderSession("t1")).toBeNull();
+          } else {
+            expect(settled).toBe(false);
+            expect(await constructionOutcome).toEqual({
+              status: "resolved",
+              result: { providerThreadId: "prov-1" },
+            });
+          }
+        } finally {
+          vi.useRealTimers();
+          await runtime.shutdown();
+        }
+      },
+    );
 
     it("fails session construction when the thread/start result carries no providerThreadId", async () => {
       const record = createScriptedEchoRequestRecord();
@@ -386,8 +401,16 @@ describe("createAgentRuntime lifecycle", () => {
         expect(record.last("thread/resume")?.params).toMatchObject({
           options: { envVars: { GH_TOKEN: "resumed-git-token" } },
         });
-        expect(JSON.stringify(events)).toContain("first-git-token");
-        expect(JSON.stringify(events)).toContain("resumed-git-token");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("first-git-token");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("resumed-git-token");
         expect(
           events.filter((event) => event.type === "provider.env-resolved"),
         ).toEqual(
@@ -396,12 +419,61 @@ describe("createAgentRuntime lifecycle", () => {
               entries: expect.arrayContaining([
                 expect.objectContaining({
                   name: "GH_TOKEN",
-                  value: "rotated-git-token",
+                  value: { masked: true },
                 }),
               ]),
             }),
           ]),
         );
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("removes project overrides from a reused runtime on the next turn", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const events: ThreadEvent[] = [];
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: (event) => events.push(event),
+        },
+      });
+      try {
+        await runtime.startThread({
+          environmentId: "env-project",
+          projectId: "project-a",
+          threadId: "project-thread",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+          contributedEnv: [
+            {
+              name: "PROJECT_SECRET",
+              value: "project-private",
+              reason: "Project",
+              source: { core: "project-environment" },
+            },
+          ],
+        });
+        expect(record.last("thread/start")?.params).toMatchObject({
+          options: { envVars: { PROJECT_SECRET: "project-private" } },
+        });
+        await runtime.runTurn({
+          threadId: "project-thread",
+          clientRequestId: "creq_222222224d",
+          input: [promptTextInput({ text: "removed" })],
+          options: fullRuntimeOptions,
+          contributedEnv: [],
+        });
+        const options = record.last("turn/start")?.params?.options;
+        expect(options).toHaveProperty("envVars.BB_PROJECT_ID", "project-a");
+        expect(options).not.toHaveProperty("envVars.PROJECT_SECRET");
+        expect(
+          JSON.stringify(
+            events.filter((event) => event.type === "provider.env-resolved"),
+          ),
+        ).not.toContain("project-private");
       } finally {
         await runtime.shutdown();
       }
@@ -540,33 +612,6 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("configures the same generic roots for every provider", async () => {
-      const record = createScriptedEchoRequestRecord();
-      const skillRootPath = join(tmpDir, "skill-root");
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          skillRoots: [{ id: "bb-cli", path: skillRootPath, skills: [] }],
-          onEvent: () => undefined,
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-
-      expect(record.last("skills/configure")?.params).toEqual({
-        roots: [{ id: "bb-cli", path: skillRootPath, skills: [] }],
-      });
-
-      await runtime.shutdown();
-    });
-
     it("carries changed settings on the next turn without rebuilding the session", async () => {
       const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({
@@ -604,9 +649,9 @@ describe("createAgentRuntime lifecycle", () => {
         options: {
           ...fullRuntimeOptions,
           model: "test-model-2",
-          permissionMode: "auto",
+          permissionMode: "accept-edits",
           permissionScope: "workspace",
-          approvalReviewer: "automatic",
+          approvalReviewer: "user",
           permissionEscalation: "deny",
           reasoningLevel: "high",
           providerOptions: {
@@ -621,6 +666,9 @@ describe("createAgentRuntime lifecycle", () => {
       expect(record.last("thread/start")?.params).toMatchObject({
         options: {
           model: "test-model",
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
           permissionEscalation: "ask",
           reasoningLevel: "medium",
           providerOptions: {
@@ -633,6 +681,9 @@ describe("createAgentRuntime lifecycle", () => {
         clientRequestId: "creq_222222224h",
         options: {
           model: "test-model-2",
+          permissionMode: "accept-edits",
+          permissionScope: "workspace",
+          approvalReviewer: "user",
           permissionEscalation: "deny",
           reasoningLevel: "high",
           serviceTier: "default",
@@ -693,141 +744,9 @@ describe("createAgentRuntime lifecycle", () => {
 
       await runtime.shutdown();
     });
-
-    it("passes permission mode through to session and turn commands", async () => {
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => undefined,
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: {
-          ...fullRuntimeOptions,
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "ask",
-        },
-      });
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223i",
-        threadId: "t1",
-        input: [promptTextInput({ text: "follow up" })],
-        options: fullRuntimeOptions,
-      });
-
-      expect(record.last("thread/start")?.params).toMatchObject({
-        options: {
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-          permissionEscalation: "ask",
-        },
-      });
-      expect(recordedMethods(record)).not.toContain("thread/resume");
-      expect(record.last("turn/start")?.params).toMatchObject({
-        options: { permissionMode: "full" },
-      });
-
-      await runtime.shutdown();
-    });
-
-    it("carries a changed permission policy on the turn that follows it", async () => {
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => undefined,
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: {
-          ...fullRuntimeOptions,
-          permissionEscalation: "ask",
-          permissionMode: "accept-edits",
-          permissionScope: "workspace",
-          approvalReviewer: "user",
-        },
-      });
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223j",
-        threadId: "t1",
-        input: [promptTextInput({ text: "follow up" })],
-        options: {
-          ...fullRuntimeOptions,
-          permissionEscalation: "deny",
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-        },
-      });
-
-      expect(recordedMethods(record)).not.toContain("thread/resume");
-      expect(record.last("turn/start")?.params).toMatchObject({
-        threadId: "t1",
-        clientRequestId: "creq_222222223j",
-        options: {
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "deny",
-        },
-      });
-
-      await runtime.shutdown();
-    });
   });
 
   describe("turn execution and thread commands", () => {
-    it("runs a turn and receives turn/started + turn/completed events", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          onEvent: (e) => events.push(e),
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223k",
-        threadId: "t1",
-        input: [promptTextInput({ text: "hello" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        runtime,
-        threadId: "t1",
-      });
-
-      expect(events.some((e) => e.type === "turn/started")).toBe(true);
-      expect(events.some((e) => e.type === "turn/completed")).toBe(true);
-      await runtime.shutdown();
-    });
-
     it("drops replayed completed turn starts before emitting to consumers", async () => {
       const events: ThreadEvent[] = [];
       const stderr: string[] = [];
@@ -951,40 +870,6 @@ describe("createAgentRuntime lifecycle", () => {
       expect(events.some((event) => event.type === "turn/completed")).toBe(
         true,
       );
-      await runtime.shutdown();
-    });
-
-    it("resumes a thread", async () => {
-      const events: ThreadEvent[] = [];
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          onEvent: (e) => events.push(e),
-        },
-      });
-
-      const { providerThreadId } = await runtime.resumeThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        providerThreadId: "old-prov-123",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-      });
-
-      expect(providerThreadId).toBe("old-prov-123");
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223p",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after resume" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        runtime,
-        threadId: "t1",
-      });
-      expect(events.some((e) => e.type === "turn/completed")).toBe(true);
       await runtime.shutdown();
     });
 
@@ -1263,40 +1148,6 @@ describe("createAgentRuntime lifecycle", () => {
           model: "fake-model-2",
         },
       });
-      await runtime.shutdown();
-    });
-
-    it("does not resume the thread when only instructions change", async () => {
-      const record = createScriptedEchoRequestRecord();
-      const runtime = createScriptedEchoRuntime({
-        runtime: {
-          workspacePath: tmpDir,
-          env: record.env,
-          onEvent: () => {},
-        },
-      });
-
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "fake",
-        options: fullRuntimeOptions,
-        instructions: "Initial instructions",
-      });
-      const methodsBeforeTurn = recordedMethods(record).length;
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222223y",
-        threadId: "t1",
-        input: [promptTextInput({ text: "follow up" })],
-        options: fullRuntimeOptions,
-        instructions: "Updated instructions",
-      });
-
-      expect(recordedMethods(record).slice(methodsBeforeTurn)).toEqual([
-        "turn/start",
-      ]);
       await runtime.shutdown();
     });
 

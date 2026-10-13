@@ -26,10 +26,13 @@ export const machineLifecycleSchema = z.object({
 });
 export type MachineLifecycle = z.infer<typeof machineLifecycleSchema>;
 
+export const hostTypeSchema = z.enum(["persistent", "ephemeral"]);
+export type HostType = z.infer<typeof hostTypeSchema>;
+
 export const hostSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["persistent", "ephemeral"]),
+  type: hostTypeSchema,
   status: hostStatusSchema,
   machineProviderId: z.string().nullable(),
   lifecycle: machineLifecycleSchema,

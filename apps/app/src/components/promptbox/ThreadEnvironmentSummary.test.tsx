@@ -152,7 +152,9 @@ describe("ThreadEnvironmentSummary", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.queryByRole("img", { name: "Personal workspace" })).toBeNull();
+    expect(
+      screen.queryByRole("img", { name: "Personal workspace" }),
+    ).toBeNull();
     expect(container.querySelector('[data-icon="Folder"]')).not.toBeNull();
   });
 

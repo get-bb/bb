@@ -28,6 +28,77 @@ bb.cli.register({
 });
 ```
 
+Prefer declaring the command instead of parsing `argv` by hand.
+`defineCli` builds the same registration from a spec and gives
+every command the behavior agents rely on: `--help` at every level with exit
+0, `unknown option '--x' (Did you mean --y?)`, every missing required option
+in one error, typed value errors, and with `--json` a
+`{"ok": false, "error": {"code", "message", "hint"}}` envelope on stdout while
+stderr keeps the readable text. Hand-written parsers have silently ignored
+unknown flags and lost user data.
+
+```ts
+import { PluginCliError, cliCommand, defineCli } from "@get-bb/plugin-sdk";
+
+bb.cli.register(
+  defineCli({
+    name: "weather",
+    summary: "Weather lookups",
+    commands: {
+      today: cliCommand({
+        summary: "Today's weather",
+        positionals: [
+          { name: "city", description: "City name", required: true },
+        ],
+        options: {
+          units: {
+            type: "enum",
+            values: ["metric", "imperial"],
+            default: "metric",
+            aliases: ["unit"],
+            description: "Units for temperatures",
+          },
+          timeout: {
+            type: "duration",
+            defaultUnit: "s",
+            description: "How long to wait for the forecast service",
+          },
+          json: { type: "boolean", description: "Emit machine-readable JSON" },
+        },
+        async run(input, ctx) {
+          const forecast = await lookup(
+            input.positionals.city,
+            input.options.units,
+          );
+          if (forecast === null) {
+            throw new PluginCliError(
+              `no forecast for ${input.positionals.city}`,
+              {
+                code: "forecast_not_found",
+                hint: "Run `bb weather cities` to list supported cities.",
+              },
+            );
+          }
+          return { exitCode: 0, stdout: forecast };
+        },
+      }),
+    },
+  }),
+);
+```
+
+Command keys are invocation paths, so `"account add"` declares
+`bb weather account add`. Put every spelling an agent might guess in an
+option's hidden `aliases`, state limits in each `description` because they
+show in `--help`, and express "exactly one of" and "X requires Y" with
+`constraints`. Keep a required ID strict, but when `ctx.projectId` or
+`ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
+prints the exact flag to add. A registration built this way sets
+`rendersHelp`, so `bb weather today --help` reaches the plugin and
+prints its full option help; a hand-written `run` leaves that unset and the
+`bb` CLI answers `--help` from the `commands[].usage` line without calling
+the plugin.
+
 Agents discover plugin commands through the server-generated
 `plugin-commands` skill, which lists each command's `summary` and the
 `commands` usage lines — fill both in. Combined stdout and stderr must fit
@@ -48,21 +119,42 @@ resolve the invoking host (`ctx.threadId` → `bb.sdk.threads.get` →
 `environmentId` → `bb.sdk.environments.get(...).hostId`, with an explicit
 `--machine`-style flag as the no-thread escape hatch) and do all such file I/O
 through `bb.sdk.files` with that `hostId`. An omitted SDK `hostId` targets the
-primary host, which can be an enrolled remote machine. Reference
+server machine (`primaryHostId`), which can be an enrolled remote machine. Reference
 implementations: the docs plugin's pull/push sync and the
 tasks plugin's attachment commands. `node:fs` remains correct for genuinely
 server-local data such as files under the plugin's own data directory.
 
-### bb.ui.requestInput — replace the composer with a blocking plugin form
+### bb.ui.requestInput — show a form in the thread composer
 
 Use `bb.ui.requestInput({ threadId, rendererId, title, payload, timeoutMs? },
-{ signal? })` when plugin backend code must wait for sensitive or structured
-user input. The promise resolves to `{ outcome: "submitted", value }` or
-`{ outcome: "cancelled", reason }`. Payloads and responses are JSON values
-capped at 64 KiB; response values are delivered only to the waiting plugin
-invocation and are never persisted. Pair `rendererId` with a frontend
-`pendingInteraction` slot. Pass a CLI handler's `ctx.signal` so disconnecting
-the caller cancels the request.
+{ signal? })` for sensitive or structured user input. Pair `rendererId` with a
+frontend `pendingInteraction` slot. The promise resolves to
+`{ outcome: "submitted", value }` or `{ outcome: "cancelled", reason }`.
+Payloads and responses are JSON values capped at 64 KiB. `timeoutMs` defaults
+to ten minutes and is capped at seven days.
+
+Two optional fields control the form's timeline row:
+
+- `presentation: PluginRowPresentation` sets labels, icon, and styling.
+  Defaults are "Waiting for <title>" / "Submitted <title>" and the plugin's
+  branding glyph.
+- `describeSubmission(value)` returns a `PluginInteractionDescription` with
+  optional `title`, Markdown `detail`, and `payload`. The payload goes to the
+  plugin's `experimental_timelineRenderer` for `"<pluginId>/<rendererId>"`.
+  Only this description is saved as submission history; omit secrets.
+  The callback runs once per submission, never on cancellation. If it throws
+  or exceeds two seconds, the row keeps its completed label.
+
+Inside a tool's `execute`, opening a form returns a waiting notice to the
+agent while the plugin continues awaiting the answer. BB delivers the tool's
+eventual result separately: success resumes an active or idle agent; errors
+only reach an active agent.
+
+Pass `ctx.signal` to cancel the form with its caller. For CLI commands,
+disconnection cancels it. For tools, request cancellation aborts the signal
+until a form opens; afterward, only thread stop/delete or plugin disposal
+aborts it. For tools that never open a form, request cancellation still aborts
+`ctx.signal`.
 
 ### bb.agents — native tools and conditional session configuration
 
@@ -172,63 +264,51 @@ skills, and dynamic instructions use the same boundaries. The legacy
 only `threadId` and `projectId`. Use `configure` when the contribution must
 inspect the side-chat origin.
 
-### bb.experimental_aiServices — helper inference and voice transcription
+### bb.experimental_aiServices — titles, commit messages, and voice
 
-bb's own AI services — the server-side helper completions behind thread
-titles and commit messages, and voice transcription — are served by plugins.
-Register a service in `server.ts` and implement the shared contract in the
-plugin's `bb.host` entry; the user selects it with `BB_INFERENCE` /
-`BB_TRANSCRIPTION` set to `<id>/<model>` (`bb settings ai-services` lists
-the options). The server reserves `openai` and every direct inference provider
-id in its current provider registry. This includes `anthropic`, `google`,
-`openrouter`, and their regional or gateway variants. Registration rejects
-every reserved id. An id from another loaded plugin also fails your plugin
-load:
+bb's helper tasks are served by plugins: thread titles (branch names follow the
+title), commit messages, and voice transcripts. Register plain functions in
+`server.ts`. The user picks a service per task in Settings → AI services or
+with `bb settings ai-services set <task> <service-id>`:
 
 ```ts
-// server.ts
 bb.experimental_aiServices.register({
   id: "acme",
   displayName: "Acme AI",
-  kinds: ["inference", "voice"],
-});
-```
-
-```ts
-// host.ts
-import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
-import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
-
-export default experimental_defineHostEntry({
-  contract: experimental_aiServicesHostContract,
-  handlers: {
-    "ai.inference.complete": async (input) => {
-      const value = await completeStructured(input);
-      return { ok: true, model: input.model, value };
-    },
-    "ai.voice.transcribe": async (input) => {
-      // input.audioBase64, input.mimeType, input.filename, input.prompt
-      return { ok: true, model: input.model, text: await transcribe(input) };
-    },
+  complete: async (prompt, { signal }) => {
+    const response = await fetch("https://api.acme.test/v1/chat/completions", {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+    });
+    const body = await response.json();
+    return body.choices[0].message.content;
   },
+  transcribe: async (audio, { signal, hint }) =>
+    transcribeWithAcme(audio, hint, signal),
+  status: async () =>
+    apiKey ? { ready: true } : { ready: false, message: "Add an API key" },
 });
 ```
 
-Report failures in the result, not by throwing: `{ ok: false, code, message }`
-with `code` one of `timeout`, `rate_limited`, `service_unavailable`,
-`auth_required`, `request_failed`, `invalid_response`. Generic inference
-retries the first three codes and then uses `BB_INFERENCE_FALLBACK`. Voice
-retries the configured `BB_TRANSCRIPTION` model. Exhausted voice timeouts map
-to `transcription_timeout`. Exhausted rate-limit or availability failures map
-to `transcription_unavailable`. Every call carries `serviceId`, so one host
-entry may serve several registered ids. The registration needs a `bb.host`
-entry; without one the plugin fails to load. A host artifact may export a provider bridge
-(`experimental_providerBridge`) and default-export the host entry at the same
-time.
-
-Inference input includes `serviceId`, `model`, `reasoningEffort: "none"`,
-`prompt`, `outputSchema`, and `timeoutMs`. Plugin-served voice input has a
-5 MiB limit. The server rejects a larger file before a host call. Voice input
-includes `serviceId`, `model`, `audioBase64`, `mimeType`, `filename`, `prompt`,
-and `timeoutMs`. The inference success value must be a JSON object. Voice
-`prompt` can be `null`.
+- `complete(prompt, { signal })` returns the model's text. bb writes the
+  prompt and cleans the reply (think blocks, quotes, labels, extra lines), so
+  return the text as-is. Declared services appear for titles and commits.
+- `transcribe(audio: File, { signal, hint })` returns a transcript. `hint` is
+  vocabulary text or `null`. Declared services appear for voice input.
+- `status()` is optional. Its message shows beside the service in the picker.
+  A service that is not ready is skipped by Automatic and hides the
+  microphone. bb caches the result for about 10 seconds.
+- The plugin owns everything behind the function: model, API, retries. Failure
+  is a rejected promise. bb aborts `signal` after 5 seconds for text and 10
+  seconds for voice.
+- The functions run in the server process. To use host-local state (a login
+  file, a local model), call your own `bb.host` entry through
+  `bb.hosts.experimental_client`, as the Codex plugin does.
+- Automatic tries bb cloud first, then other compatible registered services
+  by plugin id and service id in lexicographic order. Third-party services
+  participate automatically; explicit selection uses only that service.
+- bb identifies a service by plugin id and service id, so ids only need to be
+  unique within your plugin; registering one id twice fails your plugin's
+  load. `automatic` and `off` are reserved.

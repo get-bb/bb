@@ -6,6 +6,7 @@ import {
   type TimelineViewWorkRow,
   type TimelineWorkSummaryChild,
 } from "@bb/thread-view";
+import { deferredTimelineContentItemId } from "./deferred-content.js";
 
 interface CollectTimelineAutoExpansionRowIdsArgs {
   rows: readonly ThreadTimelineViewRow[];
@@ -21,7 +22,7 @@ export interface TimelineAutoExpansionRowIds {
   terminalFrontierRowIds: ReadonlySet<string>;
 }
 
-export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
+function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
   switch (row.workKind) {
     case "web-search":
     case "web-fetch":
@@ -33,6 +34,11 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
       return true;
     case "question":
       return row.lifecycle === "answered" || row.lifecycle === "resolving";
+    case "form":
+      return (
+        row.presentation.detail !== undefined &&
+        row.presentation.detail.trim().length > 0
+      );
     case "command":
       return !hasTimelineExplorationIntent(row);
     case "tool":
@@ -50,7 +56,11 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
     case "file-change":
       return true;
     case "delegation":
-      return row.childRows.length > 0 || row.output.trim().length > 0;
+      return (
+        row.childRows === null ||
+        row.childRows.length > 0 ||
+        row.output.trim().length > 0
+      );
     case "workflow":
       return (
         row.workflow !== null || row.summary !== null || row.error !== null
@@ -65,7 +75,10 @@ export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
     case "conversation":
       return false;
     case "system":
-      return row.detail !== null && row.detail.trim().length > 0;
+      return (
+        deferredTimelineContentItemId(row) !== null ||
+        (row.detail !== null && row.detail.trim().length > 0)
+      );
     case "bundle-summary":
     case "step-summary":
       return row.children.length > 0;
@@ -131,7 +144,8 @@ function visitForTerminalFrontierAutoExpand(
     if (
       row.kind === "work" &&
       row.workKind === "delegation" &&
-      row.status === "pending"
+      row.status === "pending" &&
+      row.childRows !== null
     ) {
       visitForTerminalFrontierAutoExpand(row.childRows, ids);
     }
@@ -174,7 +188,8 @@ function visitForLiveFrontierAutoExpand(
     if (
       row.kind === "work" &&
       row.workKind === "delegation" &&
-      row.status === "pending"
+      row.status === "pending" &&
+      row.childRows !== null
     ) {
       visitForLiveFrontierAutoExpand(row.childRows, true, ids);
     }

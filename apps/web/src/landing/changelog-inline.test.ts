@@ -25,6 +25,12 @@ describe("ChangelogInline", () => {
     );
   });
 
+  it("renders italic and bold italic article text without visible markers", () => {
+    expect(render("***bb*** is a *software factory.*")).toBe(
+      "<strong><em>bb</em></strong> is a <em>software factory.</em>",
+    );
+  });
+
   it("preserves unmatched Markdown delimiters as text", () => {
     expect(render("Keep **this and `that readable")).toBe(
       "Keep **this and `that readable",
@@ -46,6 +52,16 @@ describe("ChangelogInline", () => {
   it("keeps a bracket that is not a link as text", () => {
     expect(render("Use [brackets] freely [like](this).")).toBe(
       "Use [brackets] freely [like](this).",
+    );
+  });
+
+  it("renders a standalone screenshot with its alternative text", () => {
+    expect(
+      render(
+        "![Navigation rail](https://getbb.app/changelog/0.46.0/navigation-rail.jpg)",
+      ),
+    ).toBe(
+      '<img src="https://getbb.app/changelog/0.46.0/navigation-rail.jpg" alt="Navigation rail" class="release-screenshot" loading="lazy"/>',
     );
   });
 

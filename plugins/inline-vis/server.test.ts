@@ -109,12 +109,9 @@ describe("preparePreview rpc", () => {
       kind: "markdown",
       file: "notes.md",
       source: "workspace",
+      target: { kind: "workspace", environmentId: "env_1", path: "notes.md" },
+      rootPath: ROOT,
       content: "# Notes\n\nReady for review.",
-      document: {
-        rootPath: ROOT,
-        threadId: "thr_1",
-        target: { kind: "workspace", environmentId: "env_1", path: "notes.md" },
-      },
     });
   });
 
@@ -151,16 +148,13 @@ describe("preparePreview rpc", () => {
       kind: "markdown",
       file: "reports/summary.markdown",
       source: "thread-storage",
-      content: "# Report",
-      document: {
-        rootPath: storageRootPath,
+      target: {
+        kind: "thread-storage",
         threadId: "thr_1",
-        target: {
-          kind: "thread-storage",
-          threadId: "thr_1",
-          path: "reports/summary.markdown",
-        },
+        path: "reports/summary.markdown",
       },
+      rootPath: storageRootPath,
+      content: "# Report",
     });
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
   });
@@ -240,7 +234,7 @@ describe("preparePreview rpc", () => {
     ).rejects.toThrow(/no workspace path/);
   });
 
-  it("reads through bb.sdk.files with hostId + rootPath confinement", async () => {
+  it("reads through bb.sdk.files with hostId + rootPath confinement and returns the page with its content hash", async () => {
     const { harness } = await load({
       threads: {
         get: (args) => {
@@ -277,6 +271,15 @@ describe("preparePreview rpc", () => {
       kind: "html",
       file: "charts/demo.html",
       source: "workspace",
+      target: {
+        kind: "workspace",
+        environmentId: "env_1",
+        path: "charts/demo.html",
+      },
+      url: "/api/v1/environments/env_1/files/charts/demo.html",
+      content: "<html><body>ok</body></html>",
+      sha256:
+        "43906c1e3783f6cd8c0276141ea59b04ee0a176b818eea6b28fe178ac4978992",
     });
     expect(harness.sdk.callsTo("files.read")).toHaveLength(1);
   });
@@ -298,9 +301,9 @@ describe("preparePreview rpc", () => {
             hostId: HOST_ID,
           });
           return {
-            content: "<html><body>ok</body></html>",
+            content: "<p>héllo ✓</p>",
             contentEncoding: "utf8",
-            sizeBytes: 32,
+            sizeBytes: 18,
             sha256: "abc",
           };
         },
@@ -316,6 +319,15 @@ describe("preparePreview rpc", () => {
       kind: "html",
       file: "reports/result.html",
       source: "thread-storage",
+      target: {
+        kind: "thread-storage",
+        threadId: "thr_1",
+        path: "reports/result.html",
+      },
+      url: "/api/v1/threads/thr_1/thread-storage/files/reports/result.html",
+      content: "<p>héllo ✓</p>",
+      sha256:
+        "ad344ed9c56c098c1c6ca20793a161ddde1618a84c6a051d71fcfdf6f3a5f7ff",
     });
     expect(harness.sdk.callsTo("threads.storageLocation")).toHaveLength(1);
     expect(harness.sdk.callsTo("threads.get")).toHaveLength(0);
@@ -366,7 +378,7 @@ describe("preparePreview rpc", () => {
         threadId: "thr_1",
         file: "gone.html",
       }),
-    ).rejects.toThrow(/not found/);
+    ).resolves.toEqual({ kind: "not-found", file: "gone.html" });
 
     const binaryHost = await load({
       threads: { get: () => threadWithEnv() },

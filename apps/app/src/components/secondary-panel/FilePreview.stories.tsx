@@ -112,6 +112,7 @@ Katherine Johnson,Active,9600,"Needs ""Executive Summary"" column added"
 `;
 
 const README_PATH = "docs/right-panel/README.md";
+const ARCHIVE_PATH = "keyboard-reset-qa/report-with-images.zip";
 const DIAGRAM_PATH = "docs/right-panel/preview-flow.md";
 const BUTTON_PATH = "apps/app/src/components/ui/button.tsx";
 const DELETED_BUTTON_PATH = "apps/app/src/components/ui/legacy-button.tsx";
@@ -375,6 +376,41 @@ export function Overview() {
             copyPath={copyPathFor(README_PATH)}
             onOpenInEditor={noopOpenInEditor}
             state={{ kind: "error" }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="failed to load with a reason"
+        hint="Preview fetch failed and the response explained why"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={README_PATH}
+            copyPath={copyPathFor(README_PATH)}
+            onOpenInEditor={noopOpenInEditor}
+            state={{ kind: "error", message: "Host is not connected" }}
+          />
+        </PreviewStage>
+      </StoryRow>
+      <StoryRow
+        label="preview not available"
+        hint="The file loaded but its media type has no preview renderer"
+      >
+        <PreviewStage>
+          <FilePreview
+            path={ARCHIVE_PATH}
+            copyPath={copyPathFor(ARCHIVE_PATH)}
+            onOpenInEditor={noopOpenInEditor}
+            state={{
+              kind: "unsupported",
+              file: {
+                mimeType: "application/zip",
+                name: "report-with-images.zip",
+                reason: "binary",
+                sizeBytes: 2_457_600,
+                url: "/fixtures/report-with-images.zip",
+              },
+            }}
           />
         </PreviewStage>
       </StoryRow>

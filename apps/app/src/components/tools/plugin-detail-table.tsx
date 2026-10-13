@@ -9,16 +9,17 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS = "w-40 md:w-48";
+export const PLUGIN_DETAIL_PRIMARY_COLUMN_CLASS =
+  "w-40 @min-[40rem]/plugin-detail:w-48";
 
 export const PLUGIN_DETAIL_HEADER_CELL_CLASS = "bg-surface-recessed/55";
 
 const DETAIL_ROW_GRID =
-  "grid grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
+  "grid grid-cols-1 @min-[28rem]/plugin-detail:grid-cols-[10rem_minmax(0,1fr)] @min-[40rem]/plugin-detail:grid-cols-[12rem_minmax(0,1fr)]";
 
 export function PluginDetailTable({ children }: { children: ReactNode }) {
   return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
+    <div className="@container/plugin-detail max-w-full overflow-hidden rounded-lg border border-border bg-card align-top">
       <table className="block w-full max-w-full border-collapse text-left">
         <tbody className="block divide-y divide-border">{children}</tbody>
       </table>
@@ -27,58 +28,6 @@ export function PluginDetailTable({ children }: { children: ReactNode }) {
 }
 
 const CELL = "py-1.5 align-top text-sm leading-snug";
-
-export function PluginDetailFieldRow({
-  label,
-  children,
-  labelClassName,
-  stackOnNarrow = false,
-}: {
-  label: ReactNode;
-  children: ReactNode;
-  labelClassName?: string;
-  stackOnNarrow?: boolean;
-}) {
-  if (stackOnNarrow) {
-    return (
-      <tr className="grid w-full grid-cols-1 sm:grid-cols-[10rem_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]">
-        <th
-          scope="row"
-          className={cn(
-            CELL,
-            PLUGIN_DETAIL_HEADER_CELL_CLASS,
-            "block w-full border-b border-border px-4 text-left text-xs font-normal text-muted-foreground sm:w-auto sm:border-b-0 sm:border-r sm:pl-4 sm:pr-2",
-            labelClassName,
-          )}
-        >
-          {label}
-        </th>
-        <td className="block min-w-0 w-full px-4 py-3 align-top text-left text-sm leading-snug text-foreground sm:w-auto sm:py-1.5 sm:pl-2 sm:pr-4">
-          {children}
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className={DETAIL_ROW_GRID}>
-      <th
-        scope="row"
-        className={cn(
-          CELL,
-          PLUGIN_DETAIL_HEADER_CELL_CLASS,
-          "border-r border-border pl-4 pr-2 text-left text-xs font-normal text-muted-foreground",
-          labelClassName,
-        )}
-      >
-        {label}
-      </th>
-      <td className={cn(CELL, "pl-2 pr-4 text-left text-foreground")}>
-        {children}
-      </td>
-    </tr>
-  );
-}
 
 export function PluginDetailGlyph({
   icon,
@@ -133,7 +82,9 @@ export function PluginDetailRow({
           CELL,
           PLUGIN_DETAIL_HEADER_CELL_CLASS,
           "flex items-center text-left font-normal",
-          hasDetail ? "border-r border-border pl-4 pr-2" : "px-4",
+          hasDetail
+            ? "border-b border-border px-4 @min-[28rem]/plugin-detail:border-b-0 @min-[28rem]/plugin-detail:border-r @min-[28rem]/plugin-detail:pr-2"
+            : "px-4",
         )}
         colSpan={hasDetail ? undefined : 2}
       >
@@ -155,7 +106,7 @@ export function PluginDetailRow({
           id={detailId}
           className={cn(
             CELL,
-            "pl-2 pr-4 text-xs leading-normal text-muted-foreground",
+            "px-4 text-xs leading-normal text-muted-foreground @min-[28rem]/plugin-detail:pl-2",
           )}
         >
           <div

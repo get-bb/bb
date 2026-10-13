@@ -13,6 +13,7 @@ import {
 } from "../attachments";
 import { deliverCommentToLatestAgent } from "../steer";
 import { displayName } from "../shared/display-name";
+import { errorMessage } from "../shared/errors";
 import { isSideChatShapedThread } from "../shared/side-chat";
 import {
   tasksRpcContract,
@@ -307,7 +308,6 @@ function writeSystemComments(
       kind: "system",
       authorName,
       body,
-      notifiedCount: 0,
     });
   }
 }
@@ -410,6 +410,7 @@ interface CreateCommentInput {
   threadId: string | null;
   body: string;
   notify: boolean;
+  awaitDelivery: boolean;
 }
 
 export async function createComment(
@@ -417,7 +418,7 @@ export async function createComment(
   store: TasksApiStore,
   input: CreateCommentInput,
 ): Promise<StoredComment> {
-  let comment = store.transaction(() =>
+  const comment = store.transaction(() =>
     store.tasks.createComment({
       taskId: input.taskId,
       kind: input.kind,
@@ -425,23 +426,32 @@ export async function createComment(
       presetName: input.presetName,
       threadId: input.threadId,
       body: input.body,
-      notifiedCount: 0,
     }),
   );
 
-  if (input.notify) {
+  publishCommentsChanged(bb, input.taskId);
+  if (!input.notify) return comment;
+
+  const deliver = async (): Promise<StoredComment> => {
     const notifiedCount = await deliverCommentToLatestAgent(bb, store.tasks, {
       taskId: comment.taskId,
       commentId: comment.id,
       body: comment.body,
       authorName: comment.authorName,
     });
-    comment = store.transaction(() =>
+    const updated = store.transaction(() =>
       store.tasks.updateComment(comment.id, { notifiedCount }),
     );
-  }
+    publishCommentsChanged(bb, input.taskId);
+    return updated;
+  };
 
-  publishCommentsChanged(bb, input.taskId);
+  if (input.awaitDelivery) return deliver();
+  void deliver().catch((error) => {
+    bb.log.warn(
+      `failed to update comment notification ${comment.id}: ${errorMessage(error)}`,
+    );
+  });
   return comment;
 }
 
@@ -756,11 +766,15 @@ export function registerHandlers(
     },
     async deleteTask(input) {
       const task = store.tasks.getTask(input.taskId);
+      const subtasks = task ? store.tasks.listSubtasks(task.id) : [];
       const attachments = attachmentsForTasks(store.tasks, [input.taskId]);
       const deleted = store.tasks.deleteTask(input.taskId);
       if (deleted && task) {
         await removeAttachmentBlobs(bb, store.tasks, attachments);
         publishTasksChanged(bb, task.id, task.projectId);
+        for (const subtask of subtasks) {
+          publishTasksChanged(bb, subtask.id, subtask.projectId);
+        }
       }
       return { deleted };
     },
@@ -803,6 +817,31 @@ export function registerHandlers(
       if (result.statusChanged) publishCommentsChanged(bb, result.task.id);
       return { ok: true, task: result.task };
     },
+    moveTaskToProject(input) {
+      const current = store.tasks.getTask(input.taskId);
+      if (!current) throw new Error(`Task not found: ${input.taskId}`);
+      const result = store.transaction(() => {
+        const outcome = store.tasks.moveTaskToProject(
+          current.id,
+          input.projectId,
+        );
+        for (const { previousKey, task } of outcome.moved) {
+          writeSystemComments(store, task.id, input.authorName, [
+            `Moved from ${previousKey} to ${task.key} by ${input.authorName}`,
+          ]);
+        }
+        return { task: apiTask(store, outcome.task), moved: outcome.moved };
+      });
+      if (result.moved.length > 0) {
+        publishTasksChanged(bb, current.id, current.projectId);
+        publishTasksChanged(bb, result.task.id, result.task.projectId);
+        publishProjectsChanged(bb, result.task.projectId);
+        for (const { task } of result.moved) {
+          publishCommentsChanged(bb, task.id);
+        }
+      }
+      return { ok: true, task: result.task };
+    },
     createLabel(input) {
       const label = store.tasks.createLabel(input);
       publishProjectsChanged(bb, label.projectId);
@@ -834,6 +873,7 @@ export function registerHandlers(
         threadId: null,
         body: input.body,
         notify: input.notify,
+        awaitDelivery: false,
       });
       return { comment };
     },
@@ -868,7 +908,11 @@ export function registerHandlers(
       const attachments =
         "taskId" in input
           ? store.tasks.listAttachmentsForTask(input.taskId)
-          : store.tasks.listAttachmentsForComment(input.commentId);
+          : "commentId" in input
+            ? store.tasks.listAttachmentsForComment(input.commentId)
+            : store.tasks.listAttachmentsForTaskComments(
+                input.commentsOfTaskId,
+              );
       return {
         attachments: attachments.map(attachmentMetadata),
       };

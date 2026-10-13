@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { MachineAccessControls } from "@/components/settings/MachineAccessSettings";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineServerAccessReady } from "@/components/machines/machine-server-access";
@@ -50,6 +51,7 @@ export function AddMachineContent({
   onOpenChange: (open: boolean) => void;
 }) {
   const config = useSystemConfig();
+  const hosts = useHosts();
   const accessReady = machineServerAccessReady(config.data?.serverAccess);
   if (!accessReady) {
     return (
@@ -66,7 +68,21 @@ export function AddMachineContent({
       </MachineAccessGate>
     );
   }
-  return <ManualMachineSetup onOpenChange={onOpenChange} />;
+  const serverPrimaryHostId = config.data?.primaryHostId ?? null;
+  const serverMachineName =
+    hosts.data?.find((host) => host.id === serverPrimaryHostId)?.name ?? null;
+  return (
+    <ManualMachineSetup
+      serverMachineName={serverMachineName}
+      onOpenChange={onOpenChange}
+    />
+  );
+}
+
+function serverMachineNotice(serverMachineName: string | null): string {
+  return serverMachineName === null
+    ? "The new machine will connect to your bb server. Keep the server machine on so the new machine can keep working."
+    : `The new machine will connect to the bb server on ${serverMachineName}. Keep that computer on so the new machine can keep working.`;
 }
 
 export type MachineAccessGateState =
@@ -124,12 +140,16 @@ export function MachineAccessGate({
 
 export interface EnrollmentCommand {
   value: string;
+  windowsValue: string;
   expiresAt: number;
+  unavailable: boolean;
 }
 
 export function ManualMachineSetup({
+  serverMachineName,
   onOpenChange,
 }: {
+  serverMachineName: string | null;
   onOpenChange: (open: boolean) => void;
 }) {
   const createController = useRef<AbortController | null>(null);
@@ -165,7 +185,7 @@ export function ManualMachineSetup({
       setCommand(null);
       const controller = new AbortController();
       createController.current = controller;
-      createKey.current ??= crypto.randomUUID();
+      createKey.current ??= nanoid();
       try {
         let host = await sdk.hosts.experimental_create({
           key: createKey.current,
@@ -185,17 +205,29 @@ export function ManualMachineSetup({
         > = null;
         while (host.lifecycle.phase === "creating") {
           controller.signal.throwIfAborted();
-          if (enrollment === null) {
-            enrollment = await sdk.hosts.experimental_getEnrollmentCommand({
+          const currentEnrollment =
+            await sdk.hosts.experimental_getEnrollmentCommand({
               hostId: host.id,
               signal: controller.signal,
             });
-            setCommand(
-              enrollment === null
-                ? null
+          if (currentEnrollment !== null) {
+            enrollment = currentEnrollment;
+            setCommand({
+              value: currentEnrollment.command,
+              windowsValue: currentEnrollment.windowsCommand,
+              expiresAt: currentEnrollment.expiresAt,
+              unavailable: false,
+            });
+          } else if (enrollment !== null) {
+            const usedEnrollment = enrollment;
+            setCommand((previous) =>
+              previous?.unavailable
+                ? previous
                 : {
-                    value: enrollment.command,
-                    expiresAt: enrollment.expiresAt,
+                    value: usedEnrollment.command,
+                    windowsValue: usedEnrollment.windowsCommand,
+                    expiresAt: usedEnrollment.expiresAt,
+                    unavailable: true,
                   },
             );
           }
@@ -231,6 +263,7 @@ export function ManualMachineSetup({
     <ManualMachineSetupView
       command={command}
       connectedHost={connectedHost}
+      serverMachineName={serverMachineName}
       errorMessage={
         createMachine.isError
           ? getMutationErrorMessage({
@@ -249,6 +282,7 @@ export function ManualMachineSetup({
 export function ManualMachineSetupView({
   command,
   connectedHost,
+  serverMachineName,
   errorMessage,
   onRetry,
   onRegenerate,
@@ -256,6 +290,7 @@ export function ManualMachineSetupView({
 }: {
   command: EnrollmentCommand | null;
   connectedHost: Host | null;
+  serverMachineName: string | null;
   errorMessage: string | null;
   onRetry: () => void;
   onRegenerate: () => void;
@@ -285,7 +320,9 @@ export function ManualMachineSetupView({
         <MachineLaunchCommand
           key={command.value}
           command={command.value}
+          windowsCommand={command.windowsValue}
           expiresAt={command.expiresAt}
+          unavailable={command.unavailable}
           onRegenerate={onRegenerate}
         />
       )}
@@ -330,6 +367,11 @@ export function ManualMachineSetupView({
           )}
         </div>
       ) : null}
+      {errorMessage === null ? (
+        <p className="text-xs text-subtle-foreground">
+          {serverMachineNotice(serverMachineName)}
+        </p>
+      ) : null}
     </>
   );
 }
@@ -341,16 +383,32 @@ function formatCountdown(remainingMs: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+type MachineLaunchPlatform = "posix" | "windows";
+
+const MACHINE_LAUNCH_PLATFORMS: readonly {
+  id: MachineLaunchPlatform;
+  label: string;
+}[] = [
+  { id: "posix", label: "macOS or Linux" },
+  { id: "windows", label: "Windows" },
+];
+
 export function MachineLaunchCommand({
   command,
+  windowsCommand,
   expiresAt,
+  unavailable = false,
   onRegenerate,
 }: {
   command: string;
+  windowsCommand: string;
   expiresAt: number;
+  unavailable?: boolean;
   onRegenerate: () => void;
 }) {
-  const { copied, copy } = useClipboardCopy({ text: command });
+  const [platform, setPlatform] = useState<MachineLaunchPlatform>("posix");
+  const shownCommand = platform === "windows" ? windowsCommand : command;
+  const { copied, copy } = useClipboardCopy({ text: shownCommand });
   const [remaining, setRemaining] = useState(() => expiresAt - Date.now());
   useEffect(() => {
     const timer = setInterval(
@@ -362,11 +420,39 @@ export function MachineLaunchCommand({
   const expired = remaining <= 0;
   return (
     <div className="overflow-hidden rounded-md border border-border bg-muted/30">
+      <div
+        role="group"
+        aria-label="Machine operating system"
+        className="flex items-center gap-1 border-b border-border px-2 py-1.5"
+      >
+        {MACHINE_LAUNCH_PLATFORMS.map((option) => (
+          <Button
+            key={option.id}
+            type="button"
+            size="sm"
+            variant={platform === option.id ? "secondary" : "ghost"}
+            aria-pressed={platform === option.id}
+            className="h-6 px-2 text-xs"
+            onClick={() => setPlatform(option.id)}
+          >
+            {option.label}
+          </Button>
+        ))}
+        {platform === "windows" ? (
+          <span className="ml-auto text-xs text-subtle-foreground">
+            Run in PowerShell
+          </span>
+        ) : null}
+      </div>
       <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
-        {command}
+        {shownCommand}
       </pre>
       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-        {expired ? (
+        {unavailable ? (
+          <span role="status" className="text-xs text-subtle-foreground">
+            Command used
+          </span>
+        ) : expired ? (
           <>
             <span role="status" className="text-xs text-subtle-foreground">
               Command expired
@@ -394,7 +480,7 @@ export function MachineLaunchCommand({
           size="sm"
           variant="outline"
           className="ml-auto h-7 px-2.5 text-xs"
-          disabled={expired}
+          disabled={expired || unavailable}
           onClick={() => void copy()}
         >
           {copied ? "Copied" : "Copy"}

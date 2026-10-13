@@ -93,6 +93,11 @@ the resolved file must remain inside the origin workspace. `--source` remains
 an inline alias for `--script`. Run and validate require exactly one of
 `--script`, `--file`, or `--name` (counting `--source` as `--script`).
 
+`bb workflows --help` and `bb workflows <command> --help` print the arguments,
+option limits, and rules for a command and exit 0. Command output is JSON;
+adding `--json` also reports a failure as `{"ok":false,"error":{…}}` on stdout,
+alongside the readable message on stderr.
+
 Workflow worker threads use hidden visibility and are plugin-attributed. They
 stay out of sidebar organization without contributing unread/pending favicon
 attention. Ordinary search, prompt history,
@@ -106,3 +111,13 @@ concurrency and call count, total run timeout, retention, and UTF-8
 completion-message size are snapshotted per run. `status` is bounded
 to compact progress and call counts. Paged JSONL `history` carries ordered
 call-level execution, cache, child-thread, repair, result, and error details.
+
+Workers are hidden and owned by the workflow plugin across every retry attempt.
+Finished, replaced, cancelled, and unattached workers are stopped and archived
+by maintenance without waiting for history retention. Cleanup retries across
+restarts and survives history expiry. Archiving or deleting an origin cancels
+its outstanding workflows and retires its owned workers while preserving
+retained history. Completion notification becomes `abandoned` for an archived
+or deleted origin; unrelated send conflicts and transient failures retry.
+Upgrades recover existing call references; older attempts already missing from
+those references require a separate historical audit.

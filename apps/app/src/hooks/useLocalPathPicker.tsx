@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { normalizeProjectPathInput } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
-import { useDialogState } from "@/hooks/useDialogState";
+import { useDialogState } from "@bb/shared-ui/use-dialog-state";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   selectHosts,

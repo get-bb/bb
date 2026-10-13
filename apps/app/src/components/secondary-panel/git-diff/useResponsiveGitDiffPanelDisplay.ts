@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useCallback, useState } from "react";
+import { useGitDiffDisplayModePreference } from "@/lib/git-diff-view-preferences";
 import type {
   GitDiffDisplayMode,
   GitDiffDisplayModeChangeHandler,
@@ -7,7 +9,29 @@ import type { SecondaryPanelWidthChangeHandler } from "../useSecondaryPanelResiz
 
 const GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX = 760;
 
-type SecondaryPanelResizeStartHandler = () => void;
+export const COMPACT_GIT_DIFF_DISPLAY_MODE: GitDiffDisplayMode = "unified";
+
+interface ResolveGitDiffDisplayModeArgs {
+  isCompactViewport: boolean;
+  compactDisplayMode: GitDiffDisplayMode | null;
+  displayModePreference: GitDiffDisplayMode | null;
+  isWideEnoughForSplit: boolean | null;
+}
+
+export function resolveGitDiffDisplayMode({
+  isCompactViewport,
+  compactDisplayMode,
+  displayModePreference,
+  isWideEnoughForSplit,
+}: ResolveGitDiffDisplayModeArgs): GitDiffDisplayMode {
+  if (isCompactViewport) {
+    return compactDisplayMode ?? COMPACT_GIT_DIFF_DISPLAY_MODE;
+  }
+  if (displayModePreference !== null) {
+    return displayModePreference;
+  }
+  return isWideEnoughForSplit === true ? "split" : "unified";
+}
 
 interface UseResponsiveGitDiffPanelDisplayArgs {
   isSecondaryPanelOpen: boolean;
@@ -16,10 +40,14 @@ interface UseResponsiveGitDiffPanelDisplayArgs {
 export function useResponsiveGitDiffPanelDisplay({
   isSecondaryPanelOpen,
 }: UseResponsiveGitDiffPanelDisplayArgs) {
-  const [gitDiffDisplayMode, setGitDiffDisplayMode] =
-    useState<GitDiffDisplayMode>("unified");
-  const lastDiffViewWideEnoughRef = useRef<boolean | null>(null);
-  const hasExplicitDisplayModeRef = useRef(false);
+  const isCompactViewport = useIsCompactViewport();
+  const [displayModePreference, setDisplayModePreference] =
+    useGitDiffDisplayModePreference();
+  const [compactDisplayMode, setCompactDisplayMode] =
+    useState<GitDiffDisplayMode | null>(null);
+  const [isWideEnoughForSplit, setIsWideEnoughForSplit] = useState<
+    boolean | null
+  >(null);
 
   const handleSecondaryPanelWidthChange =
     useCallback<SecondaryPanelWidthChangeHandler>(
@@ -28,52 +56,34 @@ export function useResponsiveGitDiffPanelDisplay({
           return;
         }
 
-        const isWideEnough = nextWidth >= GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX;
-        const previousWideEnough = lastDiffViewWideEnoughRef.current;
-        const crossedBreakpoint =
-          previousWideEnough !== null && previousWideEnough !== isWideEnough;
-
-        if (crossedBreakpoint && hasExplicitDisplayModeRef.current) {
-          hasExplicitDisplayModeRef.current = false;
-        }
-
-        if (!hasExplicitDisplayModeRef.current || crossedBreakpoint) {
-          const nextMode = isWideEnough ? "split" : "unified";
-          setGitDiffDisplayMode((current) =>
-            current === nextMode ? current : nextMode,
-          );
-        }
-
-        lastDiffViewWideEnoughRef.current = isWideEnough;
+        const nextWideEnough = nextWidth >= GIT_DIFF_SPLIT_VIEW_MIN_WIDTH_PX;
+        setIsWideEnoughForSplit((current) =>
+          current === nextWideEnough ? current : nextWideEnough,
+        );
       },
-      [isSecondaryPanelOpen, setGitDiffDisplayMode],
+      [isSecondaryPanelOpen],
     );
-
-  useEffect(() => {
-    if (!isSecondaryPanelOpen) {
-      hasExplicitDisplayModeRef.current = false;
-      lastDiffViewWideEnoughRef.current = null;
-    }
-  }, [isSecondaryPanelOpen]);
 
   const handleGitDiffDisplayModeChange =
     useCallback<GitDiffDisplayModeChangeHandler>(
       (nextMode) => {
-        hasExplicitDisplayModeRef.current = true;
-        setGitDiffDisplayMode(nextMode);
+        if (isCompactViewport) {
+          setCompactDisplayMode(nextMode);
+          return;
+        }
+        setDisplayModePreference(nextMode);
       },
-      [setGitDiffDisplayMode],
+      [isCompactViewport, setDisplayModePreference],
     );
 
-  const handleSecondaryPanelResizeStart =
-    useCallback<SecondaryPanelResizeStartHandler>(() => {
-      hasExplicitDisplayModeRef.current = false;
-    }, []);
-
   return {
-    gitDiffDisplayMode,
+    gitDiffDisplayMode: resolveGitDiffDisplayMode({
+      isCompactViewport,
+      compactDisplayMode,
+      displayModePreference,
+      isWideEnoughForSplit,
+    }),
     handleGitDiffDisplayModeChange,
-    handleSecondaryPanelResizeStart,
     handleSecondaryPanelWidthChange,
   };
 }

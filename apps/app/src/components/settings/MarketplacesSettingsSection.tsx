@@ -9,7 +9,7 @@ import { appToast } from "@/components/ui/app-toast";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
-} from "@/components/dialogs/ConfirmDeleteDialog";
+} from "@bb/shared-ui/confirm-delete-dialog";
 import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import { invalidatePluginMarketplaces } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@/hooks/queries/plugin-catalog-queries";
 
 const SOURCE_PLACEHOLDER = "https://example.com/marketplace.json";
+const SUBDIRECTORY_PLACEHOLDER = "Subdirectory (optional)";
 
 function formatRefreshedAt(marketplace: PluginMarketplace): string {
   if (marketplace.lastError !== null) {
@@ -32,6 +33,8 @@ function formatRefreshedAt(marketplace: PluginMarketplace): string {
 export function MarketplacesSettingsSection() {
   const queryClient = useQueryClient();
   const [source, setSource] = useState("");
+  const [subdirectory, setSubdirectory] = useState("");
+  const isGitSource = source.trimStart().startsWith("git:");
   const [removing, setRemoving] = useState<PluginMarketplace | null>(null);
   const marketplacesQuery = usePluginMarketplaces({ enabled: true });
   const marketplaces = marketplacesQuery.data ?? [];
@@ -40,9 +43,11 @@ export function MarketplacesSettingsSection() {
 
   const add = useMutation({
     meta: { showErrorToast: false },
-    mutationFn: (value: string) => addPluginMarketplace(fetch, value),
+    mutationFn: (value: { source: string; subdirectory: string | null }) =>
+      addPluginMarketplace(fetch, value),
     onSuccess: (marketplace) => {
       setSource("");
+      setSubdirectory("");
       invalidate();
       appToast.success(`Added ${marketplace.displayName}`, {
         description: `${marketplace.entryCount} plugins listed. Adding a marketplace installs nothing.`,
@@ -104,18 +109,37 @@ export function MarketplacesSettingsSection() {
     >
       <div className="space-y-1.5">
         <div className="flex items-start gap-2">
-          <Input
-            value={source}
-            aria-label="Marketplace source"
-            placeholder={SOURCE_PLACEHOLDER}
-            className="h-8 font-mono text-xs"
-            onChange={(event) => setSource(event.target.value)}
-          />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Input
+              value={source}
+              aria-label="Marketplace source"
+              placeholder={SOURCE_PLACEHOLDER}
+              className="h-8 font-mono text-xs"
+              onChange={(event) => setSource(event.target.value)}
+            />
+            {isGitSource ? (
+              <Input
+                value={subdirectory}
+                aria-label="Marketplace subdirectory"
+                placeholder={SUBDIRECTORY_PLACEHOLDER}
+                className="h-8 font-mono text-xs"
+                onChange={(event) => setSubdirectory(event.target.value)}
+              />
+            ) : null}
+          </div>
           <Button
             type="button"
             size="sm"
             disabled={source.trim().length === 0 || add.isPending}
-            onClick={() => add.mutate(source.trim())}
+            onClick={() =>
+              add.mutate({
+                source: source.trim(),
+                subdirectory:
+                  isGitSource && subdirectory.trim().length > 0
+                    ? subdirectory.trim()
+                    : null,
+              })
+            }
           >
             {add.isPending ? "Adding…" : "Add"}
           </Button>
@@ -123,6 +147,9 @@ export function MarketplacesSettingsSection() {
         <p className="text-2xs text-subtle-foreground">
           An https manifest URL, <code>git:&lt;url&gt;[@&lt;ref&gt;]</code>, or{" "}
           <code>path:&lt;directory&gt;</code> on the bb server&rsquo;s machine.
+          {isGitSource
+            ? " Set a subdirectory when the repository keeps marketplace.json outside its root."
+            : null}
         </p>
       </div>
 
@@ -133,7 +160,7 @@ export function MarketplacesSettingsSection() {
             className="flex items-start gap-3 rounded-md border border-border p-3"
           >
             <div className="min-w-0 flex-1 space-y-1">
-              <p className="flex items-center gap-2 text-sm text-foreground">
+              <div className="flex items-center gap-2 text-sm text-foreground">
                 {marketplace.displayName}
                 <span className="font-mono text-2xs text-subtle-foreground">
                   {marketplace.name}
@@ -143,9 +170,12 @@ export function MarketplacesSettingsSection() {
                     Official
                   </Badge>
                 ) : null}
-              </p>
+              </div>
               <p className="truncate font-mono text-2xs text-subtle-foreground">
                 {marketplace.source}
+                {marketplace.subdirectory === null
+                  ? null
+                  : ` · subdirectory ${marketplace.subdirectory}`}
               </p>
               <p className="text-2xs text-subtle-foreground">
                 {marketplace.entryCount} plugins ·{" "}

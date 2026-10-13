@@ -90,10 +90,10 @@ describe("bb startup module graph", () => {
             "--import",
             "tsx",
             "--import",
-            registerHooksPath,
+            pathToFileURL(registerHooksPath).href,
             "src/index.ts",
           ]
-        : ["--import", registerHooksPath, distEntry];
+        : ["--import", pathToFileURL(registerHooksPath).href, distEntry];
     const { stdout } = await execFileAsync(
       process.execPath,
       [...entryArgs, ...args],
@@ -209,6 +209,26 @@ describe("bb startup module graph", () => {
       for (const url of chunks) {
         expect(url).toMatch(/\/index-chunks\/chunk-[A-Z0-9]+\.js$/);
       }
+    }, 30_000);
+
+    it("does not print Node's NO_COLOR warning when a harness also sets FORCE_COLOR", async () => {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        BB_CLI_REEXEC: "1",
+        BB_SERVER_URL: "http://127.0.0.1:1",
+        FORCE_COLOR: "1",
+        NO_COLOR: "1",
+      };
+      delete env.BB_PROJECT_ID;
+      delete env.BB_THREAD_ID;
+      const { stdout, stderr } = await execFileAsync(
+        process.execPath,
+        [distEntry, "status"],
+        { cwd: cliRoot, env },
+      );
+
+      expect(stdout).toContain("Project: (not set)");
+      expect(stderr).toBe("");
     }, 30_000);
 
     it("loads only the thread chunk for `bb thread`", async () => {

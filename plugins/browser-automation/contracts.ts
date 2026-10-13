@@ -55,6 +55,28 @@ export const outputSchema = z
   })
   .strict();
 export type RunOutput = z.infer<typeof outputSchema>;
+export const previewFrameSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    mimeType: z.literal("image/jpeg"),
+    data: z.string().min(1).max(700_000),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    url: z.string().max(2_000),
+    title: z.string().max(300),
+  })
+  .strict();
+export type PreviewFrame = z.infer<typeof previewFrameSchema>;
+export const previewSizeSchema = z.enum(["thumbnail", "full"]);
+export type PreviewSize = z.infer<typeof previewSizeSchema>;
+export const previewSchema = ownedSchema.extend({
+  afterSequence: z.number().int().nonnegative().default(0),
+  size: previewSizeSchema.default("thumbnail"),
+});
+export const previewOutputSchema = z
+  .object({ session: sessionSchema, frame: previewFrameSchema.nullable() })
+  .strict();
+export type PreviewOutput = z.infer<typeof previewOutputSchema>;
 export const rpcContract = defineRpcContract({
   open: { input: openSchema, output: sessionSchema },
   list: {
@@ -64,6 +86,7 @@ export const rpcContract = defineRpcContract({
   run: { input: runSchema, output: outputSchema },
   pages: { input: ownedSchema, output: outputSchema },
   screenshot: { input: screenshotSchema, output: outputSchema },
+  preview: { input: previewSchema, output: previewOutputSchema },
   stop: { input: ownedSchema, output: sessionSchema },
   close: { input: ownedSchema, output: sessionSchema },
 });
@@ -100,6 +123,17 @@ export const hostContract = defineRpcContract({
       })
       .strict(),
     output: outputSchema,
+  },
+  preview: {
+    input: z
+      .object({
+        sessionId: sessionIdSchema,
+        afterSequence: z.number().int().nonnegative(),
+        waitMs: z.number().int().min(0).max(10_000),
+        size: previewSizeSchema,
+      })
+      .strict(),
+    output: z.object({ frame: previewFrameSchema.nullable() }).strict(),
   },
   close: {
     input: z.object({ sessionId: sessionIdSchema }).strict(),

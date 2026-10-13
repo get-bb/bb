@@ -226,8 +226,39 @@ describe("checkout inputs control", () => {
     expect(newBranch?.getAttribute("title")).toBe(
       "Checkout blocked by uncommitted changes",
     );
+    expect(
+      slot.getByRole("status").textContent,
+    ).toBe(
+      "Commit or stash the uncommitted changes in this checkout to create or switch branches.",
+    );
     expect(slot.queryByRole("button", { name: "release" })).toBeNull();
     expect(slot.queryByRole("textbox", { name: "Search branches" })).toBeNull();
+  });
+
+  it("explains why branch actions are unavailable during a Git operation", async () => {
+    const slot = renderSlot(
+      inputsSlot(),
+      {
+        projectId: "project-1",
+        target: { kind: "existing-host", hostId: "host-a" },
+        value: null,
+        onChange: vi.fn(),
+      },
+      {
+        checkoutState: {
+          operation: { kind: "merge", hasConflicts: true },
+        },
+      },
+    );
+    fireEvent.click(slot.getByRole("combobox", { name: "Branch" }));
+    expect(
+      (await slot.findByRole("button", { name: "Checkout" })).hasAttribute(
+        "disabled",
+      ),
+    ).toBe(true);
+    expect(slot.getByRole("status").textContent).toBe(
+      "Resolve the conflicts and finish or abort the Git operation to change branches.",
+    );
   });
 
   it("matches the checkout menu structure and enters new-branch mode in place", async () => {

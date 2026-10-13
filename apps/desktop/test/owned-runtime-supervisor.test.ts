@@ -68,11 +68,8 @@ function createFakeProcessOps(args: CreateFakeProcessOpsArgs): FakeProcessOps {
       killedSignals.push(signal);
       running = false;
     },
-    async readCommand() {
-      return args.command;
-    },
-    async readElapsedSeconds() {
-      return 0;
+    async readIdentity() {
+      return { command: args.command, startedAt: Date.now() };
     },
     async waitForExit(_args: WaitForProcessExitArgs) {
       return !running;

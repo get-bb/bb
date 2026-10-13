@@ -57,15 +57,21 @@ export function ResourceMeta({
 }) {
   const visibleItems = items.filter(Boolean);
   return (
-    <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+    <span className="inline-flex min-w-0 max-w-full flex-col items-start gap-x-1.5 gap-y-0.5 sm:flex-row sm:flex-wrap sm:items-center">
       {visibleItems.map((item, index) => (
-        <span key={index} className="inline-flex min-w-0 items-center gap-1.5">
+        <span
+          key={index}
+          className="inline-flex min-w-0 max-w-full items-center gap-1.5"
+        >
           {index > 0 ? (
-            <span aria-hidden className="text-subtle-foreground">
+            <span
+              aria-hidden
+              className="hidden shrink-0 text-subtle-foreground sm:inline"
+            >
               ·
             </span>
           ) : null}
-          <span className="min-w-0 truncate">{item}</span>
+          <span className="min-w-0 truncate [&>*]:max-w-full">{item}</span>
         </span>
       ))}
     </span>

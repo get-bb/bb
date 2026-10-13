@@ -52,28 +52,41 @@ authored the latest reply, resuming that thread when it is idle. Turn it off to
 keep the comment in Tasks only. If no agent has replied, the disabled control
 says so explicitly. Agents and scripts can use the same behavior with
 `bb tasks comment PROD-1 --body "New context" --notify`.
+The app and Tasks RPC return the saved comment before notification delivery,
+with `notifiedCount` initially 0. Comment change events publish immediately and
+again when delivery finishes. The CLI waits for delivery, so `--notify --json`
+includes the final `notifiedCount`. Failed delivery leaves that count at 0.
 When run from a thread, the CLI preserves that agent thread and any explicit
 `--author`; notification still targets the prior latest responder rather than
 the newly recorded agent comment itself.
 
 ## CLI reference
 
-Run `bb tasks --help` or `bb tasks <command> --help` for exact options. Add
-`--json` to commands when another command or agent will consume the output.
-File paths (`--file`, `--attach`, `--out`, `--description-file`, `--body-file`)
-resolve on the invoking machine: inside an agent thread that is the thread's
-machine, otherwise the server's machine; pass `--machine <id-or-name>` to
-target another enrolled machine.
+Run `bb tasks --help` or `bb tasks <command> --help` for exact options; help
+works at every level, lists each option's accepted values and limits, and exits 0. Unknown commands and options are rejected with the nearest real name, every
+missing required value is reported in one error, and a failing invocation that
+carries `--json` prints `{ "ok": false, "error": { "code", "message", "hint"? } }`
+on stdout while stderr keeps the readable text. Add `--json` to commands when
+another command or agent will consume the output.
+
+`--project` takes a tracker project prefix or id such as `PROD`, never a bb
+project id (`proj_...`); `bb tasks project list` shows both columns. Repeatable
+options (`--label`, `--status`, `--priority`, `--add-label`, `--remove-label`)
+also accept one comma-separated list. File paths (`--file`, `--attach`,
+`--out`, `--description-file`, `--body-file`) resolve on the invoking machine:
+inside an agent thread that is the thread's machine, otherwise the server's
+machine; pass `--machine <id-or-name>` to target another enrolled machine.
 
 | Command                                        | Purpose                                                                                                                                    |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                          |
+| `bb tasks status`                              | Show the installed Tasks plugin name and version. Task workflow status lives on `bb tasks list --status` and `bb tasks update --status`.   |
 | `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                                  |
 | `bb tasks folder create\|list\|update\|delete` | Organize tracker projects into nested folders. Deleting a folder moves its projects and subfolders to the top level; no tasks are deleted. |
 | `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).          |
 | `bb tasks list`                                | Page/filter tasks by project, status, priority, label, active agents, or search text; supports `--sort`, `--limit`, and `--cursor`.        |
 | `bb tasks show <key-or-id>`                    | Show the complete task record, including comments, attachments, subtasks, and attached threads.                                            |
 | `bb tasks update <key-or-id>`                  | Update status, priority, title, description, due date, or labels.                                                                          |
+| `bb tasks move <key-or-id>`                    | Move a task and its sub-tasks to `--project`. Moved tasks get new keys; old keys keep resolving, and labels are matched by name.           |
 | `bb tasks comment <key-or-id>`                 | Add a Markdown comment from inline text or a file; optionally notify the latest responding task agent.                                     |
 | `bb tasks attachment add\|get\|list\|remove`   | Add, fetch, list, or remove attachments. Referenced attachments require `remove --remove-references`.                                      |
 | `bb tasks preset list\|create\|update\|delete` | Manage reusable agent execution presets.                                                                                                   |

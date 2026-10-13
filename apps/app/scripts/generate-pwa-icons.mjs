@@ -1,5 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -145,19 +145,22 @@ async function generatedMonochromePng(sourceFile) {
 
 async function writeOrCheck(fileName, content) {
   const filePath = join(publicDir, fileName);
-  if (!checkOnly) {
-    await writeFile(filePath, content);
-    return;
-  }
-
-  if (!existsSync(filePath)) {
+  const existing = await readFile(filePath).catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (existing?.equals(content)) return;
+  if (checkOnly) {
     mismatches.push(fileName);
     return;
   }
 
-  const existing = await readFile(filePath);
-  if (!existing.equals(content)) {
-    mismatches.push(fileName);
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, content);
+    await rename(temporaryPath, filePath);
+  } finally {
+    await rm(temporaryPath, { force: true });
   }
 }
 

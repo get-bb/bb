@@ -145,7 +145,8 @@ async function auditDependencies(modulesRoot) {
   await import(pathToFileURL(join(npmRoot, "lib", "utils", "display.js")).href);
   console.log(
     JSON.stringify({
-      npmCli: join(npmRoot, "bin", "npm-cli.js"),
+      npmCli: await insideArtifact(join(npmRoot, "bin", "npm-cli.js")),
+      npxCli: await insideArtifact(join(npmRoot, "bin", "npx-cli.js")),
       version: npm.version,
       directDependencies: Object.keys(npm.dependencies).length,
       packages,
@@ -199,9 +200,12 @@ export async function smokePackagedNpm(appBinary) {
     );
     const result = JSON.parse(audit.stdout);
     assert.equal(typeof result.npmCli, "string");
+    assert.equal(typeof result.npxCli, "string");
     assert.equal(typeof result.version, "string");
     const npm = (...args) => run(appBinary, [result.npmCli, ...args], options);
     assert.equal((await npm("--version")).stdout.trim(), result.version);
+    const npx = (...args) => run(appBinary, [result.npxCli, ...args], options);
+    assert.equal((await npx("--version")).stdout.trim(), result.version);
     for (const version of ["1.0.0", "2.0.0"]) {
       await writeFile(
         join(dependency, "package.json"),

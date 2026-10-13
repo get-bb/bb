@@ -36,7 +36,7 @@ export const providerUsageRpcContract = defineRpcContract({
     input: z.strictObject({
       force: z.boolean(),
       machineIds: z.nullable(z.array(z.string().check(z.minLength(1)))),
-      providerId: z.nullable(z.string()),
+      providerIds: z.array(z.string().check(z.minLength(1))),
       maxAgeMs: z.number().check(z.int(), z.nonnegative()),
     }),
     output: usageSnapshotSchema,
@@ -269,8 +269,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
               ? `source:${source.pluginId}`
               : resource.scope.hostId;
           return (
-            request.providerId !== null &&
-            resource.providerId === request.providerId &&
+            request.providerIds.includes(resource.providerId) &&
             (request.machineIds === null ||
               request.machineIds.includes(machineId)) &&
             (resource.scope.kind === "shared" ||

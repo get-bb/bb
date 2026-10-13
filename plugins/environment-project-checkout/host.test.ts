@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -29,7 +29,8 @@ async function createRepository(): Promise<{ repo: string; dataDir: string }> {
   temporaryRoots.push(root);
   const repo = join(root, "repo");
   const dataDir = join(root, "plugin-data");
-  await execFileAsync("mkdir", ["-p", repo, dataDir]);
+  await mkdir(repo, { recursive: true });
+  await mkdir(dataDir, { recursive: true });
   await git(repo, "init", "--initial-branch=main");
   await writeFile(join(repo, "README.md"), "hello\n");
   await git(repo, "add", ".");

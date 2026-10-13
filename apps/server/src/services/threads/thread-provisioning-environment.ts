@@ -1,4 +1,5 @@
 import {
+  getLatestThreadSequence,
   getEnvironment,
   getThread,
   type EnvironmentRow,
@@ -10,10 +11,16 @@ import {
   type ProvisioningTranscriptEntry,
   type Thread,
 } from "@bb/domain";
-import type { AppDeps } from "../../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../../types.js";
 import type { CommandResultSideEffectsDeps } from "../../internal/command-result-side-effects.js";
 import { ApiError } from "../../errors.js";
-import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
+import {
+  advanceEnvironmentProvisioning,
+  cancelProviderEnvironmentCreation,
+} from "../environments/environment-engine.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { requestQueuedMessageDispatch } from "./queued-message-dispatch.js";
 import {
@@ -31,22 +38,14 @@ import {
   type ThreadProvisionContext,
 } from "./thread-startup-store.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { isParentNotifiableChildThread } from "./thread-parent.js";
+import { queueChildThreadTurnNotificationBestEffort } from "./child-thread-notifications.js";
 
 export type ThreadProvisioningDeps = CommandResultSideEffectsDeps;
 interface EnsureWorkspaceReadyEventArgs {
   entries: ProvisioningTranscriptEntry[];
   environmentId: string;
   threadId: string;
-}
-
-export function loadActiveThreadProvisionContext(
-  deps: Pick<AppDeps, "db">,
-  threadId: string,
-) {
-  const thread = getThread(deps.db, threadId);
-  return thread?.status === "starting" && thread.deletedAt === null
-    ? getThreadProvisionContext(deps.db, threadId)
-    : null;
 }
 
 export function ensureWorkspaceReadyEvent(
@@ -93,6 +92,9 @@ export function ensureWorkspaceReadyEventInTransaction(
   });
   if (appendedSequence !== null)
     deps.hub.notifyThread(thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: thread.id,
+      }),
       eventTypes: ["system/thread-provisioning"],
     });
   return true;
@@ -142,9 +144,29 @@ export function failThreadProvisioning(
     detail: args.detail,
     scope: threadScope(),
   });
-  applyLoggedThreadLifecycleEvent(deps, {
+  const outcome = applyLoggedThreadLifecycleEvent(deps, {
     event: { type: "run.failed" },
     threadId: args.thread.id,
+  });
+  void cancelProviderEnvironmentCreation(deps, args.thread.id).catch((error) =>
+    deps.logger.warn(
+      { threadId: args.thread.id, error },
+      "Failed environment preparation cleanup will retry",
+    ),
+  );
+  if (outcome.applied) queueChildSetupFailureNotification(deps, args.thread);
+}
+
+export function queueChildSetupFailureNotification(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): void {
+  if (!isParentNotifiableChildThread(thread)) return;
+  void queueChildThreadTurnNotificationBestEffort(deps, {
+    childThread: thread,
+    parentThreadId: thread.parentThreadId,
+    turnStatus: "failed",
+    failureContext: "failed during workspace setup before a turn began",
   });
 }
 

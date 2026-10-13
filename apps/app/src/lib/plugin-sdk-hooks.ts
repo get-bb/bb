@@ -1,27 +1,31 @@
+import { subscribeComposerSubmitted } from "./composer-submissions";
 import {
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import type { PromptTextMention } from "@bb/domain";
 import type {
   BbContext,
   BbNavigate,
   ComposerView,
   PluginComposerApi,
-  PluginComposerMention,
+  PluginComposerScope,
+  PluginComposerTextEffect,
   PluginRealtimeConnectionState,
   PluginRpcContract,
   PluginRpcClient,
+  PluginBrowserBbSdk,
+  PluginEnvironmentProvider,
+  PluginEnvironmentProvidersState,
   PluginProvidersState,
   PluginSettingsState,
   ExperimentalAppPanel,
-  ExperimentalComposerSubmitOptions,
   ExperimentalFixedTabTargetState,
   ExperimentalPluginFixedTabReference,
   JsonValue,
@@ -33,23 +37,36 @@ import {
 } from "@/components/plugin/plugin-context";
 import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thread-panel-navigation";
 import {
-  PluginComposerViewContext,
+  composerScopeIdentity,
+  useOptionalPluginComposerView,
   usePluginComposerHost,
-  usePluginComposerHostDraft,
+  type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
-import { sdk } from "@/lib/sdk";
+import {
+  getComposerEditorBridges,
+  subscribeComposerEditorBridges,
+  useComposerEditorBridge,
+} from "@/lib/composer-editor-registry";
+import { createComposerHandleBinding } from "@get-bb/plugin-sdk/internal/composer-handle";
+import {
+  composerHandleController,
+  listedComposerHandles,
+  type ComposerSource,
+} from "@/lib/plugin-composer-handle";
+import { BbHttpError, sdk } from "@/lib/sdk";
+import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
+import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
 import { createKeyedListeners } from "@/lib/keyed-listeners";
 import {
-  usePromptDraftStorage,
+  usePromptDraftController,
+  usePromptDraftSnapshot,
+  type PromptDraftController,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
-import {
-  appendQuoteAndAttachmentsToDraft,
-  isPromptDraftEmpty,
-} from "@bb/client-core";
+import { emptyPromptDraftState, isPromptDraftEmpty } from "@bb/client-core";
 import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
@@ -59,12 +76,17 @@ import {
   AUTOMATION_EDIT_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useRouteState } from "@/hooks/useRouteState";
+import { useStore } from "jotai";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { lookupCachedThread } from "@/lib/plugin-sidebar-hooks";
+import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
-import { deprecatedAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -75,7 +97,9 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
-const legacySetThreadRowStatus = (_status: unknown): void => {};
+const subscribeToNoComposerSelection = () => () => {};
+const getNoComposerSelection = () => null;
+
 export function isAutomationEditRoutePath(pathname: string): boolean {
   return (
     matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
@@ -274,6 +298,36 @@ export function useProviders(): PluginProvidersState {
   );
 }
 
+export function useSdk(): PluginBrowserBbSdk {
+  const pluginId = usePluginId();
+  const queryClient = useQueryClient();
+  return getPluginBoundSdk(sdk, pluginId, queryClient);
+}
+
+const EMPTY_ENVIRONMENT_PROVIDERS: readonly PluginEnvironmentProvider[] = [];
+
+export function useEnvironmentProviders(): PluginEnvironmentProvidersState {
+  const { providers } = useSystemEnvironmentProviders();
+  return useMemo<PluginEnvironmentProvidersState>(
+    () =>
+      providers === undefined
+        ? { status: "loading", providers: EMPTY_ENVIRONMENT_PROVIDERS }
+        : {
+            status: "ready",
+            providers: providers.map((provider) => ({
+              id: provider.id,
+              displayName: provider.displayName,
+              description: provider.description,
+              icon: provider.icon,
+              logoUrl: provider.logoUrl,
+              pluginId: provider.pluginId,
+              machineProviderId: provider.machineProviderId,
+            })),
+          },
+    [providers],
+  );
+}
+
 export function useBbContext(): BbContext {
   const { projectId, threadId } = useRouteState();
   return useMemo(
@@ -282,28 +336,43 @@ export function useBbContext(): BbContext {
   );
 }
 
-interface BbNavigateWithDeprecatedAliases extends BbNavigate {
-  experimental_openUrl: BbNavigate["openUrl"];
-}
-
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
   const openThreadPanelHandler = usePluginThreadPanelOpenHandler();
   const navigate = useNavigate();
   const appNavigation = useAppNavigationHost();
-  const toThread = useCallback(
-    (threadId: string) => {
+  const store = useStore();
+  const queryClient = useQueryClient();
+  const isCompact = useIsCompactViewport();
+  const setRootComposeProjectId = useSetRootComposeProjectId();
+  const toThread = useCallback<BbNavigate["toThread"]>(
+    (threadId, options) => {
+      const open = (projectId: string) => {
+        store.set(getThreadConversationCollapsedAtom(threadId), false);
+        if (options?.split) {
+          openThreadInSplit({
+            store,
+            navigate,
+            projectId,
+            threadId,
+            isCompact,
+          });
+          return;
+        }
+        void navigate(getThreadRoutePath({ projectId, threadId }));
+      };
+      const cached = lookupCachedThread(queryClient, threadId);
+      if (cached !== null) {
+        open(cached.projectId);
+        return;
+      }
       void sdk.threads
         .get({ threadId })
-        .then((thread) =>
-          navigate(
-            getThreadRoutePath({ projectId: thread.projectId, threadId }),
-          ),
-        )
+        .then((thread) => open(thread.projectId))
         .catch(() => navigate(`/threads/${threadId}`));
     },
-    [navigate],
+    [isCompact, navigate, queryClient, store],
   );
   const toProject = useCallback(
     (projectId: string) => {
@@ -322,23 +391,34 @@ export function useBbNavigate(): BbNavigate {
     },
     [navigate, pluginId],
   );
-  const toCompose = useCallback(
-    (options?: { initialPrompt?: string; focusPrompt?: boolean }) => {
+  const toCompose = useCallback<BbNavigate["toCompose"]>(
+    (options) => {
       const replacesAutomationEditRoute =
         pluginId === AUTOMATIONS_PLUGIN_ID &&
         isAutomationEditRoutePath(location.pathname);
+      if (options?.projectId !== undefined) {
+        setRootComposeProjectId(options.projectId);
+      }
+      const hostId = options?.hostId?.trim() ?? "";
       void navigate(getRootComposeRoutePath(), {
         ...(replacesAutomationEditRoute ? { replace: true } : {}),
         state: {
           focusPrompt: options?.focusPrompt ?? false,
           initialPrompt: options?.initialPrompt ?? "",
+          ...(options?.placement !== undefined
+            ? { placement: options.placement }
+            : {}),
+          ...(options?.environmentId !== undefined
+            ? { reuseEnvironmentId: options.environmentId }
+            : {}),
+          ...(hostId.length > 0 ? { newEnvironmentHostId: hostId } : {}),
           ...(replacesAutomationEditRoute
             ? { replaceInitialPrompt: true }
             : {}),
         },
       });
     },
-    [location.pathname, navigate, pluginId],
+    [location.pathname, navigate, pluginId, setRootComposeProjectId],
   );
   const openThreadPanel = useCallback<BbNavigate["openThreadPanel"]>(
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
@@ -368,7 +448,21 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
-  return useMemo<BbNavigateWithDeprecatedAliases>(
+  const experimental_openTerminal = useCallback<
+    BbNavigate["experimental_openTerminal"]
+  >(
+    async ({ terminalId }) => {
+      const session = await sdk.terminals
+        .get({ terminalId })
+        .catch((error: unknown) => {
+          if (error instanceof BbHttpError && error.status === 404) return null;
+          throw error;
+        });
+      return session !== null && appNavigation.openTerminal(session);
+    },
+    [appNavigation],
+  );
+  return useMemo<BbNavigate>(
     () => ({
       toThread,
       toProject,
@@ -377,12 +471,8 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
-      experimental_openUrl: deprecatedAlias(
-        "experimental_openUrl",
-        "openUrl",
-        openUrl,
-      ),
     }),
     [
       toThread,
@@ -392,6 +482,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
+      experimental_openTerminal,
       openUrl,
     ],
   );
@@ -448,49 +539,6 @@ export {
   useExperimentalAppPanel as experimental_useAppPanel,
   useExperimentalFixedTabTarget as experimental_useFixedTabTarget,
 };
-
-function reconcileComposerMentions(
-  currentText: string,
-  nextText: string,
-  mentions: readonly PromptTextMention[],
-): PromptTextMention[] {
-  if (currentText === nextText) return [...mentions];
-
-  let unchangedPrefixLength = 0;
-  const maximumPrefixLength = Math.min(currentText.length, nextText.length);
-  while (
-    unchangedPrefixLength < maximumPrefixLength &&
-    currentText[unchangedPrefixLength] === nextText[unchangedPrefixLength]
-  ) {
-    unchangedPrefixLength += 1;
-  }
-
-  let unchangedSuffixLength = 0;
-  while (
-    unchangedSuffixLength < currentText.length - unchangedPrefixLength &&
-    unchangedSuffixLength < nextText.length - unchangedPrefixLength &&
-    currentText[currentText.length - unchangedSuffixLength - 1] ===
-      nextText[nextText.length - unchangedSuffixLength - 1]
-  ) {
-    unchangedSuffixLength += 1;
-  }
-
-  const replacedCurrentEnd = currentText.length - unchangedSuffixLength;
-  const replacementDelta = nextText.length - currentText.length;
-  return mentions.flatMap((mention) => {
-    if (mention.end <= unchangedPrefixLength) return [mention];
-    if (mention.start >= replacedCurrentEnd) {
-      return [
-        {
-          ...mention,
-          start: mention.start + replacementDelta,
-          end: mention.end + replacementDelta,
-        },
-      ];
-    }
-    return [];
-  });
-}
 
 function createComposerScopeOwnership(scopeKey: string) {
   let active = true;
@@ -569,8 +617,34 @@ export function useComposerInputLock(storageKey: string | null): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+type ComposerDraftSource = Pick<
+  PromptDraftController,
+  "getCurrent" | "subscribe"
+>;
+
+const EMPTY_COMPOSER_DRAFT = emptyPromptDraftState();
+const NO_COMPOSER_DRAFT_SOURCE: ComposerDraftSource = {
+  getCurrent: () => EMPTY_COMPOSER_DRAFT,
+  subscribe: () => () => {},
+};
+
+function useComposerDraftSource(
+  composerHost: PluginComposerHost | null,
+  routeDraft: PromptDraftController,
+): ComposerDraftSource {
+  const hostGetCurrent = composerHost?.getCurrent;
+  const hostSubscribe = composerHost?.subscribeDraft;
+  return useMemo(
+    () =>
+      hostGetCurrent !== undefined && hostSubscribe !== undefined
+        ? { getCurrent: hostGetCurrent, subscribe: hostSubscribe }
+        : routeDraft,
+    [hostGetCurrent, hostSubscribe, routeDraft],
+  );
+}
+
 export function useComposerView(): ComposerView {
-  const providedView = useContext(PluginComposerViewContext);
+  const providedView = useOptionalPluginComposerView();
   const composerHost = usePluginComposerHost();
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
@@ -580,9 +654,11 @@ export function useComposerView(): ComposerView {
         : { kind: "new-thread" },
     [projectId, threadId],
   );
-  const routeDraft = usePromptDraftStorage(routeScope);
-  const hostDraft = usePluginComposerHostDraft(composerHost);
-  const draft = hostDraft ?? routeDraft;
+  const routeDraft = usePromptDraftController(routeScope);
+  const draftSource = useComposerDraftSource(composerHost, routeDraft);
+  const draft = usePromptDraftSnapshot(
+    providedView === undefined ? draftSource : NO_COMPOSER_DRAFT_SOURCE,
+  );
   const fallback = useMemo<ComposerView>(
     () => ({
       scope:
@@ -607,7 +683,8 @@ export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
-  const composerHostDraft = usePluginComposerHostDraft(composerHost);
+  const tracksDraft = useRef(false);
+  const tracksSelection = useRef(false);
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -616,71 +693,39 @@ export function useComposer(): PluginComposerApi {
         : { kind: "new-thread" },
     [projectId, threadId],
   );
-  const routeDraft = usePromptDraftStorage(routeScope);
-  const getCurrent = composerHost?.getCurrent ?? routeDraft.getCurrent;
-  const setDraft = composerHost?.setDraft ?? routeDraft.setDraft;
+  const routeDraft = usePromptDraftController(routeScope);
+  const draftSource = useComposerDraftSource(composerHost, routeDraft);
+  const draftSnapshot = useCallback(
+    () => (tracksDraft.current ? draftSource.getCurrent() : null),
+    [draftSource],
+  );
+  useSyncExternalStore(draftSource.subscribe, draftSnapshot, draftSnapshot);
+  const selectionSnapshot = useCallback(
+    () =>
+      tracksSelection.current ? (composerHost?.getSelection?.() ?? null) : null,
+    [composerHost],
+  );
+  useSyncExternalStore(
+    composerHost?.subscribeSelection ?? subscribeToNoComposerSelection,
+    selectionSnapshot,
+    getNoComposerSelection,
+  );
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
-  const hostFocus = composerHost?.focus;
-  const focusActiveComposer = useCallback(() => {
-    if (hostFocus) {
-      hostFocus();
-      return;
-    }
-    requestComposerFocus(routeDraft.storageKey);
-  }, [hostFocus, routeDraft.storageKey]);
-
-  const replaceText = useCallback(
-    (current: ReturnType<typeof getCurrent>, nextText: string) => {
-      if (nextText === current.text) return;
-      setDraft({
-        ...current,
-        text: nextText,
-        mentions: reconcileComposerMentions(
-          current.text,
-          nextText,
-          current.mentions,
-        ),
-      });
-    },
-    [setDraft],
-  );
-
-  const setText = useCallback(
-    (next: string) => {
-      replaceText(getCurrent(), next);
-    },
-    [getCurrent, replaceText],
-  );
-
-  const updateText = useCallback(
-    (updater: (current: string) => string) => {
-      const current = getCurrent();
-      replaceText(current, updater(current.text));
-    },
-    [getCurrent, replaceText],
-  );
-
-  const clear = useCallback(() => {
-    setText("");
-  }, [setText]);
+  useComposerEditorBridge(textEffectKey);
 
   const composerScope = composerHost?.scope;
-  const composerOwnershipScopeKey =
-    composerScope?.kind === "queued-message"
-      ? `queued-message:${composerScope.threadId}:${composerScope.queuedMessageId}`
-      : composerScope?.kind === "side-chat"
-        ? `side-chat:${composerScope.projectId}:${composerScope.parentThreadId}:${composerScope.tabId}:${composerScope.childThreadId ?? ""}`
-        : composerScope?.kind === "thread"
-          ? `thread:${composerScope.threadId}`
-          : composerScope?.kind === "new-thread"
-            ? `new-thread:${composerScope.projectId ?? "null"}`
-            : threadId !== undefined
-              ? `thread:${threadId}`
-              : `new-thread:${projectId ?? "null"}`;
+  const scope: PluginComposerScope = useMemo(
+    () =>
+      composerScope ??
+      (threadId !== undefined
+        ? { kind: "thread", threadId }
+        : { kind: "new-thread", projectId: projectId ?? null }),
+    [composerScope, projectId, threadId],
+  );
   const scopeOwnershipKey = [
     pluginId,
-    composerOwnershipScopeKey,
-    textEffectKey ?? "null",
+    composerScopeIdentity(scope),
+    textEffectKey,
   ].join("\u0000");
   const scopeOwnership = useMemo(
     () => createComposerScopeOwnership(scopeOwnershipKey),
@@ -702,7 +747,7 @@ export function useComposer(): PluginComposerApi {
     slotOwnershipRegistry?.register(visualStateOwner, releaseVisualState);
   }, [releaseVisualState, slotOwnershipRegistry, visualStateOwner]);
   const setTextEffect = useCallback(
-    (effect: Parameters<PluginComposerApi["setTextEffect"]>[0]) => {
+    (effect: PluginComposerTextEffect | null) => {
       if (!scopeOwnership.isActive()) return;
       if (effect !== null) registerVisualStateOwner();
       setComposerTextEffect(
@@ -749,117 +794,137 @@ export function useComposer(): PluginComposerApi {
     visualStateOwner,
   ]);
 
-  const addQuote = useCallback(
-    (text: string) => {
-      const current = getCurrent();
-      const next = appendQuoteAndAttachmentsToDraft(current, text, []);
-      if (next !== current) {
-        setDraft(next);
-      }
-      focusActiveComposer();
+  const submissionSubscriptions = useRef(new Set<() => void>());
+  useEffect(
+    () => () => {
+      for (const unsubscribe of submissionSubscriptions.current) unsubscribe();
+      submissionSubscriptions.current.clear();
     },
-    [focusActiveComposer, getCurrent, setDraft],
+    [],
+  );
+  const onSubmitted = useCallback(
+    (listener: () => void) => {
+      const unsubscribe = subscribeComposerSubmitted(scope, listener);
+      submissionSubscriptions.current.add(unsubscribe);
+      return () => {
+        unsubscribe();
+        submissionSubscriptions.current.delete(unsubscribe);
+      };
+    },
+    [scope],
   );
 
-  const insertMention = useCallback(
-    (mention: PluginComposerMention) => {
-      const provider = mention.provider.trim();
-      const label = mention.label.trim() || mention.id;
-      if (provider.length === 0 || provider.includes(":")) {
-        console.warn(
-          `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
-        );
-        return;
-      }
-      const current = getCurrent();
-      const separator =
-        current.text.length === 0 || /\s$/u.test(current.text) ? "" : " ";
-      const start = current.text.length + separator.length;
-      const end = start + label.length;
-      setDraft({
-        ...current,
-        text: `${current.text}${separator}${label} `,
-        mentions: [
-          ...current.mentions,
-          {
-            start,
-            end,
-            resource: {
-              kind: "plugin",
-              pluginId,
-              icon: null,
-              itemId: `${provider}:${mention.id}`,
-              label,
-            },
-          },
-        ],
-      });
-      focusActiveComposer();
-    },
-    [focusActiveComposer, getCurrent, pluginId, setDraft],
-  );
-
-  const focus = focusActiveComposer;
-  const composerText = composerHostDraft?.text ?? routeDraft.text;
-
-  const hostSubmit = composerHost?.submit;
-  const experimental_submit = useCallback(
-    async (options: ExperimentalComposerSubmitOptions) => {
-      if (!scopeOwnership.isActive()) {
-        throw new Error("This composer is no longer active.");
-      }
-      if (hostSubmit === undefined) {
-        throw new Error("This composer cannot submit programmatically.");
-      }
-      if (
-        options.sendAt !== undefined &&
-        (!Number.isFinite(options.sendAt) || options.sendAt <= Date.now())
-      ) {
-        throw new Error("Pick a time in the future.");
-      }
-      await hostSubmit(
-        options,
-        options.experimental_data === undefined
-          ? undefined
-          : { pluginId, data: options.experimental_data },
-      );
-    },
-    [hostSubmit, pluginId, scopeOwnership],
-  );
-
-  return useMemo(
-    () => ({
-      scope:
-        composerScope ??
-        (threadId !== undefined
-          ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId: projectId ?? null }),
-      text: composerText,
-      setText,
-      updateText,
-      clear,
-      setTextEffect,
-      setInputLock,
-      setThreadRowStatus: legacySetThreadRowStatus,
-      addQuote,
-      insertMention,
-      focus,
-      experimental_submit,
-    }),
+  const source = useMemo<ComposerSource>(
+    () =>
+      composerHost ?? {
+        scope,
+        textEffectKey: routeDraft.storageKey,
+        getCurrent: routeDraft.getCurrent,
+        setDraft: routeDraft.setDraft,
+        focus: () => requestComposerFocus(routeDraft.storageKey),
+      },
     [
-      addQuote,
-      clear,
-      composerScope,
-      composerText,
-      experimental_submit,
-      focus,
-      insertMention,
-      projectId,
-      setText,
-      setTextEffect,
-      setInputLock,
-      threadId,
-      updateText,
+      composerHost,
+      routeDraft.getCurrent,
+      routeDraft.setDraft,
+      routeDraft.storageKey,
+      scope,
     ],
+  );
+  const controller = useMemo(
+    () =>
+      composerHandleController(pluginId, source, {
+        setTextEffect,
+        setInputLock,
+        onSubmitted,
+      }),
+    [onSubmitted, pluginId, setInputLock, setTextEffect, source],
+  );
+  const [binding, setBinding] = useState(() =>
+    createComposerHandleBinding(textEffectKey, controller),
+  );
+  let currentBinding = binding;
+  if (binding.key !== textEffectKey) {
+    currentBinding = createComposerHandleBinding(textEffectKey, controller);
+    setBinding(currentBinding);
+  }
+  currentBinding.update(controller);
+  return useMemo(
+    () =>
+      new Proxy(currentBinding.handle, {
+        get(target, property, receiver) {
+          if (
+            property === "text" ||
+            property === "draft" ||
+            property === "isEmpty" ||
+            property === "attachmentCount"
+          ) {
+            tracksDraft.current = true;
+          }
+          if (property === "selection") {
+            tracksSelection.current = true;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    [currentBinding],
+  );
+}
+
+function createComposerDraftsStore(hosts: readonly PluginComposerHost[]) {
+  let snapshot = hosts.map((host) => host.getCurrent());
+  let selections = hosts.map((host) => host.getSelection?.() ?? null);
+  return {
+    subscribe(listener: () => void): () => void {
+      const unsubscribes = hosts.flatMap((host) => [
+        host.subscribeDraft(listener),
+        ...(host.subscribeSelection === undefined
+          ? []
+          : [host.subscribeSelection(listener)]),
+      ]);
+      return () => {
+        for (const unsubscribe of unsubscribes) unsubscribe();
+      };
+    },
+    getSnapshot() {
+      const next = hosts.map((host) => host.getCurrent());
+      const nextSelections = hosts.map((host) => host.getSelection?.() ?? null);
+      if (
+        next.some((draft, index) => draft !== snapshot[index]) ||
+        nextSelections.some(
+          (selection, index) => selection !== selections[index],
+        )
+      ) {
+        snapshot = next;
+        selections = nextSelections;
+      }
+      return snapshot;
+    },
+  };
+}
+
+export function useComposers(): readonly PluginComposerApi[] {
+  const pluginId = usePluginId();
+  const bridges = useSyncExternalStore(
+    subscribeComposerEditorBridges,
+    getComposerEditorBridges,
+    getComposerEditorBridges,
+  );
+  const hosts = useMemo(
+    () =>
+      bridges
+        .filter((bridge) => bridge.pluginCustomizable)
+        .map((bridge) => bridge.host),
+    [bridges],
+  );
+  const draftsStore = useMemo(() => createComposerDraftsStore(hosts), [hosts]);
+  useSyncExternalStore(
+    draftsStore.subscribe,
+    draftsStore.getSnapshot,
+    draftsStore.getSnapshot,
+  );
+  return useMemo(
+    () => listedComposerHandles(pluginId, hosts),
+    [hosts, pluginId],
   );
 }

@@ -1,12 +1,13 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import {
+  spawnManagedProcess,
+  isClosedProcessStdinError,
+} from "@bb/process-utils";
 import { createInterface } from "node:readline";
 import { experimental_recordProviderChildIo } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { z } from "zod";
 import { ACP_PROTOCOL_VERSION, acpInitializeResultSchema } from "../wire.js";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
-const CLOSED_STDIN_ERROR_CODES = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
-
 export interface AcpAgentRequestResponder {
   result(value: unknown): void;
   error(code: number, message: string): void;
@@ -42,7 +43,7 @@ interface AcpAgentRequestArgs<TResult> {
 export interface AcpAgentConnection {
   request<TResult>(args: AcpAgentRequestArgs<TResult>): Promise<TResult>;
   notify(method: string, params: unknown): void;
-  kill(): void;
+  kill(): Promise<void>;
   readonly exited: boolean;
 }
 
@@ -80,14 +81,6 @@ interface AgentErrorObject {
   code?: number;
   message?: string;
   data?: unknown;
-}
-
-function isClosedAgentStdinError(error: Error): boolean {
-  return (
-    "code" in error &&
-    typeof error.code === "string" &&
-    CLOSED_STDIN_ERROR_CODES.has(error.code)
-  );
 }
 
 export function formatAgentError(error: AgentErrorObject): string {
@@ -139,11 +132,13 @@ function parseAgentLine(line: string): ParsedAgentMessage | null {
 export function createAcpAgentConnection(
   options: CreateAcpAgentConnectionOptions,
 ): AcpAgentConnection {
-  const child: ChildProcess = spawn(options.command, options.args, {
+  const managed = spawnManagedProcess({
+    command: options.command,
+    args: options.args,
     cwd: options.cwd,
     env: options.env,
-    stdio: ["pipe", "pipe", "pipe"],
   });
+  const { child } = managed;
   experimental_recordProviderChildIo(child, {
     threadId: options.recordThreadId,
   });
@@ -153,6 +148,18 @@ export function createAcpAgentConnection(
   let nextRequestId = 1;
   let exited = false;
   let stopping = false;
+  let stopPromise: Promise<void> | undefined;
+
+  function stopAgent(gracePeriodMs = 1_000): Promise<void> {
+    stopPromise ??= managed.stop({ gracePeriodMs }).then((result) => {
+      if (result.treeTermination === "unverified") {
+        stderrChunks.push(
+          "ACP agent exited, but descendant cleanup could not be confirmed",
+        );
+      }
+    });
+    return stopPromise;
+  }
 
   function rejectAllPending(error: Error): void {
     for (const [, request] of pending) {
@@ -174,9 +181,18 @@ export function createAcpAgentConnection(
     rejectAllPending(
       new AcpAgentExitedError(`ACP agent "${options.command}" ${detail}`),
     );
-    child.kill("SIGKILL");
-    const stderrTail = [...stderrChunks, detail].join("\n");
-    options.onExit({ code: null, signal: null, stderrTail });
+    const reportExit = (cleanupError: unknown): void => {
+      const cleanupDetail =
+        cleanupError === null
+          ? []
+          : [`Agent cleanup failed: ${String(cleanupError)}`];
+      options.onExit({
+        code: null,
+        signal: null,
+        stderrTail: [...stderrChunks, detail, ...cleanupDetail].join("\n"),
+      });
+    };
+    void stopAgent(0).then(() => reportExit(null), reportExit);
   }
 
   function writeLine(message: object): void {
@@ -192,11 +208,10 @@ export function createAcpAgentConnection(
   }
 
   child.stdin?.on("error", (error) => {
-    if (!isClosedAgentStdinError(error)) {
+    if (!isClosedProcessStdinError(error)) {
       throw error;
     }
     if (stopping) {
-      child.kill("SIGKILL");
       return;
     }
     closeForAgentStdin(error);
@@ -308,7 +323,18 @@ export function createAcpAgentConnection(
         }`,
       ),
     );
-    options.onExit({ code, signal, stderrTail });
+    const reportExit = (cleanupError: unknown): void => {
+      const cleanupDetail =
+        cleanupError === null
+          ? []
+          : [`Agent cleanup failed: ${String(cleanupError)}`];
+      options.onExit({
+        code,
+        signal,
+        stderrTail: [...stderrChunks, ...cleanupDetail].join("\n"),
+      });
+    };
+    void stopAgent().then(() => reportExit(null), reportExit);
   });
 
   return {
@@ -354,16 +380,14 @@ export function createAcpAgentConnection(
     },
 
     kill() {
-      if (stopping || exited) {
-        return;
-      }
+      if (stopping || exited) return stopAgent();
       stopping = true;
       rejectAllPending(
         new AcpAgentExitedError(
           `ACP agent "${options.command}" is not running`,
         ),
       );
-      child.kill("SIGTERM");
+      return stopAgent();
     },
   };
 }

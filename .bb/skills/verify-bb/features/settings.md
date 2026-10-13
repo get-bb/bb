@@ -20,21 +20,27 @@ command’s `--help` before mutation. Use fresh browser snapshots for controls.
 - `packages/domain/src/experiments.ts`
 - `apps/cli/src/commands/settings.ts`
 - `apps/cli/src/commands/theme.ts`
+- `apps/app/src/components/settings/AiServicesSettingsSection.tsx`
+- `apps/server/src/services/ai/ai-tasks.ts`
 
 ## Feature recipes
 
 | Feature | Drive | Observable success |
 | --- | --- | --- |
-| General preferences | Toggle Navigate to threads on creation, Markdown formatting, follow-up Queue/Steer, Rewrite localhost links, and Streamer mode individually; reload and exercise their effect. | Each preference changes the named behavior, persists with its actual owner, and restores. Client-local preferences are not assumed to be in server config. |
+| Mobile app downloads | Open Settings → Mobile (`/settings/mobile`) with all experiments off; follow the iOS and Android links; compare `settings mobile-app --json`; configure Server access, then generate a pairing code on Mobile when bb connect is connected. | TestFlight invitation and the direct GitHub APK link are available without an opt-in or server preparation. Platform cards stack at every width. Mobile and Machines share the Server access component, including provider selection and Direct URL setup. bb connect renders Add mobile device only on Mobile while selected and connected; choosing Direct or another provider, disabling, or disconnecting it removes pairing controls. Experiments has no mobile flags. APK download avoids bb connect; validate its checksum against the release manifest. |
+| General preferences | Toggle Navigate to threads on creation, follow-up Queue/Steer, Rewrite localhost links, and Streamer mode individually; reload and exercise their effect. | Each preference changes the named behavior, persists with its actual owner, and restores. Client-local preferences are not assumed to be in server config. |
 | Managed branch prefix | Set a valid prefix and create a disposable managed worktree; try an invalid Git prefix. | New branch uses the configured prefix; invalid input is rejected without saving. |
-| Provider order and default | Reorder providers and set a default; open a new composer and inspect provider list/models on the selected host. | Ordering/default affects the correct context and does not advertise unavailable models. |
+| Provider order, default, and fast tier | Reorder providers and set a default; open a new composer and inspect provider list/models on the selected host. Toggle Allow faster service tiers on the Providers page; submit an explicit fast selection through CLI/API in both states and inspect the resolved queued or accepted execution tier. | Ordering/default affects the correct context and does not advertise unavailable models. With fast disallowed, the picker hides Fast mode and new execution resolves to default; with fast allowed, an explicit fast selection remains fast. |
 | Keyboard overrides | Record a shortcut, disable it, restore it, test conflicting bindings and held-modifier hints; compare settings keyboard list/set/reset/hints. | Only the intended action fires; text input remains usable; overrides and reset survive reload. |
 | Theme and palette | Run appearance; additionally cycle every built-in palette, install a synthetic custom theme, and use theme list/dir/set/show/reset. | Theme catalog, active palette, and loaded styles agree; invalid theme selection fails cleanly. |
 | Favicon and split dimming | Change/reset favicon through UI and theme favicon; toggle Fade inactive splits with two panes. | Favicon updates without changing palette; only inactive splits dim. |
 | File openers and local editor | Configure file/directory defaults, extension-specific openers, and local editor integration; open a fixture through each. | Chosen handler and line/path are correct; reset/default fallbacks remain usable. |
-| Voice configuration | Load microphones, select one, configure the available AI service, and transcribe a harmless fixture. | Choice is applied to recording/transcription; missing browser permission or service is clearly reported. |
-| Usage and AI services | Inspect Usage limits, settings usage, and settings ai-services; compare provider-reported windows and service selections. | Unavailable data remains unavailable rather than zero; configured services are resolved by their owning plugin. |
-| Experiments | Exercise changelogPreview, mobileApp, sidebarProgressiveDisclosure, and timelineWindowing on/off in isolated data. | Only the named feature gate changes; disabled routes/actions fail or disappear as designed; state restores. |
+| Voice configuration | Load microphones, select one, pick the Voice input service in Settings → AI services, and transcribe a harmless fixture. | Choice is applied to recording/transcription; the microphone hides when the selected service is not ready or Voice input is Off. |
+| Usage | Inspect Usage limits and settings usage; compare provider-reported windows. | Unavailable data remains unavailable rather than zero. |
+| AI services picker | Open Settings → AI services. For Thread titles and Commit messages pick Automatic, a registered service, and Off; press Test; mirror with `settings ai-services`, `settings ai-services set <task> <choice>`, and `settings ai-services test <task>`. Create a thread and use the Commit action under each choice. | Each row lists only services that handle the task, with their status line; Automatic names the first ready builtin service; a picked service is used alone and a failure falls back to prompt-text titles and `bb: automated commit`; Off never calls a service; a failed Test shows the reason in the row; choices persist across reload and match the CLI. |
+| Experiments | Exercise changelogPreview and serverMove on/off in isolated data. | Only the named feature gate changes; disabled routes/actions fail or disappear as designed; state restores. |
+| Navigation rail | Open Settings, Plugins, Skills, and a plugin panel from the rail on a wide window and in the compact drawer; confirm the rail stays, the matching destination is current, and Home returns to the last thread. Hide and reorder a destination through More → Customize rail. | Rail order and visibility persist in `sidebar.pluginPanelOrder` and `sidebar.visiblePluginPanels`; in the drawer, Home, Plugins, Skills, and Settings leave it open and a plugin page closes it. |
+| Storage & retention plugin | Enable bb--storage-retention in a fresh instance. Verify Never/off defaults, immediate saves without success toasts, failed-save rollback, reload persistence, CLI parity, scans, background cleanup progress, and inline deletion confirmations. Using disposable fixtures, verify archive storage cleanup after the undo grace, cancellation on unarchive/pin, and development cleanup after checkout removal, including offline/reload recovery. | Automatic cleanup requires the corresponding opt-in. Clearing files preserves conversations and attachment originals; large-file cleanup preserves small files. Pins exempt affected groups; automation protection is deferred. Removal-feed cursors and pending work survive reload; expired cursors trigger reconciliation. Disabling stops plugin schedules and actions; re-enabling preserves policy. Verify compact Safari without app-root inert/aria-hidden. |
 | Debug events | Toggle Show unhandled provider events and render a trusted unsupported-event fixture. | The diagnostic row visibility follows the toggle without changing persisted event data. |
 | Community and update surfaces | Open Community links, version/update view, changelog, and CLI skills status. | Destinations and installed/latest status are correct; viewing does not perform an update. |
 | Configuration reload | Change an owned test configuration value and invoke settings reload. | The running app observes supported reloadable values and reports invalid configuration without losing working state. |
@@ -47,3 +53,31 @@ mutations through the available agent interface to establish parity. Preserve
 failed attempts and prerequisites; source documentation is not a passing test.
 Restore preferences and remove only the fixtures and sessions created by this
 recipe. External writes require a disposable test target and task authorization.
+
+## Project machine environment verification
+
+In isolated data, create two projects and use the primary host plus one connected
+secondary host.
+Set a global variable through `bb machine env set NAME` using stdin. Open
+Settings → Environment variables and switch its scope control from All projects
+to one project. Confirm inherited rows are masked and read-only, use a
+row's Override action, and confirm the override replaces that inherited row in
+place rather than appending a new row. Save it, open that project's settings,
+and confirm the same saved state there. Remove the override, save, and confirm the
+inherited row returns. Repeat with an empty string, CLI `--project <id>`, and
+SDK project methods. On both hosts, confirm global variables apply and each
+project's new terminals,
+agent turns, source/setup/teardown processes, and project-scoped host RPC
+receive only their own overrides; changing/removing overrides refreshes
+subsequent launches. Open the scope picker at compact width, confirm the app
+root is never inert or aria-hidden and content appears after drawer animation
+begins, and repeat in iOS Simulator Safari. Existing terminals retain old
+values. Confirm automatic GitHub credentials are forwarded to the secondary
+host but not round-tripped to the primary host. Settings reads and provider
+environment diagnostics must not expose saved values. This recipe does not
+verify a platform or launch path unless that subcheck actually runs.
+
+Import a .env value whose name matches an inherited variable and confirm it
+replaces that row in place. Verify quoted backslashes, multiline values, and
+empty values. Malformed assignments must keep Import disabled; importing only
+stages edits until Save variables is clicked.

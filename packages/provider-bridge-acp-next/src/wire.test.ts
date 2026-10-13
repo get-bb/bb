@@ -1,0 +1,185 @@
+import { describe, expect, it } from "vitest";
+import {
+  acpRequestPermissionParamsSchema,
+  acpSessionForkResultSchema,
+  acpSessionNewResultSchema,
+  acpToolCallUpdateEventSchema,
+} from "./wire.js";
+
+describe("acpToolCallUpdateEventSchema", () => {
+  it("parses an unknown status as pending and a null kind or status as absent", () => {
+    const unknownStatus = acpToolCallUpdateEventSchema.parse({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      status: "queued",
+    });
+    expect(unknownStatus.status).toBe("pending");
+
+    const nulls = acpToolCallUpdateEventSchema.parse({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-2",
+      kind: null,
+      status: null,
+    });
+    expect(nulls.kind).toBeUndefined();
+    expect(nulls.status).toBeUndefined();
+  });
+
+  it("skips a content entry of an unknown type instead of dropping the call", () => {
+    const parsed = acpToolCallUpdateEventSchema.parse({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      status: "completed",
+      content: [
+        { type: "hologram", frames: 3 },
+        { type: "content", content: { type: "text", text: "done" } },
+      ],
+    });
+
+    expect(parsed.content).toEqual([
+      { type: "content", content: { type: "text", text: "done" } },
+    ]);
+  });
+
+  it("opens the enums on a permission request's tool call too", () => {
+    const parsed = acpRequestPermissionParamsSchema.parse({
+      sessionId: "s",
+      toolCall: { toolCallId: "call-1", kind: "deploy", status: "queued" },
+      options: [{ optionId: "y", name: "Allow", kind: "allow_once" }],
+    });
+
+    expect(parsed.toolCall).toMatchObject({
+      kind: "other",
+      rawKind: "deploy",
+      status: "pending",
+    });
+  });
+});
+
+describe("acpSessionNewResultSchema", () => {
+  it("accepts explicit null for optional model and config-option strings", () => {
+    const parsed = acpSessionNewResultSchema.safeParse({
+      sessionId: "session-1",
+      models: {
+        currentModelId: "openai-codex/gpt-5.5",
+        availableModels: [
+          {
+            modelId: "openai-codex/gpt-5.5",
+            name: "openai-codex/GPT-5.5",
+            description: null,
+          },
+        ],
+      },
+      configOptions: [
+        {
+          type: "select",
+          id: "model",
+          category: "model",
+          name: "Model",
+          description: "Select the model for this session",
+          currentValue: "openai-codex/gpt-5.5",
+          options: [
+            {
+              value: "openai-codex/gpt-5.5",
+              name: "openai-codex/GPT-5.5",
+              description: null,
+            },
+          ],
+        },
+        {
+          type: "select",
+          id: "thought_level",
+          category: null,
+          name: "Thinking",
+          currentValue: "medium",
+          options: [{ value: "medium", name: null }],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(
+      parsed.data.models?.availableModels?.[0].description,
+    ).toBeUndefined();
+    expect(parsed.data.configOptions?.[0].options?.[0].name).toBe(
+      "openai-codex/GPT-5.5",
+    );
+    expect(parsed.data.configOptions?.[1].category).toBeUndefined();
+    expect(parsed.data.configOptions?.[1].options?.[0].name).toBeUndefined();
+  });
+
+  it("flattens grouped select options into their values", () => {
+    const parsed = acpSessionNewResultSchema.safeParse({
+      sessionId: "session-1",
+      configOptions: [
+        {
+          type: "select",
+          id: "model",
+          category: "model",
+          name: "Model",
+          currentValue: "model-a",
+          options: [
+            {
+              group: "vendor-1",
+              name: "Vendor 1",
+              options: [{ value: "model-a", name: "Model A" }],
+            },
+            {
+              group: "vendor-2",
+              name: "Vendor 2",
+              options: [
+                { value: "model-b", name: "Model B" },
+                { value: "model-c", name: "Model C" },
+              ],
+            },
+          ],
+        },
+        {
+          type: "select",
+          id: "reasoning_effort",
+          category: "thought_level",
+          name: "Reasoning effort",
+          currentValue: "high",
+          options: [
+            {
+              group: "levels",
+              name: "Levels",
+              options: [
+                { value: "low", name: "Low" },
+                { value: "high", name: "High" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(
+      parsed.data.configOptions?.[0].options?.map((option) => option.value),
+    ).toEqual(["model-a", "model-b", "model-c"]);
+    expect(
+      parsed.data.configOptions?.[1].options?.map((option) => option.value),
+    ).toEqual(["low", "high"]);
+  });
+});
+
+describe("acpSessionForkResultSchema", () => {
+  it("accepts the SDK's nullable configOptions field", () => {
+    const parsed = acpSessionForkResultSchema.parse({
+      sessionId: "forked-session",
+      configOptions: null,
+    });
+
+    expect(parsed).toEqual({
+      sessionId: "forked-session",
+      configOptions: undefined,
+    });
+  });
+});

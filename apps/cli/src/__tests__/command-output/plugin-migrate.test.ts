@@ -50,8 +50,14 @@ async function writeManifest(value: Record<string, unknown>): Promise<void> {
 async function writeVendoredPlugin(): Promise<void> {
   await writeManifest({
     name: "bb-plugin-legacy",
+    version: "0.1.0",
     engines: { bbPluginSdk: ">=0.2.0" },
-    bb: { server: "./server.ts" },
+    bb: {
+      name: "Legacy plugin",
+      description: "Legacy SDK layout fixture.",
+      branding: { icon: "Zap" },
+      server: "./server.ts",
+    },
     devDependencies: { typescript: "^5.7.0" },
   });
   await writeFile(
@@ -266,6 +272,61 @@ describe("bb plugin dev stale-pin warning", () => {
     expect(vi.mocked(console.warn).mock.calls.flat().join("\n")).not.toContain(
       "This plugin pins @get-bb/plugin-sdk",
     );
+  });
+});
+
+describe("legacy vendored SDK layout", () => {
+  const message =
+    "This plugin uses the legacy vendored SDK layout. Its SDK types will not be updated.\n" +
+    "Please run `bb plugin migrate` to update to the latest SDK types.";
+
+  it.each([false, true])(
+    "requires migration for bb plugin types with check=%s",
+    async (check) => {
+      await writeVendoredPlugin();
+      const declarationsPath = join(rootDir, "types", "bb-plugin-sdk.d.ts");
+      const before = await readFile(declarationsPath, "utf8");
+
+      await expect(
+        runCommand(
+          ["plugin", "types", rootDir, ...(check ? ["--check"] : [])],
+          register,
+        ),
+      ).rejects.toThrow("process.exit:1");
+
+      expect(vi.mocked(console.error)).toHaveBeenCalledWith(message);
+      expect(await readFile(declarationsPath, "utf8")).toBe(before);
+    },
+  );
+
+  it("warns and continues bb plugin dev", async () => {
+    await writeVendoredPlugin();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ plugins: [] }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(
+      runCommand(["plugin", "dev", rootDir], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(vi.mocked(console.warn)).toHaveBeenCalledWith(message);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+      "This directory is not installed as a plugin",
+    );
+  });
+
+  it("warns and continues bb plugin build", async () => {
+    await writeVendoredPlugin();
+    await writeFile(join(rootDir, "server.ts"), "export default () => {};\n");
+
+    await runCommand(["plugin", "build", rootDir], register);
+
+    expect(vi.mocked(console.warn)).toHaveBeenCalledWith(message);
+    await expect(
+      stat(join(rootDir, "dist", "server.js")),
+    ).resolves.toBeDefined();
   });
 });
 

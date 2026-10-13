@@ -45,6 +45,7 @@ const registry = buildMessageDirectiveRegistry([
 ]);
 
 const config: MarkdownPieceRenderConfig = {
+  codeFenceRendererRegistry: null,
   components: {},
   messageDirectiveRegistry: registry,
   rehypePlugins: [rehypeKatex],

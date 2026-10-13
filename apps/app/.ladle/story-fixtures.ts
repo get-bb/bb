@@ -94,8 +94,8 @@ export function makeAttachmentsConfig(
   const base: AttachmentsConfig = {
     items: [],
     projectId: PROJECT_IDS.bb,
-    onAttachFiles: noop,
-    onRemove: noop,
+    onAttachFiles: async () => [],
+    onUpdate: noop,
     isAttaching: false,
     error: null,
   };
@@ -412,6 +412,7 @@ export function makeExecutionControlsProps(
       onChange: noop,
       supported: true,
       supportByProvider: STORY_SERVICE_TIER_SUPPORT,
+      options: [{ id: "fast", label: "Fast" }],
     },
     reasoning: {
       value: "medium",

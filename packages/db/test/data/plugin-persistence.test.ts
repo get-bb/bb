@@ -56,6 +56,7 @@ describe("normalized plugin persistence", () => {
       rootDir: "/plugins/linear",
       version: "1.2.3",
       enabled: true,
+      enabledFollowsDefault: false,
     };
     upsertInstalledPlugin(db, linearPlugin);
     createPluginArtifact(db, {
@@ -125,6 +126,7 @@ describe("normalized plugin persistence", () => {
       rootDir: "/cache/repo/abcdef1234567",
       version: "1.4.2",
       enabled: true,
+      enabledFollowsDefault: false,
     };
     upsertInstalledPlugin(db, {
       ...common,
@@ -192,6 +194,7 @@ describe("normalized plugin persistence", () => {
       rootDir: "/cache/repo/abcdef1234567",
       version: "1.0.0",
       enabled: true,
+      enabledFollowsDefault: false,
     };
     upsertInstalledPlugin(db, retainedPlugin);
     createPluginArtifact(db, {

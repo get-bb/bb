@@ -4,7 +4,7 @@ import type { PendingInteraction } from "@bb/domain";
 import { sdk } from "@/lib/sdk";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 import { threadPendingInteractionsQueryKey } from "./query-keys";
-import { getLatestPendingInteraction } from "./thread-queries";
+import { orderPendingInteractions } from "./thread-queries";
 
 export interface ChildThreadPendingAttentionSource {
   hasPendingInteraction: boolean;
@@ -17,13 +17,13 @@ export interface ChildThreadPendingAttention {
   childThreadId: string;
   childTitle: string;
   href: string;
-  interaction: PendingInteraction;
+  interactions: readonly PendingInteraction[];
 }
 
 export const EMPTY_CHILD_THREAD_PENDING_ATTENTION: readonly ChildThreadPendingAttention[] =
   Object.freeze([]);
 
-export function collectChildThreadPendingAttention(
+function collectChildThreadPendingAttention(
   children: readonly ChildThreadPendingAttentionSource[],
   interactionsByThreadId: ReadonlyMap<
     string,
@@ -35,17 +35,17 @@ export function collectChildThreadPendingAttention(
     if (!child.hasPendingInteraction) {
       continue;
     }
-    const interaction = getLatestPendingInteraction(
+    const interactions = orderPendingInteractions(
       interactionsByThreadId.get(child.id),
     );
-    if (!interaction) {
+    if (interactions.length === 0) {
       continue;
     }
     items.push({
       childThreadId: child.id,
       childTitle: child.title,
       href: child.href,
-      interaction,
+      interactions,
     });
   }
   return items.length === 0 ? EMPTY_CHILD_THREAD_PENDING_ATTENTION : items;

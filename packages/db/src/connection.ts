@@ -1,14 +1,23 @@
 import Database from "better-sqlite3";
+import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
+import { resourceUsage, threadCpuUsage } from "node:process";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { registerHostPathSqlFunctions } from "./data/host-path-sql.js";
+import {
+  finishQueryDiagnostics,
+  type QueryDiagnosticsLogFields,
+} from "./query-diagnostics.js";
 import * as schema from "./schema.js";
 
 export interface SlowDbQueryLogFields {
   bindingArgumentCount: number;
   durationMs: number;
+  cpuDurationMs: number;
   operation: SlowDbQueryOperation;
   sql: string;
   thresholdMs: number;
+  diagnostics?: QueryDiagnosticsLogFields;
 }
 
 export interface SlowDbQueryLogger {
@@ -17,7 +26,8 @@ export interface SlowDbQueryLogger {
 
 export interface CreateConnectionOptions {
   slowQueryLogger?: SlowDbQueryLogger;
-  slowQueryThresholdMs?: number;
+  slowQueryThresholdMs?: number | (() => number);
+  slowQueryDiagnosticsEnabled?: () => boolean;
 }
 
 export type DbConnection = ReturnType<typeof createConnection>;
@@ -25,11 +35,38 @@ export type DbTransaction = Parameters<
   Parameters<DbConnection["transaction"]>[0]
 >[0];
 export type DbQueryConnection = DbConnection | DbTransaction;
-export type SlowDbQueryOperation = "all" | "get" | "run";
+export type SlowDbQueryOperation =
+  | "all"
+  | "get"
+  | "run"
+  | "exec"
+  | "transaction";
+
+const compiledQueries = new WeakMap<
+  DbQueryConnection,
+  Map<(db: DbQueryConnection) => unknown, unknown>
+>();
+
+export function prepareCachedQuery<TQuery>(
+  db: DbQueryConnection,
+  build: (db: DbQueryConnection) => TQuery,
+): TQuery {
+  let queries = compiledQueries.get(db);
+  if (!queries) {
+    queries = new Map();
+    compiledQueries.set(db, queries);
+  }
+  if (queries.has(build)) return queries.get(build) as TQuery;
+  const query = build(db);
+  queries.set(build, query);
+  return query;
+}
 
 interface SlowDbQueryConfig {
   logger: SlowDbQueryLogger;
-  thresholdMs: number;
+  thresholdMs: number | (() => number);
+  walPath: string | null;
+  diagnosticsEnabled: () => boolean;
 }
 
 interface TimedStatementOperationArgs<TValue> {
@@ -68,19 +105,39 @@ function formatSqlForLog(source: string): string {
 function runTimedStatementOperation<TValue>(
   args: TimedStatementOperationArgs<TValue>,
 ): TValue {
+  const startedUsage = args.config.diagnosticsEnabled()
+    ? resourceUsage()
+    : null;
+  const startedCpu = threadCpuUsage();
   const startedAt = performance.now();
   try {
     return args.work();
   } finally {
     const durationMs = performance.now() - startedAt;
-    if (durationMs >= args.config.thresholdMs) {
+    const thresholdMs =
+      typeof args.config.thresholdMs === "function"
+        ? args.config.thresholdMs()
+        : args.config.thresholdMs;
+    if (durationMs >= thresholdMs) {
+      const cpu = threadCpuUsage(startedCpu);
+      const finishedUsage = startedUsage ? resourceUsage() : null;
       args.config.logger.info(
         {
           bindingArgumentCount: args.bindingArgumentCount,
           durationMs: roundDurationMs(durationMs),
+          cpuDurationMs: roundDurationMs((cpu.user + cpu.system) / 1_000),
           operation: args.operation,
           sql: formatSqlForLog(args.source),
-          thresholdMs: args.config.thresholdMs,
+          thresholdMs,
+          ...(startedUsage && finishedUsage
+            ? {
+                diagnostics: finishQueryDiagnostics(
+                  startedUsage,
+                  finishedUsage,
+                  args.config.walPath,
+                ),
+              }
+            : {}),
         },
         "Slow DB query",
       );
@@ -137,6 +194,69 @@ function instrumentSqliteClient(
     logger: options.slowQueryLogger,
     thresholdMs:
       options.slowQueryThresholdMs ?? DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS,
+    walPath: sqlite.memory ? null : `${resolve(sqlite.name)}-wal`,
+    diagnosticsEnabled: options.slowQueryDiagnosticsEnabled ?? (() => false),
+  };
+  const originalExec = sqlite.exec.bind(sqlite);
+  sqlite.exec = (source) =>
+    runTimedStatementOperation({
+      bindingArgumentCount: 0,
+      config,
+      operation: "exec",
+      source,
+      work: () => originalExec(source),
+    });
+  const originalTransaction = sqlite.transaction.bind(sqlite);
+  sqlite.transaction = (fn) => {
+    const original = originalTransaction(fn);
+    function wrap(mode: "default" | "deferred" | "immediate" | "exclusive") {
+      return function (this: unknown, ...params: Parameters<typeof original>) {
+        return runTimedStatementOperation({
+          bindingArgumentCount: params.length,
+          config,
+          operation: "transaction",
+          source: `TRANSACTION ${mode.toUpperCase()}`,
+          work: () => original[mode].apply(this, params),
+        });
+      };
+    }
+    const modes = {
+      default: wrap("default"),
+      deferred: wrap("deferred"),
+      immediate: wrap("immediate"),
+      exclusive: wrap("exclusive"),
+    };
+    const transaction = Object.assign(modes.default, modes);
+    for (const mode of Object.values(modes)) {
+      Object.defineProperties(mode, {
+        default: {
+          value: modes.default,
+          enumerable: false,
+          writable: false,
+          configurable: false,
+        },
+        deferred: {
+          value: modes.deferred,
+          enumerable: false,
+          writable: false,
+          configurable: false,
+        },
+        immediate: {
+          value: modes.immediate,
+          enumerable: false,
+          writable: false,
+          configurable: false,
+        },
+        exclusive: {
+          value: modes.exclusive,
+          enumerable: false,
+          writable: false,
+          configurable: false,
+        },
+        database: { value: sqlite, enumerable: true },
+      });
+    }
+    return transaction;
   };
   const originalPrepare: Database.Database["prepare"] =
     sqlite.prepare.bind(sqlite);
@@ -165,9 +285,24 @@ export function createConnection(
   sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
   sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+  registerHostPathSqlFunctions(sqlite);
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });
+  const queries = new Map<(db: DbQueryConnection) => unknown, unknown>();
+  compiledQueries.set(db, queries);
+  const originalTransaction = db.transaction.bind(db);
+  db.transaction = (work, config) =>
+    originalTransaction((tx) => {
+      compiledQueries.set(tx, queries);
+      return work(tx);
+    }, config);
+  const originalClose = sqlite.close.bind(sqlite);
+  sqlite.close = () => {
+    const result = originalClose();
+    queries.clear();
+    return result;
+  };
 
   return db;
 }

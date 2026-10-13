@@ -20,6 +20,10 @@ import {
   type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import {
+  remarkCodeFenceRenderers,
+  type CodeFenceRendererRegistry,
+} from "./markdown-code-fence-renderers.js";
+import {
   BARE_FENCE_PATTERN,
   TRAILING_CLOSE_PATTERN,
 } from "./markdown-math-fences.js";
@@ -37,6 +41,7 @@ import {
 type MarkdownPluginList = NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 export interface MarkdownPieceRenderConfig {
+  codeFenceRendererRegistry: CodeFenceRendererRegistry | null;
   components: Components;
   messageDirectiveRegistry: MessageDirectiveRegistry | null;
   rehypePlugins: MarkdownPluginList;
@@ -367,6 +372,12 @@ function parseMarkdownPiece({
         mounts,
         registry: config.messageDirectiveRegistry,
       },
+    ]);
+  }
+  if (config.codeFenceRendererRegistry !== null) {
+    remarkPlugins.push([
+      remarkCodeFenceRenderers,
+      { registry: config.codeFenceRendererRegistry, sourceOffset },
     ]);
   }
   remarkPlugins.push(() => (tree: Root) => {

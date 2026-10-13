@@ -86,7 +86,6 @@ export const projectParityRows: ParityRowProjector = ({
       providerId,
       threadStatus: "idle",
       threadName: "parity",
-      turnMessageDetail: "full",
       workspaceRoot: "/home/user/workspace",
     },
   });

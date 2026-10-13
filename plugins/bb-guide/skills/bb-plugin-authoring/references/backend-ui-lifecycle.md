@@ -44,6 +44,29 @@ ships as a `skills/` entry instead.
 `needs-configuration` (shown in `bb plugin list` and the UI) instead of
 failing. Cleared on the next load.
 
+### bb.onInstall
+
+`bb.onInstall(handler)` runs once, right after the user installs
+the plugin and its server entry has loaded. It does not run on update,
+reload, enable, or server restart, and not for bb's bundled plugins;
+reinstalling after removal runs it again. Use it for one-time setup the user
+would expect from installing, such as picking the plugin's thread list:
+
+```ts
+bb.onInstall(async () => {
+  const { preferences } = await bb.sdk.system.uiPreferences.list();
+  await bb.sdk.system.uiPreferences.set({
+    key: "sidebar.threadListProvider",
+    value: "my-plugin/inbox",
+    expectedRevision: preferences["sidebar.threadListProvider"].revision,
+  });
+});
+```
+
+A handler that throws is logged and the install still succeeds; the install
+waits at most 30 seconds for handlers. In tests,
+`harness.lifecycle.install()` runs them.
+
 ### bb.onDispose and the reload lifecycle
 
 `bb.onDispose(hook)` registers cleanup; hooks run **LIFO**. On

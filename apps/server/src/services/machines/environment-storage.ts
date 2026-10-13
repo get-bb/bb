@@ -1,10 +1,11 @@
+import { ApiError } from "../../errors.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { like } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
-  appSettingsValues,
+  environmentVariables,
   type DbConnection,
   type DbQueryConnection,
 } from "@bb/db";
@@ -16,26 +17,21 @@ import {
 } from "@bb/server-contract";
 import { runSerialized } from "../lib/async-deduper.js";
 
-const prefix = "machineEnvironment:";
 const keyFile = "machine-environment-key";
-const encryptedSchema = z
-  .object({
-    version: z.literal(1),
-    name: machineEnvironmentNameSchema,
-    ciphertext: z.string(),
-    note: z.string().nullable(),
-  })
-  .strict();
+const encryptedSchema = z.object({
+  encryptionVersion: z.union([z.literal(1), z.literal(2)]),
+  projectId: z.string().nullable(),
+  name: machineEnvironmentNameSchema,
+  ciphertext: z.string(),
+  note: z.string().nullable(),
+});
 type EncryptedVariable = z.infer<typeof encryptedSchema>;
 const locks = new WeakMap<DbConnection, Promise<unknown>>();
 
-function records(db: DbConnection) {
-  return db
-    .select()
-    .from(appSettingsValues)
-    .where(like(appSettingsValues.key, `${prefix}%`))
-    .orderBy(appSettingsValues.key)
-    .all();
+function scope(projectId: string | null) {
+  return projectId === null
+    ? isNull(environmentVariables.projectId)
+    : eq(environmentVariables.projectId, projectId);
 }
 
 async function encryptionKey(dataDir: string, allowCreate: boolean) {
@@ -57,16 +53,32 @@ async function encryptionKey(dataDir: string, allowCreate: boolean) {
   }
 }
 
-function encrypt(key: Buffer, input: MachineEnvironmentSet): EncryptedVariable {
+function associatedData(
+  row: Pick<EncryptedVariable, "encryptionVersion" | "projectId" | "name">,
+) {
+  return Buffer.from(
+    row.encryptionVersion === 1
+      ? row.name
+      : JSON.stringify([row.projectId, row.name]),
+  );
+}
+
+function encrypt(
+  key: Buffer,
+  input: MachineEnvironmentSet,
+  projectId: string | null,
+): EncryptedVariable {
+  const row = { ...input, projectId, encryptionVersion: 2 as const };
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(Buffer.from(input.name));
+  cipher.setAAD(associatedData(row));
   const encrypted = Buffer.concat([
     cipher.update(input.value, "utf8"),
     cipher.final(),
   ]);
   return {
-    version: 1,
+    encryptionVersion: row.encryptionVersion,
+    projectId,
     name: input.name,
     ciphertext: Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString(
       "base64",
@@ -81,13 +93,15 @@ export async function decryptMachineEnvironment(
 ): Promise<string> {
   const key = await encryptionKey(dataDir, false);
   try {
+    if (row.encryptionVersion === 1 && row.projectId !== null)
+      throw new Error("Invalid legacy scope");
     const encrypted = Buffer.from(row.ciphertext, "base64");
     const cipher = createDecipheriv(
       "aes-256-gcm",
       key,
       encrypted.subarray(0, 12),
     );
-    cipher.setAAD(Buffer.from(row.name));
+    cipher.setAAD(associatedData(row));
     cipher.setAuthTag(encrypted.subarray(12, 28));
     return Buffer.concat([
       cipher.update(encrypted.subarray(28)),
@@ -101,59 +115,90 @@ export async function decryptMachineEnvironment(
 }
 
 function save(db: DbQueryConnection, row: EncryptedVariable) {
-  const value = JSON.stringify(row);
-  const updatedAt = Date.now();
-  db.insert(appSettingsValues)
-    .values({ key: prefix + row.name, value, updatedAt })
-    .onConflictDoUpdate({
-      target: appSettingsValues.key,
-      set: { value, updatedAt },
-    })
+  db.delete(environmentVariables)
+    .where(and(scope(row.projectId), eq(environmentVariables.name, row.name)))
+    .run();
+  db.insert(environmentVariables)
+    .values({ ...row, updatedAt: Date.now() })
     .run();
 }
 
-export function readMachineEnvironment(db: DbConnection): EncryptedVariable[] {
-  return records(db).map((row) => {
-    const parsed = encryptedSchema.parse(JSON.parse(row.value));
-    if (row.key !== prefix + parsed.name)
-      throw new Error("Invalid machine environment record");
-    return parsed;
-  });
+export function readMachineEnvironment(
+  db: DbConnection,
+  projectId: string | null = null,
+): EncryptedVariable[] {
+  return db
+    .select()
+    .from(environmentVariables)
+    .where(scope(projectId))
+    .orderBy(environmentVariables.name)
+    .all()
+    .map((row) => encryptedSchema.parse(row));
 }
 
-async function replaceRows(
-  db: DbConnection,
-  dataDir: string,
-  variables: MachineEnvironmentReplace["variables"],
-): Promise<void> {
-  const current = readMachineEnvironment(db);
-  const currentByName = new Map(current.map((row) => [row.name, row]));
-  const needsEncryption = variables.some((variable) => variable.value !== null);
-  const key = needsEncryption
-    ? await encryptionKey(dataDir, current.length === 0)
-    : null;
-  const replacements = variables.flatMap((variable) => {
-    if (variable.value !== null) {
-      if (key === null) throw new Error("Missing machine environment key");
-      return [encrypt(key, { ...variable, value: variable.value })];
-    }
-    const existing = currentByName.get(variable.name);
-    return existing === undefined ? [] : [{ ...existing, note: variable.note }];
-  });
-  db.transaction((tx) => {
-    tx.delete(appSettingsValues)
-      .where(like(appSettingsValues.key, `${prefix}%`))
-      .run();
-    for (const row of replacements) save(tx, row);
-  });
+async function keyForWrite(db: DbConnection, dataDir: string) {
+  const existing = db
+    .select({ id: environmentVariables.id })
+    .from(environmentVariables)
+    .limit(1)
+    .get();
+  return encryptionKey(dataDir, existing === undefined);
 }
 
 export function replaceMachineEnvironment(
   db: DbConnection,
   dataDir: string,
   input: MachineEnvironmentReplace,
+  projectId: string | null = null,
 ): Promise<void> {
-  return runSerialized(locks, db, () =>
-    replaceRows(db, dataDir, input.variables),
-  );
+  return runSerialized(locks, db, async () => {
+    const currentByName = new Map(
+      readMachineEnvironment(db, projectId).map((row) => [row.name, row]),
+    );
+    const key = input.variables.some((variable) => variable.value !== null)
+      ? await keyForWrite(db, dataDir)
+      : null;
+    const replacements = input.variables.map((variable) => {
+      if (variable.value !== null) {
+        if (key === null) throw new Error("Missing machine environment key");
+        return encrypt(key, { ...variable, value: variable.value }, projectId);
+      }
+      const existing = currentByName.get(variable.name);
+      if (!existing)
+        throw new ApiError(
+          409,
+          "invalid_request",
+          `No saved value for ${variable.name}; reload settings and retry`,
+        );
+      return { ...existing, note: variable.note };
+    });
+    db.transaction((tx) => {
+      tx.delete(environmentVariables).where(scope(projectId)).run();
+      for (const row of replacements) save(tx, row);
+    });
+  });
+}
+
+export function setMachineEnvironmentVariable(
+  db: DbConnection,
+  dataDir: string,
+  input: MachineEnvironmentSet,
+  projectId: string | null,
+): Promise<void> {
+  return runSerialized(locks, db, async () => {
+    const row = encrypt(await keyForWrite(db, dataDir), input, projectId);
+    db.transaction((tx) => save(tx, row));
+  });
+}
+
+export function deleteMachineEnvironmentVariable(
+  db: DbConnection,
+  name: string,
+  projectId: string | null,
+): Promise<void> {
+  return runSerialized(locks, db, async () => {
+    db.delete(environmentVariables)
+      .where(and(scope(projectId), eq(environmentVariables.name, name)))
+      .run();
+  });
 }

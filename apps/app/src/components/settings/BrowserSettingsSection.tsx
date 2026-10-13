@@ -200,7 +200,6 @@ export function BrowserSettingsSectionContent({
       .importCookies({
         sourceId: source.id,
         sourceProfileDirectory: profile.directory,
-        profile: { kind: "personal" },
       })
       .then((outcome) => {
         if (outcome.ok) {

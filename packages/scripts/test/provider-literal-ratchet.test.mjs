@@ -45,6 +45,28 @@ function write(rel, content) {
 }
 
 describe("scanTree (pure)", () => {
+  it.each([
+    [
+      "apps/cli/.packaged-plugin-build-IZlVup/cli-chunks/server.js",
+      "apps/cli/src/server.ts",
+    ],
+    [
+      "apps/demo-server/.wrangler/tmp/dev-R0GX8u/worker.js",
+      "apps/demo-server/src/worker.ts",
+    ],
+    [
+      "packages/plugin-sdk/.runtime-test-repro/provider-bridge-testing.js",
+      "packages/plugin-sdk/src/provider-bridge.ts",
+    ],
+  ])(
+    "excludes generated artifact %s while scanning source",
+    (artifact, source) => {
+      write(artifact, 'const id = "codex";\n');
+      write(source, 'const id = "claude-code";\n');
+      expect(scanTree(dir).files).toEqual({ [source]: 1 });
+    },
+  );
+
   it("counts every occurrence, including two ids on one line", () => {
     write(
       "packages/core/a.ts",
@@ -294,6 +316,7 @@ describe("ratchet CLI (against the real repo baseline)", () => {
     // by checking the message path via --base against a synthetic higher ref is
     // out of scope here; the pure fixture tests above cover counting. This
     // asserts the OK path only.
-    expect(run().code).toBe(0);
+    const result = run();
+    expect(result.code, result.out).toBe(0);
   }, 30_000);
 });

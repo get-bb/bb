@@ -1,0 +1,45 @@
+import type { SidebarThread } from "../model/sidebar-thread.js";
+import type {
+  ProjectThreadNode,
+  SidebarSectionDefinition,
+  ThreadComparator,
+} from "../model/project-thread-groups.js";
+import { useAtomValue } from "jotai";
+import { sidebarGroupThreadsByEnvironmentAtom } from "../preferences/atoms.js";
+import { resolveSidebarNestPreviewBeforeKey } from "./sidebarNestPreviewPlacement.js";
+import type { SectionThreadDndState } from "./useSectionThreadDnd.js";
+
+interface UseNestDropPreviewArgs {
+  compareThreads: ThreadComparator | undefined;
+  pinnedRootNodes: readonly ProjectThreadNode[];
+  sectionDnd: SectionThreadDndState | null;
+  sections: readonly SidebarSectionDefinition[];
+  threads: readonly SidebarThread[];
+}
+
+export function useNestDropPreview({
+  compareThreads,
+  pinnedRootNodes,
+  sectionDnd,
+  sections,
+  threads,
+}: UseNestDropPreviewArgs): SectionThreadDndState | null {
+  const groupThreadsByEnvironment = useAtomValue(
+    sidebarGroupThreadsByEnvironmentAtom,
+  );
+  if (!sectionDnd) return null;
+  const { activeThread, nestTarget } = sectionDnd;
+  if (!activeThread || nestTarget?.state !== "valid") return sectionDnd;
+  return {
+    ...sectionDnd,
+    nestPreviewBeforeKey: resolveSidebarNestPreviewBeforeKey({
+      activeThread,
+      compareThreads,
+      groupThreadsByEnvironment,
+      parentThreadId: nestTarget.threadId,
+      pinnedRootNodes,
+      sections,
+      threads,
+    }),
+  };
+}

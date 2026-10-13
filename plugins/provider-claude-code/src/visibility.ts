@@ -66,6 +66,13 @@ type ClaudeSystemSubtype =
   | "task_started"
   | "task_updated"
   | "thinking_tokens"
+  | "ui_focus"
+  | "ui_invalidate"
+  | "ui_log"
+  | "ui_panes"
+  | "ui_scroll"
+  | "ui_status"
+  | "ui_toast"
   | "unknown";
 
 type ClaudeStreamContentType = "text" | "thinking" | "tool_use" | "unknown";
@@ -239,6 +246,13 @@ function toClaudeSystemSubtype(
     case "task_started":
     case "task_updated":
     case "thinking_tokens":
+    case "ui_focus":
+    case "ui_invalidate":
+    case "ui_log":
+    case "ui_panes":
+    case "ui_scroll":
+    case "ui_status":
+    case "ui_toast":
       return subtype;
     default:
       return "unknown";
@@ -511,6 +525,13 @@ function describeParsedClaudeRawEvent(
         case "plugin_install":
         case "session_state_changed":
         case "thinking_tokens":
+        case "ui_focus":
+        case "ui_invalidate":
+        case "ui_log":
+        case "ui_panes":
+        case "ui_scroll":
+        case "ui_status":
+        case "ui_toast":
           return { kind: `sdk/system:${event.subtype}`, coverage: "noise" };
         case "permission_denied":
           return {

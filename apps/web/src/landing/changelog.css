@@ -50,9 +50,9 @@
 }
 
 /* Current-page link in the shared nav. */
-.nav-links .nav-current {
+.nav-links .nav-current,
+.nav-links a.nav-current {
   color: var(--ink);
-  font-weight: 500;
 }
 
 /* ── Releases ────────────────────────────────────────────────────── */
@@ -123,6 +123,14 @@
   font-weight: 650;
   letter-spacing: -0.015em;
   color: var(--heading-sub);
+}
+
+.release-body .release-screenshot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 20px;
+  border-radius: 12px;
 }
 
 .release-body h3 + p,

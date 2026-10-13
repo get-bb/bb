@@ -23,6 +23,7 @@ function thread(name: string): PromptMentionSuggestion {
     projectId: "p",
     threadId: name,
     title: name,
+    relation: null,
   };
 }
 

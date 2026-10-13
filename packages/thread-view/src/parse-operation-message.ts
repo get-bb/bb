@@ -4,11 +4,15 @@ import type {
   ThreadEvent,
   SystemThreadProvisioningStatus,
   SystemThreadInterruptedReason,
+  PluginInteractionLifecycle,
+  ThreadEventItemPresentation,
   UserQuestionInteractionLifecycle,
 } from "@bb/domain";
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
+  THREAD_CONTEXT_CLEARED_DETAIL,
   isApprovalInteractionLifecycle,
+  isPluginInteractionLifecycle,
   isUserQuestionInteractionLifecycle,
   ownershipChangeOperationMetadataSchema,
 } from "@bb/domain";
@@ -34,6 +38,8 @@ import type {
   EventProjectionThreadOperationMetadata,
   EventProjectionThreadOperationKind,
   EventProjectionThreadOperationStatus,
+  EventProjectionPluginFormLifecycle,
+  EventProjectionPluginFormLifecycleMessage,
 } from "./event-projection-types.js";
 import { getProviderModelFallbackData } from "./model-fallback-extraction.js";
 
@@ -118,6 +124,8 @@ function threadInterruptedTitle(
     return "Stopped — connection to host was lost";
   }
   switch (reason) {
+    case "host-removed":
+      return "Stopped because the machine was removed";
     case "manual-stop":
       return "Stopped manually";
     case "host-daemon-restarted":
@@ -301,6 +309,7 @@ function buildPermissionGrantLifecycleMessage(
     kind: "permission-grant-lifecycle",
     id: messageId(decoded.threadId, "approval", interaction.id),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
@@ -361,6 +370,7 @@ function buildUserQuestionLifecycleMessage(
     kind: "user-question-lifecycle",
     id: messageId(decoded.threadId, "question", interaction.id),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
@@ -375,16 +385,99 @@ function buildUserQuestionLifecycleMessage(
   };
 }
 
+function pluginFormLifecycle(
+  interaction: PluginInteractionLifecycle,
+): EventProjectionPluginFormLifecycle {
+  switch (interaction.status) {
+    case "pending":
+    case "resolving":
+      return "pending";
+    case "resolved":
+      return "submitted";
+    case "interrupted":
+      return "cancelled";
+    default:
+      return assertNever(interaction.status);
+  }
+}
+
+function pluginFormLifecycleStatus(
+  lifecycle: EventProjectionPluginFormLifecycle,
+): EventProjectionPluginFormLifecycleMessage["status"] {
+  switch (lifecycle) {
+    case "pending":
+      return "pending";
+    case "submitted":
+      return "completed";
+    case "cancelled":
+      return "interrupted";
+    default:
+      return assertNever(lifecycle);
+  }
+}
+
+function pluginFormPresentation(
+  interaction: PluginInteractionLifecycle,
+): ThreadEventItemPresentation {
+  const base = interaction.payload.presentation ?? {
+    label: {
+      pending: `Waiting for ${interaction.payload.title}`,
+      completed: `Submitted ${interaction.payload.title}`,
+    },
+    icon: { glyph: "Toolbox" },
+  };
+  const description = interaction.resolution?.description;
+  return {
+    ...base,
+    ...(description?.title === undefined ? {} : { title: description.title }),
+    ...(description?.detail === undefined
+      ? {}
+      : { detail: description.detail }),
+  };
+}
+
+function buildPluginFormLifecycleMessage(
+  decoded: InteractionLifecycleEvent,
+  interaction: PluginInteractionLifecycle,
+  meta: EventMeta,
+): EventProjectionPluginFormLifecycleMessage {
+  const lifecycle = pluginFormLifecycle(interaction);
+  return {
+    kind: "plugin-form-lifecycle",
+    id: messageId(decoded.threadId, "form", interaction.id),
+    threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
+    sourceSeqStart: meta.seq,
+    sourceSeqEnd: meta.seq,
+    createdAt: meta.createdAt,
+    startedAt: meta.createdAt,
+    scope: decoded.scope,
+    interactionId: interaction.id,
+    lifecycle,
+    status: pluginFormLifecycleStatus(lifecycle),
+    pluginId: interaction.origin.pluginId,
+    rendererId: interaction.origin.rendererId,
+    title: interaction.payload.title,
+    statusReason: interaction.statusReason,
+    presentation: pluginFormPresentation(interaction),
+    payload: interaction.resolution?.description?.payload ?? null,
+  };
+}
+
 function buildInteractionLifecycleMessage(
   decoded: InteractionLifecycleEvent,
   meta: EventMeta,
 ):
   | EventProjectionPermissionGrantLifecycleMessage
   | EventProjectionUserQuestionLifecycleMessage
+  | EventProjectionPluginFormLifecycleMessage
   | null {
   const { interaction } = decoded;
   if (isUserQuestionInteractionLifecycle(interaction)) {
     return buildUserQuestionLifecycleMessage(decoded, interaction, meta);
+  }
+  if (isPluginInteractionLifecycle(interaction)) {
+    return buildPluginFormLifecycleMessage(decoded, interaction, meta);
   }
   if (!isApprovalInteractionLifecycle(interaction)) {
     return null;
@@ -408,6 +501,7 @@ function op(
     kind: "operation",
     id: messageId(decoded.threadId, "op", `${idKey}:${meta.seq}`),
     threadId: decoded.threadId,
+    sourceEvent: { seq: meta.seq, part: 0 },
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
@@ -429,6 +523,7 @@ function isTerminalOperationStatus(
 type ViewOperationFields = Omit<
   EventProjectionOperationMessage,
   | "kind"
+  | "sourceEvent"
   | "id"
   | "threadId"
   | "sourceSeqStart"
@@ -448,6 +543,7 @@ export function parseOperationMessage(
   | EventProjectionOperationMessage
   | EventProjectionPermissionGrantLifecycleMessage
   | EventProjectionUserQuestionLifecycleMessage
+  | EventProjectionPluginFormLifecycleMessage
   | null {
   const threadName = options?.threadName ?? "";
   const modelFallback = getProviderModelFallbackData(decoded);
@@ -583,7 +679,11 @@ export function parseOperationMessage(
       typeof decoded.metadata?.branch === "string"
         ? decoded.metadata.branch
         : undefined;
-    const messageDetail = decoded.message.trim();
+    const messageDetail =
+      decoded.operation === THREAD_CONTEXT_CLEAR_OPERATION &&
+      decoded.status === "completed"
+        ? THREAD_CONTEXT_CLEARED_DETAIL
+        : decoded.message.trim();
     const detailParts = [
       messageDetail.length > 0 && messageDetail !== title
         ? messageDetail

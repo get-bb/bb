@@ -8,13 +8,11 @@ import {
   type PendingJsonRpcRequest,
   parseJsonRpcLine,
   ProviderResponseEncodeError,
-  sendJsonRpc,
   sendJsonRpcError,
   sendJsonRpcRequest,
   sendJsonRpcResult,
   sendProviderResponseEncodeErrorIfKnown,
   settleJsonRpcResponse,
-  toJsonRpcMessage,
 } from "./runtime-json-rpc.js";
 
 const EPIPE_PAYLOAD_SIZE = 1024 * 1024;
@@ -130,30 +128,6 @@ describe("runtime JSON-RPC parsing", () => {
       getJsonRpcStringParam({ params: { cwd: 42 } }, "cwd"),
     ).toBeUndefined();
     expect(getJsonRpcStringParam({ params: null }, "cwd")).toBeUndefined();
-  });
-
-  it("preserves JSON-RPC messages and converts provider command plans", () => {
-    const rpcMessage = {
-      jsonrpc: "2.0" as const,
-      id: 4,
-      method: "already-rpc",
-    };
-    expect(toJsonRpcMessage(rpcMessage)).toBe(rpcMessage);
-    expect(
-      toJsonRpcMessage({
-        kind: "request",
-        method: "provider-command",
-        params: { enabled: true },
-      }),
-    ).toEqual({
-      jsonrpc: "2.0",
-      method: "provider-command",
-      params: { enabled: true },
-    });
-    expect(toJsonRpcMessage({ kind: "request", method: "no-params" })).toEqual({
-      jsonrpc: "2.0",
-      method: "no-params",
-    });
   });
 });
 
@@ -338,23 +312,6 @@ describe("runtime JSON-RPC transport", () => {
           id: 3,
           error: { code: -32602, message: "bad response" },
         },
-      ]);
-    } finally {
-      await stopChild(child);
-    }
-  });
-
-  it("writes notifications without inventing request ids", async () => {
-    const child = spawnEchoChild();
-    const linesPromise = readChildStdoutLines(child, 1);
-    try {
-      sendJsonRpc(child, {
-        kind: "request",
-        method: "turn/progress",
-        params: { amount: 1 },
-      });
-      await expect(linesPromise).resolves.toEqual([
-        '{"jsonrpc":"2.0","method":"turn/progress","params":{"amount":1}}',
       ]);
     } finally {
       await stopChild(child);

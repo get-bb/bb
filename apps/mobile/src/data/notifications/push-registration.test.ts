@@ -4,6 +4,7 @@ import {
   describePushStatus,
   enablePushForProfile,
   isPushRegistrationAllowed,
+  shouldOfferPushPrompt,
   shouldReregister,
   syncPushRegistration,
   unregisterPushRegistration,
@@ -41,6 +42,7 @@ function fakeModule(options: FakeModuleOptions = {}) {
     getPermission: async () => permission,
     requestPermissionMock,
     requestPermission: () => requestPermissionMock(),
+    unregisterDevicePushToken: async () => undefined,
     getExpoPushToken: vi.fn(async () => {
       const token = options.token ?? "ExponentPushToken[abc]";
       return typeof token === "function" ? token() : token;
@@ -467,5 +469,25 @@ describe("enablePushForProfile", () => {
     expect(await enablePushForProfile(deps, profile.id)).toBe("denied");
     expect(store.isEnabled(profile.id)).toBe(false);
     expect(store.hasPrompted()).toBe(true);
+  });
+});
+
+describe("shouldOfferPushPrompt", () => {
+  it("offers push when permission was granted outside the prompt", () => {
+    expect(
+      shouldOfferPushPrompt({ permission: "granted", enabled: false }),
+    ).toBe(true);
+    expect(
+      shouldOfferPushPrompt({ permission: "undetermined", enabled: false }),
+    ).toBe(true);
+  });
+
+  it("skips blocked permission and servers that already have push on", () => {
+    expect(
+      shouldOfferPushPrompt({ permission: "denied", enabled: false }),
+    ).toBe(false);
+    expect(
+      shouldOfferPushPrompt({ permission: "granted", enabled: true }),
+    ).toBe(false);
   });
 });

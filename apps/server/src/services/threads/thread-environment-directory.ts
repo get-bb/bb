@@ -1,6 +1,7 @@
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import { z } from "zod";
 import {
+  getLatestThreadSequence,
   createEnvironment,
   type EnvironmentRow,
   createEventId,
@@ -9,14 +10,19 @@ import {
   getThread,
   updateThread,
 } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import {
+  canonicalizeHostPath,
+  isAbsoluteHostPath,
+  isHostPathRoot,
+  turnScope,
+} from "@bb/domain";
 import type { DynamicTool, Thread, ToolCallResponse } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { runLiveHostCommand } from "../hosts/live-command.js";
 import { appendThreadEventInTransaction } from "./thread-events.js";
 import { buildEnvironmentProvisionCommand } from "./thread-create-helpers.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
-import { foreignProviderOwnedPathRefusal } from "./workspace-path-claims.js";
+import { suppliedWorkspacePathRefusal } from "./workspace-path-claims.js";
 
 export const UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME =
   "update_environment_directory";
@@ -87,18 +93,14 @@ function toolCallSuccess(text: string): ToolCallResponse {
 }
 
 function normalizeDirectoryPath(path: string): string {
-  const trimmed = path.trim();
-  if (trimmed === "/") {
-    return trimmed;
-  }
-  return trimmed.replace(/\/+$/u, "");
+  return canonicalizeHostPath(path.trim());
 }
 
 function validateDirectoryPath(path: string): string | null {
-  if (!path.startsWith("/")) {
+  if (!isAbsoluteHostPath(path)) {
     return "Path must be an absolute path on the current host.";
   }
-  if (path === "/") {
+  if (isHostPathRoot(path)) {
     return "Path must name a project directory, not the filesystem root.";
   }
   if (path.includes("\0")) {
@@ -203,6 +205,9 @@ function attachReadyEnvironment(
 
   if (result.kind === "attached" && result.changed) {
     deps.hub.notifyThread(args.thread.id, ["events-appended"], {
+      timelineSequence: getLatestThreadSequence(deps.db, {
+        threadId: args.thread.id,
+      }),
       eventTypes: ["system/operation"],
     });
   }
@@ -316,7 +321,7 @@ export async function handleUpdateEnvironmentDirectoryToolCall(
     targetEnvironment = ready;
   } else {
     const dataDir = findHostDataDir(deps, args.currentEnvironment.hostId);
-    const refusal = foreignProviderOwnedPathRefusal(deps.db, {
+    const refusal = suppliedWorkspacePathRefusal(deps.db, {
       dataDir,
       hostId: args.currentEnvironment.hostId,
       path: normalizedPath,

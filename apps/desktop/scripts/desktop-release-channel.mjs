@@ -21,9 +21,12 @@ export function resolveDesktopBuildPlatform(nodePlatform) {
   if (nodePlatform === "linux") {
     return "linux";
   }
+  if (nodePlatform === "win32") {
+    return "windows";
+  }
 
   throw new Error(
-    `Desktop builds support darwin and linux only, got ${nodePlatform}.`,
+    `Desktop builds support darwin, linux, and win32 only, got ${nodePlatform}.`,
   );
 }
 
@@ -39,9 +42,11 @@ export function createDesktopReleaseConfig(channel) {
       linuxExecutableName: "bb-nightly",
       macIconPath: "assets/icon-nightly.icns",
       releaseTag: "desktop-nightly",
+      windowsInstallName: "bb-nightly",
       updateMetadataFileNames: {
         linux: "nightly-linux.yml",
         macos: "nightly-mac.yml",
+        windows: "nightly.yml",
       },
     };
   }
@@ -54,9 +59,11 @@ export function createDesktopReleaseConfig(channel) {
     linuxExecutableName: "bb",
     macIconPath: "assets/icon.icns",
     releaseTag: "desktop-latest",
+    windowsInstallName: "bb",
     updateMetadataFileNames: {
       linux: "latest-linux.yml",
       macos: "latest-mac.yml",
+      windows: "latest.yml",
     },
   };
 }

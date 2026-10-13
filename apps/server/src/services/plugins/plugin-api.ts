@@ -2,10 +2,13 @@ import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
+  type NormalizedPluginInteractionRequest,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createMachineBootstrapApi } from "../machines/bootstrap.js";
 import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
+import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
+import { fillPluginPresentation } from "./plugin-presentation.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
@@ -18,13 +21,13 @@ import {
   setPluginKvValue,
   type DbConnection,
 } from "@bb/db";
-import type { JsonValue } from "@bb/domain";
+import type { ThreadEventItemPresentation } from "@bb/domain";
 import type {
   BbPluginApi,
   PluginAgentConfiguration,
   PluginAgentConfigurationContext,
   PluginAgentToolContext,
-  PluginAgentToolPresentation,
+  PluginRowPresentation,
   PluginBbSdk,
   PluginAgentToolResult,
   PluginAgents,
@@ -49,7 +52,6 @@ import type {
   PluginMentionSearchContext,
   PluginMentionTrigger,
   PluginMachines,
-  PluginAiServiceDeclaration,
   PluginAiServices,
   PluginProviderDeclaration,
   ExperimentalPluginProviderEnvContext,
@@ -73,6 +75,7 @@ import type {
   PluginUi,
   StandardSchemaV1,
   PluginRpcContract,
+  ExperimentalPluginRpcHandlerContext,
 } from "@get-bb/plugin-sdk";
 import {
   KV_VALUE_MAX_BYTES,
@@ -105,7 +108,7 @@ import {
   validatePluginProviderDeclaration,
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
-  AiServiceHostBinding,
+  NormalizedPluginAiService,
   NormalizedPluginEnvironmentProvider,
   NormalizedPluginMachineProvider,
   NormalizedPluginProviderDeclaration,
@@ -113,16 +116,20 @@ import type {
 import type {
   BbSdk,
   ThreadForkArgs,
+  PluginThreadMetadataListArgs,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadSpawnArgs,
 } from "@bb/sdk";
 import { requestEnvironmentProviderRecheck } from "./plugin-environment-provider-registry.js";
 import { requestServerAccessRecheck } from "./plugin-server-access-registry.js";
+import {
+  createPluginRpcCallerSdk,
+  type PluginRpcCallerCredential,
+} from "./plugin-rpc-caller.js";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
-import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 import {
   readPluginSettingsValues,
   writePluginSettingsUpdate,
@@ -187,13 +194,16 @@ export interface PluginRpcHandler {
   publication: ReturnType<typeof publishRpcMethod>;
   inputSchema: StandardSchemaV1;
   outputSchema: StandardSchemaV1;
-  handler: (input: unknown) => unknown;
+  handler: (
+    input: unknown,
+    context: ExperimentalPluginRpcHandlerContext,
+  ) => unknown;
 }
 
 export interface PluginAgentToolRecord {
   name: string;
   description: string;
-  presentation: PluginAgentToolPresentation | null;
+  presentation: PluginRowPresentation | null;
   instructions: string | null;
   inputSchema: unknown;
   parse(
@@ -230,6 +240,7 @@ interface PluginCliRegistrationRecord {
   name: string;
   summary: string;
   commands: PluginCliCommandInfo[];
+  rendersHelp: boolean;
   run: (
     argv: string[],
     ctx: PluginCliContext,
@@ -244,6 +255,8 @@ type PluginSettingsListener = (
 export interface PluginApiHandle {
   api: BbPluginApi;
   disposeHooks: Array<() => void | Promise<void>>;
+  /** Handlers recorded by `bb.onInstall`; run once after a fresh install. */
+  installHandlers: Array<() => void | Promise<void>>;
   settings: {
     descriptors: PluginSettingDescriptors;
     listeners: PluginSettingsListener[];
@@ -330,9 +343,19 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
+function wrapSdkForPlugin(
+  sdk: BbSdk,
+  pluginId: string,
+  rpcCallerSdk: BbSdk,
+): PluginBbSdk {
   return {
     ...sdk,
+    plugins: {
+      ...sdk.plugins,
+      callRpc(args) {
+        return rpcCallerSdk.plugins.callRpc(args);
+      },
+    },
     threads: {
       ...sdk.threads,
       async getPluginMetadata(
@@ -341,6 +364,16 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
         },
       ) {
         return sdk.threads.getPluginMetadata({
+          ...args,
+          pluginId: args.pluginId ?? pluginId,
+        });
+      },
+      async experimental_listPluginMetadata(
+        args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+          pluginId?: string;
+        },
+      ) {
+        return sdk.threads.experimental_listPluginMetadata({
           ...args,
           pluginId: args.pluginId ?? pluginId,
         });
@@ -372,7 +405,7 @@ function createStagedRegistrations<
 >(options: {
   validate: (declaration: TDeclaration) => TNormalized;
   bind: (id: string) => TBinding;
-  isTaken: (id: string) => boolean;
+  isTaken?: (id: string) => boolean;
   registerLive: (
     declaration: TNormalized,
     binding: TBinding,
@@ -411,7 +444,7 @@ function createStagedRegistrations<
       };
       if (options.isActivated()) {
         entry.disposer = options.registerLive(normalized, binding);
-      } else if (options.isTaken(normalized.id)) {
+      } else if (options.isTaken?.(normalized.id) === true) {
         throw new Error(options.alreadyRegisteredMessage(normalized.id));
       }
       entries.set(normalized.id, entry);
@@ -453,6 +486,12 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
+  /**
+   * This load's rpc caller token, attached to the plugin's
+   * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
+   * Revoked when the handle is invalidated.
+   */
+  rpcCaller: PluginRpcCallerCredential;
   publishSignal: (channel: string, payload: unknown) => void;
   settingsChanged: () => void;
   reportNeedsConfiguration: (message: string) => void;
@@ -473,14 +512,13 @@ export function createPluginApi(options: {
    * name. Empty when the manifest declares none.
    */
   declaredIconNames: ReadonlySet<string>;
-  requestInteraction: (args: {
-    threadId: string;
-    rendererId: string;
-    title: string;
-    payload: JsonValue;
-    timeoutMs: number;
-    signal?: AbortSignal;
-  }) => Promise<PluginInteractionResult>;
+  brandingIcon: string | undefined;
+  requestInteraction: (
+    args: Omit<NormalizedPluginInteractionRequest, "presentation"> & {
+      presentation: ThreadEventItemPresentation;
+      signal?: AbortSignal;
+    },
+  ) => Promise<PluginInteractionResult>;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
     hostId: string,
@@ -504,17 +542,10 @@ export function createPluginApi(options: {
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
     dispose(): void;
   };
-  registerAiService: (
-    declaration: PluginAiServiceDeclaration,
-    binding: AiServiceHostBinding<PluginHostArtifactSnapshot>,
-  ) => {
+  registerAiService: (declaration: NormalizedPluginAiService) => {
     dispose(): void;
   };
   isProviderIdTaken: (providerId: string) => boolean;
-  isAiServiceIdTaken: (serviceId: string) => boolean;
-  assertAiServiceRegistrable: (
-    serviceId: string,
-  ) => AiServiceHostBinding<PluginHostArtifactSnapshot>;
   assertProviderRegistrable: (providerId: string) => void;
 }): PluginApiHandle {
   const {
@@ -525,6 +556,7 @@ export function createPluginApi(options: {
     getSdk,
     getAppUrl,
     getLoopbackBaseUrl,
+    rpcCaller,
     publishSignal,
     settingsChanged,
     reportNeedsConfiguration,
@@ -532,6 +564,7 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     requestQueueDrain,
     declaredIconNames,
+    brandingIcon,
     requestInteraction,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
@@ -542,8 +575,6 @@ export function createPluginApi(options: {
     registerAiService,
     isProviderIdTaken,
     assertProviderRegistrable,
-    isAiServiceIdTaken,
-    assertAiServiceRegistrable,
   } = options;
   let invalidated = false;
   let activated = false;
@@ -552,6 +583,7 @@ export function createPluginApi(options: {
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
+  const installHandlers: Array<() => void | Promise<void>> = [];
   const settingsRecord: PluginApiHandle["settings"] = {
     descriptors: {},
     listeners: [],
@@ -559,7 +591,10 @@ export function createPluginApi(options: {
   const databaseHandles: Database.Database[] = [];
   const threadEventHandlers: PluginThreadEventHandlers = {
     "experimental_thread.events": [],
+    "experimental_thread.parentChanged": [],
     "experimental_terminal.input": [],
+    "experimental_host.deleted": [],
+    "experimental_environment.removed": [],
     "thread.created": [],
     "thread.active": [],
     "thread.idle": [],
@@ -621,10 +656,31 @@ export function createPluginApi(options: {
     requestOptions?: Parameters<PluginUi["requestInput"]>[1],
   ) {
     assertLive();
-    return requestInteraction({
-      ...normalizeInteractionRequest(request),
+    const normalized = normalizeInteractionRequest(request);
+    const glyph = normalized.presentation?.icon?.glyph;
+    const iconProblem =
+      glyph === undefined
+        ? null
+        : undeclaredIconProblem(pluginId, declaredIconNames, glyph);
+    if (iconProblem !== null) {
+      throw new Error(`ui.requestInput presentation.icon ${iconProblem}`);
+    }
+    const pending = requestInteraction({
+      ...normalized,
+      presentation: fillPluginPresentation({
+        declared: normalized.presentation,
+        brandingIcon,
+        label: {
+          pending: `Waiting for ${normalized.title}`,
+          completed: `Submitted ${normalized.title}`,
+        },
+      }),
       signal: requestOptions?.signal,
     });
+    if (!requestOptions?.signal?.aborted) {
+      detachActivePluginToolCallForUserInput();
+    }
+    return pending;
   }
 
   const kv: PluginKvStorage = {
@@ -885,7 +941,7 @@ export function createPluginApi(options: {
       name: string;
       description: string;
       instructions?: string;
-      presentation?: PluginAgentToolPresentation;
+      presentation?: PluginRowPresentation;
       parameters: unknown;
       execute(
         params: never,
@@ -911,15 +967,6 @@ export function createPluginApi(options: {
       agentTools.push(record);
     },
   };
-  Object.defineProperty(agents, "experimental_registerProvider", {
-    enumerable: false,
-    configurable: false,
-    get(): never {
-      throw new Error(
-        "bb.agents.experimental_registerProvider was removed in SDK 0.4.16; use bb.providers.register",
-      );
-    },
-  });
 
   const mentionProviders: PluginMentionProviderRecord[] = [];
   const ui: PluginUi = {
@@ -1264,9 +1311,8 @@ export function createPluginApi(options: {
 
   const aiServiceRegistrations = createStagedRegistrations({
     validate: validatePluginAiServiceDeclaration,
-    bind: assertAiServiceRegistrable,
-    isTaken: isAiServiceIdTaken,
-    registerLive: registerAiService,
+    bind: () => null,
+    registerLive: (declaration) => registerAiService(declaration),
     alreadyRegisteredMessage: aiServiceAlreadyRegisteredMessage,
     assertLive,
     isActivated: () => activated,
@@ -1301,24 +1347,40 @@ export function createPluginApi(options: {
     get sdk(): PluginBbSdk {
       assertLive();
       const sdk = getSdk();
-      if (!sdk) {
+      const loopbackBaseUrl = getLoopbackBaseUrl();
+      if (!sdk || loopbackBaseUrl === undefined) {
         throw new Error(
           "bb.sdk is not available until the server is listening — " +
             "use it inside handlers, services, or timers, not at factory load time",
         );
       }
-      wrappedSdk ??= wrapSdkForPlugin(sdk, pluginId);
+      wrappedSdk ??= wrapSdkForPlugin(
+        sdk,
+        pluginId,
+        createPluginRpcCallerSdk({
+          baseUrl: loopbackBaseUrl,
+          token: rpcCaller.token,
+        }),
+      );
       return wrappedSdk;
     },
     onDispose(hook) {
       assertLive();
       disposeHooks.push(hook);
     },
+    onInstall(handler) {
+      assertLive();
+      if (typeof handler !== "function") {
+        throw new Error("onInstall expects a function");
+      }
+      installHandlers.push(handler);
+    },
   };
 
   return {
     api,
     disposeHooks,
+    installHandlers,
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
@@ -1386,6 +1448,7 @@ export function createPluginApi(options: {
     },
     invalidate() {
       invalidated = true;
+      rpcCaller.revoke();
     },
   };
 }

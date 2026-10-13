@@ -67,11 +67,12 @@ export const applyProcessEnv: ApplyEnv = (env) => {
 };
 
 function placeholderPath(value: string, paths: FixturePaths): string {
-  return value
+  const placeholder = value
     .split(paths.home)
     .join("<home>")
     .split(paths.root)
     .join("<root>");
+  return path.sep === "\\" ? placeholder.replaceAll("\\", "/") : placeholder;
 }
 
 function compareStrings(left: string, right: string): number {

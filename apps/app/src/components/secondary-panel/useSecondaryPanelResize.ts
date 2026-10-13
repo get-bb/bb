@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useResizeObserver } from "usehooks-ts";
@@ -17,13 +17,15 @@ type SecondaryPanelResizeHandler = (size: number) => void;
 interface UseSecondaryPanelResizeArgs {
   isSecondaryPanelOpen: boolean;
   onPanelWidthChange: SecondaryPanelWidthChangeHandler;
-  onResizeStart: () => void;
+  panelId: string;
+  renderAsDrawer: boolean;
 }
 
 export function useSecondaryPanelResize({
   isSecondaryPanelOpen,
   onPanelWidthChange,
-  onResizeStart,
+  panelId,
+  renderAsDrawer,
 }: UseSecondaryPanelResizeArgs) {
   const persistedWidthPercent = useAtomValue(secondaryPanelWidthPercentAtom);
   const setPersistedWidthPercent = useSetAtom(secondaryPanelWidthPercentAtom);
@@ -40,13 +42,11 @@ export function useSecondaryPanelResize({
   const handleSecondaryPanelDragging = useCallback(
     (isDragging: boolean) => {
       setIsResizing(isDragging);
-      if (isDragging) {
-        onResizeStart();
-      } else if (lastSecondaryPanelSizeRef.current > 0) {
+      if (!isDragging && lastSecondaryPanelSizeRef.current > 0) {
         setPersistedWidthPercent(lastSecondaryPanelSizeRef.current);
       }
     },
-    [onResizeStart, setIsResizing, setPersistedWidthPercent],
+    [setIsResizing, setPersistedWidthPercent],
   );
   const resizeHitTargetRef = usePanelResizeSnap({
     onResize: handleSecondaryPanelPointerResize,
@@ -98,6 +98,13 @@ export function useSecondaryPanelResize({
     },
     [],
   );
+
+  useLayoutEffect(() => {
+    const panel =
+      secondaryPanelRef.current?.closest<HTMLElement>("[data-panel]");
+    const size = Number.parseFloat(panel?.style.flexGrow ?? "");
+    if (Number.isFinite(size)) handleSecondaryPanelResize(size);
+  }, [handleSecondaryPanelResize, isSecondaryPanelOpen, panelId, renderAsDrawer]);
 
   return {
     handleSecondaryPanelResize,

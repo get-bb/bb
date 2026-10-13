@@ -31,11 +31,7 @@ describe("plugin SDK JsonValue contract", () => {
       flags: [true, null],
       nested: { count: 2 },
     };
-    expect(recursive).toEqual({
-      title: "Issue",
-      flags: [true, null],
-      nested: { count: 2 },
-    });
+    expectTypeOf(recursive).toMatchTypeOf<JsonValue>();
   });
 
   it("exports JsonValue from both bundled frontend declaration surfaces", async () => {

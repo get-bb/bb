@@ -62,6 +62,7 @@ export async function runEnvironmentHook(
   deps: WorkSessionDeps,
   args: {
     id: string;
+    projectId: string;
     hostId: string;
     path: string;
     kind: "teardown";
@@ -117,7 +118,7 @@ export async function runEnvironmentHook(
         type: "environment.hook.run",
         contributedEnv: await resolveHostEnvironment(deps, {
           hostId: args.hostId,
-          projectId: null,
+          projectId: args.projectId,
         }),
         resumeOnly: args.resumeOnly || existing !== undefined,
         operationId,

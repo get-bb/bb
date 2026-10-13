@@ -17,6 +17,7 @@ export function useWebSocket(): void {
     const unsubscribeConnected = wsManager.onConnected(
       cacheEffects.handleConnected,
     );
+    const unsubscribeResumed = wsManager.onResumed(cacheEffects.handleResumed);
     const unsubscribe = wsManager.onChanged((message) => {
       cacheEffects.handleChanged(message);
       deletedResourceRouteChangeRef.current(message);
@@ -27,6 +28,7 @@ export function useWebSocket(): void {
     return () => {
       cacheEffects.dispose();
       unsubscribeConnected();
+      unsubscribeResumed();
       unsubscribe();
     };
   }, [queryClient]);

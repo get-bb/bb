@@ -59,6 +59,7 @@ export function CliSkillsSettingsSectionContent({
   return (
     <SettingsSection title="Skills">
       <SettingsWithControl
+        controlPlacement="trailing"
         label={CLI_SKILLS_SETTING_LABEL}
         {...(statusBadge === null ? {} : { labelBadge: statusBadge })}
         description={installDescription(hasConnectedMachine)}

@@ -11,6 +11,134 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it.each(["get", "send"])(
+    "returns and publishes a persisted comment while notification %s is blocked",
+    async (blockedOperation) => {
+      let releaseDelivery = () => {};
+      const deliveryGate = new Promise<void>((resolve) => {
+        releaseDelivery = resolve;
+      });
+      const { bb, harness } = createFakePluginHost({
+        pluginId: "tasks",
+        sdk: {
+          threads: {
+            get: async ({ threadId }) => {
+              if (blockedOperation === "get") await deliveryGate;
+              return makeThreadResponse({ id: threadId, status: "active" });
+            },
+            send: async () => {
+              if (blockedOperation === "send") await deliveryGate;
+            },
+          },
+        },
+      });
+      const store = createStore(bb);
+      registerTasksApi(bb, store);
+      const project = store.tasks.createProject({
+        name: "Delivery gate",
+        prefix: "GATE",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Persist before delivery",
+      });
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        threadId: "thr_delivery_gate",
+        body: "Prior reply",
+      });
+      let responseReturned = false;
+      const response = harness
+        .callRpc("createComment", {
+          taskId: task.id,
+          body: "New context",
+          notify: true,
+        })
+        .then((result) => {
+          responseReturned = true;
+          return tasksRpcContract.createComment.output.parse(result);
+        });
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(store.tasks.listComments(task.id)).toHaveLength(2);
+        expect(responseReturned).toBe(true);
+        const { comment } = await response;
+        expect(comment.notifiedCount).toBe(0);
+        expect(harness.realtimeSignals).toEqual([
+          { channel: "comments:changed", payload: { taskId: task.id } },
+        ]);
+        releaseDelivery();
+        await expect
+          .poll(() => store.tasks.getComment(comment.id)?.notifiedCount)
+          .toBe(1);
+        expect(harness.realtimeSignals).toEqual([
+          { channel: "comments:changed", payload: { taskId: task.id } },
+          { channel: "comments:changed", payload: { taskId: task.id } },
+        ]);
+      } finally {
+        releaseDelivery();
+        await response;
+        await harness.dispose();
+      }
+    },
+  );
+
+  it("keeps a saved comment when background notification fails", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }) => makeThreadResponse({ id: threadId }),
+          send: async () => {
+            throw new Error("Delivery unavailable");
+          },
+        },
+      },
+    });
+    try {
+      const store = createStore(bb);
+      registerTasksApi(bb, store);
+      const project = store.tasks.createProject({
+        name: "Failed delivery",
+        prefix: "FAIL",
+        color: "blue",
+      });
+      const task = store.tasks.createTask({
+        projectId: project.id,
+        title: "Keep the comment",
+      });
+      store.tasks.createComment({
+        taskId: task.id,
+        kind: "agent",
+        authorName: "Worker",
+        threadId: "thr_failed_delivery",
+        body: "Prior reply",
+      });
+      const { comment } = tasksRpcContract.createComment.output.parse(
+        await harness.callRpc("createComment", {
+          taskId: task.id,
+          body: "New context",
+          notify: true,
+        }),
+      );
+      expect(comment.notifiedCount).toBe(0);
+      await expect.poll(() => harness.realtimeSignals.length).toBe(2);
+      expect(store.tasks.getComment(comment.id)).toMatchObject({
+        body: "New context",
+        notifiedCount: 0,
+      });
+      expect(harness.logEntries).toContainEqual({
+        level: "warn",
+        message: expect.stringContaining("Delivery unavailable"),
+      });
+    } finally {
+      await harness.dispose();
+    }
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);
@@ -134,8 +262,10 @@ describe("Tasks RPC domain API", () => {
       }),
     );
 
-    expect(result.comment.notifiedCount).toBe(1);
-    expect(store.tasks.getComment(result.comment.id)?.notifiedCount).toBe(1);
+    expect(result.comment.notifiedCount).toBe(0);
+    await expect
+      .poll(() => store.tasks.getComment(result.comment.id)?.notifiedCount)
+      .toBe(1);
     expect(harness.sdk.callsTo("threads.send")).toEqual([
       [expect.objectContaining({ threadId: "thr_two" })],
     ]);
@@ -203,7 +333,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_titled)",
       threadId: "thr_titled",
       body: "Titled",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -211,7 +340,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_fallback_only)",
       threadId: "thr_fallback_only",
       body: "Fallback title",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -219,7 +347,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_blank_title)",
       threadId: "thr_blank_title",
       body: "Blank title",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -227,7 +354,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_side_chat)",
       threadId: "thr_side_chat",
       body: "Side chat",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -235,7 +361,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (thr_missing)",
       threadId: "thr_missing",
       body: "Missing thread",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -243,7 +368,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "agent (legacy)",
       threadId: null,
       body: "Legacy",
-      notifiedCount: 0,
     });
     store.tasks.createComment({
       taskId: task.id,
@@ -251,7 +375,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "You",
       threadId: null,
       body: "Human note",
-      notifiedCount: 0,
     });
 
     const result = tasksRpcContract.listComments.output.parse(
@@ -342,7 +465,6 @@ describe("Tasks RPC domain API", () => {
         authorName: `agent (${threadId ?? "legacy"})`,
         threadId,
         body,
-        notifiedCount: 0,
       });
     };
     agentComment("Codex", "thr_codex");
@@ -357,7 +479,6 @@ describe("Tasks RPC domain API", () => {
       authorName: "You",
       threadId: null,
       body: "Human note",
-      notifiedCount: 0,
     });
 
     const result = tasksRpcContract.listComments.output.parse(
@@ -570,6 +691,7 @@ describe("Tasks RPC domain API", () => {
       threadId: "thr_worker",
       body: "Reporting progress.",
       notify: true,
+      awaitDelivery: true,
     });
 
     expect(quietResult.comment.notifiedCount).toBe(0);
@@ -1039,6 +1161,196 @@ describe("Tasks RPC domain API", () => {
     }
   });
 
+  it("moves a task and its sub-tasks to another project, keeping old keys resolvable", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const ops = store.tasks.createProject({
+      name: "Ops",
+      prefix: "OPS",
+      color: "orange",
+    });
+    const home = store.tasks.createProject({
+      name: "Home",
+      prefix: "HOME",
+      color: "purple",
+    });
+    const opsUrgent = store.tasks.createLabel({
+      projectId: ops.id,
+      name: "Urgent",
+      color: "red",
+    });
+    const opsInfra = store.tasks.createLabel({
+      projectId: ops.id,
+      name: "Infra",
+      color: "gray",
+    });
+    const homeUrgent = store.tasks.createLabel({
+      projectId: home.id,
+      name: "urgent",
+      color: "pink",
+    });
+    store.tasks.createTask({ projectId: home.id, title: "Existing" });
+    const existingDone = store.tasks.createTask({
+      projectId: home.id,
+      title: "Existing done",
+      status: "done",
+    });
+    const parent = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Parent",
+      status: "done",
+    });
+    const child = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Child",
+      parentTaskId: parent.id,
+    });
+    store.tasks.addTaskLabel(parent.id, opsUrgent.id);
+    store.tasks.addTaskLabel(parent.id, opsInfra.id);
+    store.tasks.addTaskLabel(child.id, opsInfra.id);
+
+    const result = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: parent.id,
+        projectId: home.id,
+        authorName: "Jem",
+      }),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.task).toMatchObject({
+      id: parent.id,
+      projectId: home.id,
+      key: "HOME-3",
+      parentTaskId: null,
+      status: "done",
+    });
+    expect(result.task.position).toBeGreaterThan(existingDone.position);
+
+    const movedChild = store.tasks.getTask(child.id);
+    expect(movedChild).toMatchObject({
+      projectId: home.id,
+      key: "HOME-4",
+      parentTaskId: parent.id,
+    });
+    expect(store.tasks.getProject(home.id)?.nextTaskNumber).toBe(5);
+
+    const homeInfra = store.tasks
+      .listLabels(home.id)
+      .find((label) => label.name === "Infra");
+    expect(homeInfra).toMatchObject({ color: "gray" });
+    expect([...result.task.labelIds].sort()).toEqual(
+      [homeUrgent.id, homeInfra!.id].sort(),
+    );
+    expect(store.tasks.listTaskLabels(child.id)).toEqual([
+      { taskId: child.id, labelId: homeInfra!.id },
+    ]);
+
+    for (const [taskKey, id] of [
+      ["OPS-1", parent.id],
+      ["ops-2", child.id],
+      ["HOME-3", parent.id],
+    ] as const) {
+      const found = tasksRpcContract.getTaskByKey.output.parse(
+        await harness.callRpc("getTaskByKey", { taskKey }),
+      );
+      expect(found.task?.id).toBe(id);
+    }
+
+    expect(store.tasks.listComments(parent.id).at(-1)).toMatchObject({
+      kind: "system",
+      body: "Moved from OPS-1 to HOME-3 by Jem",
+    });
+    expect(store.tasks.listComments(child.id).at(-1)).toMatchObject({
+      kind: "system",
+      body: "Moved from OPS-2 to HOME-4 by Jem",
+    });
+    expect(harness.realtimeSignals).toEqual(
+      expect.arrayContaining([
+        {
+          channel: "tasks:changed",
+          payload: { taskId: parent.id, projectId: ops.id },
+        },
+        {
+          channel: "tasks:changed",
+          payload: { taskId: parent.id, projectId: home.id },
+        },
+      ]),
+    );
+    await harness.dispose();
+  });
+
+  it("detaches a sub-task moved on its own and lets live keys win over aliases", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const ops = store.tasks.createProject({
+      name: "Ops",
+      prefix: "OPS",
+      color: "orange",
+    });
+    const home = store.tasks.createProject({
+      name: "Home",
+      prefix: "HOME",
+      color: "purple",
+    });
+    const parent = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Parent",
+    });
+    const child = store.tasks.createTask({
+      projectId: ops.id,
+      title: "Child",
+      parentTaskId: parent.id,
+    });
+
+    const moved = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: home.id,
+      }),
+    );
+    expect(moved).toMatchObject({
+      ok: true,
+      task: { key: "HOME-1", parentTaskId: null },
+    });
+    expect(store.tasks.listSubtasks(parent.id)).toEqual([]);
+
+    const signalsBeforeNoop = harness.realtimeSignals.length;
+    const noop = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: home.id,
+      }),
+    );
+    expect(noop).toMatchObject({ ok: true, task: { key: "HOME-1" } });
+    expect(harness.realtimeSignals).toHaveLength(signalsBeforeNoop);
+
+    store.tasks.updateProject(ops.id, { prefix: "OPX" });
+    const reused = store.tasks.createProject({
+      name: "New ops",
+      prefix: "OPS",
+      color: "blue",
+    });
+    store.tasks.createTask({ projectId: reused.id, title: "Fresh one" });
+    const fresh = store.tasks.createTask({
+      projectId: reused.id,
+      title: "Fresh two",
+    });
+    expect(store.tasks.getTaskByKey("OPS-2")?.id).toBe(fresh.id);
+
+    const back = tasksRpcContract.moveTaskToProject.output.parse(
+      await harness.callRpc("moveTaskToProject", {
+        taskId: child.id,
+        projectId: reused.id,
+      }),
+    );
+    expect(back).toMatchObject({ ok: true, task: { key: "OPS-3" } });
+    expect(store.tasks.getTaskByKey("HOME-1")?.id).toBe(child.id);
+    expect(store.tasks.getTaskByKey("OPS-2")?.id).toBe(fresh.id);
+    await harness.dispose();
+  });
+
   it("returns a typed error when a task would exceed one sub-task level", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     registerTasksApi(bb, createStore(bb));
@@ -1107,11 +1419,13 @@ describe("Tasks RPC domain API", () => {
       modelId: "claude-sonnet-6",
       permissionMode: "accept-edits",
     });
-    expect(updated.preset).toMatchObject({
-      name: "Renamed",
-      modelId: "claude-sonnet-6",
-      permissionMode: "accept-edits",
-      builtin: true,
+    expect(updated).toMatchObject({
+      preset: {
+        name: "Renamed",
+        modelId: "claude-sonnet-6",
+        permissionMode: "accept-edits",
+        builtin: true,
+      },
     });
     await expect(
       harness.callRpc("deletePreset", { presetId: preset.id }),
@@ -1488,6 +1802,8 @@ function makePullRequest(
     baseRefName: "main",
     headRefName: "bb/fix-the-pill",
     updatedAt: "2026-07-15T10:00:00.000Z",
+    autoMerge: false,
+    inMergeQueue: false,
     checks: {
       state: "passing" as const,
       totalCount: 1,

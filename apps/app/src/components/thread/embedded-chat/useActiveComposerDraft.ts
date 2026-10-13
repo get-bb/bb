@@ -5,7 +5,7 @@ import {
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
 import { promptDraftToInput } from "@bb/client-core";
-import type { PromptDraftState } from "@bb/client-core";
+import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
 import type { PromptInput } from "@bb/domain";
 
 export interface InlineComposerDraftSession {
@@ -25,9 +25,10 @@ interface UseActiveComposerDraftResult {
   currentPromptDraftInput: PromptInput[];
   activeComposerDraft: PromptDraftState;
   activeComposerDraftInput: PromptInput[];
-  setActiveComposerDraft: (draft: PromptDraftState) => void;
   handleChangeMessage: (text: string, mentions: PromptTextMention[]) => void;
-  removeActiveComposerAttachment: (path: string) => void;
+  updateActiveComposerAttachments: (
+    update: (attachments: PromptDraftAttachment[]) => PromptDraftAttachment[],
+  ) => void;
 }
 
 export function useActiveComposerDraft({
@@ -36,9 +37,8 @@ export function useActiveComposerDraft({
   inlineSessionRef,
 }: UseActiveComposerDraftArgs): UseActiveComposerDraftResult {
   const promptDraft = usePromptDraftStorage(draftScope);
-  const setStoredPromptDraft = promptDraft.setDraft;
   const setStoredPromptTextAndMentions = promptDraft.setTextAndMentions;
-  const removeStoredPromptAttachment = promptDraft.removeAttachment;
+  const updateStoredPromptAttachments = promptDraft.updateAttachments;
 
   const currentPromptDraft = useMemo(
     () => ({
@@ -58,17 +58,6 @@ export function useActiveComposerDraft({
     [activeComposerDraft],
   );
 
-  const setActiveComposerDraft = useCallback(
-    (draft: PromptDraftState) => {
-      const current = inlineSessionRef.current;
-      if (current) {
-        current.setDraft(() => draft);
-        return;
-      }
-      setStoredPromptDraft(draft);
-    },
-    [inlineSessionRef, setStoredPromptDraft],
-  );
   const handleChangeMessage = useCallback(
     (text: string, mentions: PromptTextMention[]) => {
       const current = inlineSessionRef.current;
@@ -80,21 +69,21 @@ export function useActiveComposerDraft({
     },
     [inlineSessionRef, setStoredPromptTextAndMentions],
   );
-  const removeActiveComposerAttachment = useCallback(
-    (path: string) => {
+  const updateActiveComposerAttachments = useCallback(
+    (
+      update: (attachments: PromptDraftAttachment[]) => PromptDraftAttachment[],
+    ) => {
       const current = inlineSessionRef.current;
       if (current) {
         current.setDraft((draft) => ({
           ...draft,
-          attachments: draft.attachments.filter(
-            (attachment) => attachment.path !== path,
-          ),
+          attachments: update(draft.attachments),
         }));
         return;
       }
-      removeStoredPromptAttachment(path);
+      updateStoredPromptAttachments(update);
     },
-    [inlineSessionRef, removeStoredPromptAttachment],
+    [inlineSessionRef, updateStoredPromptAttachments],
   );
 
   return {
@@ -103,8 +92,7 @@ export function useActiveComposerDraft({
     currentPromptDraftInput,
     activeComposerDraft,
     activeComposerDraftInput,
-    setActiveComposerDraft,
     handleChangeMessage,
-    removeActiveComposerAttachment,
+    updateActiveComposerAttachments,
   };
 }

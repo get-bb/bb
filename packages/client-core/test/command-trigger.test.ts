@@ -19,7 +19,7 @@ describe("buildProviderPromptActionProps", () => {
         },
       ]),
     ).toEqual({
-      skillsTrigger: "/",
+      skillsTriggers: ["/"],
       promptActions: [
         { kind: "skills", text: "/" },
         {

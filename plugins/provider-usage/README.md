@@ -1,8 +1,13 @@
 # Provider usage
 
-Shows usage from enabled usage-source plugins in the sidebar. Provider tabs
-use provider names and icons, with pooled accounts stacked under each provider.
-The card lists account metadata cheaply, then fetches only the selected provider’s accounts. Unopened tabs have no quota badge until measured. Shared sources such as Account Pooler are selected by default; an explicit
+Shows usage from enabled usage-source plugins in the sidebar. When a location has
+more than one provider, the card opens on an **All** tab that stacks every provider
+tab's accounts, each marked with its provider icon. Provider tabs use provider icons,
+with pooled accounts stacked under each provider. Each account shows its plan and,
+per usage window, a bar, the percent used, and the time until reset.
+The card lists account metadata cheaply, then fetches the accounts on the selected
+tab. Unopened tabs have no quota badge until measured, and a badge shows only while
+that provider's accounts are off screen. Shared sources such as Account Pooler are selected by default; an explicit
 machine selection shows that machine’s local usage instead.
 
 An unconfigured shared source remains selectable and shows setup guidance.
@@ -27,6 +32,11 @@ for their own providers. Account Pooler implements it for shared accounts. The
 contract is owned here and copied into each source; no additional adapter plugin,
 provider-kit helper, or core runtime convention is required. Other providers must
 explicitly implement the contract to appear in these displays.
+
+OpenCode's host-local source reports OpenCode Go subscription limits when a Go
+Console account or API key is configured on the selected machine. Its five-hour, weekly, and monthly
+windows come from Go's usage API. Other providers used through OpenCode and Zen
+pay-as-you-go spending are not included.
 
 Known provider-issued account identities are deduplicated within the selected
 location. Unknown identities are never merged by email. Structured plan and quota

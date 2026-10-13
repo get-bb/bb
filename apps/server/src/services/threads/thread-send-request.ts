@@ -7,6 +7,8 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { attemptDispatch } from "./dispatch-attempt.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { sendThreadMessage } from "./thread-send.js";
+import { assertThreadHostAcceptsWork } from "./thread-host-admission.js";
+import { runWithTurnTrace } from "../system/turn-trace.js";
 
 interface AcceptThreadSendRequestArgs {
   payload: SendMessageRequest;
@@ -17,6 +19,7 @@ export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
+  assertThreadHostAcceptsWork(deps.db, args.thread);
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     const environment = await requireThreadCommandEnvironment(deps, {
       thread: args.thread,
@@ -30,17 +33,22 @@ export async function acceptThreadSendRequest(
     return { ok: true, delivery: "sent" };
   }
 
-  const outcome = await attemptDispatch(deps, {
-    thread: args.thread,
-    payload: args.payload,
-    source: { kind: "inline" },
-    queuePayload: { kind: "inline" },
-    pluginSubmission: args.payload.pluginSubmission ?? null,
-    origin: null,
-    originPluginId: null,
-    startedOnBehalfOf: null,
-    trigger: "user",
-  });
+  const outcome = await runWithTurnTrace(
+    deps,
+    { threadId: args.thread.id },
+    () =>
+      attemptDispatch(deps, {
+        thread: args.thread,
+        payload: args.payload,
+        source: { kind: "inline" },
+        queuePayload: { kind: "inline" },
+        pluginSubmission: args.payload.pluginSubmission ?? null,
+        origin: null,
+        originPluginId: null,
+        startedOnBehalfOf: null,
+        trigger: "user",
+      }),
+  );
   if (outcome.kind === "dispatched") {
     return { ok: true, delivery: "sent" };
   }

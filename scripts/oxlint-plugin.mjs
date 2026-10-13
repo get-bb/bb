@@ -1,4 +1,56 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { isSemanticComment } from "./lib/semantic-comment.mjs";
+
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+const forkablePluginRoots = JSON.parse(
+  readFileSync(new URL("./forkable-plugins.json", import.meta.url), "utf8"),
+).plugins.map((pluginDir) => `${path.resolve(repoRoot, pluginDir)}${path.sep}`);
+const registryDir = path.join(repoRoot, "packages", "plugin-registry", "r");
+const registryAliases = new Set(
+  readdirSync(registryDir)
+    .filter((name) => name.endsWith(".json") && name !== "index.json")
+    .flatMap(
+      (name) =>
+        JSON.parse(readFileSync(path.join(registryDir, name), "utf8")).files,
+    )
+    .map((file) => `@/${file.target.replace(/\.(?:tsx?|jsx?)$/u, "")}`),
+);
+const workspacePackageNames = new Set(
+  ["apps", "packages", "plugins", "tests", "examples/plugins"]
+    .flatMap((dir) =>
+      readdirSync(path.join(repoRoot, dir)).map((name) =>
+        path.join(repoRoot, dir, name, "package.json"),
+      ),
+    )
+    .filter((manifestPath) => existsSync(manifestPath))
+    .map((manifestPath) => JSON.parse(readFileSync(manifestPath, "utf8")).name)
+    .filter((name) => name !== "@get-bb/plugin-sdk"),
+);
+
+function isWorkspacePackage(specifier) {
+  const segments = specifier.split("/");
+  return (
+    specifier.startsWith("@bb/") ||
+    workspacePackageNames.has(
+      specifier.startsWith("@") ? segments.slice(0, 2).join("/") : segments[0],
+    )
+  );
+}
+
+const moduleLoaderCalls = new Set([
+  "require",
+  "vi.mock",
+  "vi.doMock",
+  "vi.unmock",
+  "vi.doUnmock",
+  "vi.importActual",
+  "vi.importMock",
+]);
 const blockingChildProcessCalls = new Set([
   "execFileSync",
   "execSync",
@@ -69,6 +121,88 @@ const noNativeTitleOnButton = {
   },
 };
 
+function calleeName(callee) {
+  if (callee.type === "Identifier") return callee.name;
+  if (
+    callee.type === "MemberExpression" &&
+    callee.object.type === "Identifier" &&
+    callee.property.type === "Identifier"
+  ) {
+    return `${callee.object.name}.${callee.property.name}`;
+  }
+  return null;
+}
+
+const forkablePluginImports = {
+  create(context) {
+    const filename = path.resolve(context.filename);
+    const pluginRoot = forkablePluginRoots.find((root) =>
+      filename.startsWith(root),
+    );
+    if (pluginRoot === undefined) return {};
+
+    function check(node) {
+      if (node?.type !== "Literal" || typeof node.value !== "string") return;
+      const specifier = node.value;
+      if (isWorkspacePackage(specifier)) {
+        context.report({
+          node,
+          message: `${specifier} is a bb workspace package, which a copy of this plugin cannot install. Forkable plugins import only @get-bb/plugin-sdk, npm packages, their own files, and registry components through @/ (for example @/components/ui/button) (scripts/forkable-plugins.json).`,
+        });
+        return;
+      }
+      if (specifier.startsWith("@get-bb/plugin-sdk/internal/")) {
+        context.report({
+          node,
+          message: `${specifier} is an internal SDK module that bb can change in any release. Forkable plugins import only the SDK's public entry points (scripts/forkable-plugins.json).`,
+        });
+        return;
+      }
+      if (specifier.startsWith("@/") && !registryAliases.has(specifier)) {
+        context.report({
+          node,
+          message: `${specifier} is not a component registry file, so a fork cannot write it into its copy. @/ imports name registry targets such as @/components/ui/button or @/lib/utils (scripts/forkable-plugins.json).`,
+        });
+        return;
+      }
+      if (
+        specifier.startsWith(".") &&
+        !`${path.resolve(path.dirname(filename), specifier)}${path.sep}`.startsWith(
+          pluginRoot,
+        )
+      ) {
+        context.report({
+          node,
+          message: `${specifier} reaches outside the plugin directory, which a copy of this plugin does not have (scripts/forkable-plugins.json).`,
+        });
+      }
+    }
+
+    return {
+      ImportDeclaration(node) {
+        check(node.source);
+      },
+      ExportNamedDeclaration(node) {
+        check(node.source);
+      },
+      ExportAllDeclaration(node) {
+        check(node.source);
+      },
+      ImportExpression(node) {
+        check(node.source);
+      },
+      TSImportType(node) {
+        check(node.source);
+      },
+      CallExpression(node) {
+        if (moduleLoaderCalls.has(calleeName(node.callee))) {
+          check(node.arguments[0]);
+        }
+      },
+    };
+  },
+};
+
 const noComments = {
   meta: {
     fixable: "whitespace",
@@ -118,6 +252,7 @@ const noComments = {
 };
 
 export const rules = {
+  "forkable-plugin-imports": forkablePluginImports,
   "no-blocking-child-process-call": noBlockingChildProcessCall,
   "no-comments": noComments,
   "no-native-title-on-button": noNativeTitleOnButton,

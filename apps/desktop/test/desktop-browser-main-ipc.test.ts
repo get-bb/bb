@@ -7,10 +7,13 @@ import {
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserStopFindInPageRequest,
+  type BbDesktopBrowserEvaluateRequest,
+  type BbDesktopBrowserEvaluateResult,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
@@ -40,11 +43,17 @@ const electronMock = vi.hoisted(() => {
   }
 
   type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
+  type FakeIpcHandler = (
+    event: FakeIpcEvent,
+    payload: unknown,
+  ) => Promise<unknown>;
 
   const listeners = new Map<string, FakeIpcListener>();
+  const handlers = new Map<string, FakeIpcHandler>();
   const windowsBySender = new Map<FakeWebContents, FakeBrowserWindow>();
 
   return {
+    handlers,
     listeners,
     windowsBySender,
     BrowserWindow: {
@@ -55,6 +64,9 @@ const electronMock = vi.hoisted(() => {
     ipcMain: {
       on(channel: string, listener: FakeIpcListener): void {
         listeners.set(channel, listener);
+      },
+      handle(channel: string, handler: FakeIpcHandler): void {
+        handlers.set(channel, handler);
       },
     },
   };
@@ -75,9 +87,7 @@ type NavigateCall = Parameters<DesktopBrowserViewManager["navigate"]>[0];
 type SetBoundsCall = Parameters<DesktopBrowserViewManager["setBounds"]>[0];
 type SetVisibleCall = Parameters<DesktopBrowserViewManager["setVisible"]>[0];
 type TabCommandCall = Parameters<DesktopBrowserViewManager["reload"]>[0];
-type WindowResizeCall = Parameters<
-  DesktopBrowserViewManager["beginWindowResize"]
->[0];
+type EvaluateCall = Parameters<DesktopBrowserViewManager["evaluate"]>[0];
 
 interface FakeWebContents {
   id: number;
@@ -123,25 +133,29 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     return () => undefined;
   }
 
-  profileSession(): never {
-    throw new Error("profileSession is not used by IPC tests");
+  setAutomationControlled(): void {}
+
+  session(): never {
+    throw new Error("session is not used by IPC tests");
   }
 
   public readonly attachCalls: AttachCall[] = [];
-  public readonly beginWindowResizeCalls: WindowResizeCall[] = [];
-  public readonly destroyAllCalls: string[] = [];
   public readonly detachCalls: DetachCall[] = [];
-  public readonly endWindowResizeCalls: WindowResizeCall[] = [];
   public readonly focusCalls: TabCommandCall[] = [];
   public readonly findInPageCalls: FindInPageCall[] = [];
   public readonly stopFindInPageCalls: StopFindInPageCall[] = [];
   public readonly goBackCalls: TabCommandCall[] = [];
   public readonly goForwardCalls: TabCommandCall[] = [];
   public readonly navigateCalls: NavigateCall[] = [];
-  public readonly releaseWindowCalls: number[] = [];
   public readonly reloadCalls: TabCommandCall[] = [];
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
+  public readonly evaluateCalls: EvaluateCall[] = [];
+
+  async evaluate(call: EvaluateCall): Promise<BbDesktopBrowserEvaluateResult> {
+    this.evaluateCalls.push(call);
+    return { ok: true, value: "evaluated" };
+  }
   public readonly setVisibleWithoutFocusCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
 
@@ -149,23 +163,17 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.attachCalls.push(args);
   }
 
-  beginWindowResize(hostWindow: WindowResizeCall): void {
-    this.beginWindowResizeCalls.push(hostWindow);
-  }
+  beginWindowResize(): void {}
 
   prepareWindowReload(): void {}
 
-  destroyAll(): void {
-    this.destroyAllCalls.push("destroyAll");
-  }
+  destroyAll(): void {}
 
   detach(args: DetachCall): void {
     this.detachCalls.push(args);
   }
 
-  endWindowResize(hostWindow: WindowResizeCall): void {
-    this.endWindowResizeCalls.push(hostWindow);
-  }
+  endWindowResize(): void {}
 
   focus(args: TabCommandCall): void {
     this.focusCalls.push(args);
@@ -191,9 +199,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.navigateCalls.push(args);
   }
 
-  releaseWindow(hostWebContentsId: number): void {
-    this.releaseWindowCalls.push(hostWebContentsId);
-  }
+  releaseWindow(): void {}
 
   reload(args: TabCommandCall): void {
     this.reloadCalls.push(args);
@@ -219,6 +225,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 let nextWebContentsId = 1;
 
 beforeEach(() => {
+  electronMock.handlers.clear();
   electronMock.listeners.clear();
   electronMock.windowsBySender.clear();
   nextWebContentsId = 1;
@@ -252,6 +259,43 @@ function oversizedBrowserUrl(): string {
 }
 
 describe("registerDesktopBrowserIpc", () => {
+  it("evaluates page expressions only for valid requests from BrowserWindow-owned senders", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    registerDesktopBrowserIpc(manager);
+    const renderer = createTrustedRenderer("main-window");
+    const handler = electronMock.handlers.get(
+      BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
+    );
+    if (handler === undefined) {
+      throw new Error("Expected an evaluate handler.");
+    }
+    const request: BbDesktopBrowserEvaluateRequest = {
+      tabId: "browser:a",
+      expression: "document.title",
+      world: "isolated",
+      channel: "agent-annotations",
+    };
+
+    await expect(
+      handler({ sender: createUntrustedSender() }, request),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Browser host window is not available",
+    });
+    await expect(
+      handler({ sender: renderer.sender }, { ...request, world: "worker" }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "Invalid browser page evaluation request",
+    });
+    await expect(
+      handler({ sender: renderer.sender }, request),
+    ).resolves.toEqual({ ok: true, value: "evaluated" });
+    expect(manager.evaluateCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request },
+    ]);
+  });
+
   it("dispatches valid browser commands only from BrowserWindow-owned senders", () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);

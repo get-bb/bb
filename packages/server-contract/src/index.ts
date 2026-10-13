@@ -19,8 +19,6 @@ export type {
   ChangedMessage,
   ClientMessage,
   RealtimeSubscriptionTarget,
-  ThreadChangeKind,
-  ThreadChangedMessage,
 } from "@bb/domain";
 
 export * from "./api/machine-environment.js";

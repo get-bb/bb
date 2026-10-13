@@ -38,6 +38,14 @@ export const EMPTY_ORDERED_MENTION_SUGGESTIONS: OrderedMentionSuggestions = {
   suggestions: [],
 };
 
+const MENTION_MATCH_RANK = {
+  exact: 0,
+  prefix: 1,
+  substring: 2,
+  supporting: 3,
+  none: 4,
+};
+
 interface RankedMentionCandidate {
   candidate: MentionCandidate;
   inputIndex: number;
@@ -56,27 +64,50 @@ function normalizeMentionTerm(term: string): string {
   return term.trim().toLowerCase();
 }
 
+/**
+ * How strongly a query hits a candidate's own identities. Sources rank their
+ * own rows with this before handing them over so that a source-level result
+ * limit keeps the strongest matches, and so that whatever order a source
+ * chooses inside one rank survives {@link orderMentionCandidates}.
+ */
+export function mentionIdentityMatchRank(
+  identities: readonly string[],
+  query: string,
+): number {
+  const normalizedQuery = normalizeMentionTerm(query);
+  if (normalizedQuery.length === 0) return MENTION_MATCH_RANK.exact;
+
+  const normalized = identities.map(normalizeMentionTerm);
+  if (normalized.some((identity) => identity === normalizedQuery)) {
+    return MENTION_MATCH_RANK.exact;
+  }
+  if (normalized.some((identity) => identity.startsWith(normalizedQuery))) {
+    return MENTION_MATCH_RANK.prefix;
+  }
+  if (normalized.some((identity) => identity.includes(normalizedQuery))) {
+    return MENTION_MATCH_RANK.substring;
+  }
+  return MENTION_MATCH_RANK.none;
+}
+
 function mentionCandidateMatchRank(
   candidate: MentionCandidate,
   normalizedQuery: string,
 ): number {
-  if (normalizedQuery.length === 0) return 0;
-
-  const identities = [candidate.visibleTitle, ...candidate.identityTerms].map(
-    normalizeMentionTerm,
+  const identityRank = mentionIdentityMatchRank(
+    [candidate.visibleTitle, ...candidate.identityTerms],
+    normalizedQuery,
   );
-  if (identities.some((identity) => identity === normalizedQuery)) return 0;
-  if (identities.some((identity) => identity.startsWith(normalizedQuery))) {
-    return 1;
-  }
-  if (identities.some((identity) => identity.includes(normalizedQuery))) {
-    return 2;
+  if (identityRank !== MENTION_MATCH_RANK.none) {
+    return identityRank;
   }
 
   const hasSupportingMatch = candidate.supportingTerms
     .map(normalizeMentionTerm)
     .some((term) => term.includes(normalizedQuery));
-  return hasSupportingMatch ? 3 : 4;
+  return hasSupportingMatch
+    ? MENTION_MATCH_RANK.supporting
+    : MENTION_MATCH_RANK.none;
 }
 
 function compareRankedMentionCandidates(

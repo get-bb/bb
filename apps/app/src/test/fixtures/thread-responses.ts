@@ -21,6 +21,7 @@ export function makeThreadResponse(
   return {
     ...thread,
     activeBackgroundAgentCount: 0,
+    canRestoreEnvironment: false,
     canSpawnChild: true,
     queuedMessageCount: 0,
     ...overrides,
@@ -41,6 +42,8 @@ export function makeThreadTimelineResponse(
     activeBackgroundCommands: [],
     pendingTodos: null,
     goal: null,
+    providerCommands: null,
+    sessionOptions: null,
     modelFallback: null,
     maxSeq: 0,
     timelinePage: {

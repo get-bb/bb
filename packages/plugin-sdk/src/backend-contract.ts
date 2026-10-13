@@ -1,3 +1,4 @@
+import type { EnvironmentRemoval } from "@bb/domain";
 import type { MachineBootstrapApi } from "./machine-bootstrap.js";
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
@@ -15,27 +16,29 @@ import type {
   ProviderRateLimitState,
   ReasoningLevel,
   ServiceTier,
+  ThreadCreateOrigin,
   ThreadQueuedMessage,
+  ThreadTurnInitiator,
   WorkspaceProvisionType,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  PluginThreadMetadataListArgs,
+  PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
   ThreadPluginMetadataUpdateArgs,
   ThreadPluginMetadataResult,
 } from "@bb/sdk";
 import type {
   ExecutionInputFieldSource,
-  StartedOnBehalfOf,
-  ThreadCreateOrigin,
   ThreadResponse,
   TerminalSession,
 } from "@bb/server-contract";
 import type { JsonValue, ReadonlyJsonValue } from "./json-value.js";
 import type {
+  ExperimentalPluginRpcHandlersWithContext,
   PluginRpcContract,
-  PluginRpcHandlers,
   StandardSchemaV1,
 } from "./rpc-contract.js";
 import type {
@@ -105,6 +108,8 @@ export type PluginSettingDescriptor =
       label: string;
       description?: string;
       options: string[];
+      /** Display labels keyed by option value; options without one show the value itself. */
+      experimental_optionLabels?: Record<string, string>;
       /** Synchronously validate without transforming a proposed value. */
       experimental_schema?: StandardSchemaV1<string, string>;
       default?: string;
@@ -265,10 +270,30 @@ export interface PluginTurnFailedEvent {
  * queued row GET /threads/:id/queued-messages serves.
  */
 export interface PluginThreadEventPayloads {
+  "experimental_environment.removed": { removal: EnvironmentRemoval };
+
   /** Debounced per thread (at most once per second), with the latest sequence and current thread DTO. Reading history does not emit this event. */
   "experimental_thread.events": { thread: ThreadResponse; sequence: number };
+  /**
+   * Fired after a thread moves to a new parent or loses its parent: a
+   * `threads.update` that changes `parentThreadId`, or core releasing a
+   * thread's unarchived children when it is archived. `thread` carries the
+   * new `parentThreadId`. Every thread below it moved with it and gets no
+   * event of its own. Experimental: see docs/api_to_audit.md.
+   */
+  "experimental_thread.parentChanged": {
+    thread: ThreadResponse;
+    previousParentThreadId: string | null;
+  };
   /** Real accepted terminal input; excludes output, keepalives and input contents. */
   "experimental_terminal.input": { terminal: TerminalSession };
+  /**
+   * Fired once after a machine is removed, whether a user removed it or its
+   * machine provider finished tearing it down. `host` is the record as it was
+   * when it was removed; `bb.sdk.hosts.get` answers 404 for it from now on, so
+   * this is the moment to drop anything the plugin keeps per host.
+   */
+  "experimental_host.deleted": { host: Host };
   /** Fired after a thread row is created. */
   "thread.created": { thread: ThreadResponse };
   /** Fired when a thread transitions into `active`. */
@@ -633,8 +658,26 @@ export interface MessageDispatchHookContext {
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
   /**
-   * The queued row this attempt is re-trying, or null when the attempt is
-   * inline and no row has ever existed for it.
+   * The author category shared by this dispatch's messages: `user`, `agent`,
+   * or `system`. `mixed` means the queued messages have different categories.
+   * Different agents still share the `agent` category; read `queuedMessages`
+   * for each message's author. `mixed` is a hook summary, not a turn initiator.
+   */
+  initiator: ThreadTurnInitiator | "mixed";
+  /**
+   * The thread that sent every message in this dispatch: a thread id, null
+   * when none of them has a sender, or the literal `"mixed"` when the rows
+   * disagree. A thread-start names its requesting thread; a message a human
+   * typed and a core-driven retry have no sender. Null therefore still means
+   * "nobody sent this" rather than "bb could not tell", so a handler may key
+   * a human-versus-agent policy on it; `queuedMessages` names each row's own
+   * sender. Thread ids are prefixed, so no id collides with `"mixed"`.
+   */
+  senderThreadId: string | "mixed" | null;
+  /**
+   * All queued rows this attempt is re-trying, in dispatch order. Empty for
+   * an inline attempt. Each row retains its own content, author, and origin; `input`
+   * contains their combined input, and the hook decides for the whole group.
    *
    * This is how a hook tells a fresh send from a re-attempt of something it
    * already decided about — the replacement for the old
@@ -642,10 +685,10 @@ export interface MessageDispatchHookContext {
    * should treat the two identically; a hook that logs should not
    * double-count.
    */
-  queuedMessage: ThreadQueuedMessage | null;
+  queuedMessages: ThreadQueuedMessage[];
   /**
    * Opaque JSON supplied by a plugin through the composer's
-   * `experimental_submit`, paired with that plugin's id. Null for ordinary
+   * `submit`, paired with that plugin's id. Null for ordinary
    * submissions and queued re-attempts. Core does not persist or interpret
    * the data.
    */
@@ -653,10 +696,15 @@ export interface MessageDispatchHookContext {
     pluginId: string;
     data: JsonValue;
   } | null;
-  /** How the dispatch was requested; null for internal/core-driven sends. */
-  origin: ThreadCreateOrigin | null;
-  originPluginId: string | null;
-  startedOnBehalfOf: StartedOnBehalfOf | null;
+  /**
+   * How the dispatch was requested; null for internal/core-driven sends, which
+   * includes every follow-up, steer and retry. Persisted with the queued row,
+   * so a drained re-attempt reads what its first attempt read. For a grouped
+   * dispatch, each field is its shared value or `"mixed"` when rows differ,
+   * including a value versus null. Each queued row exposes its own origin.
+   */
+  origin: ThreadCreateOrigin | "mixed" | null;
+  originPluginId: string | "mixed" | null;
   parentThreadId: string | null;
 }
 
@@ -829,11 +877,13 @@ export interface PluginRpc {
    * `/api/v1/plugins/<id>/rpc/<method>` with "local" auth semantics. The
    * host validates input before invocation and output before strict JSON
    * serialization. The response is `{ ok: true, result }` or
-   * `{ ok: false, error: { code, message, issues? } }`.
+   * `{ ok: false, error: { code, message, issues? } }`. Each handler gets
+   * the call's context as its second argument; `experimental_caller` names
+   * the plugin that called through `bb.sdk.plugins.callRpc`, or `client`.
    */
   register<Contract extends PluginRpcContract>(
     contract: Contract,
-    handlers: PluginRpcHandlers<Contract>,
+    handlers: ExperimentalPluginRpcHandlersWithContext<Contract>,
     options?: {
       experimental_discoverable?: boolean;
       experimental_description?: string;
@@ -912,13 +962,46 @@ export type PluginInteractionResult =
   | { outcome: "submitted"; value: JsonValue }
   | { outcome: "cancelled"; reason: PluginInteractionCancelReason };
 
+/**
+ * What a submitted form leaves in the thread timeline, chosen by the plugin.
+ * bb never stores the form's payload or the submitted value; it stores only
+ * this description, so a plugin decides what the transcript keeps.
+ */
+export interface PluginInteractionDescription {
+  /** Row title once submitted; defaults to the presentation's completed label. */
+  title?: string;
+  /** Short Markdown for the expanded row. */
+  detail?: string;
+  /**
+   * Persisted with the row and handed to this plugin's
+   * `experimental_timelineRenderer` registered for `"<pluginId>/<rendererId>"`.
+   * Omit anything the transcript must not keep.
+   */
+  payload?: JsonValue;
+}
+
 export interface PluginInteractionRequest {
   threadId: string;
   rendererId: string;
   title: string;
   payload: JsonValue;
-  /** Defaults to ten minutes; capped at one hour. */
+  /** Defaults to ten minutes; capped at seven days. */
   timeoutMs?: number;
+  /**
+   * How the form reads as a timeline row while it waits and once it settles,
+   * in the same shape as a native tool's presentation. bb fills what is left
+   * out: "Waiting for <title>" / "Submitted <title>" and the plugin's glyph.
+   */
+  presentation?: PluginRowPresentation;
+  /**
+   * Called once with the submitted value, before the waiting `requestInput`
+   * promise resolves; never for a cancellation, which bb titles itself. Its
+   * return is persisted on the row. A throw or a slow return leaves the row
+   * with its completed label and nothing more.
+   */
+  describeSubmission?(
+    value: JsonValue,
+  ): PluginInteractionDescription | Promise<PluginInteractionDescription>;
 }
 
 export interface PluginCliResult {
@@ -959,6 +1042,15 @@ export interface PluginCliRegistration {
   /** Subcommand metadata rendered in help and the plugin-commands skill
    * without executing plugin code. Parsing argv is plugin-owned. */
   commands?: PluginCliCommandInfo[];
+  /**
+   * Set when `run` answers `--help` / `-h` itself, at every level, without
+   * executing a command. The `bb` CLI then forwards help requests to the
+   * plugin instead of printing the one-line `usage` from `commands`.
+   * `defineCli` sets it. Leave it unset for a hand-written `run`:
+   * the host cannot know that such a parser will not act on the other
+   * arguments.
+   */
+  rendersHelp?: boolean;
   run(
     argv: string[],
     ctx: PluginCliContext,
@@ -992,32 +1084,39 @@ export type PluginAgentToolResult =
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
-  /** The tool-call request's abort signal (aborts if the daemon round-trip
-   * is torn down mid-call). */
+  /**
+   * Aborts when the tool-call request is cancelled, the thread is stopped or
+   * deleted, or this plugin is disposed. Opening a form with `bb.ui.requestInput`
+   * detaches the call from its request: the agent receives a waiting notice,
+   * and request cancellation no longer aborts this signal. The tool's eventual
+   * result is delivered as a system message (success steers a running turn or
+   * starts a new one; an `isError` result only steers). Thread stop/delete and
+   * plugin disposal still abort the signal after detachment.
+   */
   signal: AbortSignal;
 }
 
 /**
- * The row title of a plugin tool call while it is pending and once it
+ * The title of a plugin-owned timeline row while it is pending and once it
  * settled. Each label is capped at 80 characters and rendered as plain text.
  */
-export interface PluginAgentToolLabels {
-  /** Label shown while the tool call is pending. */
+export interface PluginRowLabels {
+  /** Label shown while the row is pending. */
   pending: string;
-  /** Label shown after the tool call completes successfully. */
+  /** Label shown after the row completes successfully. */
   completed: string;
 }
 
 /**
- * How calls to a native plugin tool read as a timeline row (grammar v3). Every
- * field is optional at registration: the server fills what the plugin leaves
- * out (a generic `Running <name>` / `Ran <name>` label; the plugin's branding
- * glyph, then `Toolbox`) and hands one complete presentation to the provider
- * bridge with the tool definition.
+ * How something a plugin owns reads as a timeline row (grammar v3): a native
+ * tool's calls, or the row a `bb.ui.requestInput` form leaves behind. Every
+ * field is optional: the server fills what the plugin leaves out (a generic
+ * label; the plugin's branding glyph, then `Toolbox`) and hands one complete
+ * presentation to whatever renders the row.
  */
-export interface PluginAgentToolPresentation {
-  /** Row title while the call is pending and once it settled. */
-  label?: PluginAgentToolLabels;
+export interface PluginRowPresentation {
+  /** Row title while the row is pending and once it settled. */
+  label?: PluginRowLabels;
   /**
    * A named host glyph (`{ glyph: "Workflow" }`), or one of this plugin's
    * own declared icons by its namespaced glyph (`{ glyph: "<pluginId>/<name>" }`,
@@ -1051,7 +1150,7 @@ export interface PluginAgentToolRegistrationBase {
    * plugin's branding glyph. Approval, error, and interruption states keep
    * BB's standard rendering. See docs/api_to_audit.md.
    */
-  presentation?: PluginAgentToolPresentation;
+  presentation?: PluginRowPresentation;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */
@@ -1223,7 +1322,7 @@ export interface PluginProviderCapabilities {
  * Provider copy core surfaces render from per-provider tables today (usage
  * banners, sign-in hints, the mobile picker, the agent guide). Declared once
  * here so no core surface keys copy on a provider id. Mirrors
- * `ProviderStrings` in `@bb/domain`, which is the client projection.
+ * `providerStringsSchema` in `@bb/domain`, which is the client projection.
  */
 export interface PluginProviderStrings {
   /** How to sign in on the host ("Run `claude` on the machine to sign in."). */
@@ -1311,13 +1410,17 @@ export interface PluginProviderFallbackModel {
   /** Picker display name ("Opus 5 (1M)"). */
   displayName: string;
   description: string;
-  /** Reasoning levels this model supports, lowest to highest. Non-empty. */
+  /** Reasoning levels this model supports, lowest to highest. Non-empty.
+   * `reasoningEffort` is a standard ladder entry or any provider-specific id
+   * the bridge accepts back as `reasoningLevel`; `label` names a
+   * provider-specific id in the picker. */
   supportedReasoningEfforts: readonly {
-    reasoningEffort: PluginProviderReasoningLevel;
+    reasoningEffort: PluginProviderReasoningLevel | (string & {});
+    label?: string;
     description: string;
   }[];
   /** Must be one of `supportedReasoningEfforts`. */
-  defaultReasoningEffort: PluginProviderReasoningLevel;
+  defaultReasoningEffort: PluginProviderReasoningLevel | (string & {});
   /** Exactly one entry in the list is the default. */
   isDefault: boolean;
 }
@@ -1431,8 +1534,10 @@ export interface PluginProviderDeclaration {
   /** Provider copy for core surfaces ({@link PluginProviderStrings}). */
   strings?: PluginProviderStrings;
   /** Service tiers this provider accepts, as picker options. Non-empty when
-   * present, unique ids. The coarse `capabilities.supportsServiceTier` stays
-   * until WS2a stabilizes. */
+   * present, unique ids. Ids are open: `"default"` is the provider's standard
+   * tier and every other id is passed to the bridge as `serviceTier`. A
+   * `model/list` entry narrows the list with `supportedServiceTiers`. The
+   * coarse `capabilities.supportsServiceTier` stays until WS2a stabilizes. */
   serviceTiers?: readonly PluginProviderOptionDescriptor[];
   /** Reasoning levels as picker options with labels, beside the coarse
    * `capabilities.reasoningLevels` ladder (ids only). Non-empty when present,
@@ -1682,6 +1787,13 @@ export interface PluginMentionItem {
   id: string;
   title: string;
   subtitle?: string;
+  /**
+   * BB icon name: a built-in name, or a name the plugin's app bundle
+   * registered with `app.experimental_icons.register()`. Resolved names take
+   * precedence over plugin branding in menu rows, composer pills, and sent
+   * messages. Omitted or unknown names fall back to plugin branding, then
+   * the generic plugin icon.
+   */
   icon?: string;
 }
 
@@ -1728,7 +1840,14 @@ export interface PluginMentionProviderRegistration {
 }
 
 export interface PluginUi {
-  /** Block until the app submits or cancels a plugin-owned composer form. */
+  /**
+   * Block until the user submits or cancels this plugin's form in the
+   * thread composer. Inside a native tool's `execute`, calling this answers
+   * the tool call at once with a waiting notice and the eventual return value
+   * reaches the agent as a message; see {@link PluginAgentToolContext.signal}.
+   * The form leaves a timeline row described by `presentation` and
+   * `describeSubmission`.
+   */
   requestInput(
     request: PluginInteractionRequest,
     options?: { signal?: AbortSignal },
@@ -1792,37 +1911,84 @@ export interface PluginServerApi {
 // AI services.
 // ---------------------------------------------------------------------------
 
-/**
- * What a plugin's AI service does. `inference` answers bb's server-side helper
- * completions (thread titles, commit messages: a prompt and a JSON Schema in,
- * a structured value out); `voice` transcribes recorded speech.
- */
-export type PluginAiServiceKind = "inference" | "voice";
+/** Options for one `complete` call. */
+export interface PluginAiCompleteOptions {
+  /**
+   * Aborted when bb stops waiting: the task timed out (5 seconds for titles
+   * and commit messages) or the request was cancelled. Pass it to `fetch`.
+   */
+  readonly signal: AbortSignal;
+}
+
+/** Options for one `transcribe` call. */
+export interface PluginAiTranscribeOptions {
+  /** Aborted when bb stops waiting (10 seconds) or the request was cancelled. */
+  readonly signal: AbortSignal;
+  /**
+   * Vocabulary the speaker is likely to use (names, identifiers), for
+   * services that accept a transcription prompt; `null` when there is none.
+   */
+  readonly hint: string | null;
+}
 
 /**
- * An AI service a plugin offers from its `bb.host` entry, which implements
- * `experimental_aiServicesHostContract` (`@get-bb/plugin-sdk/ai-services`).
- * The user selects it with `BB_INFERENCE` / `BB_TRANSCRIPTION` set to
- * `<id>/<model>`; core calls the plugin's host entry on the primary host with
- * the `id` on every request, so one entry can serve several services.
+ * Whether a service can answer right now. `message` is shown to the user
+ * beside the service ("Sign in to your bb account") and should say how to
+ * make it ready.
+ */
+export type PluginAiServiceStatus =
+  | { readonly ready: true }
+  | { readonly ready: false; readonly message: string };
+
+/**
+ * An AI service bb can use for its helper tasks: thread titles and commit
+ * messages (`complete`) and voice input (`transcribe`). The user picks a
+ * service per task in Settings → AI services or with
+ * `bb settings ai-services set`. The functions run in the plugin's server
+ * process; a plugin that needs host-local state (a login file, a local model)
+ * reaches its own `bb.host` entry through `bb.hosts.experimental_client`.
+ *
+ * bb owns the prompts and cleans up replies (think blocks, quotes, labels,
+ * extra lines), so a service returns the model's text as-is. The plugin owns
+ * everything behind the function: which model, which API, any retries.
+ * Failure is a rejected promise.
  */
 export interface PluginAiServiceDeclaration {
-  /** The `<serviceId>` segment of the user's setting; stable, lowercase. */
+  /**
+   * Stable, lowercase id, unique within this plugin. bb identifies a service
+   * by plugin id and service id, so another plugin may use the same id.
+   * `automatic` and `off` are reserved.
+   */
   readonly id: string;
-  /** Shown beside the id wherever the setting's options are listed. */
+  /** Shown in the picker; 1-64 characters. */
   readonly displayName: string;
-  /** Which kinds this service answers; a kind it lacks is not offered. */
-  readonly kinds: readonly PluginAiServiceKind[];
+  /**
+   * Answer one prompt with plain text. Offered for thread titles and commit
+   * messages. Declare `complete`, `transcribe`, or both.
+   */
+  readonly complete?: (
+    prompt: string,
+    options: PluginAiCompleteOptions,
+  ) => Promise<string>;
+  /** Transcribe recorded speech to text. Offered for voice input. */
+  readonly transcribe?: (
+    audio: File,
+    options: PluginAiTranscribeOptions,
+  ) => Promise<string>;
+  /**
+   * Report whether the service can answer. bb calls it for the picker's
+   * status line and to decide whether Automatic skips the service and
+   * whether the microphone shows; results are cached for a few seconds.
+   * Omit it when the service is always ready.
+   */
+  readonly status?: () => Promise<PluginAiServiceStatus>;
 }
 
 export interface PluginAiServices {
   /**
    * Register an AI service. Call during the factory; the registration lands
-   * when the plugin load commits and is removed on reload or disable. The
-   * plugin must declare a `bb.host` entry; registering without one fails the
-   * load. A declared entry that fails to build fails the load on the build
-   * error after the factory, with any provider the factory declared listed
-   * as unavailable. Throws on an id another live plugin already serves.
+   * when the plugin load commits and is removed on reload or disable. Throws
+   * when this plugin already registered the id.
    */
   register(declaration: PluginAiServiceDeclaration): { dispose(): void };
 }
@@ -1885,8 +2051,9 @@ export interface PluginStatusApi {
 }
 
 /**
- * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata` and
- * `threads.updatePluginMetadata` default `pluginId` to that plugin's id. An
+ * The BB SDK bound to one plugin (`bb.sdk`). `threads.getPluginMetadata`,
+ * `threads.experimental_listPluginMetadata` and `threads.updatePluginMetadata`
+ * default `pluginId` to that plugin's id. An
  * explicit `pluginId` must be a plugin id (lowercase letters, digits, and
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
@@ -1896,11 +2063,16 @@ export interface PluginStatusApi {
 export type PluginBbSdk = Omit<BbSdk, "threads"> & {
   threads: Omit<
     BbSdk["threads"],
-    "getPluginMetadata" | "updatePluginMetadata"
+    "getPluginMetadata" | "updatePluginMetadata" | "experimental_listPluginMetadata"
   > & {
     getPluginMetadata(
       args: Omit<ThreadPluginMetadataArgs, "pluginId"> & { pluginId?: string },
     ): Promise<ThreadPluginMetadataResult>;
+    experimental_listPluginMetadata(
+      args: Omit<PluginThreadMetadataListArgs, "pluginId"> & {
+        pluginId?: string;
+      },
+    ): Promise<PluginThreadMetadataListResult>;
     updatePluginMetadata(
       args: Omit<ThreadPluginMetadataUpdateArgs, "pluginId"> & {
         pluginId?: string;
@@ -1967,8 +2139,8 @@ export interface BbPluginApi {
   /** Server-to-daemon host control-plane declarations. */
   readonly hosts: PluginHosts;
   /**
-   * AI services this plugin serves from its `bb.host` entry (helper
-   * inference, voice transcription). See `@get-bb/plugin-sdk/ai-services`.
+   * AI services this plugin offers for bb's helper tasks: thread titles,
+   * commit messages, and voice input.
    */
   readonly experimental_aiServices: PluginAiServices;
   /**
@@ -1988,4 +2160,14 @@ export interface BbPluginApi {
    * The sanctioned place to clear timers and close connections.
    */
   onDispose(hook: () => void | Promise<void>): void;
+  /**
+   * Run a handler once, right after this plugin is installed and its server
+   * entry has loaded: for example to pick its own sidebar slots with
+   * `bb.sdk.system.uiPreferences`. It does not run on update, reload,
+   * enable, or server restart, nor for bb's bundled plugins; reinstalling
+   * after removal runs it again. Register it while the entry loads. A
+   * handler that throws is logged and the install still succeeds; the
+   * install waits at most 30 seconds for handlers to finish.
+   */
+  onInstall(handler: () => void | Promise<void>): void;
 }

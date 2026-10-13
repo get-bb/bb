@@ -40,7 +40,7 @@ const branchFromPicker: BranchPickerStoryConfig = {
   value: "main",
   triggerLabel: "Branch from: main",
   triggerTitle: "Branch from: main",
-  menuKind: "base",
+  menuLabel: "Branch from:",
   modal: false,
 };
 
@@ -69,12 +69,12 @@ function BranchPickerStoryRow({
   const { branchOptions, ...branchPickerProps } = picker;
   const [value, setValue] = useState(picker.value);
   const triggerLabel =
-    picker.menuKind === "base" && value !== null
-      ? `Branch from: ${value}`
+    picker.menuLabel !== undefined && value !== null
+      ? `${picker.menuLabel} ${value}`
       : picker.triggerLabel;
   const triggerTitle =
-    picker.menuKind === "base" && value !== null
-      ? `Branch from: ${value}`
+    picker.menuLabel !== undefined && value !== null
+      ? `${picker.menuLabel} ${value}`
       : picker.triggerTitle;
 
   return (

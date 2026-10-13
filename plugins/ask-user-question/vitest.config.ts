@@ -1,5 +1,6 @@
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import { defineConfig } from "vitest/config";
 
-export default defineWorkspaceTestConfig({
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
   test: { environment: "node" },
 });

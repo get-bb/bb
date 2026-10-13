@@ -52,6 +52,7 @@ export function makeEnvironment(
     },
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
+    hostLifecycle: "active",
     managed: true,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
@@ -107,11 +108,20 @@ export function makeProviderInfo(
       permissionModes: ["accept-edits", "auto", "full"],
     },
   };
+  const capabilities = { ...provider.capabilities, ...overrides.capabilities };
   return {
     ...provider,
+    ...(capabilities.supportsServiceTier
+      ? {
+          serviceTiers: [
+            { id: "default", label: "Default" },
+            { id: "fast", label: "Fast" },
+          ],
+        }
+      : {}),
     ...overrides,
     maintenance: { ...provider.maintenance, ...overrides.maintenance },
-    capabilities: { ...provider.capabilities, ...overrides.capabilities },
+    capabilities,
   };
 }
 
@@ -126,6 +136,7 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     sectionId: null,
     status: "idle",
     parentThreadId: null,
+    lifecycleOwnerThreadId: null,
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
@@ -148,10 +159,7 @@ export function makeThreadWithRuntime(
 ): ThreadWithRuntime {
   const thread: ThreadWithRuntime = {
     ...makeThread(),
-    runtime: {
-      displayStatus: "idle",
-      hostReconnectGraceExpiresAt: null,
-    },
+    runtime: { displayStatus: "idle" },
   };
   return {
     ...thread,
@@ -201,6 +209,8 @@ export function makeThreadQueuedMessage(
 ): ThreadQueuedMessage {
   return {
     id: "qmsg_test",
+    origin: null,
+    originPluginId: null,
     initiator: "user",
     senderThreadId: null,
     threadId: "thr_test",

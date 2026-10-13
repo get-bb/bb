@@ -1,7 +1,12 @@
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachCallThread,
+  isWorkerRetired,
+  retiredWorkers,
+  recordWorkerCleanup,
+  workerOrigins,
+  ownWorker,
   cancelRun,
   countCallsForRun,
   createRun,
@@ -29,7 +34,10 @@ describe("workflow durable data", () => {
     db.exec(migrations.join("\n"));
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    vi.restoreAllMocks();
+  });
 
   function sweepExpired(now: number, limit: number): number {
     return deleteTerminalRuns(
@@ -70,11 +78,201 @@ describe("workflow durable data", () => {
     permissionMode: "full",
   } as const;
 
-  it("records replay safety without a concurrency barrier", () => {
+  it("persists failed cleanup deadlines and caps retry delays", () => {
+    ownWorker(db, "worker", "missing-run", "missing-call", "origin");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    expect(retiredWorkers(db, 10_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 10_999)).toEqual([]);
+    expect(workerOrigins(db, 10_999)).toEqual([]);
+    expect(retiredWorkers(db, 11_000)).toHaveLength(1);
+    clock.mockReturnValue(11_000);
+    recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 12_999)).toEqual([]);
+    expect(retiredWorkers(db, 13_000)).toHaveLength(1);
+    for (let attempt = 0; attempt < 20; attempt++)
+      recordWorkerCleanup(db, "worker", false);
+    expect(retiredWorkers(db, 70_999)).toEqual([]);
+    expect(retiredWorkers(db, 71_000)).toHaveLength(1);
+    recordWorkerCleanup(db, "worker", true);
+    expect(retiredWorkers(db, 1_000_000)).toEqual([]);
+  });
+
+  it("monitors active origins but leaves backed-off completed notifications alone", () => {
+    const run = newRun();
+    expect(workerOrigins(db, 1_000)).toEqual([run.originThreadId]);
+    db.prepare(
+      "UPDATE workflow_runs SET status = 'succeeded', notification_next_attempt_at = 999999 WHERE id = ?",
+    ).run(run.id);
+    expect(workerOrigins(db, 1_000)).toEqual([]);
+  });
+
+  it("backfills worker ownership from the pre-upgrade call pointers", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -3).join("\n"));
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "migration",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
+    ).run(call.id);
+    db.exec(migrations.slice(-3).join("\n"));
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "legacy-worker", callId: call.id },
+    ]);
+    expect(
+      db.prepare(`SELECT run_id, origin_thread_id FROM workflow_workers`).get(),
+    ).toEqual({ run_id: run.id, origin_thread_id: run.originThreadId });
+  });
+
+  it("staggers backfilled cleanup deadlines into one batch per maintenance tick", () => {
+    db.close();
+    db = new Database(":memory:");
+    db.pragma("foreign_keys = ON");
+    db.exec(migrations.slice(0, -3).join("\n"));
+    const run = newRun();
+    const insertCall = db.prepare(
+      `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
+         options_json, resolved_provider, resolved_model, resolved_reasoning_level,
+         resolved_permission_mode, status, child_thread_id, created_at)
+       VALUES (?, ?, ?, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full',
+         'failed', ?, 0)`,
+    );
+    for (let index = 0; index < 250; index++)
+      insertCall.run(
+        `call-${String(index).padStart(3, "0")}`,
+        run.id,
+        index,
+        `worker-${String(index).padStart(3, "0")}`,
+      );
+    const migratedAt = Date.now();
+    db.exec(migrations.slice(-3).join("\n"));
+
+    const buckets = db
+      .prepare(
+        `SELECT next_cleanup_at AS at, COUNT(*) AS size FROM workflow_workers
+         GROUP BY next_cleanup_at ORDER BY at`,
+      )
+      .all() as Array<{ at: number; size: number }>;
+    expect(buckets.map((bucket) => bucket.size)).toEqual([100, 100, 50]);
+    expect(buckets.map((bucket) => bucket.at - buckets[0].at)).toEqual([
+      0, 1_000, 2_000,
+    ]);
+    expect(buckets[0].at).toBeGreaterThan(migratedAt - 2_000);
+    expect(buckets[0].at).toBeLessThanOrEqual(Date.now());
+
+    expect(retiredWorkers(db, buckets[0].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at + 999)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[2].at)).toHaveLength(100);
+    expect(retiredWorkers(db, buckets[0].at).at(0)?.threadId).toBe(
+      "worker-000",
+    );
+  });
+
+  it("retains unattached workers when attachment loses a cancellation race", () => {
+    const run = newRun();
+    markRunning(run.id);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "cancel",
+      prompt: "work",
+      options: {
+        title: null,
+        phase: null,
+        outputSchema: null,
+        selection: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    cancelRun(db, run.id);
+    expect(attachCallThread(db, call.id, "unattached-worker")).toBe(false);
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "unattached-worker", callId: call.id },
+    ]);
+  });
+
+  it("rechecks one worker's retirement against its current call and run", () => {
+    const expectRetired = (threadId: string, retired: boolean) => {
+      expect(isWorkerRetired(db, threadId)).toBe(retired);
+      expect(
+        retiredWorkers(db, Number.MAX_SAFE_INTEGER).some(
+          (worker) => worker.threadId === threadId,
+        ),
+      ).toBe(retired);
+    };
+    const run = newRun();
+    markRunning(run.id);
+    const startWork = (cacheKey: string, callIndex: number) =>
+      startCall(db, {
+        runId: run.id,
+        callIndex,
+        cacheKey,
+        prompt: "work",
+        options: {
+          title: null,
+          phase: null,
+          outputSchema: null,
+          selection: null,
+        },
+        selection: resolvedSelection,
+        replay: null,
+      });
+
+    const live = startWork("live", 0);
+    ownWorker(db, "live-worker", run.id, live.id, run.originThreadId);
+    expectRetired("live-worker", true);
+    expect(attachCallThread(db, live.id, "live-worker")).toBe(true);
+    expectRetired("live-worker", false);
+
+    const retried = startWork("retried", 1);
+    ownWorker(db, "first-attempt", run.id, retried.id, run.originThreadId);
+    expect(attachCallThread(db, retried.id, "first-attempt")).toBe(true);
+    db.prepare(
+      `UPDATE workflow_calls SET child_thread_id = 'second-attempt' WHERE id = ?`,
+    ).run(retried.id);
+    expectRetired("first-attempt", true);
+
+    settleCall(db, {
+      id: live.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    expectRetired("live-worker", true);
+    recordWorkerCleanup(db, "live-worker", true);
+    expectRetired("live-worker", false);
+
+    const cancelled = startWork("cancelled", 2);
+    ownWorker(db, "cancelled-worker", run.id, cancelled.id, run.originThreadId);
+    expect(attachCallThread(db, cancelled.id, "cancelled-worker")).toBe(true);
+    expectRetired("cancelled-worker", false);
+    cancelRun(db, run.id);
+    expectRetired("cancelled-worker", true);
+
+    expectRetired("unknown-worker", false);
+  });
+
+  it("records replay safety", () => {
     const run = newRun();
     expect(getRunRequired(db, run.id)).toMatchObject({
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
     });
 
     markRunning(run.id);
@@ -82,16 +280,6 @@ describe("workflow durable data", () => {
     expect(getRunRequired(db, run.id)).toMatchObject({
       status: "queued",
       replaySafetyVersion: 1,
-      replayBarrierIndex: null,
-    });
-
-    db.prepare(
-      `UPDATE workflow_runs SET replay_safety_version = 0,
-       replay_barrier_index = NULL WHERE id = ?`,
-    ).run(run.id);
-    expect(getRunRequired(db, run.id)).toMatchObject({
-      replaySafetyVersion: 0,
-      replayBarrierIndex: null,
     });
   });
 
@@ -261,7 +449,7 @@ describe("workflow durable data", () => {
     });
   });
 
-  it("persists JSON null but requires it to rerun instead of replaying", () => {
+  it("persists a successful call's JSON null result", () => {
     const first = newRun();
     markRunning(first.id);
     const original = startCall(db, {
@@ -285,43 +473,6 @@ describe("workflow durable data", () => {
       error: null,
     });
     expect(getCall(db, first.id, 0)?.resultJson).toBe("null");
-    const second = createRun(db, {
-      projectId: "project-1",
-      originThreadId: "thread-1",
-      environmentId: "environment-1",
-      originProvider: "codex",
-      originModel: "gpt-test",
-      originReasoningLevel: "medium",
-      originPermissionMode: "full",
-      name: "test-workflow",
-      source: "return null",
-      sourceHash: "hash-2",
-      argsJson: "null",
-      settingsJson:
-        '{"maxActiveRuns":4,"maxConcurrentAgents":8,"maxAgentCalls":100,"totalRunTimeoutMs":86400000,"retentionDays":30,"maxNotificationBytes":16384}',
-      resumedFromRunId: first.id,
-    });
-    markRunning(second.id);
-    startCall(db, {
-      runId: second.id,
-      callIndex: 0,
-      cacheKey: "null-cache",
-      prompt: "return null",
-      options: {
-        selection: null,
-        outputSchema: null,
-        title: null,
-        phase: null,
-      },
-      selection: resolvedSelection,
-      replay: null,
-    });
-
-    expect(getCall(db, second.id, 0)).toMatchObject({
-      status: "queued",
-      resultJson: null,
-      replayedFromCallId: null,
-    });
   });
 
   it("atomically preserves the first structured value", () => {
@@ -533,6 +684,24 @@ describe("workflow durable data", () => {
     }
   });
 
+  it("expires notified runs at their own retention deadline", () => {
+    const run = newRun();
+    const finishedAt = Date.now() - 3 * 86_400_000;
+    const deadline = finishedAt + 2 * 86_400_000;
+    db.prepare(
+      `UPDATE workflow_runs SET status = 'succeeded', notification_sent = 0,
+       finished_at = ?, settings_json = json_set(settings_json, '$.retentionDays', 2)
+       WHERE id = ?`,
+    ).run(finishedAt, run.id);
+    expect(sweepExpired(deadline, 100)).toBe(0);
+    db.prepare(
+      `UPDATE workflow_runs SET notification_sent = 1 WHERE id = ?`,
+    ).run(run.id);
+    expect(sweepExpired(deadline - 1, 100)).toBe(0);
+    expect(sweepExpired(deadline, 100)).toBe(1);
+    expect(() => getRunRequired(db, run.id)).toThrow("Unknown workflow run");
+  });
+
   it("retains active resume ancestry while deleting unrelated expired runs", () => {
     const parent = newRun();
     db.prepare(
@@ -565,7 +734,6 @@ describe("workflow durable data", () => {
 
     expect(sweepExpired(Date.now(), 100)).toBe(1);
     expect(getRunRequired(db, parent.id).id).toBe(parent.id);
-    expect(getRunRequired(db, parent.id).replayBarrierIndex).toBeNull();
     expect(getRunRequired(db, retainedChild.id).status).toBe("queued");
     expect(() => getRunRequired(db, expired.id)).toThrow(
       "Unknown workflow run",

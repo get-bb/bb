@@ -107,7 +107,7 @@ export function createActiveProfileConnector(
     };
     const unsubscribe = scheduler.onStateChange((session) => {
       if (session.status === "authenticated") {
-        lastVerifyAt = Date.now();
+        if (!session.restored) lastVerifyAt = Date.now();
         refetchQueriesRejectedBeforeSession(client.queryClient);
         if (disconnectRealtime === null) {
           disconnectRealtime = connectProfileClient(client, deps.appState);
@@ -160,6 +160,7 @@ export function createActiveProfileConnector(
     };
     const unsubscribeAuthFailure = client.onAuthFailure(() => {
       if (breaker !== null) return;
+      if (scheduler.getState().status !== "authenticated") return;
       const sinceVerify = Date.now() - lastVerifyAt;
       if (sinceVerify < AUTH_FAILURE_VERIFY_DEBOUNCE_MS) {
         refetchRejectedSoon();

@@ -10,6 +10,9 @@ export async function resolvePackagedAppBinary({
   if (platform === "linux") {
     return join(releaseDir, "linux-unpacked", executableName);
   }
+  if (platform === "win32") {
+    return join(releaseDir, "win-unpacked", `${productName}.exe`);
+  }
   if (platform !== "darwin") {
     throw new Error(`Unsupported packaged desktop platform: ${platform}`);
   }

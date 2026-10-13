@@ -30,6 +30,14 @@ it("publishes only its own maintenance providers without a display and only meas
           makeHostResponse({ id: "online", status: "connected" }),
           makeHostResponse({ id: "offline", status: "disconnected" }),
         ],
+        get: async ({ hostId }) => {
+          if (hostId === "missing")
+            throw Object.assign(new Error("Host not found"), { status: 404 });
+          return makeHostResponse({
+            id: hostId,
+            status: hostId === "offline" ? "disconnected" : "connected",
+          });
+        },
       },
       providers: {
         list: async () =>
@@ -71,6 +79,9 @@ it("publishes only its own maintenance providers without a display and only meas
       );
     expect((await list()).resources).toHaveLength(4);
     expect(collect).not.toHaveBeenCalled();
+    await expect(read("missing", "foreign")).rejects.toThrow(
+      "Usage resource no longer exists.",
+    );
     await expect(read("online", "foreign")).rejects.toThrow("no longer exists");
     expect(await read("online", "acp-custom")).toMatchObject({
       accountKey: null,
@@ -84,11 +95,16 @@ it("publishes only its own maintenance providers without a display and only meas
     expect(collect).toHaveBeenCalledWith({
       hostId: "online",
       providerId: "acp-custom",
+      refresh: false,
     });
     await read("online", "acp-custom");
     expect(collect).toHaveBeenCalledTimes(1);
     await read("online", "acp-custom", true);
     expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ refresh: true }),
+    );
     expect(await read("offline", "acp-custom")).toMatchObject({
       observedAt: null,
       usage: { status: "error" },
@@ -111,6 +127,8 @@ it("forwards validated provider-owned identity and normalization metadata while 
         list: async () => [
           makeHostResponse({ id: "host", status: "connected" }),
         ],
+        get: async ({ hostId }) =>
+          makeHostResponse({ id: hostId, status: "connected" }),
       },
       providers: {
         list: async () => [
@@ -185,6 +203,8 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
         list: async () => [
           makeHostResponse({ id: "host", status: "connected" }),
         ],
+        get: async ({ hostId }) =>
+          makeHostResponse({ id: hostId, status: "connected" }),
       },
       providers: {
         list: async () => [
@@ -208,6 +228,10 @@ it("coalesces concurrent reads and makes a forced refresh wait for a fresh colle
     finish!();
     await Promise.all([first, second, forced]);
     expect(collect).toHaveBeenCalledTimes(2);
+    expect(collect).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ refresh: true }),
+    );
   } finally {
     finish?.();
     await harness.lifecycle.dispose();

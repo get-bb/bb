@@ -15,7 +15,7 @@ import { NotificationHub } from "../../ws/hub.js";
 import { replaceMachineEnvironment } from "../machines/environment-settings.js";
 import { HostEnvironmentSync } from "./host-environment-sync.js";
 
-it("synchronizes configured variables on connection, changes and reconnect while excluding the local host", async () => {
+it("synchronizes configured variables to every connected host", async () => {
   const db = createConnection(":memory:");
   const dataDir = await mkdtemp(join(tmpdir(), "bb-machine-env-sync-"));
   const hub = new NotificationHub();
@@ -42,7 +42,9 @@ it("synchronizes configured variables on connection, changes and reconnect while
     expect((await sync.snapshot("remote")).entries).toContainEqual(
       expect.objectContaining({ name: "MACHINE_VALUE", value: "first" }),
     );
-    expect((await sync.snapshot("local")).entries).toEqual([]);
+    expect((await sync.snapshot("local")).entries).toContainEqual(
+      expect.objectContaining({ name: "MACHINE_VALUE", value: "first" }),
+    );
     const sent: string[] = [];
     hub.registerDaemon("session-1", "remote", {
       send: (data) => {
