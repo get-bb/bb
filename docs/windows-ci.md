@@ -150,7 +150,7 @@ suite exactly once:
   installs Bun, which the Pi plugin's runtime regression requires in CI.
 - `plugins-2`: every other `bb-plugin-*` package. Its negative filters exclude
   `plugins-1`, so a new plugin lands here without a workflow change.
-- `packages-host`: host daemon and CLI, one suite at a time.
+- `packages-host`: host daemon, CLI, and ACP-next, one suite at a time.
 - `integration`: the integration tests, alone.
 - `packages-build`: templates, bb-app, demo server, desktop, and plugin build,
   the same group as the Linux `packages-build` shard.
@@ -191,7 +191,10 @@ The test step differs from the Linux one in three ways:
   closing. In later runs beside other suites only the host daemon and
   integration suites failed, so those two never share a runner with a suite
   that runs at the same time. Provider parity passed all 35 such runs and now
-  runs in `packages-other`.
+  runs in `packages-other`. ACP-next runs in the sequential `packages-host`
+  shard: its repeated agent startup, replacement, and shutdown tests exceeded
+  five seconds when run alongside provider parity on Windows. Its assertions
+  and timeouts remain the same.
 
 Run one shard locally from `cmd` or PowerShell after a full install:
 

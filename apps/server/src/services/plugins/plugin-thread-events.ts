@@ -1,3 +1,4 @@
+import { captureThreadTransition } from "../system/work-telemetry.js";
 import type { EnvironmentRemoval } from "@bb/domain";
 import type { ApplyThreadLifecycleEventOutcome, HostRow } from "@bb/db";
 import type { PendingInteraction, Thread } from "@bb/domain";
@@ -25,10 +26,12 @@ export function emitPluginThreadCreated(thread: Thread): void {
  * including cascade archives.
  */
 export function emitPluginThreadArchived(thread: Thread): void {
+  captureThreadTransition(thread, "thread_archived");
   emitter?.emitThreadArchived(thread);
 }
 
 export function emitPluginThreadUnarchived(thread: Thread): void {
+  captureThreadTransition(thread, "thread_unarchived");
   emitter?.emitThreadUnarchived(thread);
 }
 
@@ -40,10 +43,13 @@ export function emitPluginThreadParentChanged(
   thread: Thread,
   previousParentThreadId: string | null,
 ): void {
+  if (thread.parentThreadId !== previousParentThreadId)
+    captureThreadTransition(thread, "parent_changed");
   emitter?.emitThreadParentChanged(thread, previousParentThreadId);
 }
 
 export function emitPluginThreadDeleted(thread: Thread): void {
+  captureThreadTransition(thread, "thread_deleted");
   emitter?.emitThreadDeleted(thread);
 }
 

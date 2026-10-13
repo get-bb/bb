@@ -11,6 +11,9 @@ export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
 
 export function rewindThreadPruningWork(db: DbConnection): void {
   db.$client.exec(`
+    DROP TABLE IF EXISTS telemetry_origins;
+    DROP TABLE IF EXISTS telemetry_messages;
+    DROP TABLE IF EXISTS telemetry_threads;
     DROP TABLE IF EXISTS thread_pruning_work;
     DELETE FROM __drizzle_migrations WHERE created_at >= 1791399370294;
   `);

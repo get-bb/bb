@@ -1,3 +1,4 @@
+import { clearActiveWorkTelemetry } from "../services/system/work-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
 import {
   setMachineEnvironmentVariable,
@@ -330,6 +331,7 @@ export function registerSystemRoutes(
     setAppSettings(deps.db, updatedSettings);
     if (current.telemetryEnabled && !updatedSettings.telemetryEnabled) {
       deps.telemetry.capture({ name: "telemetry_disabled" });
+      clearActiveWorkTelemetry(deps.db);
     }
     deps.telemetry.setEnabled(updatedSettings.telemetryEnabled);
     deps.hub.notifySystem(["config-changed"]);

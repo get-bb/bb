@@ -1002,6 +1002,13 @@
       "when": 1791840325007,
       "tag": "0142_burly_baron_strucker",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "6",
+      "when": 1791888105257,
+      "tag": "0143_work_analytics",
+      "breakpoints": true
     }
   ]
 }

@@ -133,7 +133,7 @@
     },
     {
       "shard": "packages-host",
-      "filter": "--filter=@bb/host-daemon --filter=@bb/cli",
+      "filter": "--filter=@bb/host-daemon --filter=@bb/cli --filter=@bb/provider-bridge-acp-next",
       "concurrency": 1,
       "args": ""
     },
@@ -151,7 +151,7 @@
     },
     {
       "shard": "packages-other",
-      "filter": "--filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-* --filter=!@bb/host-daemon --filter=!@bb/cli --filter=!@bb/integration-tests --filter=!@bb/templates --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop --filter=!@bb/plugin-build --filter=!@bb/process-utils --filter=!@bb/host-workspace --filter=!@bb/host-watcher --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol --filter=!@bb/provider-bridge-acp --filter=!@bb/host-daemon-contract --filter=!@bb/config --filter=!@bb/db",
+      "filter": "--filter=!@bb/server --filter=!@bb/app --filter=!bb-plugin-* --filter=!@bb/host-daemon --filter=!@bb/cli --filter=!@bb/integration-tests --filter=!@bb/templates --filter=!bb-app --filter=!@bb/demo-server --filter=!@bb/desktop --filter=!@bb/plugin-build --filter=!@bb/process-utils --filter=!@bb/host-workspace --filter=!@bb/host-watcher --filter=!@bb/agent-runtime --filter=!@bb/provider-bridge-protocol --filter=!@bb/provider-bridge-acp --filter=!@bb/host-daemon-contract --filter=!@bb/config --filter=!@bb/db --filter=!@bb/provider-bridge-acp-next",
       "concurrency": 2,
       "args": ""
     }

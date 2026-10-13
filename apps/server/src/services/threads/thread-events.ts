@@ -1,3 +1,4 @@
+import { recordMessageRequest } from "../system/work-telemetry.js";
 import {
   appendStoredThreadEventsInTransaction,
   createEventId,
@@ -335,6 +336,10 @@ function appendThreadEventsInTransactionWithAttention(
 ): AppendThreadEventsTransactionResult {
   assertStoredTurnStartedForEvents(db, args);
   const sequences = appendStoredThreadEventsInTransaction(db, args);
+  for (const event of args) {
+    if (event.type === "client/turn/requested")
+      recordMessageRequest(db, event.threadId, event.data);
+  }
   const readStateUpdates = args
     .map((eventArgs) => applyUserTurnReadForEvent(db, eventArgs))
     .filter(isThreadReadStateUpdate);

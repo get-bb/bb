@@ -1360,3 +1360,46 @@ export const projectAttachmentBackfills = sqliteTable(
     error: text("error"),
   },
 );
+
+export const telemetryThreads = sqliteTable("telemetry_threads", {
+  threadId: text("thread_id")
+    .primaryKey()
+    .references(() => threads.id, { onDelete: "cascade" }),
+  analyticsId: text("analytics_id").notNull().unique(),
+  pendingRequestId: text("pending_request_id"),
+  activeRequestId: text("active_request_id"),
+  waiting: integer("waiting", { mode: "boolean" }).notNull().default(false),
+});
+
+export const telemetryMessages = sqliteTable(
+  "telemetry_messages",
+  {
+    analyticsId: text("analytics_id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    acceptedAt: integer("accepted_at").notNull(),
+    trigger: text("trigger", {
+      enum: ["person", "agent", "schedule", "system", "unknown"],
+    }).notNull(),
+    messageSource: text("message_source", {
+      enum: ["thread_create", "thread_send", "queued_message"],
+    }).notNull(),
+  },
+  (table) => [index("telemetry_messages_thread_idx").on(table.threadId)],
+);
+
+export const telemetryOrigins = sqliteTable(
+  "telemetry_origins",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["request", "queue"] }).notNull(),
+    key: text("key").notNull(),
+    messageIds: text("message_ids", { mode: "json" })
+      .$type<string[]>()
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.kind, table.key] })],
+);

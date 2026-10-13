@@ -2123,6 +2123,28 @@ writes and layout restoration are excluded. The telemetry endpoint rejects
 unknown fields, feature codes and caller-supplied plugin provenance. Legacy
 client event variants remain accepted for compatibility.
 
+Work events add random analytics-only thread IDs and the parent's analytics ID
+where applicable. Accepted messages have independently random request analytics
+IDs; a grouped dispatch carries the complete bounded list. Local lookup records
+keep these separate from real thread, queue, message and provider IDs. They are
+never PostHog person IDs and are not accepted as bb API routing keys.
+
+`thread_lifecycle` reports applied turn starts, explicit user-blocking waits and
+clears, settled stops, archives, unarchives, deletion and parent changes.
+`turn_finished` reports `completed`, `failed` or `stopped`, the bundled provider
+(or `other`), a coarse error category and original message linkage. Explicit
+retries retain the original message identities and carry `attempt_kind=retry`;
+steering cannot replace a turn's initiating messages. Missing origin records
+remain `unavailable`. Queue acceptance and turn events retain their original
+occurrence timestamps. Capture runs only after a successful transaction.
+
+These tokens permit per-thread timelines, parent-child graphs, message-to-work
+and retry joins, and observed queue delays within an installation. They do not
+encode content or replace the anonymous install ID. The local database contains
+the mapping; PostHog does not receive it. Opt-out prevents future capture and
+backfill, but does not erase prior events. Forked/recreated threads get fresh
+identities; copying a whole database can copy analytics identities as well.
+
 Anonymous usage telemetry can be disabled in Settings → General → Privacy & diagnostics → Share anonymous usage data,
 or with `bb settings general telemetryEnabled false`. The saved server-wide preference
 takes effect immediately and persists across restarts. SDK callers can use
