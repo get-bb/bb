@@ -379,7 +379,6 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
     },
   ],
   pendingInteractions: [],
-  waitingQuestion: null,
 };
 
 const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
@@ -391,8 +390,15 @@ const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
       hasPendingInteraction: true,
     },
   ],
-  pendingInteractions: [],
-  waitingQuestion: "Which color should the QA badge use?",
+  pendingInteractions: [
+    childQuestionFixture(
+      "thr_blocked",
+      "Install workspace tools",
+      "Which color should the QA badge use?",
+      [],
+      1,
+    ),
+  ],
 };
 
 function withPending(
@@ -407,8 +413,17 @@ function withPending(
       ...items.filter((item) => item.hasPendingInteraction),
       ...items.filter((item) => !item.hasPendingInteraction),
     ],
-    pendingInteractions: [],
-    waitingQuestion: "Approve running the migration on staging?",
+    pendingInteractions: items
+      .filter((item) => item.hasPendingInteraction)
+      .map((item) =>
+        childQuestionFixture(
+          item.id,
+          item.title,
+          "Approve running the migration on staging?",
+          [],
+          1,
+        ),
+      ),
   };
 }
 
@@ -515,7 +530,6 @@ const childThreadsQuestionsFixture: ThreadPromptChildThreadsSection = {
       1,
     ),
   ],
-  waitingQuestion: "Which size?",
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -523,10 +537,9 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
-    hasPendingInteraction: i === 0,
+    hasPendingInteraction: i === 1,
   })),
   pendingInteractions: [],
-  waitingQuestion: "Which branch should I rebase onto?",
 };
 
 function buildPullRequestFixture(
@@ -913,8 +926,8 @@ export function Overview() {
         <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="answer child questions in the banner"
-        hint="rows read child: question; open one from a row or the collapsed header, ‹ Child threads or Esc returns, ‹ › steps through waiting questions"
+        label="child threads waiting on questions"
+        hint="rows read child: question, newest first"
       >
         <Row childThreads={childThreadsQuestionsFixture} mergeBase={null} />
       </StoryRow>
@@ -923,12 +936,6 @@ export function Overview() {
         hint="icon, label, and total count; click to list every child thread"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
-      </StoryRow>
-      <StoryRow
-        label="a child thread needs input"
-        hint="the banner expands on its own; child threads that need input rank first"
-      >
-        <Row childThreads={childThreadsMixedFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
         label="active child + pull request + uncommitted"

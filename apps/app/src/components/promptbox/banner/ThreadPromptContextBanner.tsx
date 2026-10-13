@@ -130,7 +130,6 @@ export interface ChildThreadQuestion {
 export interface ThreadPromptChildThreadsSection {
   items: readonly ThreadPromptChildThreadItem[];
   pendingInteractions: readonly ChildThreadQuestion[];
-  waitingQuestion: string | null;
 }
 
 export interface ThreadPromptPullRequestSection {
@@ -780,16 +779,15 @@ function ActiveChildThreadsCard({
   if (items.length === 0) {
     return null;
   }
-  const collapsedQuestion = isExpanded
-    ? null
-    : childThreadsSection.waitingQuestion;
-  const collapsedQuestionChildTitle = collapsedQuestion
-    ? (pendingInteractions[0]?.childTitle ?? null)
+  const newestQuestion = isExpanded ? undefined : pendingInteractions[0];
+  const collapsedQuestion = newestQuestion
+    ? {
+        childTitle: newestQuestion.childTitle,
+        text: formatPendingInteractionSummary({
+          interaction: newestQuestion.interaction,
+        }),
+      }
     : null;
-  const collapsedQuestionLabel =
-    collapsedQuestion && collapsedQuestionChildTitle
-      ? `${collapsedQuestionChildTitle}: ${collapsedQuestion}`
-      : collapsedQuestion;
   const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
@@ -805,7 +803,7 @@ function ActiveChildThreadsCard({
         aria-controls={SECTION_IDS.childThreads.body}
         aria-label={
           collapsedQuestion
-            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestionLabel}`
+            ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestion.childTitle}: ${collapsedQuestion.text}`
             : `${items.length} active ${childThreadNoun(items.length)}`
         }
         onClick={focus.onTriggerClick}
@@ -818,19 +816,12 @@ function ActiveChildThreadsCard({
         )}
       >
         <ChildThreadsHeaderIcon needsInput={needsInput} />
-        {collapsedQuestion && collapsedQuestionChildTitle ? (
+        {collapsedQuestion ? (
           <span className="flex min-w-0 flex-1 text-left">
             <ChildQuestionSummary
-              childTitle={collapsedQuestionChildTitle}
-              question={collapsedQuestion}
+              childTitle={collapsedQuestion.childTitle}
+              question={collapsedQuestion.text}
             />
-          </span>
-        ) : collapsedQuestion ? (
-          <span
-            className="min-w-0 flex-1 truncate text-left text-foreground"
-            title={collapsedQuestion}
-          >
-            {collapsedQuestion}
           </span>
         ) : (
           <span

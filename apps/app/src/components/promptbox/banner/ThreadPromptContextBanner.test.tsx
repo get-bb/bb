@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
+  type ChildThreadQuestion,
   type ThreadPromptGitSection,
 } from "./ThreadPromptContextBanner";
 
@@ -79,6 +80,43 @@ function childThreadItem(
   { pending = false }: { pending?: boolean } = {},
 ) {
   return { id, title, href: `/threads/${id}`, hasPendingInteraction: pending };
+}
+
+function childQuestion(
+  childThreadId: string,
+  childTitle: string,
+  prompt: string,
+): ChildThreadQuestion {
+  return {
+    childThreadId,
+    childTitle,
+    href: `/threads/${childThreadId}`,
+    interaction: {
+      id: `pint_${childThreadId}`,
+      threadId: childThreadId,
+      turnId: "turn_1",
+      providerId: "claude-code",
+      providerThreadId: "pt_1",
+      providerRequestId: `req_${childThreadId}`,
+      status: "pending",
+      statusReason: null,
+      createdAt: 1,
+      resolvedAt: null,
+      resolution: null,
+      payload: {
+        kind: "user_question",
+        questions: [
+          {
+            id: "choice",
+            prompt,
+            multiSelect: false,
+            allowFreeText: false,
+            options: [],
+          },
+        ],
+      },
+    },
+  };
 }
 
 describe("ThreadPromptContextBanner", () => {
@@ -407,7 +445,6 @@ describe("ThreadPromptContextBanner", () => {
           childThreadsSection={{
             items: [childThreadItem("thr_child", "Investigate failing checks")],
             pendingInteractions: [],
-            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection={null}
@@ -443,7 +480,6 @@ describe("ThreadPromptContextBanner", () => {
               childThreadItem("thr_b", "Investigate failing checks"),
             ],
             pendingInteractions: [],
-            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection="childThreads"
@@ -457,7 +493,6 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain('aria-label="Needs input"');
     expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain('data-icon="Loading"');
-    expect(markup).not.toContain('data-icon="UserRoundPlus"');
     expect(markup).not.toContain("running");
   });
 
@@ -478,7 +513,6 @@ describe("ThreadPromptContextBanner", () => {
               ),
             ],
             pendingInteractions: [],
-            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection={null}
@@ -516,8 +550,13 @@ describe("ThreadPromptContextBanner", () => {
               }),
               childThreadItem("thr_working", "Investigate failing checks"),
             ],
-            pendingInteractions: [],
-            waitingQuestion: "Which color should the badge use?",
+            pendingInteractions: [
+              childQuestion(
+                "thr_blocked",
+                "Install workspace tools",
+                "Which color should the badge use?",
+              ),
+            ],
           }}
           pullRequestSection={null}
           expandedSection={expandedSection}
@@ -529,7 +568,7 @@ describe("ThreadPromptContextBanner", () => {
     const collapsed = renderToStaticMarkup(renderBanner(null));
     expect(collapsed).toContain(">Which color should the badge use?<");
     expect(collapsed).toContain(
-      'aria-label="2 active child threads, needs input: Which color should the badge use?"',
+      'aria-label="2 active child threads, needs input: Install workspace tools: Which color should the badge use?"',
     );
     expect(collapsed).not.toContain("Active child threads");
 
@@ -545,11 +584,9 @@ describe("ThreadPromptContextBanner", () => {
       {
         gitSection = null,
         gitSectionPending = false,
-        waitingQuestion = null,
       }: {
         gitSection?: ReturnType<typeof makeGitSection> | null;
         gitSectionPending?: boolean;
-        waitingQuestion?: string | null;
       } = {},
     ) => (
       <MemoryRouter>
@@ -559,7 +596,7 @@ describe("ThreadPromptContextBanner", () => {
           archivedSection={null}
           environmentGoneSection={null}
           parentThreadSection={null}
-          childThreadsSection={{ items, pendingInteractions: [], waitingQuestion }}
+          childThreadsSection={{ items, pendingInteractions: [] }}
           pullRequestSection={null}
           expandedSection={null}
           onToggleSection={onToggleSection}
@@ -569,7 +606,10 @@ describe("ThreadPromptContextBanner", () => {
     const blocked = childThreadItem("thr_blocked", "Install workspace tools", {
       pending: true,
     });
-    const working = childThreadItem("thr_working", "Investigate failing checks");
+    const working = childThreadItem(
+      "thr_working",
+      "Investigate failing checks",
+    );
     const { rerender } = render(renderBanner([working]));
     expect(onToggleSection).not.toHaveBeenCalled();
 
@@ -610,9 +650,7 @@ describe("ThreadPromptContextBanner", () => {
         <ThreadPromptContextBanner
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={gitSectionPending}
-          archivedSection={
-            archived ? { archivedAt: 1_731_456_000_000 } : null
-          }
+          archivedSection={archived ? { archivedAt: 1_731_456_000_000 } : null}
           environmentGoneSection={
             environmentGone ? { status: "destroyed" } : null
           }
@@ -624,7 +662,6 @@ describe("ThreadPromptContextBanner", () => {
               }),
             ],
             pendingInteractions: [],
-            waitingQuestion: "Which color should the badge use?",
           }}
           pullRequestSection={null}
           expandedSection={null}
@@ -670,7 +707,6 @@ describe("ThreadPromptContextBanner", () => {
           childThreadsSection={{
             items,
             pendingInteractions: [],
-            waitingQuestion: null,
           }}
           pullRequestSection={null}
           expandedSection={expandedSection}
@@ -678,7 +714,10 @@ describe("ThreadPromptContextBanner", () => {
         />
       </MemoryRouter>
     );
-    const working = childThreadItem("thr_working", "Investigate failing checks");
+    const working = childThreadItem(
+      "thr_working",
+      "Investigate failing checks",
+    );
     const blocked = childThreadItem("thr_blocked", "Install workspace tools", {
       pending: true,
     });
