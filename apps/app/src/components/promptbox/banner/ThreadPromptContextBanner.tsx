@@ -41,10 +41,7 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
 import { formatPendingInteractionSummary } from "@bb/core-ui";
-import {
-  InlineQuestionPromptContext,
-  PendingInteractionPresentationContext,
-} from "@/components/thread/pending-interactions/PendingInteractionShell";
+import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   formatChangeSummary,
@@ -690,14 +687,14 @@ function ChildQuestionBody({
         {total > 1 ? `Question ${position}` : ""}
       </span>
       <div className="mt-1.5">
-        <PendingInteractionPresentationContext.Provider value="inline">
-          <InlineQuestionPromptContext.Provider value={question}>
-            <ThreadPendingInteractionBanners
-              interactions={[current.interaction]}
-              threadId={current.childThreadId}
-            />
-          </InlineQuestionPromptContext.Provider>
-        </PendingInteractionPresentationContext.Provider>
+        <InlinePendingInteractionContext.Provider
+          value={{ promptShownAbove: question }}
+        >
+          <ThreadPendingInteractionBanners
+            interactions={[current.interaction]}
+            threadId={current.childThreadId}
+          />
+        </InlinePendingInteractionContext.Provider>
       </div>
     </div>
   );
