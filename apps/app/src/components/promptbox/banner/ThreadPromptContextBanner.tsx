@@ -473,7 +473,7 @@ function ChildThreadsBody({
   onOpenQuestion: (interactionId: string) => void;
 }) {
   return (
-    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pb-2 pt-1.5">
+    <ul className="max-h-40 space-y-0.5 overflow-y-auto px-3 pt-1.5">
       {items.map((item) => {
         const pending = item.hasPendingInteraction
           ? pendingInteractions.find(
