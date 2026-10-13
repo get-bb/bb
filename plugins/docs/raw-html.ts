@@ -265,7 +265,7 @@ function pairTags(tokens: InlineToken[]): Map<number, number> {
 }
 
 const pairsByTokens = new WeakMap<InlineToken[], Map<number, number>>();
-const losslessByEditor = new WeakMap<Editor, Map<string, boolean>>();
+const losslessByEditor = new WeakMap<Editor, Map<string, string | false>>();
 
 export const RawHtmlBlock = Node.create({
   name: "rawHtmlBlock",
