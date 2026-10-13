@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -44,7 +44,27 @@ type DragState =
       pointerId: number;
       origin: Position;
       position: Position;
+    }
+  | {
+      kind: "pan";
+      pointerId: number;
+      clientX: number;
+      clientY: number;
+      scrollLeft: number;
+      scrollTop: number;
     };
+
+const MIDDLE_BUTTON = 1;
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return (
+    target.closest(
+      "input, textarea, select, button, [role='button'], [contenteditable='true']",
+    ) !== null
+  );
+}
 
 export interface GraphCanvasProps {
   nodes: readonly TreeNode[];
@@ -84,9 +104,38 @@ export function GraphCanvas({
   onDraftCancel,
   onDraftSubmit,
 }: GraphCanvasProps) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const movedRef = useRef(false);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [grabMode, setGrabMode] = useState(false);
+
+  /*
+   * Holding space turns the whole canvas into a hand, the way Figma and
+   * Excalidraw do it, so a big tree can be dragged around even where cards
+   * cover the background.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat) return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setGrabMode(true);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      setGrabMode(false);
+    };
+    const onBlur = () => setGrabMode(false);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   const basePositions = useMemo(() => {
     const positions = new Map<string, Position>();
@@ -227,7 +276,8 @@ export function GraphCanvas({
 
   const handleNodePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>, node: TreeNode) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || grabMode) return;
+      event.stopPropagation();
       const point = pointerPosition(event);
       const position = positionOf(node.id);
       movedRef.current = false;
@@ -241,7 +291,32 @@ export function GraphCanvas({
         position,
       });
     },
-    [capturePointer, pointerPosition, positionOf],
+    [capturePointer, grabMode, pointerPosition, positionOf],
+  );
+
+  /*
+   * A press that reaches the surface itself is a press on nothing: empty
+   * canvas, the middle button, or any card while space is held. All three mean
+   * "drag the view", which is the scroll container moving under the content.
+   */
+  const handleSurfacePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "touch") return;
+      if (event.button !== 0 && event.button !== MIDDLE_BUTTON) return;
+      const viewport = viewportRef.current;
+      if (viewport === null) return;
+      if (event.button === MIDDLE_BUTTON) event.preventDefault();
+      capturePointer(event.pointerId);
+      setDrag({
+        kind: "pan",
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      });
+    },
+    [capturePointer],
   );
 
   const handleLinkPointerDown = useCallback(
@@ -266,6 +341,13 @@ export function GraphCanvas({
   const handlePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (drag === null || drag.pointerId !== event.pointerId) return;
+      if (drag.kind === "pan") {
+        const viewport = viewportRef.current;
+        if (viewport === null) return;
+        viewport.scrollLeft = drag.scrollLeft - (event.clientX - drag.clientX);
+        viewport.scrollTop = drag.scrollTop - (event.clientY - drag.clientY);
+        return;
+      }
       const point = pointerPosition(event);
       if (drag.kind === "move") {
         const next = {
@@ -298,6 +380,10 @@ export function GraphCanvas({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (drag === null || drag.pointerId !== event.pointerId) return;
       releasePointer(event.pointerId);
+      if (drag.kind === "pan") {
+        setDrag(null);
+        return;
+      }
       if (drag.kind === "move") {
         if (movedRef.current) {
           onMove({
@@ -381,12 +467,16 @@ export function GraphCanvas({
   }
 
   return (
-    <div className="h-full min-h-0 w-full overflow-auto">
+    <div ref={viewportRef} className="h-full min-h-0 w-full overflow-auto">
       <div
         ref={contentRef}
         role="presentation"
-        className="relative select-none"
+        className={cn(
+          "relative select-none",
+          drag?.kind === "pan" ? "cursor-grabbing" : "cursor-grab",
+        )}
         style={{ width: bounds.width, height: bounds.height }}
+        onPointerDown={handleSurfacePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={() => setDrag(null)}
@@ -469,6 +559,9 @@ export function GraphCanvas({
                 className="absolute z-10 flex size-5 items-center justify-center rounded-full border border-border bg-card text-xs text-muted-foreground hover:border-destructive hover:text-destructive"
                 style={{ left, top }}
                 aria-label={`Remove the dependency from ${parent?.title ?? edge.parentId} to ${child?.title ?? edge.childId}`}
+                onPointerDown={(event) => {
+                  if (!grabMode) event.stopPropagation();
+                }}
                 onClick={() =>
                   onDisconnect({
                     parentId: edge.parentId,
@@ -488,11 +581,12 @@ export function GraphCanvas({
               <div
                 key={node.id}
                 className={cn(
-                  "absolute cursor-pointer rounded-md border shadow-xs",
+                  "absolute rounded-md border shadow-xs",
+                  grabMode ? "cursor-grab" : "cursor-pointer",
                   STATE_CARD_CLASS[node.state],
                   isSelected && "ring-2 ring-ring",
-                  drag?.kind === "move" &&
-                    drag.nodeId === node.id &&
+                  ((drag?.kind === "move" && drag.nodeId === node.id) ||
+                    drag?.kind === "pan") &&
                     "cursor-grabbing",
                 )}
                 style={{
@@ -596,7 +690,8 @@ export function GraphCanvas({
 
           {draftPlacement === null || draftCard === null ? null : (
             <div
-              className="absolute z-20"
+              className="absolute z-20 cursor-auto"
+              onPointerDown={(event) => event.stopPropagation()}
               style={{
                 left: draftPlacement.left,
                 top: draftPlacement.top,

@@ -90,6 +90,14 @@ function canvas(): HTMLElement {
   return surface;
 }
 
+function viewport(): HTMLElement {
+  const surface = canvas().parentElement?.parentElement;
+  if (surface === undefined || surface === null) {
+    throw new Error("no canvas viewport");
+  }
+  return surface;
+}
+
 function centerOf(target: TreeNode): { clientX: number; clientY: number } {
   return {
     clientX: target.x + NODE_WIDTH / 2,
@@ -446,5 +454,113 @@ describe("GraphCanvas", () => {
     });
     fireEvent.pointerUp(canvas(), { pointerId: 1, clientX: 210, clientY: 90 });
     expect(handlers.onMove).not.toHaveBeenCalled();
+  });
+
+  it("pans the view when empty canvas is dragged", () => {
+    const handlers = setup();
+    const view = viewport();
+    view.scrollLeft = 100;
+    view.scrollTop = 100;
+    fireEvent.pointerDown(canvas(), {
+      pointerId: 1,
+      button: 0,
+      clientX: 500,
+      clientY: 500,
+    });
+    fireEvent.pointerMove(canvas(), {
+      pointerId: 1,
+      clientX: 470,
+      clientY: 440,
+    });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, clientX: 470, clientY: 440 });
+    expect(view.scrollLeft).toBe(130);
+    expect(view.scrollTop).toBe(160);
+    expect(handlers.onMove).not.toHaveBeenCalled();
+    expect(handlers.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("pans instead of moving a task while space is held", () => {
+    const handlers = setup();
+    const view = viewport();
+    view.scrollLeft = 0;
+    view.scrollTop = 0;
+    fireEvent.keyDown(document.body, { code: "Space" });
+    fireEvent.pointerDown(cardOf("Parent"), {
+      pointerId: 1,
+      button: 0,
+      ...centerOf(parent),
+    });
+    fireEvent.pointerMove(canvas(), {
+      pointerId: 1,
+      clientX: centerOf(parent).clientX - 40,
+      clientY: centerOf(parent).clientY - 20,
+    });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, ...centerOf(parent) });
+    expect(view.scrollLeft).toBe(40);
+    expect(view.scrollTop).toBe(20);
+    expect(handlers.onMove).not.toHaveBeenCalled();
+    expect(handlers.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("moves a task again once space is released", () => {
+    const handlers = setup();
+    fireEvent.keyDown(document.body, { code: "Space" });
+    fireEvent.keyUp(document.body, { code: "Space" });
+    fireEvent.pointerDown(cardOf("Parent"), {
+      pointerId: 1,
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(canvas(), {
+      pointerId: 1,
+      clientX: 210,
+      clientY: 90,
+    });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, clientX: 210, clientY: 90 });
+    expect(handlers.onMove).toHaveBeenCalledWith({
+      nodeId: parent.id,
+      x: 200,
+      y: 80,
+    });
+  });
+
+  it("pans with the middle button without disturbing a task", () => {
+    const handlers = setup();
+    const view = viewport();
+    view.scrollLeft = 0;
+    view.scrollTop = 0;
+    fireEvent.pointerDown(cardOf("Parent"), {
+      pointerId: 1,
+      button: 1,
+      ...centerOf(parent),
+    });
+    fireEvent.pointerMove(canvas(), {
+      pointerId: 1,
+      clientX: centerOf(parent).clientX - 15,
+      clientY: centerOf(parent).clientY - 25,
+    });
+    fireEvent.pointerUp(canvas(), { pointerId: 1, ...centerOf(parent) });
+    expect(view.scrollLeft).toBe(15);
+    expect(view.scrollTop).toBe(25);
+    expect(handlers.onMove).not.toHaveBeenCalled();
+  });
+
+  it("leaves a dependency removal clickable on the canvas", () => {
+    const linked = node({ ...child, dependsOn: [parent.id] });
+    const { onDisconnect } = setup({
+      nodes: [parent, linked],
+      selectedNodeId: linked.id,
+    });
+    const remove = screen.getByRole("button", {
+      name: "Remove the dependency from Parent to Child",
+    });
+    fireEvent.pointerDown(remove, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(canvas(), { pointerId: 1 });
+    fireEvent.click(remove);
+    expect(onDisconnect).toHaveBeenCalledWith({
+      parentId: parent.id,
+      childId: linked.id,
+    });
   });
 });
