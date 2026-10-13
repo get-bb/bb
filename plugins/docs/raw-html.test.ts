@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { Editor } from "@tiptap/core";
+import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import StarterKit from "@tiptap/starter-kit";
@@ -11,7 +12,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
 import { describe, expect, it } from "vitest";
-import { RawHtmlBlock, RawInlineHtml, restoreRawHtml } from "./raw-html";
+import { RawHtml, restoreRawHtml } from "./raw-html";
 
 function createEditor(content: string) {
   return new Editor({
@@ -25,12 +26,26 @@ function createEditor(content: string) {
       TableRow,
       TableHeader,
       TableCell,
-      RawHtmlBlock,
-      RawInlineHtml,
+      RawHtml,
       Markdown.configure({ html: true, linkify: true }),
     ],
     content,
   });
+}
+
+function pasteEvent(text: string): ClipboardEvent {
+  return Object.assign(new Event("paste"), {
+    clipboardData: { getData: () => text },
+  }) as unknown as ClipboardEvent;
+}
+
+function sourceRange(editor: Editor, text: string) {
+  let from = 0;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.isText && node.text?.includes(text))
+      from = pos + node.text.indexOf(text);
+  });
+  return { from, to: from + text.length };
 }
 
 function save(editor: Editor): string {
@@ -45,7 +60,7 @@ function splitHeaderCell(editor: Editor) {
   editor.chain().setTextSelection(end).splitBlock().run();
 }
 
-describe("raw HTML blocks", () => {
+describe("raw HTML", () => {
   it.each([
     '<video autoplay loop muted playsinline>\n  <source src="/demo.mp4?a=1&amp;b=2" type="video/mp4">\n</video>',
     '<video controls><a href="/demo.mp4">Watch the demo</a></video>',
@@ -57,7 +72,6 @@ describe("raw HTML blocks", () => {
     '> <div>\n> <video src="/demo.mp4"></video>\n> </div>',
     '- Item\n\n  <div>\n  <video src="/demo.mp4"></video>\n  </div>',
     "- one\n- <div>two</div>\n- three",
-    "1. <video controls>\n   <source src=\"a.mp4\">\n   </video>\n2. three",
   ])("retains exact source across edits and repeated loads: %s", (html) => {
     const editor = createEditor(`Before.\n\n${html}\n\nAfter.`);
     try {
@@ -104,19 +118,41 @@ describe("raw HTML blocks", () => {
     }
   });
 
-  it("saves edits typed into an HTML source block exactly", () => {
+  it.each([
+    'Text <code data-docs-html-source="true">&lt;img src=x onerror=alert(1)&gt;</code> end.',
+    'Break <br data-docs-html-break="true" data-source="&lt;img src=x onerror=alert(1)&gt;"> end.',
+    '```\n<code data-docs-html-source="true">&lt;script&gt;alert(1)&lt;/script&gt;</code>\n```',
+    '`<br data-docs-html-break="true" data-source="&lt;br&gt;">`',
+  ])("never decodes marker-like text from the file: %s", (content) => {
+    const editor = createEditor(`Before.\n\n${content}`);
+    try {
+      editor.commands.insertContentAt(1, "Edited ");
+      expect(save(editor)).toBe(`Edited Before.\n\n${content}`);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("saves edits typed into HTML source exactly", () => {
     const editor = createEditor(
-      '<div>\n<video src="/a.mp4"></video>\n</div>\n\nAfter.',
+      '<div>\n<video src="/a.mp4"></video>\n</div>\n\nText <video src="x.mp4"></video> end.',
     );
     try {
       let block = 0;
+      let inline = 0;
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name === "rawHtmlBlock")
           block = pos + 1 + node.textContent.indexOf("a.mp4");
+        if (node.isText && node.text?.includes("x.mp4"))
+          inline = pos + node.text.indexOf("x.mp4");
       });
-      editor.commands.insertContentAt(block, "b");
+      editor
+        .chain()
+        .insertContentAt(inline, "new-")
+        .insertContentAt(block, "b")
+        .run();
       expect(save(editor)).toBe(
-        '<div>\n<video src="/ba.mp4"></video>\n</div>\n\nAfter.',
+        '<div>\n<video src="/ba.mp4"></video>\n</div>\n\nText <video src="new-x.mp4"></video> end.',
       );
     } finally {
       editor.destroy();
@@ -150,17 +186,76 @@ describe("raw HTML blocks", () => {
     }
   });
 
+  it.each([
+    ["<b>bold <i>both</i></b>", "b i", "both"],
+    ['<a href="https://x.dev" target="_blank">docs</a>', "a", "docs"],
+    ["<span>**bold** in span</span>", "span strong", "bold"],
+    ["**Press <kbd>Ctrl</kbd> now**", "kbd", "Ctrl"],
+    ["*H<sub>2</sub>O*", "sub", "2"],
+  ])(
+    "displays inline formatting tag %s and saves its exact source",
+    (html, selector, text) => {
+      const content = `Before ${html} after.`;
+      const editor = createEditor(content);
+      try {
+        expect(editor.view.dom.querySelector(selector)?.textContent).toBe(
+          text,
+        );
+        expect(editor.view.dom.textContent).not.toContain("<");
+        expect(editor.view.dom.querySelector("[href]")).toBeNull();
+        editor.commands.insertContentAt(1, "Edited ");
+        const saved = save(editor);
+        expect(saved).toBe(`Edited ${content}`);
+        editor.commands.setContent(saved);
+        expect(save(editor)).toBe(saved);
+      } finally {
+        editor.destroy();
+      }
+    },
+  );
+
+  it("displays a line break for inline br", () => {
+    const editor = createEditor("one<br>two");
+    try {
+      expect(editor.view.dom.querySelector("p br")).not.toBeNull();
+      expect(editor.view.dom.textContent).toBe("onetwo");
+      expect(save(editor)).toBe("one<br>two");
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it.each([
+    'Anchor <a name="top"></a> here.',
+    "Press <kbd> </kbd> to pause.",
+    "Bad <b>a **c</b> d** end.",
+    "Mis-nested <b>a <i>b</b> c</i> end.",
+    "<video controls>fallback</video> after.",
+  ])("shows other inline HTML as editable source: %s", (content) => {
+    const editor = createEditor(content);
+    try {
+      expect(
+        editor.view.dom.querySelector("[data-docs-html-source]")?.textContent,
+      ).toMatch(/^</);
+      expect(save(editor)).toBe(content);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it("keeps a table it saved as HTML editable, including after reformatting", () => {
-    const editor = createEditor("| a | b |\n| --- | --- |\n| one | two |");
+    const editor = createEditor(
+      "| a | b |\n| --- | --- |\n| one<br>two | <strong>s</strong> |",
+    );
     try {
       splitHeaderCell(editor);
       const saved = save(editor);
       expect(saved).toMatch(/^<table/);
+      expect(saved).toContain("one<br>two");
+      expect(saved).toContain("<strong>s</strong>");
       expect(saved).not.toContain("data-docs-");
       editor.commands.setContent(saved);
-      expect(editor.view.dom.querySelector("table td")?.textContent).toBe(
-        "one",
-      );
+      expect(editor.view.dom.querySelector("table td br")).not.toBeNull();
       expect(save(editor)).toBe(saved);
       editor.commands.setContent(
         saved
@@ -168,6 +263,29 @@ describe("raw HTML blocks", () => {
           .replace("</tbody>", "\n  <tr><td>3</td><td>4</td></tr>\n</tbody>"),
       );
       expect(editor.view.dom.querySelectorAll("table tr")).toHaveLength(3);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("writes original inline HTML when a table is saved as HTML", () => {
+    const cells = [
+      '<a href="https://x.test" target="_blank">x</a>',
+      '<kbd>k</kbd> <video src="v.mp4"></video>',
+    ];
+    const editor = createEditor(
+      `| a | b |\n| --- | --- |\n| ${cells[0]} | ${cells[1]} |`,
+    );
+    try {
+      splitHeaderCell(editor);
+      const saved = save(editor);
+      for (const cell of cells) expect(saved).toContain(cell);
+      expect(saved).not.toContain("data-docs-");
+      editor.commands.setContent(saved);
+      expect(
+        editor.view.dom.querySelector("pre[data-docs-raw-html]"),
+      ).not.toBeNull();
+      expect(save(editor)).toBe(saved);
     } finally {
       editor.destroy();
     }
@@ -184,6 +302,39 @@ describe("raw HTML blocks", () => {
     }
   });
 
+  it("pairs thousands of unclosed inline tags in linear time", () => {
+    const editor = createEditor("");
+    try {
+      const started = performance.now();
+      editor.storage.markdown.parser.md.render(
+        `x${'<a href="#">'.repeat(20_000)}`,
+      );
+      expect(performance.now() - started).toBeLessThan(2_000);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it.each([
+    `<p>see <span data-docs-html-open='<a href="https://evil.example" onmouseover="alert(1)">' data-docs-html-close="</a>" data-docs-html-mark="forged">this</span> ok</p>`,
+    `<p>see<br data-docs-html-break="forged" data-source='<img src="https://evil.example/t.gif">'>this ok</p>`,
+  ])("does not turn pasted HTML into hidden raw HTML: %s", (html) => {
+    const editor = createEditor("");
+    try {
+      const pasted = new window.DOMParser().parseFromString(html, "text/html");
+      editor.view.dispatch(
+        editor.state.tr.replaceSelection(
+          ProseMirrorDOMParser.fromSchema(editor.schema).parseSlice(
+            pasted.body,
+          ),
+        ),
+      );
+      expect(save(editor)).not.toMatch(/evil\.example|<img|<a /);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it("keeps task list checkboxes", () => {
     const editor = createEditor("Intro.\n\n- [x] Done\n- [ ] Todo");
     const checked = () =>
@@ -193,11 +344,116 @@ describe("raw HTML blocks", () => {
     try {
       expect(checked()).toEqual(["true", "false"]);
       editor.commands.insertContentAt(1, "Edited ");
-      const saved: string = editor.storage.markdown.getMarkdown();
+      const saved = save(editor);
       expect(saved).toContain("- [x] Done");
       expect(saved).not.toContain("<input");
       editor.commands.setContent(saved);
       expect(checked()).toEqual(["true", "false"]);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("keeps multi-line HTML that starts a list item inside the list", () => {
+    const editor = createEditor(
+      '1. <video controls>\n   <source src="a.mp4">\n   </video>\n2. three',
+    );
+    try {
+      expect(editor.view.dom.querySelectorAll("ol > li")).toHaveLength(2);
+      expect(save(editor)).toBe(
+        '1. <video controls> <source src="a.mp4"> </video>\n2. three',
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it.each([
+    "**<kbd>Ctrl</kbd>**",
+    "**<sup>1</sup> a** b",
+    "<sup>[1](#fn1)</sup>",
+    "[<kbd>Ctrl</kbd>](https://x.test)",
+    '<a href="https://x.test">the `foo` API</a>',
+    "<span><span>x</span></span>",
+    "<b>a <b>b</b> c</b>",
+    "<kbd>Ctrl</kbd><kbd>C</kbd>",
+  ])("keeps tags around emphasis, links, code, and identical tags exact: %s", (html) => {
+    const content = `Before ${html} after.`;
+    const editor = createEditor(content);
+    try {
+      editor.commands.insertContentAt(1, "Edited ");
+      const saved = save(editor);
+      expect(saved).toBe(`Edited ${content}`);
+      editor.commands.setContent(saved);
+      expect(save(editor)).toBe(saved);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("keeps links and bold out of inline HTML source", () => {
+    const content = 'Text <video src="old.mp4"></video> end.';
+    const editor = createEditor(content);
+    try {
+      editor
+        .chain()
+        .setTextSelection(sourceRange(editor, "old.mp4"))
+        .setLink({ href: "https://x.test" })
+        .toggleBold()
+        .run();
+      expect(save(editor)).toBe(content);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("pastes plain text into inline HTML source", () => {
+    const editor = createEditor('Text <video src="old.mp4"></video> end.');
+    try {
+      editor.commands.setTextSelection(sourceRange(editor, "old.mp4"));
+      editor.view.pasteText("https://new.test/b.mp4", pasteEvent("https://new.test/b.mp4"));
+      expect(save(editor)).toBe(
+        'Text <video src="https://new.test/b.mp4"></video> end.',
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("does not autolink URLs typed inside inline HTML source", () => {
+    const content = "Ref <!-- see https://x.test/page --> end.";
+    const editor = createEditor(content);
+    try {
+      const { to } = sourceRange(editor, "https://x.test/page");
+      editor.view.dispatch(editor.state.tr.insertText(" ", to));
+      expect(save(editor)).toBe(
+        "Ref <!-- see https://x.test/page  --> end.",
+      );
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("ignores raw HTML markers in pasted HTML even with this page's marker", () => {
+    const editor = createEditor("Press <kbd>Ctrl</kbd> now.");
+    try {
+      const { dom } = editor.view.serializeForClipboard(
+        editor.state.doc.slice(0, editor.state.doc.content.size),
+      );
+      const marker = /data-docs-html-mark="([0-9a-f]+)"/.exec(dom.innerHTML)?.[1];
+      expect(marker).toBeDefined();
+      editor.commands.setContent("");
+      editor.view.pasteHTML(
+        `<p>see <span data-docs-html-open='<a href="https://evil.example">' data-docs-html-close="</a>" data-docs-html-mark="${marker}">this</span><br data-docs-html-break="${marker}" data-source='<img src="https://evil.example/t.gif">'>ok</p>`,
+        pasteEvent(""),
+      );
+      editor.view.pasteHTML(
+        `<span data-pm-slice='0 0 ["rawHtmlBlock",null]'>&lt;img src="https://evil.example/x.gif"&gt;</span>`,
+        pasteEvent(""),
+      );
+      const saved = save(editor);
+      expect(saved).not.toContain("<img");
+      expect(saved).not.toContain("<a ");
     } finally {
       editor.destroy();
     }

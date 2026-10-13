@@ -57,7 +57,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
-import { RawHtmlBlock, RawInlineHtml, restoreRawHtml } from "./raw-html.js";
+import { RawHtml, restoreRawHtml } from "./raw-html.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { toast } from "sonner";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
@@ -358,6 +358,7 @@ const EDITOR_CSS = `
 .bb-simple-notes-editor .tiptap pre { background: var(--muted); border-radius: var(--radius); padding: 0.75em 1em; overflow-x: auto; font-size: 0.875em; line-height: 1.5; margin: 1.43em 0 0; tab-size: 2; }
 .bb-simple-notes-editor .tiptap pre code { background: none; padding: 0; font-size: inherit; }
 .bb-simple-notes-editor .tiptap pre[data-docs-raw-html]::before { content: "HTML"; display: block; margin-bottom: 0.5em; color: var(--muted-foreground); font-size: 0.75em; }
+.bb-simple-notes-editor .tiptap code[data-docs-html-source] { color: var(--muted-foreground); }
 .bb-simple-notes-editor .tiptap blockquote { border-left: 2px solid var(--border); padding-left: 1em; margin: 1.25em 0 0; }
 .bb-simple-notes-editor .tiptap hr { border: none; border-top: 1px solid var(--border); margin: 3em 0 0; }
 .bb-simple-notes-editor .tiptap hr + :is(h1, h2, h3, h4) { margin-top: 1.25em; }
@@ -498,8 +499,7 @@ function TiptapEditor(props: {
         TableHeader,
         TableCell,
         MarkdownTaskInput,
-        RawHtmlBlock,
-        RawInlineHtml,
+        RawHtml,
         HtmlEmbed.configure({ baseUrl: previewBaseUrl, notePath }),
         Placeholder.configure({ placeholder: "Start writing…" }),
         Markdown.configure({
