@@ -389,84 +389,90 @@ describe("fixed panel tab server sync", () => {
     expect(apiMocks.updateThreadTabs).not.toHaveBeenCalled();
   });
 
-  it("keeps a newly opened tab selected when a concurrent update wins its first save", async () => {
-    const threadId = "sync-stale-write";
-    const originalTab = createThreadInfoFixedPanelTab();
-    const localTab = createBrowserFixedPanelTab({
-      environmentId: null,
-      url: "https://local.example.com",
-    });
-    const concurrentTab = createBrowserFixedPanelTab({
-      environmentId: null,
-      url: "https://concurrent.example.com",
-    });
-    apiMocks.getThreadTabs
-      .mockResolvedValueOnce({ revision: 1, tabs: [originalTab] })
-      .mockResolvedValueOnce({
-        revision: 2,
-        tabs: [originalTab, concurrentTab],
+  it.each([1, 2])(
+    "keeps a newly opened tab selected after %i concurrent save conflicts",
+    async (conflicts) => {
+      const threadId = `sync-stale-write-${conflicts}`;
+      const originalTab = createThreadInfoFixedPanelTab();
+      const localTab = createBrowserFixedPanelTab({
+        environmentId: null,
+        url: "https://local.example.com",
       });
-    apiMocks.updateThreadTabs
-      .mockRejectedValueOnce(
-        new BbHttpError({
-          body: null,
-          code: "thread_tabs_conflict",
-          message: "changed",
-          status: 409,
-        }),
-      )
-      .mockResolvedValueOnce({
-        revision: 3,
+      const concurrentTab = createBrowserFixedPanelTab({
+        environmentId: null,
+        url: "https://concurrent.example.com",
+      });
+      apiMocks.getThreadTabs.mockResolvedValueOnce({
+        revision: 1,
+        tabs: [originalTab],
+      });
+      for (let attempt = 1; attempt <= conflicts; attempt++) {
+        apiMocks.getThreadTabs.mockResolvedValueOnce({
+          revision: attempt + 1,
+          tabs: [originalTab, concurrentTab],
+        });
+        apiMocks.updateThreadTabs.mockRejectedValueOnce(
+          new BbHttpError({
+            body: null,
+            code: "thread_tabs_conflict",
+            message: "changed",
+            status: 409,
+          }),
+        );
+      }
+      apiMocks.updateThreadTabs.mockResolvedValueOnce({
+        revision: conflicts + 2,
         tabs: [originalTab, concurrentTab, localTab],
       });
-    const queryClient = createTestQueryClient();
-    const { result } = renderHook(
-      () => ({
-        state: useFixedPanelTabsState(threadId, threadId),
-        update: useUpdateFixedPanelTabsState(threadId, threadId),
-      }),
-      { wrapper: createQueryWrapper(queryClient) },
-    );
-    await waitFor(() => {
-      expect(result.current.state.secondary.tabs).toEqual([originalTab]);
-    });
+      const queryClient = createTestQueryClient();
+      const { result } = renderHook(
+        () => ({
+          state: useFixedPanelTabsState(threadId, threadId),
+          update: useUpdateFixedPanelTabsState(threadId, threadId),
+        }),
+        { wrapper: createQueryWrapper(queryClient) },
+      );
+      await waitFor(() => {
+        expect(result.current.state.secondary.tabs).toEqual([originalTab]);
+      });
 
-    act(() => {
-      result.current.update((current) => ({
-        ...current,
-        secondary: {
-          ...current.secondary,
-          activeTabId: localTab.id,
-          isOpen: true,
-          tabs: [...current.secondary.tabs, localTab],
-        },
-      }));
-    });
+      act(() => {
+        result.current.update((current) => ({
+          ...current,
+          secondary: {
+            ...current.secondary,
+            activeTabId: localTab.id,
+            isOpen: true,
+            tabs: [...current.secondary.tabs, localTab],
+          },
+        }));
+      });
 
-    await waitFor(() => {
-      expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
-        expectedRevision: 1,
-        tabs: [originalTab, localTab],
+      await waitFor(() => {
+        expect(apiMocks.updateThreadTabs).toHaveBeenCalledWith({
+          expectedRevision: 1,
+          tabs: [originalTab, localTab],
+          threadId,
+        });
+      });
+      await waitFor(() => {
+        expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(conflicts + 1);
+        expect(result.current.state.secondary.tabs).toEqual([
+          originalTab,
+          concurrentTab,
+          localTab,
+        ]);
+      });
+      expect(result.current.state.secondary.activeTabId).toBe(localTab.id);
+      expect(result.current.state.secondary.isOpen).toBe(true);
+      expect(apiMocks.updateThreadTabs).toHaveBeenLastCalledWith({
+        expectedRevision: conflicts + 1,
+        tabs: [originalTab, concurrentTab, localTab],
         threadId,
       });
-    });
-    await waitFor(() => {
-      expect(apiMocks.getThreadTabs).toHaveBeenCalledTimes(2);
-      expect(result.current.state.secondary.tabs).toEqual([
-        originalTab,
-        concurrentTab,
-        localTab,
-      ]);
-    });
-    expect(result.current.state.secondary.activeTabId).toBe(localTab.id);
-    expect(result.current.state.secondary.isOpen).toBe(true);
-    expect(apiMocks.updateThreadTabs).toHaveBeenLastCalledWith({
-      expectedRevision: 2,
-      tabs: [originalTab, concurrentTab, localTab],
-      threadId,
-    });
-    expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(2);
-  });
+      expect(apiMocks.updateThreadTabs).toHaveBeenCalledTimes(conflicts + 1);
+    },
+  );
 });
 
 describe("fixed panel tab storage churn", () => {

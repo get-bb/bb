@@ -35,6 +35,7 @@ interface MigrateLocalThreadTabsArgs extends ThreadTabsSyncArgs {
 const writeQueues = new WeakMap<QueryClient, Map<string, Promise<void>>>();
 const pendingWriteCounts = new WeakMap<QueryClient, Map<string, number>>();
 const attemptedLocalMigrations = new WeakMap<QueryClient, Set<string>>();
+const MAX_WRITE_ATTEMPTS = 3;
 
 type PersistedThreadFixedPanelTab = Exclude<
   FixedPanelTab,
@@ -217,17 +218,32 @@ async function persistThreadTabs({
   queryClient,
   threadId,
 }: PersistThreadTabsArgs): Promise<void> {
-  const current = await readCurrentThreadTabs({ queryClient, threadId });
-  const tabsToPersist = mergeThreadTabChanges(current.tabs, previousTabs, tabs);
-  if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
-    return;
+  let current = await readCurrentThreadTabs({ queryClient, threadId });
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt++) {
+    const tabsToPersist = mergeThreadTabChanges(
+      current.tabs,
+      previousTabs,
+      tabs,
+    );
+    if (areThreadTabListsEquivalent(current.tabs, tabsToPersist)) {
+      return;
+    }
+    try {
+      const response = await sdk.threads.tabs.update({
+        expectedRevision: current.revision,
+        tabs: threadTabsSchema.parse(tabsToPersist),
+        threadId,
+      });
+      setCachedThreadTabs(queryClient, threadId, response);
+      return;
+    } catch (error) {
+      if (!isThreadTabsConflict(error) || attempt === MAX_WRITE_ATTEMPTS) {
+        throw error;
+      }
+      current = await sdk.threads.tabs.get({ threadId });
+      setCachedThreadTabs(queryClient, threadId, current);
+    }
   }
-  const response = await sdk.threads.tabs.update({
-    expectedRevision: current.revision,
-    tabs: threadTabsSchema.parse(tabsToPersist),
-    threadId,
-  });
-  setCachedThreadTabs(queryClient, threadId, response);
 }
 
 async function migrateLocalThreadTabs({
