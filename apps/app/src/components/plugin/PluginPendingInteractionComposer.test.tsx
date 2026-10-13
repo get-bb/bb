@@ -33,7 +33,7 @@ import {
 } from "@/lib/plugin-logos";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
-import { PendingInteractionPresentationContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
+import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { sdk } from "@/lib/sdk";
@@ -543,14 +543,16 @@ describe("PluginPendingInteractionComposer", () => {
     registerSecretsBranding("Secrets");
     markPluginFrontendsSettled();
     renderComposer(
-      <PendingInteractionPresentationContext.Provider value="inline">
+      <InlinePendingInteractionContext.Provider
+        value={{ promptShownAbove: "Choose a secret" }}
+      >
         <PluginPendingInteractionComposer
           collapsedByDefault={false}
           interaction={interaction}
           request={secretsRequest}
           origin="plugin"
         />
-      </PendingInteractionPresentationContext.Provider>,
+      </InlinePendingInteractionContext.Provider>,
     );
     expect(screen.queryByText("Requested by Secrets")).toBeNull();
   });
