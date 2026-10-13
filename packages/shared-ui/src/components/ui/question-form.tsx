@@ -100,10 +100,15 @@ function QuestionOptionRow({
         {checked ? <Icon name="Check" className="size-3" aria-hidden /> : null}
       </span>
       {density === "compact" ? (
-        <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="shrink-0 text-sm text-foreground">{label}</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <span className="min-w-0 break-words text-sm text-foreground">
+            {label}
+          </span>
           {description ? (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
+            <span
+              title={description}
+              className="min-w-0 grow basis-24 truncate text-xs text-muted-foreground"
+            >
               {description}
             </span>
           ) : null}
