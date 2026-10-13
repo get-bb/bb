@@ -1,5 +1,5 @@
 import {
-  PendingInteractionPresentationContext,
+  InlinePendingInteractionContext,
   PendingInteractionShell,
 } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { useCallback, useContext, useMemo, useState } from "react";
@@ -40,7 +40,7 @@ export function PluginPendingInteractionComposer({
   const { pendingInteractions } = usePluginSlots();
   const pluginName = usePluginDisplayName(request.pluginId);
   const pluginsSettled = usePluginFrontendsSettled();
-  const presentation = useContext(PendingInteractionPresentationContext);
+  const inline = useContext(InlinePendingInteractionContext) !== null;
   const stopThread = useStopThread();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -102,7 +102,7 @@ export function PluginPendingInteractionComposer({
     >
       {() => (
         <>
-          {presentation === "inline" ? null : (
+          {inline ? null : (
             <p className="mb-4 text-xs text-muted-foreground">
               {origin === "plugin"
                 ? `Requested by ${pluginName}`

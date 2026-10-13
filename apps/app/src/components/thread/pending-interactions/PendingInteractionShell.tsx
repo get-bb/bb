@@ -15,12 +15,9 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
 
-export type PendingInteractionPresentation = "card" | "inline";
-
-export const PendingInteractionPresentationContext =
-  createContext<PendingInteractionPresentation>("card");
-
-export const InlineQuestionPromptContext = createContext<string | null>(null);
+export const InlinePendingInteractionContext = createContext<{
+  promptShownAbove: string;
+} | null>(null);
 
 interface PendingInteractionShellProps {
   label: string;
@@ -41,8 +38,7 @@ export function PendingInteractionShell({
   children,
   testId,
 }: PendingInteractionShellProps) {
-  const presentation = useContext(PendingInteractionPresentationContext);
-  const promptShownAbove = useContext(InlineQuestionPromptContext);
+  const inline = useContext(InlinePendingInteractionContext);
   const [isExpanded, setIsExpanded] = useState(expandedByDefault);
   const [previousExpandedByDefault, setPreviousExpandedByDefault] =
     useState(expandedByDefault);
@@ -96,8 +92,8 @@ export function PendingInteractionShell({
       {errorMessage}
     </div>
   ) : null;
-  if (presentation === "inline") {
-    const inlineTitle = title === promptShownAbove ? undefined : title;
+  if (inline) {
+    const inlineTitle = title === inline.promptShownAbove ? undefined : title;
     return (
       <section
         aria-label={label}
@@ -107,7 +103,7 @@ export function PendingInteractionShell({
       >
         <ThreadQuestionFormHost
           density="compact"
-          promptShownAbove={promptShownAbove}
+          promptShownAbove={inline.promptShownAbove}
         >
           <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
             {inlineTitle ? (
