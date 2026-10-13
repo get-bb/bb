@@ -26,10 +26,7 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
-import {
-  InlineQuestionPromptContext,
-  PendingInteractionPresentationContext,
-} from "./PendingInteractionShell";
+import { InlinePendingInteractionContext } from "./PendingInteractionShell";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -650,11 +647,11 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       render(
         <QueryClientProvider client={new QueryClient()}>
           <MemoryRouter>
-            <PendingInteractionPresentationContext.Provider value="inline">
-              <InlineQuestionPromptContext.Provider value={promptShownAbove}>
-                {bannerElement(commandApproval)}
-              </InlineQuestionPromptContext.Provider>
-            </PendingInteractionPresentationContext.Provider>
+            <InlinePendingInteractionContext.Provider
+              value={{ promptShownAbove }}
+            >
+              {bannerElement(commandApproval)}
+            </InlinePendingInteractionContext.Provider>
           </MemoryRouter>
         </QueryClientProvider>,
       );
