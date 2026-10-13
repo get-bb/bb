@@ -118,6 +118,23 @@ npx bb-app stop
 recorded process really is that launcher, then stops it. Pass `--data-dir` when
 the bb you want to stop does not use the default `~/.bb/`.
 
+### The `bb` command
+
+To control bb from outside bb, open **Settings → General → Command line** and
+choose **Install** next to **bb CLI**. Threads in bb already have `bb`; this
+is for your own terminals, scripts, and agents running outside bb, such as
+Claude Code or Codex. bb links a launcher from `~/.bb/bin/bb` into a folder on
+your PATH (`~/.local/bin` on Linux; `/opt/homebrew/bin`, `/usr/local/bin`, or
+`~/.local/bin` on macOS). On Windows it adds `~/.bb/bin` to your user PATH;
+open a new terminal afterwards. **Remove** takes it off again. bb leaves any
+other `bb` you already have in place.
+
+From a terminal, before `bb` is on your PATH:
+
+```bash
+npx --package bb-app bb settings cli-command install
+```
+
 ### Updating from the app
 
 When bb has an update, Settings → Updates shows an **Update** button (or run

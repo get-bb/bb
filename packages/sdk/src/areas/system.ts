@@ -21,6 +21,7 @@ import type {
   SystemAppUpdateApplyRequest,
   SystemAppUpdateQuery,
   SystemAppUpdateStatus,
+  SystemCliCommandStatus,
   SystemAttentionResponse,
   SystemConfigReloadResponse,
   SystemConfigResponse,
@@ -82,6 +83,12 @@ export interface SystemAppUpdateArgs {
 export type SystemApplyAppUpdateArgs = SystemAppUpdateApplyRequest;
 export type SystemAcknowledgeAppUpdateArgs = SystemAppUpdateAcknowledgeRequest;
 export type SystemAppUpdateStatusResult = SystemAppUpdateStatus;
+
+export interface SystemCliCommandArgs {
+  signal?: AbortSignal;
+}
+
+export type SystemCliCommandStatusResult = SystemCliCommandStatus;
 
 export interface SystemVoiceTranscriptionArgs {
   file: Blob;
@@ -210,6 +217,11 @@ export interface SystemArea {
   acknowledgeAppUpdate(
     args: SystemAcknowledgeAppUpdateArgs,
   ): Promise<SystemAppUpdateStatusResult>;
+  experimental_cliCommand(
+    args?: SystemCliCommandArgs,
+  ): Promise<SystemCliCommandStatusResult>;
+  experimental_installCliCommand(): Promise<SystemCliCommandStatusResult>;
+  experimental_removeCliCommand(): Promise<SystemCliCommandStatusResult>;
 }
 
 function versionQuery(args: SystemVersionArgs | undefined): SystemVersionQuery {
@@ -445,6 +457,24 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.system["app-update"].acknowledge.$post({
           json: input,
         }),
+      );
+    },
+    async experimental_cliCommand(input) {
+      return transport.readJson(
+        transport.api.v1.system["cli-command"].$get(
+          {},
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async experimental_installCliCommand() {
+      return transport.readJson(
+        transport.api.v1.system["cli-command"].install.$post({}),
+      );
+    },
+    async experimental_removeCliCommand() {
+      return transport.readJson(
+        transport.api.v1.system["cli-command"].remove.$post({}),
       );
     },
   };

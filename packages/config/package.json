@@ -108,6 +108,11 @@
       "types": "./src/app-install.ts",
       "default": "./src/app-install.ts"
     },
+    "./cli-command": {
+      "source": "./src/cli-command.ts",
+      "types": "./src/cli-command.ts",
+      "default": "./src/cli-command.ts"
+    },
     "./app-update": {
       "source": "./src/app-update.ts",
       "types": "./src/app-update.ts",

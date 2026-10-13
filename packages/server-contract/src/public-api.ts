@@ -223,6 +223,7 @@ import type {
   SystemAppUpdateApplyRequest,
   SystemAppUpdateQuery,
   SystemAppUpdateStatus,
+  SystemCliCommandStatus,
   SystemVersionQuery,
   SystemVersionResponse,
   SystemVoiceTranscriptionForm,
@@ -2134,6 +2135,24 @@ export const publicApiRoutes = {
         systemAppUpdateAcknowledgeRequestSchema,
       ),
       response: jsonResponse<SystemAppUpdateStatus>(),
+    }),
+    cliCommand: defineRoute({
+      path: "/system/cli-command",
+      method: "get",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
+    }),
+    installCliCommand: defineRoute({
+      path: "/system/cli-command/install",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
+    }),
+    removeCliCommand: defineRoute({
+      path: "/system/cli-command/remove",
+      method: "post",
+      request: noRequest<EmptyInput>(),
+      response: jsonResponse<SystemCliCommandStatus>(),
     }),
   },
 };

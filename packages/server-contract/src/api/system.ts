@@ -375,6 +375,24 @@ export const systemVersionQuerySchema = z.object({
 });
 export type SystemVersionQuery = z.infer<typeof systemVersionQuerySchema>;
 
+export const systemCliCommandShadowSchema = z.object({
+  path: z.string().min(1),
+  source: z.enum(["machine", "npm", "other"]),
+});
+export type SystemCliCommandShadow = z.infer<
+  typeof systemCliCommandShadowSchema
+>;
+
+export const systemCliCommandStatusSchema = z.object({
+  installedPath: z.string().min(1).nullable(),
+  onPath: z.boolean(),
+  shadowedBy: systemCliCommandShadowSchema.nullable(),
+  supported: z.boolean(),
+});
+export type SystemCliCommandStatus = z.infer<
+  typeof systemCliCommandStatusSchema
+>;
+
 export const systemAppUpdateRevisionSchema = z.object({
   commit: z.string().nullable(),
   version: z.string(),

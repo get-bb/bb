@@ -53,7 +53,31 @@ function UninstallRoute() {
             <li>Linux: delete the bb AppImage.</li>
           </ul>
 
-          <h2>3. Delete your data (optional)</h2>
+          <h2>3. Remove the bb CLI</h2>
+
+          <p>
+            Skip this step unless you installed the <code>bb</code> CLI from
+            Settings. Before you remove the app, open Settings, then General,
+            and choose <strong>Remove</strong> next to <strong>bb CLI</strong>.
+            If the app is already gone:
+          </p>
+
+          <ul>
+            <li>
+              Mac and Linux: delete the <code>bb</code> link bb created. It is
+              in <code>~/.local/bin</code>, <code>/opt/homebrew/bin</code>,{" "}
+              <code>/usr/local/bin</code>, or <code>~/bin</code>, and points
+              into <code>~/.bb/bin</code>.
+            </li>
+            <li>
+              Windows: open Settings, search for{" "}
+              <strong>Edit environment variables for your account</strong>, and
+              remove the entry ending in <code>.bb\bin</code> from{" "}
+              <strong>Path</strong>.
+            </li>
+          </ul>
+
+          <h2>4. Delete your data (optional)</h2>
 
           <p>
             Delete <code>~/.bb</code> (on Windows,{" "}

@@ -161,6 +161,18 @@ export function useInstallCliSkills() {
   });
 }
 
+export function useChangeCliCommand() {
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to change the bb CLI install.",
+    },
+    mutationFn: (change: "install" | "remove") =>
+      change === "install"
+        ? sdk.system.experimental_installCliCommand()
+        : sdk.system.experimental_removeCliCommand(),
+  });
+}
+
 export function useUpdateAppearance() {
   const queryClient = useQueryClient();
 
