@@ -69,16 +69,17 @@ function minimumSupportedVersionForRequirement(
     : CODEX_MINIMUM_SUPPORTED_VERSION;
 }
 
-function codexUpdateCommand(): {
+function codexUpdateCommand(executablePath: string | null): {
   command: string;
   args: string[];
   displayCommand: string;
 } {
+  const command = executablePath ?? "codex";
   const args = ["update"];
   return {
-    command: "codex",
+    command,
     args,
-    displayCommand: formatCommand("codex", args),
+    displayCommand: formatCommand(command, args),
   };
 }
 
@@ -138,7 +139,7 @@ export async function getCodexProviderInstallationStatus(
             command:
               actionKind === "install"
                 ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE).displayCommand
-                : codexUpdateCommand().displayCommand,
+                : codexUpdateCommand(resolvedExecutable).displayCommand,
           },
     needsUpdate,
     versionUnsupported,
@@ -167,7 +168,7 @@ function buildCodexProviderInstallationRun(
     command:
       action === "install"
         ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE)
-        : codexUpdateCommand(),
+        : codexUpdateCommand(status.executablePath),
     verification: installationVerification(status, action),
   };
 }
@@ -402,7 +403,6 @@ export async function getCodexProviderUsage(): Promise<ProviderUsageResult> {
 }
 
 export const __testing = {
-  buildProviderInstallationRun: buildCodexProviderInstallationRun,
   minimumSupportedVersionForRequirement,
   normalizeUsage,
 };

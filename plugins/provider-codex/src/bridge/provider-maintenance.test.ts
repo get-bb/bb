@@ -7,6 +7,7 @@ import {
   __testing,
   getCodexProviderHealth,
   getCodexProviderInstallationStatus,
+  getCodexProviderInstallationRun,
   getCodexProviderUsage,
 } from "./provider-maintenance.js";
 
@@ -37,27 +38,6 @@ async function writeFakeCli(args: {
     `#!/bin/sh\n${touch}echo "${args.output}"\n`,
     { mode: 0o755 },
   );
-}
-
-function installationStatus() {
-  return {
-    executableName: "codex",
-    executablePath: "/usr/local/bin/codex",
-    installed: true,
-    installSource: "npmGlobal" as const,
-    currentVersion: "1.0.0",
-    latestVersion: "1.1.0",
-    minimumSupportedVersion: "0.136.0",
-    npmPackageName: "@openai/codex",
-    npmGlobalPackageVersion: "1.0.0",
-    installAction: {
-      kind: "update" as const,
-      label: "Update" as const,
-      command: "codex update",
-    },
-    needsUpdate: true,
-    versionUnsupported: false,
-  };
 }
 
 describe("Codex provider maintenance", () => {
@@ -109,29 +89,9 @@ describe("Codex provider maintenance", () => {
       __testing.minimumSupportedVersionForRequirement("thread_rewind"),
     ).toBe("0.143.0");
   });
-
-  it("resolves a fresh typed update plan and rejects a stale action", () => {
-    expect(
-      __testing.buildProviderInstallationRun(installationStatus(), "update"),
-    ).toEqual({
-      available: true,
-      command: {
-        command: "codex",
-        args: ["update"],
-        displayCommand: "codex update",
-      },
-      verification: { kind: "version_at_least", version: "1.1.0" },
-    });
-    expect(
-      __testing.buildProviderInstallationRun(installationStatus(), "install"),
-    ).toEqual({
-      available: false,
-      message: "Codex install is no longer available on this host.",
-    });
-  });
 });
 
-describe("Codex credential health and usage", () => {
+describe("Codex installation, credential health and usage", () => {
   const tempDirs: string[] = [];
   let homeDir: string;
 
@@ -224,6 +184,37 @@ describe("Codex credential health and usage", () => {
       await expect(fs.stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
     },
   );
+
+  it("updates the executable discovered on PATH, including paths with spaces", async () => {
+    const binDir = path.join(homeDir, "Program Files", "Codex", "bin");
+    await fs.mkdir(binDir, { recursive: true });
+    await writeFakeCli({ binDir, name: "codex", output: "codex-cli 0.150.0" });
+    await writeFakeCli({ binDir, name: "npm", output: "0.160.0" });
+    vi.stubEnv("PATH", `${binDir}${path.delimiter}${process.env.PATH ?? ""}`);
+    const executablePath = path.join(
+      binDir,
+      process.platform === "win32" ? "codex.cmd" : "codex",
+    );
+
+    const status = await getCodexProviderInstallationStatus();
+    expect(status.executablePath).toBe(executablePath);
+    const displayCommand = `'${executablePath}' update`;
+    expect(status.installAction).toEqual({
+      kind: "update",
+      label: "Update",
+      command: displayCommand,
+    });
+    const run = await getCodexProviderInstallationRun("update");
+    expect(run).toEqual({
+      available: true,
+      command: { command: executablePath, args: ["update"], displayCommand },
+      verification: { kind: "version_at_least", version: "0.160.0" },
+    });
+    await expect(getCodexProviderInstallationRun("install")).resolves.toEqual({
+      available: false,
+      message: "Codex install is no longer available on this host.",
+    });
+  });
 
   it("reports unauthenticated when auth.json is missing", async () => {
     await expect(getCodexProviderHealth()).resolves.toEqual({
