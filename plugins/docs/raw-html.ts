@@ -53,15 +53,13 @@ function decodeHtml(value: string): string {
 
 export function restoreRawHtml(markdown: string): string {
   const decode = (_match: string, source: string) => decodeHtml(source);
-  return markdown
-    .replaceAll(
-      new RegExp(
-        `<pre data-docs-raw-html="${MARKER}"><code>([^<]*)</code></pre>`,
-        "g",
-      ),
-      decode,
-    )
-    );
+  return markdown.replaceAll(
+    new RegExp(
+      `<pre data-docs-raw-html="${MARKER}"><code>([^<]*)</code></pre>`,
+      "g",
+    ),
+    decode,
+  );
 }
 
 function parseHtml(html: string): HTMLElement {
