@@ -460,8 +460,6 @@ function ParentThreadSectionBody({
 const CHILD_THREAD_ROW_CLASS =
   "flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-foreground/90 underline-offset-2 hover:underline";
 
-const CHILD_QUESTION_SETTLE_MS = 500;
-
 const CHILD_QUESTION_STEP_BUTTON_CLASS =
   "flex size-6 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
@@ -630,14 +628,12 @@ function ChildQuestionBody({
   current,
   index,
   total,
-  settling,
   onStep,
 }: {
   titleLinkRef: RefObject<HTMLAnchorElement | null>;
   current: ChildThreadQuestion;
   index: number;
   total: number;
-  settling: boolean;
   onStep: (offset: 1 | -1) => void;
 }) {
   const position = `${index + 1} of ${total}`;
@@ -693,7 +689,7 @@ function ChildQuestionBody({
       <span aria-live="polite" className="sr-only">
         {total > 1 ? `Question ${position}` : ""}
       </span>
-      <div className="mt-1.5" inert={settling ? true : undefined}>
+      <div className="mt-1.5">
         <PendingInteractionPresentationContext.Provider value="inline">
           <InlineQuestionPromptContext.Provider value={question}>
             <ThreadPendingInteractionBanners
@@ -931,7 +927,6 @@ function ActiveChildThreadsCard({
   const [openQuestion, setOpenQuestion] = useState<{
     interactionId: string;
     index: number;
-    settling: boolean;
   } | null>(null);
   const returnFocusChildId = useRef<string | null>(null);
   useEffect(() => {
@@ -967,25 +962,8 @@ function ActiveChildThreadsCard({
     setOpenQuestion({
       interactionId: currentQuestion.interaction.id,
       index: questionIndex,
-      settling: matchedIndex < 0 || (openQuestion?.settling ?? false),
     });
   }
-  const settlingInteractionId = openQuestion?.settling
-    ? openQuestion.interactionId
-    : null;
-  useEffect(() => {
-    if (settlingInteractionId === null) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setOpenQuestion((current) =>
-        current?.interactionId === settlingInteractionId
-          ? { ...current, settling: false }
-          : current,
-      );
-    }, CHILD_QUESTION_SETTLE_MS);
-    return () => window.clearTimeout(timer);
-  }, [settlingInteractionId]);
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const titleLinkRef = useRef<HTMLAnchorElement>(null);
   const focusBackOnOpen = useRef(false);
@@ -1080,7 +1058,7 @@ function ActiveChildThreadsCard({
     );
     if (index >= 0) {
       focusBackOnOpen.current = true;
-      setOpenQuestion({ interactionId, index, settling: false });
+      setOpenQuestion({ interactionId, index });
     }
   };
   const stepQuestion = (offset: 1 | -1) => {
@@ -1091,7 +1069,6 @@ function ActiveChildThreadsCard({
       setOpenQuestion({
         interactionId: next.interaction.id,
         index: nextIndex,
-        settling: false,
       });
     }
   };
@@ -1141,7 +1118,6 @@ function ActiveChildThreadsCard({
               setOpenQuestion({
                 interactionId: newestQuestion.interaction.id,
                 index: 0,
-                settling: false,
               });
             }
             focus.onTriggerClick();
@@ -1189,7 +1165,6 @@ function ActiveChildThreadsCard({
             current={currentQuestion}
             index={questionIndex}
             total={pendingInteractions.length}
-            settling={openQuestion?.settling ?? false}
             onStep={stepQuestion}
           />
         ) : (
