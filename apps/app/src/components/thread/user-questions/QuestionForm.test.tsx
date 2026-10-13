@@ -109,11 +109,16 @@ function render(
     submit?: (value: InteractionResponse) => Promise<void>;
     cancel?: () => Promise<void>;
     draftKey?: string;
+    density?: "default" | "compact";
+    promptShownAbove?: string;
   } = {},
 ) {
   return renderReact(
     <AppCommandProvider>
-      <ThreadQuestionFormHost>
+      <ThreadQuestionFormHost
+        density={handlers.density ?? "default"}
+        promptShownAbove={handlers.promptShownAbove ?? null}
+      >
         <QuestionForm
           draftKey={handlers.draftKey}
           questions={payload.questions}
@@ -257,6 +262,28 @@ describe("answering a single-select question", () => {
     expect(submit).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the compact labels when the host is compact", () => {
+    const slot = render(singleSelect, { density: "compact" });
+    expect(getButtonByText(slot, "Submit")).toBeTruthy();
+    expect(slot.queryByText("Submit answer")).toBeNull();
+  });
+
+  it("hides the compact prompt only when the host already shows that text", () => {
+    const prompt = "Which database should we use?";
+    const shownAbove = render(singleSelect, {
+      density: "compact",
+      promptShownAbove: prompt,
+    });
+    expect(shownAbove.getAllByText(prompt)).toHaveLength(1);
+    cleanup();
+
+    const labelAbove = render(singleSelect, {
+      density: "compact",
+      promptShownAbove: "Database",
+    });
+    expect(labelAbove.getAllByText(prompt)).toHaveLength(2);
   });
 
   it("submits the selected option value", () => {

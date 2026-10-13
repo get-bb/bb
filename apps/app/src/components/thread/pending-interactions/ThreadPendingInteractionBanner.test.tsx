@@ -26,6 +26,10 @@ import {
 } from "@/lib/plugin-frontend-boot-state";
 import { resetAllCrashedPluginSlotsForTest } from "../../plugin/PluginSlotMount";
 import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanner";
+import {
+  InlineQuestionPromptContext,
+  PendingInteractionPresentationContext,
+} from "./PendingInteractionShell";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";
 import { BottomAnchorContext } from "@/components/ui/bottom-anchored-scroll-body";
 
@@ -639,6 +643,32 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
     expect(
       screen.queryByRole("link", { name: "From Install tools" }),
     ).toBeNull();
+  });
+
+  it("shows an inline approval's title only when the banner line differs", () => {
+    const renderInline = (promptShownAbove: string) =>
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <PendingInteractionPresentationContext.Provider value="inline">
+              <InlineQuestionPromptContext.Provider value={promptShownAbove}>
+                {bannerElement(commandApproval)}
+              </InlineQuestionPromptContext.Provider>
+            </PendingInteractionPresentationContext.Provider>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+
+    renderInline("Not in allowlist: bash");
+    expect(
+      screen.queryByRole("heading", { name: "Not in allowlist: bash" }),
+    ).toBeNull();
+    cleanup();
+
+    renderInline("Run the test suite?");
+    expect(
+      screen.getByRole("heading", { name: "Not in allowlist: bash" }),
+    ).toBeTruthy();
   });
 
   it("renders a user question open by default and keeps draft answers across collapse", () => {

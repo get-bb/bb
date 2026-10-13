@@ -2,7 +2,10 @@ import { VoiceInputTextarea } from "@/components/promptbox/VoiceInputTextarea";
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { QUESTION_SELECT_APP_COMMAND_IDS } from "@bb/domain";
-import { QuestionFormHostProvider } from "@bb/shared-ui/question-form-host";
+import {
+  QuestionFormHostProvider,
+  type QuestionFormHost,
+} from "@bb/shared-ui/question-form-host";
 import { VoiceInputTextareaProvider } from "@bb/shared-ui/voice-input-textarea";
 import {
   useAppCommandContext,
@@ -11,7 +14,15 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 
-export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
+export function ThreadQuestionFormHost({
+  children,
+  density,
+  promptShownAbove,
+}: {
+  children: ReactNode;
+  density: QuestionFormHost["density"];
+  promptShownAbove: string | null;
+}) {
   const handlerRef = useRef<((index: number) => boolean) | null>(null);
   const [hasHandler, setHasHandler] = useState(false);
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
@@ -29,6 +40,8 @@ export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
   );
   const value = useMemo(
     () => ({
+      density,
+      promptShownAbove,
       shortcuts: new Map(
         QUESTION_SELECT_APP_COMMAND_IDS.flatMap((command, index) => {
           const binding = bindings.get(command);
@@ -37,7 +50,7 @@ export function ThreadQuestionFormHost({ children }: { children: ReactNode }) {
       ),
       registerChoiceHandler,
     }),
-    [bindings, registerChoiceHandler],
+    [bindings, density, promptShownAbove, registerChoiceHandler],
   );
   const enabled = isFocusedPane && hasHandler;
   useAppCommandContext("questionOpen", enabled);

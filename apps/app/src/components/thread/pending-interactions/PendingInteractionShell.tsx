@@ -2,7 +2,9 @@ import { ThreadQuestionFormHost } from "../user-questions/ThreadQuestionFormHost
 import { useStickyFooterAvailableHeight } from "../user-questions/useStickyFooterAvailableHeight";
 import {
   Activity,
+  createContext,
   Fragment,
+  useContext,
   useId,
   useRef,
   useState,
@@ -18,6 +20,13 @@ export interface PendingInteractionSourceThread {
   href: string;
   title: string;
 }
+
+export type PendingInteractionPresentation = "card" | "inline";
+
+export const PendingInteractionPresentationContext =
+  createContext<PendingInteractionPresentation>("card");
+
+export const InlineQuestionPromptContext = createContext<string | null>(null);
 
 interface PendingInteractionShellProps {
   label: string;
@@ -40,6 +49,8 @@ export function PendingInteractionShell({
   sourceThread,
   testId,
 }: PendingInteractionShellProps) {
+  const presentation = useContext(PendingInteractionPresentationContext);
+  const promptShownAbove = useContext(InlineQuestionPromptContext);
   const [isExpanded, setIsExpanded] = useState(expandedByDefault);
   const [previousExpandedByDefault, setPreviousExpandedByDefault] =
     useState(expandedByDefault);
@@ -93,6 +104,51 @@ export function PendingInteractionShell({
       {errorMessage}
     </div>
   ) : null;
+  if (presentation === "inline") {
+    const inlineTitle = title === promptShownAbove ? undefined : title;
+    return (
+      <section
+        aria-label={label}
+        data-testid={testId}
+        data-presentation="inline"
+        className="flex min-w-0 flex-col text-xs text-muted-foreground"
+      >
+        <ThreadQuestionFormHost
+          density="compact"
+          promptShownAbove={promptShownAbove}
+        >
+          <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
+            {inlineTitle ? (
+              <h3
+                title={inlineTitle}
+                className="min-w-0 truncate text-sm font-medium text-foreground"
+              >
+                {inlineTitle}
+              </h3>
+            ) : null}
+            {children ? (
+              <div className={inlineTitle ? "mt-1" : undefined}>
+                {children(true)}
+              </div>
+            ) : null}
+            {footer ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {footer}
+              </div>
+            ) : null}
+          </div>
+        </ThreadQuestionFormHost>
+        {errorMessage ? (
+          <div
+            aria-live="polite"
+            className="mt-1.5 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
+          >
+            {errorMessage}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
   const sourceThreadLink = sourceThread ? (
     <NavLink
       to={sourceThread.href}
@@ -153,7 +209,7 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <ThreadQuestionFormHost>
+        <ThreadQuestionFormHost density="default" promptShownAbove={null}>
           <div
             id={contentId}
             hidden={!isExpanded}
