@@ -7,6 +7,7 @@ import {
 export type QuestionFormHost = ExperimentalQuestionFormHost & {
   density: "default" | "compact";
   promptShownAbove: string | null;
+  closeInline: (() => void) | null;
 };
 export type QuestionShortcut = ExperimentalQuestionShortcut;
 export function useQuestionFormHost(): QuestionFormHost {
@@ -14,5 +15,6 @@ export function useQuestionFormHost(): QuestionFormHost {
     ...experimental_useQuestionFormHost(),
     density: "default",
     promptShownAbove: null,
+    closeInline: null,
   };
 }

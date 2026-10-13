@@ -544,7 +544,7 @@ describe("PluginPendingInteractionComposer", () => {
     markPluginFrontendsSettled();
     renderComposer(
       <InlinePendingInteractionContext.Provider
-        value={{ promptShownAbove: "Choose a secret" }}
+        value={{ promptShownAbove: "Choose a secret", close: () => {} }}
       >
         <PluginPendingInteractionComposer
           collapsedByDefault={false}
