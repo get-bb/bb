@@ -193,7 +193,7 @@ function displayMarkdown(
   return withImages.replace(
     /^::html\{src="([^"]+)"(?: height="(\d+)")?\}\s*$/gm,
     (_match, source: string, height: string | undefined) =>
-      `<div data-simple-html-embed="true" data-src="${encodeURIComponent(source)}" data-height="${height ?? "360"}"></div>`,
+      `<div data-simple-html-embed="true" data-src="${encodeURIComponent(source)}" data-height="${height ?? "360"}"></div>\n`,
   );
 }
 

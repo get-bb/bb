@@ -1033,7 +1033,7 @@ describe("Docs nav panel", () => {
             ),
           readNote: () => ({
             content:
-              '# Article\n\n![Sketch](./_attachments/sketch.png)\n\n::html{src="./report.html" height="240"}',
+              '# Article\n\n![Sketch](./_attachments/sketch.png)\n\n::html{src="./report.html" height="240"}\n\nAfter the report.',
             sha256: "sha-1",
           }),
           preparePreview: () => preview,
@@ -1043,6 +1043,7 @@ describe("Docs nav panel", () => {
     );
 
     await slot.findByText("Article");
+    await slot.findByText("After the report.");
     await waitFor(() => {
       const image = slot.container.querySelector("img");
       expect(image?.getAttribute("src")).toBe(

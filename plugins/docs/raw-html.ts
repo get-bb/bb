@@ -45,7 +45,7 @@ export const RawHtml = Node.create({
     return {
       markdown: {
         serialize(state, node) {
-          state.write(String(node.attrs.source));
+          state.text(String(node.attrs.source).replace(/\n$/, ""), false);
           state.closeBlock(node);
         },
         parse: {
@@ -59,6 +59,8 @@ export const RawHtml = Node.create({
               ) {
                 return source;
               }
+              if (tokens[index - 1]?.type === "list_item_open")
+                return `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source.replace(/\n$/, ""))}"></span>`;
               return `<div data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source)}"><pre>${markdown.utils.escapeHtml(source)}</pre></div>`;
             };
           },
@@ -98,12 +100,19 @@ export const RawInlineHtml = RawHtml.extend({
     return {
       markdown: {
         serialize(state, node) {
-          state.write(String(node.attrs.source));
+          state.text(String(node.attrs.source), false);
         },
         parse: {
           setup(markdown) {
-            markdown.renderer.rules.html_inline = (tokens, index) =>
-              `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(tokens[index]!.content)}"></span>`;
+            markdown.renderer.rules.html_inline = (tokens, index) => {
+              const source = tokens[index]!.content;
+              if (
+                index === 0 &&
+                source.startsWith('<input class="task-list-item-checkbox"')
+              )
+                return source;
+              return `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source)}"></span>`;
+            };
           },
         },
       } satisfies MarkdownNodeSpec,

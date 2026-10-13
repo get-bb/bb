@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
 import { Markdown } from "tiptap-markdown";
 import { describe, expect, it } from "vitest";
 import { RawHtml, RawInlineHtml } from "./raw-html";
@@ -9,6 +11,8 @@ function createEditor(content: string) {
   return new Editor({
     extensions: [
       StarterKit,
+      TaskList,
+      TaskItem.configure({ nested: true }),
       RawHtml,
       RawInlineHtml,
       Markdown.configure({ html: true }),
@@ -26,6 +30,10 @@ describe("raw HTML blocks", () => {
     "<!-- keep this comment -->",
     "<script>window.untrusted = true;</script>",
     '<div onclick="alert(1)"><img src="missing" onerror="alert(2)"></div>',
+    '> <div>\n> <video src="/demo.mp4"></video>\n> </div>',
+    '- Item\n\n  <div>\n  <video src="/demo.mp4"></video>\n  </div>',
+    "- one\n- <div>two</div>\n- three",
+    "1. <video controls>\n   <source src=\"a.mp4\">\n   </video>\n2. three",
   ])("retains exact source across edits and repeated loads: %s", (html) => {
     const editor = createEditor(`Before.\n\n${html}\n\nAfter.`);
     try {
@@ -69,6 +77,25 @@ describe("raw HTML blocks", () => {
       expect(saved).toContain(first);
       expect(saved).toContain(second);
       expect(saved.indexOf(first)).toBeLessThan(saved.indexOf(second));
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("keeps task list checkboxes", () => {
+    const editor = createEditor("Intro.\n\n- [x] Done\n- [ ] Todo");
+    const checked = () =>
+      [...editor.view.dom.querySelectorAll("li[data-checked]")].map((item) =>
+        item.getAttribute("data-checked"),
+      );
+    try {
+      expect(checked()).toEqual(["true", "false"]);
+      editor.commands.insertContentAt(1, "Edited ");
+      const saved: string = editor.storage.markdown.getMarkdown();
+      expect(saved).toContain("- [x] Done");
+      expect(saved).not.toContain("<input");
+      editor.commands.setContent(saved);
+      expect(checked()).toEqual(["true", "false"]);
     } finally {
       editor.destroy();
     }
