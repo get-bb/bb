@@ -363,8 +363,13 @@ export function QuestionForm({
   const disabled = inputDisabled || settledAction !== null;
   const [voiceBusy, setVoiceBusy] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
-  const { density, promptShownAbove, shortcuts, registerChoiceHandler } =
-    useQuestionFormHost();
+  const {
+    density,
+    promptShownAbove,
+    closeInline,
+    shortcuts,
+    registerChoiceHandler,
+  } = useQuestionFormHost();
 
   const totalQuestions = questions.length;
   const currentQuestion = questions[currentIndex] ?? null;
@@ -531,8 +536,14 @@ export function QuestionForm({
           size="sm"
           variant="ghost"
           className={compactButtonClass}
-          disabled={cancelDisabled || settledAction !== null}
+          disabled={
+            closeInline === null && (cancelDisabled || settledAction !== null)
+          }
           onClick={async () => {
+            if (closeInline) {
+              closeInline();
+              return;
+            }
             try {
               await onCancel();
               setSettledAction("cancel");
