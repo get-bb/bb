@@ -57,13 +57,7 @@ import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import TableRow from "@tiptap/extension-table-row";
 import { Markdown } from "tiptap-markdown";
-import {
-  RawHtmlBlock,
-  RawHtmlBreak,
-  RawHtmlFormatting,
-  RawHtmlInline,
-  restoreRawHtml,
-} from "./raw-html.js";
+import { RawHtml, restoreRawHtml } from "./raw-html.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { toast } from "sonner";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
@@ -505,10 +499,7 @@ function TiptapEditor(props: {
         TableHeader,
         TableCell,
         MarkdownTaskInput,
-        RawHtmlBlock,
-        RawHtmlBreak,
-        RawHtmlInline,
-        RawHtmlFormatting,
+        RawHtml,
         HtmlEmbed.configure({ baseUrl: previewBaseUrl, notePath }),
         Placeholder.configure({ placeholder: "Start writing…" }),
         Markdown.configure({
