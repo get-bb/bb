@@ -404,7 +404,7 @@ describe("ThreadPendingInteractionBanner presentation detail images", () => {
 });
 
 describe("ThreadPendingInteractionBanner collapsed strip", () => {
-  it("fits native and plugin interaction shells in the remaining footer space", () => {
+  it("fits an inline question and a plugin card in the remaining footer space", () => {
     const observers = new Set<() => void>();
     vi.stubGlobal(
       "ResizeObserver",
@@ -455,7 +455,11 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
               }}
             >
               <div data-scroll-footer="">
-                {bannerElement(question)}
+                <InlinePendingInteractionContext.Provider
+                  value={{ promptShownAbove: "Which path?" }}
+                >
+                  {bannerElement(question)}
+                </InlinePendingInteractionContext.Provider>
                 {bannerElement(pluginRequest)}
               </div>
             </BottomAnchorContext.Provider>
@@ -479,6 +483,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
       act(() => {
         for (const observer of observers) observer();
       });
+      expect(native.getAttribute("data-presentation")).toBe("inline");
       expect(native.style.maxHeight).toBe("200px");
       expect(plugin.style.maxHeight).toBe("200px");
       const toggle = plugin.querySelector('button[aria-expanded="true"]');
