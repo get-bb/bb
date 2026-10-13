@@ -75,10 +75,7 @@ function PrivacyRoute() {
             send a message, and when you install a plugin. We use them to see
             how bb is used and to decide what to improve. Each event carries a
             random install ID, the app version, and basic system details such as
-            your operating system, processor type, and Node.js version. If you
-            install bb with an install command copied from one of our ad pages,
-            the first startup event also includes the name of that ad campaign.
-            PostHog
+            your operating system, processor type, and Node.js version. PostHog
             also records the IP address each event comes from and the
             approximate location it maps to. Events never include your prompts,
             code, file names, project names, or account details. To turn this
