@@ -92,8 +92,11 @@ export function PendingInteractionShell({
       id={errorId}
       aria-live="polite"
       className={
-        isExpanded
-          ? "mx-3 mb-3 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
+        inline || isExpanded
+          ? cn(
+              "rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text",
+              inline ? "mt-1.5" : "mx-3 mb-3",
+            )
           : "sr-only"
       }
     >
@@ -134,14 +137,7 @@ export function PendingInteractionShell({
             ) : null}
           </div>
         </ThreadQuestionFormHost>
-        {errorMessage ? (
-          <div
-            aria-live="polite"
-            className="mt-1.5 rounded-md border border-surface-destructive-border bg-surface-destructive px-2 py-1 text-xs text-destructive-text"
-          >
-            {errorMessage}
-          </div>
-        ) : null}
+        {errorNode}
       </section>
     );
   }
