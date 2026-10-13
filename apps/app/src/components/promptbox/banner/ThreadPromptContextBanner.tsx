@@ -1314,9 +1314,10 @@ export function ThreadPromptContextBanner({
     expandedSection === "parentThread",
     () => onToggleSection("parentThread"),
   );
-  const childThreadItems = archivedSection
-    ? NO_CHILD_THREAD_ITEMS
-    : (childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS);
+  const childThreadItems =
+    archivedSection || environmentGoneSection
+      ? NO_CHILD_THREAD_ITEMS
+      : (childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS);
   useExpandForNewNeedsInput(childThreadItems, expandedSection, () =>
     onToggleSection("childThreads"),
   );
@@ -1344,7 +1345,7 @@ export function ThreadPromptContextBanner({
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
       : null;
-    return withActiveChildThreads(
+    return (
       <ReadOnlyContextBanner
         iconName={environmentGone ? "CircleX" : "Archive"}
         statusLabel={environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL}
@@ -1369,7 +1370,7 @@ export function ThreadPromptContextBanner({
         parentThreadSection={parentThreadSection}
         expandedSection={expandedSection}
         onToggleSection={onToggleSection}
-      />,
+      />
     );
   }
   if (gitSectionPending) {

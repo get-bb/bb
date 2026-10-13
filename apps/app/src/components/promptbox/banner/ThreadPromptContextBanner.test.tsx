@@ -596,7 +596,7 @@ describe("ThreadPromptContextBanner", () => {
     ).not.toBeNull();
   });
 
-  it("keeps child threads visible while git status loads or the environment is gone, but not once archived", () => {
+  it("keeps child threads visible while git status loads, but not once the environment is gone or the parent is archived", () => {
     const renderBanner = ({
       archived = false,
       environmentGone = false,
@@ -644,9 +644,7 @@ describe("ThreadPromptContextBanner", () => {
     ).toBeNull();
 
     rerender(renderBanner({ environmentGone: true }));
-    expect(screen.getByRole("region", { name: "Child threads" })).toBe(
-      childCard,
-    );
+    expect(screen.queryByRole("region", { name: "Child threads" })).toBeNull();
     expect(
       screen.getByRole("button", { name: "Environment unavailable" }),
     ).toBeTruthy();
