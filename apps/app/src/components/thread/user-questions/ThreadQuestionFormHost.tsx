@@ -18,10 +18,12 @@ export function ThreadQuestionFormHost({
   children,
   density,
   promptShownAbove,
+  closeInline,
 }: {
   children: ReactNode;
   density: QuestionFormHost["density"];
   promptShownAbove: string | null;
+  closeInline: (() => void) | null;
 }) {
   const handlerRef = useRef<((index: number) => boolean) | null>(null);
   const [hasHandler, setHasHandler] = useState(false);
@@ -42,6 +44,7 @@ export function ThreadQuestionFormHost({
     () => ({
       density,
       promptShownAbove,
+      closeInline,
       shortcuts: new Map(
         QUESTION_SELECT_APP_COMMAND_IDS.flatMap((command, index) => {
           const binding = bindings.get(command);
@@ -50,7 +53,7 @@ export function ThreadQuestionFormHost({
       ),
       registerChoiceHandler,
     }),
-    [bindings, density, promptShownAbove, registerChoiceHandler],
+    [bindings, closeInline, density, promptShownAbove, registerChoiceHandler],
   );
   const enabled = isFocusedPane && hasHandler;
   useAppCommandContext("questionOpen", enabled);

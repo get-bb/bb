@@ -6,6 +6,7 @@ import {
 } from "@/lib/machine-removal-display";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -628,12 +629,14 @@ function ChildQuestionBody({
   index,
   total,
   onStep,
+  onClose,
 }: {
   titleLinkRef: RefObject<HTMLAnchorElement | null>;
   current: ChildThreadQuestion;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
+  onClose: (childThreadId: string) => void;
 }) {
   const position = `${index + 1} of ${total}`;
   const childTitle = useThreadTitleDisplayText(current.childTitle);
@@ -643,7 +646,10 @@ function ChildQuestionBody({
   const form = useMemo(
     () => (
       <InlinePendingInteractionContext.Provider
-        value={{ promptShownAbove: question }}
+        value={{
+          promptShownAbove: question,
+          close: () => onClose(current.childThreadId),
+        }}
       >
         <ThreadPendingInteractionBanners
           interactions={[current.interaction]}
@@ -651,7 +657,7 @@ function ChildQuestionBody({
         />
       </InlinePendingInteractionContext.Provider>
     ),
-    [current.interaction, current.childThreadId, question],
+    [current.interaction, current.childThreadId, question, onClose],
   );
   return (
     <div className="px-3 pb-2 pt-2">
@@ -942,6 +948,10 @@ function ActiveChildThreadsCard({
       ?.querySelector<HTMLElement>(`[data-child-question-row="${childId}"]`)
       ?.focus();
   }, [openQuestion]);
+  const closeQuestion = useCallback((childThreadId: string) => {
+    returnFocusChildId.current = childThreadId;
+    setOpenQuestion(null);
+  }, []);
   const items = childThreadsSection.items;
   const pendingInteractions = childThreadsSection.pendingInteractions;
   const matchedIndex = openQuestion
@@ -1049,8 +1059,7 @@ function ActiveChildThreadsCard({
     }
     event.preventDefault();
     event.stopPropagation();
-    returnFocusChildId.current = currentQuestion.childThreadId;
-    setOpenQuestion(null);
+    closeQuestion(currentQuestion.childThreadId);
   };
   const openQuestionAt = (index: number) => {
     const next = pendingInteractions[index];
@@ -1068,8 +1077,9 @@ function ActiveChildThreadsCard({
       }
     : null;
   const backToChildThreads = () => {
-    returnFocusChildId.current = currentQuestion?.childThreadId ?? null;
-    setOpenQuestion(null);
+    if (currentQuestion) {
+      closeQuestion(currentQuestion.childThreadId);
+    }
   };
   const showBackHeader = currentQuestion !== undefined && items.length > 1;
   const needsInput = items.some((item) => item.hasPendingInteraction);
@@ -1099,13 +1109,7 @@ function ActiveChildThreadsCard({
               ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${newestQuestionTitle}: ${collapsedQuestion.text}`
               : `${items.length} active ${childThreadNoun(items.length)}`
           }
-          onClick={() => {
-            if (newestQuestion) {
-              focusBackOnOpen.current = true;
-              openQuestionAt(0);
-            }
-            focus.onTriggerClick();
-          }}
+          onClick={focus.onTriggerClick}
           className={activityRowClass(
             "active",
             cn(
@@ -1155,6 +1159,7 @@ function ActiveChildThreadsCard({
                   pendingInteractions.length,
               )
             }
+            onClose={closeQuestion}
           />
         ) : (
           <ChildThreadsBody

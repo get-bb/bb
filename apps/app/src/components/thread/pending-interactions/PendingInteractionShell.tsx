@@ -23,6 +23,7 @@ export interface PendingInteractionSourceThread {
 
 export const InlinePendingInteractionContext = createContext<{
   promptShownAbove: string;
+  close: () => void;
 } | null>(null);
 
 interface PendingInteractionShellProps {
@@ -124,6 +125,7 @@ export function PendingInteractionShell({
         <ThreadQuestionFormHost
           density="compact"
           promptShownAbove={inline.promptShownAbove}
+          closeInline={inline.close}
         >
           <div className="-m-1 max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain p-1">
             {inlineTitle ? (
@@ -206,7 +208,11 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <ThreadQuestionFormHost density="default" promptShownAbove={null}>
+        <ThreadQuestionFormHost
+          density="default"
+          promptShownAbove={null}
+          closeInline={null}
+        >
           <div
             id={contentId}
             hidden={!isExpanded}

@@ -207,7 +207,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
 
-  it("opens the newest question from the collapsed header", () => {
+  it("expands to the row list from the collapsed header without opening a question", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(
       screen.getByRole("button", { name: "4 active child threads" }),
@@ -220,11 +220,8 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(header.textContent).toContain("Child thr_b: Which size?");
     fireEvent.click(header);
 
-    expect(shownSource()).toBe("Child thr_b");
-    expect(screen.getByText("1 of 3")).toBeTruthy();
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "Back to active child threads" }),
-    );
+    expect(openForm()).toBe(null);
+    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -345,6 +342,22 @@ describe("ThreadPromptContextBanner child questions", () => {
     rerender(withOutside(section([middle]), false));
     expect(shownSource()).toBe("Child thr_c");
     expect(document.activeElement).toBe(document.body);
+  });
+
+  it("returns to the row list on Cancel and leaves the question waiting", () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(openForm()).toBe(null);
+    expect(
+      screen.getByRole("button", { name: /Child thr_c/ }).textContent,
+    ).toBe("Child thr_c: Which shape?");
+    expect(mocks.resolve).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Child thr_c/ }),
+    );
   });
 
   it("keeps the question open for an Escape that ends text composition", () => {
