@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -178,6 +184,9 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
     const form = openForm();
     expect(form?.getAttribute("data-presentation")).toBe("inline");
     expect(shownSource()).toBe("Child thr_c");
@@ -205,6 +214,9 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     expect(shownSource()).toBe("Child thr_b");
     expect(screen.getByText("1 of 3")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
   });
 
   it("steps both ways, wraps, and keeps focus on the pressed caret", () => {
@@ -264,7 +276,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     ).toBe(null);
   });
 
-  it("returns to the row list from the back button", () => {
+  it("returns to the row list from the back button and focuses that row", () => {
     render(bannerElement(section([newest, middle, oldest])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
 
@@ -274,6 +286,32 @@ describe("ThreadPromptContextBanner child questions", () => {
 
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Child thr_c/ }),
+    );
+  });
+
+  it("returns focus to the row in its own banner when another banner lists the same child", () => {
+    render(
+      <>
+        {bannerElement(section([newest, middle, oldest]))}
+        {bannerElement(section([newest, middle, oldest]))}
+      </>,
+    );
+    const [, second] = screen.getAllByRole("region", { name: "Child threads" });
+    if (!second) throw new Error("expected two banners");
+    fireEvent.click(
+      within(second).getByRole("button", { name: /Child thr_c/ }),
+    );
+    fireEvent.click(
+      within(second).getByRole("button", {
+        name: "Back to active child threads",
+      }),
+    );
+
+    expect(document.activeElement).toBe(
+      within(second).getByRole("button", { name: /Child thr_c/ }),
+    );
   });
 
   it("returns to the row list on Escape", () => {
@@ -288,15 +326,42 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
   });
 
-  it("moves to the next question after an answer, then closes when none remain", () => {
+  it("leaves focus outside the banner alone when the open question is answered elsewhere", () => {
+    const withOutside = (
+      childThreads: ThreadPromptChildThreadsSection,
+      showOutside: boolean,
+    ) => (
+      <>
+        {bannerElement(childThreads)}
+        {showOutside ? <button type="button">Elsewhere</button> : null}
+      </>
+    );
+    const { rerender } = render(withOutside(section([newest, middle]), true));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+    screen.getByRole("button", { name: "Elsewhere" }).focus();
+
+    rerender(withOutside(section([middle]), false));
+    expect(shownSource()).toBe("Child thr_c");
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("moves to the next question after an answer, keeping focus in the banner, then closes when none remain", () => {
     const { rerender } = render(bannerElement(section([newest, middle])));
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+    screen.getByRole("button", { name: /^Alpha/ }).focus();
 
     rerender(bannerElement(section([middle])));
     expect(shownSource()).toBe("Child thr_c");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Back to active child threads" }),
+    );
 
+    screen.getByRole("button", { name: /^Alpha/ }).focus();
     rerender(bannerElement(section([])));
     expect(openForm()).toBe(null);
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "1 active child thread" }),
+    );
   });
 });
