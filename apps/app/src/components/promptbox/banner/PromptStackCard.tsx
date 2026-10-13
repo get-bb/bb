@@ -1,4 +1,9 @@
-import { type CSSProperties, type ReactNode, type Ref } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEventHandler,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 import {
@@ -24,6 +29,7 @@ export interface PromptStackCardProps {
   className?: string;
   rootRef?: Ref<HTMLElement>;
   style?: CSSProperties;
+  onKeyDown?: KeyboardEventHandler<HTMLElement>;
 }
 
 export function PromptStackCard({
@@ -32,6 +38,7 @@ export function PromptStackCard({
   className,
   rootRef,
   style,
+  onKeyDown,
 }: PromptStackCardProps) {
   if (ariaLabel) {
     return (
@@ -40,6 +47,7 @@ export function PromptStackCard({
         aria-label={ariaLabel}
         className={cn(BASE_CHROME, className)}
         style={style}
+        onKeyDown={onKeyDown}
       >
         {children}
       </section>
@@ -50,6 +58,7 @@ export function PromptStackCard({
       ref={rootRef as Ref<HTMLDivElement>}
       className={cn(BASE_CHROME, className)}
       style={style}
+      onKeyDown={onKeyDown}
     >
       {children}
     </div>

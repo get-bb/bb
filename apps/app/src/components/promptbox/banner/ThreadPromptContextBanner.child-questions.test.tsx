@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,12 +20,16 @@ import {
   type ThreadPromptContextBannerExpandedSection,
 } from "./ThreadPromptContextBanner";
 
+const mocks = vi.hoisted(() => ({
+  resolveHook: vi.fn(),
+  resolve: vi.fn(async () => ({})),
+}));
+
 vi.mock("@/hooks/mutations/thread-interaction-mutations", () => ({
-  useResolveThreadPendingInteraction: () => ({
-    mutateAsync: vi.fn(async () => ({})),
-    isPending: false,
-    error: null,
-  }),
+  useResolveThreadPendingInteraction: (threadId: string) => {
+    mocks.resolveHook(threadId);
+    return { mutateAsync: mocks.resolve, isPending: false, error: null };
+  },
   useCancelThreadPendingInteraction: () => ({
     mutate: vi.fn(),
     isPending: false,
@@ -134,9 +139,10 @@ function Harness({
 function bannerElement(
   childThreads: ThreadPromptChildThreadsSection,
   initiallyExpanded = true,
+  queryClient = new QueryClient(),
 ) {
   return (
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <Harness
           childThreads={childThreads}
@@ -163,6 +169,8 @@ function press(name: "Previous question" | "Next question") {
 
 afterEach(() => {
   cleanup();
+  mocks.resolveHook.mockClear();
+  mocks.resolve.mockClear();
 });
 
 describe("ThreadPromptContextBanner child questions", () => {
@@ -337,6 +345,50 @@ describe("ThreadPromptContextBanner child questions", () => {
     rerender(withOutside(section([middle]), false));
     expect(shownSource()).toBe("Child thr_c");
     expect(document.activeElement).toBe(document.body);
+  });
+
+  it("keeps the question open for an Escape that ends text composition", () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Submit" }), {
+      key: "Escape",
+      isComposing: true,
+    });
+
+    expect(openForm()).not.toBe(null);
+  });
+
+  it("submits the answer to the open child's interaction", async () => {
+    render(bannerElement(section([newest, middle, oldest])));
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() => expect(mocks.resolve).toHaveBeenCalledTimes(1));
+    expect(mocks.resolveHook).toHaveBeenLastCalledWith("thr_c");
+    expect(mocks.resolve).toHaveBeenCalledWith({
+      threadId: "thr_c",
+      interactionId: "pint_thr_c",
+      resolution: {
+        kind: "user_answer",
+        answers: { choice: { selected: ["a"] } },
+      },
+    });
+  });
+
+  it("does not re-render the open form when the banner updates around it", () => {
+    const queryClient = new QueryClient();
+    const { rerender } = render(
+      bannerElement(section([newest, middle]), true, queryClient),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
+    const formRenders = mocks.resolveHook.mock.calls.length;
+
+    rerender(bannerElement(section([newest, middle]), true, queryClient));
+
+    expect(shownSource()).toBe("Child thr_b");
+    expect(mocks.resolveHook.mock.calls.length).toBe(formRenders);
   });
 
   it("moves to the next question after an answer, keeping focus in the banner, then closes when none remain", () => {
