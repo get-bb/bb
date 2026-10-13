@@ -185,7 +185,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and `bb provider models <provider-id>`. Both accept `--machine <id-or-name>`
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
-  intentionally inspect the server machine. Model lists answer from the
+  intentionally inspect the server machine. `bb provider models` also takes
+  `--project <id>` (not with `--environment`) to list what the provider reports
+  in that project's checkout, such as an agent's project-level modes. Model lists answer from the
   machine's last stored list while a background refresh runs, so a list can be
   hours old. A provider whose refresh keeps failing or timing out keeps
   answering from its last stored list. When nothing can be listed, the command

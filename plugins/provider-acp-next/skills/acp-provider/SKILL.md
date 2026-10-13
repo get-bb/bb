@@ -33,7 +33,15 @@ Cursor project skills come from `.cursor/skills`, which can link to
 
 ACP agents may reject unlisted model IDs. OpenCode requires models in its own
 configuration; BB discovers them there. OpenCode agents are session modes, not
-models selectable through BB's model field. Grok Build advertises models and
+models selectable through BB's model field. BB asks OpenCode for its models
+and modes in the directory the thread will run in: the project's checkout for
+a new thread, the environment's directory otherwise. OpenCode's custom primary
+agents therefore appear in the mode menu whether they live in the OpenCode
+config directory or in the project's `.opencode/` directory;
+`bb provider models acp-opencode --project <id>` prints the same list. A new
+agent file shows up once the stored list is ten minutes old and is read again.
+The same holds for a custom agent with `dialect: "opencode"`; every other ACP
+agent is asked once per machine. Grok Build advertises models and
 `thought_level` options over ACP, so the picker follows the connected agent
 (including `xhigh` on grok-4.6).
 

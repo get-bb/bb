@@ -391,6 +391,70 @@ describe("useSystemExecutionOptions", () => {
     );
   });
 
+  it("shows the machine's catalog for a project until that project's own catalog lands, then remembers it per project", async () => {
+    const projectModel = { ...CODEX_MODEL, model: "project-model" };
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(CODEX_CATALOG);
+    const first = createQueryClientTestHarness();
+    const warm = renderHook(
+      () =>
+        useSystemExecutionOptions({ hostId: "host-a", providerId: "codex" }),
+      { wrapper: first.wrapper },
+    );
+    await waitFor(() =>
+      expect(warm.result.current.data).toEqual(CODEX_CATALOG),
+    );
+    warm.unmount();
+
+    let resolveProject: (
+      value: SystemExecutionOptionsResponse,
+    ) => void = () => {};
+    vi.mocked(sdk.system.executionOptions).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProject = resolve;
+        }),
+    );
+    const projectArgs = {
+      hostId: "host-a",
+      providerId: "codex",
+      projectId: "proj-a",
+    };
+    const project = createQueryClientTestHarness();
+    const { result, unmount } = renderHook(
+      () => useSystemExecutionOptions(projectArgs),
+      { wrapper: project.wrapper },
+    );
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data?.models).toEqual([CODEX_MODEL]);
+    await waitFor(() =>
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining(projectArgs),
+      ),
+    );
+    resolveProject({ ...CODEX_CATALOG, models: [projectModel] });
+    await waitFor(() =>
+      expect(result.current.data?.models).toEqual([projectModel]),
+    );
+    expect(result.current.isPlaceholderData).toBe(false);
+    unmount();
+
+    vi.mocked(sdk.system.executionOptions).mockImplementation(pendingForever);
+    const reload = createQueryClientTestHarness();
+    const remembered = (projectId: string | undefined) =>
+      renderHook(
+        () =>
+          useSystemExecutionOptions({
+            hostId: "host-a",
+            providerId: "codex",
+            ...(projectId === undefined ? {} : { projectId }),
+          }),
+        { wrapper: reload.wrapper },
+      ).result.current.data?.models;
+    expect(remembered("proj-a")).toEqual([projectModel]);
+    expect(remembered(undefined)).toEqual([CODEX_MODEL]);
+    expect(remembered("proj-b")).toEqual([CODEX_MODEL]);
+  });
+
   it("replays the host's provider list so a custom provider paints as itself", async () => {
     const customProvider = makeProviderInfo({
       id: "acp:my-agent",

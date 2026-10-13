@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -378,10 +379,11 @@ function contextWindowDeltasFor(
 }
 
 function sendModelList(
-  args: AgentLaunchArgs & { modelLines?: string } = {},
+  args: AgentLaunchArgs & { modelLines?: string; cwd?: string } = {},
 ): number {
-  const { modelLines, ...launch } = args;
+  const { modelLines, cwd, ...launch } = args;
   return sendRequest("model/list", {
+    ...(cwd === undefined ? {} : { cwd }),
     providerOptions: {
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
       ...(launch.parameterizedModelPicker === true
@@ -4860,6 +4862,147 @@ describe("acp bridge: live session state", () => {
 
     const none = await optionsOf(sendModelList({}));
     expect(none).toEqual([undefined]);
+  }, 20_000);
+
+  it("asks the agent for its models and options in the workspace bb names", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "bb-acp-project-"));
+    try {
+      const sessionCwds = async (
+        requestLog: string,
+        cwd: string | undefined,
+      ): Promise<unknown[]> => {
+        await waitForResponse(
+          sendModelList({
+            ...(cwd === undefined ? {} : { cwd }),
+            envVars: {
+              FAKE_ACP_SESSION_OPTIONS: "1",
+              FAKE_ACP_REQUEST_LOG: requestLog,
+            },
+          }),
+        );
+        return loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/new")
+          .map((request) => request.params?.cwd);
+      };
+
+      expect(
+        await sessionCwds(join(workspaceDir, "project.jsonl"), projectDir),
+      ).toEqual([projectDir]);
+      expect(
+        await sessionCwds(
+          join(workspaceDir, "missing.jsonl"),
+          join(projectDir, "gone"),
+        ),
+      ).toEqual([process.cwd()]);
+      expect(
+        await sessionCwds(join(workspaceDir, "none.jsonl"), undefined),
+      ).toEqual([process.cwd()]);
+
+      const listCwdLog = join(workspaceDir, "list-cwd.txt");
+      await waitForResponse(
+        sendModelList({
+          cwd: projectDir,
+          modelLines: "alpha - Alpha",
+          envVars: { FAKE_ACP_MODEL_LIST_CWD_LOG: listCwdLog },
+        }),
+      );
+      expect(realpathSync(readFileSync(listCwdLog, "utf8"))).toBe(
+        realpathSync(projectDir),
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("deletes the session it opened to read an agent's options when the agent can delete sessions", async () => {
+    const methodsFor = async (
+      requestLog: string,
+      envVars: Record<string, string>,
+    ): Promise<LoggedAcpRequest[]> => {
+      await waitForResponse(
+        sendModelList({
+          envVars: { ...envVars, FAKE_ACP_REQUEST_LOG: requestLog },
+        }),
+      );
+      return loggedAcpRequests(requestLog).filter(
+        (request) =>
+          request.method === "session/new" ||
+          request.method === "session/delete",
+      );
+    };
+
+    const deleting = await methodsFor(join(workspaceDir, "delete.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+      FAKE_ACP_DELETE_SESSION: "1",
+    });
+    expect(deleting.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+    expect(deleting[1]?.params?.sessionId).toMatch(/^fake-sess-/u);
+
+    const withModels = await methodsFor(
+      join(workspaceDir, "delete-models.jsonl"),
+      { FAKE_ACP_MODEL_CONFIG: "1", FAKE_ACP_DELETE_SESSION: "1" },
+    );
+    expect(withModels.map((request) => request.method)).toEqual([
+      "session/new",
+      "session/delete",
+    ]);
+
+    const unsupported = await methodsFor(join(workspaceDir, "keep.jsonl"), {
+      FAKE_ACP_SESSION_OPTIONS: "1",
+    });
+    expect(unsupported.map((request) => request.method)).toEqual([
+      "session/new",
+    ]);
+  }, 20_000);
+
+  it("deletes its discovery session through opencode's own CLI when the agent cannot delete sessions over ACP", async () => {
+    const discover = async (
+      deleteLog: string,
+      launch: AgentLaunchArgs,
+    ): Promise<void> => {
+      await waitForResponse(
+        sendModelList({
+          ...launch,
+          envVars: {
+            ...launch.envVars,
+            FAKE_ACP_SESSION_OPTIONS: "1",
+            FAKE_ACP_SESSION_DELETE_LOG: deleteLog,
+          },
+        }),
+      );
+    };
+    const acpAgent = {
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH, "acp"],
+    };
+    const otherAgentLog = join(workspaceDir, "cli-delete-other-agent.log");
+    const otherArgsLog = join(workspaceDir, "cli-delete-other-args.log");
+    const overAcpLog = join(workspaceDir, "cli-delete-over-acp.log");
+    const opencodeLog = join(workspaceDir, "cli-delete-opencode.log");
+
+    await discover(otherAgentLog, { agent: acpAgent });
+    await discover(otherArgsLog, { dialectId: "opencode" });
+    await discover(overAcpLog, {
+      dialectId: "opencode",
+      agent: acpAgent,
+      envVars: { FAKE_ACP_DELETE_SESSION: "1" },
+    });
+    await discover(opencodeLog, { dialectId: "opencode", agent: acpAgent });
+
+    const deleted = await waitFor(
+      () =>
+        existsSync(opencodeLog) ? readFileSync(opencodeLog, "utf8") : undefined,
+      "opencode session delete",
+    );
+    expect(deleted).toMatch(/^fake-sess-\d+\n$/u);
+    expect(
+      [otherAgentLog, otherArgsLog, overAcpLog].filter((log) =>
+        existsSync(log),
+      ),
+    ).toEqual([]);
   }, 20_000);
 
   it("publishes no session options for an agent whose only options are its model and thought level", async () => {

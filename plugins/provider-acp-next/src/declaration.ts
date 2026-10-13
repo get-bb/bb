@@ -80,7 +80,7 @@ export function acpProviderDeclaration(
           }),
       acpLaunchSpec: { ...agent.launch },
     },
-    models: { scope: "host" },
+    models: { scope: agent.modelCatalogScope ?? "host" },
     maintenance: {
       health: true,
       usage: agent.providerUsage === true,

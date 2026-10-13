@@ -1202,6 +1202,54 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("names a new thread's project only for a provider that reads its catalog from the workspace", async () => {
+    const requestedProjectIds = async (
+      modelCatalogScope: ProviderModelCatalogScope,
+      routing: { environmentId: string } | { hostId: string },
+    ): Promise<unknown[]> => {
+      vi.mocked(sdk.system.executionOptions).mockClear();
+      const { queryClient, wrapper } = createQueryClientTestHarness();
+      seedDeclaredCatalogScope(queryClient, "pi", modelCatalogScope);
+      const { unmount } = renderHook(
+        () =>
+          useThreadCreationOptions({
+            scope: "new-thread",
+            preferenceProjectId: PROJECT_ID,
+            catalogProjectId: PROJECT_ID,
+            resolveProviderRouting: () => routing,
+            initialProviderId: "pi",
+            initialModel: "anthropic/opus",
+            initialReasoningLevel: "medium",
+            initialPermissionMode: "full",
+          }),
+        { wrapper },
+      );
+      await waitFor(() => {
+        expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+          expect.objectContaining({ ...routing, providerId: "pi" }),
+        );
+      });
+      unmount();
+      return [
+        ...new Set(
+          vi
+            .mocked(sdk.system.executionOptions)
+            .mock.calls.map(([args]) => args?.projectId),
+        ),
+      ];
+    };
+
+    expect(
+      await requestedProjectIds("workspace", { hostId: "project-host" }),
+    ).toEqual([PROJECT_ID]);
+    expect(
+      await requestedProjectIds("host", { hostId: "project-host" }),
+    ).toEqual([undefined]);
+    expect(
+      await requestedProjectIds("workspace", { environmentId: "env_reuse" }),
+    ).toEqual([undefined]);
+  });
+
   it("keeps a workspace-scoped component-local catalog routed by environment", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     seedDeclaredCatalogScope(queryClient, "pi", "workspace");

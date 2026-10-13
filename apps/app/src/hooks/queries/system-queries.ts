@@ -59,12 +59,14 @@ interface UseSystemExecutionOptionsArgs {
   environmentId?: string;
   hostId?: string;
   providerId?: string;
+  projectId?: string;
 }
 
 interface SystemExecutionOptionsQueryArgs {
   environmentId: string | null;
   hostId: string | null;
   providerId: string | null;
+  projectId: string | null;
   writeLastKnown: boolean;
 }
 
@@ -110,6 +112,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId,
   providerId,
   catalogCacheKey,
+  machineCatalogCacheKey,
   providersCacheKey,
 }: {
   previousData: SystemExecutionOptionsResponse | undefined;
@@ -118,6 +121,7 @@ function resolveExecutionOptionsPlaceholder({
   hostId: string | null;
   providerId: string | null;
   catalogCacheKey: string;
+  machineCatalogCacheKey: string;
   providersCacheKey: string;
 }): SystemExecutionOptionsResponse | undefined {
   const previousProviders = isSameExecutionOptionsRoute(
@@ -127,7 +131,9 @@ function resolveExecutionOptionsPlaceholder({
   )
     ? previousData?.providers
     : undefined;
-  const cached = readCachedModelCatalog(catalogCacheKey);
+  const cached =
+    readCachedModelCatalog(catalogCacheKey) ??
+    readCachedModelCatalog(machineCatalogCacheKey);
   const remembered = readCachedProviderList(providersCacheKey);
   const providers =
     previousProviders ??
@@ -279,6 +285,7 @@ async function requestOfferedProviderExecutionOptions({
   environmentId,
   hostId,
   providerId,
+  projectId,
   signal,
 }: Omit<SystemExecutionOptionsQueryArgs, "writeLastKnown"> & {
   signal: AbortSignal;
@@ -291,6 +298,7 @@ async function requestOfferedProviderExecutionOptions({
       environmentId: environmentId ?? undefined,
       hostId: hostId ?? undefined,
       providerId: requestedProviderId ?? undefined,
+      projectId: projectId ?? undefined,
       signal,
     });
   const response = await request(providerId);
@@ -312,6 +320,7 @@ function systemExecutionOptionsQueryOptions({
   environmentId,
   hostId,
   providerId,
+  projectId,
   writeLastKnown,
 }: SystemExecutionOptionsQueryArgs) {
   return queryOptions<SystemExecutionOptionsResponse>({
@@ -319,6 +328,7 @@ function systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
+      projectId,
     }),
     queryFn: async ({ signal }) => {
       const { response, loadedProviderId } =
@@ -326,6 +336,7 @@ function systemExecutionOptionsQueryOptions({
           environmentId,
           hostId,
           providerId,
+          projectId,
           signal,
         });
       const modelsProviderId =
@@ -345,6 +356,7 @@ function systemExecutionOptionsQueryOptions({
               environmentId,
               hostId,
               providerId: loadedProviderId,
+              projectId,
             }),
             catalog,
           );
@@ -354,6 +366,7 @@ function systemExecutionOptionsQueryOptions({
                 environmentId,
                 hostId,
                 providerId: modelsProviderId,
+                projectId,
               }),
               catalog,
             );
@@ -373,6 +386,7 @@ function systemExecutionOptionsQueryOptions({
             environmentId,
             hostId,
             providerId: modelsProviderId,
+            projectId,
           }),
         );
         if (
@@ -400,6 +414,7 @@ export function prefetchSystemExecutionOptions(
         environmentId: args.routing.environmentId ?? null,
         hostId: args.routing.hostId ?? null,
         providerId,
+        projectId: null,
         writeLastKnown: false,
       }),
     );
@@ -412,20 +427,28 @@ export function useSystemExecutionOptions(
   const environmentId = args.environmentId ?? null;
   const hostId = args.hostId ?? null;
   const providerId = args.providerId ?? null;
+  const projectId = args.projectId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
   useHostListRealtimeSubscription({ enabled });
   const providersCacheKey = providerListCacheKey({ environmentId, hostId });
+  const machineCatalogCacheKey = modelCatalogCacheKey({
+    environmentId,
+    hostId,
+    providerId,
+  });
   const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
     providerId,
+    projectId,
   });
   return useQuery({
     ...systemExecutionOptionsQueryOptions({
       environmentId,
       hostId,
       providerId,
+      projectId,
       writeLastKnown: true,
     }),
     enabled,
@@ -437,6 +460,7 @@ export function useSystemExecutionOptions(
         hostId,
         providerId,
         catalogCacheKey,
+        machineCatalogCacheKey,
         providersCacheKey,
       }),
   });
