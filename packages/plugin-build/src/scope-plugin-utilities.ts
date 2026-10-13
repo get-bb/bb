@@ -13,7 +13,7 @@ interface Statement {
 }
 
 export function pluginScopeRoots(pluginId: string): string {
-  return `[data-bb-plugin="${pluginId}"], [data-bb-plugin-root]:not([data-bb-plugin])`;
+  return `[data-bb-plugin="${pluginId}"]`;
 }
 
 export function scopePluginUtilities(css: string, scopeRoots: string): string {
@@ -89,6 +89,16 @@ function splitStatements(css: string): Statement[] {
 
   for (let index = 0; index < css.length; index += 1) {
     const char = css[index];
+    if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      if (end < 0) throw new Error("Unterminated comment in compiled plugin CSS.");
+      if (parenDepth === 0 && css.slice(preludeStart, index).trim().length === 0) {
+        statements.push({ prelude: css.slice(preludeStart, end + 2), body: null });
+        preludeStart = end + 2;
+      }
+      index = end + 1;
+      continue;
+    }
     if (char === "\\") {
       index += 1;
       continue;

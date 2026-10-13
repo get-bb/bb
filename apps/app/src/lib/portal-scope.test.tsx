@@ -56,6 +56,9 @@ describe("usePortalScopeProps", () => {
 
     const scoped = baseElement.querySelectorAll("[data-bb-plugin-root]");
     expect(scoped.length).toBe(2);
+    for (const root of scoped) {
+      expect(root.getAttribute("data-bb-plugin")).toBe("test-plugin");
+    }
     expect(
       baseElement.querySelectorAll("[data-bb-portaled-overlay]").length,
     ).toBe(2);
@@ -91,6 +94,7 @@ describe("usePortalScopeProps", () => {
     expect(tip).not.toBeNull();
     const scopedTip = baseElement.querySelector("[data-bb-plugin-root]");
     expect(scopedTip).not.toBeNull();
+    expect(scopedTip!.getAttribute("data-bb-plugin")).toBe("test-plugin");
     expect(scopedTip!.getAttribute("data-bb-portaled-overlay")).toBe("");
   });
 

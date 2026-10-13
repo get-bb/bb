@@ -12,6 +12,10 @@ function scopeUtilities(utilities: string): string {
 }
 
 describe("scopePluginUtilities", () => {
+  it("confines utilities to their owning plugin, including portaled roots", () => {
+    expect(pluginScopeRoots("demo")).toBe('[data-bb-plugin="demo"]');
+  });
+
   it("emits a descendant arm and a self arm per selector", () => {
     expect(scopeUtilities(".flex-col{flex-direction:column}")).toBe(
       `@layer utilities{${SCOPE} .flex-col,${SCOPE}.flex-col{flex-direction:column}}`,
@@ -110,6 +114,13 @@ describe("scopePluginUtilities", () => {
       '@property --tw-scale-x{syntax:"*";inherits:false}',
     );
     expect(scoped).toContain(`${SCOPE}.scale-x-50`);
+  });
+
+  it("preserves the license banner in readable optimized CSS", () => {
+    const banner = "/*! tailwindcss v4.3.0 | MIT License | https://tailwindcss.com */";
+    expect(scopePluginUtilities(`${banner}@layer utilities{.a{color:red}}`, ROOTS)).toBe(
+      `${banner}@layer utilities{${SCOPE} .a,${SCOPE}.a{color:red}}`,
+    );
   });
 
   it("accepts a build with no utilities layer", () => {

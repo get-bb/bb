@@ -132,7 +132,7 @@ describe("plugin component registry", () => {
 
     const css = await readFile(result.cssPath, "utf8");
     expect(css).toContain(
-      ":where([data-bb-plugin=registry-fixture],[data-bb-plugin-root]:not([data-bb-plugin]))",
+      ":where([data-bb-plugin=registry-fixture])",
     );
     expect(css).toMatch(/var\(--background\)/);
   });

@@ -310,7 +310,7 @@ async function buildTailwindCss(
   dependencySources: ScannerSource[],
   bundledInputs: ReadonlySet<string>,
 ): Promise<string> {
-  const [{ compile }, { Scanner }] = await Promise.all([
+  const [{ compile, optimize }, { Scanner }] = await Promise.all([
     import(toolchain.tailwindNode) as Promise<
       typeof import("@tailwindcss/node")
     >,
@@ -372,7 +372,7 @@ async function buildTailwindCss(
     }
   }
   return scopePluginUtilities(
-    compiler.build([...candidates]),
+    optimize(compiler.build([...candidates]), { minify: false }).code,
     pluginScopeRoots(pluginId),
   );
 }
