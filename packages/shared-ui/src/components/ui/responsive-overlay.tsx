@@ -661,7 +661,6 @@ export function PersistentResponsiveDrawerShell({
 }: PersistentResponsiveDrawerShellProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const backdropRef = React.useRef<HTMLDivElement>(null);
-  const [initiallyOpen, setInitiallyOpen] = React.useState(open);
   const backdropPointerDownRef = React.useRef<PointerEvent | null>(null);
   const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
   const settledStateRef = React.useRef<boolean | null>(null);
@@ -669,32 +668,6 @@ export function PersistentResponsiveDrawerShell({
   const portalScopeProps = usePortalScopeProps();
   const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
   const backdropTransition = `opacity ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
-  React.useLayoutEffect(() => {
-    if (!open) {
-      setInitiallyOpen(false);
-      return;
-    }
-    if (!initiallyOpen) return;
-    const options = {
-      duration: motionDurationMs,
-      easing: PERSISTENT_DRAWER_EASING,
-    };
-    const panelAnimation = panelRef.current?.animate?.(
-      [
-        { transform: "translate3d(0, 100%, 0)" },
-        { transform: "translate3d(0, 0, 0)" },
-      ],
-      options,
-    );
-    const backdropAnimation = backdropRef.current?.animate?.(
-      [{ opacity: 0 }, { opacity: 1 }],
-      options,
-    );
-    return () => {
-      panelAnimation?.cancel();
-      backdropAnimation?.cancel();
-    };
-  }, [initiallyOpen, motionDurationMs, open]);
   const onOpenChangeRef = React.useRef(onOpenChange);
   React.useLayoutEffect(() => {
     onOpenChangeRef.current = onOpenChange;
