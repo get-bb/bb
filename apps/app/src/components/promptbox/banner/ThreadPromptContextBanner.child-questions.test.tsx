@@ -227,15 +227,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     );
   });
 
-  it("hides the stepper when only one question is waiting", () => {
-    render(bannerElement(section([newest])));
-    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
-
-    expect(shownSource()).toBe("Child thr_b");
-    expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
-    expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
-  });
-
   it("drops the back control when the parent has a single child thread", () => {
     const only = section([newest]);
     render(
@@ -252,13 +243,16 @@ describe("ThreadPromptContextBanner child questions", () => {
     ).toBe(null);
   });
 
-  it("drops the bottom collapse row while a question is open", () => {
+  it("drops the stepper and the collapse row for a single open question", () => {
     render(bannerElement(section([newest])));
     expect(
       screen.getByRole("button", { name: /^Collapse \d+ child threads?$/ }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
 
+    expect(shownSource()).toBe("Child thr_b");
+    expect(screen.queryByRole("button", { name: "Next question" })).toBe(null);
+    expect(screen.queryByText(/^\d+ of \d+$/)).toBe(null);
     expect(
       screen.queryByRole("button", { name: /^Collapse \d+ child threads?$/ }),
     ).toBe(null);

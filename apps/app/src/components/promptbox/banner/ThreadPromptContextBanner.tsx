@@ -963,23 +963,10 @@ function ActiveChildThreadsCard({
   if (items.length === 0) {
     return null;
   }
-  const openQuestionById = (interactionId: string) => {
-    const index = pendingInteractions.findIndex(
-      (item) => item.interaction.id === interactionId,
-    );
-    if (index >= 0) {
-      setOpenQuestion({ interactionId, index });
-    }
-  };
-  const stepQuestion = (offset: 1 | -1) => {
-    const total = pendingInteractions.length;
-    const nextIndex = (questionIndex + offset + total) % total;
-    const next = pendingInteractions[nextIndex];
+  const openQuestionAt = (index: number) => {
+    const next = pendingInteractions[index];
     if (next) {
-      setOpenQuestion({
-        interactionId: next.interaction.id,
-        index: nextIndex,
-      });
+      setOpenQuestion({ interactionId: next.interaction.id, index });
     }
   };
   const newestQuestion = isExpanded ? undefined : pendingInteractions[0];
@@ -1019,10 +1006,7 @@ function ActiveChildThreadsCard({
           }
           onClick={() => {
             if (newestQuestion) {
-              setOpenQuestion({
-                interactionId: newestQuestion.interaction.id,
-                index: 0,
-              });
+              openQuestionAt(0);
             }
             focus.onTriggerClick();
           }}
@@ -1068,13 +1052,24 @@ function ActiveChildThreadsCard({
             current={currentQuestion}
             index={questionIndex}
             total={pendingInteractions.length}
-            onStep={stepQuestion}
+            onStep={(offset) =>
+              openQuestionAt(
+                (questionIndex + offset + pendingInteractions.length) %
+                  pendingInteractions.length,
+              )
+            }
           />
         ) : (
           <ChildThreadsBody
             items={items}
             pendingInteractions={pendingInteractions}
-            onOpenQuestion={openQuestionById}
+            onOpenQuestion={(interactionId) =>
+              openQuestionAt(
+                pendingInteractions.findIndex(
+                  (item) => item.interaction.id === interactionId,
+                ),
+              )
+            }
           />
         )}
         {currentQuestion ? null : (
