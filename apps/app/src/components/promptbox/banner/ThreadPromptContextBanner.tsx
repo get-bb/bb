@@ -1034,6 +1034,9 @@ function ActiveChildThreadsCard({
       focus.triggerRef.current
     )?.focus();
   }, [currentInteractionId, pendingInteractions, focus.triggerRef]);
+  const newestQuestionTitle = useThreadTitleDisplayText(
+    pendingInteractions[0]?.childTitle ?? "",
+  );
   if (items.length === 0) {
     return null;
   }
@@ -1095,7 +1098,7 @@ function ActiveChildThreadsCard({
           aria-controls={SECTION_IDS.childThreads.body}
           aria-label={
             collapsedQuestion
-              ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${collapsedQuestion.childTitle}: ${collapsedQuestion.text}`
+              ? `${items.length} active ${childThreadNoun(items.length)}, needs input: ${newestQuestionTitle}: ${collapsedQuestion.text}`
               : `${items.length} active ${childThreadNoun(items.length)}`
           }
           onClick={() => {
@@ -1121,7 +1124,9 @@ function ActiveChildThreadsCard({
           {collapsedQuestion ? (
             <span className="flex min-w-0 flex-1 text-left">
               <ChildQuestionSummary
-                childTitle={collapsedQuestion.childTitle}
+                childTitle={
+                  <ThreadTitle title={collapsedQuestion.childTitle} tooltip />
+                }
                 question={collapsedQuestion.text}
               />
             </span>
