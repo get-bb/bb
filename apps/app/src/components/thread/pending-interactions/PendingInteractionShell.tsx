@@ -117,7 +117,7 @@ export function PendingInteractionShell({
           density="compact"
           promptShownAbove={inline.promptShownAbove}
         >
-          <div className="max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain">
+          <div className="-m-1 max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain p-1">
             {inlineTitle ? (
               <h3
                 title={inlineTitle}
