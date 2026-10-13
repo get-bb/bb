@@ -1,6 +1,6 @@
-import { Node, type Editor } from "@tiptap/core";
+import { Mark, Node, type Editor } from "@tiptap/core";
 import { DOMParser } from "@tiptap/pm/model";
-import type { MarkdownNodeSpec } from "tiptap-markdown";
+import type { MarkdownMarkSpec, MarkdownNodeSpec } from "tiptap-markdown";
 
 type InlineToken = { type: string; content: string; nesting: number };
 type MarkdownIt = Parameters<
@@ -10,6 +10,30 @@ type MarkdownIt = Parameters<
 const MARKER = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)))
   .map((byte) => byte.toString(16).padStart(2, "0"))
   .join("");
+
+const PHRASING_TAGS = new Set([
+  "a",
+  "abbr",
+  "b",
+  "cite",
+  "code",
+  "del",
+  "em",
+  "i",
+  "ins",
+  "kbd",
+  "mark",
+  "q",
+  "s",
+  "samp",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "u",
+  "var",
+]);
 
 const STRUCTURAL_TAGS = new Set([
   "BODY",
@@ -53,13 +77,29 @@ function decodeHtml(value: string): string {
 
 export function restoreRawHtml(markdown: string): string {
   const decode = (_match: string, source: string) => decodeHtml(source);
-  return markdown.replaceAll(
-    new RegExp(
-      `<pre data-docs-raw-html="${MARKER}"><code>([^<]*)</code></pre>`,
-      "g",
-    ),
-    decode,
-  );
+  return markdown
+    .replaceAll(
+      new RegExp(
+        `<pre data-docs-raw-html="${MARKER}"><code>([^<]*)</code></pre>`,
+        "g",
+      ),
+      decode,
+    )
+    .replaceAll(
+      new RegExp(`<code data-docs-html-source="${MARKER}">([^<]*)</code>`, "g"),
+      decode,
+    )
+    .replaceAll(
+      new RegExp(`<br data-docs-html-break="${MARKER}" data-source="([^"]*)">`, "g"),
+      decode,
+    )
+    .replaceAll(
+      new RegExp(
+        `<[a-z]+ data-docs-html-open="([^"]*)" data-docs-html-close="[^"]*" data-docs-html-mark="${MARKER}">`,
+        "g",
+      ),
+      decode,
+    );
 }
 
 function parseHtml(html: string): HTMLElement {
@@ -152,7 +192,54 @@ function losslessHtml(
   return normalizeHtml(reloaded).isEqualNode(normalizeHtml(original)) && html;
 }
 
-const losslessByEditor = new WeakMap<Editor, Map<string, string | false>>();
+function phrasingTag(source: string): string | undefined {
+  const tag = /^<([a-z]+)(?:\s[^>]*)?>$/i.exec(source)?.[1]?.toLowerCase();
+  return tag && !source.endsWith("/>") && PHRASING_TAGS.has(tag)
+    ? tag
+    : undefined;
+}
+
+function pairTags(tokens: InlineToken[]): Map<number, number> {
+  const pairs = new Map<number, number>();
+  const stack: { tag: string; index: number; level: number; text: number }[] =
+    [];
+  const counts = new Map<string, number>();
+  const key = (tag: string, level: number) => `${level}:${tag}`;
+  const pop = () => {
+    const entry = stack.pop()!;
+    const entryKey = key(entry.tag, entry.level);
+    counts.set(entryKey, counts.get(entryKey)! - 1);
+    return entry;
+  };
+  let level = 0;
+  let text = 0;
+  tokens.forEach((token, index) => {
+    if (token.type !== "html_inline") {
+      level += token.nesting;
+      while (stack.length > 0 && stack.at(-1)!.level > level) pop();
+      if (token.type === "text" && /\S/.test(token.content)) text++;
+      return;
+    }
+    const tag = phrasingTag(token.content);
+    if (tag) {
+      stack.push({ tag, index, level, text });
+      counts.set(key(tag, level), (counts.get(key(tag, level)) ?? 0) + 1);
+      return;
+    }
+    const closing = /^<\/([a-z]+)>$/.exec(token.content)?.[1];
+    if (!closing || !counts.get(key(closing, level))) return;
+    let entry = pop();
+    while (entry.tag !== closing) entry = pop();
+    if (entry.text < text) {
+      pairs.set(entry.index, index);
+      pairs.set(index, -1);
+    }
+  });
+  return pairs;
+}
+
+const pairsByTokens = new WeakMap<InlineToken[], Map<number, number>>();
+const losslessByEditor = new WeakMap<Editor, Map<string, boolean>>();
 
 export const RawHtmlBlock = Node.create({
   name: "rawHtmlBlock",
@@ -215,40 +302,31 @@ export const RawHtmlBlock = Node.create({
   },
 });
 
-export const RawInlineHtml = Node.create({
-  name: "rawInlineHtml",
+export const RawHtmlBreak = Node.create({
+  name: "rawHtmlBreak",
   group: "inline",
   inline: true,
   atom: true,
+  selectable: false,
   addAttributes() {
     return {
       source: {
-        default: "",
-        parseHTML: (element) => element.getAttribute("data-source") ?? "",
+        default: "<br>",
+        parseHTML: (element) => element.getAttribute("data-source") ?? "<br>",
       },
     };
   },
   parseHTML() {
-    return [{ tag: "span[data-docs-raw-html]" }];
+    return [{ tag: `br[data-docs-html-break="${MARKER}"]`, priority: 60 }];
   },
   renderHTML({ node }) {
     return [
-      "span",
+      "br",
       {
-        "data-docs-raw-html": "true",
+        "data-docs-html-break": MARKER,
         "data-source": String(node.attrs.source),
       },
-      String(node.attrs.source),
     ];
-  },
-  addNodeView() {
-    return ({ node }) => {
-      const dom = document.createElement("span");
-      dom.contentEditable = "false";
-      dom.title = "HTML · preserved · edit in source";
-      dom.textContent = String(node.attrs.source);
-      return { dom };
-    };
   },
   addStorage() {
     return {
@@ -256,20 +334,91 @@ export const RawInlineHtml = Node.create({
         serialize(state, node) {
           state.text(String(node.attrs.source), false);
         },
+      } satisfies MarkdownNodeSpec,
+    };
+  },
+});
+
+export const RawHtmlInline = Mark.create({
+  name: "rawHtmlInline",
+  priority: 1,
+  inclusive: false,
+  parseHTML() {
+    return [{ tag: `code[data-docs-html-source="${MARKER}"]`, priority: 60 }];
+  },
+  renderHTML() {
+    return ["code", { "data-docs-html-source": MARKER }, 0];
+  },
+  addStorage() {
+    return {
+      markdown: {
+        serialize: { open: "", close: "", escape: false },
         parse: {
           setup(markdown) {
+            const escape = markdown.utils.escapeHtml;
             markdown.renderer.rules.html_inline = (tokens, index) => {
+              let pairs = pairsByTokens.get(tokens);
+              if (!pairs) {
+                pairs = pairTags(tokens);
+                pairsByTokens.set(tokens, pairs);
+              }
               const source = tokens[index]!.content;
-              if (
-                index === 0 &&
-                source.startsWith('<input class="task-list-item-checkbox"')
-              )
-                return source;
-              return `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source)}"></span>`;
+              const close = pairs.get(index);
+              if (close === -1) return "</span>";
+              if (close !== undefined)
+                return `<span data-docs-html-open="${escape(source)}" data-docs-html-close="${escape(tokens[close]!.content)}" data-docs-html-mark="${MARKER}">`;
+              if (/^<br\s*\/?>$/i.test(source))
+                return `<br data-docs-html-break="${MARKER}" data-source="${escape(source)}">`;
+              return `<code data-docs-html-source="${MARKER}">${escape(source)}</code>`;
             };
           },
         },
-      } satisfies MarkdownNodeSpec,
+      } satisfies MarkdownMarkSpec,
+    };
+  },
+});
+
+export const RawHtmlFormatting = Mark.create({
+  name: "rawHtmlFormatting",
+  priority: 1000,
+  excludes: "",
+  addAttributes() {
+    return {
+      open: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-docs-html-open"),
+        renderHTML: (attributes) => ({
+          "data-docs-html-open": String(attributes.open),
+        }),
+      },
+      close: {
+        default: "",
+        parseHTML: (element) => element.getAttribute("data-docs-html-close"),
+        renderHTML: (attributes) => ({
+          "data-docs-html-close": String(attributes.close),
+        }),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: `[data-docs-html-mark="${MARKER}"]`, priority: 60 }];
+  },
+  renderHTML({ mark, HTMLAttributes }) {
+    return [
+      phrasingTag(String(mark.attrs.open)) ?? "span",
+      { ...HTMLAttributes, "data-docs-html-mark": MARKER },
+      0,
+    ];
+  },
+  addStorage() {
+    return {
+      markdown: {
+        serialize: {
+          open: (_state, mark) => String(mark.attrs.open),
+          close: (_state, mark) => String(mark.attrs.close),
+          mixable: true,
+        },
+      } satisfies MarkdownMarkSpec,
     };
   },
 });
