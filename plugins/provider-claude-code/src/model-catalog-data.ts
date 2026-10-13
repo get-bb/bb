@@ -44,6 +44,12 @@ export const CLAUDE_CODE_ACTIVE_CATALOG_DATA: readonly ClaudeCodeCatalogEntryDat
       defaultReasoningEffort: "high",
     },
     {
+      model: "claude-opus-5-5",
+      displayName: "Opus 5.5",
+      description: "Opus 5.5 for everyday complex coding tasks",
+      defaultReasoningEffort: "high",
+    },
+    {
       model: DEFAULT_CLAUDE_CODE_MODEL,
       displayName: "Opus 5 (1M)",
       description: "Opus 5 with 1M context for complex long coding sessions",

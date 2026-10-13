@@ -37,6 +37,7 @@ const DISCOVERED_MODELS: ModelInfo[] = [
 
 const CURATED_MODELS = [
   "claude-fable-5-1",
+  "claude-opus-5-5",
   "claude-opus-5[1m]",
   "claude-opus-4-8[1m]",
   "claude-opus-4-7[1m]",
@@ -97,6 +98,29 @@ describe("buildClaudeCodeModels", () => {
         model: "claude-future-6",
         displayName: "Future 6",
         isDefault: false,
+        defaultReasoningEffort: "high",
+      }),
+    );
+  });
+
+  it("keeps the curated label when discovery reports a curated model", () => {
+    const result = buildClaudeCodeModels([
+      {
+        value: "opus",
+        resolvedModel: "claude-opus-5-5",
+        displayName: "Opus",
+        description: "Opus 5.5 · Best for everyday, complex tasks",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      },
+    ]);
+
+    expect(result.models.map((model) => model.model)).toEqual(CURATED_MODELS);
+    expect(
+      result.models.find((model) => model.model === "claude-opus-5-5"),
+    ).toEqual(
+      expect.objectContaining({
+        displayName: "Opus 5.5",
         defaultReasoningEffort: "high",
       }),
     );
