@@ -55,7 +55,14 @@ export function PendingInteractionShell({
     if (expandedByDefault) setIsExpanded(true);
   }
   const rootRef = useRef<HTMLElement>(null);
-  const availableHeight = useStickyFooterAvailableHeight(rootRef, isExpanded);
+  const availableHeight = useStickyFooterAvailableHeight(
+    rootRef,
+    inline !== null || isExpanded,
+  );
+  const fittedHeightStyle =
+    availableHeight === null
+      ? undefined
+      : { maxHeight: Math.max(160, availableHeight) };
   const toggleRef = useRef<HTMLButtonElement>(null);
   const contentId = useId();
   const errorId = useId();
@@ -107,10 +114,12 @@ export function PendingInteractionShell({
     const inlineTitle = title === inline.promptShownAbove ? undefined : title;
     return (
       <section
+        ref={rootRef}
         aria-label={label}
         data-testid={testId}
         data-presentation="inline"
-        className="flex min-w-0 flex-col text-xs text-muted-foreground"
+        style={fittedHeightStyle}
+        className="flex min-h-0 min-w-0 flex-col text-xs text-muted-foreground"
       >
         <ThreadQuestionFormHost
           density="compact"
@@ -158,11 +167,7 @@ export function PendingInteractionShell({
       data-testid={testId}
       data-expanded={isExpanded ? "" : undefined}
       onKeyDown={handleKeyDown}
-      style={
-        availableHeight === null
-          ? undefined
-          : { maxHeight: Math.max(160, availableHeight) }
-      }
+      style={fittedHeightStyle}
       className="@container mb-2 flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-lg border border-border bg-surface-recessed text-xs text-muted-foreground"
     >
       <div
