@@ -35,7 +35,7 @@ const TEXT_BLOCK_TAGS = new Set([
   "TD",
   "TH",
 ]);
-const MIN_WIDTH = /^min-width: \d+px;?$/;
+const COLUMN_WIDTH = /^(?:min-)?width: (\d+)px;?$/;
 const ENTITIES: Record<string, string> = {
   amp: "&",
   quot: '"',
@@ -67,11 +67,24 @@ function parseHtml(html: string): HTMLElement {
 }
 
 function normalizeHtml(root: HTMLElement): HTMLElement {
-  for (const section of root.querySelectorAll("thead, tbody, tfoot"))
+  for (const section of root.querySelectorAll("thead, tbody"))
     section.replaceWith(...section.childNodes);
-  for (const element of root.querySelectorAll("table, col"))
-    if (MIN_WIDTH.test(element.getAttribute("style") ?? ""))
-      element.removeAttribute("style");
+  for (const table of root.querySelectorAll("table")) {
+    const cols = [...table.querySelectorAll(":scope > colgroup > col")];
+    const columns = cols.length || (table.rows[0]?.cells.length ?? 0);
+    const width = cols.length
+      ? cols.reduce(
+          (sum, col) =>
+            sum + Number(COLUMN_WIDTH.exec(col.getAttribute("style") ?? "")?.[1]),
+          0,
+        )
+      : columns * 25;
+    if (/^min-width: (\d+)px;?$/.exec(table.getAttribute("style") ?? "")?.[1] === String(width))
+      table.removeAttribute("style");
+  }
+  for (const col of root.querySelectorAll("col"))
+    if (/^min-width: 25px;?$/.test(col.getAttribute("style") ?? ""))
+      col.removeAttribute("style");
   for (const group of root.querySelectorAll("colgroup"))
     if ([...group.children].every((col) => col.attributes.length === 0))
       group.remove();
@@ -112,8 +125,15 @@ function isLossless(
 ): boolean {
   const original = parseHtml(source);
   if (!original.textContent?.trim()) return false;
+  const loaded = parseHtml(
+    source.replace(/\n<\/code><\/pre>/g, "</code></pre>"),
+  );
+  editor.storage.markdown.parser.normalizeDOM(loaded, {
+    inline: false,
+    content: source,
+  });
   const saved: string = editor.storage.markdown.serializer.serialize(
-    DOMParser.fromSchema(editor.schema).parse(original),
+    DOMParser.fromSchema(editor.schema).parse(loaded),
   );
   const verbatim = (tokens: InlineToken[], index: number) =>
     tokens[index]!.content;
@@ -181,6 +201,8 @@ export const RawHtmlBlock = Node.create({
               ) {
                 return source;
               }
+              if (tokens[index - 1]?.type === "list_item_open")
+                return `<span data-docs-raw-html="true" data-source="${markdown.utils.escapeHtml(source.replace(/\n$/, ""))}"></span>`;
               return `<pre data-docs-raw-html="${MARKER}"><code>${markdown.utils.escapeHtml(source.replace(/\n$/, ""))}</code></pre>`;
             };
           },

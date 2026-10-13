@@ -3,6 +3,8 @@ import { Editor } from "@tiptap/core";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import StarterKit from "@tiptap/starter-kit";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
 import Table from "@tiptap/extension-table";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
@@ -17,6 +19,8 @@ function createEditor(content: string) {
       StarterKit,
       Link.configure({ openOnClick: false, autolink: true }),
       Image,
+      TaskList,
+      TaskItem.configure({ nested: true }),
       Table,
       TableRow,
       TableHeader,
@@ -52,6 +56,8 @@ describe("raw HTML blocks", () => {
     '<div onclick="alert(1)"><img src="missing" onerror="alert(2)"></div>',
     '> <div>\n> <video src="/demo.mp4"></video>\n> </div>',
     '- Item\n\n  <div>\n  <video src="/demo.mp4"></video>\n  </div>',
+    "- one\n- <div>two</div>\n- three",
+    "1. <video controls>\n   <source src=\"a.mp4\">\n   </video>\n2. three",
   ])("retains exact source across edits and repeated loads: %s", (html) => {
     const editor = createEditor(`Before.\n\n${html}\n\nAfter.`);
     try {
@@ -78,6 +84,10 @@ describe("raw HTML blocks", () => {
     "<pre><code>before\n```\nafter</code></pre>",
     "<h2>Line one<br>Line two</h2>",
     '<pre data-docs-raw-html="true"><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>',
+    "<p>Install the <code>bb</code>\nCLI first.</p>",
+    '<p>See <a href="https://example.com">the docs</a>\nfor details.</p>',
+    "<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>B</td></tr></tbody><tfoot><tr><td>F</td></tr></tfoot></table>",
+    '<table style="min-width: 600px"><tr><th>A</th></tr><tr><td>B</td></tr></table>',
   ])("keeps HTML the Markdown save would change as source: %s", (html) => {
     const content = `Before.\n\n${html}\n\nAfter.`;
     const editor = createEditor(content);
