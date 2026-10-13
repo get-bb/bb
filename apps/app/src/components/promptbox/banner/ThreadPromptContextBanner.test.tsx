@@ -596,16 +596,23 @@ describe("ThreadPromptContextBanner", () => {
     ).not.toBeNull();
   });
 
-  it("keeps child threads visible while git status loads or the environment is gone", () => {
+  it("keeps child threads visible while git status loads or the environment is gone, but not once archived", () => {
     const renderBanner = ({
+      archived = false,
       environmentGone = false,
       gitSectionPending = false,
-    }: { environmentGone?: boolean; gitSectionPending?: boolean } = {}) => (
+    }: {
+      archived?: boolean;
+      environmentGone?: boolean;
+      gitSectionPending?: boolean;
+    } = {}) => (
       <MemoryRouter>
         <ThreadPromptContextBanner
           gitSection={makeGitSection("uncommitted")}
           gitSectionPending={gitSectionPending}
-          archivedSection={null}
+          archivedSection={
+            archived ? { archivedAt: 1_731_456_000_000 } : null
+          }
           environmentGoneSection={
             environmentGone ? { status: "destroyed" } : null
           }
@@ -643,6 +650,10 @@ describe("ThreadPromptContextBanner", () => {
     expect(
       screen.getByRole("button", { name: "Environment unavailable" }),
     ).toBeTruthy();
+
+    rerender(renderBanner({ archived: true }));
+    expect(screen.queryByRole("region", { name: "Child threads" })).toBeNull();
+    expect(screen.getByText("Thread is archived")).toBeTruthy();
   });
 
   it("leaves another open section alone when a child thread newly needs input", () => {

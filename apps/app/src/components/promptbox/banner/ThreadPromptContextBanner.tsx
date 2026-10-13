@@ -1314,13 +1314,14 @@ export function ThreadPromptContextBanner({
     expandedSection === "parentThread",
     () => onToggleSection("parentThread"),
   );
-  useExpandForNewNeedsInput(
-    childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS,
-    expandedSection,
-    () => onToggleSection("childThreads"),
+  const childThreadItems = archivedSection
+    ? NO_CHILD_THREAD_ITEMS
+    : (childThreadsSection?.items ?? NO_CHILD_THREAD_ITEMS);
+  useExpandForNewNeedsInput(childThreadItems, expandedSection, () =>
+    onToggleSection("childThreads"),
   );
   const showChildThreads =
-    childThreadsSection !== null && childThreadsSection.items.length > 0;
+    childThreadsSection !== null && childThreadItems.length > 0;
   const activeChildThreadsCard =
     showChildThreads && childThreadsSection ? (
       <ActiveChildThreadsCard
