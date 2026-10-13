@@ -286,7 +286,7 @@ describe("plugin app runtime shim", () => {
     await writeFile(
       join(dir, "app.ts"),
       'import "./app.css";\n' +
-        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 group-has-[input:checked]/host:opacity-50 space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
+        'export const utilityClass = "flex-col hover:underline has-[:focus]:opacity-50 group-has-[input:checked]/host:opacity-50 hover:group-has-[input:checked]/host:opacity-50 group-has-[input:checked]/host:[&>svg]:hidden space-y-3 [[data-scope-host]_&]:opacity-50 [[data-scope-host]~&]:opacity-50";\n' +
         'export const siblingClass = "[&~*]:hidden";\n',
     );
     await writeFile(
@@ -314,6 +314,12 @@ describe("plugin app runtime shim", () => {
     expect(css).not.toContain(String.raw`:is(:where(.group\/host):has(`);
     expect(css).toContain(
       String.raw`:where(.group\/host):has(:is(input:checked)) ${scope}.group-has`,
+    );
+    expect(css).toContain(
+      String.raw`.hover\:group-has-\[input\:checked\]\/host\:opacity-50:hover`,
+    );
+    expect(css).toContain(
+      String.raw`.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden>svg`,
     );
     expect(css).toContain(`[data-scope-host] ${scope}`);
     expect(css).toContain(`[data-scope-host]~${scope}`);
