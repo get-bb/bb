@@ -305,19 +305,7 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.getByText("Investigate failing checks")).toBeTruthy();
   });
 
-  it("moves to the next waiting question after an answer, then closes when none remain", () => {
-    const { rerender } = render(bannerElement(section([newest, middle])));
-    fireEvent.click(screen.getByRole("button", { name: /Child thr_b/ }));
-
-    rerender(bannerElement(section([middle])));
-    expect(shownSource()).toBe("Child thr_c");
-
-    rerender(bannerElement(section([])));
-    expect(openForm()).toBe(null);
-    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
-  });
-
-  it("holds the next question briefly and keeps focus in the banner after an answer", () => {
+  it("moves to the next question after an answer, holding it briefly and keeping focus, then closes when none remain", () => {
     vi.useFakeTimers();
     try {
       const { rerender } = render(bannerElement(section([newest, middle])));
@@ -339,6 +327,7 @@ describe("ThreadPromptContextBanner child questions", () => {
       screen.getByRole("button", { name: /^Alpha/ }).focus();
       rerender(bannerElement(section([])));
       expect(openForm()).toBe(null);
+      expect(screen.getByText("Investigate failing checks")).toBeTruthy();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "1 active child thread" }),
       );

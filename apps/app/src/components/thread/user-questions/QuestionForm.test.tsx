@@ -264,7 +264,7 @@ describe("answering a single-select question", () => {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it("takes compact density from the host when the form passes none", () => {
+  it("uses the compact labels when the host is compact", () => {
     const slot = render(singleSelect, { density: "compact" });
     expect(getButtonByText(slot, "Decline")).toBeTruthy();
     expect(getButtonByText(slot, "Submit")).toBeTruthy();

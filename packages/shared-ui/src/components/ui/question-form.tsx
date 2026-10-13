@@ -38,11 +38,9 @@ const FREE_TEXT_MIN_HEIGHT = 84;
 const FREE_TEXT_MAX_HEIGHT = 158;
 const PREVIEW_MAX_HEIGHT = 220;
 
-export type QuestionFormDensity = QuestionFormHost["density"];
-
 interface QuestionOptionRowProps {
   checked: boolean;
-  density: QuestionFormDensity;
+  density: QuestionFormHost["density"];
   label: string;
   description?: string;
   multiSelect: boolean;
@@ -212,7 +210,7 @@ function QuestionTabs({
 }
 
 interface QuestionInputBlockProps {
-  density: QuestionFormDensity;
+  density: QuestionFormHost["density"];
   showPrompt: boolean;
   disabled: boolean;
   question: Question;
@@ -461,50 +459,6 @@ export function QuestionForm({
 
   const currentState = answerStateFor(formState, currentQuestion);
   const compactButtonClass = density === "compact" ? "font-normal" : undefined;
-  const cancelButton = (
-    <Button
-      type="button"
-      size="sm"
-      variant="ghost"
-      className={compactButtonClass}
-      disabled={cancelDisabled || settledAction !== null}
-      onClick={async () => {
-        try {
-          await onCancel();
-          setSettledAction("cancel");
-          clearDraft();
-        } catch {}
-      }}
-    >
-      {density === "compact" ? "Decline" : "Cancel"}
-    </Button>
-  );
-  const backButton = !isFirst ? (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      className={compactButtonClass}
-      disabled={disabled || voiceBusy}
-      onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
-    >
-      Back
-    </Button>
-  ) : null;
-  const advanceButton = (
-    <Button
-      type="button"
-      size="sm"
-      className={compactButtonClass}
-      disabled={disabled || voiceBusy || (isLast && !allAnswered)}
-      onClick={handleAdvance}
-    >
-      {inputDisabled || settledAction === "submit" ? (
-        <Icon name="Spinner" className="size-3 animate-spin" />
-      ) : null}
-      {isLast ? (density === "compact" ? "Submit" : "Submit answer") : "Next"}
-    </Button>
-  );
 
   return (
     <div
@@ -567,10 +521,51 @@ export function QuestionForm({
           density === "compact" ? "mt-1.5" : "mt-3",
         )}
       >
-        {cancelButton}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className={compactButtonClass}
+          disabled={cancelDisabled || settledAction !== null}
+          onClick={async () => {
+            try {
+              await onCancel();
+              setSettledAction("cancel");
+              clearDraft();
+            } catch {}
+          }}
+        >
+          {density === "compact" ? "Decline" : "Cancel"}
+        </Button>
         <div className="flex items-center gap-2">
-          {backButton}
-          {advanceButton}
+          {!isFirst ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={compactButtonClass}
+              disabled={disabled || voiceBusy}
+              onClick={() => setCurrentIndex((index) => Math.max(index - 1, 0))}
+            >
+              Back
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className={compactButtonClass}
+            disabled={disabled || voiceBusy || (isLast && !allAnswered)}
+            onClick={handleAdvance}
+          >
+            {inputDisabled || settledAction === "submit" ? (
+              <Icon name="Spinner" className="size-3 animate-spin" />
+            ) : null}
+            {isLast
+              ? density === "compact"
+                ? "Submit"
+                : "Submit answer"
+              : "Next"}
+          </Button>
         </div>
       </div>
     </div>
