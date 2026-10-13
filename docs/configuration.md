@@ -2230,3 +2230,16 @@ Settings. Search scope is remembered in browser local storage separately for
 new-thread and follow-up composers. Starred text and mentions persist in the
 plugin database. See the [Prompt Library skill](../plugins/prompt-library/skills/prompt-library/SKILL.md)
 for CLI and SDK commands.
+
+## MCP server
+
+The bundled MCP server plugin is disabled by default. Enable it in
+Settings → Plugins or with `bb plugin enable bb--mcp`. While it is enabled, bb
+serves a Model Context Protocol endpoint at `/mcp` on its bb connect address
+and at `/api/v1/plugins/bb--mcp/http/mcp` on the loopback address.
+`bb mcp status` prints both. Remote apps sign in through the bb account, and
+an approved app can run any `bb` command; `bb mcp clients` lists them and
+`bb mcp revoke <grant-id>` disconnects one. The local address needs no
+sign-in and has the same trust as the `bb` CLI on that machine. See the
+[MCP skill](../plugins/mcp/skills/mcp/SKILL.md) for the tools and the few
+commands that cannot run over MCP.

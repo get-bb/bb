@@ -237,6 +237,21 @@ describe("readHostFile (no ref — disk read)", () => {
       message: "Path is a directory, not a file",
     });
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects devices instead of reading them without bound",
+    async () => {
+      await expect(
+        readHostFile({
+          type: "host.read_file",
+          path: "/dev/zero",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_path",
+        message: "Path is not a regular file",
+      });
+    },
+  );
 });
 
 describe("browseHostDirectory", () => {
