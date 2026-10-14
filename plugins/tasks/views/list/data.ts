@@ -2,11 +2,13 @@ import {
   listAllTasks,
   listTasksOpenFirst,
   patchTasks,
-  signalTaskIds,
   useTasksQuery,
-  type TaskSignal,
   type TasksRpc,
 } from "../../shell/data.js";
+import {
+  signalTaskIds,
+  type TaskSignal,
+} from "../../shell/signal-scheduler.js";
 import type {
   Label,
   Task,
@@ -45,13 +47,14 @@ function belongsToList(
   return true;
 }
 
-export function useListTasks(
+export function listTasksQuery(
   projectId: string | null,
   activeOnly: boolean,
   filters: ListTaskFilters,
 ) {
-  const query = {
+  return {
     ...(projectId === null ? {} : { projectId }),
+    ...(filters.statuses.length > 0 ? { statuses: [...filters.statuses] } : {}),
     ...(filters.priorities.length > 0
       ? { priorities: [...filters.priorities] }
       : {}),
@@ -59,15 +62,18 @@ export function useListTasks(
     activeOnly,
     parentTaskId: null,
   };
+}
+
+export function useListTasks(
+  projectId: string | null,
+  activeOnly: boolean,
+  filters: ListTaskFilters,
+) {
+  const query = listTasksQuery(projectId, activeOnly, filters);
   return useTasksQuery<Task[]>(
     async (rpc, publish) =>
       filters.statuses.length > 0 || activeOnly
-        ? listAllTasks(rpc, {
-            ...query,
-            ...(filters.statuses.length > 0
-              ? { statuses: [...filters.statuses] }
-              : {}),
-          })
+        ? listAllTasks(rpc, query)
         : listTasksOpenFirst(rpc, query, publish),
     activeOnly ? ["tasks:changed", "threads:changed"] : ["tasks:changed"],
     [

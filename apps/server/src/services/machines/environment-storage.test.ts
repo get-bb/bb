@@ -7,9 +7,9 @@ import {
   projects,
   appSettingsValues,
   environmentVariables,
-  createConnection,
-  migrate,
+  type DbConnection,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   setMachineEnvironmentVariable,
@@ -19,11 +19,10 @@ import {
   replaceMachineEnvironment,
 } from "./environment-storage.js";
 
-let db: ReturnType<typeof createConnection>;
+let db: DbConnection;
 let dataDir: string;
 beforeEach(async () => {
-  db = createConnection(":memory:");
-  migrate(db);
+  db = createMigratedConnection();
   dataDir = await mkdtemp(join(tmpdir(), "bb-env-encryption-"));
 });
 afterEach(async () => {
@@ -47,8 +46,7 @@ it("stores encrypted values that survive a database reopen", async () => {
     ).toBe(0o600);
   }
   db.$client.close();
-  db = createConnection(":memory:");
-  migrate(db);
+  db = createMigratedConnection();
   db.insert(environmentVariables).values(persisted).run();
   expect(readMachineEnvironment(db)).toEqual(rows);
   expect(await decryptMachineEnvironment(dataDir, rows[1]!)).toBe(

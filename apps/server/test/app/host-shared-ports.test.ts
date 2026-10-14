@@ -1,12 +1,11 @@
 import {
-  createConnection,
   heartbeatSession,
-  migrate,
   noopNotifier,
   openSession,
   updateHost,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   hostDaemonServerWsMessageSchema,
@@ -28,8 +27,7 @@ import {
 } from "../helpers/test-app.js";
 
 function setup(args: { enrolled?: boolean; online?: boolean } = {}) {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const host = upsertHost(db, noopNotifier, {

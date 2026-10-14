@@ -128,6 +128,42 @@ describe("bb provider command output", () => {
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual(["[]"]);
   });
 
+  it("bb provider models names the project whose checkout scopes the list", async () => {
+    const get = vi.fn(async () => ({
+      providers: [],
+      models: [],
+      selectedOnlyModels: [],
+      modelLoadError: null,
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(
+      ["provider", "models", "acp-opencode", "--project", "proj_1", "--json"],
+      register,
+    );
+
+    expect(get).toHaveBeenCalledWith({
+      query: { projectId: "proj_1", providerId: "acp-opencode" },
+    });
+    await expect(
+      runCommand(
+        [
+          "provider",
+          "models",
+          "acp-opencode",
+          "--project",
+          "proj_1",
+          "--environment",
+          "env_1",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: Cannot combine --project with --environment; the environment already selects its workspace.",
+    );
+  });
+
   it("bb provider models reports a model-load failure and its detail on stderr", async () => {
     const get = vi.fn(async () => ({
       providers: [],

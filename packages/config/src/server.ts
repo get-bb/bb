@@ -28,6 +28,7 @@ import {
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
   BB_APP_UPDATE_MODE_ENV,
+  BB_CLI_LAUNCHER_ENV,
   BB_TELEMETRY_ENV,
   BB_PERF_DIAGNOSTICS_ENV,
   DEFAULT_BB_APP_URL,
@@ -63,6 +64,7 @@ export interface ServerConfig
   BB_SERVER_BIND_HOST: ServerBindHost;
   BB_SERVER_LAUNCH_ID?: string;
   BB_APP_UPDATE_MODE?: AppUpdateMode;
+  BB_CLI_LAUNCHER?: string;
   BB_TELEMETRY: boolean;
   BB_PERF_DIAGNOSTICS: boolean;
   featureFlags: FeatureFlags;
@@ -189,6 +191,15 @@ export function loadServerConfig(
     value: readOptionalEnvVar({
       context: loader.context,
       definition: BB_APP_UPDATE_MODE_ENV,
+      env: loader.env,
+    }),
+  });
+  assignIfDefined({
+    key: "BB_CLI_LAUNCHER",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_CLI_LAUNCHER_ENV,
       env: loader.env,
     }),
   });

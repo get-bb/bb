@@ -348,6 +348,12 @@ export async function readFileForTransport(
       "Path is a directory, not a file",
     );
   }
+  if (!stat.isFile()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "Path is not a regular file",
+    );
+  }
 
   const mimeType = mimeTypes.lookup(args.resultPath) || undefined;
   const fileSizeLimitBytes = getFileSizeLimitBytes(mimeType);
@@ -396,6 +402,12 @@ export async function readRootRelativeFileForTransport(
     throw new CommandDispatchError(
       "invalid_path",
       "Path is a directory, not a file",
+    );
+  }
+  if (!stat.isFile()) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "Path is not a regular file",
     );
   }
 

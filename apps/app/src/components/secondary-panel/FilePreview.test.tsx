@@ -1014,6 +1014,45 @@ describe("FilePreview", () => {
     expect(screen.getByRole("alert").textContent).toBe("Failed to load file");
   });
 
+  it("renders .htm files with the existing Preview and Raw controls", () => {
+    const path = "reports/report.HTM";
+    const url = "/preview/reports/report.HTM";
+    const view = render(
+      <SecondaryPanelFilePreview
+        activePath={path}
+        filePreview={{
+          kind: "text",
+          content: "<!doctype html><h1>Report</h1>",
+          mimeType: "text/html",
+          path,
+          url,
+        }}
+        htmlPreviewUrl={url}
+        isLoading={false}
+      />,
+    );
+
+    expect(view.container.querySelector("iframe")?.getAttribute("src")).toBe(
+      url,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Preview" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    expect(
+      screen.getByRole("button", { name: "Raw" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      view.container.querySelector("diffs-container")?.shadowRoot?.textContent,
+    ).toBe("<!doctype html><h1>Report</h1>");
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    expect(view.container.querySelector("iframe")?.getAttribute("src")).toBe(
+      url,
+    );
+  });
+
   it("renders HTML over the preview render limit as source instead of an iframe", () => {
     const content = `<html>${"a".repeat(5 * 1024 * 1024)}</html>`;
     const view = render(

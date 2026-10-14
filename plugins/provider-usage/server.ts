@@ -43,7 +43,9 @@ export const providerUsageRpcContract = defineRpcContract({
   },
 });
 
-type UsageRequest = z.infer<typeof providerUsageRpcContract.getUsage.input>;
+export type UsageRequest = z.infer<
+  typeof providerUsageRpcContract.getUsage.input
+>;
 function normalizedTint(
   tint: { light: string; dark: string } | undefined,
 ): { light: string; dark: string } | null {

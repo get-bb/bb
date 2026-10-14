@@ -281,16 +281,19 @@ function readCursor(stateDir) {
   let text;
   try {
     text = readFileSync(join(stateDir, "cursor"), "utf8").trim();
-  } catch {
-    return null;
+  } catch (error) {
+    return error?.code === "ENOENT" ? null : false;
   }
-  if (text === "end" || text === "") return null;
+  if (text === "end") return null;
+  if (!/^\d+ \d+$/u.test(text)) return false;
   const [run, seq] = text.split(" ").map(Number);
+  if (!Number.isSafeInteger(run) || !Number.isSafeInteger(seq)) return false;
   return { run, seq };
 }
 
 function cursorAllows(cursor, entry) {
   if (cursor === null) return true;
+  if (cursor === false) return false;
   return entry.run < cursor.run || (entry.run === cursor.run && entry.seq < cursor.seq);
 }
 

@@ -1,16 +1,12 @@
 import { writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
-import {
-  cleanupTempDirs,
-  createHarness,
-  makeTempDir,
-} from "./dispatch-helpers.js";
+import { createHarness } from "./dispatch-helpers.js";
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllEnvs();
-  await cleanupTempDirs();
 });
 it("strips daemon-private inherited variables and returns clone failures as-is", async () => {
   const dir = await makeTempDir("bb-clone-private-");

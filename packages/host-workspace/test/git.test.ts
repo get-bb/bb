@@ -131,9 +131,14 @@ async function initBareWorktreeLayout() {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+    tempDirs.splice(0).map((dir) =>
+      fs.rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      }),
+    ),
   );
 });
 

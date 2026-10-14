@@ -1,9 +1,10 @@
-// @vitest-environment jsdom
-
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderHookStatically } from "@/test/render-hook-statically";
+import { describe, expect, it, vi } from "vitest";
 import type { ExperimentalLiveFileTarget } from "@get-bb/plugin-sdk";
-import { usePanelFiles, type PanelFileScope } from "./usePanelFiles";
+import {
+  usePanelFiles,
+  type PanelFileScope,
+} from "./usePanelFiles";
 import type { OpenSecondaryPanelTabRequest } from "./useThreadFileTabs";
 
 interface SurfaceCase {
@@ -74,13 +75,11 @@ function renderSurface(surface: SurfaceCase, available = true) {
     id: "tab",
   }));
   const reveal = vi.fn();
-  const { result } = renderHook(() =>
+  const panelFiles = renderHookStatically(() =>
     usePanelFiles({ available, openTab, reveal, scope: surface.scope }),
   );
-  return { openTab, result, reveal };
+  return { openTab, panelFiles, reveal };
 }
-
-afterEach(cleanup);
 
 describe.each(SURFACES)("panel files on the $name", (surface) => {
   it.each([
@@ -89,11 +88,8 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
     ["ownStorage", OWN_STORAGE],
     ["otherWorkspace", OTHER_WORKSPACE],
   ] as const)("applies the surface rule to a %s target", (caseName, target) => {
-    const { openTab, result, reveal } = renderSurface(surface);
-    let accepted = false;
-    act(() => {
-      accepted = result.current.openFilePreview({ target, location: null });
-    });
+    const { openTab, panelFiles, reveal } = renderSurface(surface);
+    const accepted = panelFiles.openFilePreview({ target, location: null });
 
     expect(accepted).toBe(surface.accepts[caseName]);
     expect(openTab).toHaveBeenCalledTimes(accepted ? 1 : 0);
@@ -102,11 +98,9 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
 
   it("opens host files in the same tab shape core uses", () => {
     if (!surface.accepts.ownHost) return;
-    const { openTab, result } = renderSurface(surface);
-    act(() => {
-      result.current.openFilePreview({ target: OWN_HOST, location: null });
-      result.current.openHostFile({ lineRange: null, path: OWN_HOST.path });
-    });
+    const { openTab, panelFiles } = renderSurface(surface);
+    panelFiles.openFilePreview({ target: OWN_HOST, location: null });
+    panelFiles.openHostFile({ lineRange: null, path: OWN_HOST.path });
 
     const [apiRequest, coreRequest] = openTab.mock.calls.map(
       ([request]) => request,
@@ -119,17 +113,17 @@ describe.each(SURFACES)("panel files on the $name", (surface) => {
   });
 
   it("declines malformed targets and unavailable surfaces", () => {
-    const { result: available } = renderSurface(surface);
-    const { result: unavailable, openTab } = renderSurface(surface, false);
+    const { panelFiles: available } = renderSurface(surface);
+    const { panelFiles: unavailable, openTab } = renderSurface(surface, false);
 
     expect(
-      available.current.openFilePreview({
+      available.openFilePreview({
         target: { ...OWN_WORKSPACE, path: "../escape" },
         location: null,
       }),
     ).toBe(false);
     expect(
-      unavailable.current.openFilePreview({
+      unavailable.openFilePreview({
         target: OWN_WORKSPACE,
         location: null,
       }),

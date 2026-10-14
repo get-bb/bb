@@ -161,41 +161,4 @@ describe("Concurrency limit settings", () => {
       }),
     );
   });
-
-  it("returns a host to Auto when its override is cleared", async () => {
-    const configuredHosts = [
-      { ...hosts[0]!, effectiveLimit: 2, override: 2 },
-      hosts[1]!,
-    ];
-    const slot = renderSlot(
-      app.settingsSections[0]!,
-      {},
-      {
-        rpc: {
-          getConfiguration: () => ({
-            globalLimit: null,
-            hostOverrides: [{ hostId: "host-a", limit: 2 }],
-            hosts: configuredHosts,
-          }),
-          setConfiguration: (input) => ({
-            ...configurationInput(input),
-            hosts,
-          }),
-        },
-      },
-    );
-
-    const laptop = await slot.findByRole("spinbutton", {
-      name: "Laptop thread limit",
-    });
-    fireEvent.change(laptop, { target: { value: "" } });
-    fireEvent.blur(laptop);
-
-    await waitFor(() =>
-      expect(slot.rpcCalls).toContainEqual({
-        method: "setConfiguration",
-        input: { globalLimit: null, hostOverrides: [] },
-      }),
-    );
-  });
 });

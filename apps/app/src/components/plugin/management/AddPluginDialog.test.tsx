@@ -51,13 +51,6 @@ function installPlanFor(url: string): unknown {
   };
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 const STARTED_JOB: PluginInstallJob = {
   id: "job-1",
   target: { kind: "catalog", entryId: "linear", marketplace: "bb-official" },
@@ -86,12 +79,12 @@ function stubFetch(
         url === "/api/v1/plugins/install" ||
         url === "/api/v1/plugin-catalog/install"
       ) {
-        return jsonResponse(installBody, installStatus);
+        return Response.json(installBody, { status: installStatus });
       }
       if (url.startsWith("/api/v1/plugin-catalog/install-plan")) {
-        return jsonResponse({ plan: installPlanFor(url) });
+        return Response.json({ plan: installPlanFor(url) });
       }
-      return jsonResponse({ error: "not found" }, 404);
+      return Response.json({ error: "not found" }, { status: 404 });
     }),
   );
   return requests;
@@ -118,10 +111,10 @@ describe("AddPluginDialog", () => {
           if (url.startsWith("/api/v1/plugin-catalog/install-plan")) {
             attempts += 1;
             return attempts === 1
-              ? jsonResponse({ error: "Source unavailable" }, status)
-              : jsonResponse({ plan: installPlanFor(url) });
+              ? Response.json({ error: "Source unavailable" }, { status })
+              : Response.json({ plan: installPlanFor(url) });
           }
-          return jsonResponse({ error: "Not found" }, 404);
+          return Response.json({ error: "Not found" }, { status: 404 });
         }),
       );
       renderDialog({

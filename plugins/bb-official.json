@@ -177,6 +177,10 @@
     "category": "memory-and-context",
     "screenshots": []
   },
+  "mcp": {
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
   "storage-retention": {
     "category": "tasks-and-workflows",
     "screenshots": []

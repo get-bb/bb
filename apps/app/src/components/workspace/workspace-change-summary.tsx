@@ -17,7 +17,7 @@ interface ChangeTally {
 
 export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
   return {
-    filesCount: stats.files.length,
+    filesCount: stats.fileCount,
     insertions: stats.insertions,
     deletions: stats.deletions,
     lineStatsComplete: stats.lineStatsComplete,
@@ -26,6 +26,14 @@ export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
 
 function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
   return `${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
+}
+
+export function formatOmittedChangedFilesLabel(
+  stats: Pick<WorkspaceChangeStats, "fileCount" | "files">,
+): string | null {
+  const omittedCount = stats.fileCount - stats.files.length;
+  if (omittedCount <= 0) return null;
+  return `${omittedCount.toLocaleString()} more ${omittedCount === 1 ? "file" : "files"} not shown`;
 }
 
 function formatChangeSummaryWithoutLineStats(
@@ -97,7 +105,7 @@ export function selectWorkspaceChangedFilesSections(
   if (!workspaceStatus) return [];
   const sections: WorkspaceChangedFilesSection[] = [];
   const workingTree = workspaceStatus.workingTree;
-  if (workingTree.files.length > 0) {
+  if (workingTree.fileCount > 0) {
     const isUntrackedOnly = workingTree.state === "untracked";
     sections.push({
       kind: isUntrackedOnly ? "untracked" : "uncommitted",
@@ -108,7 +116,7 @@ export function selectWorkspaceChangedFilesSections(
     });
   }
   const mergeBase = workspaceStatus.mergeBase;
-  if (mergeBase && mergeBase.files.length > 0) {
+  if (mergeBase && mergeBase.fileCount > 0) {
     sections.push({
       kind: "committed",
       label: "Committed",

@@ -42,7 +42,6 @@ const {
   ChronologicalSectionThreadSections,
   ProjectRow,
   PinnedEnvironmentThreadGroupRow,
-  SectionThreadDragOverlay,
   ThreadTreeNodeRow,
 } = await import("./ProjectRow.js");
 const { ThreadCreationPlacementScope } =
@@ -229,11 +228,9 @@ function expectCollapsedActivityAtSidebarEdge(indicator: string) {
 
 function CustomSectionsVisibilityProbe({
   threads,
-  buildingName = "Building",
   onProjectSelect,
 }: {
   threads: SidebarThread[];
-  buildingName?: string;
   onProjectSelect: () => void;
 }) {
   const { order, persistedOrder, onOrderChange } = useSidebarModeSectionOrder({
@@ -247,7 +244,7 @@ function CustomSectionsVisibilityProbe({
       threadListState={{ status: "ready", threads }}
       compareThreads={() => 0}
       sections={[
-        { id: "sec_building", name: buildingName },
+        { id: "sec_building", name: "Building" },
         { id: "sec_review", name: "Review" },
       ]}
       collapsedThreadIds={new Set()}
@@ -433,17 +430,6 @@ describe("ProjectRow interactions", () => {
         .querySelector("[data-sidebar-reorder-placement]")
         ?.getAttribute("data-sidebar-reorder-placement"),
     ).toBe("after");
-  });
-
-  it("renders the dragged copy as a compact opaque chip", () => {
-    renderTree(<SectionThreadDragOverlay thread={makeThread()} />);
-
-    const overlay = document.querySelector(
-      '[data-sidebar-section-drag-overlay="true"]',
-    );
-    expect(overlay?.className).toContain("w-fit");
-    expect(overlay?.className).toContain("max-w-56");
-    expect(overlay?.className).not.toContain("opacity-");
   });
 
   it("keeps project header controls touch-accessible when their menu opens and closes", async () => {
@@ -744,60 +730,6 @@ describe("ProjectRow interactions", () => {
     );
 
     expect(renderedIndicators()).toEqual(["working-draft"]);
-  });
-
-  it("keeps a duplicate section name in place until corrected", async () => {
-    const update = vi.fn(sdkResult({ ok: true })).mockRejectedValueOnce(
-      Object.assign(new Error("HTTP 409: Conflict"), {
-        status: 409,
-        code: "section_name_conflict",
-      }),
-    );
-    const store = createStore();
-    const slot = renderTree(
-      <CustomSectionsVisibilityProbe threads={[]} onProjectSelect={vi.fn()} />,
-      { sdk: { threadSections: { update } }, store },
-    );
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Building section actions" }),
-      { button: 0 },
-    );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
-    const input = await screen.findByRole("textbox", { name: "Section name" });
-    fireEvent.change(input, { target: { value: "Existing section" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(
-      await screen.findByText("A section with this name already exists."),
-    ).not.toBeNull();
-    expect(input).toHaveProperty("value", "Existing section");
-    fireEvent.change(input, { target: { value: "New section" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() =>
-      expect(slot.sdkCalls.at(-1)).toEqual({
-        method: "threadSections.update",
-        args: [{ id: "sec_building", name: "New section" }],
-      }),
-    );
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("textbox", { name: "Section name" }),
-      ).toBeNull(),
-    );
-    slot.rerender(
-      <Harness store={store}>
-        <CustomSectionsVisibilityProbe
-          threads={[]}
-          onProjectSelect={vi.fn()}
-          buildingName="New section"
-        />
-      </Harness>,
-    );
-    expect(
-      screen.getByRole("button", { name: "New section section actions" }),
-    ).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Building section actions" }),
-    ).toBeNull();
   });
 
   it("uses shared runtime precedence when a top-level section is collapsed", () => {

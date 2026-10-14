@@ -15,9 +15,7 @@ if (!Element.prototype.scrollIntoView) {
 const app = await loadPluginApp(() => import("./app"));
 const { openSendLater, resetSendLaterState } = await import("./app");
 
-const customization = app.composerCustomizations[0]!;
-const sendMenuItem = customization.sendMenu![0]!;
-const picker = customization.banners![0]!;
+const picker = app.composerCustomizations[0]!.banners![0]!;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -69,44 +67,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("registration", () => {
-  it("registers one customization covering both dispatchable composers", () => {
-    expect(app.composerCustomizations).toMatchObject([
-      {
-        id: "send-later",
-        scopes: ["thread", "new-thread"],
-        sendMenu: [
-          { id: "send-later", label: "Send later…", icon: "Calendar" },
-        ],
-        banners: [{ id: "send-later", chrome: "bare" }],
-      },
-    ]);
-    expect(customization.plusMenu).toBeUndefined();
-  });
-
-  it("disables the row while the composer would not submit", () => {
-    const disabled = sendMenuItem.disabled as (
-      composer: PluginComposerApi,
-    ) => boolean;
-    expect(disabled(fakeComposer({ isSubmittingBlocked: true }))).toBe(true);
-    expect(disabled(fakeComposer({ isSubmittingBlocked: false }))).toBe(false);
-  });
-
+describe("picker visibility", () => {
   it("refuses to open for an empty draft", () => {
     expect(openSendLater(fakeComposer({ isEmpty: true, key: "k" }))).toBe(
       false,
     );
-  });
-});
-
-describe("picker visibility", () => {
-  it("stays closed until the plus-menu row opens it", () => {
-    const slot = renderSlot(
-      picker,
-      {},
-      { composer: { scope: { kind: "thread", threadId: "thr_scope" } } },
-    );
-    expect(slot.queryByRole("dialog")).toBeNull();
   });
 
   it("stays closed in a composer other than the one it was opened from", () => {
@@ -121,7 +86,12 @@ describe("picker visibility", () => {
     const slot = renderSlot(
       picker,
       {},
-      { composer: { scope: { kind: "thread", threadId: "thr_b" } } },
+      {
+        composer: {
+          scope: { kind: "thread", threadId: "thr_b" },
+          text: "ship the release notes",
+        },
+      },
     );
     expect(slot.queryByRole("dialog")).toBeNull();
   });

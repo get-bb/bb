@@ -71,6 +71,7 @@ import { BrowserSettingsSection } from "@/components/settings/BrowserSettingsSec
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CliCommandSettingsSection } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
@@ -1065,7 +1066,7 @@ export function PrivacySettingsSection({
 
         <SettingsWithControl
           label="Share anonymous usage data"
-          description="Send anonymous app starts, thread and message counts, and plugin installs to help improve BB. Turning this off takes effect immediately for this server."
+          description="Send anonymous usage data, such as app starts, setup progress and feature use, to help improve bb. Turning this off takes effect immediately for this server."
         >
           <Switch
             checked={telemetryEnabled}
@@ -1111,6 +1112,16 @@ const EXPERIMENT_DEFINITIONS: Record<
       "Move the bb server to another machine from Settings → Machines, and export or import server data with bb server.",
   },
 };
+export function visibleExperimentKeys(
+  performanceDiagnosticsAvailable: boolean,
+): ExperimentKey[] {
+  return experimentKeys.filter(
+    (experimentKey) =>
+      experimentKey !== "performanceDiagnostics" ||
+      performanceDiagnosticsAvailable,
+  );
+}
+
 export function ExperimentsSettingsSection({
   performanceDiagnosticsAvailable,
   disabled,
@@ -1124,30 +1135,27 @@ export function ExperimentsSettingsSection({
         description="Early features that are off by default. Opt in to try them."
       >
         <div className="space-y-5">
-          {experimentKeys.map((experimentKey) => {
-            if (
-              experimentKey === "performanceDiagnostics" &&
-              !performanceDiagnosticsAvailable
-            )
-              return null;
-            const definition = EXPERIMENT_DEFINITIONS[experimentKey];
-            return (
-              <SettingsWithControl
-                key={experimentKey}
-                label={definition.label}
-                description={definition.description}
-              >
-                <Switch
-                  checked={experiments[experimentKey]}
-                  disabled={disabled}
-                  onCheckedChange={(enabled) =>
-                    onExperimentChange(experimentKey, enabled)
-                  }
-                  aria-label={definition.label}
-                />
-              </SettingsWithControl>
-            );
-          })}
+          {visibleExperimentKeys(performanceDiagnosticsAvailable).map(
+            (experimentKey) => {
+              const definition = EXPERIMENT_DEFINITIONS[experimentKey];
+              return (
+                <SettingsWithControl
+                  key={experimentKey}
+                  label={definition.label}
+                  description={definition.description}
+                >
+                  <Switch
+                    checked={experiments[experimentKey]}
+                    disabled={disabled}
+                    onCheckedChange={(enabled) =>
+                      onExperimentChange(experimentKey, enabled)
+                    }
+                    aria-label={definition.label}
+                  />
+                </SettingsWithControl>
+              );
+            },
+          )}
         </div>
       </SettingsSection>
     </>
@@ -1376,6 +1384,7 @@ export function SettingsView() {
             })
           }
         />
+        <CliCommandSettingsSection />
         <CliSkillsSettingsSection />
         <VoiceInputSettingsSection />
         <PrivacySettingsSection

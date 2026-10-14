@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { normalizeProjectPathInput } from "@bb/domain";
+import { normalizeProjectPathInput, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useDialogState } from "@bb/shared-ui/use-dialog-state";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -66,6 +66,17 @@ export function usePathPickerHost(): PathPickerHost {
   };
 }
 
+export function shouldOpenPathEntryDialog(
+  hosts: readonly Host[] | undefined,
+  isLoadingHosts: boolean,
+): boolean {
+  if (isLoadingHosts) return true;
+  const connectedHostCount = selectHosts(hosts, "all").filter(
+    (host) => host.status === "connected",
+  ).length;
+  return connectedHostCount > 1;
+}
+
 export function useLocalPathPicker({
   isPending,
   submit,
@@ -74,10 +85,10 @@ export function useLocalPathPicker({
   const { canUseNativeFolderPicker, clientHostId, hostId, hostName } =
     usePathPickerHost();
   const hostsQuery = useHosts();
-  const isLoadingHosts = hostsQuery.isPending;
-  const connectedHostCount = selectHosts(hostsQuery.data, "all").filter(
-    (host) => host.status === "connected",
-  ).length;
+  const opensPathEntryDialog = shouldOpenPathEntryDialog(
+    hostsQuery.data,
+    hostsQuery.isPending,
+  );
   const projectPathDialog = useDialogState<ProjectPathDialogTarget>();
   const closeDialog = projectPathDialog.onClose;
 
@@ -135,13 +146,13 @@ export function useLocalPathPicker({
 
   const openPathEntry = useCallback(
     (target: ProjectPathDialogTarget) => {
-      if (isLoadingHosts || connectedHostCount > 1) {
+      if (opensPathEntryDialog) {
         projectPathDialog.onOpen(target);
         return;
       }
       openPicker(target);
     },
-    [connectedHostCount, isLoadingHosts, openPicker, projectPathDialog],
+    [opensPathEntryDialog, openPicker, projectPathDialog],
   );
 
   return {

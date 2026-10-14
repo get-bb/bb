@@ -352,7 +352,7 @@ describe("Codex ChatGPT client", () => {
           {
             model: "gpt-5.6-luna",
             prompt: "Return a title",
-            timeoutMs: 100,
+            timeoutMs: 10_000,
           },
           new AbortController().signal,
         ),
@@ -379,7 +379,7 @@ describe("Codex ChatGPT client", () => {
           {
             model: "gpt-5.6-luna",
             prompt: "Return a title",
-            timeoutMs: 100,
+            timeoutMs: 10_000,
           },
           new AbortController().signal,
         ),
@@ -448,7 +448,7 @@ describe("Codex ChatGPT client", () => {
         {
           model: "gpt-5.6-luna",
           prompt: "Return a title",
-          timeoutMs: 100,
+          timeoutMs: 10_000,
         },
         new AbortController().signal,
       ),

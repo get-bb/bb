@@ -5,6 +5,7 @@ import {
   customAcpAgentDefinition,
   formatCustomAcpProviderId,
   parseCustomAcpAgents,
+  type AcpAgentDefinition,
   type CustomAcpAgent,
 } from "./agents.js";
 import { acpProviderDeclaration } from "./declaration.js";
@@ -257,6 +258,30 @@ describe("custom agents that report usage", () => {
       acpProviderDeclaration(customAcpAgentDefinition(agent)).maintenance
         ?.usage,
     ).toBe(false);
+  });
+
+  it("reads an opencode agent's models and modes per workspace and any other agent's once per machine", () => {
+    const scopeOf = (agent: AcpAgentDefinition) =>
+      acpProviderDeclaration(agent).models?.scope;
+    const custom = (dialect: string | undefined) =>
+      customAcpAgentDefinition(
+        parse({
+          id: "routed",
+          displayName: "Routed",
+          command: "routed",
+          args: ["acp"],
+          ...(dialect === undefined ? {} : { dialect }),
+        }),
+      );
+
+    expect(
+      KNOWN_ACP_AGENTS.filter((agent) => scopeOf(agent) === "workspace").map(
+        (agent) => agent.id,
+      ),
+    ).toEqual(["acp-opencode"]);
+    expect(scopeOf(custom("opencode"))).toBe("workspace");
+    expect(scopeOf(custom("cursor"))).toBe("host");
+    expect(scopeOf(custom(undefined))).toBe("host");
   });
 });
 

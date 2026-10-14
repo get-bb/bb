@@ -19,7 +19,7 @@ import {
 } from "../../src/data/thread-plugin-metadata.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function setup(name: string) {
   const db = createMigratedConnection();

@@ -424,6 +424,35 @@ describe("bb-account.v1.fetch", () => {
     expect(JSON.stringify([gate, api])).not.toContain(credential);
   });
 
+  it("lets only the MCP server plugin call the account's MCP paths", async () => {
+    const host = await loadAccount();
+    await signInWithCode(host);
+    stub.route("GET", "/api/mcp/grants", () => ({
+      status: 200,
+      body: { grants: [] },
+    }));
+    const request = {
+      target: "api",
+      method: "GET",
+      path: "/api/mcp/grants",
+      body: null,
+    };
+
+    await expect(host.harness.callRpc(FETCH_METHOD, request)).rejects.toThrow(
+      "only the MCP server plugin",
+    );
+    await expect(
+      host.harness.callRpc(FETCH_METHOD, request, AS_CONNECT),
+    ).rejects.toThrow("only the MCP server plugin");
+    expect(stub.requestsTo("/api/mcp/grants")).toEqual([]);
+
+    expect(
+      await host.harness.callRpc(FETCH_METHOD, request, {
+        experimental_caller: { kind: "plugin", pluginId: "bb--mcp" },
+      }),
+    ).toEqual({ status: 200, body: { grants: [] } });
+  });
+
   it.each([
     "/api/../admin",
     "/api//evil.test/x",

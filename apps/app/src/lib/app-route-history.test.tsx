@@ -21,10 +21,7 @@ import {
   getAutomationsRoutePath,
   getSkillDetailRoutePath,
 } from "./route-paths";
-import {
-  resetAppRouteHistoryForTest,
-  useRouteStateHistoryNavigation,
-} from "./app-route-history";
+import { resetAppRouteHistoryForTest } from "./app-route-history";
 
 const TOOL_SKILL_DETAIL_ROUTE = getSkillDetailRoutePath({
   skillId: "skill_review_loop",
@@ -39,55 +36,20 @@ const TOOL_ROUTE_SEQUENCE = [
   "/plugins/github",
 ] as const;
 
-function HistoryHarness() {
+function RemountableSidebarControlsHarness() {
+  const [mounted, setMounted] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
-  const { canGoBack, canGoForward, goBack, goForward } =
-    useRouteStateHistoryNavigation();
-
   return (
     <div>
       <div data-testid="path">{location.pathname}</div>
-      <div data-testid="can-go-back">{String(canGoBack)}</div>
-      <div data-testid="can-go-forward">{String(canGoForward)}</div>
-      <button type="button" onClick={goBack}>
-        Back
-      </button>
-      <button type="button" onClick={goForward}>
-        Forward
-      </button>
-      {TOOL_ROUTE_SEQUENCE.map((path) => (
-        <button key={path} type="button" onClick={() => navigate(path)}>
-          {path}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function RemountableHistoryHarness() {
-  const [mounted, setMounted] = useState(true);
-  const navigate = useNavigate();
-  return (
-    <div>
       <button type="button" onClick={() => setMounted((value) => !value)}>
-        toggle-harness
+        toggle-controls
       </button>
       <button type="button" onClick={() => navigate("/")}>
         go-home
       </button>
-      {mounted ? <HistoryHarness /> : null}
-    </div>
-  );
-}
-
-function SidebarControlsHarness() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  return (
-    <div>
-      <div data-testid="path">{location.pathname}</div>
-      <SidebarHistoryNavigationControls />
+      {mounted ? <SidebarHistoryNavigationControls /> : null}
       {TOOL_ROUTE_SEQUENCE.map((path) => (
         <button key={path} type="button" onClick={() => navigate(path)}>
           {path}
@@ -193,8 +155,9 @@ async function expectSidebarButtonState(
 ) {
   await waitFor(() => {
     expect(
-      screen.getByRole("button", { name: label }).getAttribute("aria-disabled") ===
-        "true",
+      screen
+        .getByRole("button", { name: label })
+        .getAttribute("aria-disabled") === "true",
     ).toBe(disabled);
   });
 }
@@ -205,67 +168,10 @@ describe("useRouteStateHistoryNavigation", () => {
     resetAppRouteHistoryForTest();
   });
 
-  it("keeps the stack when the controls remount across sidebar layouts", async () => {
+  it("keeps the sidebar arrows' stack when the controls remount across sidebar layouts", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <RemountableHistoryHarness />
-      </MemoryRouter>,
-    );
-    await clickAndExpectPath("/skills", "/skills");
-    expect(screen.getByTestId("can-go-back").textContent).toBe("true");
-
-    fireEvent.click(screen.getByRole("button", { name: "toggle-harness" }));
-    expect(screen.queryByTestId("can-go-back")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "go-home" }));
-    fireEvent.click(screen.getByRole("button", { name: "toggle-harness" }));
-
-    expect(screen.getByTestId("path").textContent).toBe("/");
-    expect(screen.getByTestId("can-go-back").textContent).toBe("true");
-    await clickAndExpectPath("Back", "/skills");
-  });
-
-  it("tracks every Tools route for sidebar back and forward controls", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <HistoryHarness />
-      </MemoryRouter>,
-    );
-
-    for (const path of TOOL_ROUTE_SEQUENCE) {
-      await clickAndExpectPath(path, path);
-    }
-
-    expect(screen.getByTestId("can-go-back").textContent).toBe("true");
-    expect(screen.getByTestId("can-go-forward").textContent).toBe("false");
-
-    await clickAndExpectPath("Back", "/plugins");
-    await clickAndExpectPath(
-      "Back",
-      "/skills/registry/moss-skills%2Fmoss-notes",
-    );
-    await clickAndExpectPath("Back", TOOL_SKILL_DETAIL_ROUTE);
-    await clickAndExpectPath("Back", "/skills/registry");
-    await clickAndExpectPath("Back", "/skills");
-    await clickAndExpectPath("Back", "/");
-
-    expect(screen.getByTestId("can-go-back").textContent).toBe("false");
-    expect(screen.getByTestId("can-go-forward").textContent).toBe("true");
-
-    await clickAndExpectPath("Forward", "/skills");
-    await clickAndExpectPath("Forward", "/skills/registry");
-    await clickAndExpectPath("Forward", TOOL_SKILL_DETAIL_ROUTE);
-    await clickAndExpectPath(
-      "Forward",
-      "/skills/registry/moss-skills%2Fmoss-notes",
-    );
-    await clickAndExpectPath("Forward", "/plugins");
-    await clickAndExpectPath("Forward", "/plugins/github");
-  });
-
-  it("updates the actual sidebar arrow buttons after Tools route clicks", async () => {
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <SidebarControlsHarness />
+        <RemountableSidebarControlsHarness />
       </MemoryRouter>,
     );
 
@@ -281,6 +187,14 @@ describe("useRouteStateHistoryNavigation", () => {
     await clickAndExpectPath("Go back", "/skills");
 
     await expectSidebarButtonState("Go forward", false);
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle-controls" }));
+    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+    await clickAndExpectPath("go-home", "/");
+    fireEvent.click(screen.getByRole("button", { name: "toggle-controls" }));
+
+    await expectSidebarButtonState("Go back", false);
+    await clickAndExpectPath("Go back", "/skills");
   });
 
   it("redirects remounted automation edit routes without duplicate history entries", async () => {

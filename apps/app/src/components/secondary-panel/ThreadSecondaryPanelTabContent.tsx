@@ -435,6 +435,10 @@ export function ProjectFilePreviewTabContent({
       {...filePreviewQueryProps(projectFilePreviewQuery)}
       activePath={activePath}
       copyPath={copyPath}
+      htmlPreviewUrl={buildProjectFileContentUrl(projectId, activePath, {
+        environmentId,
+        hostId,
+      })}
       lineRange={lineRange}
       markdownLinkRouting={resolvedMarkdownLinkRouting}
       onSelectionAddToChat={onSelectionAddToChat}

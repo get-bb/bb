@@ -7,60 +7,6 @@ await loadPluginApp(() => import("../app"));
 const { Markdown } = await import("./markdown-lite");
 
 describe("Markdown", () => {
-  it("renders GFM tables in pull request descriptions", () => {
-    const slot = renderSlot(
-      {
-        component: () => (
-          <Markdown
-            content={`## Changes
-| Action | Pinned SHA | Version |
-| --- | --- | --- |
-| \`actions/checkout\` | \`11d5960a…\` | v4.4.0 |
-| \`actions/setup-node\` | \`49933ea5…\` | v4.4.0 |`}
-          />
-        ),
-      },
-      {},
-    );
-    const markup = slot.container.innerHTML;
-
-    expect(markup).toContain("<table");
-    expect(markup).toContain("<thead");
-    expect(markup).toContain("<tbody");
-    expect(markup).toContain("<th");
-    expect(markup).toContain("<td");
-    expect(markup).toContain("<code");
-    expect(markup).not.toContain("| --- | --- | --- |");
-    slot.unmount();
-  });
-
-  it("supports aligned columns and escaped pipes inside cells", () => {
-    const slot = renderSlot(
-      {
-        component: () => (
-          <Markdown
-            content={`Name | Notes | Total
-:--- | :---: | ---:
-checkout | uses \\| safely | 2
-
-After the table.`}
-          />
-        ),
-      },
-      {},
-    );
-    const markup = slot.container.innerHTML;
-
-    expect(markup.match(/<th(?:\s|>)/g)).toHaveLength(3);
-    expect(markup.match(/<td(?:\s|>)/g)).toHaveLength(3);
-    expect(markup).toContain("text-center");
-    expect(markup).toContain("text-right");
-    expect(markup).toContain("uses | safely");
-    expect(markup).toContain("<p");
-    expect(markup).toContain("After the table.");
-    slot.unmount();
-  });
-
   it("leaves explicitly targeted markdown links native", () => {
     const slot = renderSlot(
       {

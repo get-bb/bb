@@ -1,6 +1,6 @@
 import { ChildProcess } from "node:child_process";
 import { channel } from "node:diagnostics_channel";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -31,145 +31,164 @@ function writeLane(
   );
 }
 
-it("waits for the exact planned tail and a quiet period before closing", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "bb-parity-tail-test-"));
-  const bridgePath = join(dir, "delayed-tail-bridge.mjs");
-  const identity = {
-    threadId: "thr_test",
-    providerThreadId: "provider_test",
-  } as const;
-  const scope = { kind: "turn", turnId: "turn_test" } as const;
-  const prefixEvents: ThreadEvent[] = [
-    { type: "turn/started", ...identity, scope },
-    {
-      type: "item/started",
-      ...identity,
-      scope,
-      item: { type: "agentMessage", id: "item_test", text: "" },
-    },
-  ];
-  const tailEvents: ThreadEvent[] = [
-    {
-      type: "item/completed",
-      ...identity,
-      scope,
-      item: { type: "agentMessage", id: "item_test", text: "done" },
-    },
-    { type: "turn/completed", ...identity, scope, status: "completed" },
-  ];
-  const extraEvents: ThreadEvent[] = [
-    {
-      type: "thread/contextWindowUsage/updated",
-      ...identity,
-      scope: { kind: "thread" },
-      contextWindowUsage: {
-        usedTokens: 42,
-        modelContextWindow: 1_000,
-        estimated: false,
-      },
-    },
-  ];
-  const delta = (events: readonly ThreadEvent[]): string =>
-    JSON.stringify({
-      jsonrpc: "2.0",
-      method: "thread/delta",
-      params: { events },
-    });
-
-  try {
-    writeLane(dir, "runtime→bridge", [
+it.each(["valid", "rejected"])(
+  "waits for the planned tail and reports %s events",
+  async (mode) => {
+    const dir = mkdtempSync(join(tmpdir(), "bb-parity-tail-test-"));
+    const bridgePath = join(dir, "delayed-tail-bridge.mjs");
+    const identity = {
+      threadId: "thr_test",
+      providerThreadId: "provider_test",
+    } as const;
+    const scope = { kind: "turn", turnId: "turn_test" } as const;
+    const prefixEvents: ThreadEvent[] = [
+      { type: "turn/started", ...identity, scope },
       {
-        seq: 1,
-        line: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "thread/start",
-          params: {},
-        }),
+        type: "item/started",
+        ...identity,
+        scope,
+        item: { type: "agentMessage", id: "item_test", text: "" },
       },
-    ]);
-    writeLane(dir, "bridge→runtime", [
-      { seq: 1.1, line: delta(prefixEvents) },
-      { seq: 1.2, line: delta(tailEvents) },
-    ]);
-    writeFileSync(
-      bridgePath,
-      [
-        `const prefix = ${JSON.stringify(prefixEvents)};`,
-        `const tail = ${JSON.stringify(tailEvents)};`,
-        `const extra = ${JSON.stringify(extraEvents)};`,
-        "const delta = (events) => JSON.stringify({ jsonrpc: '2.0', method: 'thread/delta', params: { events } });",
-        "let pending = '';",
-        "let tailTimer = null;",
-        "process.stdin.setEncoding('utf8');",
-        "process.stdin.on('data', (chunk) => {",
-        "  pending += chunk;",
-        "  for (;;) {",
-        "    const newline = pending.indexOf('\\n');",
-        "    if (newline === -1) break;",
-        "    const line = pending.slice(0, newline);",
-        "    pending = pending.slice(newline + 1);",
-        "    const message = JSON.parse(line);",
-        "    if (message.method === 'initialize') {",
-        "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
-        "    } else if (message.method === 'thread/start') {",
-        "      process.stdout.write(delta(prefix) + '\\n');",
-        "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
-        "      tailTimer = setTimeout(() => {",
-        "        process.stdout.write(delta(tail) + '\\n');",
-        "        tailTimer = setTimeout(() => process.stdout.write(delta(extra) + '\\n'), 40);",
-        "      }, 100);",
-        "    }",
-        "  }",
-        "});",
-        "process.stdin.on('end', () => {",
-        "  if (tailTimer !== null) clearTimeout(tailTimer);",
-        "  process.exit(0);",
-        "});",
-        "",
-      ].join("\n"),
-    );
-
-    const run = await replayRecording({
-      recordingDir: dir,
-      providerId: "test-provider",
-      bridge: {
-        command: process.execPath,
-        args: [bridgePath],
-        cwd: dir,
-        env: {},
+    ];
+    const tailEvents: ThreadEvent[] = [
+      {
+        type: "item/completed",
+        ...identity,
+        scope,
+        item: { type: "agentMessage", id: "item_test", text: "done" },
       },
-      createAssembler: () => ({
-        assembleMessage: (message) => {
-          const params = message.params;
-          if (
-            typeof params !== "object" ||
-            params === null ||
-            !("events" in params)
-          ) {
-            return [];
-          }
-          return threadEventSchema.array().parse(params.events);
+      { type: "turn/completed", ...identity, scope, status: "completed" },
+    ];
+    const extraEvents: ThreadEvent[] = [
+      {
+        type: "thread/contextWindowUsage/updated",
+        ...identity,
+        scope: { kind: "thread" },
+        contextWindowUsage: {
+          usedTokens: 42,
+          modelContextWindow: 1_000,
+          estimated: false,
         },
-      }),
-      planFromCurrentLane: true,
-      settleMs: 60,
-      timeoutMs: 1_000,
-    });
+      },
+    ];
+    const delta = (events: readonly ThreadEvent[]): string =>
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "thread/delta",
+        params: { events },
+      });
 
-    expect(run.stalls).toEqual([]);
-    expect(run.grammarViolations).toEqual([]);
-    expect(run.events).toEqual([
-      ...prefixEvents,
-      ...tailEvents,
-      ...extraEvents,
-    ]);
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-    expect(run.stalls).toEqual([]);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+    try {
+      writeLane(dir, "runtime→bridge", [
+        {
+          seq: 1,
+          line: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "thread/start",
+            params: {},
+          }),
+        },
+      ]);
+      writeLane(dir, "bridge→runtime", [
+        { seq: 1.1, line: delta(prefixEvents) },
+        { seq: 1.2, line: delta(tailEvents) },
+      ]);
+      writeFileSync(
+        bridgePath,
+        [
+          `const prefix = ${JSON.stringify(prefixEvents)};`,
+          `const tail = ${JSON.stringify(mode === "rejected" ? [prefixEvents[0], tailEvents[0]] : tailEvents)};`,
+          `const extra = ${JSON.stringify(mode === "rejected" ? [] : extraEvents)};`,
+          "const delta = (events) => JSON.stringify({ jsonrpc: '2.0', method: 'thread/delta', params: { events } });",
+          "let pending = '';",
+          "let tailTimer = null;",
+          "process.stdin.setEncoding('utf8');",
+          "process.stdin.on('data', (chunk) => {",
+          "  pending += chunk;",
+          "  for (;;) {",
+          "    const newline = pending.indexOf('\\n');",
+          "    if (newline === -1) break;",
+          "    const line = pending.slice(0, newline);",
+          "    pending = pending.slice(newline + 1);",
+          "    const message = JSON.parse(line);",
+          "    if (message.method === 'initialize') {",
+          "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
+          "    } else if (message.method === 'thread/start') {",
+          "      process.stdout.write(delta(prefix) + '\\n');",
+          "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
+          "      tailTimer = setTimeout(() => {",
+          "        process.stdout.write(delta(tail) + '\\n');",
+          "        tailTimer = setTimeout(() => process.stdout.write(delta(extra) + '\\n'), 40);",
+          "      }, 100);",
+          "    }",
+          "  }",
+          "});",
+          "process.stdin.on('end', () => {",
+          "  if (tailTimer !== null) clearTimeout(tailTimer);",
+          "  process.exit(0);",
+          "});",
+          "",
+        ].join("\n"),
+      );
+
+      const run = await replayRecording({
+        recordingDir: dir,
+        providerId: "test-provider",
+        bridge: {
+          command: process.execPath,
+          args: [bridgePath],
+          cwd: dir,
+          env: {},
+        },
+        createAssembler: () => ({
+          assembleMessage: (message) => {
+            const params = message.params;
+            if (
+              typeof params !== "object" ||
+              params === null ||
+              !("events" in params)
+            ) {
+              return [];
+            }
+            return threadEventSchema.array().parse(params.events);
+          },
+        }),
+        planFromCurrentLane: true,
+        settleMs: 60,
+        timeoutMs: 1_000,
+      });
+
+      if (mode === "rejected") {
+        expect(run.grammarViolations).toEqual([
+          expect.objectContaining({
+            rule: "turn/starts-once",
+            eventType: "turn/started",
+          }),
+        ]);
+        expect(run.stalls).toEqual([
+          expect.stringContaining(
+            '"grammarViolations":[{"rule":"turn/starts-once"',
+          ),
+        ]);
+        expect(run.stalls[0]).toContain('"events":3');
+        expect(run.stalls[0]).toContain('"plannedEvents":4');
+        return;
+      }
+      expect(run.stalls).toEqual([]);
+      expect(run.grammarViolations).toEqual([]);
+      expect(run.events).toEqual([
+        ...prefixEvents,
+        ...tailEvents,
+        ...extraEvents,
+      ]);
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      expect(run.stalls).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 async function waitForStartupCondition(
   predicate: () => boolean,
@@ -303,10 +322,16 @@ it.each(["exit", "signal", "timeout", "spawn-error"] as const)(
     const healthy = fixture.run("ready");
     try {
       const results = await Promise.all(failed);
-      for (const result of results)
+      for (const result of results) {
         expect(result.stalls.length).toBeGreaterThan(0);
+        if (mode === "timeout") {
+          expect(result.stalls[0]).toContain('"events":0');
+          expect(result.stalls[0]).toContain('"exitCode":null');
+          expect(result.stalls[0]).toContain('"stderrTail":');
+        }
+      }
       expect((await healthy).stalls).toEqual([]);
-      expect(fixture.children()).toHaveLength(5);
+      expect(fixture.children()).toHaveLength(mode === "timeout" ? 5 : 9);
       expect(
         fixture
           .children()
@@ -324,3 +349,97 @@ it.each(["exit", "signal", "timeout", "spawn-error"] as const)(
   },
   30_000,
 );
+
+function createCrashingBridgeFixture(crashes: number) {
+  const dir = mkdtempSync(join(tmpdir(), "bb-parity-crash-test-"));
+  const bridgePath = join(dir, "crashing-bridge.mjs");
+  const launchesPath = join(dir, "launches");
+  writeLane(dir, "runtime→bridge", [
+    {
+      seq: 1,
+      line: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "thread/start",
+        params: {},
+      }),
+    },
+  ]);
+  writeLane(dir, "bridge→runtime", []);
+  writeFileSync(
+    bridgePath,
+    [
+      "import { appendFileSync, readFileSync } from 'node:fs';",
+      `const launchesPath = ${JSON.stringify(launchesPath)};`,
+      "appendFileSync(launchesPath, 'x');",
+      `if (readFileSync(launchesPath, 'utf8').length <= ${crashes}) {`,
+      "  process.stderr.write('The service was stopped\\n');",
+      "  process.exit(3);",
+      "}",
+      "let pending = '';",
+      "process.stdin.setEncoding('utf8');",
+      "process.stdin.on('data', (chunk) => {",
+      "  pending += chunk;",
+      "  for (;;) {",
+      "    const newline = pending.indexOf('\\n');",
+      "    if (newline === -1) break;",
+      "    const message = JSON.parse(pending.slice(0, newline));",
+      "    pending = pending.slice(newline + 1);",
+      "    if (message.id !== undefined) {",
+      "      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result: {} }) + '\\n');",
+      "    }",
+      "  }",
+      "});",
+      "process.stdin.on('end', () => process.exit(0));",
+      "",
+    ].join("\n"),
+  );
+  return {
+    replay: () =>
+      replayRecording({
+        recordingDir: dir,
+        providerId: "test-provider",
+        bridge: {
+          command: process.execPath,
+          args: [bridgePath],
+          cwd: dir,
+          env: {},
+        },
+        createAssembler: () => ({ assembleMessage: () => [] }),
+        settleMs: 20,
+        drainMs: 0,
+        timeoutMs: 5_000,
+      }),
+    launches: () => readFileSync(launchesPath, "utf8").length,
+    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
+it("replays from a fresh bridge when the first one crashes before initialize", async () => {
+  const fixture = createCrashingBridgeFixture(1);
+  try {
+    const run = await fixture.replay();
+
+    expect(run.stalls).toEqual([]);
+    expect(run.exitCode).toBe(0);
+    expect(fixture.launches()).toBe(2);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+it("reports the exit and stderr when the bridge keeps crashing before initialize", async () => {
+  const fixture = createCrashingBridgeFixture(Number.POSITIVE_INFINITY);
+  try {
+    const run = await fixture.replay();
+
+    expect(run.stalls).toEqual([
+      expect.stringContaining(
+        "bridge exited (code 3) while waiting for initialize response; stderr: The service was stopped",
+      ),
+    ]);
+    expect(fixture.launches()).toBe(2);
+  } finally {
+    fixture.cleanup();
+  }
+});

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { loadFilePreview } from "@/lib/api";
 import { buildHostFileContentUrl } from "@/lib/file-content-urls";
 import type { FilePreview } from "@bb/client-core";
@@ -48,7 +48,7 @@ function getHostMediaPreviewType(name: string): HostMediaPreviewType | null {
   );
 }
 
-export function useHostFilePreview(
+export function hostFilePreviewQueryOptions(
   hostId: string | null,
   path: string | null,
   options?: QueryOptions,
@@ -57,7 +57,7 @@ export function useHostFilePreview(
     (options?.enabled ?? true) && hostId !== null && path !== null;
   const activeHostId = enabled ? hostId : null;
   const activePath = enabled ? path : null;
-  return useQuery<FilePreview>({
+  return queryOptions<FilePreview>({
     queryKey: hostFilePreviewQueryKey(activeHostId, activePath),
     queryFn: async ({ signal }) => {
       if (activeHostId === null || activePath === null) {
@@ -75,4 +75,12 @@ export function useHostFilePreview(
     staleTime: 30_000,
     ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
+}
+
+export function useHostFilePreview(
+  hostId: string | null,
+  path: string | null,
+  options?: QueryOptions,
+) {
+  return useQuery(hostFilePreviewQueryOptions(hostId, path, options));
 }

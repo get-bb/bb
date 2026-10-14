@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
@@ -27,8 +28,7 @@ describe("plugin catalog routes", () => {
   let dataDir: string;
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     dataDir = await mkdtemp(join(tmpdir(), "bb-catalog-routes-"));
   });
 

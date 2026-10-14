@@ -10,6 +10,18 @@ interface UseCreateThreadInEnvironmentArgs {
   pinned: boolean;
 }
 
+export function buildCreateThreadInEnvironmentState({
+  environmentId,
+  sectionId,
+  pinned,
+}: Omit<UseCreateThreadInEnvironmentArgs, "projectId">) {
+  return {
+    focusPrompt: true,
+    reuseEnvironmentId: environmentId,
+    placement: { sectionId, pinned },
+  };
+}
+
 export function useCreateThreadInEnvironment({
   projectId,
   environmentId,
@@ -21,11 +33,11 @@ export function useCreateThreadInEnvironment({
   return useCallback(() => {
     setRootComposeProjectId(projectId);
     navigate(getRootComposeRoutePath(), {
-      state: {
-        focusPrompt: true,
-        reuseEnvironmentId: environmentId,
-        placement: { sectionId, pinned },
-      },
+      state: buildCreateThreadInEnvironmentState({
+        environmentId,
+        sectionId,
+        pinned,
+      }),
     });
   }, [
     environmentId,

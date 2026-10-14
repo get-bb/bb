@@ -23,7 +23,7 @@ import {
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread, markThreadDeleted } from "../../src/data/threads.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 const TEST_INCREMENTAL_VACUUM_MAX_PAGES = 128;
 
