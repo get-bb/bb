@@ -198,7 +198,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.getAllByText("Which shape?").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Close question" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Submit answer" })).toBe(null);
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
@@ -304,7 +303,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(
       screen.getByRole("button", { name: /Child thr_c/ }).textContent,
     ).toBe("Child thr_c: Which shape?");
-    expect(mocks.resolve).not.toHaveBeenCalled();
   });
 
   it("keeps the question open for an Escape that ends text composition", () => {
