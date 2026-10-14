@@ -1227,7 +1227,7 @@ function HtmlPreview({
     );
   return (
     <iframe
-      className={`${panel ? "min-h-[32rem]" : "min-h-0"} flex-1 border-0 bg-white`}
+      className="min-h-0 flex-1 border-0 bg-white"
       sandbox="allow-scripts"
       title={title}
       src={`${state.baseUrl}/${encodePath(path)}`}
@@ -1239,7 +1239,7 @@ function DocumentPicker() {
   const [subPath, setSubPath] = useState("");
   const navigate = useBbNavigate();
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-4">
       <p className="text-sm text-muted-foreground">
         Choose a document to open.
       </p>
@@ -2433,6 +2433,7 @@ export default definePluginApp((app) => {
     title: "Document",
     icon: "FileText",
     component: DocumentPanel,
+    layout: "flush",
   });
   app.slots.fileOpener({
     id: "docs",
