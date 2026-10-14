@@ -414,6 +414,57 @@ describe("TimelineWindowedItems", () => {
     expect(scrollElement.scrollTop).toBe(3_404);
   });
 
+  it("keeps the reading position when a measured row above the viewport reloads while scrolling backward", async () => {
+    clampScrollTopToContentHeight(readSpacerHeight);
+    renderWindowedItems();
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+    scrollElement.scrollTop = 1_600;
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
+    itemHeights.set(45, 40);
+    act(() => {
+      reportItemResize(screen.getByTestId("wrapper-45"), 40);
+    });
+    scrollElement.scrollTop = 1_536;
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("content-48")).toBeTruthy());
+
+    for (const height of [340, 40, 340]) {
+      const previousHeight = itemHeights.get(45) ?? 32;
+      const previousScrollTop = scrollElement.scrollTop;
+      itemHeights.set(45, height);
+      act(() => {
+        reportItemResize(screen.getByTestId("wrapper-45"), height);
+      });
+      expect(scrollElement.scrollTop).toBe(
+        previousScrollTop + height - previousHeight,
+      );
+    }
+  });
+
+  it("keeps a measured row's top fixed when it straddles the viewport top while scrolling backward", async () => {
+    renderWindowedItems();
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+    scrollElement.scrollTop = 1_600;
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("content-50")).toBeTruthy());
+    itemHeights.set(48, 40);
+    act(() => {
+      reportItemResize(screen.getByTestId("wrapper-48"), 40);
+    });
+    scrollElement.scrollTop = 1_552;
+    fireEvent.scroll(scrollElement);
+    await waitFor(() => expect(screen.getByTestId("content-48")).toBeTruthy());
+
+    itemHeights.set(48, 340);
+    act(() => {
+      reportItemResize(screen.getByTestId("wrapper-48"), 340);
+    });
+
+    expect(readSpacerHeight()).toBe(3_508);
+    expect(scrollElement.scrollTop).toBe(1_552);
+  });
+
   it("settles the enclosing auto-height wrapper before compensating for a taller row", async () => {
     let wrapperHeight = 0;
     clampScrollTopToContentHeight(() => wrapperHeight);

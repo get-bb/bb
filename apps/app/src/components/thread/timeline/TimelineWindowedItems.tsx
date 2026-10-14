@@ -245,7 +245,7 @@ export function TimelineWindowedItems({
       const scrollTop = resolvedGetScrollElement()?.scrollTop ?? 0;
       if (item.start >= scrollTop) return false;
       if (!instance.itemSizeCache.has(item.key)) return true;
-      return item.end <= scrollTop && instance.scrollDirection !== "backward";
+      return item.end <= scrollTop;
     };
   }, [pinnedToEnd, resolvedGetScrollElement, virtualizer]);
 
