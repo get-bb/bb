@@ -84,6 +84,7 @@ function renderComposer(extra: React.ReactNode = null) {
             mention: {
               results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
               isLoading: false,
+              isRefreshing: false,
               isError: false,
               onQueryChange: vi.fn(),
             },

@@ -75,6 +75,7 @@ export function makeTypeaheadConfig(
   const mention: TypeaheadMentionConfig = {
     results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
     isLoading: false,
+    isRefreshing: false,
     isError: false,
     onQueryChange: noop,
     ...mentionOverrides,

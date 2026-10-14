@@ -234,6 +234,7 @@ export type MentionMenuState =
   | {
       kind: "results";
       results: OrderedMentionSuggestions;
+      refreshing: boolean;
     };
 
 export type CommandMenuState =

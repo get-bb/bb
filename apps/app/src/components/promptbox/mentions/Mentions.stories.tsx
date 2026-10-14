@@ -313,6 +313,7 @@ interface ResultsStateConfig {
 function makeResultsState(args: ResultsStateConfig): MentionMenuState {
   return {
     kind: "results",
+    refreshing: false,
     results: orderPromptMentionSuggestions({
       query: "",
       suggestions: args.suggestions,

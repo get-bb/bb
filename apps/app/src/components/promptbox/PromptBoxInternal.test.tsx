@@ -144,6 +144,7 @@ function createPromptBoxProps(
       mention: {
         results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
         isLoading: false,
+        isRefreshing: false,
         isError: false,
         onQueryChange: vi.fn(),
       },
@@ -174,6 +175,7 @@ function buildTypeaheadConfig({
         suggestions: mentionSuggestions,
       }),
       isLoading: false,
+      isRefreshing: false,
       isError: false,
       onQueryChange: onMentionQueryChange,
     },
@@ -4895,6 +4897,7 @@ describe("PromptBoxInternal mention triggers", () => {
                 suggestions: mentionSuggestions,
               }),
               isLoading: false,
+              isRefreshing: false,
               isError: false,
               onQueryChange: vi.fn(),
             },
@@ -5813,6 +5816,7 @@ describe("PromptBoxInternal command typeahead submit", () => {
             mention: {
               results: EMPTY_ORDERED_MENTION_SUGGESTIONS,
               isLoading: false,
+              isRefreshing: false,
               isError: false,
               onQueryChange: () => {},
             },
