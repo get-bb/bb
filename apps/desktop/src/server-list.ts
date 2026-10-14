@@ -23,7 +23,8 @@ export function buildDesktopServerChoices(
     },
     ...connectServers.map((server) => ({
       id: `connect:${server.handle}`,
-      name: server.name,
+      name:
+        store?.getConnectServerName(server.handle) ?? new URL(server.url).host,
       active:
         target.kind === "connect" && target.server.handle === server.handle,
     })),

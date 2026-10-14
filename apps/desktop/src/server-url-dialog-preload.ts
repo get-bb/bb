@@ -24,8 +24,9 @@ window.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
-  input.focus();
-  input.select();
+  const focused = input.readOnly ? nameInput : input;
+  focused.focus();
+  focused.select();
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();

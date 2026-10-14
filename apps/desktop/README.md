@@ -438,8 +438,10 @@ selects it without creating a duplicate. **This Mac** on macOS or **This
 Computer** on Linux switches back to the built-in server without removing
 saved entries.
 
-**Edit Server…** edits the currently selected custom server and is disabled for
-**This Mac** / **This Computer** and Connect servers. Clearing its URL removes
+**Edit Server…** edits the currently selected custom or Connect server and is
+disabled for **This Mac** / **This Computer**. For a Connect server it changes
+only the name; the address comes from the bb account and is read-only. For a
+custom server, clearing its URL removes
 that entry and switches an active custom target to the built-in server. Other
 saved servers and Connect discovery remain available. Existing single-server preferences are
 loaded automatically into the saved list in `<userData>/server-target.json`.
@@ -459,6 +461,29 @@ Builds with tolerant saved-server parsing (#5286) load the URLs but drop names w
 builds with strict parsing can reject the added field on rollback. Invalid names
 do not discard saved URLs, and names for absent URLs are ignored and pruned on
 the next save.
+
+Connect servers owned by your bb account appear in the menu by name, or by
+URL hostname when unnamed, like custom servers. Their names are stored in `server-target.json` as
+`connectServerNames`, keyed by handle, and are kept while discovery is
+unavailable. A saved custom URL that is an account server's address is replaced
+by that account server at startup, after discovery, and after Add/Edit Server.
+Its name moves to the account server unless that server is already named. If
+the replaced URL was selected, the app switches to the account server and
+reloads its windows once.
+
+Connect discovery tries the built-in server, then a stored machine credential,
+then the bb account sign-in. When none of these load the servers and the app
+has no credential or account sign-in, the Server menu offers **Sign in to bb
+Connect…** above **Add Server…**. If bb Connect rejected the credentials, the
+item is **Sign in to bb Connect again…**. Other failures add no menu row; the
+menu keeps the servers from the last successful load, and the app logs the
+reason as `connect server sync skipped (<reason>)`. The sign-in item opens
+bb account sign-in in a desktop window, the same window as **Reconnect** below,
+from any selected server, including **This Mac** / **This Computer**. Once the
+new account session arrives, the window closes and the app reloads the
+account's servers into the menu. Without a known Connect server, the app signs
+in at `https://getbb.app`. Development builds use `BB_DEV_CONNECT_BASE_URL`
+when it is valid.
 
 The app command palette lists **Switch to <server>** for each inactive choice
 from this same Server menu, including Connect discovery. Palette list requests

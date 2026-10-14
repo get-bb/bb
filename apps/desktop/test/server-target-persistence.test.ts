@@ -294,3 +294,54 @@ it.each([
   ]);
   expect(store.getTarget()).toEqual({ kind: "custom", url: firstUrl });
 });
+
+it("persists Connect server names by handle and drops invalid ones on load", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setConnectServer(connectServer);
+  await store.setConnectServerName(connectServer.handle, "Work laptop");
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).toMatchObject({
+    connectServerNames: { laptop: "Work laptop" },
+  });
+
+  const reloaded = createServerTargetStore({ storagePath });
+  await reloaded.load();
+  expect(reloaded.getConnectServerName("laptop")).toBe("Work laptop");
+  await reloaded.setConnectServerName("laptop", "   ");
+  expect(reloaded.getConnectServerName("laptop")).toBeNull();
+  expect(JSON.parse(await readFile(storagePath, "utf8"))).not.toHaveProperty(
+    "connectServerNames",
+  );
+
+  await writeFile(
+    storagePath,
+    JSON.stringify({
+      connectServer,
+      customServerUrl: null,
+      target: "connect",
+      connectServerNames: { laptop: 42, desk: "  Desk  " },
+    }),
+    "utf8",
+  );
+  const invalid = createServerTargetStore({ storagePath });
+  await invalid.load();
+  expect(invalid.getTarget()).toEqual({
+    kind: "connect",
+    server: connectServer,
+  });
+  expect(invalid.getConnectServerName("laptop")).toBeNull();
+  expect(invalid.getConnectServerName("desk")).toBe("Desk");
+});
+
+it("keeps an existing Connect server name when adopting a named custom URL", async () => {
+  const storagePath = await createStoragePath();
+  const store = createServerTargetStore({ storagePath });
+  await store.load();
+  await store.setConnectServerName(connectServer.handle, "Chosen");
+  await store.setCustomServerUrl(connectServer.url, { name: "Custom" });
+
+  expect(await store.adoptConnectServers([connectServer])).toBe(true);
+  expect(store.getConnectServerName(connectServer.handle)).toBe("Chosen");
+  expect(store.getCustomServers()).toEqual([]);
+});
