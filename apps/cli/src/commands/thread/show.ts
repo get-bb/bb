@@ -360,7 +360,7 @@ export function registerShowCommand(
             if (ws.branch.currentBranch) {
               console.log(`  Branch:   ${ws.branch.currentBranch}`);
             }
-            console.log(`  Changed files: ${ws.workingTree.files.length}`);
+            console.log(`  Changed files: ${ws.workingTree.fileCount}`);
             if (ws.workingTree.lineStatsComplete) {
               console.log(`  Insertions:    +${ws.workingTree.insertions}`);
               console.log(`  Deletions:     -${ws.workingTree.deletions}`);

@@ -166,6 +166,7 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
     insertions: 41,
     deletions: 12,
     lineStatsComplete: true,
+    fileCount: 2,
     files: [
       {
         path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.stories.tsx",
@@ -191,6 +192,7 @@ const representativeWorkspaceStatus = makeWorkspaceStatus({
     insertions: 86,
     deletions: 19,
     lineStatsComplete: true,
+    fileCount: 2,
     files: [
       {
         path: "apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx",

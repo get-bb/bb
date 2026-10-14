@@ -241,6 +241,7 @@ export function useThreadCreationOptions(
     initialServiceTier,
     preferReadyProviderWhenUnset = false,
     preferenceProjectId,
+    catalogProjectId,
     resolveProviderRouting,
     resetKey,
     scope = "new-thread",
@@ -418,10 +419,20 @@ export function useThreadCreationOptions(
   const executionOptionsProviderId = executionOptionsQueryEnabled
     ? rawSelectedProviderId || undefined
     : undefined;
+  const selectedProviderCatalogScope = useKnownProviderModelCatalogScope(
+    rawSelectedProviderId,
+  );
+  const executionOptionsProjectId =
+    catalogProjectId !== undefined &&
+    executionOptionsRouting.environmentId === undefined &&
+    selectedProviderCatalogScope === "workspace"
+      ? catalogProjectId
+      : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,
     ...executionOptionsRouting,
     providerId: executionOptionsProviderId,
+    projectId: executionOptionsProjectId,
   });
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();

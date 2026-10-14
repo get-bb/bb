@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import { type DbConnection } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { Logger } from "@bb/logger";
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
@@ -90,8 +91,7 @@ describe("plugin safe mode", () => {
   }
 
   beforeEach(async () => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-safe-mode-"));
     service = createService();
     await service.start();
@@ -200,8 +200,7 @@ describe("plugin safe mode", () => {
   it("keeps an included plugin running when its row kept catalog provenance", async () => {
     await service.stop();
     db.$client.close();
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
     service = createService(false);
     await service.start();
     await service.installOfficialPlugin("fixture");

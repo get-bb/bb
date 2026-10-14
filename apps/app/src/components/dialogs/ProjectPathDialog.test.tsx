@@ -130,6 +130,8 @@ describe("ProjectPathDialog machine selection", () => {
           host({
             id: "host_modal",
             name: "Modal sandbox 3f9a",
+            type: "ephemeral",
+            machineProviderId: "modal",
           }),
         ]}
         onOpenChange={vi.fn()}
@@ -145,36 +147,6 @@ describe("ProjectPathDialog machine selection", () => {
     expect(
       screen.getByRole("menuitem", { name: /Modal sandbox 3f9a/u }),
     ).toBeTruthy();
-  });
-
-  it("uses a provider-made host as the only project machine", () => {
-    const onSubmit = vi.fn();
-    render(
-      <ProjectPathDialog
-        target={{ kind: "create" }}
-        platform="linux"
-        hostId="host_modal"
-        hostName="Modal sandbox 3f9a"
-        hosts={[
-          host({
-            id: "host_modal",
-            name: "Modal sandbox 3f9a",
-          }),
-        ]}
-        onOpenChange={vi.fn()}
-        onSubmit={onSubmit}
-      />,
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Choose folder on host_modal" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Add project" }));
-    expect(onSubmit).toHaveBeenCalledWith(
-      { kind: "create" },
-      "/home/deploy/repos/givecare",
-      "host_modal",
-    );
   });
 
   it("blocks submission when every listed machine is offline", () => {

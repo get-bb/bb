@@ -113,7 +113,10 @@ export function Overview() {
             </div>
           </DetailRow>
           <DetailRow label="Changed files" orientation="vertical">
-            <WorkspaceChangesList files={mockChangedFiles} />
+            <WorkspaceChangesList
+              files={mockChangedFiles}
+              fileCount={mockChangedFiles.length}
+            />
           </DetailRow>
         </DetailCard>
       </StoryRow>

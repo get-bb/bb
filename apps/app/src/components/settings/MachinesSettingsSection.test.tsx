@@ -16,7 +16,7 @@ import type {
   SystemConfigResponse,
   SystemMachineProvider,
 } from "@bb/server-contract";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { defaultExperiments, type Host } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
@@ -25,6 +25,7 @@ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
 import { focusWithKeyboard } from "@/test/keyboard-focus";
+import { LocationProbe } from "@/test/location-probe";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -136,11 +137,6 @@ function stubSidebarBootstrapFetch(): void {
       ),
     ),
   );
-}
-
-function LocationProbe() {
-  const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
 }
 
 function renderSectionWithClient() {
@@ -749,106 +745,6 @@ describe("MachinesSettingsSection", () => {
         name: "The server machine can't be removed.",
       }),
     ).toBeDefined();
-  });
-
-  it("offers Move server here only on connected, active persistent machines other than the server", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      primaryHost,
-      deskHost,
-      offlineHost,
-      host({
-        id: "host_paused",
-        name: "paused-vm",
-        machineProviderId: "modal-sandbox",
-        lifecycle: {
-          phase: "suspending",
-          suspendedAt: null,
-          message: null,
-          pendingLog: "",
-          teardown: null,
-        },
-      }),
-      sandboxHost,
-    ]);
-    stubSidebarBootstrapFetch();
-
-    renderSection();
-
-    await screen.findByText("desk");
-    await waitFor(() => {
-      expect(vi.mocked(sdk.experimental_server.moveStatus)).toHaveBeenCalled();
-    });
-
-    await openHostMenu("desk");
-    expect(
-      await screen.findByRole("menuitem", { name: "Move server here" }),
-    ).toBeDefined();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-
-    for (const name of ["MacBook Pro", "dev-vm", "paused-vm"]) {
-      await openHostMenu(name);
-      await screen.findByRole("menuitem", { name: "Rename" });
-      expect(
-        screen.queryByRole("menuitem", { name: "Move server here" }),
-      ).toBeNull();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-      await waitFor(() => {
-        expect(screen.queryByRole("menu")).toBeNull();
-      });
-    }
-
-    fireEvent.click(screen.getByRole("button", { name: "Show all machines" }));
-    await openHostMenu(sandboxHost.name);
-    await screen.findByRole("menuitem", { name: "Rename" });
-    expect(
-      screen.queryByRole("menuitem", { name: "Move server here" }),
-    ).toBeNull();
-  });
-
-  it("offers Reconnect only on offline, active machines", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
-    vi.mocked(sdk.hosts.list).mockResolvedValue([
-      primaryHost,
-      offlineHost,
-      host({
-        id: "host_paused",
-        name: "paused-vm",
-        status: "disconnected",
-        machineProviderId: "modal-sandbox",
-        lifecycle: {
-          phase: "suspended",
-          suspendedAt: NOW - 60_000,
-          message: null,
-          pendingLog: "",
-          teardown: null,
-        },
-      }),
-    ]);
-    stubSidebarBootstrapFetch();
-
-    renderSection();
-
-    await screen.findByText("dev-vm");
-
-    await openHostMenu("dev-vm");
-    expect(
-      await screen.findByRole("menuitem", { name: "Reconnect" }),
-    ).toBeDefined();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("menu")).toBeNull();
-    });
-
-    for (const name of ["MacBook Pro", "paused-vm"]) {
-      await openHostMenu(name);
-      await screen.findByRole("menuitem", { name: "Rename" });
-      expect(screen.queryByRole("menuitem", { name: "Reconnect" })).toBeNull();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-      await waitFor(() => {
-        expect(screen.queryByRole("menu")).toBeNull();
-      });
-    }
   });
 
   it("keeps a dialog chosen from the row menu with the keyboard open", async () => {

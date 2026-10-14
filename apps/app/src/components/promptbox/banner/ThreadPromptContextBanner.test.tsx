@@ -64,6 +64,7 @@ function makeGitSection(
         insertions: 2,
         deletions: 0,
         lineStatsComplete: true,
+        fileCount: 1,
         files: [changedFile],
       },
     },
@@ -249,7 +250,7 @@ describe("ThreadPromptContextBanner", () => {
           archivedAt: 1_731_456_000_000,
           onUnarchive: noop,
         }}
-        environmentGoneSection={{ status: "destroyed" }}
+        environmentGoneSection={{ status: "destroyed", onRestore: noop }}
         parentThreadSection={null}
         childThreadsSection={null}
         pullRequestSection={null}
@@ -261,6 +262,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("Environment unavailable");
     expect(markup).not.toContain("Thread is archived");
     expect(markup).toContain(">Unarchive<");
+    expect(markup).not.toContain("Restore workspace");
   });
 
   it("offers restoring the workspace once the thread is live again", () => {
@@ -301,8 +303,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain(">Restoring...<");
-    expect(markup).toContain("disabled");
+    expect(
+      markup.match(/<button([^>]*)>Restoring\.\.\.<\/button>/)?.[1],
+    ).toContain('disabled=""');
   });
 
   it("keeps ready-to-merge status out of standalone visible labels", () => {

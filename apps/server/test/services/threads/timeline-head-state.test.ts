@@ -6,14 +6,13 @@ import {
 } from "@bb/domain";
 import type { ClientTurnRequestId, Thread } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
-  migrate,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import type { DbConnection } from "@bb/db";
 import { buildThreadTimelineWithProfile } from "../../../src/services/threads/timeline.js";
 
@@ -30,8 +29,7 @@ const requestId = (value: number): ClientTurnRequestId =>
   encodeClientTurnRequestIdNumber({ value });
 
 function setup(): { db: DbConnection; thread: Thread } {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
   });

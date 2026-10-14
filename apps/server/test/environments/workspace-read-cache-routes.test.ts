@@ -31,6 +31,7 @@ function workspaceStatus(
         insertions: 0,
         deletions: 0,
         lineStatsComplete: true,
+        fileCount: 0,
         files: [],
         hasUncommittedChanges,
         state,

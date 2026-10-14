@@ -1,7 +1,7 @@
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import {
   LAST_SERVER_MOVE_FILE_NAME,
   readLastServerMoveFile,
@@ -20,22 +20,6 @@ import {
   writeServerImportFile,
   writeServerMovedFile,
 } from "../src/index.js";
-
-const tempDirs: string[] = [];
-
-async function makeTempDir(): Promise<string> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "bb-server-markers-"));
-  tempDirs.push(tempDir);
-  return tempDir;
-}
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs
-      .splice(0)
-      .map((tempDir) => rm(tempDir, { force: true, recursive: true })),
-  );
-});
 
 const MOVED_FILE: ServerMovedFile = {
   version: 1,

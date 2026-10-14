@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
@@ -19,8 +18,8 @@ import {
 } from "@bb/server-contract";
 import { setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
-import { createDeferredPromise } from "@bb/test-helpers";
-import { afterEach, describe, expect, it } from "vitest";
+import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
+import { describe, expect, it } from "vitest";
 import { readJson } from "../helpers/json.js";
 import {
   inspectResult,
@@ -39,24 +38,11 @@ const OLD = "host-old";
 const NEW = "host-new";
 const WORKER = "host-worker";
 const DIRECT_URL = "https://desktop.example.test";
-const tempDirs: string[] = [];
 
 type PrepareCommand = Extract<
   HostDaemonRpcCommand,
   { type: "server_move.prepare" }
 >;
-
-afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
-});
-
-async function makeTempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "bb-server-move-routes-"));
-  tempDirs.push(dir);
-  return dir;
-}
 
 function postJson(
   harness: TestAppHarness,

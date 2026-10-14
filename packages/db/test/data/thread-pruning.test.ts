@@ -26,7 +26,7 @@ import {
 import { advanceLiveEventPruning } from "../../src/data/resolved-item-pruning.js";
 import { getThreadEventRewriteGeneration } from "../../src/data/event-rewrite-generation.js";
 import { THREAD_CONTEXT_CLEAR_OPERATION, turnScope } from "@bb/domain";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();

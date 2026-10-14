@@ -57,6 +57,17 @@ startup-only change, run `bb-app stop && bb-app start` or restart the desktop
 app. Until then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a
 previous `0.0.0.0` listener.
 
+Settings → General → Command line installs the bb CLI for use outside bb: it
+puts the `bb` command on PATH on the computer that runs the bb server, so the
+user, a script, or an agent running outside bb (such as Claude Code or Codex)
+can control bb. Threads in bb already have `bb`. `bb settings cli-command` shows the state and
+`bb settings cli-command install` or `remove` changes it.
+Install links the launcher bb keeps at `~/.bb/bin/bb` into a PATH folder such
+as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user PATH). bb never
+replaces another `bb`: install is refused while one runs first in a new
+terminal. Only an installed bb (`npx bb-app` or the desktop app) offers this;
+a source checkout does not.
+
 With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
 `http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
 through loopback; this does not narrow the IPv4 wildcard listener. Containers
@@ -193,6 +204,7 @@ branches bb creates after the change.
   bb settings completed-turns [provider-id] [collapse|flat|default]
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>] [--refresh]
+  bb settings cli-command [install|remove]
   bb settings version [--force]
   bb settings reload
 

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../shared/contract.js";
 import {

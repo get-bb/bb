@@ -27,7 +27,7 @@ import {
 import {
   createMigratedConnection,
   prepareMigratedConnectionTemplate,
-} from "./helpers/migrated-connection.js";
+} from "../src/testing.js";
 
 type InsertMigrationParameters = [string, number];
 type DeleteMigrationParameters = [number];

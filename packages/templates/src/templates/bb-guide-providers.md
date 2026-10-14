@@ -32,9 +32,17 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
   bb provider list [--machine <id-or-name> | --environment <id>]
                                           List available providers
   bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
+                     [--project <id>]
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+
+Some providers read their models and options from the directory they run in
+(Pi, and opencode's project-level agents, for example). `--environment` lists
+what the provider reports in that environment's directory. `--project` lists
+what it reports in the project's checkout on the chosen machine, which is what
+a new thread in that project is offered; it cannot be combined with
+`--environment`. Other providers answer the same for every directory.
 
 When a provider's models declare options (a mode, an on/off switch), `bb provider
 models` lists them under the table with their ids, values and defaults; `--json`
@@ -180,6 +188,26 @@ appears automatically. Discover and select one with:
   bb thread spawn --provider acp-opencode --model <provider/model>
 
 bb applies the selected model to the ACP session before the first prompt.
+
+An agent's own modes are session options. OpenCode reports its primary agents
+as the `mode` option, including custom agents from the OpenCode config
+directory and from the project's `.opencode/` directory, so project agents
+appear when the list is read for that project or environment:
+
+  bb provider models acp-opencode --project "$BB_PROJECT_ID"
+  bb thread spawn --provider acp-opencode --option mode=<agent>
+
+bb lists only the agents OpenCode itself loads, and OpenCode does not read
+agent files from other folders such as `.agents/agents/`. To use such a folder,
+point OpenCode at it with `OPENCODE_CONFIG_DIR`, set as a machine variable or in
+a custom agent's `env`. A relative value is resolved in each workspace, so
+`.agents` lists every project's own `.agents/agents/*.md`:
+
+  printf '.agents' | bb machine env set OPENCODE_CONFIG_DIR
+
+Every file in that folder must be a valid OpenCode agent file; OpenCode refuses
+to start on one it cannot parse, such as `tools` written as a comma-separated
+list.
 
 OpenCode Go quotas appear in Provider usage for the selected machine after
 signing in to Go in OpenCode on that machine. Inspect the same five-hour,

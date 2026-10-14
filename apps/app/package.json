@@ -14,7 +14,8 @@
     "storybook:build": "ladle build",
     "lint": "oxlint src vite.config.ts vite.dev.config.ts vite-bundle-stats.ts vite-font-preload.ts vite-split-prefetch.ts vite-forkable-plugin-paths.ts vite-shared-ui-seam.ts vite-react-compiler.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts"
+    "test": "node scripts/generate-pwa-icons.mjs --check && vitest run --config vitest.config.ts",
+    "bench": "cross-env BB_SIDEBAR_BENCH=1 PROMPTBOX_PERF=1 vitest run --config vitest.config.ts src/components/sidebar/sidebar.bench.test.tsx src/components/promptbox/editor/prompt-paste-performance.test.ts"
   },
   "dependencies": {
     "@bb/client-core": "workspace:*",

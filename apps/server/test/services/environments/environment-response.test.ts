@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  createConnection,
-  migrate,
   noopNotifier,
   updateHost,
   upsertHost,
   type EnvironmentRow,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   resolveEnvironmentWorkspaceDisplayKind,
   toEnvironmentResponse,
@@ -14,8 +13,7 @@ import {
 } from "../../../src/services/environments/environment-response.js";
 
 function setupDb() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   upsertHost(db, noopNotifier, { id: "host_1", name: "Host" });
   return db;
 }

@@ -11,7 +11,7 @@ import {
 } from "../../src/data/sessions.js";
 import { getHost, upsertHost } from "../../src/data/hosts.js";
 import { hostDaemonSessions } from "../../src/schema.js";
-import { createMigratedConnection } from "../helpers/migrated-connection.js";
+import { createMigratedConnection } from "../../src/testing.js";
 
 function setup() {
   const db = createMigratedConnection();

@@ -3,7 +3,7 @@ import { useAtom } from "jotai";
 import { SettingsWithControl } from "@/components/ui/settings-section";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 
-export const SPLIT_DIMMING_SETTING_LABEL = "Fade inactive splits";
+const SPLIT_DIMMING_SETTING_LABEL = "Fade inactive splits";
 
 export function SplitDimmingSetting() {
   const [dimsInactiveSplits, setDimsInactiveSplits] = useAtom(

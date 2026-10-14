@@ -1550,6 +1550,7 @@ export function ThreadPromptContextBanner({
           >
             <WorkspaceChangesList
               files={gitSection.changedFiles.files}
+              fileCount={gitSection.changedFiles.stats.fileCount}
               className="max-h-32 px-3 pb-2 pt-1"
               onFileClick={(file) =>
                 gitSection.onPromptBannerFileClick({

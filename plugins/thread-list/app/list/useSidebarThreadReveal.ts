@@ -105,7 +105,136 @@ export function useSidebarThreadReveal(): void {
   });
 }
 
-export interface SidebarThreadRevealInputs {
+export interface SidebarThreadRevealState {
+  previousThreadId: string | undefined;
+  pendingNavigation: string | undefined;
+  previousUnreadIds: ReadonlySet<string> | null;
+}
+
+export const INITIAL_SIDEBAR_THREAD_REVEAL_STATE: SidebarThreadRevealState = {
+  previousThreadId: undefined,
+  pendingNavigation: undefined,
+  previousUnreadIds: null,
+};
+
+interface SidebarThreadRevealStepInputs {
+  selectedThreadId: string | undefined;
+  threads: readonly SidebarThread[];
+  threadById: ReadonlyMap<string, SidebarThread>;
+  threadsReady: boolean;
+  preferencesReady: boolean;
+}
+
+interface SidebarThreadRevealStep {
+  state: SidebarThreadRevealState;
+  revealIds: ReadonlySet<string>;
+  navigationRevealId: string | undefined;
+}
+
+export function stepSidebarThreadReveal(
+  state: SidebarThreadRevealState,
+  {
+    selectedThreadId,
+    threads,
+    threadById,
+    threadsReady,
+    preferencesReady,
+  }: SidebarThreadRevealStepInputs,
+): SidebarThreadRevealStep {
+  let { previousThreadId, pendingNavigation } = state;
+  if (previousThreadId !== selectedThreadId) {
+    previousThreadId = selectedThreadId;
+    pendingNavigation = selectedThreadId;
+  }
+  if (!preferencesReady || !threadsReady) {
+    return {
+      state: {
+        previousThreadId,
+        pendingNavigation,
+        previousUnreadIds: state.previousUnreadIds,
+      },
+      revealIds: new Set(),
+      navigationRevealId: undefined,
+    };
+  }
+  const revealIds = new Set<string>();
+  const navigationRevealId = pendingNavigation;
+  if (navigationRevealId && threadById.has(navigationRevealId)) {
+    revealIds.add(navigationRevealId);
+    pendingNavigation = undefined;
+  }
+  const unreadIds = new Set<string>();
+  for (const thread of threads) {
+    if (thread.isHidden || !thread.isUnread) {
+      continue;
+    }
+    unreadIds.add(thread.id);
+    if (
+      state.previousUnreadIds &&
+      !state.previousUnreadIds.has(thread.id) &&
+      thread.id !== selectedThreadId
+    ) {
+      revealIds.add(thread.id);
+    }
+  }
+  return {
+    state: {
+      previousThreadId,
+      pendingNavigation,
+      previousUnreadIds: unreadIds,
+    },
+    revealIds,
+    navigationRevealId,
+  };
+}
+
+interface ThreadRevealExpansionArgs {
+  thread: SidebarThread;
+  threadById: ReadonlyMap<string, SidebarThread>;
+  effectivePinnedThreadIds: ReadonlySet<string>;
+  organizationMode: SidebarOrganizationMode;
+  personalProjectId: string | null;
+}
+
+export function resolveThreadRevealExpansion({
+  thread,
+  threadById,
+  effectivePinnedThreadIds,
+  organizationMode,
+  personalProjectId,
+}: ThreadRevealExpansionArgs) {
+  const threadIdsToExpand = new Set<string>();
+  const environmentIdsToExpand = new Set<string>();
+  let currentThread: SidebarThread | undefined = thread;
+  let remainingHops = threadById.size;
+  while (currentThread && remainingHops > 0) {
+    const environmentId = currentThread.environment?.id ?? null;
+    if (environmentId !== null) {
+      environmentIdsToExpand.add(environmentId);
+    }
+    const parentThreadId = currentThread.parentThreadId;
+    if (parentThreadId === null) {
+      break;
+    }
+    const parentThread = threadById.get(parentThreadId);
+    if (!parentThread) {
+      break;
+    }
+    threadIdsToExpand.add(parentThread.id);
+    currentThread = parentThread;
+    remainingHops -= 1;
+  }
+  const expansion = getThreadSidebarExpansion({
+    organizationMode,
+    isPinned: effectivePinnedThreadIds.has(thread.id),
+    thread,
+    sidebarProjectId: resolveSidebarProjectId(thread, threadById),
+    personalProjectId,
+  });
+  return { threadIdsToExpand, environmentIdsToExpand, expansion };
+}
+
+interface SidebarThreadRevealInputs {
   selectedThreadId: string | undefined;
   threads: readonly SidebarThread[];
   threadsReady: boolean;
@@ -113,7 +242,7 @@ export interface SidebarThreadRevealInputs {
   personalProjectId: string | null;
 }
 
-export function useSidebarThreadRevealCore({
+function useSidebarThreadRevealCore({
   selectedThreadId,
   threads,
   threadsReady,
@@ -139,79 +268,38 @@ export function useSidebarThreadRevealCore({
     () => buildPinnedSidebarState({ threads }).effectivePinnedThreadIds,
     [threads],
   );
-  const previousThreadId = useRef<string | undefined>(undefined);
-  const pendingNavigation = useRef<string | undefined>(undefined);
-  const previousUnreadIds = useRef<ReadonlySet<string> | null>(null);
+  const revealState = useRef(INITIAL_SIDEBAR_THREAD_REVEAL_STATE);
 
   useEffect(() => {
-    if (previousThreadId.current !== selectedThreadId) {
-      previousThreadId.current = selectedThreadId;
-      pendingNavigation.current = selectedThreadId;
-    }
-    if (!preferencesReady || !threadsReady) {
-      return;
-    }
-    const revealIds = new Set<string>();
-    const navigationRevealId = pendingNavigation.current;
-    if (navigationRevealId && threadById.has(navigationRevealId)) {
-      revealIds.add(navigationRevealId);
-      pendingNavigation.current = undefined;
-    }
-    const unreadIds = new Set<string>();
-    for (const thread of threads) {
-      if (thread.isHidden || !thread.isUnread) {
-        continue;
-      }
-      unreadIds.add(thread.id);
-      if (
-        previousUnreadIds.current &&
-        !previousUnreadIds.current.has(thread.id) &&
-        thread.id !== selectedThreadId
-      ) {
-        revealIds.add(thread.id);
-      }
-    }
-    previousUnreadIds.current = unreadIds;
-    for (const threadId of revealIds) {
+    const step = stepSidebarThreadReveal(revealState.current, {
+      selectedThreadId,
+      threads,
+      threadById,
+      threadsReady,
+      preferencesReady,
+    });
+    revealState.current = step.state;
+    for (const threadId of step.revealIds) {
       const thread = threadById.get(threadId);
       if (!thread || thread.isHidden) {
         continue;
       }
-      const threadIdsToExpand = new Set<string>();
-      const environmentIdsToExpand = new Set<string>();
-      let currentThread: SidebarThread | undefined = thread;
-      let remainingHops = threadById.size;
-      while (currentThread && remainingHops > 0) {
-        const environmentId = currentThread.environment?.id ?? null;
-        if (environmentId !== null) {
-          environmentIdsToExpand.add(environmentId);
-        }
-        const parentThreadId = currentThread.parentThreadId;
-        if (parentThreadId === null) {
-          break;
-        }
-        const parentThread = threadById.get(parentThreadId);
-        if (!parentThread) {
-          break;
-        }
-        threadIdsToExpand.add(parentThread.id);
-        currentThread = parentThread;
-        remainingHops -= 1;
-      }
+      const { threadIdsToExpand, environmentIdsToExpand, expansion } =
+        resolveThreadRevealExpansion({
+          thread,
+          threadById,
+          effectivePinnedThreadIds,
+          organizationMode,
+          personalProjectId,
+        });
 
-      expandThreadAncestors(threadIdsToExpand, threadId === navigationRevealId);
+      expandThreadAncestors(
+        threadIdsToExpand,
+        threadId === step.navigationRevealId,
+      );
       setCollapsedEnvironmentIdList((current) =>
         removeCollapsedIds(current, environmentIdsToExpand),
       );
-
-      const isPinned = effectivePinnedThreadIds.has(thread.id);
-      const expansion = getThreadSidebarExpansion({
-        organizationMode,
-        isPinned,
-        thread,
-        sidebarProjectId: resolveSidebarProjectId(thread, threadById),
-        personalProjectId,
-      });
       if (expansion.machineKey) {
         const machineKey = expansion.machineKey;
         setCollapsedMachineKeyList((current) =>

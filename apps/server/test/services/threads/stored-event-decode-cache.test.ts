@@ -5,17 +5,16 @@ import {
   turnScope,
 } from "@bb/domain";
 import {
-  createConnection,
   createProject,
   createThread,
   insertEvents,
   listStoredEventRows,
-  migrate,
   noopNotifier,
   upsertHost,
   type DbConnection,
   type StoredEventRow,
 } from "@bb/db";
+import { createMigratedConnection } from "@bb/db/testing";
 import {
   clearStoredEventDecodeCache,
   decodeStoredEventRowCached,
@@ -37,8 +36,7 @@ function agentMessageData(text: string): string {
 }
 
 beforeAll(() => {
-  db = createConnection(":memory:");
-  migrate(db);
+  db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, { name: "decode-host" });
   const { project } = createProject(db, noopNotifier, {
     name: "decode-project",

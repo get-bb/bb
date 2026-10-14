@@ -32,6 +32,7 @@ export interface AcpAgentDefinition {
   providerUsage?: boolean;
   providerInstallation?: boolean;
   nativeRootsResolver?: AcpNativeRootsResolver;
+  modelCatalogScope?: "host" | "workspace";
 }
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
@@ -94,6 +95,10 @@ export function customAcpAgentDefinition(
     ...(shipped?.nativeRootsResolver === undefined
       ? {}
       : { nativeRootsResolver: shipped.nativeRootsResolver }),
+    ...(shipped?.modelCatalogScope === "workspace" ||
+    agent.dialect === "opencode"
+      ? { modelCatalogScope: "workspace" as const }
+      : {}),
     visibility: "always",
     fork: "none",
     supportsManualCompaction: agent.supportsManualCompaction,

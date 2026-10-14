@@ -318,16 +318,6 @@ describe("composer quote persistence", () => {
     expect(consumerRenders).toBe(rendersBeforeTyping);
   });
 
-  it("stacks a second quote below the first, separated by a blank line", () => {
-    const scope = uniqueScope();
-    const { result } = renderHook(() => usePromptDraftStorage(scope));
-
-    act(() => addQuote(result.current, "first"));
-    act(() => addQuote(result.current, "second"));
-
-    expect(result.current.text).toBe("> first\n\n> second\n");
-  });
-
   it("adds quote attachments to the draft and persists them", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));

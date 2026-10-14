@@ -26,7 +26,7 @@ interface PromptMentionClipboardDataAttributesArgs {
 }
 
 interface ParsePromptMentionClipboardElementArgs {
-  element: Element;
+  element: Pick<Element, "getAttribute">;
 }
 
 const promptMentionClipboardResourcePayloadSchema = z.object({

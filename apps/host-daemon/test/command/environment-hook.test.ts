@@ -1,14 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { makeTempDir } from "@bb/test-helpers";
+import { expect, it } from "vitest";
 import { dispatchOnlineRpcCommand } from "../../src/command-dispatch.js";
-import {
-  cleanupTempDirs,
-  createHarness,
-  makeTempDir,
-} from "./dispatch-helpers.js";
-
-afterEach(cleanupTempDirs);
+import { createHarness } from "./dispatch-helpers.js";
 
 it("streams hook output and cancels the process before the run RPC settles", async () => {
   const harness = createHarness();

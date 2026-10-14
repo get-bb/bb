@@ -23,6 +23,7 @@ interface ProviderModelsCommandOptions {
   host?: string;
   json?: boolean;
   machine?: string;
+  project?: string;
   selectedModel?: string;
 }
 
@@ -123,6 +124,10 @@ export function registerProviderCommands(
 
   addProviderRoutingOptions(provider.command("models [providerId]"))
     .description("List available models for a provider")
+    .option(
+      "--project <id>",
+      "Project whose checkout on the machine the provider reads its models and options from",
+    )
     .option("--json", "Print machine-readable JSON output")
     .option(
       "--selected-model <model>",
@@ -134,10 +139,22 @@ export function registerProviderCommands(
           providerId: string | undefined,
           opts: ProviderModelsCommandOptions,
         ) => {
+          if (opts.project !== undefined && opts.environment !== undefined) {
+            throw new Error(
+              "Cannot combine --project with --environment; the environment already selects its workspace.",
+            );
+          }
           const serverUrl = getUrl();
           const sdk = createCliBbSdk(serverUrl);
+          const routing = await resolveMachineEnvironmentRouting(
+            opts,
+            serverUrl,
+          );
           const executionOptions = await sdk.providers.models({
-            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+            ...(routing.environmentId !== undefined ||
+            opts.project === undefined
+              ? routing
+              : { ...routing, projectId: opts.project }),
             ...(providerId ? { providerId } : {}),
           });
           const models = includeSelectedOnlyModel({
