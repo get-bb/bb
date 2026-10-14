@@ -1760,6 +1760,10 @@ async function applyServerTarget(): Promise<void> {
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (applicationWindowWebContentsIds.has(window.webContents.id))
+      desktopBrowserViewManager?.prepareWindowReload(window);
+  }
   await loadLoadingView();
   if (!isCurrent()) return;
   desktopBrowserBrokerClient?.reconnect();
