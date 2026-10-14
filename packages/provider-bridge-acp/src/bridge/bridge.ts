@@ -2667,14 +2667,13 @@ async function handleModelList(
       "ACP model list command failed to provide a model catalog.",
     );
   }
-  const sessionDiscoveredModels =
-    params.listCommand === undefined && params.agent
-      ? await loadSessionDiscoveredModels(
-          params.agent,
-          params.reasoningProbePriorityModelIds,
-          params.parameterizedModelPicker,
-        )
-      : null;
+  const sessionDiscoveredModels = params.agent
+    ? await loadSessionDiscoveredModels(
+        params.agent,
+        params.reasoningProbePriorityModelIds,
+        params.parameterizedModelPicker,
+      )
+    : null;
   if (sessionDiscoveredModels) {
     sendModels(sessionDiscoveredModels);
     return;
