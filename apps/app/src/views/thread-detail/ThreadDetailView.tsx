@@ -1837,7 +1837,7 @@ function ThreadDetailViewInternal(
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
-    thread,
+    thread: timelineEnabled ? thread : undefined,
   });
   const {
     effectiveMergeBaseBranch,
