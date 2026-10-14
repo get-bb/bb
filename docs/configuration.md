@@ -187,33 +187,57 @@ configuration.
 
 Server-wide preferences, stored in the bb database and applied live to every
 client. Set them in Settings, with `bb settings general <key> <value>`, or with
-SDK `system.updateGeneralSettings`. See `bb guide customization` for the
-command surface.
+SDK `system.updateGeneralSettings`, which takes the full settings object (read
+the current `generalSettings` and change one key). See `bb guide customization`
+for the command surface.
 
-| Key                                                                        | Default                             | Effect                                                                                                                                                                                                                                                                 |
-| -------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `showDiagnosticEvents`                                                     | `false`                             | Settings → General → Privacy & diagnostics. Shows provider environment resolution and unhandled raw provider events in the timeline. Warnings, errors, and model fallback stay visible. Hidden diagnostics do not count toward timeline limits.                        |
-| `steerActiveThreadOnEnter`                                                 | `true`                              | Settings → General. `true` ("Steer"): Enter steers a running thread and Mod+Enter queues; `false` ("Queue") swaps them. Installs that predate the setting were migrated to `false`. Shift+Enter always inserts a newline.                                              |
-| `confirmThreadArchive`                                                     | `true`                              | Settings → General. `false` archives a thread and its children in the app without a confirmation popup; the toast still offers Undo. CLI and SDK archives never prompt.                                                                                                |
-| `streamerMode`                                                             | `false`                             | Settings → General. Hides every `customModels` entry from pickers, `bb provider models`, and `sdk.providers.models`. Threads that name a hidden model still run; a composer whose stored selection is hidden falls back to the provider default.                       |
-| `allowFastServiceTier`                                                     | `true`                              | Settings → Providers. `false` hides the service tier control and runs every new turn, including automations and queued messages, at the default tier. Project defaults saved while off keep the default tier.                                                          |
-| `managedBranchPrefix`                                                      | `bb/`                               | Settings → General → New branch prefix. Prefix for branches bb creates for worktrees and new checkout branches (`bb/fix-login-flow-thr_ab12cd34ef`); empty for none. At most 64 characters and must start a valid git branch name. Existing branches keep their names. |
-| `providerOrder`                                                            | `[]`                                | Settings → Providers. JSON list of provider ids that lead the picker; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                         |
-| `defaultProviderId`                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                   |
-| `telemetryEnabled`                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                  |
-| `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                              |
+| Key                                                                        | Default                             | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `showDiagnosticEvents`                                                     | `false` in all builds               | Settings → General → Privacy & diagnostics → Show diagnostic events. Shows provider environment resolution and raw provider events bb does not yet understand in the timeline. Warnings, errors, and model fallback stay visible. Hidden diagnostics do not count toward timeline event or byte limits.                                                                                                                                                                                                                                        |
+| `steerActiveThreadOnEnter`                                                 | `true`                              | Settings → General → Default thread followup behavior, when no typeahead suggestion is active. `true` ("Steer"): Enter sends to the agent during its current run and Mod+Enter queues the message until the agent stops; `false` ("Queue") swaps them. Installs with saved settings or work from before the setting were migrated once to `false`.                                                                                                                                                                                             |
+| `confirmThreadArchive`                                                     | `true`                              | Settings → General → Thread archive confirmation. `false` archives a thread and its children in the app without a confirmation popup; the toast still offers Undo. CLI and SDK archives never prompt.                                                                                                                                                                                                                                                                                                                                          |
+| `showGitChanges`                                                           | `true`                              | Settings → General → Show Git changes and Commit button. `false` hides the untracked, uncommitted, and committed file summary and expanded file list above every thread composer, that shelf's pull-request status and actions, and the Commit action in the thread header and overflow menu. Thread relationships and workspace warnings stay visible.                                                                                                                                                                                        |
+| `keepHistoryAfterContextClear`                                             | `false`                             | Settings → General → Show messages from before a context clear. When `false`, a thread's timeline, conversation outline, and message lookup start at its latest `Context cleared` boundary; `true` keeps earlier messages, which load on scroll and appear in the outline and `bb thread log --message`. Clearing always starts a fresh provider conversation and resets the context meter.                                                                                                                                                    |
+| `streamerMode`                                                             | `false`                             | Settings → General. Hides every `customModels` entry from the web and mobile pickers, `bb provider models`, and `sdk.providers.models`, for example before a screen share. Entries stay in `config.json`; a thread that names a hidden model still runs, and default model resolution keeps the full list, so a provider whose only models are custom still starts. A composer whose stored selection is hidden falls back to the provider default and records it on the next send; reselect the custom model after turning streamer mode off. |
+| `allowFastServiceTier`                                                     | `true`                              | Settings → Providers. `false` hides the service tier control and runs every new turn at the default tier, including explicit requests for another tier (`fast`, Codex `ultrafast`, or any tier a provider lists), automations, and queued messages. Completed turns and project defaults saved while off keep the default tier.                                                                                                                                                                                                                |
+| `managedBranchPrefix`                                                      | `bb/`                               | Settings → General → New branch prefix. Prefix for branches bb creates for worktrees and new checkout branches (`bb/fix-login-flow-thr_ab12cd34ef`); empty for none. At most 64 characters and must start a valid git branch name (no space or leading `-`). Existing branches and worktrees keep their names.                                                                                                                                                                                                                                 |
+| `providerOrder`                                                            | `[]`                                | Settings → Providers (move a provider up or down). JSON list of provider ids that lead the picker, such as `'["claude-code","codex"]'`; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                                                                                                                                                                                                                               |
+| `defaultProviderId`                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `telemetryEnabled`                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
-The general-settings API still accepts and returns `showUnhandledProviderEvents`
-as a deprecated alias of `showDiagnosticEvents`; when a payload contains
-conflicting values, the one changed from the saved setting wins.
+Older clients that omit `showGitChanges` or `keepHistoryAfterContextClear`
+preserve the saved value. For older SDK callers, the general-settings API still
+accepts and returns `showUnhandledProviderEvents` as a deprecated alias of
+`showDiagnosticEvents`, and an existing value is preserved; when a
+read-modify-write payload contains conflicting values, the one changed from the
+saved setting wins. Codex memory and native subagents live on the Codex
+provider plugin; Claude Code's options are under
+[Claude Code provider](#claude-code-provider).
 
-**Completed turn display.** `providerCompletedTurnDisplay` maps provider id to
-`collapse` (finished work folds into one "Worked for" row) or `flat` (every
-step stays visible). A provider without an entry uses its registration's
-`completedTurnDisplay` default: Claude Code is `flat`, other first-party
-providers `collapse`. It applies to existing threads, the outline, and
-`bb thread log`. Set it in Settings → Providers or with
-`bb settings completed-turns <provider-id> <collapse|flat|default>`.
+**Composer keys.** The prompt box uses plain-text editing; Markdown delimiters
+stay visible. Outside an open typeahead menu, Shift+Enter inserts a newline. On
+coarse-pointer touch devices, the software-keyboard Return inserts a newline
+and the submit button sends; iPadOS WebKit keeps the Enter and Command+Enter
+shortcuts for a connected Magic Keyboard.
+
+**Completed turn display.** The "Collapse finished turns" switches in Settings
+→ Providers store `providerCompletedTurnDisplay`, a map of provider id to
+`collapse` (finished work folds into one "Worked for" row and the final answer
+stays visible) or `flat` (every step stays visible, as while the turn ran). A
+provider without an entry uses its registration's `completedTurnDisplay`
+default: Claude Code is `flat`, other first-party providers `collapse`. It
+applies to existing threads, the outline, and `bb thread log`. Set it with
+`bb settings completed-turns <provider-id> <collapse|flat|default>`, where
+`default` removes the entry; `bb settings completed-turns` lists every
+provider's current display.
+
+**Setup guide.** A new install opens a first-run setup guide (connect an agent,
+add projects, pick plugins, set up devices). `onboardingCompletedAt` records
+when it was finished or skipped; `bb settings replay-onboarding`, or Settings →
+General → Setup guide, clears it so the guide shows again. The projects step
+lists what `bb project discover` and
+`bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
 
 **Anonymous usage telemetry.** PostHog events carry a random install id, app
 version, install kind, platform, OS release, architecture, and Node version.
@@ -249,309 +273,38 @@ The removed `BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION`
 keys are ignored with a warning in `~/.bb/config.json`, and `bb-app config set`
 refuses them.
 
-bb accepts voice recordings up to 25 MB; Codex transcribes up to 20 MB and bb
-cloud up to 10 MB. With a ChatGPT subscription login, Codex transcription can
-be blocked by Cloudflare bot protection on some networks; run
-`codex login --with-api-key` on the primary machine or pick another voice
-service.
-
-bb accepts voice recordings up to 25 MB. A service may set a lower limit;
-Codex transcribes recordings up to 20 MB and bb cloud up to 10 MB.
+bb accepts voice recordings up to 25 MB; a service may set a lower limit, and
+Codex transcribes up to 20 MB and bb cloud up to 10 MB. With a ChatGPT
+subscription login, Codex transcription can be blocked by Cloudflare bot
+protection on some networks; run `codex login --with-api-key` on the primary
+machine or pick another voice service.
 
 Open microphone preferences by right-clicking the composer microphone, pressing
 Shift+F10 while it is focused, or clicking the Microphone control in Settings →
-Voice Input. A warning opens preferences when the microphone is clicked. Desktop uses an anchored popover; mobile uses a drawer. Opening
-preferences starts a local microphone preview with the recording waveform and
-a list of inputs. Closing preferences releases the preview. The recording controls
-contain only cancel, stop, and send; microphone preferences are available while idle.
+Voice Input; desktop uses an anchored popover and mobile a drawer. Preferences
+are available only while idle; the recording row contains only cancel, stop,
+and send. Opening preferences starts a local microphone preview with the
+recording waveform and a list of inputs; the preview is not saved or
+transcribed, and closing preferences releases it.
 
-Recording tries the preferred device, then the system default, then other
-available inputs for missing or unreadable devices. Permission denials do not
-trigger fallback. A disconnect during recording switches the input into the
-same recorder, preserving audio captured before the disconnect. Reconnecting
-the preferred microphone makes it available for the next recording; it does not
-interrupt the current fallback recording.
+The microphone preference is client-local: localStorage
+`bb.voiceInput.audioInputDeviceId` holds the selected browser `MediaDevices`
+device id. Select System default to follow system microphone changes; the
+choice does not change which service transcribes. Recording tries the
+preferred device, then the system default, then other available inputs for
+missing or unreadable devices; permission denials do not trigger fallback. A
+disconnect during recording switches the input into the same recorder,
+preserving audio captured before the disconnect. A reconnected preferred
+microphone is used again from the next recording; it does not interrupt the
+current fallback recording.
 
-A missing preferred microphone alone does not block recording or show a warning.
-Capture failures, interrupted input, or no available inputs after access was
-granted show a decorative warning badge on the idle microphone. During capture,
-five seconds of near-silent audio produces a warning in the open preview or an
-accessible status in the recording row; the recording row has no microphone menu. Silence warnings clear when audio returns and never
-stop recording or switch microphones automatically. While idle, a warning opens
-preferences on click. Audio preview runs only while microphone preferences are
-open; it is not saved or transcribed.
-
-The microphone preference is client-local. It stores the
-selected browser `MediaDevices` device id in localStorage as
-`bb.voiceInput.audioInputDeviceId`. Recording prefers that microphone and falls
-back to the system default and other available inputs when it is disconnected,
-then uses the saved preference again when it reconnects. Select System default to follow system
-microphone changes; it does not change which service
-transcribes.
-
-The built-in Push notifications plugin uses `expoPushUrl` for its relay URL.
-The default is `https://exp.host/--/api/v2/push/send`. Change it with
-`bb plugin config push-notifications set expoPushUrl <url>`. The plugin reads
-the value when it sends a message. Independent `mobileEnabled`, `webEnabled`,
-and `desktopEnabled` booleans default to true. Change each with
-`bb plugin config push-notifications set webEnabled false` (or the other
-channel key). Web and desktop clients receive system notifications while a bb
-tab or window remains open; browsers require HTTPS or localhost and per-device
-notification permission. Settings → Push notifications offers permission and
-test controls. `bb push-notifications test <web|desktop>` broadcasts a test to
-connected, permitted clients; it does not confirm OS display. A thread uses
-its own level; otherwise a child thread uses `childLevel` (`inherit` for the
-same as `defaultLevel`, `all`, `input-only` or `muted`, default `input-only`)
-and a top-level thread uses `defaultLevel` (`all`, `input-only` or `muted`,
-default `all`). A thread's level also limits its child threads: the result is
-capped by every ancestor's own level, so muting a parent mutes its whole
-subtree, and a parent set to `all` never makes workers louder than their own
-level or `childLevel`.
-`input-only` keeps questions, approvals and errors but skips finished turns.
-Change the defaults with `bb plugin config push-notifications set defaultLevel
-muted` (or `childLevel`). Set one thread with
-`bb push-notifications thread <thread> --level <inherit|all|input-only|muted>`.
-
-The builtin Keep Awake plugin has one autosaving configuration page with an
-enable switch and an all-or-selected host picker. On selected macOS hosts it
-runs `/usr/bin/caffeinate -i -w <worker-pid>` while enabled, preventing system
-idle sleep while bb is running. It only blocks idle sleep: closing a laptop lid
-or choosing Sleep manually still sleeps the Mac. Configure it from an agent or
-terminal with:
-
-```sh
-bb keep-awake status [--json]
-bb keep-awake enable [--json]
-bb keep-awake disable [--json]
-bb keep-awake hosts all
-bb keep-awake hosts <host-id>...
-```
-
-The builtin Concurrency limit plugin has an autosaving page under Plugins →
-Installed plugins. Its overall limit is unlimited by default. Each host defaults to
-Auto: one thread per available processor. A blank host field restores
-Auto, and 0 pauses new work for that scope. Configure it from an agent or
-terminal with:
-
-```sh
-bb concurrency-limit status [--json]
-bb concurrency-limit global [unlimited|<limit>] [--json]
-bb concurrency-limit host <host-id> [auto|<limit>] [--json]
-```
-
-The "Show diagnostic events" toggle in Settings → General → Privacy & diagnostics shows provider
-environment resolution and raw provider events that bb does not yet understand.
-It defaults to off in all builds. Warnings, errors, and model fallback remain
-visible. An existing unhandled-provider-events preference is preserved.
-Set it with `bb settings general showDiagnosticEvents <true|false>` or
-`bb.sdk.system.updateGeneralSettings` using the `showDiagnosticEvents` field.
-For older SDK callers, the general-settings API still accepts and returns
-`showUnhandledProviderEvents` as a deprecated alias. Both names control the same
-setting. When a read-modify-write payload contains conflicting values, the
-value changed from the saved setting wins. Hidden diagnostics do not count
-toward timeline event or byte limits.
-
-The prompt box uses plain-text editing. Markdown delimiters remain visible while
-editing.
-
-The "Default thread followup behavior" picker in Settings → General changes the
-active-thread composer shortcuts when no typeahead suggestion is active. A
-queued message waits and then runs when the agent stops. A steer message goes
-to the agent during the current run. The picker defaults to "Steer" for a new
-install: Enter steers and Command+Enter queues. "Queue" swaps them: Enter
-queues and Command+Enter steers. Ctrl+Enter is the same modifier shortcut on
-Windows and Linux. An earlier install with saved settings or work
-keeps "Queue" because a one-time migration stamps the old default onto it. Set
-it with
-`bb settings general steerActiveThreadOnEnter <true|false>`, where `true` is
-"Steer".
-
-The "Show Git changes and Commit button" switch in Settings → General defaults to on.
-Turn it off to hide the untracked, uncommitted, and committed file summary and
-expanded file list above every thread composer, the pull-request status and actions
-in that shelf, and the Commit action in the thread header and overflow menu.
-Thread relationships and workspace warnings remain visible. This server-wide preference persists
-across reloads and applies to every connected app client. Set it with
-`bb settings general showGitChanges false` or read the current config and call
-`sdk.system.updateGeneralSettings({ ...config.generalSettings, showGitChanges: false })`.
-Older clients that omit the field preserve the saved value.
-
-The "Show messages from before a context clear" switch in Settings → General defaults
-to off. When off, a thread's timeline, conversation outline, and message lookup
-start at its latest `Context cleared` boundary. Turn it on to keep earlier
-messages above the boundary; they load on scroll like other older activity and
-appear in the outline and `bb thread log --message` lookups. Clearing still starts a
-fresh provider conversation and resets the context meter either way. Set it
-with `bb settings general keepHistoryAfterContextClear true` or
-`bb.sdk.system.updateGeneralSettings` using `keepHistoryAfterContextClear`.
-Older clients that omit the field preserve the saved value.
-
-The "Thread archive confirmation" switch in Settings → General defaults to on.
-Turn it off to archive a thread and its child threads immediately without a
-confirmation popup. The archive toast still offers Undo. This server-wide
-preference applies to all connected app clients. Set it with
-`bb settings general confirmThreadArchive false` or
-`bb.sdk.system.updateGeneralSettings` using `confirmThreadArchive`.
-CLI and SDK archive operations remain non-interactive.
-
-A new install opens a first-run setup guide (connect an agent, add projects,
-pick plugins, set up devices). `onboardingCompletedAt` in general settings
-records when it was finished or skipped; `bb settings replay-onboarding`, or
-Settings → General → Setup guide, clears it so the guide shows again.
-The projects step lists what `bb project discover` and
-`bb.sdk.hosts.experimental_discoverRepos({ hostId })` return.
-
-The "Streamer mode" toggle in Settings → General hides every `customModels`
-entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
-`bb provider models`, and `sdk.providers.models`. Turn it on before a screen
-share so a private or early-access model id does not appear. It defaults to
-off. The entries stay in `config.json`, and a thread that names a hidden model
-explicitly still runs with it. Default model resolution for a new thread also
-keeps the full list, so a provider whose only models are custom still starts.
-A composer whose stored selection is a hidden model treats it as unavailable
-and falls back to the provider default; the next send records that default, so
-select the custom model again after you turn streamer mode off. Set it with
-`bb settings general streamerMode <true|false>`.
-
-The "Allow faster service tiers" switch in Settings → Providers defaults to on.
-Turn it off with `bb settings general allowFastServiceTier false` or
-`bb.sdk.system.updateGeneralSettings`. While off, new turns use the default
-service tier, including explicit requests for another tier (`fast`, Codex
-`ultrafast`, or any other tier a provider lists), automations, and previously
-queued messages. The app hides the service tier control. Turn the setting on to
-choose a faster tier again; completed turns and project defaults saved while it
-was off retain the default tier.
-
-The "New branch prefix" field in Settings → General sets the text bb
-puts in front of every branch name it creates for a managed worktree or a new
-checkout branch. It defaults to `bb/`, which produces
-`bb/fix-login-flow-thr_ab12cd34ef`. Change it to `sawyer/` to group your branches
-under your own namespace, or clear the field to create
-`fix-login-flow-thr_ab12cd34ef` with no prefix. bb rejects a prefix that cannot
-start a valid git branch name, such as one with a space or a leading `-`, and
-the prefix is at most 64 characters. The prefix applies to branches bb creates
-after you change it; it does not rename an existing branch or worktree. Set it
-with `bb settings general managedBranchPrefix <prefix>`.
-
-The bundled **Storage & retention** plugin is disabled by default. Enable it with
-`bb plugin enable bb--storage-retention`, then open its sidebar panel. Both policies
-default to Never. The plugin stores its policy and latest run in its own storage;
-there are no general app settings for retention. Preview with
-`bb storage retention --archive-after 30 --delete-after 90`; add `--save --yes`
-to save. Use `never` to turn either policy off. Days range from 1 to 3650.
-
-The plugin also offers **Delete thread storage on archive**, off by default.
-All retention settings save immediately in the panel.
-Set it with `bb storage retention --delete-storage-on-archive true --save --yes`
-(or `false` to disable). It clears storage for future manual and automatic
-archives, including cascaded children, preserving conversations and uploaded
-attachments and skipping pinned threads. Pending cleanup persists across reloads
-and retries every minute until the core archive undo grace has elapsed (currently
-30 seconds), the thread has stopped, and its machine is online. Bulk archived-file
-cleanup also respects this grace and rechecks eligibility before each batch.
-Unarchiving cancels pending cleanup. Existing archives are not cleared by enabling
-this setting; use the explicit archived-file cleanup action for those.
-
-**Delete development data when its checkout is removed** is a separate,
-off-by-default setting: `bb storage retention --delete-dev-data-on-checkout-removal true --save --yes`
-(use `false` to disable). It scans online persistent machines on plugin startup, machine reconnect, and hourly, and
-cleans missing-checkout `~/.bb-dev` folders after successful hourly or manual
-scans, including existing data. The machine rechecks absence before deletion,
-stops servers working inside removed checkouts, and keeps existing or unresolved
-sources. Offline/busy machines and failed cleanup retry on later scans. Thread
-retention preview counts do not include development folders. A removal event re-measures only that machine's `~/.bb-dev`, waiting for any running cleanup there to finish. Startup and
-periodic scans recover missed events by checking the filesystem; no removal
-history is stored in the core database.
-
-The hourly plugin schedule processes up to 50 trees per action across all projects.
-Archive eligibility uses each affected member's updatedAt; deletion requires every
-lifecycle member to have been archived past the cutoff. Pinned members exempt the
-group. Cross-plugin protection is deferred: pin automation targets to keep them.
-Archiving may remove worktrees including uncommitted changes; deletion removes
-history and thread storage. Disabling the plugin stops retention
-without losing the saved policy. The plugin uses existing SDK thread listing and
-archive/delete APIs, accepting changes between inspection and mutation.
-
-Storage reads use cached reports and never trigger disk scans. Start a background
-scan with `bb storage usage --machine HOST_ID --rescan`, or omit `--machine` to
-scan every online machine; rerun usage to see its status and results. Bulk cleanup runs one job at a time per machine; scans run alongside cleanup, and a finished scan leaves out anything cleared while it ran. The existing
-bounded idle orphan sweep remains independent of the plugin.
-`bb storage remove-orphans --machine HOST_ID --yes` uses the last scan;
-`bb storage clear-large-files [--machine HOST_ID] --yes` deletes files of 10 MB
-or more from archived threads' storage, keeping smaller files and skipping
-pinned and running threads. The page starts this cleanup in the background,
-reports its running/completed/failed status, and survives navigation or reconnects.
-`bb storage usage` also exposes that status as `largeFileCleanup`. The CLI waits
-for deletion to finish;
-`bb storage clear-archived-files --machine HOST_ID --yes` removes archived threads’
-whole storage folders, including small files, skipping pinned and running threads;
-`bb storage remove-dev-instances --machine HOST_ID --yes` removes `~/.bb-dev`
-instances whose source checkout no longer exists, first stopping servers still
-running from that checkout; add `--instance NAME` to remove one entry of any
-kind, stopping its dev server first if it is running;
-`bb storage retry-worktree-cleanup --machine HOST_ID` retries environment cleanup;
-`bb storage clear-thread --thread THREAD_ID --yes` empties stopped-thread storage.
-The plugin owns the disk scanner, cached reports, classification, and host-worker
-file operations. Reports are snapshots; changes outside the plugin appear after
-a rescan. These actions are available through its typed plugin RPC. See the
-[plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
-
-Settings → Providers lists every registered agent provider in picker order.
-Move a provider up or down to change the order and choose the default for new
-threads. Both are persisted preferences: `providerOrder` is the list of ids
-that lead the picker (ids not listed follow in plugin install order, and an id
-that names no registered provider is ignored) and `defaultProviderId` is the
-provider new threads use when neither the caller nor the project chose one
-(`null` means the first available provider in picker order). Set them with
-`bb settings general providerOrder '["claude-code","codex"]'` and
-`bb settings general defaultProviderId claude-code` (or `null`).
-
-The "Collapse finished turns" switches in Settings → Providers choose, per
-provider, how a finished turn appears in the thread timeline. Collapsed, the
-turn's work folds into one "Worked for" row and the final answer stays
-visible. Flat, every step of the finished turn stays visible, as it was while
-the turn ran. Each provider declares its default (`completedTurnDisplay` on
-its registration): Claude Code defaults to flat, and every other first-party
-provider defaults to collapsed. Your choice is stored in
-`providerCompletedTurnDisplay`, a map of provider id to `collapse` or `flat`;
-a provider without an entry uses its default. The display applies to existing
-threads as well as new ones, and to the conversation outline and
-`bb thread log`. Set it with
-`bb settings completed-turns <provider-id> <collapse|flat|default>`, where
-`default` removes your entry, and list every provider's current display with
-`bb settings completed-turns`.
-
-Each provider's own options live on its plugin: Codex memory and native
-subagents under the Codex provider plugin, and Claude Code memory, native
-subagents, and the Workflow tool under the Claude Code provider plugin.
-
-Claude Code's **Disable 1M context** provider setting (`disable1MContext`)
-defaults to `false`. Enable it with
-`bb plugin config provider-claude-code set disable1MContext true`.
-bb sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` when enabled and `0` when off.
-Changes restart the thread's Claude process before its next turn, preserving
-conversation context.
-
-Claude Code starts without its Claude in Chrome browser tools when bb runs it,
-even when the interactive `claude` CLI has Chrome enabled by default. Turn the
-tools on for bb threads with
-`bb plugin config provider-claude-code set chromeEnabled true`. bb then starts
-Claude Code with `--chrome`. The host needs the Claude in Chrome extension and a
-claude.ai login; API-key sessions keep Chrome off. A change restarts the thread's
-Claude process before its next turn and keeps the conversation.
-
-In Accept Edits and Approve for me modes, bb runs Claude Code's Bash commands in
-Claude Code's sandbox. Turn it off with
-`bb plugin config provider-claude-code set sandboxEnabled false`. Bash commands
-then go through Claude Code's normal approvals and your own Claude Code
-permission and sandbox settings. A change restarts the thread's Claude process
-before its next turn and keeps the conversation.
-
-Outside an open typeahead menu, Shift+Enter inserts a newline. On
-coarse-pointer touch devices, the software-keyboard Return path inserts a
-newline and the submit button sends.
-iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
-above for a connected Magic Keyboard.
+A missing preferred microphone alone does not block recording or show a
+warning. Capture failures, interrupted input, or no available inputs after
+access was granted show a decorative warning badge on the idle microphone;
+clicking it then opens preferences. During capture, five seconds of
+near-silent audio produces a warning in the open preview or an accessible
+status in the recording row. Silence warnings clear when audio returns and
+never stop recording or switch microphones automatically.
 
 ## Themes
 
@@ -1061,11 +814,11 @@ skills.
 
 ### Claude Code provider
 
-| Setting            | Default | Effect                                                                                                                                         |
-| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                        |
-| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools; the host needs the extension and a claude.ai login (API-key sessions stay off). |
-| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.    |
+| Setting            | Default | Effect                                                                                                                                                                                                                            |
+| ------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disable1MContext` | `false` | Sets `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` (`0` when off).                                                                                                                                                                           |
+| `chromeEnabled`    | `false` | Starts Claude Code with `--chrome` for Claude in Chrome tools, which bb otherwise leaves off even when the interactive `claude` CLI enables them; the host needs the extension and a claude.ai login (API-key sessions stay off). |
+| `sandboxEnabled`   | `true`  | Runs Bash in Claude Code's sandbox in Accept Edits and Approve for me modes; `false` uses Claude Code's own approvals and sandbox settings.                                                                                       |
 
 Set them with `bb plugin config provider-claude-code set <key> <value>`. A
 change restarts the thread's Claude process before its next turn, keeping the
@@ -1102,24 +855,57 @@ defaults on; `bb pool routing <claude|codex> --off` stops it. See the
 
 The builtin Concurrency limit plugin caps running threads. The overall limit is
 unlimited by default; each host defaults to Auto (one thread per available
-processor), and `0` pauses new work for that scope. Configure it on its plugin
-page or with `bb concurrency-limit global|host`; see the `concurrency-limit`
-skill.
+processor), a blank host field restores Auto, and `0` pauses new work for that
+scope. Configure it on its autosaving plugin page or with
+`bb concurrency-limit status|global|host`; see the `concurrency-limit` skill.
 
 ### Keep Awake
 
 The builtin Keep Awake plugin prevents idle system sleep on selected macOS and
-Windows hosts while bb runs (closing the lid still sleeps). Its settings are an
-enable switch and an all-or-selected host list, set on its plugin page or with
-`bb keep-awake enable|disable` and `bb keep-awake hosts all|<host-id>...`.
+Windows hosts while bb runs; on macOS it runs
+`/usr/bin/caffeinate -i -w <worker-pid>`. Closing the lid or choosing Sleep
+still sleeps the machine. Its settings are an enable switch and an
+all-or-selected host list, set on its autosaving plugin page or with
+`bb keep-awake status|enable|disable` and `bb keep-awake hosts all|<host-id>...`
+(each accepts `--json`).
 
 ### Push notifications
 
 The builtin Push notifications plugin's `mobileEnabled`, `webEnabled`, and
 `desktopEnabled` booleans default to `true`. `expoPushUrl` (default
 `https://exp.host/--/api/v2/push/send`) is the relay URL, read on every send.
-Web and desktop notifications need an open bb tab or window, HTTPS or
-localhost, and per-device permission. See the `push-notifications` skill.
+`defaultLevel` (default `all`) and `childLevel` (default `input-only`) set
+top-level and child thread levels. Set them with
+`bb plugin config push-notifications set <key> <value>`. Web and desktop
+notifications need an open bb tab or window, HTTPS or localhost, and
+per-device permission; the plugin's settings page offers permission and test
+controls. See the `push-notifications` skill for levels, devices, and
+`bb push-notifications test|thread`.
+
+### Storage & retention
+
+The bundled Storage & retention plugin is disabled by default
+(`bb plugin enable bb--storage-retention`). Configure it in its sidebar panel,
+where every setting saves immediately, or with `bb storage retention`, which
+previews until `--save --yes`. It keeps its policy and latest run in its own
+storage; there are no general app settings for retention.
+
+| Setting                                              | Default | Flag                                                                          |
+| ---------------------------------------------------- | ------- | ----------------------------------------------------------------------------- |
+| Archive after / delete after                         | Never   | `--archive-after <days\|never>`, `--delete-after <days\|never>` (1–3650 days) |
+| Delete thread storage on archive                     | Off     | `--delete-storage-on-archive <true\|false>`                                   |
+| Delete development data when its checkout is removed | Off     | `--delete-dev-data-on-checkout-removal <true\|false>`                         |
+
+Archive eligibility uses each affected member's `updatedAt`; deletion requires
+every lifecycle member to have been archived past the cutoff. The plugin uses
+the SDK thread listing and archive/delete APIs, accepting changes between
+inspection and mutation, and disabling it stops retention without losing the
+saved policy. Development-data cleanup stores no removal history in the core
+database. The plugin owns the disk scanner, cached reports, classification,
+and host-worker file operations behind `bb storage usage` and the cleanup
+commands; background cleanup started from the page survives navigation and
+reconnects. See the
+[plugin skill](../plugins/storage-retention/skills/storage-retention/SKILL.md).
 
 ### Ask User Question plugin
 

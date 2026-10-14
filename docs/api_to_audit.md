@@ -1050,14 +1050,19 @@ fires after a final unterminated line is emitted.
 
 ## Live-file navigation (`experimental_FileLink`, `BbNavigate.experimental_openFilePreview`, and `BbNavigate.experimental_openFileExternally`)
 
-**Kept experimental (2026-08-22).** Windows/UNC paths were never verified and
-`experimental_openFilePreview` has no consumer.
+**Kept experimental (2026-08-22).** Windows/UNC paths were never verified.
 
 `experimental_FileLink` and `experimental_openFilePreview` open explicit live
 workspace, host and thread-storage file targets through the current surface's
 shared file-tab controller. `experimental_openFileExternally` opens a target
 in the client's preferred external app. The boolean results report host
 acceptance, and malformed targets stay inert.
+
+**Core callers.** `usePanelFiles` owns file opening on the thread view, New
+thread screen, and plugin page: core's workspace, host, and storage opens and
+`openFilePreview` build the same tab requests under one scope rule, which
+`usePanelFiles.test.tsx` checks against every surface. Links route through
+`usePanelBrowser` on every surface.
 
 Docs: `frontend-components.md`, `frontend-hooks-and-ui.md`.
 
@@ -1085,8 +1090,12 @@ current surface's terminal panel. A thread surface accepts only that thread's
 terminals, the New thread screen only its current terminal scope, and a
 plugin page any terminal. It resolves false for unknown or exited terminals
 and surfaces without a terminal panel, and closing the tab closes the
-terminal. Core's terminal tabs open through the same `usePanelTerminals`
-path. Requested in #1132.
+terminal. Requested in #1132.
+
+**Core callers.** This API calls `usePanelTerminals`'s `open`; core's Start
+terminal row, the `terminal.open` shortcut, and terminal tab selection use
+its `select` on every surface. `usePanelTerminals.test.tsx` runs one contract
+table against the thread view, New thread screen, and plugin page.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -1491,6 +1500,11 @@ recently rendered slot's `inspection.experimental_clipboardWrites` and
 resolves with that slot's `experimental_copyToClipboard` render option
 (default true).
 
+**Core callers.** The export is `copyToClipboard` from
+`apps/app/src/lib/clipboard.ts`. Core copies call it directly or through
+`copyToClipboardWithToast` and `useClipboardCopy`: `CopyButton`, the message
+action bar, file preview, terminal, and the Copy thread link thread action.
+
 Docs: `frontend-hooks-and-ui.md`.
 
 **Audit before stabilizing.**
@@ -1519,6 +1533,11 @@ bridge. The promise resolves `started` once the link is clicked or `failed`,
 with an error toast, if it could not start. Completion and share-sheet
 cancellation are not reported. The test harness resolves `started` and records
 nothing.
+
+**Core callers.** The export is `saveFile` from `apps/app/src/lib/save-file.ts`,
+which file preview downloads, chat attachment links in the native shell
+(`ConversationAttachments`), and voice-input recording downloads call. The
+Tasks plugin's attachment cards call the SDK export.
 
 Docs: `frontend-hooks-and-ui.md`.
 
@@ -1713,6 +1732,12 @@ The host-owned new-thread compose surface. It calls `onSubmit` with a
 `sessionOptions` when the user changed a provider's agent option), and the plugin then
 creates the thread with `bb.sdk.threads.spawn`, which owns filing and
 attribution.
+
+**Core callers.** The New thread screen (`RootComposeView`) renders the same
+`apps/app/src/components/promptbox/NewThreadComposer.tsx`;
+`PluginNewThreadComposer` adapts it for the SDK, and its round-trip tests
+(`PluginNewThreadComposer.test.tsx`, `new-thread-environment-seed.test.ts`)
+guard the seed mapping against the root composer's environment resolution.
 
 Docs: `frontend-components.md`.
 
@@ -2047,10 +2072,15 @@ component receives `{ code, language, status, index, message, Original }`,
 mounts once per fence, and survives streaming: the host owns the instance and
 portals it to a placeholder keyed by the fence's source offset, keeping
 iframes alive where `Element.moveBefore` exists. Contested languages, a
-missing plugin, and a throwing fence fall back to `Original`. The built-in
-`inline-vis` plugin renders through it; BB's `mermaid` diagram stays a core
-special case inside `Original`. The harness exposes
-`loadPluginApp(...).codeFenceRenderers`.
+missing plugin, and a throwing fence fall back to `Original`. The harness
+exposes `loadPluginApp(...).codeFenceRenderers`.
+
+**Core callers.** `MarkdownPreview`'s code renderer
+(`markdown-code-fence-renderers.tsx`), the pipeline that also resolves
+`messageDirective`, hosts every claimed fence; the built-in `inline-vis`
+plugin renders through it. BB's `mermaid` diagram stays a core special case
+inside `Original`, because it renders on every Markdown surface and this slot
+is scoped to messages.
 
 Docs: `frontend-renderer-slots.md`, `testing.md`.
 
@@ -2189,13 +2219,18 @@ debounced (32 ms quiet, 100 ms max). `item` is a pure function of
 `{ thread, data, sdk, navigate }` returning a `PluginThreadAction` or null;
 throws drop the registration or that thread's item, and `run` errors are
 contained. Registrations sort by `group`, `order`, then registration order
-for every menu and the quick-action picker. bb's own actions are
-registrations under the reserved `bb--core` owner, thread-list registers Move
-to section, and push-notifications registers Notifications. Core's header
-menu, mobile recents, sidebar row menus, quick actions, and archive command
-all read the same registry (`CORE_THREAD_ACTIONS`;
-`ThreadActionsMenu.test.tsx` runs every menu surface against it). The SDK
-test fake throws when a menu `trigger` drops its props and ref.
+for every menu and the quick-action picker. Thread-list registers Move to
+section, and push-notifications registers Notifications. The SDK test fake
+throws when a menu `trigger` drops its props and ref.
+
+**Core callers.** bb's own actions are `CORE_THREAD_ACTIONS`
+(`apps/app/src/lib/thread-actions/core-thread-actions.ts`), registered under
+the reserved `bb--core` owner. The header menu (`ThreadDetailView` →
+`ThreadDetailHeader`), `RootComposeMobileRecents`, and
+`ThreadArchiveCommandHandler` read the same registry, and the thread list's
+row menus and quick actions use the SDK exports. The contract table in
+`ThreadActionsMenu.test.tsx` runs every menu surface against the same
+registrations.
 
 Docs: `frontend-registration.md`.
 
@@ -2221,9 +2256,13 @@ the optimistic `environments.archiveThreads`, split-pane cleanup, route
 repair, and one ten-second Undo toast that unarchives the returned ids
 (lifecycle owners first) and returns to the route. Failures show a host error
 toast, and archive failures reject. It replaces
-`PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`; the
-thread list's environment group menu is the caller. The test harness records
-calls in `inspection.experimental_environmentArchiveCalls`.
+`PluginSidebarThreadActions.experimental_archiveEnvironmentThreads`. The test
+harness records calls in `inspection.experimental_environmentArchiveCalls`.
+
+**Core callers.** The hook returns `ThreadActionsProvider`'s
+`archiveEnvironmentThreads`, bb's only environment-group archive, which the
+deprecated sidebar-actions shim also calls. Its one caller is the built-in
+thread list's environment group menu.
 
 Docs: `frontend-registration.md`.
 
@@ -2757,9 +2796,13 @@ branding separate from provider artwork resolution.
 Renders bb's thread status glyph from `PluginThreadStatusGlyphProps`
 (`indicator`, `archived?`, `rowStatus`, `hideIdleDraftLabel`, `size`); the
 host owns icons, colors, and labels, and the caller resolves the indicator.
-Core's search palette, related threads, and mobile recents draw the same
-component, and the thread-list plugin draws its rows with it. The SDK test
-fake exposes the props as `data-*` attributes.
+The SDK test fake exposes the props as `data-*` attributes.
+
+**Core callers.** `ThreadStatusGlyph`
+(`apps/app/src/components/thread/ThreadStatusGlyph.tsx`) is the SDK export
+and the glyph in the thread search palette, the related threads info section,
+and mobile recents. The thread-list plugin draws its rows and collapsed-group
+rollups with it.
 
 Docs: `frontend-registration.md`.
 
@@ -2888,8 +2931,10 @@ rollback delivery, missing jobs after restart, and CLI/SDK parity.
 Posts one anonymous product event to `POST /api/v1/system/telemetry/events`,
 which forwards it to usage telemetry under the install's anonymous id and
 drops it when usage data sharing is off. The schema is a strict allow-list of
-setup-guide events; anything else is a 400. The only caller is the setup
-guide.
+setup-guide and new-thread-submit events; anything else is a 400. Core
+callers, all through `recordTelemetryEvent` in
+`apps/app/src/components/onboarding/onboarding-telemetry.ts`: the setup guide
+(`OnboardingFlow`) and `NewThreadComposer`'s `new_thread_submit` outcomes.
 
 Stabilize after deciding whether third-party plugins may emit product events
 at all and, if so, how they are namespaced and rate limited.
@@ -2903,8 +2948,8 @@ computer: `supported` (false without an installed bb-app launcher),
 adds `<dataDir>\bin` to the user PATH) and refuses to replace another `bb`
 (`409 cli_command_blocked`); install and remove return the new status, fail
 with `409 cli_command_unsupported` when unsupported, and 403 for machine
-credentials. Callers: Settings → General → Command line and
-`bb settings cli-command`.
+credentials. Core callers: Settings → General → Command line
+(`CliCommandSettingsSection`) and `bb settings cli-command`.
 
 Stabilize after deciding whether the command should be installable per
 machine through the host daemon (enrolled machines get `~/.local/bin/bb` from
@@ -2918,8 +2963,9 @@ repositories under the machine's home directory with local activity in the
 last 30 days, newest first, each with `path`, `name`, `lastActivityAt`,
 `originUrl`, and the bound `projectId` or null; `truncated` reports an
 exhausted three-second walk budget. The walk skips dot, build, and scratch
-directories, linked worktrees, and submodules. Callers: the setup guide and
-`bb project discover`; it rides the `host.discover_repos` daemon command.
+directories, linked worktrees, and submodules. Core callers: the setup guide
+(`OnboardingFlow`) and `bb project discover`; it rides the
+`host.discover_repos` daemon command.
 
 Stabilize after deciding whether depth, recency window, and limit should be
 caller options, and after exercising slow or network-mounted home directories
