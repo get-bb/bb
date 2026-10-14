@@ -197,6 +197,18 @@ appear when the list is read for that project or environment:
   bb provider models acp-opencode --project "$BB_PROJECT_ID"
   bb thread spawn --provider acp-opencode --option mode=<agent>
 
+bb lists only the agents OpenCode itself loads, and OpenCode does not read
+agent files from other folders such as `.agents/agents/`. To use such a folder,
+point OpenCode at it with `OPENCODE_CONFIG_DIR`, set as a machine variable or in
+a custom agent's `env`. A relative value is resolved in each workspace, so
+`.agents` lists every project's own `.agents/agents/*.md`:
+
+  printf '.agents' | bb machine env set OPENCODE_CONFIG_DIR
+
+Every file in that folder must be a valid OpenCode agent file; OpenCode refuses
+to start on one it cannot parse, such as `tools` written as a comma-separated
+list.
+
 OpenCode Go quotas appear in Provider usage for the selected machine after
 signing in to Go in OpenCode on that machine. Inspect the same five-hour,
 weekly, and monthly windows with bb settings usage --machine <id-or-name> --json

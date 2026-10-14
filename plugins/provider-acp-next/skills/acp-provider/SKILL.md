@@ -41,7 +41,12 @@ config directory or in the project's `.opencode/` directory;
 `bb provider models acp-opencode --project <id>` prints the same list. A new
 agent file shows up once the stored list is ten minutes old and is read again.
 The same holds for a custom agent with `dialect: "opencode"`; every other ACP
-agent is asked once per machine. Grok Build advertises models and
+agent is asked once per machine. OpenCode does not read agent files from other
+folders such as `.agents/agents/`; set `OPENCODE_CONFIG_DIR` (for example to
+`.agents`, resolved in each workspace) as a machine variable with
+`bb machine env set OPENCODE_CONFIG_DIR` or in a custom agent's `env`, and keep
+every file there a valid OpenCode agent file, because OpenCode refuses to start
+on one it cannot parse. Grok Build advertises models and
 `thought_level` options over ACP, so the picker follows the connected agent
 (including `xhigh` on grok-4.6).
 
