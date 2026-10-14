@@ -1437,10 +1437,14 @@ Docs: `testing.md`.
    and `vitest`; a plugin on another runner or another schema library must
    name it in `allow`. Decide whether the defaults should read the plugin's
    own package.json dependencies instead of a fixed list.
-2. **Regex import extraction.** Specifiers are found by a regular expression,
-   not a parser. A string literal split across lines is missed, and a string
-   that merely looks like an import (in a comment, say) is reported. Decide
-   whether a parser is owed before the scan is a promise.
+2. **Tokenizer, not a parser.** A dependency-free tokenizer skips comments,
+   strings, template literals, regular expressions, and JSX text, then reads
+   `import`/`export … from` declarations and `import()`/`require()` calls that
+   are not property accesses or method definitions. Lexing is heuristic where
+   JavaScript is ambiguous without a grammar: a `/` after `)` is read as
+   division, and a `<` in a `.tsx` expression position is tried as JSX and
+   falls back when no closing tag matches. Decide whether a full parser is
+   owed before the scan is a promise.
 
 ## `app.experimental_useProviders` (`@get-bb/plugin-sdk/app`)
 
