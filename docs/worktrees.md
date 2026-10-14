@@ -123,7 +123,7 @@ worktree it made and removes the ones nothing is using:
   thread within it and the worktree is kept; let it elapse and the worktree
   goes.
 - An archived thread keeps running for 30 seconds so Undo can restore it;
-  see `bb guide threads`.
+  see `bb guide thread-lifecycle`.
 
 Removal runs `.bb-env-teardown.sh` inside the worktree first, then stops
 every process whose working directory is inside the worktree — the agent's

@@ -17,7 +17,7 @@ describe("@bb/templates", () => {
   });
 
   it("documents project-aware thread references", () => {
-    const guide = renderTemplate("bbGuideThreads", {});
+    const guide = renderTemplate("bbGuideThreadInspection", {});
 
     expect(guide).toContain("@thread:thr_abc123");
     expect(guide).toContain("do not construct thread URLs manually");

@@ -59,7 +59,10 @@ behavior.
 
 Run `bb guide <chapter>` for command details:
 
-  threads              Spawning, inspecting, messaging, and managing threads
+  threads              Spawning, handing off, forking, and editing threads
+  thread-inspection    Listing, inspecting, waiting on, and opening threads
+  thread-messaging     Messages, interactions, and queued messages
+  thread-lifecycle     Stopping, clearing, retrying, archiving, and deleting
   environments         Environment lifecycle hooks, operations, commits, and merges
   agent-configuration  AGENTS.md and skills files that shape agents
   providers            Discovering providers and models
