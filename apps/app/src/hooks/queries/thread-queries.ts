@@ -281,22 +281,16 @@ function addThreadMentionCandidate(
   }
 }
 
-function buildThreadMentionCandidates(
-  threads: readonly ThreadListItem[],
+const EMPTY_THREAD_LIST: ThreadListResponse = [];
+
+function selectThreadMentionCandidates(
+  threads: ThreadListEntry[],
 ): ThreadListResponse {
   const candidatesById = new Map<string, ThreadListItem>();
   for (const thread of threads) {
     addThreadMentionCandidate(candidatesById, thread);
   }
   return Array.from(candidatesById.values());
-}
-
-const EMPTY_THREAD_LIST: ThreadListResponse = [];
-
-function selectThreadMentionCandidates(
-  threads: ThreadListEntry[],
-): ThreadListResponse {
-  return buildThreadMentionCandidates(threads);
 }
 
 function getThreadMentionCandidatePlaceholder({

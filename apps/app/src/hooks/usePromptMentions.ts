@@ -140,7 +140,6 @@ export function usePromptMentions(
   });
   const projectNamesQuery = useSidebarNavigation({
     enabled: includeBuiltInSources && hasQuery,
-    staleTime: 0,
   });
   const threadsQuery = useThreadMentionCandidates({
     enabled: includeBuiltInSources && hasQuery,
