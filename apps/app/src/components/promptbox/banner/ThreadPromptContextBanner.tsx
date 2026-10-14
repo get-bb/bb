@@ -656,7 +656,7 @@ function ChildQuestionBody({
   return (
     <div className="px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-start justify-between gap-2">
-        <p className="max-h-[calc(5lh+0.125rem)] min-w-0 flex-1 overflow-y-auto overscroll-contain break-words px-2.5 pt-0.5 text-sm text-foreground">
+        <p className="max-h-[calc(5lh+0.125rem)] min-w-0 flex-1 overflow-y-auto overscroll-contain break-words px-2.5 pt-0.5 text-xs text-foreground">
           <NavLink to={current.href} className="underline underline-offset-2">
             {childTitle}
           </NavLink>
