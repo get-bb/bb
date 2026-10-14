@@ -7,6 +7,10 @@ import type {
   DesktopBrowserCdpScope,
 } from "./desktop-browser-cdp.js";
 import type { DesktopBrowserViewManager } from "./desktop-browser-view.js";
+import {
+  getDesktopBrowserThrottling,
+  setDesktopBrowserThrottling,
+} from "./desktop-browser-throttling.js";
 
 const cdpObjectSchema = z.record(z.string(), z.json());
 const cdpMessageSchema = z.object({
@@ -47,7 +51,7 @@ function createPage(
     attachmentReady = null;
     manager.setAutomationControlled(webContents, false);
     if (previousBackgroundThrottling !== null && !webContents.isDestroyed())
-      webContents.setBackgroundThrottling(previousBackgroundThrottling);
+      setDesktopBrowserThrottling(webContents, previousBackgroundThrottling);
     previousBackgroundThrottling = null;
     invalidateInputReadiness();
     webContents.off("did-start-navigation", invalidateInputReadiness);
@@ -86,8 +90,8 @@ function createPage(
       nativeDebugger.attach("1.3");
       ownsAttachment = true;
       manager.setAutomationControlled(webContents, true);
-      previousBackgroundThrottling = webContents.getBackgroundThrottling();
-      webContents.setBackgroundThrottling(false);
+      previousBackgroundThrottling = getDesktopBrowserThrottling(webContents);
+      setDesktopBrowserThrottling(webContents, false);
       generation += 1;
       nativeDebugger.on("detach", releaseOwnership);
       webContents.on("did-start-navigation", invalidateInputReadiness);

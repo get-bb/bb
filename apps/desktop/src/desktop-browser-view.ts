@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { captureDesktopBrowserPage } from "./desktop-browser-capture.js";
+import { setDesktopBrowserServerActive } from "./desktop-browser-throttling.js";
 import {
   BrowserWindow,
   Menu,
@@ -1104,17 +1105,25 @@ export function createDesktopBrowserViewManager(
       resizingHostIds.clear();
       for (const entry of entries.values()) {
         entry.visible = false;
+        setDesktopBrowserServerActive(entry.webContents, false);
         applyEntryVisibility(entry, entry.hostWindow);
         for (const popup of entry.popupWindows) {
-          if (!popup.isDestroyed()) popup.hide();
+          if (popup.isDestroyed()) continue;
+          popup.webContents.setAudioMuted(true);
+          setDesktopBrowserServerActive(popup.webContents, false);
+          popup.hide();
         }
       }
       serverOrigin = value;
       entries = serverEntries.get(value) ?? new Map();
       serverEntries.set(value, entries);
       for (const entry of entries.values()) {
+        setDesktopBrowserServerActive(entry.webContents, true);
         for (const popup of entry.popupWindows) {
-          if (!popup.isDestroyed()) popup.showInactive();
+          if (popup.isDestroyed()) continue;
+          setDesktopBrowserServerActive(popup.webContents, true);
+          popup.webContents.setAudioMuted(false);
+          popup.showInactive();
         }
       }
       notifyAutomationTabs();

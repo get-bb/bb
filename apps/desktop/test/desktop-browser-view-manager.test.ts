@@ -2111,6 +2111,8 @@ describe("DesktopBrowserViewManager", () => {
       const popupWindow = electronMock.fakeWindows[0]!;
       manager.setServerOrigin("https://second.example");
       expect(popupWindow.visible).toBe(false);
+      expect(popupWindow.webContents.audioMuted).toBe(true);
+      expect(popupWindow.webContents.getBackgroundThrottling()).toBe(true);
       attach("https://example.com/second");
       const second = requireFakeView(1);
       const notify = vi.fn();
@@ -2133,6 +2135,7 @@ describe("DesktopBrowserViewManager", () => {
       attach("https://stale.example");
       expect(first.visible).toBe(true);
       expect(popupWindow.visible).toBe(true);
+      expect(popupWindow.webContents.audioMuted).toBe(false);
       expect(second.visible).toBe(false);
       expect(first.webContents.getURL()).toBe("https://example.com/redirected");
       second.webContents.close();
@@ -2145,6 +2148,79 @@ describe("DesktopBrowserViewManager", () => {
       expect(first.webContents.isDestroyed()).toBe(true);
       expect(requireFakeView(2).webContents.isDestroyed()).toBe(true);
       expect(popupWindow.isDestroyed()).toBe(true);
+    },
+  );
+
+  it.each(["automation", "capture"])(
+    "keeps an inactive server throttled when %s releases the page",
+    async (owner) => {
+      const { manager, hostWindow } = createRendererRecoveryFixture(91);
+      manager.setServerOrigin("https://first.example");
+      manager.createTab({
+        hostWindow,
+        tabId: "browser:automated",
+        threadId: "thread-1",
+        url: "https://example.com/animated",
+        viewport: { width: 640, height: 400 },
+      });
+      const view = requireFakeView(1);
+      const adapter = createDesktopBrowserCdpAdapter({
+        manager,
+        createTab: async () => "browser:automated",
+        activateTab: async () => undefined,
+        closeTab: async () => undefined,
+      });
+      const page = adapter
+        .listTabs({ hostWebContentsId: 91, threadId: "thread-1" })
+        .find((tab) => tab.tabId === "browser:automated");
+      const contents = manager
+        .getAutomationTabs({ hostWebContentsId: 91, threadId: "thread-1" })
+        .find((tab) => tab.tabId === "browser:automated")?.webContents;
+      if (!page || !contents) throw new Error("Expected automation page");
+      const debuggerApi = view.webContents.debugger;
+      let completeCapture: () => void = () => undefined;
+      const captureResult = new Promise<{ data: string }>((resolve) => {
+        completeCapture = () =>
+          resolve({ data: Buffer.from("jpeg").toString("base64") });
+      });
+      const capture = vi.spyOn(view.webContents, "capturePage");
+      let pendingCapture: ReturnType<typeof captureDesktopBrowserPage> | null = null;
+      try {
+        if (owner === "automation") {
+          page.attach();
+        } else {
+          capture.mockRejectedValue(new Error("No display surface"));
+          debuggerApi.sendCommand.mockImplementation((method) =>
+            method === "Page.captureScreenshot"
+              ? captureResult
+              : Promise.resolve({}),
+          );
+          pendingCapture = captureDesktopBrowserPage(contents);
+          await vi.waitFor(() => expect(debuggerApi.isAttached()).toBe(true));
+        }
+        expect(view.webContents.getBackgroundThrottling()).toBe(false);
+        manager.setServerOrigin("https://second.example");
+        expect(view.webContents.getBackgroundThrottling()).toBe(true);
+        if (owner === "automation") page.detach();
+        else {
+          completeCapture();
+          await pendingCapture;
+        }
+        expect(view.webContents.getBackgroundThrottling()).toBe(true);
+        expect(view.webContents.isDestroyed()).toBe(false);
+        manager.setServerOrigin("https://first.example");
+        expect(view.webContents.getBackgroundThrottling()).toBe(false);
+        expect(requireFakeView(0).webContents.getBackgroundThrottling()).toBe(true);
+        expect(view.webContents.getURL()).toBe("https://example.com/animated");
+        page.attach();
+        await expect(page.send("Runtime.enable", {})).resolves.toEqual({});
+        page.detach();
+      } finally {
+        completeCapture();
+        await pendingCapture;
+        capture.mockRestore();
+        manager.destroyAll();
+      }
     },
   );
 
