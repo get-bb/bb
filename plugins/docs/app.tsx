@@ -866,9 +866,11 @@ function DocumentAction({
 function InlineDocument({
   document,
   openInTab,
+  panel = false,
 }: {
   document: DocumentRef;
   openInTab?(): void;
+  panel?: boolean;
 }) {
   const { state, session } = useDocumentSession(
     document.vaultId,
@@ -876,6 +878,7 @@ function InlineDocument({
   );
   const rpc = useRpc<typeof docsRpcContract>();
   const composer = useComposer();
+  const navigate = useBbNavigate();
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
@@ -943,13 +946,29 @@ function InlineDocument({
     <TooltipProvider delayDuration={200}>
       <section
         aria-label={document.title}
-        className="my-2 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
+        className={
+          panel
+            ? "flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+            : "my-2 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
+        }
       >
-        <header className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="shrink-0 font-semibold">Docs</span>
-            <span className="truncate opacity-70">{document.title}</span>
-          </div>
+        <header
+          className={
+            panel
+              ? "flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2"
+              : "flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground"
+          }
+        >
+          {panel ? (
+            <div className="min-w-0 flex-1 truncate text-sm font-medium">
+              {document.title}
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="shrink-0 font-semibold">Docs</span>
+              <span className="truncate opacity-70">{document.title}</span>
+            </div>
+          )}
           {(state.busy || state.saving || asking) && (
             <span
               role="status"
@@ -1019,6 +1038,21 @@ function InlineDocument({
               </>
             )}
           </div>
+          {panel && (
+            <Button
+              className="size-8 shrink-0"
+              size="icon"
+              variant="ghost"
+              aria-label="Open in Docs"
+              onClick={() =>
+                navigate.toPluginPanel("docs", {
+                  subPath: `${document.vaultId}/${document.path}`,
+                })
+              }
+            >
+              <HugeiconsIcon icon={ArrowUpRight01Icon} />
+            </Button>
+          )}
         </header>
         {(state.error || askError) && (
           <div
@@ -1045,7 +1079,7 @@ function InlineDocument({
           </p>
         )}
         <div
-          className="relative"
+          className={panel ? "relative min-h-0 flex-1 overflow-y-auto" : "relative"}
           style={openInTab ? { maxHeight: 400, overflow: "clip" } : undefined}
         >
           {!state.loaded ? (
@@ -1253,7 +1287,7 @@ function DocumentPanel({ params }: PluginThreadPanelProps) {
   const navigate = useBbNavigate();
   if (!document) return <DocumentPicker />;
   if (!/\.html?$/i.test(document.path))
-    return <InlineDocument document={document} />;
+    return <InlineDocument document={document} panel />;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border pb-2">
