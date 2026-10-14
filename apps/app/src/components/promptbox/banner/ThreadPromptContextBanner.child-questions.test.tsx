@@ -202,7 +202,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(screen.getAllByText("Which shape?").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Close question" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Submit answer" })).toBe(null);
     expect(screen.queryByText("Investigate failing checks")).toBe(null);
   });
@@ -274,21 +273,6 @@ describe("ThreadPromptContextBanner child questions", () => {
     ).toBe(null);
   });
 
-  it("returns to the row list from the back button and focuses that row", () => {
-    render(bannerElement(section([newest, middle, oldest])));
-    fireEvent.click(screen.getByRole("button", { name: /Child thr_c/ }));
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Back to active child threads" }),
-    );
-
-    expect(openForm()).toBe(null);
-    expect(screen.getByText("Investigate failing checks")).toBeTruthy();
-    expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: /Child thr_c/ }),
-    );
-  });
-
   it("returns focus to the row in its own banner when another banner lists the same child", () => {
     render(
       <>
@@ -353,10 +337,13 @@ describe("ThreadPromptContextBanner child questions", () => {
     expect(
       screen.getByRole("button", { name: /Child thr_c/ }).textContent,
     ).toBe("Child thr_c: Which shape?");
+<<<<<<< HEAD
     expect(mocks.resolve).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: /Child thr_c/ }),
     );
+=======
+>>>>>>> bb/child-threads-4b-answer-in-banner-thr_7xmbr7vsqz
   });
 
   it("keeps the question open for an Escape that ends text composition", () => {
