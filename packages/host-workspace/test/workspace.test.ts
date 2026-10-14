@@ -57,7 +57,7 @@ function parseShortstat(shortstat: string): DiffStats {
 
 function tallyWorkspaceStats(stats: WorkspaceChangeStats): DiffStats {
   return {
-    filesCount: stats.files.length,
+    filesCount: stats.fileCount,
     insertions: stats.insertions,
     deletions: stats.deletions,
   };
@@ -293,6 +293,74 @@ describe("Workspace", () => {
     expect(status.mergeBase?.files).toEqual([
       { path: "README.md", status: "M", insertions: 1, deletions: 1 },
     ]);
+  });
+
+  it("caps listed working-tree files, keeping tracked changes ahead of untracked files", async () => {
+    const repoPath = await initRepo();
+    await fs.writeFile(path.join(repoPath, "a.txt"), "a\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "z.txt"), "z\n", "utf8");
+    await runGit(["add", "a.txt", "z.txt"], { cwd: repoPath });
+    await runGit(["commit", "-m", "Add tracked files"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "a.txt"), "a2\n", "utf8");
+    await fs.writeFile(path.join(repoPath, "z.txt"), "z2\n", "utf8");
+    await fs.mkdir(path.join(repoPath, "artifacts"));
+    for (let index = 0; index < 5; index += 1) {
+      await fs.writeFile(
+        path.join(repoPath, "artifacts", `shot-${index}.txt`),
+        `run ${index}\n`,
+        "utf8",
+      );
+    }
+    const workspace = new Workspace(repoPath);
+
+    const status = await workspace.getStatus({ maxFiles: 3 });
+    expect(status.workingTree.fileCount).toBe(7);
+    expect(status.workingTree.state).toBe("dirty_uncommitted");
+    expect(status.workingTree.insertions).toBe(2);
+    expect(status.workingTree.deletions).toBe(2);
+    expect(
+      status.workingTree.files.map((file) => [file.status, file.path]),
+    ).toEqual([
+      ["M", "a.txt"],
+      ["M", "z.txt"],
+      ["??", "artifacts/shot-0.txt"],
+    ]);
+
+    const trackedOnly = await workspace.getStatus({ maxFiles: 1 });
+    expect(trackedOnly.workingTree.fileCount).toBe(7);
+    expect(
+      trackedOnly.workingTree.files.map((file) => [file.status, file.path]),
+    ).toEqual([["M", "a.txt"]]);
+
+    const uncapped = await workspace.getStatus();
+    expect(uncapped.workingTree.fileCount).toBe(7);
+    expect(uncapped.workingTree.files).toHaveLength(7);
+  });
+
+  it("caps listed merge-base files while reporting the total", async () => {
+    const repoPath = await initRepo();
+    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
+    for (const name of ["one.txt", "two.txt", "three.txt"]) {
+      await fs.writeFile(path.join(repoPath, name), `${name}\n`, "utf8");
+    }
+    await runGit(["add", "."], { cwd: repoPath });
+    await runGit(["commit", "-m", "Feature files"], { cwd: repoPath });
+
+    const status = await new Workspace(repoPath).getStatus({
+      mergeBaseBranch: "main",
+      maxFiles: 2,
+    });
+
+    expect(status.mergeBase?.fileCount).toBe(3);
+    expect(status.mergeBase?.files).toHaveLength(2);
+    expect(status.mergeBase?.insertions).toBe(3);
+  });
+
+  it("rejects a non-positive status file cap", async () => {
+    const repoPath = await initRepo();
+    await expect(
+      new Workspace(repoPath).getStatus({ maxFiles: 0 }),
+    ).rejects.toBeInstanceOf(WorkspaceError);
   });
 
   it("reports untracked files plus committed unmerged changes as dirty_and_committed_unmerged", async () => {
@@ -541,6 +609,7 @@ describe("Workspace", () => {
       insertions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      fileCount: 0,
     });
   });
 

@@ -977,6 +977,7 @@ const environmentProvisionCancelCommandSchema =
 const workspaceStatusCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.status"),
   mergeBaseBranch: gitBranchNameSchema.optional(),
+  maxFiles: z.number().int().positive(),
   maxUntrackedLineStatFiles: z.number().int().positive(),
   maxUntrackedLineStatBytes: z.number().int().positive(),
 });

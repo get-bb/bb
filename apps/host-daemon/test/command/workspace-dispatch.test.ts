@@ -27,6 +27,7 @@ describe("workspace command dispatch", () => {
     const statusResult = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-1",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -95,6 +96,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-late-git",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -297,6 +299,7 @@ describe("workspace command dispatch", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-rehydrate",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,
@@ -331,6 +334,7 @@ describe("workspace command dispatch", () => {
     const statusResult = await dispatchOnlineRpcCommand(
       {
         type: "workspace.status",
+        maxFiles: 200,
         environmentId: "env-non-git",
         maxUntrackedLineStatFiles: 50,
         maxUntrackedLineStatBytes: 8 * 1024 * 1024,

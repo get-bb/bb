@@ -63,6 +63,7 @@ function makeGitSection(
         insertions: 2,
         deletions: 0,
         lineStatsComplete: true,
+        fileCount: 1,
         files: [changedFile],
       },
     },
