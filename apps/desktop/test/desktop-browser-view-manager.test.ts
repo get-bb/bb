@@ -1885,11 +1885,11 @@ describe("DesktopBrowserViewManager", () => {
   );
 
   it.each(["local", "enrolled"])(
-    "preserves same-server reconnect tabs but clears them before a different server registration (%s daemon)",
+    "preserves native pages across server switches without publishing them to another server (%s daemon)",
     async (daemon) => {
       const threadId = "thr_23456789ab";
       const newServerThreadId = "thr_3456789abc";
-      const { manager, hostWindow } = createRendererRecoveryFixture(
+      const { manager, hostWindow, view } = createRendererRecoveryFixture(
         91,
         threadId,
       );
@@ -2041,6 +2041,34 @@ describe("DesktopBrowserViewManager", () => {
             ),
         ).toBe(true);
         expect(hasOriginalTab(3)).toBe(false);
+        expect(view.webContents.isDestroyed()).toBe(false);
+        expect(view.visible).toBe(false);
+        expect(view.webContents.audioMuted).toBe(true);
+        serverUrl = "https://first.example";
+        await writeDescriptor();
+        client.reconnect();
+        await vi.waitFor(() => expect(hasOriginalTab(4)).toBe(true));
+        expect(
+          manager.getAutomationTabs({ hostWebContentsId: 91, threadId }),
+        ).toEqual([{ tabId: "browser:a", webContents: view.webContents }]);
+        manager.attach({
+          hostWindow,
+          request: {
+            tabId: "browser:a",
+            threadId,
+            url: "https://stale.example",
+            bounds: { x: 0, y: 0, width: 640, height: 400 },
+            visible: true,
+            existingOnly: true,
+          },
+        });
+        expect(view.visible).toBe(true);
+        expect(view.webContents.loadURLCalls).toEqual([
+          "https://example.com/",
+        ]);
+        expect(
+          manager.listTabs({ hostWebContentsId: 91, threadId: null }),
+        ).toHaveLength(1);
       } finally {
         client.stop();
         broker.dispose();
