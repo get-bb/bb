@@ -336,6 +336,7 @@ Ownership:
     --clear-section                        Remove section assignment
     --model <model>                        Set the sticky model for the next and later turns
     --reasoning-level <level>              Set the sticky reasoning level (provider-dependent)
+    --permission-mode <mode>               Set the sticky permission mode: accept-edits, auto, or full
     --visibility <visibility>              Set visible or hidden
 
   Clearing a parent inherits the former parent's section unless --section or
@@ -345,6 +346,11 @@ Ownership:
   Model and reasoning updates stay within the thread's current provider. BB
   validates them against that provider's current model catalog, applies them on
   the next turn, and keeps using them on later turns until changed.
+
+  A permission mode update applies from the thread's next turn, not to a turn
+  already running, and stays in effect on later turns until changed. BB rejects
+  a mode the provider does not support or the machine's permission ceiling
+  forbids, and records each change in the thread log.
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread

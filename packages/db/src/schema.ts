@@ -606,6 +606,9 @@ export const threads = sqliteTable(
     reasoningLevelOverride: text(
       "reasoning_level_override",
     ).$type<ReasoningLevel>(),
+    permissionModeOverride: text(
+      "permission_mode_override",
+    ).$type<PermissionMode>(),
     title: text("title"),
     titleFallback: text("title_fallback"),
     sectionId: text("section_id").references(() => threadSections.id, {

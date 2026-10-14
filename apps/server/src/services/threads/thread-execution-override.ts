@@ -1,4 +1,5 @@
 import {
+  createEventId,
   getProjectExecutionDefaults,
   getThreadExecutionOverride,
   setThreadExecutionOverride,
@@ -6,17 +7,29 @@ import {
 } from "@bb/db";
 import {
   reconcileReasoningLevel,
+  THREAD_PERMISSION_MODE_CHANGE_OPERATION,
+  threadScope,
   type AvailableModel,
   type CallerExecutionInputSource,
+  type PermissionMode,
   type ReasoningLevel,
   type Thread,
 } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
+import {
+  clampPermissionModeToHost,
+  resolveEnvironmentHostId,
+} from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveSystemExecutionOptionsForValidation } from "../system/execution-options.js";
-import { getLastExecutionOptions } from "./thread-events.js";
+import { appendThreadEvent, getLastExecutionOptions } from "./thread-events.js";
 import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-policy.js";
+
+type ModelExecutionOverride = Pick<
+  ThreadExecutionOverride,
+  "modelOverride" | "reasoningLevelOverride"
+>;
 
 interface ThreadExecutionOverridePatch {
   model?: string | null;
@@ -24,7 +37,7 @@ interface ThreadExecutionOverridePatch {
 }
 
 interface ResolveThreadExecutionOverrideUpdateArgs {
-  existing: ThreadExecutionOverride;
+  existing: ModelExecutionOverride;
   patch: ThreadExecutionOverridePatch;
   models: readonly AvailableModel[];
   providerId: string;
@@ -36,9 +49,16 @@ interface ApplyThreadExecutionOverrideArgs {
   patch: ThreadExecutionOverridePatch;
 }
 
+interface ApplyThreadPermissionModeOverrideArgs {
+  permissionMode: PermissionMode;
+  thread: Thread;
+}
+
 interface RecoverThreadModelOverrideArgs {
   model: string | undefined;
   modelSource: CallerExecutionInputSource | undefined;
+  permissionMode?: PermissionMode | undefined;
+  permissionModeSource?: CallerExecutionInputSource | undefined;
   reasoningLevel: ReasoningLevel | undefined;
   reasoningLevelSource: CallerExecutionInputSource | undefined;
   thread: Thread;
@@ -47,7 +67,7 @@ interface RecoverThreadModelOverrideArgs {
 export function resolveThreadExecutionOverrideUpdate(
   registry: ProviderRegistryService,
   args: ResolveThreadExecutionOverrideUpdateArgs,
-): ThreadExecutionOverride {
+): ModelExecutionOverride {
   const { existing, patch, models, providerId, fallbackModel } = args;
 
   const modelChanged = "model" in patch;
@@ -147,6 +167,63 @@ export async function applyThreadExecutionOverride(
   });
 }
 
+export function applyThreadPermissionModeOverride(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadPermissionModeOverrideArgs,
+): void {
+  const { thread, permissionMode } = args;
+  const hostId = resolveEnvironmentHostId(deps, thread.environmentId);
+  const supported = deps.providerRegistry.getSupportedPermissionModes(
+    thread.providerId,
+  );
+  if (supported && !supported.includes(permissionMode)) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Provider ${thread.providerId} only supports ${supported.join(", ")} permission mode.`,
+    );
+  }
+  const allowed = clampPermissionModeToHost(deps, {
+    hostId,
+    permissionMode,
+    providerId: thread.providerId,
+  });
+  if (allowed !== permissionMode) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `This machine limits permission mode to ${allowed}; ${permissionMode} is not allowed here.`,
+    );
+  }
+
+  const existing = getThreadExecutionOverride(deps.db, thread.id);
+  if (existing?.permissionModeOverride === permissionMode) return;
+
+  setThreadExecutionOverride(deps.db, {
+    threadId: thread.id,
+    permissionModeOverride: permissionMode,
+  });
+  appendThreadEvent(deps, {
+    threadId: thread.id,
+    environmentId: thread.environmentId,
+    type: "system/operation",
+    scope: threadScope(),
+    data: {
+      operation: THREAD_PERMISSION_MODE_CHANGE_OPERATION,
+      operationId: createEventId(),
+      status: "completed",
+      message: `Permission mode set to ${permissionMode}. It applies from the next turn.`,
+      metadata: {
+        previousPermissionMode:
+          existing?.permissionModeOverride ??
+          getLastExecutionOptions(deps, thread.id)?.permissionMode ??
+          null,
+        permissionMode,
+      },
+    },
+  });
+}
+
 export async function recoverThreadModelOverride(
   deps: LoggedWorkSessionDeps,
   args: RecoverThreadModelOverrideArgs,
@@ -168,6 +245,17 @@ export async function recoverThreadModelOverride(
     existing.reasoningLevelOverride !== args.reasoningLevel
   ) {
     patch.reasoningLevel = args.reasoningLevel;
+  }
+  if (
+    args.permissionMode !== undefined &&
+    args.permissionModeSource === "explicit" &&
+    existing?.permissionModeOverride != null &&
+    existing.permissionModeOverride !== args.permissionMode
+  ) {
+    setThreadExecutionOverride(deps.db, {
+      threadId: args.thread.id,
+      permissionModeOverride: args.permissionMode,
+    });
   }
   if (patch.model === undefined && patch.reasoningLevel === undefined) return;
 

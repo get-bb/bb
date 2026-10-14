@@ -67,6 +67,7 @@ describe("stale model recovery", () => {
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: "claude-opus-4-8[1m]",
         reasoningLevelOverride: "high",
+        permissionModeOverride: null,
       });
       await expect(
         buildExecutionOptions(harness.deps, {}, { threadId: thread.id }),
@@ -147,6 +148,7 @@ describe("stale model recovery", () => {
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: "claude-mythos-5",
         reasoningLevelOverride: null,
+        permissionModeOverride: null,
       });
     });
   });

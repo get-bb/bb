@@ -85,6 +85,7 @@ interface ResolveThreadExecutionPermissionModeArgs {
   lastExecutionPermissionMode?: RecordedPermissionMode;
   parentThread?: ParentThread | null;
   parentThreadExecutionPermissionMode?: RecordedPermissionMode;
+  permissionModeOverride?: PermissionMode;
   projectExecutionPermissionMode?: PermissionMode;
   requestedPermissionMode?: PermissionMode;
   thread: Pick<
@@ -441,6 +442,9 @@ export function resolveThreadExecutionPermissionMode(
 ): PermissionMode {
   if (args.requestedPermissionMode) {
     return args.requestedPermissionMode;
+  }
+  if (args.permissionModeOverride) {
+    return args.permissionModeOverride;
   }
   if (args.lastExecutionPermissionMode) {
     return normalizeRecordedPermissionMode(args.lastExecutionPermissionMode);

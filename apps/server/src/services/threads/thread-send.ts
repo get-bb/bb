@@ -582,6 +582,11 @@ async function sendThreadMessageWithoutContextClear(
         payload.executionInputSources === undefined
           ? "explicit"
           : payload.executionInputSources.reasoningLevel,
+      permissionMode: payload.permissionMode,
+      permissionModeSource:
+        payload.executionInputSources === undefined
+          ? "explicit"
+          : payload.executionInputSources.permissionMode,
       thread,
     });
   }

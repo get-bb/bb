@@ -722,6 +722,7 @@ export const updateThreadRequestSchema = z
     parentThreadId: z.string().min(1).nullable(),
     model: z.string().min(1).nullable(),
     reasoningLevel: reasoningLevelSchema.nullable(),
+    permissionMode: permissionModeInputSchema,
     sessionOptions: z.record(
       z.string().min(1),
       sessionOptionValueSchema.nullable(),
@@ -736,6 +737,7 @@ export const updateThreadRequestSchema = z
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined ||
+      value.permissionMode !== undefined ||
       value.sessionOptions !== undefined ||
       value.visibility !== undefined,
     "At least one field must be provided",

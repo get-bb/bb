@@ -228,6 +228,7 @@ function createThreadListEntry(
     ...args.thread,
     modelOverride: null,
     reasoningLevelOverride: null,
+    permissionModeOverride: null,
     storageDeletedAt: null,
     environmentBranchName: null,
     environmentPath: null,

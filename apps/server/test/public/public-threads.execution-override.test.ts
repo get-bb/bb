@@ -104,6 +104,7 @@ describe("PATCH /threads/:id execution override", () => {
         expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
           modelOverride: provider.model,
           reasoningLevelOverride: "high",
+          permissionModeOverride: null,
         });
       });
     });
@@ -132,6 +133,7 @@ describe("PATCH /threads/:id execution override", () => {
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: null,
         reasoningLevelOverride: null,
+        permissionModeOverride: null,
       });
     });
   });

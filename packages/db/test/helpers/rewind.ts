@@ -56,6 +56,15 @@ export function dropMarketplaceSourceGitSubdirectoryColumn(
   }
 }
 
+export function dropThreadPermissionModeOverrideColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "permission_mode_override")) {
+    db.$client.exec("ALTER TABLE threads DROP COLUMN permission_mode_override");
+  }
+}
+
 export const QUEUED_MESSAGE_STATE_MIGRATION_WHEN = 1792010323040;
 
 interface QueuedTableColumn {
@@ -67,6 +76,7 @@ interface QueuedTableColumn {
 }
 
 export function rewindQueuedMessageStateMigration(db: DbConnection): void {
+  dropThreadPermissionModeOverrideColumn(db);
   const columns = db.$client
     .prepare<[], QueuedTableColumn>("PRAGMA table_info(queued_thread_messages)")
     .all();

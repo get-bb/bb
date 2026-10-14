@@ -285,16 +285,19 @@ describe("threads", () => {
     expect(getThreadExecutionOverride(db, thread.id)).toEqual({
       modelOverride: null,
       reasoningLevelOverride: null,
+      permissionModeOverride: null,
     });
 
     setThreadExecutionOverride(db, {
       threadId: thread.id,
       modelOverride: "claude-opus-4-8",
       reasoningLevelOverride: "high",
+      permissionModeOverride: "full",
     });
     expect(getThreadExecutionOverride(db, thread.id)).toEqual({
       modelOverride: "claude-opus-4-8",
       reasoningLevelOverride: "high",
+      permissionModeOverride: "full",
     });
 
     setThreadExecutionOverride(db, {
@@ -304,16 +307,19 @@ describe("threads", () => {
     expect(getThreadExecutionOverride(db, thread.id)).toEqual({
       modelOverride: "claude-opus-4-8",
       reasoningLevelOverride: "max",
+      permissionModeOverride: "full",
     });
 
     setThreadExecutionOverride(db, {
       threadId: thread.id,
       modelOverride: null,
       reasoningLevelOverride: null,
+      permissionModeOverride: null,
     });
     expect(getThreadExecutionOverride(db, thread.id)).toEqual({
       modelOverride: null,
       reasoningLevelOverride: null,
+      permissionModeOverride: null,
     });
   });
 

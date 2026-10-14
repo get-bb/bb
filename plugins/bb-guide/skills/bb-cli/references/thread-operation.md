@@ -220,4 +220,6 @@ For review or fix pipelines, get the environment ID from
 - `bb terminal restart <terminal-id>` replaces the session with a shell in the
   same scope, size, and title. It does not replay the original launch command.
 
+`bb thread update <id> --permission-mode accept-edits|auto|full` changes a thread's permission mode from its next turn onward, without sending a message. It does not affect a turn already running. BB rejects a mode the provider does not support or the machine's permission ceiling forbids, and records a `permission_mode_change` operation in the thread log.
+
 Clearing a thread's parent with `bb thread update --clear-parent-thread` inherits the former parent's section unless the update explicitly supplies a section. Children released by environment archiving also inherit their former parent's section.

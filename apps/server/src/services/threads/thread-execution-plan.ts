@@ -98,6 +98,7 @@ export function resolveExistingThreadPermissionMode(
           parentThread !== null
             ? getLastExecutionOptions(deps, parentThread.id)?.permissionMode
             : undefined,
+        permissionModeOverride: thread.permissionModeOverride ?? undefined,
         projectExecutionPermissionMode: projectExecution?.permissionMode,
         thread,
       },
@@ -338,6 +339,7 @@ export async function resolveExistingThreadExecutionPlan(
         lastExecutionPermissionMode: lastExecution?.permissionMode,
         parentThread,
         parentThreadExecutionPermissionMode: parentExecution?.permissionMode,
+        permissionModeOverride: thread.permissionModeOverride ?? undefined,
         projectExecutionPermissionMode: projectExecution?.permissionMode,
         thread,
       },

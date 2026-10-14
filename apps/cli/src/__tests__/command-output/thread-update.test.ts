@@ -270,4 +270,61 @@ describe("bb thread update command output", () => {
     );
     expect(patch).not.toHaveBeenCalled();
   });
+
+  it("bb thread update sets a sticky permission mode for the next turn", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-update-permission",
+      projectId: "proj-1",
+      providerId: "claude-code",
+      status: "idle",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const patch = vi.fn(async () => thread);
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.$patch": patch,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "update",
+        "thread-update-permission",
+        "--permission-mode",
+        "full",
+      ],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "thread-update-permission" },
+      json: { permissionMode: "full" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Permission mode: full (applies from the next turn)",
+    );
+  });
+
+  it("bb thread update rejects an invalid permission mode before calling the API", async () => {
+    const patch = vi.fn();
+    stubServerApi({ "v1.threads.:id.$patch": patch });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "update",
+          "thread-update-permission",
+          "--permission-mode",
+          "yolo",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(vi.mocked(console.error)).toHaveBeenCalledWith(
+      expect.stringContaining("Invalid permission mode 'yolo'"),
+    );
+    expect(patch).not.toHaveBeenCalled();
+  });
 });

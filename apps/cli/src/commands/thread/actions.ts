@@ -50,6 +50,7 @@ interface ThreadUpdateCommandOptions {
   clearSection?: boolean;
   model?: string;
   reasoningLevel?: string;
+  permissionMode?: string;
   visibility?: string;
 }
 
@@ -146,6 +147,7 @@ interface ThreadUpdateBody {
   parentThreadId?: string | null;
   model?: string;
   reasoningLevel?: ReasoningLevel;
+  permissionMode?: PermissionMode;
   visibility?: ThreadVisibility;
 }
 
@@ -171,6 +173,10 @@ export function registerActionsCommands(
       "--reasoning-level <level>",
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     )
+    .option(
+      "--permission-mode <mode>",
+      "Set the sticky permission mode applied on the thread's next turn: accept-edits, auto, or full",
+    )
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
     .action(
       action(
@@ -184,6 +190,7 @@ export function registerActionsCommands(
             throw new Error("Cannot combine --section with --clear-section.");
           }
           const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
+          const permissionMode = parsePermissionMode(opts.permissionMode);
           const visibility =
             opts.visibility === undefined
               ? undefined
@@ -196,10 +203,11 @@ export function registerActionsCommands(
             !opts.title &&
             !opts.model &&
             !reasoningLevel &&
+            !permissionMode &&
             !visibility
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, or --visibility.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --permission-mode, or --visibility.",
             );
           }
 
@@ -231,6 +239,9 @@ export function registerActionsCommands(
           if (reasoningLevel) {
             body.reasoningLevel = reasoningLevel;
           }
+          if (permissionMode) {
+            body.permissionMode = permissionMode;
+          }
           if (visibility) {
             body.visibility = visibility;
           }
@@ -259,6 +270,11 @@ export function registerActionsCommands(
           }
           if (reasoningLevel) {
             console.log(`Reasoning level: ${reasoningLevel}`);
+          }
+          if (permissionMode) {
+            console.log(
+              `Permission mode: ${permissionMode} (applies from the next turn)`,
+            );
           }
           if (visibility) {
             console.log(`Visibility: ${visibility}`);

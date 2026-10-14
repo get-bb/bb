@@ -492,6 +492,7 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "updateThreadRequestSchema.model",
       "updateThreadRequestSchema.sectionId",
       "updateThreadRequestSchema.parentThreadId",
+      "updateThreadRequestSchema.permissionMode",
       "updateThreadRequestSchema.reasoningLevel",
       "updateThreadRequestSchema.sessionOptions",
       "updateThreadRequestSchema.title",

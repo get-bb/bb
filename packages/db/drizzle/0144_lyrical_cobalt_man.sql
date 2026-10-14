@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `permission_mode_override` text;
