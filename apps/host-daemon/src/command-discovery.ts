@@ -15,7 +15,7 @@ import { isPathWithinDirectory } from "@bb/process-utils";
 export const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
 const FRONTMATTER_DELIMITER = "---";
-const NODE_MODULES_DIR_NAME = "node_modules";
+const SKIPPED_SKILL_TREE_DIRECTORY_NAMES = new Set([".git", "node_modules"]);
 
 const MAX_SCAN_DEPTH = 24;
 const MAX_SCAN_ENTRY_COUNT = 1_000;
@@ -342,7 +342,7 @@ async function resolveRecursiveRootPath(
 }
 
 function isSkippedSkillTreeEntry(entry: Dirent): boolean {
-  return entry.name.startsWith(".") || entry.name === NODE_MODULES_DIR_NAME;
+  return SKIPPED_SKILL_TREE_DIRECTORY_NAMES.has(entry.name);
 }
 
 async function skillTreeChildPhysicalPath(
@@ -383,7 +383,6 @@ async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
       linked: args.linked || skillFile.linked,
       name: path.basename(args.logicalPath),
     });
-    return;
   }
   const entries = await readDirEntries(args.physicalPath, args.budget);
   if (entries === null) {

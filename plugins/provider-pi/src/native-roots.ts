@@ -18,7 +18,7 @@ export const PI_NATIVE_ROOTS_DECLARATION: Pick<
     ],
     project: [
       { path: ".pi/skills", recursive: true },
-      { path: ".agents/skills", recursive: true },
+      { path: ".agents/skills", recursive: true, ancestors: true },
     ],
   },
   experimental_resolvesNativeRoots: true,

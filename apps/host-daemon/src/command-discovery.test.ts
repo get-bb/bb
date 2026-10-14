@@ -589,7 +589,7 @@ describe("discoverProviderCommands over declared roots", () => {
     },
   );
 
-  it("finds nested skills in a recursive user root through linked bundles, stopping at each skill", async () => {
+  it("finds nested skills in a recursive user root through linked bundles, skipping .git and node_modules", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.homeDir, ".agent", "skills");
     await writeFileEnsuringDir(
@@ -603,6 +603,10 @@ describe("discoverProviderCommands over declared roots", () => {
     await writeFileEnsuringDir(
       path.join(skillsRoot, ".hidden", "hidden", "SKILL.md"),
       skillFile("hidden"),
+    );
+    await writeFileEnsuringDir(
+      path.join(skillsRoot, ".git", "checkout", "SKILL.md"),
+      skillFile("checkout"),
     );
     await writeFileEnsuringDir(
       path.join(skillsRoot, "node_modules", "dependency", "SKILL.md"),
@@ -626,6 +630,8 @@ describe("discoverProviderCommands over declared roots", () => {
 
     expect(commands.map((command) => command.name).sort()).toEqual([
       "bundled",
+      "hidden",
+      "inner",
       "nested",
     ]);
   });
