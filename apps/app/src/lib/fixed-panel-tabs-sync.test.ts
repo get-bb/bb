@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrowserFixedPanelTab,
   createEmptyFixedPanelTabsState,
+  createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   FIXED_PANEL_TABS_IDLE_EXPIRY_MS,
