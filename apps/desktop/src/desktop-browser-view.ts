@@ -1107,6 +1107,8 @@ export function createDesktopBrowserViewManager(
         entry.visible = false;
         setDesktopBrowserServerActive(entry.webContents, false);
         applyEntryVisibility(entry, entry.hostWindow);
+        if (!entry.hostWindow.isDestroyed())
+          entry.hostWindow.contentView.removeChildView(entry.view);
         for (const popup of entry.popupWindows) {
           if (popup.isDestroyed()) continue;
           popup.webContents.setAudioMuted(true);
@@ -1118,6 +1120,8 @@ export function createDesktopBrowserViewManager(
       entries = serverEntries.get(value) ?? new Map();
       serverEntries.set(value, entries);
       for (const entry of entries.values()) {
+        if (!entry.hostWindow.isDestroyed())
+          entry.hostWindow.contentView.addChildView(entry.view);
         setDesktopBrowserServerActive(entry.webContents, true);
         for (const popup of entry.popupWindows) {
           if (popup.isDestroyed()) continue;
