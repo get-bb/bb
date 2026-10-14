@@ -200,9 +200,10 @@ describe("workspace path discovery", () => {
       excludeNames: [],
       limit: 1,
     };
+    const signal = new AbortController().signal;
     const [alpha, beta] = await Promise.all([
-      listHostPaths({ ...command, query: "alpha" }),
-      listHostPaths({ ...command, query: "beta" }),
+      listHostPaths({ ...command, query: "alpha" }, signal),
+      listHostPaths({ ...command, query: "beta" }, signal),
     ]);
     expect(alpha.paths.map((entry) => entry.path)).toEqual(["alpha.md"]);
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);

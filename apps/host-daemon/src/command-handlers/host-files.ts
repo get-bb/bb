@@ -58,6 +58,7 @@ function assertAbsoluteHostDiskPathCommand(command: HostDiskPathCommand): void {
 
 export async function listHostFiles(
   command: CommandOf<"host.list_files">,
+  signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_files">> {
   if (!path.isAbsolute(command.path)) {
     throw new CommandDispatchError("invalid_path", "Path must be absolute");
@@ -69,7 +70,7 @@ export async function listHostFiles(
       path: command.path,
     });
 
-    return finalizeListedFiles({
+    return await finalizeListedFiles({
       filePaths: (
         await listWorkspacePaths({
           root: realRootPath,
@@ -81,6 +82,7 @@ export async function listHostFiles(
         })
       ).map((entry) => entry.path),
       limit: command.limit,
+      signal,
       ...(command.query ? { query: command.query } : {}),
     });
   } catch (error) {
@@ -93,6 +95,7 @@ export async function listHostFiles(
 
 export async function listHostPaths(
   command: CommandOf<"host.list_paths">,
+  signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_paths">> {
   if (!path.isAbsolute(command.path)) {
     throw new CommandDispatchError("invalid_path", "Path must be absolute");
@@ -104,7 +107,7 @@ export async function listHostPaths(
       path: command.path,
     });
 
-    return finalizeListedPaths({
+    return await finalizeListedPaths({
       paths: await listWorkspacePaths({
         root: realRootPath,
         includeFiles: command.includeFiles,
@@ -116,6 +119,7 @@ export async function listHostPaths(
       limit: command.limit,
       includeFiles: command.includeFiles,
       includeDirectories: command.includeDirectories,
+      signal,
       ...(command.query ? { query: command.query } : {}),
     });
   } catch (error) {

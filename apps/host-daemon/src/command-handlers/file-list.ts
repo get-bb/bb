@@ -1,16 +1,20 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { fuzzyMatchPaths } from "@bb/fuzzy-match";
 import { detectGitRepo, runGit } from "@bb/host-workspace";
 import type {
   HostPathEntry,
   HostPathEntryKind,
 } from "@bb/host-daemon-contract";
+import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
+import { runInSerialLane } from "../serial-lane.js";
 
 interface FinalizeListedFilesArgs {
   filePaths: string[];
   limit: number;
   query?: string;
+  signal: AbortSignal;
 }
 
 interface FinalizedFileList {
@@ -38,6 +42,7 @@ interface FinalizeListedPathsArgs extends PathListInclusion {
   paths: ListedPath[];
   limit: number;
   query?: string;
+  signal: AbortSignal;
 }
 
 interface FinalizedPathList {
@@ -61,6 +66,10 @@ interface ListWorkspacePathsArgs extends PathListInclusion {
 }
 
 const pendingListings = new Map<string, Promise<ListedPath[]>>();
+
+const RANKING_CHUNK_SIZE = 10_000;
+const CHUNKED_RANKING_LANE = "chunked-ranking";
+const chunkedRankingLanes = new Map<string, Promise<void>>();
 
 export function listWorkspacePaths(
   args: ListWorkspacePathsArgs,
@@ -146,14 +155,15 @@ export function normalizeListedPath(relativePath: string): string {
   return relativePath.replace(/\\/g, "/");
 }
 
-export function finalizeListedFiles(
+export async function finalizeListedFiles(
   args: FinalizeListedFilesArgs,
-): FinalizedFileList {
-  const result = finalizeListedPaths({
+): Promise<FinalizedFileList> {
+  const result = await finalizeListedPaths({
     paths: args.filePaths.map(toListedFile),
     limit: args.limit,
     includeFiles: true,
     includeDirectories: false,
+    signal: args.signal,
     ...(args.query ? { query: args.query } : {}),
   });
 
@@ -163,28 +173,85 @@ export function finalizeListedFiles(
   };
 }
 
-export function finalizeListedPaths(
+function matchListedPaths(
+  items: readonly ListedPath[],
+  query: string,
+  limit: number,
+) {
+  return fuzzyMatchPaths({
+    items,
+    query,
+    getPath: (pathEntry) => pathEntry.path,
+    limit,
+  });
+}
+
+function throwIfPathSearchCancelled(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw new ExpectedCommandDispatchError(
+      "cancelled",
+      "Path search was cancelled",
+    );
+  }
+}
+
+async function rankListedPathsInChunks(
+  items: readonly ListedPath[],
+  query: string,
+  limit: number,
+  signal: AbortSignal,
+) {
+  const candidates: ListedPath[] = [];
+  for (let start = 0; start < items.length; start += RANKING_CHUNK_SIZE) {
+    await yieldToEventLoop();
+    throwIfPathSearchCancelled(signal);
+    const chunk = items.slice(start, start + RANKING_CHUNK_SIZE);
+    for (const match of matchListedPaths(chunk, query, limit)) {
+      candidates.push(match.item);
+    }
+  }
+  await yieldToEventLoop();
+  throwIfPathSearchCancelled(signal);
+  return matchListedPaths(candidates, query, limit);
+}
+
+async function rankListedPaths(
+  items: readonly ListedPath[],
+  query: string,
+  limit: number,
+  signal: AbortSignal,
+) {
+  if (items.length <= RANKING_CHUNK_SIZE) {
+    return matchListedPaths(items, query, limit);
+  }
+  return runInSerialLane(chunkedRankingLanes, CHUNKED_RANKING_LANE, () =>
+    rankListedPathsInChunks(items, query, limit, signal),
+  );
+}
+
+export async function finalizeListedPaths(
   args: FinalizeListedPathsArgs,
-): FinalizedPathList {
-  let pathEntries = args.paths.filter((pathEntry) =>
+): Promise<FinalizedPathList> {
+  throwIfPathSearchCancelled(args.signal);
+  const pathEntries = args.paths.filter((pathEntry) =>
     shouldIncludePath(pathEntry.kind, args),
   );
   let rankedEntries: HostPathEntry[];
 
   if (args.query) {
-    const matches = fuzzyMatchPaths({
-      items: pathEntries,
-      query: args.query,
-      getPath: (pathEntry) => pathEntry.path,
-      limit: args.limit + 1,
-    });
+    const matches = await rankListedPaths(
+      pathEntries,
+      args.query,
+      args.limit + 1,
+      args.signal,
+    );
     rankedEntries = matches.map((match) => ({
       ...match.item,
       score: match.score,
       positions: match.positions,
     }));
   } else {
-    rankedEntries = pathEntries.map((pathEntry) => ({
+    rankedEntries = pathEntries.slice(0, args.limit + 1).map((pathEntry) => ({
       ...pathEntry,
       score: 0,
       positions: [],

@@ -401,6 +401,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
         createProviderCliInstallEventStream(events),
       threadStorageRootPath: "/tmp/bb-thread-storage",
     },
+    new AbortController().signal,
   );
   return { events, providerInstallationStatus, result };
 }
@@ -1894,45 +1895,49 @@ describe("dispatchCommand", () => {
       action: "update",
     };
 
-    const result = await dispatchOnlineRpcCommand(command, {
-      dataDir,
-      logger: silentLogger,
-      eventSink: {
-        emit: vi.fn(),
-        flush: vi.fn(async () => undefined),
-      },
-      fetchProjectAttachment: async () => {
-        throw new Error("Unexpected project attachment fetch");
-      },
-      fetchPluginHostArtifact: fetchDispatchTestArtifact,
-      ...unexpectedProviderMaintenance,
-      runtimeManager: manager,
-      providerInstallationRun: async () => ({
-        available: true,
-        command: {
-          command: "codex",
-          args: ["update"],
-          displayCommand: "codex update",
+    const result = await dispatchOnlineRpcCommand(
+      command,
+      {
+        dataDir,
+        logger: silentLogger,
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
         },
-        verification: { kind: "version_changed", previousVersion: "0.1.0" },
-      }),
-      providerInstallationStatus: async () => ({
-        executableName: "codex",
-        executablePath: "/usr/local/bin/codex",
-        installed: true,
-        installSource: "external",
-        currentVersion: "0.2.0",
-        latestVersion: "0.2.0",
-        minimumSupportedVersion: null,
-        npmPackageName: null,
-        npmGlobalPackageVersion: null,
-        installAction: null,
-        needsUpdate: false,
-        versionUnsupported: false,
-      }),
-      streamProviderInstallation,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
-    });
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        providerInstallationRun: async () => ({
+          available: true,
+          command: {
+            command: "codex",
+            args: ["update"],
+            displayCommand: "codex update",
+          },
+          verification: { kind: "version_changed", previousVersion: "0.1.0" },
+        }),
+        providerInstallationStatus: async () => ({
+          executableName: "codex",
+          executablePath: "/usr/local/bin/codex",
+          installed: true,
+          installSource: "external",
+          currentVersion: "0.2.0",
+          latestVersion: "0.2.0",
+          minimumSupportedVersion: null,
+          npmPackageName: null,
+          npmGlobalPackageVersion: null,
+          installAction: null,
+          needsUpdate: false,
+          versionUnsupported: false,
+        }),
+        streamProviderInstallation,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+      new AbortController().signal,
+    );
 
     expect(result).toEqual({ events });
     expect(streamProviderInstallation).toHaveBeenCalledWith(
@@ -2021,6 +2026,7 @@ describe("dispatchCommand", () => {
           streamProviderInstallation,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
+        new AbortController().signal,
       );
 
       expect(result).toEqual({ events: testCase.events });
@@ -2100,6 +2106,7 @@ describe("dispatchCommand", () => {
           ]),
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
+      new AbortController().signal,
     );
 
     expect(providerInstallationStatus).toHaveBeenCalledOnce();
@@ -2161,6 +2168,7 @@ describe("dispatchCommand", () => {
         streamProviderInstallation,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
+      new AbortController().signal,
     );
 
     expect(providerInstallationStatus).not.toHaveBeenCalled();
@@ -2395,6 +2403,7 @@ describe("dispatchCommand", () => {
           cwd: "/tmp/workspace",
         },
         options,
+        new AbortController().signal,
       ),
     ).resolves.toEqual({ supported: false });
     await expect(
@@ -2405,6 +2414,7 @@ describe("dispatchCommand", () => {
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         },
         options,
+        new AbortController().signal,
       ),
     ).resolves.toEqual({ supported: false });
 

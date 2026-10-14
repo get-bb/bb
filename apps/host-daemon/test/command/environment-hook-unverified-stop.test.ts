@@ -40,6 +40,7 @@ it("answers unknown when a cancelled hook's processes could not be confirmed sto
       timeoutMs: 5000,
     },
     options,
+    new AbortController().signal,
   );
   const runFailure = expect(run).rejects.toThrow(
     "could not confirm that all of its processes exited",
@@ -49,6 +50,7 @@ it("answers unknown when a cancelled hook's processes could not be confirmed sto
     dispatchOnlineRpcCommand(
       { type: "environment.hook.cancel", operationId: "hook-unverified" },
       options,
+      new AbortController().signal,
     ),
   ).resolves.toEqual({ status: "unknown" });
   await runFailure;

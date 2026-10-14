@@ -184,6 +184,7 @@ interface DaemonSessionCloseWaiter {
 }
 
 interface HostOnlineRpcWaiter {
+  detachAbortListener: () => void;
   reject: (reason?: Error) => void;
   resolve: (message: HostDaemonOnlineRpcResponseMessage) => void;
   sessionId: string;
@@ -208,6 +209,13 @@ export class HostOnlineRpcTimeoutError extends Error {
   constructor() {
     super("Timed out waiting for host RPC response");
     this.name = "HostOnlineRpcTimeoutError";
+  }
+}
+
+export class HostOnlineRpcCancelledError extends Error {
+  constructor() {
+    super("Host RPC request was cancelled");
+    this.name = "HostOnlineRpcCancelledError";
   }
 }
 
@@ -755,6 +763,7 @@ export class NotificationHub implements DbNotifier {
   requestHostOnlineRpc(args: {
     hostId: string;
     message: HostDaemonOnlineRpcRequestMessage;
+    signal?: AbortSignal;
     timeoutMs: number;
   }): Promise<HostDaemonOnlineRpcResponseMessage> {
     const sessionId = this.daemonSessionIdsByHost.get(args.hostId);
@@ -765,23 +774,39 @@ export class NotificationHub implements DbNotifier {
     if (!session) {
       return Promise.reject(new HostOnlineRpcUnavailableError());
     }
+    const signal = args.signal;
+    if (signal?.aborted) {
+      return Promise.reject(new HostOnlineRpcCancelledError());
+    }
+    const requestId = args.message.requestId;
 
     return new Promise<HostDaemonOnlineRpcResponseMessage>(
       (resolve, reject) => {
+        const abandon = (error: Error): void => {
+          this.deleteHostOnlineRpcWaiter(requestId, waiter);
+          this.sendHostOnlineRpcCancel(sessionId, requestId);
+          reject(error);
+        };
+        const onAbort = (): void => {
+          abandon(new HostOnlineRpcCancelledError());
+        };
         const waiter: HostOnlineRpcWaiter = {
+          detachAbortListener: () => {
+            signal?.removeEventListener("abort", onAbort);
+          },
           reject,
           resolve,
           sessionId,
           timeout: setTimeout(() => {
-            this.deleteHostOnlineRpcWaiter(args.message.requestId, waiter);
-            reject(new HostOnlineRpcTimeoutError());
+            abandon(new HostOnlineRpcTimeoutError());
           }, args.timeoutMs),
         };
-        this.hostOnlineRpcWaiters.set(args.message.requestId, waiter);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        this.hostOnlineRpcWaiters.set(requestId, waiter);
         try {
           session.socket.send(JSON.stringify(args.message));
         } catch (error) {
-          this.deleteHostOnlineRpcWaiter(args.message.requestId, waiter);
+          this.deleteHostOnlineRpcWaiter(requestId, waiter);
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       },
@@ -991,8 +1016,20 @@ export class NotificationHub implements DbNotifier {
     waiter: HostOnlineRpcWaiter,
   ): void {
     clearTimeout(waiter.timeout);
+    waiter.detachAbortListener();
     if (this.hostOnlineRpcWaiters.get(requestId) === waiter) {
       this.hostOnlineRpcWaiters.delete(requestId);
+    }
+  }
+
+  private sendHostOnlineRpcCancel(sessionId: string, requestId: string): void {
+    try {
+      this.sendDaemonSessionMessage(sessionId, {
+        type: "host-rpc.cancel",
+        requestId,
+      });
+    } catch {
+      return;
     }
   }
 

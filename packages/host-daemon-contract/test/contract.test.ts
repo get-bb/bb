@@ -1230,8 +1230,30 @@ const CONTRIBUTED_ENV = [
 ] as const;
 
 describe("host-daemon command schemas", () => {
+  it("parses host RPC cancellations and rejects extra fields", () => {
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "host-rpc.cancel",
+        requestId: "rpc-1",
+      }),
+    ).toEqual({ type: "host-rpc.cancel", requestId: "rpc-1" });
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "host-rpc.cancel",
+        requestId: "",
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "host-rpc.cancel",
+        requestId: "rpc-1",
+        reason: "superseded",
+      }).success,
+    ).toBe(false);
+  });
+
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(235);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(236);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

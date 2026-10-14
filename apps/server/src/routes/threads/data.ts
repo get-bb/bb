@@ -587,6 +587,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     try {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
+        signal: context.req.raw.signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_files",
@@ -640,6 +641,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     try {
       const result = await callHostRetryableOnlineRpc(deps, {
         hostId: target.hostId,
+        signal: context.req.raw.signal,
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",
